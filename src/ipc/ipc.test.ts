@@ -3,51 +3,30 @@ import { agentCommandSchema, agentEventSchema } from "./agent-ipc";
 import { desktopRequestSchema } from "./desktop-ipc";
 
 describe("process IPC", () => {
-  it("accepts known desktop requests", () => {
+  it("accepts session lifecycle and prompt requests", () => {
     const requestId = crypto.randomUUID();
-    expect(desktopRequestSchema.parse({ type: "start-foundation-check", requestId })).toEqual({
-      type: "start-foundation-check",
-      requestId
-    });
+    expect(desktopRequestSchema.parse({ type: "open-workspace", requestId, path: "/project", trusted: true, newSession: true })).toMatchObject({ type: "open-workspace", requestId, newSession: true });
+    expect(agentCommandSchema.parse({ type: "prompt", requestId, text: "hello", delivery: "prompt", attachments: [] })).toMatchObject({ text: "hello" });
   });
 
-  it("rejects oversized agent deltas", () => {
+  it("rejects oversized transcript parts", () => {
     const result = agentEventSchema.safeParse({
-      type: "text-delta",
-      requestId: crypto.randomUUID(),
-      text: "x".repeat(16_385)
+      type: "part-updated",
+      sessionId: "session",
+      part: { id: "message", kind: "text", role: "assistant", text: "x".repeat(262_145), status: "streaming" }
     });
-
     expect(result.success).toBe(false);
   });
 
-  it("validates correlated extension UI responses", () => {
+  it("validates correlated secret UI responses without logging them", () => {
     const requestId = crypto.randomUUID();
     const uiRequestId = crypto.randomUUID();
-
-    expect(agentEventSchema.parse({
-      type: "ui-request",
-      requestId,
-      uiRequestId,
-      kind: "confirm",
-      title: "Continue?",
-      message: "Confirm the Cake UI bridge."
-    })).toMatchObject({ requestId, uiRequestId });
-
-    expect(agentCommandSchema.parse({
-      type: "ui-response",
-      requestId,
-      uiRequestId,
-      accepted: true
-    })).toMatchObject({ accepted: true });
+    expect(agentEventSchema.parse({ type: "ui-request", requestId, uiRequestId, kind: "secret", title: "Sign in", message: "API key" })).toMatchObject({ uiRequestId, kind: "secret" });
+    expect(agentCommandSchema.parse({ type: "ui-response", requestId, uiRequestId, value: "secret", cancelled: false })).toMatchObject({ value: "secret" });
   });
 
-  it("rejects malformed desktop UI responses", () => {
-    expect(desktopRequestSchema.safeParse({
-      type: "respond-ui",
-      requestId: "not-a-uuid",
-      uiRequestId: crypto.randomUUID(),
-      accepted: true
-    }).success).toBe(false);
+  it("rejects malformed project and UI requests", () => {
+    expect(desktopRequestSchema.safeParse({ type: "open-workspace", requestId: "bad", path: "/project", trusted: true }).success).toBe(false);
+    expect(desktopRequestSchema.safeParse({ type: "respond-ui", requestId: crypto.randomUUID(), uiRequestId: "bad", cancelled: false }).success).toBe(false);
   });
 });

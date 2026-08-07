@@ -1,5 +1,7 @@
-import { join } from "node:path";
-import { app, BrowserWindow, ipcMain, utilityProcess, type UtilityProcess } from "electron";
+import { readFile, rename, writeFile } from "node:fs/promises";
+import { basename, extname, join } from "node:path";
+import { homedir } from "node:os";
+import { app, BrowserWindow, dialog, ipcMain, utilityProcess, type UtilityProcess } from "electron";
 import { agentEventSchema, type AgentCommand } from "../ipc/agent-ipc";
 import {
   desktopRequestSchema,
@@ -7,10 +9,16 @@ import {
   type AgentState,
   type DesktopEvent
 } from "../ipc/desktop-ipc";
+import { windowViewStateSchema, type Attachment, type WindowViewState } from "../ipc/session-contract";
 
 let window: BrowserWindow | null = null;
 let agentProcess: UtilityProcess | null = null;
 let agentState: AgentState = "stopped";
+const allowedProjectPaths = new Set<string>();
+
+if (process.env.CAKE_ELECTRON_USER_DATA) {
+  app.setPath("userData", process.env.CAKE_ELECTRON_USER_DATA);
+}
 
 function send(event: DesktopEvent) {
   if (window && !window.isDestroyed()) window.webContents.send("cake:event", event);
@@ -28,13 +36,8 @@ function launchAgent() {
     const result = agentEventSchema.safeParse(input);
     if (!result.success) return;
     if (result.data.type === "ready") setAgentState("ready");
-    if (result.data.type === "text-delta") send(result.data);
-    if (result.data.type === "ui-request") send(result.data);
-    if (result.data.type === "complete") send(result.data);
-    if (result.data.type === "fatal") {
-      send({ type: "agent-error", requestId: result.data.requestId, message: result.data.message });
-      if (!result.data.requestId) setAgentState("failed");
-    }
+    else if (result.data.type === "fatal") send({ type: "agent-error", requestId: result.data.requestId, message: result.data.message });
+    else send(result.data);
   });
   agentProcess.on("exit", (code) => {
     agentProcess = null;
@@ -44,8 +47,10 @@ function launchAgent() {
 
 function createWindow() {
   window = new BrowserWindow({
-    width: 1000,
-    height: 720,
+    width: 1180,
+    height: 820,
+    minWidth: 760,
+    minHeight: 560,
     backgroundColor: "#f5f0e8",
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/preload.cjs"),
@@ -63,27 +68,82 @@ function createWindow() {
   else void window.loadFile(join(import.meta.dirname, "../renderer/index.html"));
 }
 
-ipcMain.handle("cake:request", (_event, input: unknown) => {
-  const request = desktopRequestSchema.parse(input);
-  if (request.type === "start-foundation-check") {
-    if (!agentProcess) throw new Error("Agent process is unavailable");
-    const response = desktopResponseSchema.parse({ type: "started", requestId: request.requestId });
-    agentProcess.postMessage({ type: "start", requestId: request.requestId } satisfies AgentCommand);
-    return response;
-  }
+function statePath() {
+  return join(app.getPath("userData"), "window-state.json");
+}
 
+async function loadWindowState(): Promise<WindowViewState> {
+  try {
+    const parsed = windowViewStateSchema.parse(JSON.parse(await readFile(statePath(), "utf8")));
+    if (parsed.projectPath) allowedProjectPaths.add(parsed.projectPath);
+    for (const path of parsed.recentProjectPaths) allowedProjectPaths.add(path);
+    return parsed;
+  } catch {
+    return windowViewStateSchema.parse({});
+  }
+}
+
+async function saveWindowState(state: WindowViewState) {
+  const parsed = windowViewStateSchema.parse(state);
+  const target = statePath();
+  const temporary = `${target}.${process.pid}.tmp`;
+  await writeFile(temporary, `${JSON.stringify(parsed, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  await rename(temporary, target);
+}
+
+const imageMimeTypes: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp"
+};
+
+async function chooseAttachments(): Promise<Attachment[]> {
+  if (!window) return [];
+  const result = await dialog.showOpenDialog(window, { properties: ["openFile", "multiSelections"] });
+  if (result.canceled) return [];
+  return Promise.all(result.filePaths.slice(0, 20).map(async (path): Promise<Attachment> => {
+    const mimeType = imageMimeTypes[extname(path).toLowerCase()];
+    if (mimeType) return { kind: "image", name: basename(path), mimeType, data: (await readFile(path)).toString("base64") };
+    return { kind: "file", name: basename(path), path };
+  }));
+}
+
+ipcMain.handle("cake:request", async (_event, input: unknown) => {
+  const request = desktopRequestSchema.parse(input);
+  if (request.type === "choose-project") {
+    if (!window) return desktopResponseSchema.parse({ type: "project-chosen" });
+    const result = await dialog.showOpenDialog(window, { properties: ["openDirectory"] });
+    const path = result.canceled ? undefined : result.filePaths[0];
+    if (path) allowedProjectPaths.add(path);
+    return desktopResponseSchema.parse({ type: "project-chosen", path });
+  }
+  if (request.type === "get-home-directory") {
+    const path = homedir();
+    allowedProjectPaths.add(path);
+    return desktopResponseSchema.parse({ type: "home-directory", path });
+  }
+  if (request.type === "choose-attachments") {
+    return desktopResponseSchema.parse({ type: "attachments-chosen", attachments: await chooseAttachments() });
+  }
+  if (request.type === "load-window-state") {
+    return desktopResponseSchema.parse({ type: "window-state-loaded", state: await loadWindowState() });
+  }
+  if (request.type === "save-window-state") {
+    await saveWindowState(request.state);
+    return desktopResponseSchema.parse({ type: "window-state-saved" });
+  }
   if (!agentProcess) throw new Error("Agent process is unavailable");
-  const response = desktopResponseSchema.parse({
-    type: "ui-response-accepted",
-    uiRequestId: request.uiRequestId
-  });
-  agentProcess.postMessage({
-    type: "ui-response",
-    requestId: request.requestId,
-    uiRequestId: request.uiRequestId,
-    accepted: request.accepted
-  } satisfies AgentCommand);
-  return response;
+  if ((request.type === "inspect-workspace" || request.type === "open-workspace") && !allowedProjectPaths.has(request.path)) {
+    throw new Error("Project path was not selected by the user");
+  }
+  if (request.type === "respond-ui") {
+    agentProcess.postMessage({ type: "ui-response", requestId: request.requestId, uiRequestId: request.uiRequestId, value: request.value, cancelled: request.cancelled } satisfies AgentCommand);
+    return desktopResponseSchema.parse({ type: "ui-response-accepted", uiRequestId: request.uiRequestId });
+  }
+  agentProcess.postMessage(request satisfies AgentCommand);
+  return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
 });
 
 app.whenReady().then(() => {

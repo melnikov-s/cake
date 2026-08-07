@@ -644,6 +644,7 @@ Current S0 checkpoint (2026-08-07):
 
 ### Stage S1 — Pi-backed desktop chat
 
+**Status:** Implementation complete; live-provider acceptance verification pending (2026-08-07)
 **Depends on:** S0
 **Outcome:** Cake is usable for a single project and session.
 
@@ -664,6 +665,26 @@ Acceptance checks:
 - A terminal Pi client can still open and understand the resulting session.
 - No transcript is stored as an independent Cake-owned source of truth.
 - The Pi runtime streams through Cake Stores into Cake-owned adapted components without `UIMessage`, `useChat`, AI SDK transports, or an AI SDK server route.
+
+Current S1 checkpoint (2026-08-07):
+
+- All eight implementation work items are present in the real Electron path:
+  persistent Pi lifecycle and normalization, Cake UI parts, transcript surfaces,
+  adapted source-owned components, full composer delivery controls, provider and
+  thinking controls, pre-load project trust, and hydration-gated window state.
+- Deterministic contract tests verify Pi JSONL reopen, trust detection, protocol
+  validation, Store lifecycle and stale-session filtering, and inert rich-text
+  rendering. The Electron smoke verifies sandboxing, durable session open,
+  composer/view-state hydration, agent-process failure detection, and renderer
+  survival.
+- Pi remains the only transcript authority. Cake persists only window-local view
+  state and projects Pi snapshots/events through Cake-owned DTOs. No AI SDK
+  runtime or types are installed.
+- S1 is not marked complete yet because the full real-provider workflow—native
+  provider login, a paid/credentialed coding turn, steering/abort against that
+  live turn, application restart, and independent Pi terminal reopening—must be
+  run with explicitly supplied user credentials. Live provider checks remain
+  opt-in and may incur cost.
 
 ### Stage S2 — Projects and durable sessions
 

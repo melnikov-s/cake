@@ -1,16 +1,21 @@
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { agentCommandSchema, type AgentEvent } from "../ipc/agent-ipc";
-import { createFoundationRuntime, type FoundationRuntime } from "./pi-runtime";
+import {
+  createCakeRuntime,
+  inspectWorkspace,
+  type CakeRuntime,
+  type RuntimeUiRequest
+} from "./pi-runtime";
 
-interface PendingConfirmation {
+interface PendingUi {
   requestId: string;
-  resolve(accepted: boolean): void;
+  settle(value: string | undefined): void;
 }
 
-let runtime: FoundationRuntime | undefined;
-let activeRequestId: string | undefined;
-const pendingConfirmations = new Map<string, PendingConfirmation>();
+let runtime: CakeRuntime | undefined;
+let workspaceRevision = 0;
+const pendingUi = new Map<string, PendingUi>();
+const operationContext = new AsyncLocalStorage<string>();
 
 function emit(event: AgentEvent) {
   process.parentPort?.postMessage(event);
@@ -20,60 +25,46 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function requestConfirm(title: string, message: string, signal?: AbortSignal) {
-  const requestId = activeRequestId;
+function requestUi(request: RuntimeUiRequest) {
+  const requestId = operationContext.getStore();
   if (!requestId) throw new Error("Pi requested UI without an active Cake operation");
-
   const uiRequestId = crypto.randomUUID();
-  return new Promise<boolean>((resolve) => {
+  return new Promise<string | undefined>((resolve) => {
     let settled = false;
-    const settle = (accepted: boolean) => {
+    const settle = (value: string | undefined) => {
       if (settled) return;
       settled = true;
-      pendingConfirmations.delete(uiRequestId);
-      signal?.removeEventListener("abort", onAbort);
-      resolve(accepted);
+      pendingUi.delete(uiRequestId);
+      request.signal?.removeEventListener("abort", onAbort);
+      resolve(value);
     };
-    const onAbort = () => settle(false);
-    pendingConfirmations.set(uiRequestId, { requestId, resolve: settle });
-    signal?.addEventListener("abort", onAbort, { once: true });
-    emit({ type: "ui-request", requestId, uiRequestId, kind: "confirm", title, message });
+    const onAbort = () => settle(undefined);
+    pendingUi.set(uiRequestId, { requestId, settle });
+    request.signal?.addEventListener("abort", onAbort, { once: true });
+    emit({
+      type: "ui-request",
+      requestId,
+      uiRequestId,
+      kind: request.kind,
+      title: request.title,
+      message: request.message,
+      placeholder: request.placeholder,
+      options: request.options
+    });
   });
 }
 
-async function getRuntime() {
-  runtime ??= await createFoundationRuntime({
-    cwd: process.cwd(),
-    agentDir: join(tmpdir(), "cake-s0-agent"),
-    requestConfirm,
-    onEvent(event) {
-      if (event.type === "text-delta" && activeRequestId) {
-        emit({ type: "text-delta", requestId: activeRequestId, text: event.text });
-      }
-    }
-  });
-  return runtime;
-}
-
-async function run(requestId: string) {
-  if (activeRequestId) {
-    emit({ type: "fatal", requestId, message: "A Pi foundation operation is already running" });
-    return;
-  }
-
-  activeRequestId = requestId;
+async function run(requestId: string, operation: () => Promise<void>) {
   try {
-    const currentRuntime = await getRuntime();
-    await currentRuntime.run();
+    await operationContext.run(requestId, operation);
     emit({ type: "complete", requestId });
   } catch (error) {
     emit({ type: "fatal", requestId, message: errorMessage(error) });
   } finally {
-    for (const [uiRequestId, confirmation] of pendingConfirmations) {
-      if (confirmation.requestId === requestId) confirmation.resolve(false);
-      pendingConfirmations.delete(uiRequestId);
+    for (const [uiRequestId, pending] of pendingUi) {
+      if (pending.requestId === requestId) pending.settle(undefined);
+      pendingUi.delete(uiRequestId);
     }
-    activeRequestId = undefined;
   }
 }
 
@@ -83,18 +74,76 @@ process.parentPort?.on("message", (event) => {
   const command = result.data;
 
   if (command.type === "shutdown") {
-    for (const confirmation of pendingConfirmations.values()) confirmation.resolve(false);
+    for (const pending of pendingUi.values()) pending.settle(undefined);
     runtime?.dispose();
     process.exit(0);
   }
 
   if (command.type === "ui-response") {
-    const confirmation = pendingConfirmations.get(command.uiRequestId);
-    if (confirmation?.requestId === command.requestId) confirmation.resolve(command.accepted);
+    const pending = pendingUi.get(command.uiRequestId);
+    if (pending?.requestId === command.requestId) pending.settle(command.cancelled ? undefined : command.value);
     return;
   }
 
-  void run(command.requestId);
+  if (command.type === "inspect-workspace") {
+    const inspection = inspectWorkspace(command.path);
+    emit({ type: "workspace-inspected", requestId: command.requestId, ...inspection });
+    emit({ type: "complete", requestId: command.requestId });
+    return;
+  }
+
+  if (command.type === "abort") {
+    void run(command.requestId, async () => runtime?.abort());
+    return;
+  }
+
+  if (command.type === "open-workspace") {
+    const revision = ++workspaceRevision;
+    void run(command.requestId, async () => {
+      runtime?.dispose();
+      runtime = undefined;
+      const candidate = await createCakeRuntime({
+        cwd: command.path,
+        trusted: command.trusted,
+        newSession: command.newSession,
+        sessionId: command.sessionId,
+        requestUi,
+        onEvent(runtimeEvent) {
+          if (revision !== workspaceRevision) return;
+          if (runtimeEvent.type === "snapshot") emit({ type: "session-snapshot", requestId: runtimeEvent.requestId, snapshot: runtimeEvent.snapshot });
+          if (runtimeEvent.type === "part-updated") emit(runtimeEvent);
+          if (runtimeEvent.type === "part-removed") emit(runtimeEvent);
+          if (runtimeEvent.type === "streaming") emit({ type: "session-streaming", sessionId: runtimeEvent.sessionId, streaming: runtimeEvent.streaming });
+        }
+      });
+      if (revision !== workspaceRevision) {
+        candidate.dispose();
+        return;
+      }
+      runtime = candidate;
+      const snapshot = await candidate.snapshot(command.requestId);
+      if (revision !== workspaceRevision) return;
+      emit({ type: "session-snapshot", requestId: command.requestId, snapshot });
+    });
+    return;
+  }
+
+  if (!runtime) {
+    emit({ type: "fatal", requestId: command.requestId, message: "Open a project before using the Pi session" });
+    return;
+  }
+
+  if (command.type === "prompt") {
+    void run(command.requestId, () => runtime!.prompt(command.text, command.delivery, command.attachments));
+  } else if (command.type === "set-model") {
+    void run(command.requestId, () => runtime!.setModel(command.provider, command.modelId));
+  } else if (command.type === "set-thinking") {
+    void run(command.requestId, () => runtime!.setThinkingLevel(command.level));
+  } else if (command.type === "login") {
+    void run(command.requestId, () => runtime!.login(command.provider, command.authType));
+  } else if (command.type === "logout") {
+    void run(command.requestId, () => runtime!.logout(command.provider));
+  }
 });
 
 emit({ type: "ready" });

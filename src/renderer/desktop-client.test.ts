@@ -1,59 +1,46 @@
-import type { CakeDesktopBridge, DesktopEvent, DesktopRequest, DesktopResponse } from "../ipc/desktop-ipc";
 import { describe, expect, it, vi } from "vitest";
+import type { CakeDesktopBridge, DesktopEvent, DesktopRequest, DesktopResponse } from "../ipc/desktop-ipc";
 import { createDesktopClient } from "./desktop-client";
 
 function createBridge() {
   let listener: ((event: DesktopEvent) => void) | undefined;
   const request = vi.fn(async (input: DesktopRequest): Promise<DesktopResponse> => {
-    if (input.type === "start-foundation-check") {
-      return { type: "started", requestId: input.requestId };
-    }
-    return { type: "ui-response-accepted", uiRequestId: input.uiRequestId };
+    if ("requestId" in input && input.type !== "respond-ui") return { type: "accepted", requestId: input.requestId };
+    if (input.type === "respond-ui") return { type: "ui-response-accepted", uiRequestId: input.uiRequestId };
+    if (input.type === "choose-project") return { type: "project-chosen", path: "/project" };
+    if (input.type === "get-home-directory") return { type: "home-directory", path: "/home/user" };
+    if (input.type === "choose-attachments") return { type: "attachments-chosen", attachments: [] };
+    if (input.type === "load-window-state") return { type: "window-state-loaded", state: { draft: "", recentProjectPaths: [], trustedProjectPaths: [], theme: "system", thinkingExpanded: false } };
+    return { type: "window-state-saved" };
   });
   const bridge: CakeDesktopBridge = {
     request,
-    subscribe(nextListener) {
-      listener = nextListener;
-      return () => undefined;
-    }
+    subscribe(next) { listener = next; return () => { listener = undefined; }; }
   };
   return { bridge, request, emit: (event: DesktopEvent) => listener?.(event) };
 }
 
-describe("desktop client boundary", () => {
-  it("translates foundation intent to the preload protocol", async () => {
-    const { bridge, request } = createBridge();
-    const client = createDesktopClient(bridge);
+describe("desktop client", () => {
+  it("maps intent methods to validated bridge requests", async () => {
+    const desktop = createBridge();
+    const client = createDesktopClient(desktop.bridge);
+    const operationId = crypto.randomUUID();
 
-    await client.startFoundationCheck({ operationId: "00000000-0000-4000-8000-000000000001" });
+    expect(await client.chooseProject()).toBe("/project");
+    await client.openWorkspace({ operationId, path: "/project", trusted: true });
 
-    expect(request).toHaveBeenCalledWith({
-      type: "start-foundation-check",
-      requestId: "00000000-0000-4000-8000-000000000001"
-    });
+    expect(desktop.request).toHaveBeenCalledWith({ type: "open-workspace", requestId: operationId, path: "/project", trusted: true, newSession: false, sessionId: undefined });
   });
 
-  it("translates protocol events to application events", () => {
-    const { bridge, emit } = createBridge();
-    const client = createDesktopClient(bridge);
+  it("projects transport events into Cake application events", () => {
+    const desktop = createBridge();
+    const client = createDesktopClient(desktop.bridge);
     const listener = vi.fn();
     client.subscribe(listener);
+    const requestId = crypto.randomUUID();
 
-    emit({
-      type: "ui-request",
-      requestId: "00000000-0000-4000-8000-000000000001",
-      uiRequestId: "00000000-0000-4000-8000-000000000002",
-      kind: "confirm",
-      title: "Continue?",
-      message: "Confirm the bridge"
-    });
+    desktop.emit({ type: "workspace-inspected", requestId, path: "/project", trustRequired: true });
 
-    expect(listener).toHaveBeenCalledWith({
-      type: "extension-confirmation-requested",
-      operationId: "00000000-0000-4000-8000-000000000001",
-      confirmationId: "00000000-0000-4000-8000-000000000002",
-      title: "Continue?",
-      message: "Confirm the bridge"
-    });
+    expect(listener).toHaveBeenCalledWith({ type: "workspace-inspected", operationId: requestId, path: "/project", trustRequired: true });
   });
 });

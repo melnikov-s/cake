@@ -1,0 +1,45 @@
+# S1 session and state contract
+
+Stage S1 replaces the provider-free foundation probe with a project-aware,
+multi-session Pi runtime. `src/agent/pi-runtime.ts` remains the only ordinary
+application module that imports Pi. It creates, resumes, or opens an explicit
+Pi session for the selected workspace and emits only the schemas in
+`src/ipc/session-contract.ts`.
+
+## Authority and lifecycle
+
+| State | Authority | Lifetime and persistence |
+| --- | --- | --- |
+| Transcript, tool results, model history, compaction | Pi `SessionManager` | Pi JSONL session; Cake only projects snapshots and deltas |
+| Provider credentials | Pi `ModelRuntime` | Pi auth storage; secret prompt values are never retained in Cake state or logs |
+| Active run, queued delivery, UI requests | Agent utility process | One active session runtime; replaced with take-latest semantics when switching sessions |
+| Transcript projection and composer workflow | Renderer `WindowStore` | Window lifetime; the mounted Store owns the desktop subscription |
+| Project history, trusted paths, composer draft, theme, reasoning visibility | Cake main process | Atomic `window-state.json`, saved only after renderer hydration |
+| Attachment selection | Renderer workflow | Cleared after accepted submission; images are bounded by IPC schemas |
+
+`WindowStore` depends on the intent-level `DesktopClient`, not IPC envelopes.
+It uses a revision for take-latest project opening, correlated operation IDs for
+late-result rejection, its Store lifetime signal after hydration, and a
+Store-owned persistence timer. The root is created with
+`mount(createStore(WindowStore, ...))` and disposed on renderer `pagehide`.
+
+## Trust and security
+
+The main process only accepts project paths selected by the native directory
+dialog or restored from Cake's persisted window state. Before creating Pi
+services, the utility process checks for trust-requiring project resources.
+The renderer must resolve that prompt before `DefaultResourceLoader.reload()`
+is allowed to load project-local executable resources. Approval is persisted by
+exact workspace path and reused for future sessions in that workspace.
+
+The renderer remains sandboxed and receives Cake-owned UI parts for text,
+reasoning, tools, sources, attachments, and notices. Raw Pi messages and AI SDK
+types do not cross IPC. Model output is rendered as React text; raw HTML is not
+parsed or injected.
+
+## Verification boundary
+
+Deterministic tests cover Pi JSONL reopen, trust detection, schema rejection,
+Store hydration and stale-session filtering, source-owned components, and the
+real Electron process boundary. Live provider calls and native provider login
+flows remain opt-in because they require user credentials and may incur cost.
