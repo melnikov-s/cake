@@ -1,0 +1,10 @@
+node_modules/
+.pnpm-store/
+dist/
+out/
+*.tsbuildinfo
+coverage/
+playwright-report/
+test-results/
+*.log
+.DS_Store

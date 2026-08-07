@@ -1,0 +1,25 @@
+{
+  "name": "cake",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.17.1",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "pnpm --filter @cake/desktop build",
+    "dev": "pnpm --filter @cake/desktop dev",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "tsc --build"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "26.1.2",
+    "eslint": "10.8.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.66.0",
+    "vitest": "4.0.18"
+  }
+}
