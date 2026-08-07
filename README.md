@@ -3,6 +3,10 @@
 Cake is a minimal Electron desktop coding agent powered by Pi. The project is
 currently implementing **Stage S0 — Foundation contract** from [PLAN.md](./PLAN.md).
 
+Cake is a single application package organized by Electron process boundaries:
+`src/main`, `src/preload`, `src/renderer`, the Cake-specific `src/agent` utility
+process, and validated contracts in `src/ipc`.
+
 ## Development
 
 Requirements: Node.js 22 or newer and Corepack.
@@ -22,5 +26,7 @@ corepack pnpm build
 ```
 
 The current shell starts a sandboxed renderer, exposes only a typed preload API,
-and streams a deterministic message from an Electron utility process. It does
-not create a Pi session yet.
+and creates an in-memory Pi session in an Electron utility process. The
+foundation check runs a Pi extension command, displays its `confirm` request in
+React, returns the response, and projects Pi session events through Cake-owned
+runtime schemas and an `r-state-tree` `WindowStore`.

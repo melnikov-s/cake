@@ -10,5 +10,48 @@ export default tseslint.config(
     rules: {
       "@typescript-eslint/consistent-type-imports": "error"
     }
+  },
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/agent/pi-runtime.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@earendil-works/pi-coding-agent",
+              message: "Only src/agent/pi-runtime.ts may import Pi."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    files: ["src/renderer/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@earendil-works/pi-coding-agent",
+              message: "Renderer code must use Cake-owned client contracts."
+            },
+            {
+              name: "electron",
+              message: "Renderer code must use the typed preload bridge."
+            }
+          ],
+          patterns: [
+            {
+              group: ["node:*", "electron/*", "../agent/*", "../main/*", "../preload/*"],
+              message: "Renderer code cannot import privileged process modules."
+            }
+          ]
+        }
+      ]
+    }
   }
 );
