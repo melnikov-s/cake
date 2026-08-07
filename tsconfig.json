@@ -10,6 +10,10 @@
     "moduleResolution": "Bundler",
     "noEmit": true,
     "noUncheckedIndexedAccess": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/renderer/*"]
+    },
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "strict": true,
