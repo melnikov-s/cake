@@ -8,7 +8,7 @@ small and should evolve alongside the process-safe schemas in
 | --- | --- | --- | --- |
 | Renderer | React presentation, the preload-to-intent adapter, and window-local `WindowStore` | Cake protocol types only at the adapter boundary; Cake state elsewhere | Node globals or raw Electron IPC |
 | Preload | Validation and the frozen `window.cake` API | Electron IPC, Cake protocol schemas | `ipcRenderer` itself |
-| Main | Window lifecycle, `DesktopKernelStore`, agent-process supervision and routing | Electron, Cake IPC contracts | Arbitrary project extension execution |
+| Main | Window lifecycle, agent-process supervision, and routing | Electron, Cake IPC contracts | Arbitrary project extension execution |
 | Agent utility process | Pi runtime and extensions | Cake IPC contracts and, only through `src/agent/pi-runtime.ts`, Pi | Electron renderer/main privileges |
 
 Every message is parsed with the shared Zod schemas at the receiving boundary.
@@ -29,10 +29,12 @@ differently; imports and validated IPC enforce them without a workspace layer.
 
 State ownership in this slice:
 
-- `DesktopKernelStore` is ephemeral main-process lifecycle state.
 - `WindowStore` owns ephemeral renderer workflow state, the preload
   subscription, active operation identity, extension confirmation, and streamed
   text projection.
+- Main-process lifecycle is currently ordinary Electron code. Introduce a
+  main-process Store only when a concrete observable workflow benefits from
+  Store state, derived values, effects, or composition.
 - Neither root is persisted yet.
 - Both roots are created with `mount(createStore(...))` and disposed by their
   owning process lifecycle.

@@ -6,11 +6,9 @@ import {
   desktopResponseSchema,
   type DesktopEvent
 } from "../ipc/desktop-ipc";
-import { mountDesktopKernelStore } from "./desktop-kernel-store";
 
 let window: BrowserWindow | null = null;
 let agentProcess: UtilityProcess | null = null;
-const kernelStore = mountDesktopKernelStore();
 
 function send(event: DesktopEvent) {
   if (window && !window.isDestroyed()) window.webContents.send("cake:event", event);
@@ -91,5 +89,4 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   agentProcess?.postMessage({ type: "shutdown" } satisfies AgentCommand);
-  kernelStore[Symbol.dispose]();
 });

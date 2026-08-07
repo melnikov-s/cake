@@ -202,7 +202,7 @@ flowchart TB
     Preload["Typed preload bridge"]
 
     subgraph Main["Electron main process"]
-        Kernel["DesktopKernelStore"]
+        Lifecycle["Electron application lifecycle"]
         Persist["Cake metadata persistence"]
         Windows["Windows, menus, notifications"]
     end
@@ -216,10 +216,10 @@ flowchart TB
     end
 
     React <--> Preload
-    Preload <--> Kernel
-    Kernel <--> Persist
-    Kernel <--> Windows
-    Kernel <--> Adapter
+    Preload <--> Lifecycle
+    Lifecycle <--> Persist
+    Lifecycle <--> Windows
+    Lifecycle <--> Adapter
     Frame <-->|"validated postMessage"| React
 ```
 
@@ -346,17 +346,26 @@ Cake uses Models for serializable application-owned domain state and Stores for 
 | Live streaming and tool progress | Pi event stream | Ephemeral Stores |
 | Extension dialogs and active statuses | Agent utility process/Cake bridge | Ephemeral Stores with cancellation |
 
-### 7.2 Main-process tree
+### 7.2 Main-process state and services
 
-```text
-DesktopKernelStore
-├── ProjectRegistryStore
-├── WindowRegistryStore
-├── AgentProcessSupervisorStore
-├── ArtifactRepositoryStore
-├── SettingsStore
-└── NotificationStore
-```
+The Electron main process does not require an `r-state-tree` composition root
+for symmetry with the renderer. Keep straightforward window lifecycle, IPC
+routing, native operations, and stateless services as ordinary TypeScript.
+Introduce a main-process Store only when a concrete subsystem owns observable
+application state, derived state, mounted resources, or coordinated async
+workflow that benefits from Store semantics. Name that Store for its behavioral
+surface—for example, agent-process supervision—rather than creating a generic
+kernel container in advance. Introduce a main-process composition root only if
+multiple real Stores later require shared ownership and coordination.
+
+Likely future Store candidates, subject to that boundary test:
+
+- `ProjectRegistryStore` when project loading, trust, and persistence form a
+  reactive workflow visible across windows.
+- `AgentProcessSupervisorStore` when per-workspace start, stop, crash, restart,
+  and retry behavior becomes observable application state.
+- `ArtifactRepositoryStore` if artifact persistence and synchronization require
+  mounted reactive orchestration rather than a repository service.
 
 Suggested Models:
 
@@ -366,6 +375,14 @@ Suggested Models:
 - `PreferencesModel`: app-owned appearance and behavior preferences that do not belong to Pi.
 
 ### 7.3 Renderer tree
+
+`WindowStore` is the composition root for one renderer window. Cake creates one
+independent `WindowStore` tree for each Electron window, provides it to React,
+and disposes it when that renderer ends. It coordinates child GUI Stores and
+their shared window-scoped workflows; it is not a global bucket for main-process
+state, Pi-owned session data, or every field rendered by React. As a subsystem
+gains coherent state, lifecycle, and behavior, compose it beneath `WindowStore`
+with `@child` rather than continuing to enlarge the root Store.
 
 ```text
 WindowStore
@@ -590,7 +607,8 @@ Work:
 - Define process-safe protocol schemas and a typed preload bridge.
 - Prove the agent utility process can import Pi, create an in-memory session, stream events, and shut down.
 - Prove `AgentSession.bindExtensions()` accepts a Cake `ExtensionUIContext` implementation.
-- Mount a minimal root `r-state-tree` Store in main and renderer and verify disposal.
+- Mount the renderer's root `WindowStore` and verify its owned subscriptions are
+  disposed with the renderer lifecycle.
 - Port one small Prompt Kit component without importing its demo/runtime dependencies and document the source-revision and attribution convention.
 - Record any Pi API gaps before product UI grows around workarounds.
 
@@ -601,6 +619,22 @@ Acceptance checks:
 - Agent utility-process termination is detected and shown without crashing Electron.
 - A Pi extension `confirm` call appears in React and receives its response.
 - Unit, type, and one real Electron smoke test pass.
+
+Current S0 checkpoint (2026-08-07):
+
+- The visible “Test Pi session” flow is a diagnostic architecture probe, not
+  provider authentication, connection to an existing session, or normal chat.
+- It creates a new in-memory, non-persistent Pi session in the agent utility
+  process, invokes the built-in `/cake-foundation` extension command, carries
+  that extension's `confirm` request into React, returns the correlated answer,
+  and projects the resulting Pi events back into `WindowStore`.
+- This probe has established the Pi adapter, extension UI, IPC validation,
+  preload, renderer Store, and process-lifecycle path. It should be removed once
+  the equivalent path is covered by the real S1 session workflow and tests.
+- Before S0 is complete, configure the selected Tailwind/shadcn foundation,
+  adapt and attribute one small Prompt Kit component, and add a reproducible
+  Electron smoke test that covers visible streaming, confirmation, and agent
+  termination behavior.
 
 ### Stage S1 — Pi-backed desktop chat
 
