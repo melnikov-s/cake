@@ -4,34 +4,41 @@ import { agentEventSchema, type AgentCommand } from "../ipc/agent-ipc";
 import {
   desktopRequestSchema,
   desktopResponseSchema,
+  type AgentState,
   type DesktopEvent
 } from "../ipc/desktop-ipc";
 
 let window: BrowserWindow | null = null;
 let agentProcess: UtilityProcess | null = null;
+let agentState: AgentState = "stopped";
 
 function send(event: DesktopEvent) {
   if (window && !window.isDestroyed()) window.webContents.send("cake:event", event);
 }
 
+function setAgentState(state: AgentState) {
+  agentState = state;
+  send({ type: "agent-state", state });
+}
+
 function launchAgent() {
-  send({ type: "agent-state", state: "starting" });
+  setAgentState("starting");
   agentProcess = utilityProcess.fork(join(import.meta.dirname, "agent.js"));
   agentProcess.on("message", (input) => {
     const result = agentEventSchema.safeParse(input);
     if (!result.success) return;
-    if (result.data.type === "ready") send({ type: "agent-state", state: "ready" });
+    if (result.data.type === "ready") setAgentState("ready");
     if (result.data.type === "text-delta") send(result.data);
     if (result.data.type === "ui-request") send(result.data);
     if (result.data.type === "complete") send(result.data);
     if (result.data.type === "fatal") {
       send({ type: "agent-error", requestId: result.data.requestId, message: result.data.message });
-      if (!result.data.requestId) send({ type: "agent-state", state: "failed" });
+      if (!result.data.requestId) setAgentState("failed");
     }
   });
   agentProcess.on("exit", (code) => {
     agentProcess = null;
-    send({ type: "agent-state", state: code === 0 ? "stopped" : "failed" });
+    setAgentState(code === 0 ? "stopped" : "failed");
   });
 }
 
@@ -49,6 +56,7 @@ function createWindow() {
   });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event) => event.preventDefault());
+  window.webContents.on("did-finish-load", () => send({ type: "agent-state", state: agentState }));
   window.on("closed", () => { window = null; });
 
   if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL);
@@ -90,3 +98,12 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   agentProcess?.postMessage({ type: "shutdown" } satisfies AgentCommand);
 });
+
+if (process.env.CAKE_ELECTRON_SMOKE === "1") {
+  Object.assign(globalThis, {
+    cakeSmokeTerminateAgent() {
+      if (!agentProcess) throw new Error("Agent process is unavailable");
+      agentProcess.kill();
+    }
+  });
+}

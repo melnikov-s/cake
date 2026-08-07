@@ -33,6 +33,7 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
 export type DesktopEvent = z.infer<typeof desktopEventSchema>;
 export type DesktopRequest = z.infer<typeof desktopRequestSchema>;
 export type DesktopResponse = z.infer<typeof desktopResponseSchema>;
+export type AgentState = Extract<DesktopEvent, { type: "agent-state" }>["state"];
 
 export interface CakeDesktopBridge {
   request(input: DesktopRequest): Promise<DesktopResponse>;

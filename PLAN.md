@@ -168,7 +168,7 @@ Every interactive artifact must provide a readable fallback for session export, 
 | --- | --- | --- |
 | Desktop shell | Electron | Pi and its extension ecosystem are Node-first; Electron avoids a Node sidecar packaging layer. |
 | Renderer | React + TypeScript | Required for the intended component and widget ecosystem. |
-| UI component foundation | Adapted Prompt Kit + shadcn/ui + Tailwind CSS | Provides low-coupling React primitives for chat, reasoning, tools, sources, code, and input while keeping component source and contracts under Cake's control. |
+| UI component foundation | shadcn/ui + Tailwind CSS 4, with adapted AI Elements components | shadcn/ui supplies Cake's source-owned primitive layer. Selected AI Elements components are copied into the repository, stripped of AI SDK contracts, adapted to Cake-owned UI parts, and maintained as Cake source. Prompt Kit may be used selectively when a specific component is demonstrably preferable. |
 | State | `r-state-tree` | Provides explicit Model/Store separation, reactive views, snapshots, lifecycle ownership, and React bindings. |
 | Agent runtime | `@earendil-works/pi-coding-agent` | Reuses Pi sessions, resources, tools, providers, auth, compaction, and extension runtime. |
 | AI SDK relationship | Do not use as Cake's agent runtime | Pi and `pi-ai` remain authoritative; Cake adapts Pi events to Cake-owned UI models instead of adding a competing model, streaming, transport, and tool abstraction. |
@@ -188,13 +188,13 @@ flowchart TB
         React["React views"]
         WindowStore["WindowStore tree"]
         UiAdapter["Cake UI projection"]
-        PromptKit["Adapted Prompt Kit components"]
+        Components["Cake-owned shadcn and adapted AI Elements components"]
         Builtins["Trusted built-in widgets"]
         Frame["Sandboxed artifact iframe"]
         React <--> WindowStore
         WindowStore --> UiAdapter
-        UiAdapter --> PromptKit
-        PromptKit --> React
+        UiAdapter --> Components
+        Components --> React
         React --> Builtins
         React --> Frame
     end
@@ -265,9 +265,13 @@ The final interface may differ, but it must preserve these rules:
 - The adapter normalizes extension UI, tool events, errors, and capability differences.
 - Adapter contract tests run against the exact pinned Pi version.
 
-### 6.4 Prompt Kit presentation boundary
+### 6.4 Source-owned presentation boundary
 
-Use [Prompt Kit](https://www.prompt-kit.com/) as the initial source-level foundation for Cake's trusted conversation components. It follows shadcn/ui conventions: selected components are copied into Cake, reviewed, adapted, themed, tested, and thereafter maintained as Cake source. It is not a runtime boundary, protocol, state authority, or agent framework. AI Elements and other AI UI libraries are reference material only, not dependencies or compatibility targets.
+Use [shadcn/ui](https://ui.shadcn.com/) conventions and Tailwind CSS 4 as the foundation for Cake's trusted renderer components. Components added through shadcn registries are copied into Cake, reviewed, adapted, themed, tested, and thereafter maintained as Cake source; they are not opaque runtime UI dependencies.
+
+Use [AI Elements](https://elements.ai-sdk.dev/) as the preferred source registry for conversation and coding-agent presentation primitives. Its components follow the shadcn ownership model and provide useful starting points for messages, streaming Markdown, reasoning, tools, approvals, sources, attachments, code, terminal output, file trees, plans, tasks, queues, checkpoints, tests, and artifacts. Cake does not adopt AI Elements as an application data contract or promise drop-in compatibility with its upstream examples.
+
+[Prompt Kit](https://www.prompt-kit.com/) also follows the shadcn source-copy model and may be used as a secondary source when a specific component is smaller, more accessible, more secure, or otherwise better suited to Cake. Do not maintain two interchangeable implementations of the same surface without a concrete reason. Prefer AI Elements by default, compare at component-selection time, and record the chosen source and revision.
 
 Cake must not adopt Vercel AI SDK as a second agent runtime. In particular, the trusted renderer must not depend on `useChat`, `DefaultChatTransport`, `streamText`, AI SDK provider packages, or AI SDK server routes for ordinary Cake conversations. Pi and `pi-ai` remain responsible for providers, inference, streaming, tool execution, session history, auth, and cost/token information.
 
@@ -279,7 +283,7 @@ Pi session snapshots and events
         -> Cake process-safe SessionEvent DTOs
         -> r-state-tree transcript/tool/artifact Stores
         -> Cake-owned UI part models
-        -> adapted Prompt Kit React components
+        -> Cake-owned shadcn and adapted AI Elements React components
 ```
 
 Define Cake-owned discriminated unions for presentation instead of allowing AI SDK types to become application contracts. The initial vocabulary should cover at least:
@@ -295,20 +299,21 @@ Define Cake-owned discriminated unions for presentation instead of allowing AI S
 
 Implementation rules:
 
-- Copy only the Prompt Kit components Cake actually uses; do not import its documentation/demo application or catalog wholesale.
-- Prefer Prompt Kit's ordinary React props and locally defined presentation types, then reshape them into Cake-owned renderer contracts where needed.
-- Do not inherit the Prompt Kit demo application's AI SDK, Next.js, provider, or server-route dependencies.
+- Copy only the AI Elements or Prompt Kit components Cake actually uses; do not import either documentation application, example application, or catalog wholesale.
+- Treat registry installation as source acquisition, not dependency adoption. The resulting component files belong to Cake and may intentionally diverge from upstream.
+- Replace AI Elements imports of `UIMessage`, `ToolUIPart`, `DynamicToolUIPart`, `FileUIPart`, `SourceDocumentUIPart`, `ChatStatus`, and other AI SDK types with Cake-owned presentation types before integrating a component into the product path.
+- Do not install the `ai` package merely to satisfy copied component types. Do not inherit AI Elements or Prompt Kit examples' AI SDK hooks, Next.js assumptions, provider setup, transports, or server routes.
 - Drive components with intent methods and reactive state from Cake's `r-state-tree` Stores.
 - Keep Pi-to-UI translation in a dedicated projection/adapter layer; components must not interpret raw Pi events.
 - Preserve useful upstream accessibility, keyboard behavior, streaming Markdown, and composition patterns.
 - Treat copied component code as a starting point, not an upstream-compatible API promise. Cake may reshape props and visuals to fit its product language.
-- Use React 19, shadcn/ui conventions, and Tailwind CSS 4 where compatible with the selected Electron/Vite toolchain; remove Next.js-only assumptions.
+- Use React 19, shadcn/ui conventions, CSS-variable theme tokens, and Tailwind CSS 4 with the Electron/Vite toolchain; remove Next.js-only assumptions and adapt registry aliases to Cake's repository layout.
 - Audit transitive browser dependencies before accepting a component. Renderer dependencies must not introduce Node access or weaken the content security policy.
-- Retain the Prompt Kit MIT license and required attribution for copied or substantially derived source.
-- Record the upstream source revision for each imported component so security fixes and useful improvements can be reviewed deliberately.
+- Retain required upstream licensing and attribution: AI Elements is Apache-2.0 and Prompt Kit is MIT. Mark materially modified Apache-derived files as required.
+- Record the source project, upstream path, and exact revision for each imported component so security fixes and useful improvements can be reviewed deliberately.
 - Do not expose AI SDK-shaped data through IPC or persist it as Cake's durable schema.
 
-Candidates for early adoption are Prompt Kit's chat container, message, prompt input, Markdown, response stream, reasoning, chain of thought, steps, sources, tool, code block, feedback, upload, scrolling, and loading primitives. Cake will build missing coding-agent surfaces such as approvals, terminal output, file trees, diffs, commits, durable artifacts, and sandboxed previews on the same shadcn/ui design foundation. JSX preview and other executable-content components require separate capability and security review before adoption.
+The first AI Elements evaluation slice is conversation, message, reasoning, tool, and confirmation. It must render the existing Pi foundation stream and extension confirmation through Cake-owned props without `ai` or `@ai-sdk/react` installed. Later candidates include streaming Markdown, sources, attachments, code blocks, terminal output, file trees, plans, tasks, queues, checkpoints, test results, and artifact chrome. Evaluate the large prompt-input component only after Cake's composer and attachment contracts are defined; prefer composing smaller shadcn primitives if adapting it would retain unnecessary upstream state or behavior. JSX preview and other executable-content components require separate capability and security review before adoption.
 
 This boundary leaves open an optional future use of AI SDK for an isolated feature. Such use must have a concrete need, remain outside the Pi-backed conversation path, and receive an explicit architecture decision; installing it merely to satisfy copied component types is prohibited.
 
@@ -597,6 +602,7 @@ Durations and ownership are intentionally unspecified until the project has cont
 
 ### Stage S0 — Foundation contract
 
+**Status:** Complete (2026-08-07)
 **Outcome:** The repository builds a secure Electron shell and proves the selected Pi and `r-state-tree` versions can support the architecture.
 
 Work:
@@ -609,7 +615,7 @@ Work:
 - Prove `AgentSession.bindExtensions()` accepts a Cake `ExtensionUIContext` implementation.
 - Mount the renderer's root `WindowStore` and verify its owned subscriptions are
   disposed with the renderer lifecycle.
-- Port one small Prompt Kit component without importing its demo/runtime dependencies and document the source-revision and attribution convention.
+- Adapt one small AI Elements component to Cake-owned props without installing AI SDK runtime or type dependencies, and document the source-revision, modification, and attribution convention.
 - Record any Pi API gaps before product UI grows around workarounds.
 
 Acceptance checks:
@@ -631,10 +637,10 @@ Current S0 checkpoint (2026-08-07):
 - This probe has established the Pi adapter, extension UI, IPC validation,
   preload, renderer Store, and process-lifecycle path. It should be removed once
   the equivalent path is covered by the real S1 session workflow and tests.
-- Before S0 is complete, configure the selected Tailwind/shadcn foundation,
-  adapt and attribute one small Prompt Kit component, and add a reproducible
-  Electron smoke test that covers visible streaming, confirmation, and agent
-  termination behavior.
+- The Tailwind/shadcn foundation and first adapted AI Elements component are in
+  place without AI SDK contracts. A Playwright-driven Electron smoke test now
+  verifies renderer sandboxing, visible Pi streaming, the extension confirmation
+  round trip, utility-process termination, and renderer survival. S0 is complete.
 
 ### Stage S1 — Pi-backed desktop chat
 
@@ -646,7 +652,7 @@ Work:
 - Implement the Pi adapter session lifecycle and event normalization.
 - Define Cake-owned UI part unions and the Pi-event-to-UI projection layer; no raw Pi or AI SDK message types may reach React components.
 - Build transcript rendering for user, assistant, thinking, tools, results, retries, compaction, and errors.
-- Adapt selected Prompt Kit chat container, message, Markdown, response stream, prompt input, reasoning, steps, sources, tool, and code primitives to Cake Stores and intents.
+- Adapt selected AI Elements conversation, message, Markdown, reasoning, sources, tool, confirmation, code, and composer primitives to Cake Stores and intents. Use Prompt Kit selectively only where a reviewed component is preferable.
 - Build composer submission, abort, steering, follow-up, file mention, and image attachment flows.
 - Add model, provider/auth, and thinking-level controls through Pi.
 - Add project trust handling before project-local executable resources load.
@@ -657,7 +663,7 @@ Acceptance checks:
 - A user can open a project, authenticate, run a coding task, inspect tool output, steer or abort, close Cake, and resume the same Pi session.
 - A terminal Pi client can still open and understand the resulting session.
 - No transcript is stored as an independent Cake-owned source of truth.
-- The Pi runtime streams through Cake Stores into adapted Prompt Kit components without `useChat`, AI SDK transports, or an AI SDK server route.
+- The Pi runtime streams through Cake Stores into Cake-owned adapted components without `UIMessage`, `useChat`, AI SDK transports, or an AI SDK server route.
 
 ### Stage S2 — Projects and durable sessions
 
@@ -891,11 +897,12 @@ These are intentionally unresolved. Resolve each before the stage that depends o
 | 2026-08-06 | Treat `pi-gui` as reference only. | Decided | No fork, dependency, or wholesale copying. |
 | 2026-08-06 | Use Zod 4.4.3 for process-safe runtime schemas. | Decided | IPC and later artifact contracts share one exact, runtime-validated schema dependency. |
 | 2026-08-06 | Pin `@earendil-works/pi-coding-agent` 0.84.0 and `r-state-tree` 0.10.1 for the foundation spike. | Decided | S0 contract tests target these exact releases; upgrades require deliberate validation. |
-| 2026-08-06 | Use selected Prompt Kit components as Cake's source-level UI foundation. | Decided | Cake gains low-coupling conversation primitives while owning their props, theme, state integration, security review, and maintenance. |
-| 2026-08-06 | Treat AI Elements and other AI UI libraries as reference only. | Decided | Cake may borrow useful patterns deliberately but does not inherit their runtime contracts or promise compatibility. |
+| 2026-08-06 | Use selected Prompt Kit components as Cake's source-level UI foundation. | Superseded 2026-08-07 | Prompt Kit remains an optional secondary component source; it is no longer the default foundation. |
+| 2026-08-06 | Treat AI Elements and other AI UI libraries as reference only. | Superseded 2026-08-07 | AI Elements is now the preferred source registry, but its AI SDK contracts and runtime remain outside Cake. |
 | 2026-08-06 | Do not use Vercel AI SDK in the Pi-backed agent runtime. | Decided | Pi remains the sole model, streaming, tool, auth, and session abstraction; Cake translates Pi events into Cake-owned UI part models. |
 | 2026-08-06 | Pin the initial Pi adapter contract to the public APIs documented in `docs/architecture/pi-0.84-contract.md`. | Decided | Q2 is resolved; upgrades must rerun the in-memory session, extension binding, confirmation, event projection, and disposal contract tests. |
 | 2026-08-07 | Keep Cake as one application package organized by Electron process boundaries. | Decided | `main`, `preload`, `renderer`, `agent`, and `ipc` are source directories in one build; packages are extracted only for demonstrated independent consumers or release lifecycles. |
+| 2026-08-07 | Use shadcn/ui and Tailwind CSS 4 as the renderer foundation, with AI Elements as the preferred source registry. | Decided | Cake copies selected component source, replaces AI SDK types with Cake-owned UI parts, records upstream provenance and modifications, and may select a Prompt Kit component when it is demonstrably preferable. |
 
 ## 19. Instructions for implementation agents
 
@@ -916,7 +923,7 @@ While implementing:
 - Preserve process boundaries and validate every cross-boundary payload.
 - Add abort, cleanup, and late-result handling for every async resource.
 - Do not introduce a second source of truth for Pi state.
-- Do not introduce AI SDK hooks, transports, provider packages, or message types into the Pi-backed conversation path; adapt copied Prompt Kit components to Cake-owned contracts.
+- Do not introduce AI SDK hooks, transports, provider packages, or message types into the Pi-backed conversation path; adapt copied AI Elements or Prompt Kit components to Cake-owned contracts.
 - Do not expose raw Electron IPC or Node APIs to the renderer or widget frames.
 - Do not claim compatibility for UI behavior that is actually ignored.
 - Add tests at the narrowest useful level and at the real Electron level when behavior crosses processes.
@@ -941,7 +948,7 @@ Cake fulfills the initial vision when all of the following are observable:
 - A user can interact with an artifact and return structured data to the agent.
 - A third-party React widget can be installed without gaining implicit desktop privileges.
 - `r-state-tree` ownership makes durable domain state, workflow state, resources, and view state explicit.
-- Adapted Prompt Kit components render Cake-owned UI parts while Pi remains the only agent runtime.
+- Cake-owned shadcn and adapted AI Elements components render Cake-owned UI parts while Pi remains the only agent runtime.
 - Restart and crash recovery preserve authoritative sessions and durable artifacts.
 - Packaged builds enforce the same privilege boundaries tested in development.
 - The product remains recognizably minimal: the conversation leads, and richer surfaces appear because the work calls for them.
@@ -959,8 +966,10 @@ Cake fulfills the initial vision when all of the following are observable:
 - Electron security guidance: <https://www.electronjs.org/docs/latest/tutorial/security>
 - Tauri sidecar reference: <https://v2.tauri.app/develop/sidecar/>
 - `pi-gui` reference implementation: <https://github.com/minghinmatthewlam/pi-gui>
+- shadcn/ui documentation and registry model: <https://ui.shadcn.com/docs>
+- AI Elements documentation and component registry: <https://elements.ai-sdk.dev/>
+- AI Elements source and Apache-2.0 license: <https://github.com/vercel/ai-elements>
 - Prompt Kit documentation: <https://www.prompt-kit.com/docs>
 - Prompt Kit source and MIT license: <https://github.com/ibelick/prompt-kit>
 - Prompt Kit component source: <https://github.com/ibelick/prompt-kit/tree/main/components/prompt-kit>
-- AI Elements reference catalog: <https://elements.ai-sdk.dev/>
 - Local `r-state-tree` documentation: `/Users/user/dev/r-state-tree/README.md`
