@@ -6,8 +6,14 @@ import { Reasoning } from "./reasoning";
 import { Tool } from "./tool";
 
 describe("Cake-owned conversation components", () => {
-  it("renders Markdown as inert text and source-owned code blocks", () => {
-    const html = renderToStaticMarkup(<Markdown>{"Hello <script>bad()</script>\n```ts\nconst cake = true\n```"}</Markdown>);
+  it("renders GFM tables, task lists, safe links, and source-owned code blocks", () => {
+    const html = renderToStaticMarkup(<Markdown>{"## Result\n\n**Ready** with `inline` code.\n\n- [x] Markdown\n\n| Feature | State |\n| --- | --- |\n| Tables | Ready |\n\n[Docs](https://example.com)\n\n<script>bad()</script>\n\n```ts\nconst cake = true\n```"}</Markdown>);
+    expect(html).toContain("<h2>Result</h2>");
+    expect(html).toContain("<strong>Ready</strong>");
+    expect(html).toContain('type="checkbox"');
+    expect(html).toContain("<table");
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noreferrer"');
     expect(html).toContain("&lt;script&gt;bad()&lt;/script&gt;");
     expect(html).toContain("<pre");
   });
