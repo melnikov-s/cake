@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import type { SessionSnapshot } from "../../ipc/session-contract";
-import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
-import { mountWindowStore } from "./window-store";
+import type { SessionSnapshot } from "../../../../src/ipc/session-contract";
+import type { DesktopClient, DesktopClientEvent } from "../../../../src/renderer/desktop-client";
+import { mountRootStore } from "../../../../src/renderer/stores/root-store";
+import type { WindowStore } from "../../../../src/renderer/stores/window-store";
 
 const snapshot: SessionSnapshot = {
   workspacePath: "/project",
@@ -23,7 +24,7 @@ function createDesktopClient(restoredPath?: string) {
     chooseProject: vi.fn(async () => "/project"),
     getHomeDirectory: vi.fn(async () => "/home/user"),
     chooseAttachments: vi.fn(async () => []),
-    loadWindowState: vi.fn(async () => ({ projectPath: restoredPath, recentProjectPaths: restoredPath ? [restoredPath] : [], trustedProjectPaths: [], draft: "saved", theme: "system" as const, thinkingExpanded: false, sessionSearch: "", activeSurface: "chat" as const, draftsBySession: {} })),
+    loadWindowState: vi.fn(async () => ({ projectPath: restoredPath, recentProjectPaths: restoredPath ? [restoredPath] : [], trustedProjectPaths: [], draft: "saved", theme: "system" as const, thinkingExpanded: false, sessionSearch: "", draftsBySession: {} })),
     saveWindowState: vi.fn(async () => undefined),
     loadApplicationState: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
     registerProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
@@ -31,7 +32,7 @@ function createDesktopClient(restoredPath?: string) {
     removeProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
     archiveSession: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
     createWindow: vi.fn(async () => undefined),
-    restartAgent: vi.fn(async () => undefined),
+    restartPi: vi.fn(async () => undefined),
     inspectWorkspace: vi.fn(async () => undefined),
     openWorkspace: vi.fn(async () => undefined),
     submit: vi.fn(async () => undefined),
@@ -44,10 +45,6 @@ function createDesktopClient(restoredPath?: string) {
     forkSession: vi.fn(async () => undefined),
     navigateSession: vi.fn(async () => undefined),
     inspectChanges: vi.fn(async () => undefined),
-    terminalStart: vi.fn(async () => undefined),
-    terminalInput: vi.fn(async () => undefined),
-    terminalResize: vi.fn(async () => undefined),
-    terminalClose: vi.fn(async () => undefined),
     respondToUi: vi.fn(async () => undefined),
     subscribe(next) { listener = next; return vi.fn(); }
   };
@@ -58,7 +55,12 @@ async function flush() {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-async function openSnapshot(store: ReturnType<typeof mountWindowStore>, desktop: ReturnType<typeof createDesktopClient>, nextSnapshot = snapshot) {
+function mountTestStore(client: DesktopClient) {
+  const root = mountRootStore(client);
+  return { root, store: root.windowStore };
+}
+
+async function openSnapshot(store: WindowStore, desktop: ReturnType<typeof createDesktopClient>, nextSnapshot = snapshot) {
   await store.chooseProject();
   const inspectId = store.activeOperations.at(-1)!;
   desktop.emit({ type: "workspace-inspected", operationId: inspectId, path: nextSnapshot.workspacePath, trustRequired: false });
@@ -69,19 +71,19 @@ async function openSnapshot(store: ReturnType<typeof mountWindowStore>, desktop:
 describe("WindowStore", () => {
   it("hydrates before persistence and reopens the persisted project", async () => {
     const desktop = createDesktopClient("/project");
-    const store = mountWindowStore(desktop.client);
+    const { root, store } = mountTestStore(desktop.client);
     await flush();
 
     expect(store.hydrated).toBe(true);
     expect(store.draft).toBe("saved");
     expect(desktop.client.inspectWorkspace).toHaveBeenCalledWith(expect.objectContaining({ path: "/project" }));
     expect(desktop.client.saveWindowState).not.toHaveBeenCalled();
-    store[Symbol.dispose]();
+    root[Symbol.dispose]();
   });
 
   it("gates project resources on trust and applies the authoritative snapshot", async () => {
     const desktop = createDesktopClient();
-    const store = mountWindowStore(desktop.client);
+    const { root, store } = mountTestStore(desktop.client);
     await flush();
     await store.chooseProject();
     const inspectId = store.activeOperations[0]!;
@@ -101,12 +103,12 @@ describe("WindowStore", () => {
     desktop.emit({ type: "workspace-inspected", operationId: secondInspectId, path: "/project", trustRequired: true });
     expect(store.pendingTrustPath).toBeUndefined();
     expect(desktop.client.openWorkspace).toHaveBeenLastCalledWith(expect.objectContaining({ path: "/project", trusted: true, newSession: true }));
-    store[Symbol.dispose]();
+    root[Symbol.dispose]();
   });
 
   it("routes transcript deltas and correlated UI responses", async () => {
     const desktop = createDesktopClient();
-    const store = mountWindowStore(desktop.client);
+    const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop);
     desktop.emit({ type: "part-updated", sessionId: "stale", part: { id: "stale", kind: "text", role: "assistant", text: "ignored", status: "complete" } });
@@ -119,14 +121,14 @@ describe("WindowStore", () => {
 
     expect(store.parts.map((part) => part.id)).toEqual(["live"]);
     expect(desktop.client.respondToUi).toHaveBeenCalledWith({ operationId, workspacePath: "/project", sessionId: "session-1", uiRequestId, value: "true", cancelled: false });
-    store[Symbol.dispose]();
+    root[Symbol.dispose]();
   });
 
   it("queues by default during a run and only steers when explicitly requested", async () => {
     const desktop = createDesktopClient();
-    const store = mountWindowStore(desktop.client);
+    const { root, store } = mountTestStore(desktop.client);
     await flush();
-    desktop.emit({ type: "agent-state-changed", state: "ready" });
+    desktop.emit({ type: "pi-state-changed", state: "ready" });
     await openSnapshot(store, desktop, { ...snapshot, streaming: true });
 
     store.setDraft("Do this next");
@@ -136,12 +138,12 @@ describe("WindowStore", () => {
     store.setDraft("Change direction");
     await store.submit("steer");
     expect(desktop.client.submit).toHaveBeenLastCalledWith(expect.objectContaining({ text: "Change direction", delivery: "steer" }));
-    store[Symbol.dispose]();
+    root[Symbol.dispose]();
   });
 
   it("clears the previous transcript and rejects late snapshots while opening a new session", async () => {
     const desktop = createDesktopClient();
-    const store = mountWindowStore(desktop.client);
+    const { root, store } = mountTestStore(desktop.client);
     await flush();
     const oldSnapshot: SessionSnapshot = {
       ...snapshot,
@@ -165,12 +167,12 @@ describe("WindowStore", () => {
     desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot: newSnapshot });
     expect(store.session?.sessionId).toBe("session-2");
     expect(store.parts).toEqual([]);
-    store[Symbol.dispose]();
+    root[Symbol.dispose]();
   });
 
   it("refuses a non-empty snapshot for a newly created session", async () => {
     const desktop = createDesktopClient();
-    const store = mountWindowStore(desktop.client);
+    const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop);
 
@@ -187,7 +189,7 @@ describe("WindowStore", () => {
     expect(store.session).toBeUndefined();
     expect(store.parts).toEqual([]);
     expect(store.error).toContain("refused to mount history");
-    store[Symbol.dispose]();
+    root[Symbol.dispose]();
   });
 
   it("keeps drafts per session and filters archived/search results from Cake metadata", async () => {
@@ -198,8 +200,9 @@ describe("WindowStore", () => {
     };
     desktop.client.loadApplicationState = vi.fn(async () => applicationState);
     desktop.client.registerProject = vi.fn(async () => applicationState);
-    const store = mountWindowStore(desktop.client);
+    const { root, store } = mountTestStore(desktop.client);
     await flush();
+    const draftsBySession = store.draftsBySession;
     const sessions = [
       { id: "session-1", title: "Alpha task", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 1, archived: false },
       { id: "session-2", title: "Beta task", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 2, archived: false }
@@ -212,34 +215,37 @@ describe("WindowStore", () => {
     const openId = store.activeOperations.at(-1)!;
     desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot: { ...snapshot, sessionId: "session-2", sessions } });
     store.setDraft("beta draft");
+    expect(store.draftsBySession).toBe(draftsBySession);
     expect(store.draftsBySession["session-1"]).toBe("alpha draft");
     store.toggleArchived();
     expect(store.currentSessions.map((item) => item.id)).toEqual(["session-2"]);
     store.setSessionSearch("alpha");
     expect(store.currentSessions).toEqual([]);
-    store[Symbol.dispose]();
+    root[Symbol.dispose]();
   });
 
-  it("routes S2 session, changes, terminal, and restart intents with workspace identity", async () => {
+  it("opens tree and changes as local slash-command panes", async () => {
     const desktop = createDesktopClient();
-    const store = mountWindowStore(desktop.client);
+    const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop, { ...snapshot, tree: [{ id: "entry-1", type: "message", preview: "Hello", active: true, children: [] }] });
     await store.renameCurrentSession("Renamed");
     await store.forkAt("entry-1");
     desktop.emit({ type: "session-snapshot-received", operationId: store.activeOperations.at(-1), snapshot: { ...snapshot, sessionId: "forked" } });
-    await store.setSurface("changes");
+    store.setDraft("/changes");
+    await store.submit();
     const changesId = store.activeOperations.at(-1)!;
     desktop.emit({ type: "changes-received", operationId: changesId, workspacePath: "/project", files: [{ path: "README.md", status: " M", staged: false, additions: 1, deletions: 0, diff: "+hello" }] });
-    await store.setSurface("terminal");
-    desktop.emit({ type: "terminal-output", workspacePath: "/project", terminalId: store.terminalId, data: "$ " });
-    await store.writeTerminal("pwd\r");
+    expect(store.commandPane).toBe("changes");
+    store.setDraft("/tree");
+    await store.submit();
 
     expect(desktop.client.renameSession).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", sessionId: "session-1", name: "Renamed" }));
     expect(desktop.client.forkSession).toHaveBeenCalledWith(expect.objectContaining({ entryId: "entry-1" }));
     expect(store.changedFiles[0]?.path).toBe("README.md");
-    expect(store.terminalOutput).toBe("$ ");
-    expect(desktop.client.terminalInput).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", data: "pwd\r" }));
-    store[Symbol.dispose]();
+    expect(store.commandPane).toBe("tree");
+    expect(store.draft).toBe("");
+    expect(desktop.client.submit).not.toHaveBeenCalled();
+    root[Symbol.dispose]();
   });
 });

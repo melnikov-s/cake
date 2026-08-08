@@ -1,11 +1,34 @@
 import { z } from "zod";
-import { agentEventSchema } from "./agent-ipc";
-import { applicationStateSchema, attachmentSchema, thinkingLevelSchema, windowViewStateSchema } from "./session-contract";
+import {
+  applicationStateSchema,
+  attachmentSchema,
+  changedFileSchema,
+  sessionSnapshotSchema,
+  thinkingLevelSchema,
+  uiPartSchema,
+  windowViewStateSchema
+} from "./session-contract";
 
 export const desktopEventSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("agent-state"), state: z.enum(["starting", "ready", "stopped", "failed"]), workspacePath: z.string().max(4_096).optional() }),
-  ...agentEventSchema.options.filter((schema) => schema.shape.type.value !== "ready"),
-  z.object({ type: z.literal("agent-error"), requestId: z.uuid().optional(), message: z.string().max(2_048) })
+  z.object({ type: z.literal("pi-state"), state: z.enum(["starting", "ready", "stopped", "failed"]), workspacePath: z.string().max(4_096).optional() }),
+  z.object({ type: z.literal("workspace-inspected"), requestId: z.uuid(), path: z.string().max(4_096), trustRequired: z.boolean() }),
+  z.object({ type: z.literal("session-snapshot"), requestId: z.uuid().optional(), snapshot: sessionSnapshotSchema }),
+  z.object({ type: z.literal("part-updated"), sessionId: z.string(), part: uiPartSchema }),
+  z.object({ type: z.literal("part-removed"), sessionId: z.string(), partId: z.string().max(256) }),
+  z.object({ type: z.literal("session-streaming"), sessionId: z.string(), streaming: z.boolean() }),
+  z.object({ type: z.literal("changes-snapshot"), requestId: z.uuid(), workspacePath: z.string().max(4_096), files: z.array(changedFileSchema).max(10_000) }),
+  z.object({
+    type: z.literal("ui-request"),
+    requestId: z.uuid(),
+    uiRequestId: z.uuid(),
+    kind: z.enum(["confirm", "text", "secret", "select", "manual_code"]),
+    title: z.string().max(512),
+    message: z.string().max(4_096),
+    placeholder: z.string().max(512).optional(),
+    options: z.array(z.object({ id: z.string().max(256), label: z.string().max(512) })).max(100).optional()
+  }),
+  z.object({ type: z.literal("complete"), requestId: z.uuid() }),
+  z.object({ type: z.literal("fatal"), requestId: z.uuid().optional(), message: z.string().max(2_048) })
 ]);
 
 export const desktopRequestSchema = z.discriminatedUnion("type", [
@@ -20,7 +43,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("remove-project"), path: z.string().max(4_096) }),
   z.object({ type: z.literal("archive-session"), path: z.string().max(4_096), sessionId: z.string().max(256), archived: z.boolean() }),
   z.object({ type: z.literal("new-window") }),
-  z.object({ type: z.literal("restart-agent"), path: z.string().max(4_096) }),
+  z.object({ type: z.literal("restart-pi"), path: z.string().max(4_096) }),
   z.object({ type: z.literal("inspect-workspace"), requestId: z.uuid(), path: z.string().max(4_096) }),
   z.object({
     type: z.literal("open-workspace"),
@@ -41,10 +64,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("fork-session"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), entryId: z.string().max(256) }),
   z.object({ type: z.literal("navigate-session"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), entryId: z.string().max(256) }),
   z.object({ type: z.literal("inspect-changes"), requestId: z.uuid(), workspacePath: z.string().max(4_096) }),
-  z.object({ type: z.literal("terminal-start"), requestId: z.uuid(), workspacePath: z.string().max(4_096), terminalId: z.string().max(256), cols: z.number().int().min(20).max(500), rows: z.number().int().min(5).max(200) }),
-  z.object({ type: z.literal("terminal-input"), requestId: z.uuid(), workspacePath: z.string().max(4_096), terminalId: z.string().max(256), data: z.string().max(65_536) }),
-  z.object({ type: z.literal("terminal-resize"), requestId: z.uuid(), workspacePath: z.string().max(4_096), terminalId: z.string().max(256), cols: z.number().int().min(20).max(500), rows: z.number().int().min(5).max(200) }),
-  z.object({ type: z.literal("terminal-close"), requestId: z.uuid(), workspacePath: z.string().max(4_096), terminalId: z.string().max(256) }),
   z.object({
     type: z.literal("respond-ui"),
     requestId: z.uuid(),
@@ -70,7 +89,7 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
 export type DesktopEvent = z.infer<typeof desktopEventSchema>;
 export type DesktopRequest = z.infer<typeof desktopRequestSchema>;
 export type DesktopResponse = z.infer<typeof desktopResponseSchema>;
-export type AgentState = Extract<DesktopEvent, { type: "agent-state" }>["state"];
+export type PiState = Extract<DesktopEvent, { type: "pi-state" }>["state"];
 
 export interface CakeDesktopBridge {
   request(input: DesktopRequest): Promise<DesktopResponse>;

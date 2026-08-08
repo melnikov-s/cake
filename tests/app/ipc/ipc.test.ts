@@ -1,16 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { agentCommandSchema, agentEventSchema } from "./agent-ipc";
-import { desktopRequestSchema } from "./desktop-ipc";
+import { desktopEventSchema, desktopRequestSchema } from "../../../src/ipc/desktop-ipc";
 
 describe("process IPC", () => {
   it("accepts session lifecycle and prompt requests", () => {
     const requestId = crypto.randomUUID();
     expect(desktopRequestSchema.parse({ type: "open-workspace", requestId, path: "/project", trusted: true, newSession: true })).toMatchObject({ type: "open-workspace", requestId, newSession: true });
-    expect(agentCommandSchema.parse({ type: "prompt", requestId, workspacePath: "/project", sessionId: "session", text: "hello", delivery: "prompt", attachments: [] })).toMatchObject({ text: "hello" });
+    expect(desktopRequestSchema.parse({ type: "prompt", requestId, workspacePath: "/project", sessionId: "session", text: "hello", delivery: "prompt", attachments: [] })).toMatchObject({ text: "hello" });
   });
 
   it("rejects oversized transcript parts", () => {
-    const result = agentEventSchema.safeParse({
+    const result = desktopEventSchema.safeParse({
       type: "part-updated",
       sessionId: "session",
       part: { id: "message", kind: "text", role: "assistant", text: "x".repeat(262_145), status: "streaming" }
@@ -21,8 +20,8 @@ describe("process IPC", () => {
   it("validates correlated secret UI responses without logging them", () => {
     const requestId = crypto.randomUUID();
     const uiRequestId = crypto.randomUUID();
-    expect(agentEventSchema.parse({ type: "ui-request", requestId, uiRequestId, kind: "secret", title: "Sign in", message: "API key" })).toMatchObject({ uiRequestId, kind: "secret" });
-    expect(agentCommandSchema.parse({ type: "ui-response", requestId, workspacePath: "/project", sessionId: "session", uiRequestId, value: "secret", cancelled: false })).toMatchObject({ value: "secret" });
+    expect(desktopEventSchema.parse({ type: "ui-request", requestId, uiRequestId, kind: "secret", title: "Sign in", message: "API key" })).toMatchObject({ uiRequestId, kind: "secret" });
+    expect(desktopRequestSchema.parse({ type: "respond-ui", requestId, workspacePath: "/project", sessionId: "session", uiRequestId, value: "secret", cancelled: false })).toMatchObject({ value: "secret" });
   });
 
   it("rejects malformed project and UI requests", () => {

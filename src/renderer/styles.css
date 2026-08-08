@@ -150,22 +150,19 @@
 .cake-orbit .cake-mark { transform: rotate(-3deg); }
 
 .chat-layout { position: relative; display: grid; width: 100%; max-width: 100%; min-width: 0; min-height: 0; overflow: hidden; grid-template-rows: minmax(0, 1fr) auto; }
-.workbench { display: grid; min-width: 0; min-height: 0; grid-template-rows: 38px minmax(0, 1fr); }
-.surface-tabs { display: flex; gap: 3px; align-items: center; padding: 4px 18px; border-bottom: 1px solid color-mix(in oklab, var(--border) 65%, transparent); }
-.surface-tabs button { padding: 5px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--muted-foreground); font-size: 11px; text-transform: capitalize; }
-.surface-tabs button:hover, .surface-tabs button.active { background: var(--muted); color: var(--foreground); }
+.workbench { display: grid; min-width: 0; min-height: 0; }
 .secondary-surface { min-width: 0; min-height: 0; overflow: auto; padding: 24px; }
 .secondary-surface > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+.secondary-surface > header > div { display: flex; align-items: center; gap: 8px; }
+.secondary-surface > header > div:first-child { display: grid; gap: 4px; }
 .secondary-surface h2 { margin: 0; font-size: 16px; }
 .secondary-surface > p, .secondary-surface header span { color: var(--muted-foreground); font-size: 12px; }
 .secondary-surface details { margin-bottom: 8px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .secondary-surface summary { display: flex; gap: 10px; align-items: center; padding: 10px 12px; background: var(--card); font-size: 12px; }
 .secondary-surface summary span { margin-left: auto; color: var(--muted-foreground); }
 .secondary-surface details pre { max-height: 42rem; margin: 0; overflow: auto; padding: 14px; background: color-mix(in oklab, var(--background) 80%, black); font: 11px/1.55 var(--font-mono); white-space: pre; }
-.terminal-surface { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
-.terminal-surface > pre { min-height: 0; overflow: auto; margin: 0; padding: 14px; border-radius: 8px; background: oklch(0.13 0.01 250); color: oklch(0.9 0.01 160); font: 12px/1.5 var(--font-mono); white-space: pre-wrap; }
-.terminal-surface form { display: flex; gap: 8px; margin-top: 10px; }
-.terminal-surface input { min-width: 0; flex: 1; height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--card); color: var(--foreground); font: 12px var(--font-mono); }
+.command-pane-backdrop { position: fixed; z-index: 45; inset: 52px 0 0 280px; display: grid; place-items: center; padding: 28px; background: color-mix(in oklab, var(--background) 38%, transparent); backdrop-filter: blur(3px); }
+.command-pane { width: min(100%, 52rem); max-height: min(78vh, 46rem); border: 1px solid var(--border); border-radius: 14px; background: var(--background); box-shadow: 0 28px 90px -32px hsl(var(--shadow) / .65); }
 .session-tree, .session-tree ul { margin: 0; padding-left: 18px; list-style: none; }
 .session-tree > li { border-left: 1px solid var(--border); }
 .session-tree li > div { display: flex; gap: 6px; padding: 3px 0 3px 8px; }
@@ -221,6 +218,13 @@
 .activity-pulse { background: var(--accent) !important; animation: status-pulse 1.6s ease-in-out infinite; }
 .composer-dock { position: absolute; z-index: 10; right: 0; bottom: 0; left: 0; width: 100%; max-width: 100%; min-width: 0; padding: 20px 24px 15px; background: linear-gradient(to bottom, transparent, var(--background) 28%); pointer-events: none; }
 .workbench-composer { width: min(100%, 51.25rem) !important; max-width: 51.25rem !important; min-width: 0; margin: 0 auto; border-color: color-mix(in oklab, var(--border) 90%, transparent) !important; background: var(--composer) !important; box-shadow: 0 24px 80px -30px hsl(var(--shadow) / .55), 0 2px 10px hsl(var(--shadow) / .08) !important; pointer-events: auto; }
+.slash-command-menu { display: grid; gap: 3px; margin: 2px 6px 7px; padding: 5px; border: 1px solid var(--border); border-radius: 10px; background: var(--background); box-shadow: 0 14px 36px -22px hsl(var(--shadow) / .55); }
+.slash-command-menu button { display: grid; grid-template-columns: 5rem minmax(0, 1fr); align-items: center; gap: 10px; padding: 8px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--foreground); text-align: left; }
+.slash-command-menu button:hover { background: var(--muted); }
+.slash-command-menu code { color: var(--accent); font: 12px var(--font-mono); }
+.slash-command-menu span { display: grid; gap: 2px; }
+.slash-command-menu strong { font-size: 12px; font-weight: 650; }
+.slash-command-menu small { color: var(--muted-foreground); font-size: 10px; }
 .workbench-composer textarea { min-height: 90px; max-height: 240px; font-size: 14px; }
 .attachment-list { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 6px 7px; }
 .attachment-list button { padding: 5px 9px; border: 0; border-radius: 7px; background: var(--muted); color: var(--foreground); font: 11px var(--font-mono); }
@@ -259,6 +263,7 @@
   .sidebar-footer select, .workspace-header span { display: none; }
   .composer-context select { max-width: 125px; }
   .composer-context select[aria-label="Thinking level"] { display: none; }
+  .command-pane-backdrop { left: 230px; }
 }
 @media (max-width: 620px) {
   .app-shell { grid-template-columns: 64px minmax(0, 1fr); }
@@ -267,6 +272,7 @@
   .new-chat { display: grid; grid-template-columns: 1fr; justify-items: center; margin: 2px 8px 10px; padding: 0; }
   .section-heading { justify-content: center; padding-inline: 0; }.project-row { justify-content: center; padding: 0; }.project-open { justify-content: center; flex: 0 auto; }.project-open span, .project-row .project-add { display: none; }
   .composer-context select { max-width: 105px; }.composer-dock { padding-inline: 10px; }.transcript { padding-inline: 16px; }
+  .command-pane-backdrop { left: 64px; padding: 12px; }
 }
 
 @media (prefers-reduced-motion: no-preference) { .status-starting, .status-restarting { animation: status-pulse 1.6s ease-in-out infinite; } }

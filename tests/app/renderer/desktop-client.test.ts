@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { CakeDesktopBridge, DesktopEvent, DesktopRequest, DesktopResponse } from "../ipc/desktop-ipc";
-import { createDesktopClient } from "./desktop-client";
+import type { CakeDesktopBridge, DesktopEvent, DesktopRequest, DesktopResponse } from "../../../src/ipc/desktop-ipc";
+import { createDesktopClient } from "../../../src/renderer/desktop-client";
 
 function createBridge() {
   let listener: ((event: DesktopEvent) => void) | undefined;
@@ -10,7 +10,7 @@ function createBridge() {
     if (input.type === "choose-project") return { type: "project-chosen", path: "/project" };
     if (input.type === "get-home-directory") return { type: "home-directory", path: "/home/user" };
     if (input.type === "choose-attachments") return { type: "attachments-chosen", attachments: [] };
-    if (input.type === "load-window-state") return { type: "window-state-loaded", state: { draft: "", recentProjectPaths: [], trustedProjectPaths: [], theme: "system", thinkingExpanded: false, sessionSearch: "", activeSurface: "chat", draftsBySession: {} } };
+    if (input.type === "load-window-state") return { type: "window-state-loaded", state: { draft: "", recentProjectPaths: [], trustedProjectPaths: [], theme: "system", thinkingExpanded: false, sessionSearch: "", draftsBySession: {} } };
     return { type: "window-state-saved" };
   });
   const bridge: CakeDesktopBridge = {

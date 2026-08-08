@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ApplicationModel } from "./application-model";
+import { ApplicationModel } from "../../../src/main/application-model";
 
 describe("ApplicationModel", () => {
   it("owns project metadata and Cake-only session archive state", () => {

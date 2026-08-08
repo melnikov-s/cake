@@ -29,10 +29,12 @@ corepack pnpm test:electron
 ```
 
 The app starts a sandboxed renderer, exposes only a typed preload API, and runs
-a persistent Pi session in an Electron utility process. It supports project
+Pi directly through its SDK in Electron's main process. It supports project
 trust, provider login, model and thinking controls, Cake-owned transcript parts,
 tool activity, prompt/steer/follow-up/abort, file and image inputs, and
-hydration-gated window state through an `r-state-tree` `WindowStore`.
+hydration-gated renderer state through an `r-state-tree` `RootStore`. Pi session
+snapshots are applied one-to-one to a reactive `SessionModel`, while `WindowStore` owns
+window-specific workflows such as selection, drafts, search, and command panes.
 
 Live provider tests are intentionally opt-in: signing in or sending a real
 model request can open external authentication and incur provider cost.

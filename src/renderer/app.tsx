@@ -34,6 +34,21 @@ function SessionTree({ nodes, store }: { nodes: SessionTreeNode[]; store: Window
   return <ul className="session-tree">{nodes.map((node) => <li key={node.id} className={node.active ? "active" : ""}><div><button onClick={() => void store.navigateTo(node.id)}>{node.label || node.preview || node.type}</button><button title="Fork from here" onClick={() => void store.forkAt(node.id)}>Fork</button></div>{node.children.length > 0 && <SessionTree nodes={node.children} store={store} />}</li>)}</ul>;
 }
 
+function CommandPane({ store }: { store: WindowStore }) {
+  if (!store.commandPane || !store.session) return null;
+  const title = store.commandPane === "tree" ? "Session tree" : "Changed files";
+  return (
+    <div className="command-pane-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) store.closeCommandPane(); }}>
+      <section className="command-pane secondary-surface" role="dialog" aria-modal="true" aria-labelledby="command-pane-title">
+        <header><div><h2 id="command-pane-title">{title}</h2>{store.commandPane === "tree" && <span>Navigate or fork without rewriting Pi history</span>}</div><div>{store.commandPane === "changes" && <Button variant="outline" size="sm" onClick={() => void store.refreshChanges()}>Refresh</Button>}<Button variant="ghost" size="sm" aria-label={`Close ${title}`} onClick={() => store.closeCommandPane()}>Close</Button></div></header>
+        {store.commandPane === "tree"
+          ? store.session.tree.length > 0 ? <SessionTree nodes={store.session.tree} store={store} /> : <p>This session has no branches yet.</p>
+          : store.changesLoading ? <p>Loading changes…</p> : store.changedFiles.length === 0 ? <p>No changed files.</p> : store.changedFiles.map((file) => <details key={`${file.staged}-${file.path}`}><summary><code>{file.status}</code> {file.path}<span>+{file.additions} −{file.deletions}</span></summary><pre>{file.diff || "Diff unavailable for this file."}</pre></details>)}
+      </section>
+    </div>
+  );
+}
+
 function TranscriptPart({ part, store }: { part: UiPart; store: WindowStore }) {
   if (part.kind === "text") {
     return (
@@ -104,7 +119,7 @@ function UiDialog({ request, store }: { request: UiRequestState; store: WindowSt
 const Sidebar = observer(function Sidebar({ store }: { store: WindowStore }) {
   return (
     <aside className="sidebar">
-      <div className="sidebar-brand"><span className="cake-mark">C</span><span>Cake</span><span className={`status-dot status-${store.agentState}`} title={`Agent ${store.agentState}`} /></div>
+      <div className="sidebar-brand"><span className="cake-mark">C</span><span>Cake</span><span className={`status-dot status-${store.piState}`} title={`Pi ${store.piState}`} /></div>
       <button className="new-chat" onClick={() => void store.startOneOffChat()}><ChatIcon /><span>New chat</span><kbd>⌘N</kbd></button>
       <div className="sidebar-scroll">
         <div className="section-heading"><span>Projects</span><div><button aria-label="New window" title="New window" onClick={() => void store.createWindow()}>◫</button><button aria-label="Add project" onClick={() => void store.chooseProject()}><PlusIcon /></button></div></div>
@@ -118,7 +133,7 @@ const Sidebar = observer(function Sidebar({ store }: { store: WindowStore }) {
         })}
       </div>
       <div className="sidebar-footer">
-        <div><strong>{store.agentState === "ready" ? "Agent ready" : `Agent ${store.agentState}`}</strong><span>{store.projectPath ? store.projectName : "Choose a workspace"}</span></div>
+        <div><strong>{store.piState === "ready" ? "Pi ready" : `Pi ${store.piState}`}</strong><span>{store.projectPath ? store.projectName : "Choose a workspace"}</span></div>
         <select aria-label="Color theme" value={store.theme} onChange={(event) => store.setTheme(event.target.value as typeof store.theme)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
       </div>
     </aside>
@@ -134,9 +149,14 @@ const ComposerPanel = observer(function ComposerPanel({ store }: { store: Window
   };
   const selectedModel = store.session?.model;
   const unauthenticatedProviders = store.modelsByProvider.filter((provider) => provider.models.some((model) => !model.authenticated));
+  const commands = [
+    { value: "/tree", label: "Tree", description: "Navigate or fork this session" },
+    { value: "/changes", label: "Changes", description: "Inspect changed files" }
+  ].filter((command) => command.value.startsWith(store.draft.trim().toLocaleLowerCase()));
   return (
     <div className="composer-dock">
       <Composer className="workbench-composer" onSubmit={(event) => { event.preventDefault(); void store.submit(); }}>
+        {store.draft.trim().startsWith("/") && commands.length > 0 && <div className="slash-command-menu" role="listbox" aria-label="Slash commands">{commands.map((command) => <button key={command.value} type="button" role="option" onClick={() => { store.setDraft(command.value); void store.submit(); }}><code>{command.value}</code><span><strong>{command.label}</strong><small>{command.description}</small></span></button>)}</div>}
         {store.attachments.length > 0 && <div className="attachment-list">{store.attachments.map((attachment, index) => <button type="button" key={`${attachment.kind}-${attachment.name}`} onClick={() => store.removeAttachment(index)}>{attachment.kind === "file" ? "@" : "▧"} {attachment.name} <span>×</span></button>)}</div>}
         <ComposerInput aria-label="Message" placeholder={store.isStreaming ? "Add the next instruction…" : `Ask Cake to work in ${store.projectName}…`} value={store.draft} onChange={(event) => store.setDraft(event.target.value)} onKeyDown={onKeyDown} />
         <ComposerToolbar className="composer-toolbar">
@@ -163,6 +183,12 @@ export const App = observer(function App() {
     document.documentElement.dataset.theme = store.theme;
     return () => { delete document.documentElement.dataset.theme; };
   }, [store.theme]);
+  useEffect(() => {
+    if (!store.commandPane) return;
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => { if (event.key === "Escape") store.closeCommandPane(); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [store, store.commandPane]);
 
   if (!store.hydrated) return <main className="loading-screen"><span className="cake-mark">C</span><p>Restoring Cake…</p></main>;
 
@@ -172,19 +198,15 @@ export const App = observer(function App() {
       <section className="workspace" data-session-id={store.session?.sessionId}>
         <header className="workspace-header"><div><strong>{store.session ? (store.session.sessions.find((item) => item.id === store.session?.sessionId)?.title || "New chat") : "Cake"}</strong>{store.projectPath && <span>{store.projectPath}</span>}</div>{store.session && <div className="header-actions"><button className="header-new" onClick={() => { const name = window.prompt("Session name", store.session?.sessions.find((item) => item.id === store.session?.sessionId)?.title); if (name) void store.renameCurrentSession(name); }}>Rename</button><button className="header-new" onClick={() => void store.startNewSession()}><PlusIcon /> New chat</button></div>}</header>
         {!store.session ? (
-          <div className="welcome"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build?</h1><p>Open a project for durable workspace chats, or start a one-off chat from your home directory.</p><div><Button size="lg" disabled={store.agentState !== "ready" || store.isBusy} onClick={() => void store.chooseProject()}><FolderIcon /> Open project</Button><Button size="lg" variant="outline" disabled={store.agentState !== "ready" || store.isBusy} onClick={() => void store.startOneOffChat()}><ChatIcon /> One-off chat</Button></div>{store.error && <p className="welcome-error" role="alert">{store.error}</p>}</div>
+          <div className="welcome"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build?</h1><p>Open a project for durable workspace chats, or start a one-off chat from your home directory.</p><div><Button size="lg" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.chooseProject()}><FolderIcon /> Open project</Button><Button size="lg" variant="outline" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.startOneOffChat()}><ChatIcon /> One-off chat</Button></div>{store.error && <p className="welcome-error" role="alert">{store.error}</p>}</div>
         ) : (
-          <div className="workbench"><nav className="surface-tabs" aria-label="Workspace surfaces">{(["chat", "changes", "terminal", "tree"] as const).map((surface) => <button key={surface} className={store.activeSurface === surface ? "active" : ""} onClick={() => void store.setSurface(surface)}>{surface}</button>)}</nav>
-            {store.activeSurface === "chat" ? <div className="chat-layout"><div className="transcript"><Conversation>{store.parts.length === 0 ? <div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or attach a file to get started.</p></div> : groupTranscriptParts(store.parts).map((item) => item.kind === "activity-group" ? <ActivityGroup key={item.id} parts={item.parts} store={store} /> : <TranscriptPart key={item.id} part={item} store={store} />)}{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</Conversation></div><ComposerPanel store={store} /></div>
-            : store.activeSurface === "changes" ? <section className="secondary-surface"><header><h2>Changed files</h2><Button variant="outline" size="sm" onClick={() => void store.refreshChanges()}>Refresh</Button></header>{store.changedFiles.length === 0 ? <p>No changed files.</p> : store.changedFiles.map((file) => <details key={`${file.staged}-${file.path}`}><summary><code>{file.status}</code> {file.path}<span>+{file.additions} −{file.deletions}</span></summary><pre>{file.diff || "Diff unavailable for this file."}</pre></details>)}</section>
-            : store.activeSurface === "terminal" ? <section className="secondary-surface terminal-surface"><header><h2>Terminal</h2><span>{store.terminalRunning ? "running" : "stopped"}</span></header><pre aria-live="polite">{store.terminalOutput}</pre><form onSubmit={(event) => { event.preventDefault(); const form = event.currentTarget; const input = new FormData(form).get("command"); if (typeof input === "string") { void store.writeTerminal(`${input}\r`); form.reset(); } }}><input name="command" aria-label="Terminal input" autoComplete="off" placeholder="Type a command…" /><Button type="submit" size="sm">Run</Button></form></section>
-            : <section className="secondary-surface"><header><h2>Session tree</h2><span>Navigate or fork without rewriting Pi history</span></header><SessionTree nodes={store.session.tree} store={store} /></section>}
-          </div>
+          <div className="workbench"><div className="chat-layout"><div className="transcript"><Conversation>{store.parts.length === 0 ? <div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div> : groupTranscriptParts(store.parts).map((item) => item.kind === "activity-group" ? <ActivityGroup key={item.id} parts={item.parts} store={store} /> : <TranscriptPart key={item.id} part={item} store={store} />)}{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</Conversation></div><ComposerPanel store={store} /></div></div>
         )}
       </section>
+      <CommandPane store={store} />
       {store.pendingTrustPath && <div className="dialog-backdrop"><Confirmation state="requested" role="alertdialog" aria-labelledby="trust-title" aria-describedby="trust-description"><ConfirmationRequest><ConfirmationTitle id="trust-title">Trust this workspace?</ConfirmationTitle><ConfirmationDescription id="trust-description">{store.pendingTrustPath} contains project-local executable Pi resources. Trust it only if you know its contents.</ConfirmationDescription><ConfirmationActions><ConfirmationAction variant="outline" onClick={() => void store.resolveProjectTrust(false)}>Cancel</ConfirmationAction><ConfirmationAction onClick={() => void store.resolveProjectTrust(true)}>Trust and open</ConfirmationAction></ConfirmationActions></ConfirmationRequest></Confirmation></div>}
       {store.uiRequest && <div className="dialog-backdrop"><UiDialog key={store.uiRequest.uiRequestId} request={store.uiRequest} store={store} /></div>}
-      {(store.agentState === "failed" || store.agentState === "stopped") && store.projectPath && <div className="agent-recovery"><span>Workspace agent stopped.</span><Button size="sm" onClick={() => void store.restartAgent()}>Restart and reopen</Button></div>}
+      {(store.piState === "failed" || store.piState === "stopped") && store.projectPath && <div className="agent-recovery"><span>Pi runtime stopped.</span><Button size="sm" onClick={() => void store.restartPi()}>Restart and reopen</Button></div>}
     </main>
   );
 });

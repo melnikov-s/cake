@@ -5,12 +5,12 @@ import { _electron as electron, expect, test } from "@playwright/test";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("keeps window state independent, opens concurrent sessions, and runs a workspace PTY", async () => {
+test("keeps window state independent and opens Tree as a slash-command dialog", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-s2-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
   await Promise.all([mkdir(userData, { recursive: true }), mkdir(project, { recursive: true })]);
-  const base = { projectPath: project, recentProjectPaths: [project], trustedProjectPaths: [], theme: "system", thinkingExpanded: false, sessionSearch: "", activeSurface: "chat", draftsBySession: {} };
+  const base = { projectPath: project, recentProjectPaths: [project], trustedProjectPaths: [], theme: "system", thinkingExpanded: false, sessionSearch: "", draftsBySession: {} };
   await Promise.all([
     writeFile(join(userData, "window-state.json"), JSON.stringify({ ...base, draft: "first window draft" })),
     writeFile(join(userData, "window-state-1.json"), JSON.stringify({ ...base, draft: "second window draft" }))
@@ -29,14 +29,12 @@ test("keeps window state independent, opens concurrent sessions, and runs a work
     await expect.poll(() => second.locator(".workspace").getAttribute("data-session-id")).not.toBe(firstSession);
     await expect(first.getByLabel("Message")).toHaveValue("first window draft");
 
-    await first.getByRole("button", { name: "terminal", exact: true }).click();
-    const terminalInput = first.getByLabel("Terminal input");
-    await expect(terminalInput).toBeVisible();
-    await terminalInput.fill("printf cake-pty");
-    await first.getByRole("button", { name: "Run", exact: true }).click();
-    await expect(first.locator(".terminal-surface > pre")).toContainText("cake-pty", { timeout: 10_000 });
+    await first.getByLabel("Message").fill("/tree");
+    await first.getByLabel("Message").press("Enter");
+    await expect(first.getByRole("dialog", { name: "Session tree" })).toBeVisible();
+    await expect(first.getByRole("navigation", { name: "Workspace surfaces" })).toHaveCount(0);
   } finally {
-    await application.evaluate(() => { const terminate = Reflect.get(globalThis, "cakeSmokeTerminateAgent"); if (typeof terminate === "function") terminate(); });
+    await application.evaluate(() => { const reset = Reflect.get(globalThis, "cakeSmokeResetPi"); if (typeof reset === "function") reset(); });
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
   }

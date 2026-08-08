@@ -1,9 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Composer, ComposerInput } from "./composer";
-import { Markdown } from "./markdown";
-import { Reasoning } from "./reasoning";
-import { Tool } from "./tool";
+import { Composer, ComposerInput } from "../../../../../src/renderer/components/ai-elements/composer";
+import { Markdown } from "../../../../../src/renderer/components/ai-elements/markdown";
+import { Reasoning } from "../../../../../src/renderer/components/ai-elements/reasoning";
+import { Tool } from "../../../../../src/renderer/components/ai-elements/tool";
 
 describe("Cake-owned conversation components", () => {
   it("renders GFM tables, task lists, safe links, and source-owned code blocks", () => {

@@ -1,24 +1,23 @@
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { homedir } from "node:os";
-import { app, BrowserWindow, dialog, ipcMain, utilityProcess, type UtilityProcess, type WebContents } from "electron";
-import { agentEventSchema, type AgentCommand } from "../ipc/agent-ipc";
+import { app, BrowserWindow, dialog, ipcMain, type WebContents } from "electron";
 import { desktopRequestSchema, desktopResponseSchema, type DesktopEvent } from "../ipc/desktop-ipc";
 import { windowViewStateSchema, type Attachment, type WindowViewState } from "../ipc/session-contract";
 import { ApplicationModel } from "./application-model";
+import { PiWorkspaceDriver, type PiWorkspaceCommand } from "./pi-workspace-driver";
 
-interface AgentHost {
+interface PiHost {
   path: string;
-  process: UtilityProcess;
+  driver: PiWorkspaceDriver;
   state: "starting" | "ready" | "stopped" | "failed";
-  queue: AgentCommand[];
   idleTimer?: ReturnType<typeof setTimeout>;
 }
 
 const windows = new Map<number, BrowserWindow>();
 const windowSlots = new Map<number, number>();
 const windowWorkspaces = new Map<number, string>();
-const agents = new Map<string, AgentHost>();
+const piHosts = new Map<string, PiHost>();
 const allowedProjectPaths = new Set<string>();
 let nextWindowSlot = 0;
 let applicationModel = ApplicationModel.from({});
@@ -76,56 +75,41 @@ async function saveWindowState(slot: number, state: WindowViewState) {
   await rename(temporary, target);
 }
 
-function setAgentState(host: AgentHost, state: AgentHost["state"]) {
+function setPiState(host: PiHost, state: PiHost["state"]) {
   host.state = state;
-  broadcast({ type: "agent-state", state, workspacePath: host.path });
+  broadcast({ type: "pi-state", state, workspacePath: host.path });
 }
 
-function launchAgent(path: string) {
-  const existing = agents.get(path);
+function launchPi(path: string) {
+  const existing = piHosts.get(path);
   if (existing && existing.state !== "failed" && existing.state !== "stopped") return existing;
   if (existing) {
     if (existing.idleTimer) clearTimeout(existing.idleTimer);
-    agents.delete(path);
+    existing.driver[Symbol.dispose]();
+    piHosts.delete(path);
   }
-  const process = utilityProcess.fork(join(import.meta.dirname, "agent.js"), [], { env: { ...globalThis.process.env, CAKE_WORKSPACE_PATH: path } });
-  const host: AgentHost = { path, process, state: "starting", queue: [] };
-  agents.set(path, host);
-  setAgentState(host, "starting");
-  process.on("message", (input) => {
-    const result = agentEventSchema.safeParse(input);
-    if (!result.success) return;
-    if (result.data.type === "ready") {
-      setAgentState(host, "ready");
-      for (const command of host.queue.splice(0)) process.postMessage(command);
-    } else if (result.data.type === "fatal") {
-      broadcast({ type: "agent-error", requestId: result.data.requestId, message: result.data.message });
-    } else broadcast(result.data);
-  });
-  process.on("exit", (code) => {
-    if (agents.get(path) !== host) return;
-    host.queue.splice(0);
-    setAgentState(host, code === 0 ? "stopped" : "failed");
-    agents.delete(path);
-  });
+  const driver = new PiWorkspaceDriver({ workspacePath: path, emit: broadcast });
+  const host: PiHost = { path, driver, state: "starting" };
+  piHosts.set(path, host);
+  setPiState(host, "starting");
+  setPiState(host, "ready");
   return host;
 }
 
-function post(path: string, command: AgentCommand) {
-  const host = launchAgent(path);
+function dispatchToPi(path: string, command: PiWorkspaceCommand) {
+  const host = launchPi(path);
   if (host.idleTimer) clearTimeout(host.idleTimer);
-  if (host.state === "ready") host.process.postMessage(command);
-  else host.queue.push(command);
+  host.driver.dispatch(command);
 }
 
 function scheduleIdle(path: string) {
-  const host = agents.get(path);
+  const host = piHosts.get(path);
   if (!host || [...windowWorkspaces.values()].includes(path)) return;
   if (host.idleTimer) clearTimeout(host.idleTimer);
   host.idleTimer = setTimeout(() => {
     if ([...windowWorkspaces.values()].includes(path)) return;
-    host.process.postMessage({ type: "shutdown" } satisfies AgentCommand);
-    agents.delete(path);
+    host.driver[Symbol.dispose]();
+    piHosts.delete(path);
   }, 5 * 60_000);
 }
 
@@ -143,7 +127,7 @@ function createWindow(slot = nextWindowSlot++) {
   windowSlots.set(webContentsId, slot);
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event) => event.preventDefault());
-  window.webContents.on("did-finish-load", () => sendTo(window.webContents, { type: "agent-state", state: "ready" }));
+  window.webContents.on("did-finish-load", () => sendTo(window.webContents, { type: "pi-state", state: "ready" }));
   window.on("closed", () => {
     const path = windowWorkspaces.get(webContentsId);
     windows.delete(window.id);
@@ -215,10 +199,14 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
     createWindow();
     return desktopResponseSchema.parse({ type: "window-created" });
   }
-  if (request.type === "restart-agent") {
-    const old = agents.get(request.path);
-    if (old) { agents.delete(request.path); old.process.kill(); }
-    launchAgent(request.path);
+  if (request.type === "restart-pi") {
+    const old = piHosts.get(request.path);
+    if (old) {
+      piHosts.delete(request.path);
+      old.driver[Symbol.dispose]();
+      setPiState(old, "stopped");
+    }
+    launchPi(request.path);
     return desktopResponseSchema.parse({ type: "accepted", requestId: crypto.randomUUID() });
   }
   const path = request.type === "open-workspace" || request.type === "inspect-workspace" ? request.path : request.workspacePath;
@@ -229,10 +217,10 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
     if (previous && previous !== path) scheduleIdle(previous);
   }
   if (request.type === "respond-ui") {
-    post(path, { ...request, type: "ui-response" });
+    dispatchToPi(path, request);
     return desktopResponseSchema.parse({ type: "ui-response-accepted", uiRequestId: request.uiRequestId });
   }
-  post(path, request satisfies AgentCommand);
+  dispatchToPi(path, request satisfies PiWorkspaceCommand);
   return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
 });
 
@@ -243,11 +231,19 @@ app.whenReady().then(async () => {
 
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 app.on("before-quit", () => {
-  for (const host of agents.values()) host.process.kill();
-  agents.clear();
+  for (const host of piHosts.values()) host.driver[Symbol.dispose]();
+  piHosts.clear();
   if (process.env.CAKE_ELECTRON_SMOKE === "1") setImmediate(() => app.exit(0));
 });
 
 if (process.env.CAKE_ELECTRON_SMOKE === "1") {
-  Object.assign(globalThis, { cakeSmokeTerminateAgent() { const host = agents.values().next().value as AgentHost | undefined; if (!host) throw new Error("Agent process is unavailable"); host.process.kill(); } });
+  Object.assign(globalThis, {
+    cakeSmokeResetPi() {
+      const host = piHosts.values().next().value as PiHost | undefined;
+      if (!host) throw new Error("Pi runtime is unavailable");
+      piHosts.delete(host.path);
+      host.driver[Symbol.dispose]();
+      setPiState(host, "stopped");
+    }
+  });
 }

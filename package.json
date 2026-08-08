@@ -12,7 +12,7 @@
     "build": "electron-vite build",
     "dev": "electron-vite dev",
     "lint": "eslint .",
-    "postinstall": "install-electron && node scripts/fix-node-pty-permissions.mjs",
+    "postinstall": "install-electron",
     "start": "electron-vite preview",
     "test": "vitest run",
     "test:electron": "pnpm build && playwright test",
@@ -23,7 +23,6 @@
     "@preact/signals-react": "3.10.3",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
-    "node-pty": "1.1.0",
     "r-state-tree": "0.10.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
@@ -54,8 +53,7 @@
       "@google/genai",
       "electron",
       "esbuild",
-      "protobufjs",
-      "node-pty"
+      "protobufjs"
     ],
     "minimumReleaseAgeExclude": [
       "@earendil-works/pi-agent-core@0.84.0",

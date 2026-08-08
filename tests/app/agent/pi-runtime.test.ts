@@ -9,7 +9,7 @@ import {
   piRuntimeVersion,
   type CakeRuntime,
   type FoundationRuntime
-} from "./pi-runtime";
+} from "../../../src/agent/pi-runtime";
 
 const temporaryDirectories: string[] = [];
 const runtimes: Array<FoundationRuntime | CakeRuntime> = [];

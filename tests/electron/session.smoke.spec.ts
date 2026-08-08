@@ -5,7 +5,7 @@ import { _electron as electron, expect, test } from "@playwright/test";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("opens a durable Pi session in the sandboxed S1 desktop and survives agent termination", async () => {
+test("opens a durable Pi session in the sandboxed desktop and survives a Pi runtime reset", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-s1-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -23,7 +23,7 @@ test("opens a durable Pi session in the sandboxed S1 desktop and survives agent 
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByText("Agent ready", { exact: true })).toBeVisible();
+    await expect(page.getByText("Pi ready", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("button", { name: "New chat in project" })).toBeVisible();
     await expect(page.getByLabel("Model")).toBeVisible();
@@ -69,16 +69,16 @@ test("opens a durable Pi session in the sandboxed S1 desktop and survives agent 
     await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
 
     await application.evaluate(() => {
-      const terminate = Reflect.get(globalThis, "cakeSmokeTerminateAgent");
-      if (typeof terminate !== "function") throw new Error("Smoke termination hook is unavailable");
-      terminate();
+      const reset = Reflect.get(globalThis, "cakeSmokeResetPi");
+      if (typeof reset !== "function") throw new Error("Pi reset hook is unavailable");
+      reset();
     });
 
-    await expect(page.getByText(/Agent (stopped|failed)/)).toBeVisible();
+    await expect(page.getByText(/Pi runtime stopped/)).toBeVisible();
     await expect(page.getByLabel("Message")).toHaveValue("Persist this draft");
     expect(page.isClosed()).toBe(false);
     await page.getByRole("button", { name: "Restart and reopen" }).click();
-    await expect(page.getByText("Agent ready", { exact: true })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Pi ready", { exact: true })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByLabel("Message")).toHaveValue("Persist this draft", { timeout: 20_000 });
   } finally {
     await application.close();

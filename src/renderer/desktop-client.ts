@@ -9,18 +9,16 @@ import type {
   WindowViewState
 } from "../ipc/session-contract";
 
-export type AgentState = "starting" | "ready" | "stopped" | "failed";
+export type PiState = "starting" | "ready" | "stopped" | "failed";
 
 export type DesktopClientEvent =
-  | { type: "agent-state-changed"; state: AgentState; workspacePath?: string }
+  | { type: "pi-state-changed"; state: PiState; workspacePath?: string }
   | { type: "workspace-inspected"; operationId: string; path: string; trustRequired: boolean }
   | { type: "session-snapshot-received"; operationId?: string; snapshot: SessionSnapshot }
   | { type: "part-updated"; sessionId: string; part: UiPart }
   | { type: "part-removed"; sessionId: string; partId: string }
   | { type: "streaming-changed"; sessionId: string; streaming: boolean }
   | { type: "changes-received"; operationId: string; workspacePath: string; files: ChangedFile[] }
-  | { type: "terminal-output"; workspacePath: string; terminalId: string; data: string }
-  | { type: "terminal-exited"; workspacePath: string; terminalId: string; exitCode: number }
   | {
       type: "ui-requested";
       operationId: string;
@@ -46,7 +44,7 @@ export interface DesktopClient {
   removeProject(path: string): Promise<ApplicationState>;
   archiveSession(path: string, sessionId: string, archived: boolean): Promise<ApplicationState>;
   createWindow(): Promise<void>;
-  restartAgent(path: string): Promise<void>;
+  restartPi(path: string): Promise<void>;
   inspectWorkspace(input: { operationId: string; path: string }): Promise<void>;
   openWorkspace(input: { operationId: string; path: string; trusted: boolean; newSession?: boolean; sessionId?: string; sessionFile?: string }): Promise<void>;
   submit(input: { operationId: string; workspacePath: string; sessionId: string; text: string; delivery: "prompt" | "steer" | "follow-up"; attachments: Attachment[] }): Promise<void>;
@@ -59,25 +57,20 @@ export interface DesktopClient {
   forkSession(input: { operationId: string; workspacePath: string; sessionId: string; entryId: string }): Promise<void>;
   navigateSession(input: { operationId: string; workspacePath: string; sessionId: string; entryId: string }): Promise<void>;
   inspectChanges(input: { operationId: string; workspacePath: string }): Promise<void>;
-  terminalStart(input: { operationId: string; workspacePath: string; terminalId: string; cols: number; rows: number }): Promise<void>;
-  terminalInput(input: { operationId: string; workspacePath: string; terminalId: string; data: string }): Promise<void>;
-  terminalResize(input: { operationId: string; workspacePath: string; terminalId: string; cols: number; rows: number }): Promise<void>;
-  terminalClose(input: { operationId: string; workspacePath: string; terminalId: string }): Promise<void>;
   respondToUi(input: { operationId: string; workspacePath: string; sessionId: string; uiRequestId: string; value?: string; cancelled: boolean }): Promise<void>;
   subscribe(listener: (event: DesktopClientEvent) => void): () => void;
 }
 
 function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
-  if (event.type === "agent-state") return { type: "agent-state-changed", state: event.state, workspacePath: event.workspacePath };
+  if (event.type === "pi-state") return { type: "pi-state-changed", state: event.state, workspacePath: event.workspacePath };
   if (event.type === "workspace-inspected") return { type: "workspace-inspected", operationId: event.requestId, path: event.path, trustRequired: event.trustRequired };
   if (event.type === "session-snapshot") return { type: "session-snapshot-received", operationId: event.requestId, snapshot: event.snapshot };
   if (event.type === "part-updated" || event.type === "part-removed") return event;
   if (event.type === "session-streaming") return { type: "streaming-changed", sessionId: event.sessionId, streaming: event.streaming };
   if (event.type === "changes-snapshot") return { type: "changes-received", operationId: event.requestId, workspacePath: event.workspacePath, files: event.files };
-  if (event.type === "terminal-output" || event.type === "terminal-exited") return event;
   if (event.type === "ui-request") return { type: "ui-requested", operationId: event.requestId, uiRequestId: event.uiRequestId, kind: event.kind, title: event.title, message: event.message, placeholder: event.placeholder, options: event.options };
   if (event.type === "complete") return { type: "operation-completed", operationId: event.requestId };
-  if (event.type === "fatal" || event.type === "agent-error") return { type: "operation-failed", operationId: event.requestId, message: event.message };
+  if (event.type === "fatal") return { type: "operation-failed", operationId: event.requestId, message: event.message };
   return undefined;
 }
 
@@ -141,7 +134,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       const response = await bridge.request({ type: "new-window" });
       if (response.type !== "window-created") throw new Error("Cake could not create a window");
     },
-    async restartAgent(path) { await bridge.request({ type: "restart-agent", path }); },
+    async restartPi(path) { await bridge.request({ type: "restart-pi", path }); },
     inspectWorkspace: (input) => accept(bridge, { type: "inspect-workspace", requestId: input.operationId, path: input.path }),
     openWorkspace: (input) => accept(bridge, { type: "open-workspace", requestId: input.operationId, path: input.path, trusted: input.trusted, newSession: input.newSession ?? false, sessionId: input.sessionId, sessionFile: input.sessionFile }),
     submit: (input) => accept(bridge, { type: "prompt", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, text: input.text, delivery: input.delivery, attachments: input.attachments }),
@@ -154,10 +147,6 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
     forkSession: (input) => accept(bridge, { type: "fork-session", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, entryId: input.entryId }),
     navigateSession: (input) => accept(bridge, { type: "navigate-session", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, entryId: input.entryId }),
     inspectChanges: (input) => accept(bridge, { type: "inspect-changes", requestId: input.operationId, workspacePath: input.workspacePath }),
-    terminalStart: (input) => accept(bridge, { type: "terminal-start", requestId: input.operationId, workspacePath: input.workspacePath, terminalId: input.terminalId, cols: input.cols, rows: input.rows }),
-    terminalInput: (input) => accept(bridge, { type: "terminal-input", requestId: input.operationId, workspacePath: input.workspacePath, terminalId: input.terminalId, data: input.data }),
-    terminalResize: (input) => accept(bridge, { type: "terminal-resize", requestId: input.operationId, workspacePath: input.workspacePath, terminalId: input.terminalId, cols: input.cols, rows: input.rows }),
-    terminalClose: (input) => accept(bridge, { type: "terminal-close", requestId: input.operationId, workspacePath: input.workspacePath, terminalId: input.terminalId }),
     async respondToUi(input) {
       const response = await bridge.request({ type: "respond-ui", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, uiRequestId: input.uiRequestId, value: input.value, cancelled: input.cancelled });
       if (response.type !== "ui-response-accepted" || response.uiRequestId !== input.uiRequestId) throw new Error("Cake received a mismatched UI response");

@@ -8,10 +8,7 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: {
-          main: resolve(import.meta.dirname, "src/main/main.ts"),
-          agent: resolve(import.meta.dirname, "src/agent/agent-process.ts")
-        },
+        input: resolve(import.meta.dirname, "src/main/main.ts"),
         output: { entryFileNames: "[name].js" }
       }
     }

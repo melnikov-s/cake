@@ -1,4 +1,4 @@
-import { Store, createStore, mount, untracked } from "r-state-tree";
+import { Store, observable, untracked } from "r-state-tree";
 import type {
   Attachment,
   ApplicationState,
@@ -7,10 +7,10 @@ import type {
   ProjectRecord,
   SessionSnapshot,
   ThinkingLevel,
-  UiPart,
   WindowViewState
 } from "../../ipc/session-contract";
-import type { AgentState, DesktopClient, DesktopClientEvent } from "../desktop-client";
+import type { DesktopClient, DesktopClientEvent, PiState } from "../desktop-client";
+import type { SessionModel } from "../models/session";
 
 export interface UiRequestState {
   operationId: string;
@@ -22,11 +22,12 @@ export interface UiRequestState {
   options?: Array<{ id: string; label: string }>;
 }
 
-export class WindowStore extends Store<{ client: DesktopClient }> {
+export class WindowStore extends Store<{ client: DesktopClient; session: SessionModel }> {
   readonly process = "renderer" as const;
-  agentState: AgentState = "starting";
+  piState: PiState = "starting";
   hydrated = false;
   projectPath: string | undefined;
+  selectedSessionId: string | undefined;
   recentProjectPaths: string[] = [];
   projects: ProjectRecord[] = [];
   trustedProjectPaths: string[] = [];
@@ -34,21 +35,16 @@ export class WindowStore extends Store<{ client: DesktopClient }> {
   private pendingOpen: { inspectOperationId: string; path: string; newSession: boolean; sessionId?: string; sessionFile?: string } | undefined;
   private activeOpenOperationId: string | undefined;
   private activeOpenExpectsEmpty = false;
-  session: SessionSnapshot | undefined;
-  parts: UiPart[] = [];
   draft = "";
   theme: "system" | "light" | "dark" = "system";
   attachments: Attachment[] = [];
   thinkingExpanded = false;
   sessionSearch = "";
   showArchived = false;
-  activeSurface: "chat" | "changes" | "terminal" | "tree" = "chat";
-  draftsBySession: Record<string, string> = {};
+  commandPane: "changes" | "tree" | undefined;
+  draftsBySession: Record<string, string> = observable({});
   changedFiles: ChangedFile[] = [];
   changesLoading = false;
-  terminalId = crypto.randomUUID();
-  terminalOutput = "";
-  terminalRunning = false;
   error: string | undefined;
   uiRequest: UiRequestState | undefined;
   activeOperations: string[] = [];
@@ -58,7 +54,6 @@ export class WindowStore extends Store<{ client: DesktopClient }> {
 
   constructor(props: WindowStore["props"]) {
     super(props);
-    this.effect(() => this.props.client.subscribe((event) => this.receive(event)));
     this.effect(() => {
       untracked(() => { void this.hydrate(); });
       return () => {
@@ -71,12 +66,29 @@ export class WindowStore extends Store<{ client: DesktopClient }> {
     return this.activeOperations.length > 0;
   }
 
+  get session() {
+    return this.props.session.loaded
+      && this.props.session.sessionId === this.selectedSessionId
+      && this.props.session.workspacePath === this.projectPath
+      ? this.props.session
+      : undefined;
+  }
+
+  get parts() {
+    return this.session?.uiParts ?? [];
+  }
+
   get isStreaming() {
     return this.session?.streaming ?? false;
   }
 
   get canSubmit() {
-    return Boolean(this.session && this.draft.trim() && this.agentState === "ready");
+    return Boolean(this.session && this.draft.trim() && (this.isLocalSlashCommand || this.piState === "ready"));
+  }
+
+  get isLocalSlashCommand() {
+    const command = this.draft.trim().toLocaleLowerCase();
+    return command === "/tree" || command === "/changes";
   }
 
   get projectName() {
@@ -118,8 +130,8 @@ export class WindowStore extends Store<{ client: DesktopClient }> {
       this.theme = state.theme;
       this.thinkingExpanded = state.thinkingExpanded;
       this.sessionSearch = state.sessionSearch;
-      this.activeSurface = state.activeSurface;
-      this.draftsBySession = { ...state.draftsBySession };
+      for (const sessionId of Object.keys(this.draftsBySession)) delete this.draftsBySession[sessionId];
+      Object.assign(this.draftsBySession, state.draftsBySession);
       this.hydrated = true;
       if (state.projectPath) await this.inspectPath(state.projectPath);
     } catch (error) {
@@ -138,7 +150,6 @@ export class WindowStore extends Store<{ client: DesktopClient }> {
       theme: this.theme,
       thinkingExpanded: this.thinkingExpanded,
       sessionSearch: this.sessionSearch,
-      activeSurface: this.activeSurface,
       draftsBySession: { ...this.draftsBySession }
     };
   }
@@ -202,7 +213,10 @@ export class WindowStore extends Store<{ client: DesktopClient }> {
   async removeProject(path: string) {
     try {
       this.applyApplicationState(await this.props.client.removeProject(path));
-      if (this.projectPath === path) { this.projectPath = undefined; this.session = undefined; this.parts.splice(0); }
+      if (this.projectPath === path) {
+        this.projectPath = undefined;
+        this.selectedSessionId = undefined;
+      }
       this.schedulePersist();
     } catch (error) { this.setError(error); }
   }
@@ -256,9 +270,9 @@ export class WindowStore extends Store<{ client: DesktopClient }> {
     const operationId = this.startOperation();
     this.activeOpenOperationId = operationId;
     this.activeOpenExpectsEmpty = newSession;
-    this.session = undefined;
-    this.parts.splice(0);
+    this.selectedSessionId = undefined;
     this.uiRequest = undefined;
+    this.commandPane = undefined;
     try {
       await this.props.client.openWorkspace({ operationId, path, trusted, newSession, sessionId, sessionFile });
       void this.props.client.registerProject(path, this.nameFromPath(path)).then((state) => this.applyApplicationState(state)).catch((error) => this.setError(error));
@@ -274,7 +288,7 @@ export class WindowStore extends Store<{ client: DesktopClient }> {
 
   setDraft(value: string) {
     this.draft = value;
-    if (this.session) this.draftsBySession = { ...this.draftsBySession, [this.session.sessionId]: value };
+    if (this.session) this.draftsBySession[this.session.sessionId] = value;
     this.schedulePersist();
   }
 
@@ -291,11 +305,12 @@ export class WindowStore extends Store<{ client: DesktopClient }> {
   setSessionSearch(value: string) { this.sessionSearch = value; this.schedulePersist(); }
   toggleArchived() { this.showArchived = !this.showArchived; }
 
-  async setSurface(surface: typeof this.activeSurface) {
-    this.activeSurface = surface; this.schedulePersist();
-    if (surface === "changes") await this.refreshChanges();
-    if (surface === "terminal" && !this.terminalRunning) await this.startTerminal();
+  async openCommandPane(pane: "changes" | "tree") {
+    this.commandPane = pane;
+    if (pane === "changes") await this.refreshChanges();
   }
+
+  closeCommandPane() { this.commandPane = undefined; }
 
   private sessionContext() {
     if (!this.projectPath || !this.session) return undefined;
@@ -307,19 +322,6 @@ export class WindowStore extends Store<{ client: DesktopClient }> {
     const operationId = this.startOperation(); this.changesLoading = true;
     try { await this.props.client.inspectChanges({ operationId, workspacePath: this.projectPath }); }
     catch (error) { this.changesLoading = false; this.finishOperation(operationId); this.setError(error); }
-  }
-
-  async startTerminal() {
-    if (!this.projectPath || this.terminalRunning) return;
-    const operationId = this.startOperation(); this.terminalRunning = true;
-    try { await this.props.client.terminalStart({ operationId, workspacePath: this.projectPath, terminalId: this.terminalId, cols: 100, rows: 28 }); }
-    catch (error) { this.terminalRunning = false; this.finishOperation(operationId); this.setError(error); }
-  }
-
-  async writeTerminal(data: string) {
-    if (!this.projectPath || !this.terminalRunning) return;
-    try { await this.props.client.terminalInput({ operationId: crypto.randomUUID(), workspacePath: this.projectPath, terminalId: this.terminalId, data }); }
-    catch (error) { this.setError(error); }
   }
 
   async renameCurrentSession(name: string) {
@@ -337,6 +339,7 @@ export class WindowStore extends Store<{ client: DesktopClient }> {
 
   async forkAt(entryId: string) {
     const context = this.sessionContext(); if (!context) return;
+    this.closeCommandPane();
     const operationId = this.startOperation(); this.activeOpenOperationId = operationId;
     try { await this.props.client.forkSession({ operationId, ...context, entryId }); }
     catch (error) { this.finishOperation(operationId); this.setError(error); }
@@ -344,14 +347,15 @@ export class WindowStore extends Store<{ client: DesktopClient }> {
 
   async navigateTo(entryId: string) {
     const context = this.sessionContext(); if (!context) return;
+    this.closeCommandPane();
     const operationId = this.startOperation();
     try { await this.props.client.navigateSession({ operationId, ...context, entryId }); }
     catch (error) { this.finishOperation(operationId); this.setError(error); }
   }
 
-  async restartAgent() {
+  async restartPi() {
     if (!this.projectPath) return;
-    try { await this.props.client.restartAgent(this.projectPath); }
+    try { await this.props.client.restartPi(this.projectPath); }
     catch (error) { this.setError(error); }
   }
 
@@ -372,6 +376,12 @@ export class WindowStore extends Store<{ client: DesktopClient }> {
   async submit(deliveryOverride?: "steer") {
     if (!this.canSubmit) return;
     const text = this.draft.trim();
+    const command = text.toLocaleLowerCase();
+    if (command === "/tree" || command === "/changes") {
+      this.setDraft("");
+      await this.openCommandPane(command === "/tree" ? "tree" : "changes");
+      return;
+    }
     const delivery = deliveryOverride ?? (this.isStreaming ? "follow-up" : "prompt");
     const attachments = this.attachments.slice();
     const operationId = this.startOperation();
@@ -459,14 +469,12 @@ export class WindowStore extends Store<{ client: DesktopClient }> {
     }
   }
 
-  private applySnapshot(snapshot: SessionSnapshot) {
-    const previousSession = this.session;
-    if (previousSession) this.draftsBySession = { ...this.draftsBySession, [previousSession.sessionId]: this.draft };
-    this.session = snapshot;
-    this.parts.splice(0, this.parts.length, ...snapshot.parts);
+  applySessionSnapshot(snapshot: SessionSnapshot, previousSessionId?: string) {
+    if (previousSessionId) this.draftsBySession[previousSessionId] = this.draft;
     this.projectPath = snapshot.workspacePath;
-    this.draft = this.draftsBySession[snapshot.sessionId] ?? (previousSession ? "" : this.draft);
-    this.draftsBySession = { ...this.draftsBySession, [snapshot.sessionId]: this.draft };
+    this.selectedSessionId = snapshot.sessionId;
+    this.draft = this.draftsBySession[snapshot.sessionId] ?? (previousSessionId ? "" : this.draft);
+    this.draftsBySession[snapshot.sessionId] = this.draft;
     this.pendingOpen = undefined;
     const existing = this.recentProjectPaths.indexOf(snapshot.workspacePath);
     if (existing >= 0) this.recentProjectPaths.splice(existing, 1);
@@ -475,21 +483,32 @@ export class WindowStore extends Store<{ client: DesktopClient }> {
     this.schedulePersist();
   }
 
-  private upsertPart(part: UiPart) {
-    const index = this.parts.findIndex((current) => current.id === part.id);
-    if (index < 0) this.parts.push(part);
-    else {
-      const existing = this.parts[index];
-      this.parts.splice(index, 1, existing?.kind === "tool" && part.kind === "tool"
-        ? { ...part, input: part.input || existing.input }
-        : part);
+  acceptSessionSnapshot(event: Extract<DesktopClientEvent, { type: "session-snapshot-received" }>) {
+    if (event.operationId) {
+      if (event.operationId !== this.activeOpenOperationId) {
+        this.finishOperation(event.operationId);
+        return false;
+      }
+      if (this.activeOpenExpectsEmpty && event.snapshot.parts.length > 0) {
+        this.activeOpenOperationId = undefined;
+        this.activeOpenExpectsEmpty = false;
+        this.finishOperation(event.operationId);
+        this.error = "Cake refused to mount history in a newly created session";
+        return false;
+      }
+      this.activeOpenOperationId = undefined;
+      this.activeOpenExpectsEmpty = false;
+    } else if (!this.session || event.snapshot.sessionId !== this.session.sessionId || event.snapshot.workspacePath !== this.session.workspacePath) {
+      return false;
     }
+    if (event.operationId) this.finishOperation(event.operationId);
+    return true;
   }
 
-  private receive(event: DesktopClientEvent) {
-    if (event.type === "agent-state-changed") {
+  receive(event: DesktopClientEvent) {
+    if (event.type === "pi-state-changed") {
       if (event.workspacePath && event.workspacePath !== this.projectPath && event.workspacePath !== this.pendingOpen?.path) return;
-      this.agentState = event.state;
+      this.piState = event.state;
       if (event.state === "failed" || event.state === "stopped") {
         this.reopenAfterAgentRestart = Boolean(this.projectPath && this.session);
         this.activeOperations.splice(0);
@@ -512,49 +531,9 @@ export class WindowStore extends Store<{ client: DesktopClient }> {
       }
       return;
     }
-    if (event.type === "session-snapshot-received") {
-      if (event.operationId) {
-        if (event.operationId !== this.activeOpenOperationId) {
-          this.finishOperation(event.operationId);
-          return;
-        }
-        if (this.activeOpenExpectsEmpty && event.snapshot.parts.length > 0) {
-          this.activeOpenOperationId = undefined;
-          this.activeOpenExpectsEmpty = false;
-          this.finishOperation(event.operationId);
-          this.error = "Cake refused to mount history in a newly created session";
-          return;
-        }
-        this.activeOpenOperationId = undefined;
-        this.activeOpenExpectsEmpty = false;
-      } else if (!this.session || event.snapshot.sessionId !== this.session.sessionId || event.snapshot.workspacePath !== this.session.workspacePath) {
-        return;
-      }
-      this.applySnapshot(event.snapshot);
-      if (event.operationId) this.finishOperation(event.operationId);
-      return;
-    }
-    if (event.type === "part-updated" && event.sessionId === this.session?.sessionId) {
-      this.upsertPart(event.part);
-      return;
-    }
-    if (event.type === "part-removed" && event.sessionId === this.session?.sessionId) {
-      const index = this.parts.findIndex((part) => part.id === event.partId);
-      if (index >= 0) this.parts.splice(index, 1);
-      return;
-    }
-    if (event.type === "streaming-changed" && event.sessionId === this.session?.sessionId && this.session) {
-      this.session = { ...this.session, streaming: event.streaming };
-      return;
-    }
+    if (event.type === "session-snapshot-received" || event.type === "part-updated" || event.type === "part-removed" || event.type === "streaming-changed") return;
     if (event.type === "changes-received" && event.workspacePath === this.projectPath) {
       this.changedFiles.splice(0, this.changedFiles.length, ...event.files); this.changesLoading = false; this.finishOperation(event.operationId); return;
-    }
-    if (event.type === "terminal-output" && event.workspacePath === this.projectPath && event.terminalId === this.terminalId) {
-      this.terminalOutput = `${this.terminalOutput}${event.data}`.slice(-1_000_000); return;
-    }
-    if (event.type === "terminal-exited" && event.workspacePath === this.projectPath && event.terminalId === this.terminalId) {
-      this.terminalRunning = false; this.terminalOutput += `\n[process exited ${event.exitCode}]\n`; return;
     }
     if (event.type === "ui-requested") {
       if (!this.activeOperations.includes(event.operationId)) return;
@@ -570,8 +549,4 @@ export class WindowStore extends Store<{ client: DesktopClient }> {
       this.error = event.message;
     }
   }
-}
-
-export function mountWindowStore(client: DesktopClient) {
-  return mount(createStore(WindowStore, { client }));
 }

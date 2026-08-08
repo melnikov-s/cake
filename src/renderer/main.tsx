@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { StoreProvider } from "r-state-tree/react";
 import { App } from "./app";
 import { createDesktopClient } from "./desktop-client";
-import { mountWindowStore } from "./stores/window-store";
+import { mountRootStore } from "./stores/root-store";
 import "./styles.css";
 
 const root = createRoot(document.getElementById("root")!);
@@ -18,13 +18,16 @@ if (!window.cake) {
     </main>
   );
 } else {
-  const windowStore = mountWindowStore(createDesktopClient(window.cake));
+  const rootStore = mountRootStore(createDesktopClient(window.cake));
+  const windowStore = rootStore.windowStore;
   root.render(
     <StrictMode>
-      <StoreProvider store={windowStore}>
-        <App />
+      <StoreProvider store={rootStore}>
+        <StoreProvider store={windowStore}>
+          <App />
+        </StoreProvider>
       </StoreProvider>
     </StrictMode>
   );
-  window.addEventListener("pagehide", () => windowStore[Symbol.dispose](), { once: true });
+  window.addEventListener("pagehide", () => rootStore[Symbol.dispose](), { once: true });
 }

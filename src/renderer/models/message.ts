@@ -1,0 +1,43 @@
+import { Model, id, state } from "r-state-tree";
+import type { UiPart } from "../../ipc/session-contract";
+
+type TextRole = Extract<UiPart, { kind: "text" }>["role"];
+type PartStatus = Extract<UiPart, { kind: "text" }>["status"];
+type ToolState = Extract<UiPart, { kind: "tool" }>["state"];
+type AttachmentKind = Extract<UiPart, { kind: "attachment" }>["attachmentKind"];
+type NoticeTone = Extract<UiPart, { kind: "notice" }>["tone"];
+
+export class MessageModel extends Model {
+  @id id = "";
+  @state kind: UiPart["kind"] = "notice";
+  @state role: TextRole | undefined;
+  @state text: string | undefined;
+  @state status: PartStatus | undefined;
+  @state name: string | undefined;
+  @state input: string | undefined;
+  @state output: string | undefined;
+  @state state: ToolState | undefined;
+  @state title: string | undefined;
+  @state url: string | undefined;
+  @state mediaType: string | undefined;
+  @state attachmentKind: AttachmentKind | undefined;
+  @state tone: NoticeTone | undefined;
+  @state detail: string | undefined;
+
+  get value(): UiPart {
+    switch (this.kind) {
+      case "text":
+        return { id: this.id, kind: this.kind, role: this.role!, text: this.text!, status: this.status! };
+      case "reasoning":
+        return { id: this.id, kind: this.kind, text: this.text!, status: this.status as "streaming" | "complete" };
+      case "tool":
+        return { id: this.id, kind: this.kind, name: this.name!, input: this.input!, output: this.output, state: this.state! };
+      case "source":
+        return { id: this.id, kind: this.kind, title: this.title!, url: this.url! };
+      case "attachment":
+        return { id: this.id, kind: this.kind, name: this.name!, mediaType: this.mediaType!, attachmentKind: this.attachmentKind! };
+      case "notice":
+        return { id: this.id, kind: this.kind, tone: this.tone!, title: this.title!, detail: this.detail };
+    }
+  }
+}

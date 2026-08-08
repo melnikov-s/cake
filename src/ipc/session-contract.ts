@@ -156,7 +156,6 @@ export const windowViewStateSchema = z.object({
   theme: z.enum(["system", "light", "dark"]).default("system"),
   thinkingExpanded: z.boolean().default(false)
   ,sessionSearch: z.string().max(1_024).default("")
-  ,activeSurface: z.enum(["chat", "changes", "terminal", "tree"]).default("chat")
   ,draftsBySession: z.record(z.string(), z.string().max(262_144)).default({})
 });
 

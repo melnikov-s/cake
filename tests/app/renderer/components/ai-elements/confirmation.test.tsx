@@ -5,7 +5,7 @@ import {
   ConfirmationAccepted,
   ConfirmationDeclined,
   ConfirmationRequest
-} from "./confirmation";
+} from "../../../../../src/renderer/components/ai-elements/confirmation";
 
 describe("Cake confirmation presentation", () => {
   it("renders only the content for its Cake-owned state", () => {

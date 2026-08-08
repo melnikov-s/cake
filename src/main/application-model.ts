@@ -2,13 +2,16 @@ import { Model, child, id, state, toSnapshot } from "r-state-tree";
 import { applicationStateSchema, type ApplicationState, type ProjectRecord } from "../ipc/session-contract";
 
 export class ProjectModel extends Model {
+  @id
   path = "";
+  @state
   name = "";
+  @state
   addedAt = "";
+  @state
   lastOpenedAt = "";
+  @state
   archivedSessionIds: string[] = [];
-
-  static types = { path: id, name: state, addedAt: state, lastOpenedAt: state, archivedSessionIds: state };
 
   rename(name: string) {
     const next = name.trim();
@@ -28,10 +31,10 @@ export class ProjectModel extends Model {
 }
 
 export class ApplicationModel extends Model {
+  @state
   schemaVersion = 1 as const;
+  @child(ProjectModel)
   projects: ProjectModel[] = [];
-
-  static types = { schemaVersion: state, projects: child(ProjectModel) };
 
   static from(input: unknown) {
     return ApplicationModel.create(applicationStateSchema.parse(input));

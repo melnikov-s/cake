@@ -47,13 +47,13 @@ The desktop is not merely a prettier terminal transcript. It changes what the ag
 - present a sortable and filterable table rather than print an ASCII table;
 - draw and update a diagram;
 - ask for structured input through a form;
-- show file, diff, image, audio, chart, and terminal views;
+- show file, diff, image, audio, and chart views;
 - create a stateful interactive artifact the user can manipulate;
 - install or generate React-based widgets within a constrained runtime;
 - receive structured interaction results back from the user;
 - use Pi extensions, skills, packages, providers, tools, session branching, and compaction wherever their semantics are presentation-independent.
 
-Cake should feel closer to a focused coding workspace such as the Codex desktop app than to an IDE. The conversation is primary. Files, diffs, terminals, artifacts, and controls appear when useful and remain subordinate to the agent interaction.
+Cake should feel closer to a focused coding workspace such as the Codex desktop app than to an IDE. The conversation is primary. Files, diffs, artifacts, and controls appear when useful and remain subordinate to the agent interaction.
 
 ## 2. Why Cake exists
 
@@ -81,7 +81,7 @@ Cake's core supplies stable primitives: conversation, artifacts, capabilities, p
 
 ### 3.3 The conversation remains primary
 
-Cake is not a general-purpose IDE. A file tree, terminal, diff, or artifact should appear because it supports the active work. Avoid filling the initial UI with permanent panels.
+Cake is not a general-purpose IDE. A file tree, diff, or artifact should appear because it supports the active work. Avoid filling the initial UI with permanent panels.
 
 ### 3.4 Rich output is structured, not arbitrary privileged code
 
@@ -112,13 +112,13 @@ Use published Pi APIs. If a required general-purpose seam is missing, prefer an 
 - Stream assistant text, thinking state, tool calls, tool updates, results, retries, compaction, and errors.
 - Compose prompts with file references, pasted or dropped images, steering messages, and follow-ups.
 - Select providers, models, and thinking levels using Pi's model and authentication systems.
-- Display changed files and diffs and offer an integrated terminal when needed.
+- Display changed files and diffs in command-opened panes.
 - Discover and manage Pi skills, prompts, packages, and extensions.
 - Adapt compatible Pi extension UI primitives to desktop UI.
 - Present and persist rich Cake artifacts.
 - Allow structured interaction with artifacts and return results to the waiting tool or the next agent turn.
 - Load Cake-native widget packages.
-- Recover cleanly after renderer or agent utility-process failure.
+- Recover cleanly after renderer reloads and reset failed Pi session runtimes.
 - Package for macOS first without embedding assumptions that prevent Windows and Linux support.
 
 ### 4.2 Explicit non-goals for the initial product
@@ -186,13 +186,18 @@ At the 2026-08-06 research snapshot, Pi's published coding-agent package exposes
 flowchart TB
     subgraph Renderer["Sandboxed Electron renderer"]
         React["React views"]
-        WindowStore["WindowStore tree"]
+        RootStore["RootStore"]
+        SessionModel["SessionModel tree"]
+        WindowStore["WindowStore"]
         UiAdapter["Cake UI projection"]
         Components["Cake-owned shadcn and adapted AI Elements components"]
         Builtins["Trusted built-in widgets"]
         Frame["Sandboxed artifact iframe"]
-        React <--> WindowStore
+        React <--> RootStore
+        RootStore --> SessionModel
+        RootStore --> WindowStore
         WindowStore --> UiAdapter
+        SessionModel --> UiAdapter
         UiAdapter --> Components
         Components --> React
         React --> Builtins
@@ -205,10 +210,7 @@ flowchart TB
         Lifecycle["Electron application lifecycle"]
         Persist["Cake metadata persistence"]
         Windows["Windows, menus, notifications"]
-    end
-
-    subgraph Agent["Electron agent utility process per workspace"]
-        Adapter["PiRuntimeAdapter"]
+        Adapter["PiWorkspaceDriver"]
         Pi["Pi coding-agent SDK"]
         Extensions["Pi extensions and packages"]
         Adapter <--> Pi
@@ -227,11 +229,13 @@ Responsibilities:
 
 - **Renderer:** presentation, DOM interaction, window-local Stores, artifact host, and no broad Node access.
 - **Preload:** a narrow, typed, validated request/event API. It does not expose raw `ipcRenderer`.
-- **Main:** window lifecycle, native dialogs, app metadata persistence, agent-process supervision, and routing. It should not run arbitrary project extensions.
-- **Agent utility process:** Pi SDK, Pi sessions, provider calls, tools, project resources, package loading, and extension execution. An agent-process crash must not take down the desktop shell.
+- **Main:** window lifecycle, native dialogs, app metadata persistence, and direct ownership of workspace-scoped Pi drivers, sessions, tools, providers, packages, and extensions.
 - **Artifact frame:** generated or third-party web code with no Node integration, no same-origin privilege, no direct Electron IPC, and no network by default.
 
-Use one Electron utility process per open workspace initially. Multiple sessions within a workspace may share that process, but session ownership and subscriptions must remain independent. Revisit the granularity only with evidence from stability or performance testing.
+Use one `PiWorkspaceDriver` per active workspace. Multiple sessions within a
+workspace share that in-process driver while retaining independent runtime and
+subscription ownership. Idle drivers are disposed and reopened from Pi's
+authoritative session files when needed.
 
 ### 6.3 Pi adapter boundary
 
@@ -323,7 +327,7 @@ Use Pi's `DefaultResourceLoader`, project trust behavior, package manager, skill
 
 | Pi capability | Cake behavior |
 | --- | --- |
-| Tools, providers, event handlers, compaction hooks | Run unchanged in the agent utility process. |
+| Tools, providers, event handlers, compaction hooks | Run unchanged through the Pi SDK in Electron main. |
 | Skills, prompt templates, context files | Discover through Pi and expose in Cake UI. |
 | Package installation | Delegate to Pi package management with Cake confirmation and diagnostics. |
 | Commands | List and invoke through the Pi session. |
@@ -343,13 +347,13 @@ Cake uses Models for serializable application-owned domain state and Stores for 
 
 | State | Authority | Representation |
 | --- | --- | --- |
-| Pi transcript, session tree, compaction, model history | Pi | Pi session files; projected into Cake Stores |
+| Pi transcript, session tree, compaction, model history | Pi | Pi session files; projected into the renderer `SessionModel` tree |
 | Provider credentials | Pi/auth runtime | Never copied into renderer Models |
 | Project registry and display metadata | Cake main process | Cake Model snapshot persisted atomically |
 | Artifact metadata and content pointers | Cake + Pi custom session entries | Cake artifact store plus session reference |
 | Window selection, panel state, composer draft, scroll | Cake renderer | Window Stores; selected fields snapshotted |
 | Live streaming and tool progress | Pi event stream | Ephemeral Stores |
-| Extension dialogs and active statuses | Agent utility process/Cake bridge | Ephemeral Stores with cancellation |
+| Extension dialogs and active statuses | Main-process Pi driver/Cake bridge | Ephemeral Stores with cancellation |
 
 ### 7.2 Main-process state and services
 
@@ -359,7 +363,7 @@ routing, native operations, and stateless services as ordinary TypeScript.
 Introduce a main-process Store only when a concrete subsystem owns observable
 application state, derived state, mounted resources, or coordinated async
 workflow that benefits from Store semantics. Name that Store for its behavioral
-surface—for example, agent-process supervision—rather than creating a generic
+surface—for example, Pi runtime supervision—rather than creating a generic
 kernel container in advance. Introduce a main-process composition root only if
 multiple real Stores later require shared ownership and coordination.
 
@@ -367,8 +371,8 @@ Likely future Store candidates, subject to that boundary test:
 
 - `ProjectRegistryStore` when project loading, trust, and persistence form a
   reactive workflow visible across windows.
-- `AgentProcessSupervisorStore` when per-workspace start, stop, crash, restart,
-  and retry behavior becomes observable application state.
+- `PiRuntimeSupervisorStore` when per-workspace start, stop, reset, and retry
+  behavior becomes observable application state.
 - `ArtifactRepositoryStore` if artifact persistence and synchronization require
   mounted reactive orchestration rather than a repository service.
 
@@ -381,27 +385,43 @@ Suggested Models:
 
 ### 7.3 Renderer tree
 
-`WindowStore` is the composition root for one renderer window. Cake creates one
-independent `WindowStore` tree for each Electron window, provides it to React,
-and disposes it when that renderer ends. It coordinates child GUI Stores and
-their shared window-scoped workflows; it is not a global bucket for main-process
-state, Pi-owned session data, or every field rendered by React. As a subsystem
-gains coherent state, lifecycle, and behavior, compose it beneath `WindowStore`
-with `@child` rather than continuing to enlarge the root Store.
+`RootStore` is the composition root for one renderer window. Cake creates one
+independent root for each Electron window, provides it to React, and disposes it
+when that renderer ends. It owns the Pi event subscription and synchronizes
+validated events into a disposable `SessionModel` snapshot while coordinating
+the window-scoped `WindowStore`.
+
+Pi remains authoritative for session persistence and behavior. `SessionModel`
+is the reactive renderer representation of the current Pi session, not a second
+session authority. Every transport snapshot field is an `@state` field with the
+same name and value shape; the model does not normalize, flatten, or reconstruct
+the data. Full snapshots and snapshots assembled from streaming events commit
+atomically through r-state-tree's `applySnapshot`. UI-specific interpretations
+belong in computed getters and presentation adapters.
+
+`WindowStore` owns window workflows such as selection, drafts, search, command
+panes, pending operations, and stale-event filtering. As a UI subsystem gains
+coherent state, lifecycle, and behavior, compose it beneath `WindowStore` with
+`@child` rather than enlarging either root or the session Models.
 
 ```text
-WindowStore
-├── NavigationStore
-├── ProjectSidebarStore
-├── ActiveSessionStore
-│   ├── TranscriptStore
-│   ├── ComposerStore
-│   ├── ToolExecutionStore
-│   ├── ArtifactHostStore
-│   └── ExtensionUiStore
-├── DiffStore
-├── TerminalViewStore
-└── SettingsViewStore
+RootStore
+├── SessionModel
+│   ├── TranscriptPartModel[]
+│   ├── ModelOptionModel[]
+│   ├── SelectedModelModel
+│   ├── ThinkingLevelModel[]
+│   ├── SessionSummaryModel[]
+│   └── SessionTreeNodeModel[]
+└── WindowStore
+    ├── NavigationStore
+    ├── ProjectSidebarStore
+    ├── ComposerStore
+    ├── ToolExecutionStore
+    ├── ArtifactHostStore
+    ├── ExtensionUiStore
+    ├── DiffStore
+    └── SettingsViewStore
 ```
 
 Implementation rules:
@@ -410,7 +430,7 @@ Implementation rules:
 - Compose meaningful subsystems with `@child` and stable keys.
 - Create Models through their supported factory and mutate collections in place.
 - Use Store effects for IPC subscriptions and external resources; clean them up with the Store.
-- Use the Store lifetime signal for terminal disposal and separate operation controllers or revisions for take-latest, queue, retry, and user cancellation.
+- Use the Store lifetime signal for Store disposal and separate operation controllers or revisions for take-latest, queue, retry, and user cancellation.
 - Do not materialize lazy child Stores merely to start background work.
 - Do not persist constructor defaults before hydration completes.
 - React providers are lookup scopes, not ownership or disposal scopes.
@@ -466,7 +486,7 @@ Tool requirements:
 
 - Inputs are size-limited and schema-validated before display.
 - The user can cancel a request.
-- Session abort, replacement, agent-process shutdown, or window loss settles pending requests predictably.
+- Session abort, replacement, Pi driver disposal, or window loss settles pending requests predictably.
 - Updates use stable artifact IDs and explicit revisions.
 - A request cannot receive more than one terminal response.
 - The tool result contains a concise textual outcome for the LLM context.
@@ -559,7 +579,6 @@ cake-data/
 ├── artifacts/                # content-addressed artifact payloads and bundles
 ├── cache/                    # disposable derived data
 ├── logs/                     # redacted diagnostics
-└── agent-processes/          # sockets or transient utility-process metadata
 ```
 
 Pi continues to use its configured agent directory and session files. Cake may read Pi sessions through Pi APIs and must not mutate their JSONL format with ad hoc file editing.
@@ -578,11 +597,11 @@ Durability rules:
 ```text
 cake/
 ├── src/
-│   ├── main/                 # Electron main process, native lifecycle, persisted app metadata
+│   ├── main/                 # Electron lifecycle, Pi drivers, native services, persisted metadata
 │   ├── preload/              # narrow contextBridge API; no application workflow
 │   ├── renderer/             # React frontend, window Stores, UI projections and components
-│   ├── agent/                # Electron utility process and sole Pi adapter/import boundary
-│   └── ipc/                  # validated main/preload/renderer/agent transport schemas
+│   ├── agent/                # Cake's thin Pi SDK adapter; executed by Electron main
+│   └── ipc/                  # validated main/preload/renderer transport schemas
 ├── examples/
 │   ├── extensions/
 │   └── widgets/
@@ -611,9 +630,9 @@ Work:
 - Pin exact versions of Pi and `r-state-tree`.
 - Configure React 19, Tailwind CSS 4, and shadcn/ui for the Electron/Vite renderer.
 - Define process-safe protocol schemas and a typed preload bridge.
-- Prove the agent utility process can import Pi, create an in-memory session, stream events, and shut down.
+- Prove Electron main can import Pi through Cake's adapter, create an in-memory session, stream events, and dispose it.
 - Prove `AgentSession.bindExtensions()` accepts a Cake `ExtensionUIContext` implementation.
-- Mount the renderer's root `WindowStore` and verify its owned subscriptions are
+- Mount the renderer's `RootStore` and verify its owned subscriptions are
   disposed with the renderer lifecycle.
 - Adapt one small AI Elements component to Cake-owned props without installing AI SDK runtime or type dependencies, and document the source-revision, modification, and attribution convention.
 - Record any Pi API gaps before product UI grows around workarounds.
@@ -622,7 +641,7 @@ Acceptance checks:
 
 - A sandboxed renderer displays streamed text from a Pi session running outside the renderer.
 - The renderer has no Node globals and cannot access raw Electron IPC.
-- Agent utility-process termination is detected and shown without crashing Electron.
+- Pi runtime reset is detected and the selected session can be reopened.
 - A Pi extension `confirm` call appears in React and receives its response.
 - Unit, type, and one real Electron smoke test pass.
 
@@ -630,17 +649,17 @@ Current S0 checkpoint (2026-08-07):
 
 - The visible “Test Pi session” flow is a diagnostic architecture probe, not
   provider authentication, connection to an existing session, or normal chat.
-- It creates a new in-memory, non-persistent Pi session in the agent utility
-  process, invokes the built-in `/cake-foundation` extension command, carries
+- It creates a new in-memory, non-persistent Pi session through the main-process
+  driver, invokes the built-in `/cake-foundation` extension command, carries
   that extension's `confirm` request into React, returns the correlated answer,
-  and projects the resulting Pi events back into `WindowStore`.
+  and projects the resulting Pi events into the renderer state tree.
 - This probe has established the Pi adapter, extension UI, IPC validation,
   preload, renderer Store, and process-lifecycle path. It should be removed once
   the equivalent path is covered by the real S1 session workflow and tests.
 - The Tailwind/shadcn foundation and first adapted AI Elements component are in
   place without AI SDK contracts. A Playwright-driven Electron smoke test now
   verifies renderer sandboxing, visible Pi streaming, the extension confirmation
-  round trip, utility-process termination, and renderer survival. S0 is complete.
+  round trip, Pi runtime disposal, and renderer survival. S0 is complete.
 
 ### Stage S1 — Pi-backed desktop chat
 
@@ -675,8 +694,7 @@ Current S1 checkpoint (2026-08-07):
 - Deterministic contract tests verify Pi JSONL reopen, trust detection, protocol
   validation, Store lifecycle and stale-session filtering, and inert rich-text
   rendering. The Electron smoke verifies sandboxing, durable session open,
-  composer/view-state hydration, agent-process failure detection, and renderer
-  survival.
+  composer/view-state hydration, Pi runtime reset/reopen, and renderer survival.
 - Pi remains the only transcript authority. Cake persists only window-local view
   state and projects Pi snapshots/events through Cake-owned DTOs. No AI SDK
   runtime or types are installed.
@@ -696,16 +714,15 @@ Work:
 
 - Add project registry, sidebar, session listing, create/resume/rename/archive/fork/tree navigation.
 - Add multiple windows without confusing window-local selection with global session state.
-- Add changed-file and diff views.
-- Add an integrated PTY terminal as an optional secondary surface.
-- Add agent-process lifecycle, idle retention, restart, resubscription, and stale-event protection.
+- Add changed-file and diff panes opened by slash commands.
+- Add Pi driver lifecycle, idle retention, reset/reopen, and stale-event protection.
 - Add session search and useful metadata without rewriting Pi sessions.
 
 Acceptance checks:
 
 - Multiple projects and sessions survive restart.
 - Two windows can view different sessions without overwriting each other's selection or drafts.
-- An agent-process crash can be restarted and its sessions reopened.
+- A disposed or failed Pi runtime can be recreated and its sessions reopened.
 - Forking and tree navigation match Pi semantics.
 
 Current S2 checkpoint (2026-08-07):
@@ -715,25 +732,26 @@ Current S2 checkpoint (2026-08-07):
   identifiers. Pi JSONL remains authoritative for session names, transcripts,
   parent/fork relationships, and branch trees. Removing a project from Cake
   does not delete its directory or Pi sessions.
-- The desktop main process owns multiple windows and a workspace-keyed utility
-  process pool with idle retention. Each workspace process owns independent Pi
-  runtimes per open session, while each renderer `WindowStore` independently
-  owns its selected project/session, per-session drafts, search, active surface,
-  subscriptions, and stale-event filtering.
+- The desktop main process owns multiple windows and a workspace-keyed
+  `PiWorkspaceDriver` pool with idle retention. Each driver owns independent Pi
+  runtimes per open session, while each renderer `RootStore` independently owns
+  its Pi subscription and current `SessionModel` projection. Its `WindowStore`
+  owns selected project/session workflow, per-session drafts, search, transient
+  command pane, pending operations, and stale-event filtering.
 - The session UI supports create/resume/rename/archive/restore, text search,
-  Pi-native fork and in-file tree navigation. Changed-file summaries and diffs
-  come from Git in the workspace utility process. The optional terminal is a
-  real `node-pty` shell owned and terminated by that process.
-- Agent failure exposes an explicit restart action. A restarted workspace
-  process securely reopens the selected Pi session from its validated session
+  Pi-native fork and in-file tree navigation through `/tree`. Changed-file
+  summaries and diffs come from Git through the workspace driver and open
+  through `/changes`. These panes are transient and are not workspace tabs.
+- Pi runtime failure exposes an explicit restart action. A recreated workspace
+  driver securely reopens the selected Pi session from its validated session
   file, resubscribes the window, and preserves its draft. Empty Pi sessions are
   covered as well as indexed sessions.
 - Deterministic tests cover project metadata, Pi JSONL rename/fork/tree behavior,
   window hydration, per-session drafts, archive/search filtering, S2 intent
-  routing, changes, terminal events, and stale-session/UI-event isolation. Two
+  routing, slash-command panes, changes, and stale-session/UI-event isolation. Two
   Playwright Electron smokes verify independent windows with different active
-  sessions and drafts, a real PTY command round-trip, sandboxing, durable reopen,
-  agent termination, restart/resubscription, and renderer survival.
+  sessions and drafts, the Tree command dialog, sandboxing, durable reopen,
+  Pi runtime reset, reopen, and renderer survival.
 
 ### Stage S3 — Pi ecosystem compatibility
 
@@ -821,7 +839,7 @@ Acceptance checks:
 - A packaged macOS build completes the core real-app workflow.
 - Packaged Pi extensions and widget bundles resolve correctly.
 - Security tests prove generated content cannot cross its capability boundary.
-- App, renderer, and agent-process crashes have tested recovery behavior.
+- App and renderer crashes plus Pi runtime reset have tested recovery behavior.
 - A release checklist can be executed without undocumented local knowledge.
 
 ## 13. Testing strategy
@@ -837,7 +855,7 @@ Acceptance checks:
 
 ### 13.2 Integration tests
 
-- Main-to-agent command/event ordering and agent-process restart.
+- Main-process Pi driver command/event ordering and runtime reset.
 - Preload request/event contracts with invalid payload rejection.
 - Pi extension UI request/response behavior and cancellation.
 - Session replacement and resubscription.
@@ -854,7 +872,7 @@ Use Playwright's Electron support for visible workflows:
 - steering, follow-up, and abort;
 - extension dialog and legacy widget;
 - table sorting and form response;
-- agent-process crash recovery;
+- Pi runtime reset and session reopen;
 - renderer reload and app restart;
 - packaged smoke test.
 
@@ -874,7 +892,7 @@ Treat these as separate trust levels:
 
 1. Cake's signed application code.
 2. Pi and pinned application dependencies.
-3. User-approved global Pi extensions/packages with full agent-process authority.
+3. User-approved global Pi extensions/packages with full Electron-main authority.
 4. Project-local Pi resources requiring project trust.
 5. Installed Cake widget presentation bundles running in a sandbox.
 6. Model-generated HTML, React, Markdown, and artifact data.
@@ -886,21 +904,24 @@ Key threats and mitigations:
 | --- | --- | --- |
 | Model HTML compromises desktop privileges | S4-S6 | Separate sandbox, CSP, no Node, validated bridge, deny navigation/network. |
 | Pi API changes break sessions or extensions | S0-S6 | Exact pin, adapter contract tests, upgrade ledger, upstream-first fixes. |
-| Malicious Pi extension accesses the host | S1-S6 | Clear trust UI, execute in the agent utility process, project trust, future OS sandbox option; do not claim process isolation is an OS security sandbox. |
+| Malicious Pi extension accesses the host or destabilizes Electron main | S1-S6 | Clear trust UI, project trust, exact dependency pins, and a future OS sandbox option; do not claim in-process execution provides isolation. |
 | Stale agent event mutates a replacement session | S2-S4 | Session generation/revision IDs and teardown before resubscription. |
 | Cake snapshot overwrites Pi or hydrated state | S1-S2 | Separate authorities and persistence readiness gates. |
 | Large or noisy widget degrades the app | S4-S6 | Payload, rate, time, frame, and memory limits; artifact-local termination. |
 | Artifact data leaks secrets | S4-S6 | Explicit artifact creation, redaction rules, no implicit environment capture, reviewable persistence. |
 | Packaging omits dynamic Pi dependencies | S6 | Dependency audit and packaged real-app tests. |
 
-Pi extensions execute code with agent-process/host permissions. Utility-process isolation improves crash containment but is not, by itself, an OS security sandbox. Cake must describe this honestly.
+Pi extensions execute with Electron-main/host permissions. The direct SDK
+architecture intentionally favors a simpler integration over crash isolation;
+Cake must describe this honestly and may add a real OS sandbox later if the
+threat model or measured stability requires it.
 
 ## 15. Observability and diagnostics
 
 - Use structured logs with subsystem, workspace ID, session ID, artifact ID, and operation ID where relevant.
 - Redact prompts, tool payloads, file contents, credentials, tokens, headers, and environment variables by default.
 - Show extension/resource loading errors in a diagnostics view.
-- Show agent-process lifecycle and restart state without exposing internal stack traces as the only user message.
+- Show Pi runtime lifecycle and reset state without exposing internal stack traces as the only user message.
 - Record protocol/version mismatch details.
 - Make artifact sandbox failures inspectable in development and understandable in production.
 - Telemetry and crash submission are opt-in unless a later explicit product decision changes that policy.
@@ -924,12 +945,11 @@ These are intentionally unresolved. Resolve each before the stage that depends o
 
 | ID | Question | Needed before |
 | --- | --- | --- |
-| Q3 | Does one agent utility process per workspace remain sufficient under parallel long-running sessions? | S2 completion |
 | Q4 | What is the durable artifact storage location and maximum inline payload size? | S4 implementation |
 | Q5 | Will generated React be supported in the first widget SDK release or follow installed widgets? | S5 planning |
 | Q6 | Which widget capabilities are safe and necessary for v1? | S5 implementation |
 | Q7 | What subset of restricted MDX provides enough value beyond widget manifests? | S5 implementation |
-| Q8 | Which OS-level sandbox, if any, should be offered for Pi agent processes and extensions? | S6 release |
+| Q8 | Which OS-level sandbox, if any, should be offered for Pi tools and extensions? | S6 release |
 | Q9 | What update mechanism and release channels should Cake use? | S6 implementation |
 
 ## 18. Decision log
@@ -941,7 +961,8 @@ These are intentionally unresolved. Resolve each before the stage that depends o
 | 2026-08-06 | Hide Pi behind a Cake-owned adapter. | Decided | Cake types and UI remain insulated from Pi API drift. |
 | 2026-08-06 | Use `r-state-tree` for state architecture. | Decided | Models own serializable domain state; Stores own workflow and resources. |
 | 2026-08-06 | Keep Pi JSONL sessions authoritative. | Decided | No duplicate Cake transcript database. |
-| 2026-08-06 | Run Pi and arbitrary Pi extensions outside the renderer in an Electron utility process. | Decided | Renderer remains sandboxed; an agent-process crash does not destroy the window shell. |
+| 2026-08-06 | Run Pi and arbitrary Pi extensions outside the renderer in an Electron utility process. | Superseded 2026-08-08 | The initial fault-isolation layer required a second protocol, process pool, correlation, and restart machinery. |
+| 2026-08-08 | Embed Pi's SDK directly in Electron main behind a workspace-scoped Cake driver. | Decided | Renderer sandboxing and one validated preload boundary remain; Cake removes the internal utility-process protocol and accepts that Pi/extensions share main-process fault authority. |
 | 2026-08-06 | Use a versioned artifact protocol instead of raw privileged HTML/MDX. | Decided | Rich UI is persistable and secure by construction. |
 | 2026-08-06 | Treat `pi-gui` as reference only. | Decided | No fork, dependency, or wholesale copying. |
 | 2026-08-06 | Use Zod 4.4.3 for process-safe runtime schemas. | Decided | IPC and later artifact contracts share one exact, runtime-validated schema dependency. |
