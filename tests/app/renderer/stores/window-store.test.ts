@@ -15,6 +15,8 @@ const snapshot: SessionSnapshot = {
   availableThinkingLevels: ["off"],
   streaming: false,
   diagnostics: [],
+  compatibility: { resources: [], diagnostics: [] },
+  extensionUi: { statuses: [], widgets: [] },
   sessions: [],
   tree: []
 };
@@ -28,6 +30,7 @@ function createDesktopClient(restoredPath?: string) {
     loadWindowState: vi.fn(async () => ({ projectPath: restoredPath, recentProjectPaths: restoredPath ? [restoredPath] : [], trustedProjectPaths: [], draft: "saved", theme: "system" as const, thinkingExpanded: false, sessionSearch: "", draftsBySession: {} })),
     saveWindowState: vi.fn(async () => undefined),
     loadApplicationState: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
+    listSessions: vi.fn(async () => []),
     registerProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
     renameProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
     removeProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
@@ -125,6 +128,43 @@ describe("WindowStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("projects extension UI only for the active session and clears it on replacement", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop, { ...snapshot, extensionUi: { title: "Initial", statuses: [{ key: "one", text: "ready" }], widgets: [] } });
+    desktop.emit({ type: "extension-ui-received", sessionId: "stale", event: { kind: "editor-text", text: "stale", mode: "replace" } });
+    desktop.emit({ type: "extension-ui-received", sessionId: "session-1", event: { kind: "widget", key: "legacy", lines: ["line"], placement: "aboveEditor" } });
+    desktop.emit({ type: "extension-ui-received", sessionId: "session-1", event: { kind: "notify", id: "notice-1", message: "Hello", tone: "info" } });
+
+    expect(store.draft).not.toBe("stale");
+    expect(store.extensionTitle).toBe("Initial");
+    expect(store.extensionWidgets).toEqual([{ key: "legacy", lines: ["line"], placement: "aboveEditor" }]);
+    expect(store.extensionNotifications).toHaveLength(1);
+
+    await store.startNewSession();
+    expect(store.extensionTitle).toBeUndefined();
+    expect(store.extensionWidgets).toEqual([]);
+    expect(store.extensionNotifications).toEqual([]);
+    root[Symbol.dispose]();
+  });
+
+  it("preserves the draft when an empty Pi runtime reopens with a replacement session id", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+    store.setDraft("keep this draft");
+    desktop.emit({ type: "pi-state-changed", state: "stopped", workspacePath: "/project" });
+    desktop.emit({ type: "pi-state-changed", state: "ready", workspacePath: "/project" });
+    const inspectId = store.activeOperations.at(-1)!;
+    desktop.emit({ type: "workspace-inspected", operationId: inspectId, path: "/project", trustRequired: false });
+    const openId = store.activeOperations.at(-1)!;
+    desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot: { ...snapshot, sessionId: "replacement" } });
+    expect(store.draft).toBe("keep this draft");
+    root[Symbol.dispose]();
+  });
+
   it("queues by default during a run and only steers when explicitly requested", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
@@ -193,13 +233,19 @@ describe("WindowStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("keeps drafts per session and filters archived/search results from Cake metadata", async () => {
+  it("keeps drafts per session and searches sessions across projects", async () => {
     const desktop = createDesktopClient();
     const applicationState = {
       schemaVersion: 1 as const,
-      projects: [{ path: "/project", name: "Project", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString(), archivedSessionIds: ["session-2"] }]
+      projects: [
+        { path: "/project", name: "Project", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString(), archivedSessionIds: ["session-2"] },
+        { path: "/other", name: "Other", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString(), archivedSessionIds: [] }
+      ]
     };
     desktop.client.loadApplicationState = vi.fn(async () => applicationState);
+    desktop.client.listSessions = vi.fn(async () => [
+      { id: "session-3", title: "Alpha elsewhere", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 3, archived: false, workspacePath: "/other", workspaceName: "Other" }
+    ]);
     desktop.client.registerProject = vi.fn(async () => applicationState);
     const { root, store } = mountTestStore(desktop.client);
     await flush();
@@ -210,7 +256,7 @@ describe("WindowStore", () => {
     ];
     await openSnapshot(store, desktop, { ...snapshot, sessions });
     store.setDraft("alpha draft");
-    await store.openSession("session-2");
+    await store.openSession("/project", "session-2");
     const inspectId = store.activeOperations.at(-1)!;
     desktop.emit({ type: "workspace-inspected", operationId: inspectId, path: "/project", trustRequired: false });
     const openId = store.activeOperations.at(-1)!;
@@ -218,10 +264,35 @@ describe("WindowStore", () => {
     store.setDraft("beta draft");
     expect(store.draftsBySession).toBe(draftsBySession);
     expect(store.draftsBySession["session-1"]).toBe("alpha draft");
-    store.toggleArchived();
-    expect(store.currentSessions.map((item) => item.id)).toEqual(["session-2"]);
+    expect(store.currentSessions.map((item) => item.id)).toEqual(["session-1", "session-2"]);
     store.setSessionSearch("alpha");
-    expect(store.currentSessions).toEqual([]);
+    expect(store.searchedSessions.map((item) => `${item.workspacePath}:${item.id}`).sort()).toEqual(["/other:session-3", "/project:session-1"]);
+    await store.openSession("/other", "session-3");
+    expect(desktop.client.inspectWorkspace).toHaveBeenLastCalledWith(expect.objectContaining({ path: "/other" }));
+    root[Symbol.dispose]();
+  });
+
+  it("reveals project sessions in batches without selecting the project", async () => {
+    const desktop = createDesktopClient();
+    desktop.client.listSessions = vi.fn(async () => Array.from({ length: 12 }, (_, index) => ({
+      id: `other-${index}`,
+      title: `Other task ${index}`,
+      created: new Date(0).toISOString(),
+      modified: new Date(index).toISOString(),
+      messageCount: index,
+      archived: false,
+      workspacePath: "/other",
+      workspaceName: "Other"
+    })));
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+
+    expect(store.projectPath).toBeUndefined();
+    expect(store.projectSessions("/other")).toHaveLength(12);
+    expect(store.projectSessions("/other").slice(0, store.sessionLimit("/other"))).toHaveLength(10);
+    store.showMoreSessions("/other");
+    expect(store.projectSessions("/other").slice(0, store.sessionLimit("/other"))).toHaveLength(12);
+    expect(store.projectPath).toBeUndefined();
     root[Symbol.dispose]();
   });
 

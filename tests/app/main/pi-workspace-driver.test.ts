@@ -14,6 +14,8 @@ const snapshot: SessionSnapshot = {
   availableThinkingLevels: ["off"],
   streaming: false,
   diagnostics: [],
+  compatibility: { resources: [], diagnostics: [] },
+  extensionUi: { statuses: [], widgets: [] },
   sessions: [],
   tree: []
 };
@@ -22,12 +24,15 @@ describe("PiWorkspaceDriver", () => {
   it("owns Pi directly and correlates extension UI without an internal transport", async () => {
     const events: DesktopEvent[] = [];
     let options: CakeRuntimeOptions | undefined;
+    let promptSettled = 0;
     const runtime: CakeRuntime = {
       sessionId: snapshot.sessionId,
       sessionFile: snapshot.sessionFile,
       snapshot: vi.fn(async () => snapshot),
       prompt: vi.fn(async () => {
+        options?.onEvent({ type: "extension-ui", sessionId: snapshot.sessionId, event: { kind: "status", key: "fixture", text: "running" } });
         await options?.requestUi({ kind: "confirm", title: "Continue?", message: "Confirm" });
+        promptSettled += 1;
       }),
       abort: vi.fn(async () => undefined),
       setModel: vi.fn(async () => undefined),
@@ -54,11 +59,16 @@ describe("PiWorkspaceDriver", () => {
     const promptId = crypto.randomUUID();
     driver.dispatch({ type: "prompt", requestId: promptId, workspacePath: "/project", sessionId: snapshot.sessionId, text: "hello", delivery: "prompt", attachments: [] });
     await vi.waitFor(() => expect(events.some((event) => event.type === "ui-request" && event.requestId === promptId)).toBe(true));
+    expect(events).toContainEqual({ type: "extension-ui", sessionId: snapshot.sessionId, event: { kind: "status", key: "fixture", text: "running" } });
     const request = events.find((event): event is Extract<DesktopEvent, { type: "ui-request" }> => event.type === "ui-request" && event.requestId === promptId)!;
     driver.dispatch({ type: "respond-ui", requestId: promptId, workspacePath: "/project", sessionId: snapshot.sessionId, uiRequestId: request.uiRequestId, value: "true", cancelled: false });
     await vi.waitFor(() => expect(events.some((event) => event.type === "complete" && event.requestId === promptId)).toBe(true));
 
+    const pendingId = crypto.randomUUID();
+    driver.dispatch({ type: "prompt", requestId: pendingId, workspacePath: "/project", sessionId: snapshot.sessionId, text: "pending", delivery: "prompt", attachments: [] });
+    await vi.waitFor(() => expect(events.some((event) => event.type === "ui-request" && event.requestId === pendingId)).toBe(true));
     driver[Symbol.dispose]();
+    await vi.waitFor(() => expect(promptSettled).toBe(2));
     expect(runtime.dispose).toHaveBeenCalledOnce();
   });
 });

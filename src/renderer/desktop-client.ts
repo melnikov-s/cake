@@ -3,8 +3,10 @@ import type {
   Attachment,
   ApplicationState,
   ChangedFile,
+  GlobalSessionSummary,
   SessionSnapshot,
   ThinkingLevel,
+  ExtensionUiEvent,
   UiPart,
   WindowViewState
 } from "../ipc/session-contract";
@@ -18,15 +20,18 @@ export type DesktopClientEvent =
   | { type: "part-updated"; sessionId: string; part: UiPart }
   | { type: "part-removed"; sessionId: string; partId: string }
   | { type: "streaming-changed"; sessionId: string; streaming: boolean }
+  | { type: "extension-ui-received"; sessionId: string; event: ExtensionUiEvent }
   | { type: "changes-received"; operationId: string; workspacePath: string; files: ChangedFile[] }
   | {
       type: "ui-requested";
       operationId: string;
       uiRequestId: string;
-      kind: "confirm" | "text" | "secret" | "select" | "manual_code";
+      kind: "confirm" | "text" | "secret" | "select" | "manual_code" | "editor";
       title: string;
       message: string;
       placeholder?: string;
+      initialValue?: string;
+      multiline?: boolean;
       options?: Array<{ id: string; label: string }>;
     }
   | { type: "operation-completed"; operationId: string }
@@ -39,6 +44,7 @@ export interface DesktopClient {
   loadWindowState(): Promise<WindowViewState>;
   saveWindowState(state: WindowViewState): Promise<void>;
   loadApplicationState(): Promise<ApplicationState>;
+  listSessions(): Promise<GlobalSessionSummary[]>;
   registerProject(path: string, name: string): Promise<ApplicationState>;
   renameProject(path: string, name: string): Promise<ApplicationState>;
   removeProject(path: string): Promise<ApplicationState>;
@@ -67,8 +73,9 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
   if (event.type === "session-snapshot") return { type: "session-snapshot-received", operationId: event.requestId, snapshot: event.snapshot };
   if (event.type === "part-updated" || event.type === "part-removed") return event;
   if (event.type === "session-streaming") return { type: "streaming-changed", sessionId: event.sessionId, streaming: event.streaming };
+  if (event.type === "extension-ui") return { type: "extension-ui-received", sessionId: event.sessionId, event: event.event };
   if (event.type === "changes-snapshot") return { type: "changes-received", operationId: event.requestId, workspacePath: event.workspacePath, files: event.files };
-  if (event.type === "ui-request") return { type: "ui-requested", operationId: event.requestId, uiRequestId: event.uiRequestId, kind: event.kind, title: event.title, message: event.message, placeholder: event.placeholder, options: event.options };
+  if (event.type === "ui-request") return { type: "ui-requested", operationId: event.requestId, uiRequestId: event.uiRequestId, kind: event.kind, title: event.title, message: event.message, placeholder: event.placeholder, initialValue: event.initialValue, multiline: event.multiline, options: event.options };
   if (event.type === "complete") return { type: "operation-completed", operationId: event.requestId };
   if (event.type === "fatal") return { type: "operation-failed", operationId: event.requestId, message: event.message };
   return undefined;
@@ -109,6 +116,11 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       const response = await bridge.request({ type: "load-application-state" });
       if (response.type !== "application-state-loaded") throw new Error("Cake received invalid application state");
       return response.state;
+    },
+    async listSessions() {
+      const response = await bridge.request({ type: "list-sessions" });
+      if (response.type !== "sessions-listed") throw new Error("Cake received an invalid session index");
+      return response.sessions;
     },
     async registerProject(path, name) {
       const response = await bridge.request({ type: "register-project", path, name });

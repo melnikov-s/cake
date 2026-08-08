@@ -93,6 +93,11 @@ export const sessionSummarySchema = z.object({
   archived: z.boolean().default(false)
 });
 
+export const globalSessionSummarySchema = sessionSummarySchema.extend({
+  workspacePath: z.string().min(1).max(4_096),
+  workspaceName: z.string().min(1).max(512)
+});
+
 export const sessionTreeNodeSchema: z.ZodType<{
   id: string;
   parentId?: string;
@@ -120,6 +125,55 @@ export const changedFileSchema = z.object({
   diff: boundedText
 });
 
+export const resourceScopeSchema = z.enum(["user", "project", "temporary"]);
+
+export const compatibilityResourceSchema = z.object({
+  id: z.string().min(1).max(8_192),
+  kind: z.enum(["skill", "prompt", "package", "extension"]),
+  name: z.string().min(1).max(1_024),
+  description: z.string().max(4_096).optional(),
+  path: z.string().max(8_192).optional(),
+  source: z.string().max(2_048),
+  scope: resourceScopeSchema,
+  origin: z.enum(["package", "top-level"]),
+  commands: z.array(z.string().max(256)).max(1_000).default([]),
+  tools: z.array(z.string().max(256)).max(1_000).default([]),
+  enabled: z.boolean().default(true)
+});
+
+export const resourceDiagnosticSchema = z.object({
+  id: z.string().min(1).max(8_192),
+  severity: z.enum(["info", "warning", "error"]),
+  source: z.enum(["extension", "skill", "prompt", "package", "compatibility", "runtime"]),
+  message: z.string().max(4_096),
+  path: z.string().max(8_192).optional(),
+  method: z.string().max(256).optional()
+});
+
+export const compatibilityCatalogSchema = z.object({
+  resources: z.array(compatibilityResourceSchema).max(20_000).default([]),
+  diagnostics: z.array(resourceDiagnosticSchema).max(5_000).default([])
+});
+
+export const extensionUiStateSchema = z.object({
+  title: z.string().max(512).optional(),
+  statuses: z.array(z.object({ key: z.string().max(256), text: z.string().max(2_048) })).max(100).default([]),
+  widgets: z.array(z.object({
+    key: z.string().max(256),
+    lines: z.array(z.string().max(4_096)).max(1_000),
+    placement: z.enum(["aboveEditor", "belowEditor"])
+  })).max(100).default([])
+});
+
+export const extensionUiEventSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("notify"), id: z.string().max(256), message: z.string().max(4_096), tone: z.enum(["info", "warning", "error"]) }),
+  z.object({ kind: z.literal("status"), key: z.string().max(256), text: z.string().max(2_048).optional() }),
+  z.object({ kind: z.literal("title"), title: z.string().max(512) }),
+  z.object({ kind: z.literal("editor-text"), text: boundedText, mode: z.enum(["replace", "insert"]) }),
+  z.object({ kind: z.literal("widget"), key: z.string().max(256), lines: z.array(z.string().max(4_096)).max(1_000).optional(), placement: z.enum(["aboveEditor", "belowEditor"]) }),
+  z.object({ kind: z.literal("diagnostic"), diagnostic: resourceDiagnosticSchema })
+]);
+
 export const sessionSnapshotSchema = z.object({
   workspacePath: z.string().max(4_096),
   sessionId: z.string().min(1).max(256),
@@ -131,6 +185,8 @@ export const sessionSnapshotSchema = z.object({
   availableThinkingLevels: z.array(thinkingLevelSchema).max(7),
   streaming: z.boolean(),
   diagnostics: z.array(z.string().max(4_096)).max(1_000),
+  compatibility: compatibilityCatalogSchema.default({ resources: [], diagnostics: [] }),
+  extensionUi: extensionUiStateSchema.default({ statuses: [], widgets: [] }),
   sessions: z.array(sessionSummarySchema).max(10_000).default([]),
   tree: z.array(sessionTreeNodeSchema).max(50_000).default([])
 });
@@ -165,8 +221,14 @@ export type ModelOption = z.infer<typeof modelOptionSchema>;
 export type ThinkingLevel = z.infer<typeof thinkingLevelSchema>;
 export type SessionSnapshot = z.infer<typeof sessionSnapshotSchema>;
 export type SessionSummary = z.infer<typeof sessionSummarySchema>;
+export type GlobalSessionSummary = z.infer<typeof globalSessionSummarySchema>;
 export type SessionTreeNode = z.infer<typeof sessionTreeNodeSchema>;
 export type ChangedFile = z.infer<typeof changedFileSchema>;
+export type CompatibilityResource = z.infer<typeof compatibilityResourceSchema>;
+export type ResourceDiagnostic = z.infer<typeof resourceDiagnosticSchema>;
+export type CompatibilityCatalog = z.infer<typeof compatibilityCatalogSchema>;
+export type ExtensionUiState = z.infer<typeof extensionUiStateSchema>;
+export type ExtensionUiEvent = z.infer<typeof extensionUiEventSchema>;
 export type ProjectRecord = z.infer<typeof projectRecordSchema>;
 export type ApplicationState = z.infer<typeof applicationStateSchema>;
 export type WindowViewState = z.infer<typeof windowViewStateSchema>;

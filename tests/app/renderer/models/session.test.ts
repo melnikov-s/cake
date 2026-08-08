@@ -13,11 +13,16 @@ const snapshot: SessionSnapshot = {
   sessionFile: "/sessions/one.jsonl",
   parts: [{ id: "message-1", kind: "text", role: "assistant", text: "Hello", status: "streaming" }],
   model: { provider: "openai", id: "model-1", name: "Model" },
-  models: [{ provider: "openai", providerName: "OpenAI", id: "model-1", name: "Model", reasoning: true, input: ["text", "image"], authenticated: true, authTypes: ["api_key"] }],
+  models: [
+    { provider: "openai", providerName: "OpenAI", id: "model-1", name: "Model", reasoning: true, input: ["text", "image"], authenticated: true, authTypes: ["api_key"] },
+    { provider: "gateway", providerName: "Gateway", id: "model-1", name: "Model through gateway", reasoning: true, input: ["text"], authenticated: false, authTypes: ["api_key"] }
+  ],
   thinkingLevel: "medium",
   availableThinkingLevels: ["off", "medium"],
   streaming: true,
   diagnostics: [],
+  compatibility: { resources: [{ id: "extension:/fixture.ts", kind: "extension", name: "fixture.ts", path: "/fixture.ts", source: "fixture", scope: "project", origin: "package", commands: ["fixture"], tools: [], enabled: true }], diagnostics: [{ id: "compat:one", severity: "warning", source: "compatibility", method: "custom", message: "Unavailable" }] },
+  extensionUi: { statuses: [], widgets: [] },
   sessions: [{ id: "session-1", title: "Session", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 1, archived: false }],
   tree: [{ id: "entry-1", type: "message", preview: "Hello", active: true, children: [] }]
 };
@@ -39,6 +44,7 @@ describe("SessionModel", () => {
     expect(model.diagnostics).toBe(diagnostics);
     expect(model.sessions).toBe(sessions);
     expect(model.tree).toBe(tree);
+    expect(model.compatibility).toEqual(snapshot.compatibility);
     expect(isObservable(model.parts)).toBe(true);
     expect(isObservable(model.models)).toBe(true);
     expect(isObservable(model.availableThinkingLevels)).toBe(true);

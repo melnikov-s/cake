@@ -4,7 +4,9 @@ import { homedir } from "node:os";
 import { app, BrowserWindow, dialog, ipcMain, type WebContents } from "electron";
 import { desktopRequestSchema, desktopResponseSchema, type DesktopEvent } from "../ipc/desktop-ipc";
 import { windowViewStateSchema, type Attachment, type WindowViewState } from "../ipc/session-contract";
+import { listWorkspaceSessions } from "../agent/pi-runtime";
 import { ApplicationModel } from "./application-model";
+import { shouldAllowNavigation } from "./navigation-policy";
 import { PiWorkspaceDriver, type PiWorkspaceCommand } from "./pi-workspace-driver";
 
 interface PiHost {
@@ -126,7 +128,12 @@ function createWindow(slot = nextWindowSlot++) {
   windows.set(window.id, window);
   windowSlots.set(webContentsId, slot);
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  window.webContents.on("will-navigate", (event) => event.preventDefault());
+  window.webContents.on("will-navigate", (event, url) => {
+    // Vite sometimes falls back from a module update to a full-page reload. Blocking
+    // that same-origin reload after Chromium has cleared the document leaves a blank
+    // window, so keep dev-server navigation available while rejecting external URLs.
+    if (!shouldAllowNavigation(window.webContents.getURL(), url, process.env.ELECTRON_RENDERER_URL)) event.preventDefault();
+  });
   window.webContents.on("did-finish-load", () => sendTo(window.webContents, { type: "pi-state", state: "ready" }));
   window.on("closed", () => {
     const path = windowWorkspaces.get(webContentsId);
@@ -173,6 +180,16 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
     return desktopResponseSchema.parse({ type: "window-state-saved" });
   }
   if (request.type === "load-application-state") return desktopResponseSchema.parse({ type: "application-state-loaded", state: applicationModel.snapshot() });
+  if (request.type === "list-sessions") {
+    const sessions = (await Promise.all(applicationModel.projects.map(async (project) => {
+      try {
+        return (await listWorkspaceSessions(project.path)).map((session) => ({ ...session, workspacePath: project.path, workspaceName: project.name }));
+      } catch {
+        return [];
+      }
+    }))).flat().sort((left, right) => right.modified.localeCompare(left.modified));
+    return desktopResponseSchema.parse({ type: "sessions-listed", sessions });
+  }
   if (request.type === "register-project") {
     allowedProjectPaths.add(request.path);
     applicationModel.upsertProject(request.path, request.name);

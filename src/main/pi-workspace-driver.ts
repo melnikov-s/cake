@@ -132,9 +132,11 @@ export class PiWorkspaceDriver {
     const uiRequestId = crypto.randomUUID();
     return new Promise<string | undefined>((resolve) => {
       let settled = false;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
       const settle = (value: string | undefined) => {
         if (settled) return;
         settled = true;
+        if (timeout) clearTimeout(timeout);
         this.pendingUi.delete(uiRequestId);
         request.signal?.removeEventListener("abort", onAbort);
         resolve(value);
@@ -142,6 +144,7 @@ export class PiWorkspaceDriver {
       const onAbort = () => settle(undefined);
       this.pendingUi.set(uiRequestId, { operationId, settle });
       request.signal?.addEventListener("abort", onAbort, { once: true });
+      if (request.timeout) timeout = setTimeout(() => settle(undefined), request.timeout);
       this.emit({
         type: "ui-request",
         requestId: operationId,
@@ -150,6 +153,8 @@ export class PiWorkspaceDriver {
         title: request.title,
         message: request.message,
         placeholder: request.placeholder,
+        initialValue: request.initialValue,
+        multiline: request.multiline,
         options: request.options
       });
     });
@@ -171,7 +176,7 @@ export class PiWorkspaceDriver {
       requestUi: (request) => this.requestUi(request),
       onEvent: (event) => {
         if (event.type === "snapshot") this.emit({ type: "session-snapshot", requestId: event.requestId, snapshot: event.snapshot });
-        else if (event.type === "part-updated" || event.type === "part-removed") this.emit(event);
+        else if (event.type === "part-updated" || event.type === "part-removed" || event.type === "extension-ui") this.emit(event);
         else this.emit({ type: "session-streaming", sessionId: event.sessionId, streaming: event.streaming });
       }
     });

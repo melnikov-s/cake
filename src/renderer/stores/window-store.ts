@@ -3,8 +3,12 @@ import type {
   Attachment,
   ApplicationState,
   ChangedFile,
+  ExtensionUiEvent,
+  ExtensionUiState,
+  GlobalSessionSummary,
   ModelOption,
   ProjectRecord,
+  ResourceDiagnostic,
   SessionSnapshot,
   ThinkingLevel,
   WindowViewState
@@ -15,11 +19,19 @@ import { DesktopClientContext, SessionContext } from "./context";
 export interface UiRequestState {
   operationId: string;
   uiRequestId: string;
-  kind: "confirm" | "text" | "secret" | "select" | "manual_code";
+  kind: "confirm" | "text" | "secret" | "select" | "manual_code" | "editor";
   title: string;
   message: string;
   placeholder?: string;
+  initialValue?: string;
+  multiline?: boolean;
   options?: Array<{ id: string; label: string }>;
+}
+
+export interface ExtensionNotification {
+  id: string;
+  message: string;
+  tone: "info" | "warning" | "error";
 }
 
 export class WindowStore extends Store<Record<string, never>> {
@@ -30,6 +42,7 @@ export class WindowStore extends Store<Record<string, never>> {
   selectedSessionId: string | undefined;
   recentProjectPaths: string[] = [];
   projects: ProjectRecord[] = [];
+  globalSessions: GlobalSessionSummary[] = observable([]);
   trustedProjectPaths: string[] = [];
   pendingTrustPath: string | undefined;
   private pendingOpen: { inspectOperationId: string; path: string; newSession: boolean; sessionId?: string; sessionFile?: string } | undefined;
@@ -40,16 +53,22 @@ export class WindowStore extends Store<Record<string, never>> {
   attachments: Attachment[] = [];
   thinkingExpanded = false;
   sessionSearch = "";
-  showArchived = false;
-  commandPane: "changes" | "tree" | undefined;
+  commandPane: "changes" | "tree" | "resources" | undefined;
   draftsBySession: Record<string, string> = observable({});
+  sessionLimitsByProject: Record<string, number> = observable({});
   changedFiles: ChangedFile[] = [];
   changesLoading = false;
   error: string | undefined;
   uiRequest: UiRequestState | undefined;
+  extensionTitle: string | undefined;
+  extensionStatuses: ExtensionUiState["statuses"] = observable([]);
+  extensionWidgets: ExtensionUiState["widgets"] = observable([]);
+  extensionNotifications: ExtensionNotification[] = observable([]);
+  compatibilityDiagnostics: ResourceDiagnostic[] = observable([]);
   activeOperations: string[] = [];
   private openRevision = 0;
   private reopenAfterAgentRestart = false;
+  private draftAfterAgentRestart: string | undefined;
   private persistTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(props: WindowStore["props"]) {
@@ -100,7 +119,7 @@ export class WindowStore extends Store<Record<string, never>> {
 
   get isLocalSlashCommand() {
     const command = this.draft.trim().toLocaleLowerCase();
-    return command === "/tree" || command === "/changes";
+    return command === "/tree" || command === "/changes" || command === "/resources";
   }
 
   get projectName() {
@@ -108,11 +127,27 @@ export class WindowStore extends Store<Record<string, never>> {
   }
 
   get currentSessions() {
+    return this.projectPath ? this.projectSessions(this.projectPath) : [];
+  }
+
+  projectSessions(workspacePath: string) {
+    return this.globalSessions
+      .filter((item) => item.workspacePath === workspacePath);
+  }
+
+  sessionLimit(workspacePath: string) {
+    return this.sessionLimitsByProject[workspacePath] ?? 10;
+  }
+
+  showMoreSessions(workspacePath: string) {
+    this.sessionLimitsByProject[workspacePath] = this.sessionLimit(workspacePath) + 10;
+  }
+
+  get searchedSessions() {
     const query = this.sessionSearch.trim().toLocaleLowerCase();
-    const archived = new Set(this.projects.find((project) => project.path === this.projectPath)?.archivedSessionIds ?? []);
-    return (this.session?.sessions ?? [])
-      .filter((item) => this.showArchived ? archived.has(item.id) : !archived.has(item.id))
-      .filter((item) => !query || item.title.toLocaleLowerCase().includes(query));
+    if (!query) return [];
+    return this.globalSessions
+      .filter((item) => `${item.title}\n${item.workspaceName}\n${item.workspacePath}`.toLocaleLowerCase().includes(query));
   }
 
   nameFromPath(path: string) {
@@ -132,9 +167,10 @@ export class WindowStore extends Store<Record<string, never>> {
 
   private async hydrate() {
     try {
-      const [state, application] = await Promise.all([this.client.loadWindowState(), this.client.loadApplicationState()]);
+      const [state, application, sessions] = await Promise.all([this.client.loadWindowState(), this.client.loadApplicationState(), this.client.listSessions()]);
       if (this.signal.aborted) return;
       this.applyApplicationState(application);
+      this.globalSessions.splice(0, this.globalSessions.length, ...sessions);
       this.projectPath = state.projectPath;
       this.recentProjectPaths.splice(0, this.recentProjectPaths.length, ...state.recentProjectPaths);
       this.trustedProjectPaths.splice(0, this.trustedProjectPaths.length, ...state.trustedProjectPaths);
@@ -168,6 +204,9 @@ export class WindowStore extends Store<Record<string, never>> {
 
   private applyApplicationState(state: ApplicationState) {
     this.projects.splice(0, this.projects.length, ...state.projects);
+    const names = new Map(state.projects.map((project) => [project.path, project.name]));
+    const renamedSessions = this.globalSessions.map((session) => ({ ...session, workspaceName: names.get(session.workspacePath) ?? session.workspaceName }));
+    this.globalSessions.splice(0, this.globalSessions.length, ...renamedSessions);
     const paths = state.projects.map((project) => project.path);
     for (const path of this.recentProjectPaths) if (!paths.includes(path)) paths.push(path);
     this.recentProjectPaths.splice(0, this.recentProjectPaths.length, ...paths);
@@ -246,14 +285,15 @@ export class WindowStore extends Store<Record<string, never>> {
     await this.inspectPath(this.projectPath, true);
   }
 
-  async openSession(sessionId: string) {
-    if (!this.projectPath || sessionId === this.session?.sessionId) return;
-    await this.inspectPath(this.projectPath, false, sessionId);
+  async openSession(workspacePath: string, sessionId: string) {
+    if (workspacePath === this.projectPath && sessionId === this.session?.sessionId) return;
+    await this.inspectPath(workspacePath, false, sessionId);
   }
 
   private async inspectPath(path: string, newSession = false, sessionId?: string, sessionFile?: string) {
     const revision = ++this.openRevision;
     const operationId = this.startOperation();
+    this.clearExtensionUi();
     this.pendingOpen = { inspectOperationId: operationId, path, newSession, sessionId, sessionFile };
     try {
       await this.client.inspectWorkspace({ operationId, path });
@@ -284,6 +324,7 @@ export class WindowStore extends Store<Record<string, never>> {
     this.activeOpenExpectsEmpty = newSession;
     this.selectedSessionId = undefined;
     this.uiRequest = undefined;
+    this.clearExtensionUi();
     this.commandPane = undefined;
     try {
       await this.client.openWorkspace({ operationId, path, trusted, newSession, sessionId, sessionFile });
@@ -315,9 +356,8 @@ export class WindowStore extends Store<Record<string, never>> {
   }
 
   setSessionSearch(value: string) { this.sessionSearch = value; this.schedulePersist(); }
-  toggleArchived() { this.showArchived = !this.showArchived; }
 
-  async openCommandPane(pane: "changes" | "tree") {
+  async openCommandPane(pane: "changes" | "tree" | "resources") {
     this.commandPane = pane;
     if (pane === "changes") await this.refreshChanges();
   }
@@ -343,9 +383,8 @@ export class WindowStore extends Store<Record<string, never>> {
     catch (error) { this.finishOperation(operationId); this.setError(error); }
   }
 
-  async archiveSession(sessionId: string, archived: boolean) {
-    if (!this.projectPath) return;
-    try { this.applyApplicationState(await this.client.archiveSession(this.projectPath, sessionId, archived)); }
+  async archiveSession(workspacePath: string, sessionId: string, archived: boolean) {
+    try { this.applyApplicationState(await this.client.archiveSession(workspacePath, sessionId, archived)); }
     catch (error) { this.setError(error); }
   }
 
@@ -389,9 +428,9 @@ export class WindowStore extends Store<Record<string, never>> {
     if (!this.canSubmit) return;
     const text = this.draft.trim();
     const command = text.toLocaleLowerCase();
-    if (command === "/tree" || command === "/changes") {
+    if (command === "/tree" || command === "/changes" || command === "/resources") {
       this.setDraft("");
-      await this.openCommandPane(command === "/tree" ? "tree" : "changes");
+      await this.openCommandPane(command === "/tree" ? "tree" : command === "/changes" ? "changes" : "resources");
       return;
     }
     const delivery = deliveryOverride ?? (this.isStreaming ? "follow-up" : "prompt");
@@ -481,13 +520,68 @@ export class WindowStore extends Store<Record<string, never>> {
     }
   }
 
+  dismissExtensionNotification(id: string) {
+    const index = this.extensionNotifications.findIndex((item) => item.id === id);
+    if (index >= 0) this.extensionNotifications.splice(index, 1);
+  }
+
+  private clearExtensionUi() {
+    this.extensionTitle = undefined;
+    this.extensionStatuses.splice(0);
+    this.extensionWidgets.splice(0);
+    this.extensionNotifications.splice(0);
+    this.compatibilityDiagnostics.splice(0);
+  }
+
+  private applyExtensionUiState(state: ExtensionUiState) {
+    this.extensionTitle = state.title;
+    this.extensionStatuses.splice(0, this.extensionStatuses.length, ...state.statuses);
+    this.extensionWidgets.splice(0, this.extensionWidgets.length, ...state.widgets);
+  }
+
+  private receiveExtensionUi(event: ExtensionUiEvent) {
+    if (event.kind === "notify") {
+      this.extensionNotifications.push(event);
+      if (this.extensionNotifications.length > 8) this.extensionNotifications.splice(0, this.extensionNotifications.length - 8);
+      return;
+    }
+    if (event.kind === "status") {
+      const index = this.extensionStatuses.findIndex((item) => item.key === event.key);
+      if (event.text === undefined) { if (index >= 0) this.extensionStatuses.splice(index, 1); }
+      else if (index >= 0) this.extensionStatuses.splice(index, 1, { key: event.key, text: event.text });
+      else this.extensionStatuses.push({ key: event.key, text: event.text });
+      return;
+    }
+    if (event.kind === "title") { this.extensionTitle = event.title; return; }
+    if (event.kind === "editor-text") { this.setDraft(event.mode === "insert" ? `${this.draft}${event.text}` : event.text); return; }
+    if (event.kind === "widget") {
+      const index = this.extensionWidgets.findIndex((item) => item.key === event.key);
+      if (!event.lines) { if (index >= 0) this.extensionWidgets.splice(index, 1); }
+      else {
+        const widget = { key: event.key, lines: event.lines, placement: event.placement };
+        if (index >= 0) this.extensionWidgets.splice(index, 1, widget); else this.extensionWidgets.push(widget);
+      }
+      return;
+    }
+    if (!this.compatibilityDiagnostics.some((item) => item.id === event.diagnostic.id)) this.compatibilityDiagnostics.push(event.diagnostic);
+  }
+
   applySessionSnapshot(snapshot: SessionSnapshot, previousSessionId?: string) {
+    const restartDraft = this.draftAfterAgentRestart;
     if (previousSessionId) this.draftsBySession[previousSessionId] = this.draft;
     this.projectPath = snapshot.workspacePath;
     this.selectedSessionId = snapshot.sessionId;
-    this.draft = this.draftsBySession[snapshot.sessionId] ?? (previousSessionId ? "" : this.draft);
+    this.draft = restartDraft ?? this.draftsBySession[snapshot.sessionId] ?? (previousSessionId ? "" : this.draft);
+    this.draftAfterAgentRestart = undefined;
     this.draftsBySession[snapshot.sessionId] = this.draft;
+    this.clearExtensionUi();
+    this.applyExtensionUiState(snapshot.extensionUi);
     this.pendingOpen = undefined;
+    const workspaceName = this.projects.find((project) => project.path === snapshot.workspacePath)?.name ?? this.nameFromPath(snapshot.workspacePath);
+    const otherSessions = this.globalSessions.filter((session) => session.workspacePath !== snapshot.workspacePath);
+    const workspaceSessions = snapshot.sessions.map((session) => ({ ...session, workspacePath: snapshot.workspacePath, workspaceName }));
+    this.globalSessions.splice(0, this.globalSessions.length, ...otherSessions, ...workspaceSessions);
+    this.globalSessions.sort((left, right) => right.modified.localeCompare(left.modified));
     const existing = this.recentProjectPaths.indexOf(snapshot.workspacePath);
     if (existing >= 0) this.recentProjectPaths.splice(existing, 1);
     this.recentProjectPaths.unshift(snapshot.workspacePath);
@@ -523,6 +617,7 @@ export class WindowStore extends Store<Record<string, never>> {
       this.piState = event.state;
       if (event.state === "failed" || event.state === "stopped") {
         this.reopenAfterAgentRestart = Boolean(this.projectPath && this.session);
+        if (this.reopenAfterAgentRestart) this.draftAfterAgentRestart = this.draft;
         this.activeOperations.splice(0);
         this.uiRequest = undefined;
       }
@@ -544,6 +639,10 @@ export class WindowStore extends Store<Record<string, never>> {
       return;
     }
     if (event.type === "session-snapshot-received" || event.type === "part-updated" || event.type === "part-removed" || event.type === "streaming-changed") return;
+    if (event.type === "extension-ui-received") {
+      if (event.sessionId === this.session?.sessionId) this.receiveExtensionUi(event.event);
+      return;
+    }
     if (event.type === "changes-received" && event.workspacePath === this.projectPath) {
       this.changedFiles.splice(0, this.changedFiles.length, ...event.files); this.changesLoading = false; this.finishOperation(event.operationId); return;
     }

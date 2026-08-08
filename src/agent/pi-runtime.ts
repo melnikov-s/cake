@@ -1,5 +1,6 @@
 import {
   DefaultResourceLoader,
+  DefaultPackageManager,
   ModelRuntime,
   SessionManager,
   SettingsManager,
@@ -8,13 +9,19 @@ import {
   hasTrustRequiringProjectResources,
   type AgentSessionEvent,
   type ExtensionUIContext,
+  type ExtensionWidgetOptions,
   type InlineExtension
 } from "@earendil-works/pi-coding-agent";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type {
   Attachment,
   ModelOption,
+  CompatibilityCatalog,
+  ExtensionUiEvent,
+  ExtensionUiState,
+  ResourceDiagnostic,
   SessionSnapshot,
+  SessionSummary,
   ThinkingLevel,
   UiPart,
   SessionTreeNode
@@ -26,20 +33,38 @@ export function inspectWorkspace(path: string) {
   return { path, trustRequired: hasTrustRequiringProjectResources(path) };
 }
 
+export async function listWorkspaceSessions(cwd: string, sessionDir?: string): Promise<SessionSummary[]> {
+  const sessions = await SessionManager.list(cwd, sessionDir);
+  const idsByPath = new Map(sessions.map((item) => [item.path, item.id]));
+  return sessions.map((item) => ({
+    id: item.id,
+    title: item.name || item.firstMessage || "New chat",
+    created: item.created.toISOString(),
+    modified: item.modified.toISOString(),
+    messageCount: item.messageCount,
+    parentSessionId: item.parentSessionPath ? idsByPath.get(item.parentSessionPath) : undefined,
+    archived: false
+  }));
+}
+
 export interface RuntimeUiRequest {
-  kind: "confirm" | "text" | "secret" | "select" | "manual_code";
+  kind: "confirm" | "text" | "secret" | "select" | "manual_code" | "editor";
   title: string;
   message: string;
   placeholder?: string;
+  initialValue?: string;
+  multiline?: boolean;
   options?: Array<{ id: string; label: string }>;
   signal?: AbortSignal;
+  timeout?: number;
 }
 
 export type CakeRuntimeEvent =
   | { type: "snapshot"; requestId?: string; snapshot: SessionSnapshot }
   | { type: "part-updated"; sessionId: string; part: UiPart }
   | { type: "part-removed"; sessionId: string; partId: string }
-  | { type: "streaming"; sessionId: string; streaming: boolean };
+  | { type: "streaming"; sessionId: string; streaming: boolean }
+  | { type: "extension-ui"; sessionId: string; event: ExtensionUiEvent };
 
 export interface CakeRuntimeOptions {
   cwd: string;
@@ -213,6 +238,115 @@ function projectTree(sessionManager: SessionManager): SessionTreeNode[] {
   return sessionManager.getTree().map(visit);
 }
 
+function compatibilityCatalog(
+  resourceLoader: DefaultResourceLoader,
+  settingsManager: SettingsManager,
+  cwd: string,
+  agentDir: string
+): CompatibilityCatalog {
+  const extensions = resourceLoader.getExtensions();
+  const skills = resourceLoader.getSkills();
+  const prompts = resourceLoader.getPrompts();
+  const packages = new DefaultPackageManager({ cwd, agentDir, settingsManager }).listConfiguredPackages();
+  const resources: CompatibilityCatalog["resources"] = [];
+
+  for (const skill of skills.skills) resources.push({
+    id: `skill:${skill.filePath}`.slice(0, 8_192), kind: "skill", name: skill.name,
+    description: skill.description, path: skill.filePath, source: skill.sourceInfo.source,
+    scope: skill.sourceInfo.scope, origin: skill.sourceInfo.origin, commands: [], tools: [], enabled: true
+  });
+  for (const prompt of prompts.prompts) resources.push({
+    id: `prompt:${prompt.filePath}`.slice(0, 8_192), kind: "prompt", name: prompt.name,
+    description: prompt.description, path: prompt.filePath, source: prompt.sourceInfo.source,
+    scope: prompt.sourceInfo.scope, origin: prompt.sourceInfo.origin, commands: [], tools: [], enabled: true
+  });
+  for (const extension of extensions.extensions) resources.push({
+    id: `extension:${extension.resolvedPath}`.slice(0, 8_192), kind: "extension",
+    name: extension.path.split(/[\\/]/).pop() ?? extension.path, path: extension.path,
+    source: extension.sourceInfo.source, scope: extension.sourceInfo.scope,
+    origin: extension.sourceInfo.origin, commands: [...extension.commands.keys()].sort(),
+    tools: [...extension.tools.keys()].sort(), enabled: !extension.hidden
+  });
+  for (const configured of packages) resources.push({
+    id: `package:${configured.scope}:${configured.source}`.slice(0, 8_192), kind: "package",
+    name: configured.source, path: configured.installedPath, source: configured.source,
+    scope: configured.scope, origin: "package", commands: [], tools: [], enabled: !configured.filtered
+  });
+
+  const diagnostics: ResourceDiagnostic[] = [
+    ...extensions.errors.map((error, index) => ({ id: `extension:${index}:${error.path}`, severity: "error" as const, source: "extension" as const, message: error.error, path: error.path })),
+    ...skills.diagnostics.map((item, index) => ({ id: `skill:${index}:${item.path ?? item.message}`.slice(0, 8_192), severity: item.type === "error" ? "error" as const : "warning" as const, source: "skill" as const, message: item.message, path: item.path })),
+    ...resourceLoader.getPrompts().diagnostics.map((item, index) => ({ id: `prompt:${index}:${item.path ?? item.message}`.slice(0, 8_192), severity: item.type === "error" ? "error" as const : "warning" as const, source: "prompt" as const, message: item.message, path: item.path }))
+  ];
+  return { resources, diagnostics };
+}
+
+function createCakeExtensionUiContext(options: {
+  request(request: RuntimeUiRequest): Promise<string | undefined>;
+  emit(event: ExtensionUiEvent): void;
+  state: ExtensionUiState;
+  addDiagnostic(method: string, message: string): void;
+}): ExtensionUIContext {
+  let editorText = "";
+  const degraded = (method: string, detail: string) => options.addDiagnostic(method, `${method} is unavailable in Cake: ${detail}`);
+  const dialog = (request: RuntimeUiRequest) => options.request(request);
+  const setWidget = (key: string, content: unknown, widgetOptions?: ExtensionWidgetOptions) => {
+    if (typeof content === "function") {
+      degraded("setWidget(component)", "terminal Component factories cannot be translated to React; provide legacy string lines or a Cake widget");
+      return;
+    }
+    const placement = widgetOptions?.placement ?? "aboveEditor";
+    const index = options.state.widgets.findIndex((widget) => widget.key === key);
+    if (content === undefined) {
+      if (index >= 0) options.state.widgets.splice(index, 1);
+      options.emit({ kind: "widget", key, placement });
+      return;
+    }
+    const lines = Array.isArray(content) ? content.map(String).slice(0, 1_000) : [];
+    const widget = { key, lines, placement };
+    if (index >= 0) options.state.widgets.splice(index, 1, widget);
+    else options.state.widgets.push(widget);
+    options.emit({ kind: "widget", ...widget });
+  };
+
+  return {
+    select: (title, values, opts) => dialog({ kind: "select", title, message: title, options: values.map((value) => ({ id: value, label: value })), signal: opts?.signal, timeout: opts?.timeout }),
+    async confirm(title, message, opts) { return (await dialog({ kind: "confirm", title, message, signal: opts?.signal, timeout: opts?.timeout })) === "true"; },
+    input: (title, placeholder, opts) => dialog({ kind: "text", title, message: title, placeholder, signal: opts?.signal, timeout: opts?.timeout }),
+    notify(message, tone = "info") { options.emit({ kind: "notify", id: crypto.randomUUID(), message, tone }); },
+    onTerminalInput() { degraded("onTerminalInput", "raw terminal input has no desktop equivalent"); return () => undefined; },
+    setStatus(key, text) {
+      const index = options.state.statuses.findIndex((status) => status.key === key);
+      if (text === undefined) { if (index >= 0) options.state.statuses.splice(index, 1); }
+      else if (index >= 0) options.state.statuses.splice(index, 1, { key, text });
+      else options.state.statuses.push({ key, text });
+      options.emit({ kind: "status", key, text });
+    },
+    setWorkingMessage(message) { degraded("setWorkingMessage", message ? "Cake owns its streaming indicator" : "Cake owns its streaming indicator"); },
+    setWorkingVisible() { degraded("setWorkingVisible", "Cake owns streaming visibility"); },
+    setWorkingIndicator() { degraded("setWorkingIndicator", "terminal animation frames are not web UI"); },
+    setHiddenThinkingLabel() { degraded("setHiddenThinkingLabel", "Cake uses its accessible reasoning label"); },
+    setWidget,
+    setFooter() { degraded("setFooter", "terminal footer factories cannot run in the renderer"); },
+    setHeader() { degraded("setHeader", "terminal header factories cannot run in the renderer"); },
+    setTitle(title) { options.state.title = title; options.emit({ kind: "title", title }); },
+    async custom() { degraded("custom", "arbitrary TUI components require a Cake artifact or widget fallback"); return undefined as never; },
+    pasteToEditor(text) { editorText += text; options.emit({ kind: "editor-text", text, mode: "insert" }); },
+    setEditorText(text) { editorText = text; options.emit({ kind: "editor-text", text, mode: "replace" }); },
+    getEditorText: () => editorText,
+    editor: (title, prefill) => dialog({ kind: "editor", title, message: title, initialValue: prefill ?? "", multiline: true }),
+    addAutocompleteProvider() { degraded("addAutocompleteProvider", "terminal autocomplete providers cannot attach to the web composer"); },
+    setEditorComponent() { degraded("setEditorComponent", "terminal editor components cannot replace the web composer"); },
+    getEditorComponent: () => undefined,
+    get theme() { degraded("theme", "Pi TUI themes are not Cake renderer themes"); return unsupported("theme"); },
+    getAllThemes: () => [],
+    getTheme(name) { degraded("getTheme", `Pi TUI theme ${name} is unavailable`); return undefined; },
+    setTheme() { degraded("setTheme", "extensions cannot replace Cake's renderer theme"); return { success: false, error: "Pi TUI themes are unavailable in Cake" }; },
+    getToolsExpanded: () => false,
+    setToolsExpanded() { degraded("setToolsExpanded", "tool expansion is controlled by the Cake transcript"); }
+  };
+}
+
 export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<CakeRuntime> {
   const agentDir = options.agentDir ?? getAgentDir();
   const settingsManager = SettingsManager.create(options.cwd, agentDir, { projectTrusted: options.trusted });
@@ -252,20 +386,24 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   let disposed = false;
   let activeStreamId = "stream-0";
   let streamIndex = 0;
+  const catalog = compatibilityCatalog(resourceLoader, settingsManager, options.cwd, agentDir);
+  const extensionUiState: ExtensionUiState = { statuses: [], widgets: [] };
+  const compatibilityDiagnosticKeys = new Set(catalog.diagnostics.map((item) => `${item.method ?? ""}:${item.message}`));
 
   const requestExtensionValue = async (request: RuntimeUiRequest) => options.requestUi(request);
-  const extensionUi = createExtensionUiContext(async (title, message, signal) =>
-    (await requestExtensionValue({ kind: "confirm", title, message, signal })) === "true"
-  );
-  extensionUi.select = async (title, values, dialogOptions) => requestExtensionValue({
-    kind: "select",
-    title,
-    message: title,
-    options: values.map((value) => ({ id: value, label: value })),
-    signal: dialogOptions?.signal
+  const extensionUi = createCakeExtensionUiContext({
+    request: requestExtensionValue,
+    state: extensionUiState,
+    emit: (event) => { if (!disposed) options.onEvent({ type: "extension-ui", sessionId: session.sessionId, event }); },
+    addDiagnostic(method, message) {
+      const key = `${method}:${message}`;
+      if (compatibilityDiagnosticKeys.has(key)) return;
+      compatibilityDiagnosticKeys.add(key);
+      const diagnostic: ResourceDiagnostic = { id: `compatibility:${method}:${compatibilityDiagnosticKeys.size}`, severity: "warning", source: "compatibility", method, message };
+      catalog.diagnostics.push(diagnostic);
+      if (!disposed) options.onEvent({ type: "extension-ui", sessionId: session.sessionId, event: { kind: "diagnostic", diagnostic } });
+    }
   });
-  extensionUi.input = async (title, placeholder, dialogOptions) => requestExtensionValue({ kind: "text", title, message: title, placeholder, signal: dialogOptions?.signal });
-  extensionUi.editor = async (title, prefill) => requestExtensionValue({ kind: "text", title, message: title, placeholder: prefill });
   await session.bindExtensions({ mode: "rpc", uiContext: extensionUi });
 
   async function modelOptions(): Promise<ModelOption[]> {
@@ -284,8 +422,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   }
 
   async function makeSnapshot(): Promise<SessionSnapshot> {
-    const sessions = await SessionManager.list(options.cwd, options.sessionDir);
-    const idsByPath = new Map(sessions.map((item) => [item.path, item.id]));
+    const sessions = await listWorkspaceSessions(options.cwd, options.sessionDir);
     return {
       workspacePath: options.cwd,
       sessionId: session.sessionId,
@@ -300,15 +437,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         ...extensionsResult.errors.map((error) => `${error.path}: ${error.error}`),
         ...(modelFallbackMessage ? [modelFallbackMessage] : [])
       ],
-      sessions: sessions.map((item) => ({
-        id: item.id,
-        title: item.name || item.firstMessage || "New chat",
-        created: item.created.toISOString(),
-        modified: item.modified.toISOString(),
-        messageCount: item.messageCount,
-        parentSessionId: item.parentSessionPath ? idsByPath.get(item.parentSessionPath) : undefined,
-        archived: false
-      })),
+      compatibility: catalog,
+      extensionUi: extensionUiState,
+      sessions,
       tree: projectTree(session.sessionManager)
     };
   }
@@ -471,7 +602,7 @@ function unsupported(name: string): never {
   throw new Error(`Pi extension UI method ${name} is not supported by the S0 Cake adapter`);
 }
 
-function createExtensionUiContext(
+function createFoundationUiContext(
   requestConfirm: FoundationRuntimeOptions["requestConfirm"]
 ): ExtensionUIContext {
   const noop = () => undefined;
@@ -562,7 +693,7 @@ export async function createFoundationRuntime(
 
   await session.bindExtensions({
     mode: "rpc",
-    uiContext: createExtensionUiContext(options.requestConfirm)
+    uiContext: createFoundationUiContext(options.requestConfirm)
   });
   options.onEvent({ type: "session-ready", sessionId: session.sessionId });
 

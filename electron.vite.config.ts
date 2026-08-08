@@ -27,6 +27,9 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(import.meta.dirname, "src/renderer"),
+    esbuild: {
+      target: "es2022"
+    },
     resolve: {
       alias: {
         "@": resolve(import.meta.dirname, "src/renderer")

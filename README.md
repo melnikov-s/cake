@@ -1,5 +1,17 @@
 # Cake
 
+## Development
+
+Run `pnpm dev` for the normal Electron development loop. Renderer changes use
+Vite hot module replacement; the watch flag rebuilds changes to the main process
+or preload and restarts the Electron process automatically.
+
+Run `pnpm dev:agent` when an automation agent also needs to inspect or navigate
+the Electron renderer. It exposes the development-only Chrome DevTools Protocol
+endpoint at `http://127.0.0.1:9222`; Playwright can attach with
+`chromium.connectOverCDP("http://127.0.0.1:9222")`. Do not expose that port in a
+packaged build.
+
 Cake is a minimal Electron desktop coding agent powered by Pi. The eight
 implementation work items for **Stage S1 — Pi-backed desktop chat** are now in
 place; live-provider acceptance verification remains opt-in before the stage is

@@ -10,7 +10,8 @@
   },
   "scripts": {
     "build": "electron-vite build",
-    "dev": "electron-vite dev",
+    "dev": "electron-vite dev --watch",
+    "dev:agent": "electron-vite dev --watch --remoteDebuggingPort 9222",
     "lint": "eslint .",
     "postinstall": "install-electron",
     "start": "electron-vite preview",

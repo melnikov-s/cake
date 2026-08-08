@@ -10,6 +10,7 @@ import {
   type CakeRuntime,
   type FoundationRuntime
 } from "../../../src/agent/pi-runtime";
+import { sessionSnapshotSchema } from "../../../src/ipc/session-contract";
 
 const temporaryDirectories: string[] = [];
 const runtimes: Array<FoundationRuntime | CakeRuntime> = [];
@@ -147,5 +148,81 @@ describe("S1 Pi runtime", () => {
     runtimes.push(isolated);
     expect(isolated.sessionId).not.toBe(second.sessionId);
     expect((await isolated.snapshot()).parts).toEqual([]);
+  });
+});
+
+describe("S3 Pi ecosystem compatibility", () => {
+  it("discovers packaged resources and projects primitive and degraded extension UI", async () => {
+    const directory = await createTemporaryDirectory();
+    const agentDir = join(directory, "agent");
+    const packageDir = join(directory, "fixture-package");
+    await mkdir(join(directory, ".pi"), { recursive: true });
+    await mkdir(join(packageDir, "extensions"), { recursive: true });
+    await mkdir(join(packageDir, "skills", "fixture-skill"), { recursive: true });
+    await mkdir(join(packageDir, "prompts"), { recursive: true });
+    await writeFile(join(directory, ".pi", "settings.json"), JSON.stringify({ packages: [packageDir] }));
+    await writeFile(join(packageDir, "package.json"), JSON.stringify({ name: "cake-compat-fixture", version: "1.0.0", pi: { extensions: ["extensions/compat.ts"], skills: ["skills"], prompts: ["prompts"] } }));
+    await writeFile(join(packageDir, "skills", "fixture-skill", "SKILL.md"), "---\nname: fixture-skill\ndescription: Fixture skill\n---\nUse the fixture.\n");
+    await writeFile(join(packageDir, "prompts", "fixture-prompt.md"), "---\ndescription: Fixture prompt\n---\nFixture prompt body.\n");
+    await writeFile(join(packageDir, "extensions", "compat.ts"), `
+export default function (pi) {
+  pi.registerProvider("fixture-provider", { baseUrl: "http://127.0.0.1:9/v1", apiKey: "fixture", api: "openai-completions", models: [{ id: "fixture-model", name: "Fixture model", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 4096, maxTokens: 1024 }] });
+  pi.registerTool({ name: "mcp_fixture_lookup", label: "MCP fixture", description: "Headless MCP-style fixture", parameters: { type: "object", properties: {} }, async execute() { return { content: [{ type: "text", text: "ok" }], details: {} }; } });
+  pi.registerCommand("cake-compat", { description: "Exercise desktop primitives", async handler(_args, ctx) {
+    ctx.ui.notify("Fixture notification", "warning");
+    ctx.ui.setStatus("fixture", "Ready");
+    ctx.ui.setTitle("Fixture title");
+    ctx.ui.setEditorText("fixture draft");
+    ctx.ui.setWidget("fixture-widget", ["line one", "line two"], { placement: "belowEditor" });
+    await ctx.ui.select("Choose", ["one", "two"]);
+    await ctx.ui.input("Input", "placeholder");
+    await ctx.ui.editor("Editor", "prefill");
+    ctx.ui.setFooter(() => ({ render: () => [], invalidate() {} }));
+    await ctx.ui.custom(() => ({ render: () => [], invalidate() {} }));
+  } });
+}
+`);
+    const events: Array<{ type: string; event?: { kind: string } }> = [];
+    const requests: string[] = [];
+    const runtime = await createCakeRuntime({
+      cwd: directory, agentDir, sessionDir: join(directory, "sessions"), trusted: true,
+      requestUi: async (request) => { requests.push(request.kind); return request.kind === "select" ? "one" : request.kind === "editor" ? "edited" : "value"; },
+      onEvent: (event) => events.push(event)
+    });
+    runtimes.push(runtime);
+
+    const firstSnapshot = await runtime.snapshot();
+    expect(() => sessionSnapshotSchema.parse(firstSnapshot)).not.toThrow();
+    const catalog = firstSnapshot.compatibility;
+    expect(catalog.resources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "package", name: packageDir }),
+      expect.objectContaining({ kind: "skill", name: "fixture-skill" }),
+      expect.objectContaining({ kind: "prompt", name: "fixture-prompt" }),
+      expect.objectContaining({ kind: "extension", commands: ["cake-compat"], tools: ["mcp_fixture_lookup"] })
+    ]));
+    expect(firstSnapshot.models).toEqual(expect.arrayContaining([expect.objectContaining({ provider: "fixture-provider", id: "fixture-model" })]));
+
+    await runtime.prompt("/cake-compat", "prompt", []);
+    const snapshot = await runtime.snapshot();
+    expect(requests).toEqual(["select", "text", "editor"]);
+    expect(snapshot.extensionUi).toMatchObject({ title: "Fixture title", statuses: [{ key: "fixture", text: "Ready" }], widgets: [{ key: "fixture-widget", lines: ["line one", "line two"], placement: "belowEditor" }] });
+    expect(events.some((event) => event.type === "extension-ui" && event.event?.kind === "notify")).toBe(true);
+    expect(snapshot.compatibility.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: "compatibility", method: "setFooter" }),
+      expect.objectContaining({ source: "compatibility", method: "custom" })
+    ]));
+  });
+
+  it("loads Pi's shipped subagent extension unchanged when available", async () => {
+    const directory = await createTemporaryDirectory();
+    const agentDir = join(directory, "agent");
+    const packageRoot = join(process.cwd(), "node_modules", "@earendil-works", "pi-coding-agent");
+    const subagentPath = join(packageRoot, "examples", "extensions", "subagent", "index.ts");
+    await mkdir(join(directory, ".pi"), { recursive: true });
+    await writeFile(join(directory, ".pi", "settings.json"), JSON.stringify({ packages: [subagentPath] }));
+    const runtime = await createCakeRuntime({ cwd: directory, agentDir, sessionDir: join(directory, "sessions"), trusted: true, requestUi: async () => undefined, onEvent: () => undefined });
+    runtimes.push(runtime);
+    const extension = (await runtime.snapshot()).compatibility.resources.find((item) => item.kind === "extension" && item.path?.includes("subagent"));
+    expect(extension?.tools).toContain("subagent");
   });
 });

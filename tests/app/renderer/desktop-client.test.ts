@@ -11,6 +11,7 @@ function createBridge() {
     if (input.type === "get-home-directory") return { type: "home-directory", path: "/home/user" };
     if (input.type === "choose-attachments") return { type: "attachments-chosen", attachments: [] };
     if (input.type === "load-window-state") return { type: "window-state-loaded", state: { draft: "", recentProjectPaths: [], trustedProjectPaths: [], theme: "system", thinkingExpanded: false, sessionSearch: "", draftsBySession: {} } };
+    if (input.type === "list-sessions") return { type: "sessions-listed", sessions: [] };
     return { type: "window-state-saved" };
   });
   const bridge: CakeDesktopBridge = {
@@ -27,6 +28,7 @@ describe("desktop client", () => {
     const operationId = crypto.randomUUID();
 
     expect(await client.chooseProject()).toBe("/project");
+    expect(await client.listSessions()).toEqual([]);
     await client.openWorkspace({ operationId, path: "/project", trusted: true });
 
     expect(desktop.request).toHaveBeenCalledWith({ type: "open-workspace", requestId: operationId, path: "/project", trusted: true, newSession: false, sessionId: undefined, sessionFile: undefined });

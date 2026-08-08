@@ -4,6 +4,7 @@ import { MessageModel } from "./message";
 import { ModelOptionModel } from "./model-option";
 import { SessionSummaryModel } from "./session-summary";
 import { SessionTreeNodeModel } from "./session-tree-node";
+import { CompatibilityResourceModel, ResourceDiagnosticModel } from "./compatibility-resource";
 
 export class SessionModel extends Model {
   @state workspacePath = "";
@@ -16,6 +17,8 @@ export class SessionModel extends Model {
   @state availableThinkingLevels: ThinkingLevel[] = observable([]);
   @state streaming = false;
   @state diagnostics: string[] = observable([]);
+  @child(CompatibilityResourceModel) resources: CompatibilityResourceModel[] = observable([]);
+  @child(ResourceDiagnosticModel) resourceDiagnostics: ResourceDiagnosticModel[] = observable([]);
   @child(SessionSummaryModel) sessions: SessionSummaryModel[] = observable([]);
   @child(SessionTreeNodeModel) tree: SessionTreeNodeModel[] = observable([]);
 
@@ -25,6 +28,10 @@ export class SessionModel extends Model {
 
   get uiParts(): UiPart[] {
     return this.parts.map((part) => part.value);
+  }
+
+  get compatibility(): SessionSnapshot["compatibility"] {
+    return { resources: this.resources.map((item) => item.value), diagnostics: this.resourceDiagnostics.map((item) => item.value) };
   }
 
   applySnapshot(snapshot: SessionSnapshot) {
@@ -40,9 +47,11 @@ export class SessionModel extends Model {
         diagnostics: snapshot.diagnostics
       } as Snapshot<this>);
       reconcileChildren(this.parts, snapshot.parts, MessageModel);
-      reconcileChildren(this.models, snapshot.models, ModelOptionModel);
+      reconcileModelOptions(this.models, snapshot.models);
       reconcileChildren(this.sessions, snapshot.sessions, SessionSummaryModel);
       reconcileChildren(this.tree, snapshot.tree, SessionTreeNodeModel);
+      reconcileChildren(this.resources, snapshot.compatibility.resources, CompatibilityResourceModel);
+      reconcileChildren(this.resourceDiagnostics, snapshot.compatibility.diagnostics, ResourceDiagnosticModel);
     });
   }
 
@@ -63,6 +72,17 @@ export class SessionModel extends Model {
   setStreaming(streaming: boolean) {
     this.streaming = streaming;
   }
+}
+
+function reconcileModelOptions(target: ModelOptionModel[], snapshots: SessionSnapshot["models"]) {
+  const key = (value: { provider: string; id: string }) => `${value.provider}/${value.id}`;
+  const existing = new Map(target.map((model) => [key(model), model]));
+  const next = snapshots.map((snapshot) => {
+    const model = existing.get(key(snapshot)) ?? ModelOptionModel.create(snapshot as Snapshot<ModelOptionModel>);
+    if (existing.has(key(snapshot))) applySnapshot(model, snapshot as Snapshot<ModelOptionModel>);
+    return model;
+  });
+  target.splice(0, target.length, ...next);
 }
 
 type ChildConstructor<T extends Model> = {

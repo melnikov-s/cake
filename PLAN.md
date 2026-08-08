@@ -1,7 +1,7 @@
 # Cake: Living Product and Implementation Plan
 
 > **Status:** Draft implementation specification
-> **Last updated:** 2026-08-07
+> **Last updated:** 2026-08-08
 > **Purpose:** This is the canonical description of Cake. An agent should be able to read this document, understand the product vision and architectural constraints, select the next incomplete milestone, and implement it without reconstructing the original product conversation.
 
 ## How to use and maintain this document
@@ -755,6 +755,7 @@ Current S2 checkpoint (2026-08-07):
 
 ### Stage S3 — Pi ecosystem compatibility
 
+**Status:** Complete (2026-08-08)
 **Depends on:** S2
 **Workstream:** Can proceed in parallel with S4 after S2.
 **Outcome:** Existing Pi packages retain useful behavior and their compatibility level is transparent.
@@ -774,6 +775,31 @@ Acceptance checks:
 - Primitive extension dialogs and widgets work through Cake UI.
 - Unsupported TUI functionality produces an actionable diagnostic rather than a false success.
 - Reloading or replacing a session does not leak extension state into another session.
+
+Current S3 checkpoint (2026-08-08):
+
+- Cake surfaces Pi-owned skills, prompt templates, packages, extensions,
+  registered commands/tools, source scope, load errors, collisions, and
+  compatibility diagnostics through a validated resource catalog and the
+  `/resources` desktop pane. Pi remains authoritative; renderer child Models
+  are projections and no resource catalog is persisted by Cake.
+- The extension UI adapter implements select, confirm, input, multiline editor,
+  notifications, keyed status, title, editor replacement/insertion, and legacy
+  string widgets. Dialog abort, timeout, correlation, operation cleanup, and
+  workspace-driver disposal resolve pending requests safely.
+- TUI-only component factories, headers, footers, custom editors, autocomplete,
+  raw terminal input, terminal themes, and working-indicator customization emit
+  visible deduplicated diagnostics rather than false success. The stable
+  compatibility and ownership contract is documented in
+  `docs/architecture/s3-pi-compatibility.md`.
+- Deterministic fixtures load a local Pi package with a skill, prompt, headless
+  tool, command, and custom provider, plus Pi's shipped subagent extension
+  unchanged. Pi 0.84.0 has no shipped MCP extension fixture, so an MCP-shaped
+  headless tool covers that compatibility seam without claiming an unavailable
+  concrete package. Store and driver tests prove stale-session rejection,
+  replacement cleanup, and pending-dialog disposal. An Electron smoke verifies
+  the real resource pane, dialog, notification, status, title, editor-text,
+  legacy-widget, and degraded-diagnostic path. S3 is complete.
 
 ### Stage S4 — Rich artifact protocol
 
