@@ -77,6 +77,9 @@ test("opens a durable Pi session in the sandboxed S1 desktop and survives agent 
     await expect(page.getByText(/Agent (stopped|failed)/)).toBeVisible();
     await expect(page.getByLabel("Message")).toHaveValue("Persist this draft");
     expect(page.isClosed()).toBe(false);
+    await page.getByRole("button", { name: "Restart and reopen" }).click();
+    await expect(page.getByText("Agent ready", { exact: true })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByLabel("Message")).toHaveValue("Persist this draft", { timeout: 20_000 });
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

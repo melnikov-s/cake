@@ -10,7 +10,7 @@ function createBridge() {
     if (input.type === "choose-project") return { type: "project-chosen", path: "/project" };
     if (input.type === "get-home-directory") return { type: "home-directory", path: "/home/user" };
     if (input.type === "choose-attachments") return { type: "attachments-chosen", attachments: [] };
-    if (input.type === "load-window-state") return { type: "window-state-loaded", state: { draft: "", recentProjectPaths: [], trustedProjectPaths: [], theme: "system", thinkingExpanded: false } };
+    if (input.type === "load-window-state") return { type: "window-state-loaded", state: { draft: "", recentProjectPaths: [], trustedProjectPaths: [], theme: "system", thinkingExpanded: false, sessionSearch: "", activeSurface: "chat", draftsBySession: {} } };
     return { type: "window-state-saved" };
   });
   const bridge: CakeDesktopBridge = {
@@ -29,7 +29,7 @@ describe("desktop client", () => {
     expect(await client.chooseProject()).toBe("/project");
     await client.openWorkspace({ operationId, path: "/project", trusted: true });
 
-    expect(desktop.request).toHaveBeenCalledWith({ type: "open-workspace", requestId: operationId, path: "/project", trusted: true, newSession: false, sessionId: undefined });
+    expect(desktop.request).toHaveBeenCalledWith({ type: "open-workspace", requestId: operationId, path: "/project", trusted: true, newSession: false, sessionId: undefined, sessionFile: undefined });
   });
 
   it("projects transport events into Cake application events", () => {

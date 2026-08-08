@@ -688,6 +688,7 @@ Current S1 checkpoint (2026-08-07):
 
 ### Stage S2 — Projects and durable sessions
 
+**Status:** Complete (2026-08-07)
 **Depends on:** S1
 **Outcome:** Cake provides the multi-project, multi-session desktop experience described in the vision.
 
@@ -706,6 +707,33 @@ Acceptance checks:
 - Two windows can view different sessions without overwriting each other's selection or drafts.
 - An agent-process crash can be restarted and its sessions reopened.
 - Forking and tree navigation match Pi semantics.
+
+Current S2 checkpoint (2026-08-07):
+
+- Cake now persists schema-versioned application metadata through an
+  `ApplicationModel`: named local projects plus Cake-only archived-session
+  identifiers. Pi JSONL remains authoritative for session names, transcripts,
+  parent/fork relationships, and branch trees. Removing a project from Cake
+  does not delete its directory or Pi sessions.
+- The desktop main process owns multiple windows and a workspace-keyed utility
+  process pool with idle retention. Each workspace process owns independent Pi
+  runtimes per open session, while each renderer `WindowStore` independently
+  owns its selected project/session, per-session drafts, search, active surface,
+  subscriptions, and stale-event filtering.
+- The session UI supports create/resume/rename/archive/restore, text search,
+  Pi-native fork and in-file tree navigation. Changed-file summaries and diffs
+  come from Git in the workspace utility process. The optional terminal is a
+  real `node-pty` shell owned and terminated by that process.
+- Agent failure exposes an explicit restart action. A restarted workspace
+  process securely reopens the selected Pi session from its validated session
+  file, resubscribes the window, and preserves its draft. Empty Pi sessions are
+  covered as well as indexed sessions.
+- Deterministic tests cover project metadata, Pi JSONL rename/fork/tree behavior,
+  window hydration, per-session drafts, archive/search filtering, S2 intent
+  routing, changes, terminal events, and stale-session/UI-event isolation. Two
+  Playwright Electron smokes verify independent windows with different active
+  sessions and drafts, a real PTY command round-trip, sandboxing, durable reopen,
+  agent termination, restart/resubscription, and renderer survival.
 
 ### Stage S3 — Pi ecosystem compatibility
 

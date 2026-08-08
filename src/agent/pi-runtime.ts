@@ -10,12 +10,14 @@ import {
   type ExtensionUIContext,
   type InlineExtension
 } from "@earendil-works/pi-coding-agent";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type {
   Attachment,
   ModelOption,
   SessionSnapshot,
   ThinkingLevel,
-  UiPart
+  UiPart,
+  SessionTreeNode
 } from "../ipc/session-contract";
 
 export const piRuntimeVersion = "0.84.0" as const;
@@ -46,6 +48,7 @@ export interface CakeRuntimeOptions {
   sessionDir?: string;
   newSession?: boolean;
   sessionId?: string;
+  sessionFile?: string;
   requestUi(request: RuntimeUiRequest): Promise<string | undefined>;
   onEvent(event: CakeRuntimeEvent): void;
 }
@@ -60,6 +63,9 @@ export interface CakeRuntime {
   setThinkingLevel(level: ThinkingLevel): Promise<void>;
   login(provider: string, authType: "api_key" | "oauth"): Promise<void>;
   logout(provider: string): Promise<void>;
+  rename(name: string): Promise<void>;
+  fork(entryId: string): Promise<{ sessionId: string; sessionFile: string }>;
+  navigate(entryId: string): Promise<void>;
   dispose(): void;
 }
 
@@ -184,6 +190,29 @@ function sourceTitle(url: string) {
   }
 }
 
+function entryPreview(entry: { type: string }) {
+  const value = entry as unknown as Record<string, unknown>;
+  if (entry.type === "message") return textFromContent((value.message as { content?: unknown } | undefined)?.content).slice(0, 2_048);
+  if (entry.type === "compaction" || entry.type === "branch_summary") return String(value.summary ?? "").slice(0, 2_048);
+  if (entry.type === "session_info") return String(value.name ?? "Session renamed").slice(0, 2_048);
+  if (entry.type === "model_change") return `${String(value.provider ?? "")}/${String(value.modelId ?? "")}`;
+  return entry.type.replaceAll("_", " ");
+}
+
+function projectTree(sessionManager: SessionManager): SessionTreeNode[] {
+  const activeIds = new Set(sessionManager.getBranch().map((entry) => entry.id));
+  const visit = (node: ReturnType<SessionManager["getTree"]>[number]): SessionTreeNode => ({
+    id: node.entry.id,
+    parentId: node.entry.parentId ?? undefined,
+    type: node.entry.type,
+    label: node.label,
+    preview: entryPreview(node.entry),
+    active: activeIds.has(node.entry.id),
+    children: node.children.map(visit)
+  });
+  return sessionManager.getTree().map(visit);
+}
+
 export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<CakeRuntime> {
   const agentDir = options.agentDir ?? getAgentDir();
   const settingsManager = SettingsManager.create(options.cwd, agentDir, { projectTrusted: options.trusted });
@@ -195,15 +224,23 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   const resourceLoader = new DefaultResourceLoader({ cwd: options.cwd, agentDir, settingsManager });
   await resourceLoader.reload({ resolveProjectTrust: async () => options.trusted });
   const availableSessions = await SessionManager.list(options.cwd, options.sessionDir);
+  const allowedSessionRoot = resolve(options.sessionDir ?? join(agentDir, "sessions"));
+  let directSession: SessionManager | undefined;
+  if (options.sessionFile) {
+    const targetDirectory = resolve(dirname(options.sessionFile));
+    const pathFromRoot = relative(allowedSessionRoot, targetDirectory);
+    if (isAbsolute(pathFromRoot) || pathFromRoot.startsWith("..")) throw new Error("Session file is outside this workspace's Pi session directory");
+    directSession = SessionManager.open(options.sessionFile, options.sessionDir, options.cwd);
+  }
   const requestedSession = options.sessionId
     ? availableSessions.find((item) => item.id === options.sessionId)
     : undefined;
-  if (options.sessionId && !requestedSession) throw new Error("That session is no longer available");
+  if (options.sessionId && !requestedSession && !directSession) throw new Error("That session is no longer available");
   const sessionManager = options.newSession
     ? SessionManager.create(options.cwd, options.sessionDir)
-    : requestedSession
+    : directSession ?? (requestedSession
       ? SessionManager.open(requestedSession.path, options.sessionDir, options.cwd)
-      : SessionManager.continueRecent(options.cwd, options.sessionDir);
+      : SessionManager.continueRecent(options.cwd, options.sessionDir));
   const { session, extensionsResult, modelFallbackMessage } = await createAgentSession({
     cwd: options.cwd,
     agentDir,
@@ -248,6 +285,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
 
   async function makeSnapshot(): Promise<SessionSnapshot> {
     const sessions = await SessionManager.list(options.cwd, options.sessionDir);
+    const idsByPath = new Map(sessions.map((item) => [item.path, item.id]));
     return {
       workspacePath: options.cwd,
       sessionId: session.sessionId,
@@ -267,8 +305,11 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         title: item.name || item.firstMessage || "New chat",
         created: item.created.toISOString(),
         modified: item.modified.toISOString(),
-        messageCount: item.messageCount
-      }))
+        messageCount: item.messageCount,
+        parentSessionId: item.parentSessionPath ? idsByPath.get(item.parentSessionPath) : undefined,
+        archived: false
+      })),
+      tree: projectTree(session.sessionManager)
     };
   }
 
@@ -362,6 +403,21 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     },
     async logout(provider) {
       await modelRuntime.logout(provider);
+      await emitSnapshot();
+    },
+    async rename(name) {
+      session.setSessionName(name.trim());
+      await emitSnapshot();
+    },
+    async fork(entryId) {
+      const sessionFile = session.sessionManager.createBranchedSession(entryId);
+      if (!sessionFile) throw new Error("The current session is not persisted");
+      const forked = SessionManager.open(sessionFile, options.sessionDir, options.cwd);
+      return { sessionId: forked.getSessionId(), sessionFile };
+    },
+    async navigate(entryId) {
+      const result = await session.navigateTree(entryId, { summarize: false });
+      if (result.cancelled) throw new Error("Session tree navigation was cancelled");
       await emitSnapshot();
     },
     dispose() {

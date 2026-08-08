@@ -6,7 +6,7 @@ describe("process IPC", () => {
   it("accepts session lifecycle and prompt requests", () => {
     const requestId = crypto.randomUUID();
     expect(desktopRequestSchema.parse({ type: "open-workspace", requestId, path: "/project", trusted: true, newSession: true })).toMatchObject({ type: "open-workspace", requestId, newSession: true });
-    expect(agentCommandSchema.parse({ type: "prompt", requestId, text: "hello", delivery: "prompt", attachments: [] })).toMatchObject({ text: "hello" });
+    expect(agentCommandSchema.parse({ type: "prompt", requestId, workspacePath: "/project", sessionId: "session", text: "hello", delivery: "prompt", attachments: [] })).toMatchObject({ text: "hello" });
   });
 
   it("rejects oversized transcript parts", () => {
@@ -22,7 +22,7 @@ describe("process IPC", () => {
     const requestId = crypto.randomUUID();
     const uiRequestId = crypto.randomUUID();
     expect(agentEventSchema.parse({ type: "ui-request", requestId, uiRequestId, kind: "secret", title: "Sign in", message: "API key" })).toMatchObject({ uiRequestId, kind: "secret" });
-    expect(agentCommandSchema.parse({ type: "ui-response", requestId, uiRequestId, value: "secret", cancelled: false })).toMatchObject({ value: "secret" });
+    expect(agentCommandSchema.parse({ type: "ui-response", requestId, workspacePath: "/project", sessionId: "session", uiRequestId, value: "secret", cancelled: false })).toMatchObject({ value: "secret" });
   });
 
   it("rejects malformed project and UI requests", () => {

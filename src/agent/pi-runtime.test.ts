@@ -126,6 +126,14 @@ describe("S1 Pi runtime", () => {
     expect(reopenedParts.filter((part) => part.kind === "tool")).toEqual([
       expect.objectContaining({ id: "tool-call-1", name: "read", input: expect.stringContaining("README.md"), output: "result", state: "success" })
     ]);
+    expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
+    await second.rename("Named session");
+    expect((await second.snapshot()).sessions.find((item) => item.id === second.sessionId)?.title).toBe("Named session");
+    const fork = await second.fork("user-1");
+    expect(fork.sessionId).not.toBe(second.sessionId);
+    expect(fork.sessionFile).toMatch(/\.jsonl$/);
+    await second.navigate("user-1");
+    expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
 
     const isolated = await createCakeRuntime({
       cwd: directory,

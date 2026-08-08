@@ -88,7 +88,36 @@ export const sessionSummarySchema = z.object({
   title: z.string().max(1_024),
   created: z.string().datetime(),
   modified: z.string().datetime(),
-  messageCount: z.number().int().nonnegative()
+  messageCount: z.number().int().nonnegative(),
+  parentSessionId: z.string().max(256).optional(),
+  archived: z.boolean().default(false)
+});
+
+export const sessionTreeNodeSchema: z.ZodType<{
+  id: string;
+  parentId?: string;
+  type: string;
+  label?: string;
+  preview: string;
+  active: boolean;
+  children: Array<z.infer<typeof sessionTreeNodeSchema>>;
+}> = z.lazy(() => z.object({
+  id: z.string().min(1).max(256),
+  parentId: z.string().max(256).optional(),
+  type: z.string().max(128),
+  label: z.string().max(512).optional(),
+  preview: z.string().max(2_048),
+  active: z.boolean(),
+  children: z.array(sessionTreeNodeSchema).max(50_000)
+}));
+
+export const changedFileSchema = z.object({
+  path: z.string().max(4_096),
+  status: z.string().min(1).max(8),
+  staged: z.boolean(),
+  additions: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+  diff: boundedText
 });
 
 export const sessionSnapshotSchema = z.object({
@@ -102,7 +131,21 @@ export const sessionSnapshotSchema = z.object({
   availableThinkingLevels: z.array(thinkingLevelSchema).max(7),
   streaming: z.boolean(),
   diagnostics: z.array(z.string().max(4_096)).max(1_000),
-  sessions: z.array(sessionSummarySchema).max(10_000).default([])
+  sessions: z.array(sessionSummarySchema).max(10_000).default([]),
+  tree: z.array(sessionTreeNodeSchema).max(50_000).default([])
+});
+
+export const projectRecordSchema = z.object({
+  path: z.string().min(1).max(4_096),
+  name: z.string().min(1).max(512),
+  addedAt: z.string().datetime(),
+  lastOpenedAt: z.string().datetime(),
+  archivedSessionIds: z.array(z.string().max(256)).max(10_000).default([])
+});
+
+export const applicationStateSchema = z.object({
+  schemaVersion: z.literal(1).default(1),
+  projects: z.array(projectRecordSchema).max(200).default([])
 });
 
 export const windowViewStateSchema = z.object({
@@ -112,6 +155,9 @@ export const windowViewStateSchema = z.object({
   draft: z.string().max(262_144).default(""),
   theme: z.enum(["system", "light", "dark"]).default("system"),
   thinkingExpanded: z.boolean().default(false)
+  ,sessionSearch: z.string().max(1_024).default("")
+  ,activeSurface: z.enum(["chat", "changes", "terminal", "tree"]).default("chat")
+  ,draftsBySession: z.record(z.string(), z.string().max(262_144)).default({})
 });
 
 export type Attachment = z.infer<typeof attachmentSchema>;
@@ -120,4 +166,8 @@ export type ModelOption = z.infer<typeof modelOptionSchema>;
 export type ThinkingLevel = z.infer<typeof thinkingLevelSchema>;
 export type SessionSnapshot = z.infer<typeof sessionSnapshotSchema>;
 export type SessionSummary = z.infer<typeof sessionSummarySchema>;
+export type SessionTreeNode = z.infer<typeof sessionTreeNodeSchema>;
+export type ChangedFile = z.infer<typeof changedFileSchema>;
+export type ProjectRecord = z.infer<typeof projectRecordSchema>;
+export type ApplicationState = z.infer<typeof applicationStateSchema>;
 export type WindowViewState = z.infer<typeof windowViewStateSchema>;
