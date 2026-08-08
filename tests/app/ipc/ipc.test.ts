@@ -7,6 +7,7 @@ describe("process IPC", () => {
     expect(desktopRequestSchema.parse({ type: "open-workspace", requestId, path: "/project", trusted: true, newSession: true })).toMatchObject({ type: "open-workspace", requestId, newSession: true });
     expect(desktopRequestSchema.parse({ type: "prompt", requestId, workspacePath: "/project", sessionId: "session", text: "hello", delivery: "prompt", attachments: [] })).toMatchObject({ text: "hello" });
     expect(desktopRequestSchema.parse({ type: "list-sessions" })).toEqual({ type: "list-sessions" });
+    expect(desktopRequestSchema.parse({ type: "load-session", workspacePath: "/project", sessionId: "session" })).toEqual({ type: "load-session", workspacePath: "/project", sessionId: "session" });
   });
 
   it("rejects oversized transcript parts", () => {

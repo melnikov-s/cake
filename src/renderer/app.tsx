@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { forwardRef, useCallback, useEffect, useRef, useState, type ComponentProps, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import {
   Confirmation,
@@ -9,7 +9,7 @@ import {
   ConfirmationTitle
 } from "@/components/ai-elements/confirmation";
 import { Composer, ComposerInput, ComposerToolbar } from "@/components/ai-elements/composer";
-import { Conversation } from "@/components/ai-elements/conversation";
+import { Conversation, VirtualizedConversation, type VirtualizedConversationHandle } from "@/components/ai-elements/conversation";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
 import { Reasoning } from "@/components/ai-elements/reasoning";
@@ -104,6 +104,52 @@ function ActivityGroup({ parts, store }: { parts: UiPart[]; store: WindowStore }
     </details>
   );
 }
+
+const TranscriptList = forwardRef<HTMLDivElement, ComponentProps<"div">>(function TranscriptList({ className, ...props }, ref) {
+  return <div ref={ref} className={`transcript-list ${className ?? ""}`} aria-label="Conversation" {...props} />;
+});
+
+export const Transcript = observer(function Transcript({ store }: { store: WindowStore }) {
+  const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
+  const items = groupTranscriptParts(store.parts);
+  const latestUserPartId = store.parts.findLast((part) => part.kind === "text" && part.role === "user")?.id;
+
+  const scrollToLatest = useCallback(() => {
+    if (items.length === 0) return;
+    virtuosoRef.current?.scrollToIndex({ index: items.length - 1, align: "end", behavior: "auto" });
+  }, [items.length]);
+
+  useEffect(() => {
+    if (!latestUserPartId) return;
+    scrollToLatest();
+    const frame = requestAnimationFrame(scrollToLatest);
+    return () => cancelAnimationFrame(frame);
+  }, [latestUserPartId, scrollToLatest]);
+
+  if (items.length === 0) {
+    return (
+      <div className="transcript transcript-empty">
+        <Conversation><div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</Conversation>
+      </div>
+    );
+  }
+
+  return (
+    <VirtualizedConversation
+      ref={virtuosoRef}
+      className="transcript"
+      data={items}
+      computeItemKey={(_index, item) => item.id}
+      initialTopMostItemIndex={{ index: items.length - 1, align: "end" }}
+      followOutput={(isAtBottom) => isAtBottom ? "auto" : false}
+      components={{
+        List: TranscriptList,
+        Footer: () => <div className="transcript-footer">{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</div>
+      }}
+      itemContent={(_index, item) => <div className="transcript-item">{item.kind === "activity-group" ? <ActivityGroup parts={item.parts} store={store} /> : <TranscriptPart part={item} store={store} />}</div>}
+    />
+  );
+});
 
 function UiDialog({ request, store }: { request: UiRequestState; store: WindowStore }) {
   const [value, setValue] = useState(request.kind === "confirm" ? "true" : request.initialValue ?? "");
@@ -238,7 +284,7 @@ export const App = observer(function App() {
         {!store.session ? (
           <div className="welcome"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build?</h1><p>Open a project for durable workspace chats, or start a one-off chat from your home directory.</p><div><Button size="lg" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.chooseProject()}><FolderIcon /> Open project</Button><Button size="lg" variant="outline" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.startOneOffChat()}><ChatIcon /> One-off chat</Button></div>{store.error && <p className="welcome-error" role="alert">{store.error}</p>}</div>
         ) : (
-          <div className="workbench"><div className="chat-layout"><div className="transcript"><Conversation>{store.parts.length === 0 ? <div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div> : groupTranscriptParts(store.parts).map((item) => item.kind === "activity-group" ? <ActivityGroup key={item.id} parts={item.parts} store={store} /> : <TranscriptPart key={item.id} part={item} store={store} />)}{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</Conversation></div><ComposerPanel store={store} /></div></div>
+          <div className="workbench"><div className="chat-layout"><Transcript key={store.session.sessionId} store={store} /><ComposerPanel store={store} /></div></div>
         )}
       </section>
       <CommandPane store={store} />

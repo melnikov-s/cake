@@ -6,6 +6,7 @@ import {
   createCakeRuntime,
   createFoundationRuntime,
   inspectWorkspace,
+  loadWorkspaceSessionPreview,
   piRuntimeVersion,
   type CakeRuntime,
   type FoundationRuntime
@@ -109,6 +110,10 @@ describe("S1 Pi runtime", () => {
       { type: "message", id: "tool-result", parentId: "assistant-tools", timestamp, message: { role: "toolResult", toolCallId: "call-1", toolName: "read", content: [{ type: "text", text: "result" }], isError: false, timestamp: Date.now() } },
       { type: "message", id: "assistant-1", parentId: "tool-result", timestamp, message: { role: "assistant", content: [{ type: "text", text: "Hi" }], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() } }
     ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+
+    const preview = await loadWorkspaceSessionPreview(directory, first.sessionId, sessionDir);
+    expect(preview?.parts.some((part) => part.kind === "text" && part.text === "Hi")).toBe(true);
+    expect(preview?.parts.some((part) => part.kind === "tool" && part.name === "read")).toBe(true);
 
     const second = await createCakeRuntime({
       cwd: directory,

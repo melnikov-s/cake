@@ -191,6 +191,13 @@ export const sessionSnapshotSchema = z.object({
   tree: z.array(sessionTreeNodeSchema).max(50_000).default([])
 });
 
+export const sessionPreviewSchema = z.object({
+  workspacePath: z.string().max(4_096),
+  sessionId: z.string().min(1).max(256),
+  sessionFile: z.string().max(4_096),
+  parts: z.array(uiPartSchema).max(50_000)
+});
+
 export const projectRecordSchema = z.object({
   path: z.string().min(1).max(4_096),
   name: z.string().min(1).max(512),
@@ -220,6 +227,7 @@ export type UiPart = z.infer<typeof uiPartSchema>;
 export type ModelOption = z.infer<typeof modelOptionSchema>;
 export type ThinkingLevel = z.infer<typeof thinkingLevelSchema>;
 export type SessionSnapshot = z.infer<typeof sessionSnapshotSchema>;
+export type SessionPreview = z.infer<typeof sessionPreviewSchema>;
 export type SessionSummary = z.infer<typeof sessionSummarySchema>;
 export type GlobalSessionSummary = z.infer<typeof globalSessionSummarySchema>;
 export type SessionTreeNode = z.infer<typeof sessionTreeNodeSchema>;

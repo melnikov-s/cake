@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { app, BrowserWindow, dialog, ipcMain, type WebContents } from "electron";
 import { desktopRequestSchema, desktopResponseSchema, type DesktopEvent } from "../ipc/desktop-ipc";
 import { windowViewStateSchema, type Attachment, type WindowViewState } from "../ipc/session-contract";
-import { listWorkspaceSessions } from "../agent/pi-runtime";
+import { listWorkspaceSessions, loadWorkspaceSessionPreview } from "../agent/pi-runtime";
 import { ApplicationModel } from "./application-model";
 import { shouldAllowNavigation } from "./navigation-policy";
 import { PiWorkspaceDriver, type PiWorkspaceCommand } from "./pi-workspace-driver";
@@ -228,6 +228,9 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
   }
   const path = request.type === "open-workspace" || request.type === "inspect-workspace" ? request.path : request.workspacePath;
   if (!allowedProjectPaths.has(path)) throw new Error("Project path was not selected by the user");
+  if (request.type === "load-session") {
+    return desktopResponseSchema.parse({ type: "session-loaded", session: await loadWorkspaceSessionPreview(request.workspacePath, request.sessionId) });
+  }
   if (request.type === "open-workspace") {
     const previous = windowWorkspaces.get(event.sender.id);
     windowWorkspaces.set(event.sender.id, path);

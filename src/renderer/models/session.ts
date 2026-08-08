@@ -1,5 +1,5 @@
 import { Model, applySnapshot, batch, child, observable, state, type Snapshot } from "r-state-tree";
-import type { SessionSnapshot, ThinkingLevel, UiPart } from "../../ipc/session-contract";
+import type { SessionPreview, SessionSnapshot, ThinkingLevel, UiPart } from "../../ipc/session-contract";
 import { MessageModel } from "./message";
 import { ModelOptionModel } from "./model-option";
 import { SessionSummaryModel } from "./session-summary";
@@ -52,6 +52,15 @@ export class SessionModel extends Model {
       reconcileChildren(this.tree, snapshot.tree, SessionTreeNodeModel);
       reconcileChildren(this.resources, snapshot.compatibility.resources, CompatibilityResourceModel);
       reconcileChildren(this.resourceDiagnostics, snapshot.compatibility.diagnostics, ResourceDiagnosticModel);
+    });
+  }
+
+  applyPreview(preview: SessionPreview) {
+    batch(() => {
+      this.workspacePath = preview.workspacePath;
+      this.sessionId = preview.sessionId;
+      this.sessionFile = preview.sessionFile;
+      reconcileChildren(this.parts, preview.parts, MessageModel);
     });
   }
 

@@ -3,7 +3,6 @@ import { createRoot } from "react-dom/client";
 import { StoreProvider } from "r-state-tree/react";
 import { App } from "./app";
 import { createDesktopClient } from "./desktop-client";
-import { SessionModel } from "./models/session";
 import { mountRootStore } from "./stores/root-store";
 import "./styles.css";
 
@@ -19,7 +18,7 @@ if (!window.cake) {
     </main>
   );
 } else {
-  const rootStore = mountRootStore(createDesktopClient(window.cake), SessionModel.create());
+  const rootStore = mountRootStore(createDesktopClient(window.cake));
   const windowStore = rootStore.windowStore;
   root.render(
     <StrictMode>

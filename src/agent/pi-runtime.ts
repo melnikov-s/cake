@@ -21,6 +21,7 @@ import type {
   ExtensionUiState,
   ResourceDiagnostic,
   SessionSnapshot,
+  SessionPreview,
   SessionSummary,
   ThinkingLevel,
   UiPart,
@@ -45,6 +46,22 @@ export async function listWorkspaceSessions(cwd: string, sessionDir?: string): P
     parentSessionId: item.parentSessionPath ? idsByPath.get(item.parentSessionPath) : undefined,
     archived: false
   }));
+}
+
+export async function loadWorkspaceSessionPreview(cwd: string, sessionId: string, sessionDir?: string): Promise<SessionPreview | undefined> {
+  const sessions = await SessionManager.list(cwd, sessionDir);
+  const target = sessions.find((session) => session.id === sessionId);
+  if (!target) return undefined;
+  const manager = SessionManager.open(target.path, sessionDir, cwd);
+  const messages = manager.getBranch()
+    .filter((entry) => entry.type === "message")
+    .map((entry) => entry.message);
+  return {
+    workspacePath: cwd,
+    sessionId,
+    sessionFile: target.path,
+    parts: projectMessages(messages)
+  };
 }
 
 export interface RuntimeUiRequest {

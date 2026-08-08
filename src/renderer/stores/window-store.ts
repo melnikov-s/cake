@@ -14,7 +14,7 @@ import type {
   WindowViewState
 } from "../../ipc/session-contract";
 import type { DesktopClientEvent, PiState } from "../desktop-client";
-import { DesktopClientContext, SessionContext } from "./context";
+import { DesktopClientContext, SessionCacheContext } from "./context";
 
 export interface UiRequestState {
   operationId: string;
@@ -47,6 +47,7 @@ export class WindowStore extends Store<Record<string, never>> {
   pendingTrustPath: string | undefined;
   private pendingOpen: { inspectOperationId: string; path: string; newSession: boolean; sessionId?: string; sessionFile?: string } | undefined;
   private activeOpenOperationId: string | undefined;
+  private activeOpenTarget: { path: string; sessionId?: string; newSession: boolean } | undefined;
   private activeOpenExpectsEmpty = false;
   draft = "";
   theme: "system" | "light" | "dark" = "system";
@@ -91,17 +92,15 @@ export class WindowStore extends Store<Record<string, never>> {
     return client;
   }
 
-  get sessionModel() {
-    const session = SessionContext.consume(this);
-    if (!session) throw new Error("SessionContext is not provided");
-    return session;
+  get sessionCache() {
+    const sessions = SessionCacheContext.consume(this);
+    if (!sessions) throw new Error("SessionCacheContext is not provided");
+    return sessions;
   }
 
   get session() {
-    return this.sessionModel.loaded
-      && this.sessionModel.sessionId === this.selectedSessionId
-      && this.sessionModel.workspacePath === this.projectPath
-      ? this.sessionModel
+    return this.selectedSessionId && this.projectPath
+      ? this.sessionCache.find(this.selectedSessionId, this.projectPath)
       : undefined;
   }
 
@@ -114,7 +113,7 @@ export class WindowStore extends Store<Record<string, never>> {
   }
 
   get canSubmit() {
-    return Boolean(this.session && this.draft.trim() && (this.isLocalSlashCommand || this.piState === "ready"));
+    return Boolean(this.session && !this.activeOpenOperationId && this.draft.trim() && (this.isLocalSlashCommand || this.piState === "ready"));
   }
 
   get isLocalSlashCommand() {
@@ -282,12 +281,44 @@ export class WindowStore extends Store<Record<string, never>> {
       await this.chooseProject();
       return;
     }
-    await this.inspectPath(this.projectPath, true);
+    await this.openPath(this.projectPath, this.trustedProjectPaths.includes(this.projectPath), true);
   }
 
   async openSession(workspacePath: string, sessionId: string) {
     if (workspacePath === this.projectPath && sessionId === this.session?.sessionId) return;
-    await this.inspectPath(workspacePath, false, sessionId);
+    const sameWorkspace = workspacePath === this.projectPath;
+    const cached = this.showCachedSession(workspacePath, sessionId);
+    if (!cached) void this.loadSessionPreview(workspacePath, sessionId);
+    if (sameWorkspace) await this.openPath(workspacePath, this.trustedProjectPaths.includes(workspacePath), false, sessionId);
+    else await this.inspectPath(workspacePath, false, sessionId);
+  }
+
+  private async loadSessionPreview(workspacePath: string, sessionId: string) {
+    try {
+      const preview = await this.client.loadSession(workspacePath, sessionId);
+      if (!preview || this.signal.aborted) return;
+      const pendingMatches = this.pendingOpen?.path === workspacePath && this.pendingOpen.sessionId === sessionId;
+      const activeMatches = this.activeOpenTarget?.path === workspacePath && this.activeOpenTarget.sessionId === sessionId;
+      if (!pendingMatches && !activeMatches) return;
+      this.sessionCache.hydratePreview(preview);
+      this.showCachedSession(workspacePath, sessionId);
+    } catch {
+      // Runtime activation remains authoritative when the fast disk preview is unavailable.
+    }
+  }
+
+  private showCachedSession(workspacePath: string, sessionId: string) {
+    const session = this.sessionCache.find(sessionId, workspacePath);
+    if (!session) return false;
+    const previousSessionId = this.session?.sessionId;
+    if (previousSessionId) this.draftsBySession[previousSessionId] = this.draft;
+    this.projectPath = workspacePath;
+    this.selectedSessionId = sessionId;
+    this.draft = this.draftsBySession[sessionId] ?? "";
+    this.clearExtensionUi();
+    this.commandPane = undefined;
+    this.schedulePersist();
+    return true;
   }
 
   private async inspectPath(path: string, newSession = false, sessionId?: string, sessionFile?: string) {
@@ -321,8 +352,8 @@ export class WindowStore extends Store<Record<string, never>> {
     const revision = ++this.openRevision;
     const operationId = this.startOperation();
     this.activeOpenOperationId = operationId;
+    this.activeOpenTarget = { path, sessionId, newSession };
     this.activeOpenExpectsEmpty = newSession;
-    this.selectedSessionId = undefined;
     this.uiRequest = undefined;
     this.clearExtensionUi();
     this.commandPane = undefined;
@@ -333,6 +364,7 @@ export class WindowStore extends Store<Record<string, never>> {
       if (revision === this.openRevision) this.setError(error);
       if (this.activeOpenOperationId === operationId) {
         this.activeOpenOperationId = undefined;
+        this.activeOpenTarget = undefined;
         this.activeOpenExpectsEmpty = false;
       }
       this.finishOperation(operationId);
@@ -589,6 +621,10 @@ export class WindowStore extends Store<Record<string, never>> {
     this.schedulePersist();
   }
 
+  isActiveSession(workspacePath: string, sessionId: string) {
+    return this.projectPath === workspacePath && this.selectedSessionId === sessionId;
+  }
+
   acceptSessionSnapshot(event: Extract<DesktopClientEvent, { type: "session-snapshot-received" }>) {
     if (event.operationId) {
       if (event.operationId !== this.activeOpenOperationId) {
@@ -597,12 +633,14 @@ export class WindowStore extends Store<Record<string, never>> {
       }
       if (this.activeOpenExpectsEmpty && event.snapshot.parts.length > 0) {
         this.activeOpenOperationId = undefined;
+        this.activeOpenTarget = undefined;
         this.activeOpenExpectsEmpty = false;
         this.finishOperation(event.operationId);
         this.error = "Cake refused to mount history in a newly created session";
         return false;
       }
       this.activeOpenOperationId = undefined;
+      this.activeOpenTarget = undefined;
       this.activeOpenExpectsEmpty = false;
     } else if (!this.session || event.snapshot.sessionId !== this.session.sessionId || event.snapshot.workspacePath !== this.session.workspacePath) {
       return false;
@@ -619,6 +657,9 @@ export class WindowStore extends Store<Record<string, never>> {
         this.reopenAfterAgentRestart = Boolean(this.projectPath && this.session);
         if (this.reopenAfterAgentRestart) this.draftAfterAgentRestart = this.draft;
         this.activeOperations.splice(0);
+        this.activeOpenOperationId = undefined;
+        this.activeOpenTarget = undefined;
+        this.activeOpenExpectsEmpty = false;
         this.uiRequest = undefined;
       }
       if (event.state === "ready" && this.reopenAfterAgentRestart && this.projectPath && this.session) {
@@ -657,6 +698,11 @@ export class WindowStore extends Store<Record<string, never>> {
     }
     if (event.type === "operation-failed") {
       if (event.operationId) this.finishOperation(event.operationId);
+      if (event.operationId === this.activeOpenOperationId) {
+        this.activeOpenOperationId = undefined;
+        this.activeOpenTarget = undefined;
+        this.activeOpenExpectsEmpty = false;
+      }
       this.error = event.message;
     }
   }

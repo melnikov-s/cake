@@ -5,6 +5,7 @@ import type {
   ChangedFile,
   GlobalSessionSummary,
   SessionSnapshot,
+  SessionPreview,
   ThinkingLevel,
   ExtensionUiEvent,
   UiPart,
@@ -45,6 +46,7 @@ export interface DesktopClient {
   saveWindowState(state: WindowViewState): Promise<void>;
   loadApplicationState(): Promise<ApplicationState>;
   listSessions(): Promise<GlobalSessionSummary[]>;
+  loadSession(workspacePath: string, sessionId: string): Promise<SessionPreview | undefined>;
   registerProject(path: string, name: string): Promise<ApplicationState>;
   renameProject(path: string, name: string): Promise<ApplicationState>;
   removeProject(path: string): Promise<ApplicationState>;
@@ -121,6 +123,11 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       const response = await bridge.request({ type: "list-sessions" });
       if (response.type !== "sessions-listed") throw new Error("Cake received an invalid session index");
       return response.sessions;
+    },
+    async loadSession(workspacePath, sessionId) {
+      const response = await bridge.request({ type: "load-session", workspacePath, sessionId });
+      if (response.type !== "session-loaded") throw new Error("Cake received invalid session content");
+      return response.session;
     },
     async registerProject(path, name) {
       const response = await bridge.request({ type: "register-project", path, name });

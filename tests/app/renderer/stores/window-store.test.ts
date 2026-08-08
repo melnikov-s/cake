@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { SessionSnapshot } from "../../../../src/ipc/session-contract";
+import type { SessionPreview, SessionSnapshot } from "../../../../src/ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../../../../src/renderer/desktop-client";
-import { SessionModel } from "../../../../src/renderer/models/session";
 import { mountRootStore } from "../../../../src/renderer/stores/root-store";
 import type { WindowStore } from "../../../../src/renderer/stores/window-store";
 
@@ -31,6 +30,7 @@ function createDesktopClient(restoredPath?: string) {
     saveWindowState: vi.fn(async () => undefined),
     loadApplicationState: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
     listSessions: vi.fn(async () => []),
+    loadSession: vi.fn(async () => undefined),
     registerProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
     renameProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
     removeProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
@@ -60,7 +60,7 @@ async function flush() {
 }
 
 function mountTestStore(client: DesktopClient) {
-  const root = mountRootStore(client, SessionModel.create());
+  const root = mountRootStore(client);
   return { root, store: root.windowStore };
 }
 
@@ -103,8 +103,6 @@ describe("WindowStore", () => {
     expect(store.trustedProjectPaths).toContain("/project");
 
     await store.startNewSession();
-    const secondInspectId = store.activeOperations.at(-1)!;
-    desktop.emit({ type: "workspace-inspected", operationId: secondInspectId, path: "/project", trustRequired: true });
     expect(store.pendingTrustPath).toBeUndefined();
     expect(desktop.client.openWorkspace).toHaveBeenLastCalledWith(expect.objectContaining({ path: "/project", trusted: true, newSession: true }));
     root[Symbol.dispose]();
@@ -182,7 +180,7 @@ describe("WindowStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("clears the previous transcript and rejects late snapshots while opening a new session", async () => {
+  it("retains the previous transcript and rejects late snapshots while opening a new session", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
@@ -194,15 +192,13 @@ describe("WindowStore", () => {
     expect(store.parts).toHaveLength(1);
 
     await store.startNewSession();
-    const inspectId = store.activeOperations.at(-1)!;
-    desktop.emit({ type: "workspace-inspected", operationId: inspectId, path: "/project", trustRequired: false });
     const openId = store.activeOperations.at(-1)!;
-    expect(store.session).toBeUndefined();
-    expect(store.parts).toEqual([]);
+    expect(store.session?.sessionId).toBe("session-1");
+    expect(store.parts.map((part) => part.id)).toEqual(["old-tool"]);
 
     desktop.emit({ type: "session-snapshot-received", snapshot: oldSnapshot });
     desktop.emit({ type: "session-snapshot-received", operationId: crypto.randomUUID(), snapshot: oldSnapshot });
-    expect(store.parts).toEqual([]);
+    expect(store.parts.map((part) => part.id)).toEqual(["old-tool"]);
 
     const newSnapshot = { ...snapshot, sessionId: "session-2", sessionFile: "/sessions/two.jsonl" };
     desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot: newSnapshot });
@@ -218,8 +214,6 @@ describe("WindowStore", () => {
     await openSnapshot(store, desktop);
 
     await store.startNewSession();
-    const inspectId = store.activeOperations.at(-1)!;
-    desktop.emit({ type: "workspace-inspected", operationId: inspectId, path: "/project", trustRequired: false });
     const openId = store.activeOperations.at(-1)!;
     desktop.emit({
       type: "session-snapshot-received",
@@ -227,7 +221,7 @@ describe("WindowStore", () => {
       snapshot: { ...snapshot, sessionId: "contaminated", parts: [{ id: "foreign-tool", kind: "tool", name: "read", input: "", state: "success" }] }
     });
 
-    expect(store.session).toBeUndefined();
+    expect(store.session?.sessionId).toBe("session-1");
     expect(store.parts).toEqual([]);
     expect(store.error).toContain("refused to mount history");
     root[Symbol.dispose]();
@@ -257,8 +251,6 @@ describe("WindowStore", () => {
     await openSnapshot(store, desktop, { ...snapshot, sessions });
     store.setDraft("alpha draft");
     await store.openSession("/project", "session-2");
-    const inspectId = store.activeOperations.at(-1)!;
-    desktop.emit({ type: "workspace-inspected", operationId: inspectId, path: "/project", trustRequired: false });
     const openId = store.activeOperations.at(-1)!;
     desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot: { ...snapshot, sessionId: "session-2", sessions } });
     store.setDraft("beta draft");
@@ -267,8 +259,59 @@ describe("WindowStore", () => {
     expect(store.currentSessions.map((item) => item.id)).toEqual(["session-1", "session-2"]);
     store.setSessionSearch("alpha");
     expect(store.searchedSessions.map((item) => `${item.workspacePath}:${item.id}`).sort()).toEqual(["/other:session-3", "/project:session-1"]);
+    await store.openSession("/project", "session-1");
+    expect(store.session?.sessionId).toBe("session-1");
+    expect(store.draft).toBe("alpha draft");
     await store.openSession("/other", "session-3");
     expect(desktop.client.inspectWorkspace).toHaveBeenLastCalledWith(expect.objectContaining({ path: "/other" }));
+    root[Symbol.dispose]();
+  });
+
+  it("keeps inactive session models live and switches back before Pi responds", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop, { ...snapshot, parts: [{ id: "one", kind: "text", role: "assistant", text: "One", status: "complete" }] });
+
+    await store.openSession("/project", "session-2");
+    const secondOpenId = store.activeOperations.at(-1)!;
+    desktop.emit({ type: "session-snapshot-received", operationId: secondOpenId, snapshot: { ...snapshot, sessionId: "session-2", sessionFile: "/sessions/two.jsonl", parts: [{ id: "two", kind: "text", role: "assistant", text: "Two", status: "complete" }] } });
+    desktop.emit({ type: "part-updated", sessionId: "session-1", part: { id: "late-one", kind: "text", role: "assistant", text: "Still live", status: "complete" } });
+
+    await store.openSession("/project", "session-1");
+
+    expect(store.session?.sessionId).toBe("session-1");
+    expect(store.parts.map((part) => part.id)).toEqual(["one", "late-one"]);
+    expect(desktop.client.inspectWorkspace).toHaveBeenCalledTimes(1);
+    expect(desktop.client.openWorkspace).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: "session-1" }));
+    root[Symbol.dispose]();
+  });
+
+  it("shows a fast persisted preview while an uncached Pi runtime activates", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    desktop.emit({ type: "pi-state-changed", state: "ready" });
+    await openSnapshot(store, desktop);
+    desktop.client.loadSession = vi.fn(async () => ({
+      workspacePath: "/project",
+      sessionId: "session-2",
+      sessionFile: "/sessions/two.jsonl",
+      parts: [{ id: "preview", kind: "text", role: "assistant", text: "From disk", status: "complete" }]
+    } satisfies SessionPreview));
+
+    await store.openSession("/project", "session-2");
+    await flush();
+
+    expect(store.session?.sessionId).toBe("session-2");
+    expect(store.parts.map((part) => part.id)).toEqual(["preview"]);
+    store.setDraft("not ready yet");
+    expect(store.canSubmit).toBe(false);
+
+    const openId = store.activeOperations.at(-1)!;
+    desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot: { ...snapshot, sessionId: "session-2", sessionFile: "/sessions/two.jsonl", parts: [{ id: "authoritative", kind: "text", role: "assistant", text: "Ready", status: "complete" }] } });
+    expect(store.parts.map((part) => part.id)).toEqual(["authoritative"]);
+    expect(store.canSubmit).toBe(true);
     root[Symbol.dispose]();
   });
 
