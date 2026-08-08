@@ -9,8 +9,8 @@ import type {
   ThinkingLevel,
   WindowViewState
 } from "../../ipc/session-contract";
-import type { DesktopClient, DesktopClientEvent, PiState } from "../desktop-client";
-import type { SessionModel } from "../models/session";
+import type { DesktopClientEvent, PiState } from "../desktop-client";
+import { DesktopClientContext, SessionContext } from "./context";
 
 export interface UiRequestState {
   operationId: string;
@@ -22,7 +22,7 @@ export interface UiRequestState {
   options?: Array<{ id: string; label: string }>;
 }
 
-export class WindowStore extends Store<{ client: DesktopClient; session: SessionModel }> {
+export class WindowStore extends Store<Record<string, never>> {
   readonly process = "renderer" as const;
   piState: PiState = "starting";
   hydrated = false;
@@ -66,11 +66,23 @@ export class WindowStore extends Store<{ client: DesktopClient; session: Session
     return this.activeOperations.length > 0;
   }
 
+  get client() {
+    const client = DesktopClientContext.consume(this);
+    if (!client) throw new Error("DesktopClientContext is not provided");
+    return client;
+  }
+
+  get sessionModel() {
+    const session = SessionContext.consume(this);
+    if (!session) throw new Error("SessionContext is not provided");
+    return session;
+  }
+
   get session() {
-    return this.props.session.loaded
-      && this.props.session.sessionId === this.selectedSessionId
-      && this.props.session.workspacePath === this.projectPath
-      ? this.props.session
+    return this.sessionModel.loaded
+      && this.sessionModel.sessionId === this.selectedSessionId
+      && this.sessionModel.workspacePath === this.projectPath
+      ? this.sessionModel
       : undefined;
   }
 
@@ -120,7 +132,7 @@ export class WindowStore extends Store<{ client: DesktopClient; session: Session
 
   private async hydrate() {
     try {
-      const [state, application] = await Promise.all([this.props.client.loadWindowState(), this.props.client.loadApplicationState()]);
+      const [state, application] = await Promise.all([this.client.loadWindowState(), this.client.loadApplicationState()]);
       if (this.signal.aborted) return;
       this.applyApplicationState(application);
       this.projectPath = state.projectPath;
@@ -166,7 +178,7 @@ export class WindowStore extends Store<{ client: DesktopClient; session: Session
     if (this.persistTimer) clearTimeout(this.persistTimer);
     this.persistTimer = setTimeout(() => {
       this.persistTimer = undefined;
-      void this.props.client.saveWindowState(this.viewState()).catch((error) => this.setError(error));
+      void this.client.saveWindowState(this.viewState()).catch((error) => this.setError(error));
     }, 180);
   }
 
@@ -187,13 +199,13 @@ export class WindowStore extends Store<{ client: DesktopClient; session: Session
   }
 
   async chooseProject() {
-    const path = await this.props.client.chooseProject();
+    const path = await this.client.chooseProject();
     if (path && !this.signal.aborted) await this.inspectPath(path);
   }
 
   async startOneOffChat() {
     try {
-      const path = await this.props.client.getHomeDirectory();
+      const path = await this.client.getHomeDirectory();
       if (!this.signal.aborted) await this.inspectPath(path, true);
     } catch (error) {
       this.setError(error);
@@ -206,13 +218,13 @@ export class WindowStore extends Store<{ client: DesktopClient; session: Session
   }
 
   async renameProject(path: string, name: string) {
-    try { this.applyApplicationState(await this.props.client.renameProject(path, name)); }
+    try { this.applyApplicationState(await this.client.renameProject(path, name)); }
     catch (error) { this.setError(error); }
   }
 
   async removeProject(path: string) {
     try {
-      this.applyApplicationState(await this.props.client.removeProject(path));
+      this.applyApplicationState(await this.client.removeProject(path));
       if (this.projectPath === path) {
         this.projectPath = undefined;
         this.selectedSessionId = undefined;
@@ -222,7 +234,7 @@ export class WindowStore extends Store<{ client: DesktopClient; session: Session
   }
 
   async createWindow() {
-    try { await this.props.client.createWindow(); }
+    try { await this.client.createWindow(); }
     catch (error) { this.setError(error); }
   }
 
@@ -244,7 +256,7 @@ export class WindowStore extends Store<{ client: DesktopClient; session: Session
     const operationId = this.startOperation();
     this.pendingOpen = { inspectOperationId: operationId, path, newSession, sessionId, sessionFile };
     try {
-      await this.props.client.inspectWorkspace({ operationId, path });
+      await this.client.inspectWorkspace({ operationId, path });
     } catch (error) {
       if (revision === this.openRevision) this.setError(error);
       this.finishOperation(operationId);
@@ -274,8 +286,8 @@ export class WindowStore extends Store<{ client: DesktopClient; session: Session
     this.uiRequest = undefined;
     this.commandPane = undefined;
     try {
-      await this.props.client.openWorkspace({ operationId, path, trusted, newSession, sessionId, sessionFile });
-      void this.props.client.registerProject(path, this.nameFromPath(path)).then((state) => this.applyApplicationState(state)).catch((error) => this.setError(error));
+      await this.client.openWorkspace({ operationId, path, trusted, newSession, sessionId, sessionFile });
+      void this.client.registerProject(path, this.nameFromPath(path)).then((state) => this.applyApplicationState(state)).catch((error) => this.setError(error));
     } catch (error) {
       if (revision === this.openRevision) this.setError(error);
       if (this.activeOpenOperationId === operationId) {
@@ -320,20 +332,20 @@ export class WindowStore extends Store<{ client: DesktopClient; session: Session
   async refreshChanges() {
     if (!this.projectPath || this.changesLoading) return;
     const operationId = this.startOperation(); this.changesLoading = true;
-    try { await this.props.client.inspectChanges({ operationId, workspacePath: this.projectPath }); }
+    try { await this.client.inspectChanges({ operationId, workspacePath: this.projectPath }); }
     catch (error) { this.changesLoading = false; this.finishOperation(operationId); this.setError(error); }
   }
 
   async renameCurrentSession(name: string) {
     const context = this.sessionContext(); if (!context || !name.trim()) return;
     const operationId = this.startOperation();
-    try { await this.props.client.renameSession({ operationId, ...context, name: name.trim() }); }
+    try { await this.client.renameSession({ operationId, ...context, name: name.trim() }); }
     catch (error) { this.finishOperation(operationId); this.setError(error); }
   }
 
   async archiveSession(sessionId: string, archived: boolean) {
     if (!this.projectPath) return;
-    try { this.applyApplicationState(await this.props.client.archiveSession(this.projectPath, sessionId, archived)); }
+    try { this.applyApplicationState(await this.client.archiveSession(this.projectPath, sessionId, archived)); }
     catch (error) { this.setError(error); }
   }
 
@@ -341,7 +353,7 @@ export class WindowStore extends Store<{ client: DesktopClient; session: Session
     const context = this.sessionContext(); if (!context) return;
     this.closeCommandPane();
     const operationId = this.startOperation(); this.activeOpenOperationId = operationId;
-    try { await this.props.client.forkSession({ operationId, ...context, entryId }); }
+    try { await this.client.forkSession({ operationId, ...context, entryId }); }
     catch (error) { this.finishOperation(operationId); this.setError(error); }
   }
 
@@ -349,19 +361,19 @@ export class WindowStore extends Store<{ client: DesktopClient; session: Session
     const context = this.sessionContext(); if (!context) return;
     this.closeCommandPane();
     const operationId = this.startOperation();
-    try { await this.props.client.navigateSession({ operationId, ...context, entryId }); }
+    try { await this.client.navigateSession({ operationId, ...context, entryId }); }
     catch (error) { this.finishOperation(operationId); this.setError(error); }
   }
 
   async restartPi() {
     if (!this.projectPath) return;
-    try { await this.props.client.restartPi(this.projectPath); }
+    try { await this.client.restartPi(this.projectPath); }
     catch (error) { this.setError(error); }
   }
 
   async addAttachments() {
     try {
-      const selected = await this.props.client.chooseAttachments();
+      const selected = await this.client.chooseAttachments();
       if (this.signal.aborted) return;
       this.attachments.push(...selected.filter((item) => !this.attachments.some((current) => current.kind === item.kind && current.name === item.name)));
     } catch (error) {
@@ -391,7 +403,7 @@ export class WindowStore extends Store<{ client: DesktopClient; session: Session
     try {
       const context = this.sessionContext();
       if (!context) throw new Error("No active session");
-      await this.props.client.submit({ operationId, ...context, text, delivery, attachments });
+      await this.client.submit({ operationId, ...context, text, delivery, attachments });
     } catch (error) {
       this.setError(error);
       this.draft = text;
@@ -404,7 +416,7 @@ export class WindowStore extends Store<{ client: DesktopClient; session: Session
     const operationId = this.startOperation();
     try {
       const context = this.sessionContext(); if (!context) throw new Error("No active session");
-      await this.props.client.abort({ operationId, ...context });
+      await this.client.abort({ operationId, ...context });
     } catch (error) {
       this.setError(error);
       this.finishOperation(operationId);
@@ -417,7 +429,7 @@ export class WindowStore extends Store<{ client: DesktopClient; session: Session
     const operationId = this.startOperation();
     try {
       const context = this.sessionContext(); if (!context) throw new Error("No active session");
-      await this.props.client.setModel({ operationId, ...context, provider: value.slice(0, separator), modelId: value.slice(separator + 1) });
+      await this.client.setModel({ operationId, ...context, provider: value.slice(0, separator), modelId: value.slice(separator + 1) });
     } catch (error) {
       this.setError(error);
       this.finishOperation(operationId);
@@ -428,7 +440,7 @@ export class WindowStore extends Store<{ client: DesktopClient; session: Session
     const operationId = this.startOperation();
     try {
       const context = this.sessionContext(); if (!context) throw new Error("No active session");
-      await this.props.client.setThinkingLevel({ operationId, ...context, level });
+      await this.client.setThinkingLevel({ operationId, ...context, level });
     } catch (error) {
       this.setError(error);
       this.finishOperation(operationId);
@@ -439,7 +451,7 @@ export class WindowStore extends Store<{ client: DesktopClient; session: Session
     const operationId = this.startOperation();
     try {
       const context = this.sessionContext(); if (!context) throw new Error("No active session");
-      await this.props.client.login({ operationId, ...context, provider, authType });
+      await this.client.login({ operationId, ...context, provider, authType });
     } catch (error) {
       this.setError(error);
       this.finishOperation(operationId);
@@ -450,7 +462,7 @@ export class WindowStore extends Store<{ client: DesktopClient; session: Session
     const operationId = this.startOperation();
     try {
       const context = this.sessionContext(); if (!context) throw new Error("No active session");
-      await this.props.client.logout({ operationId, ...context, provider });
+      await this.client.logout({ operationId, ...context, provider });
     } catch (error) {
       this.setError(error);
       this.finishOperation(operationId);
@@ -463,7 +475,7 @@ export class WindowStore extends Store<{ client: DesktopClient; session: Session
     this.uiRequest = undefined;
     try {
       const context = this.sessionContext(); if (!context) throw new Error("No active session");
-      await this.props.client.respondToUi({ operationId: request.operationId, ...context, uiRequestId: request.uiRequestId, value, cancelled });
+      await this.client.respondToUi({ operationId: request.operationId, ...context, uiRequestId: request.uiRequestId, value, cancelled });
     } catch (error) {
       this.setError(error);
     }

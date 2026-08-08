@@ -1,19 +1,38 @@
 import { Store, child, createStore, mount } from "r-state-tree";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
-import { SessionModel } from "../models/session";
+import type { SessionModel } from "../models/session";
+import { DesktopClientContext, SessionContext } from "./context";
 import { WindowStore } from "./window-store";
 
-export class RootStore extends Store<{ client: DesktopClient }> {
-  session = SessionModel.create();
+export class RootStore extends Store<{ client: DesktopClient; session: SessionModel }> {
+  [DesktopClientContext.provide]() {
+    return this.props.client;
+  }
+
+  [SessionContext.provide]() {
+    return this.props.session;
+  }
+
+  get client() {
+    const client = DesktopClientContext.consume(this);
+    if (!client) throw new Error("DesktopClientContext is not provided");
+    return client;
+  }
+
+  get session() {
+    const session = SessionContext.consume(this);
+    if (!session) throw new Error("SessionContext is not provided");
+    return session;
+  }
 
   @child
   get windowStore() {
-    return createStore(WindowStore, { client: this.props.client, session: this.session });
+    return createStore(WindowStore);
   }
 
   constructor(props: RootStore["props"]) {
     super(props);
-    this.effect(() => this.props.client.subscribe((event) => this.receive(event)));
+    this.effect(() => this.client.subscribe((event) => this.receive(event)));
     this.effect(() => () => this.session[Symbol.dispose]());
   }
 
@@ -41,6 +60,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   }
 }
 
-export function mountRootStore(client: DesktopClient) {
-  return mount(createStore(RootStore, { client }));
+export function mountRootStore(client: DesktopClient, session: SessionModel) {
+  return mount(createStore(RootStore, { client, session }));
 }

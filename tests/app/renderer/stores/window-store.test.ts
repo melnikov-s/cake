@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SessionSnapshot } from "../../../../src/ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../../../../src/renderer/desktop-client";
+import { SessionModel } from "../../../../src/renderer/models/session";
 import { mountRootStore } from "../../../../src/renderer/stores/root-store";
 import type { WindowStore } from "../../../../src/renderer/stores/window-store";
 
@@ -56,7 +57,7 @@ async function flush() {
 }
 
 function mountTestStore(client: DesktopClient) {
-  const root = mountRootStore(client);
+  const root = mountRootStore(client, SessionModel.create());
   return { root, store: root.windowStore };
 }
 
