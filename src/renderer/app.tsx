@@ -17,7 +17,7 @@ import { Source } from "@/components/ai-elements/source";
 import { Tool } from "@/components/ai-elements/tool";
 import { Button } from "@/components/ui/button";
 import type { UiPart } from "../ipc/session-contract";
-import { WindowStore, type UiRequestState } from "./window-store";
+import { WindowStore, type UiRequestState } from "./stores/window-store";
 
 function Icon({ children, size = 16 }: { children: ReactNode; size?: number }) {
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { SessionSnapshot } from "../ipc/session-contract";
-import type { DesktopClient, DesktopClientEvent } from "./desktop-client";
+import type { SessionSnapshot } from "../../ipc/session-contract";
+import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import { mountWindowStore } from "./window-store";
 
 const snapshot: SessionSnapshot = {

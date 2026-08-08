@@ -6,8 +6,8 @@ import type {
   ThinkingLevel,
   UiPart,
   WindowViewState
-} from "../ipc/session-contract";
-import type { AgentState, DesktopClient, DesktopClientEvent } from "./desktop-client";
+} from "../../ipc/session-contract";
+import type { AgentState, DesktopClient, DesktopClientEvent } from "../desktop-client";
 
 export interface UiRequestState {
   operationId: string;

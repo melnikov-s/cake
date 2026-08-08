@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { StoreProvider } from "r-state-tree/react";
 import { App } from "./app";
 import { createDesktopClient } from "./desktop-client";
-import { mountWindowStore } from "./window-store";
+import { mountWindowStore } from "./stores/window-store";
 import "./styles.css";
 
 const root = createRoot(document.getElementById("root")!);
