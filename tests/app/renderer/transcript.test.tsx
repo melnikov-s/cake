@@ -1,14 +1,15 @@
 /**
  * @vitest-environment jsdom
  */
-import React, { act, forwardRef, useImperativeHandle } from "react";
+import React, { act, forwardRef, useEffect, useImperativeHandle } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UiPart } from "../../../src/ipc/session-contract";
 import type { WindowStore } from "../../../src/renderer/stores/window-store";
 
-const { scrollToIndex, virtualizedProps } = vi.hoisted(() => ({
+const { scrollToIndex, virtualizedLifecycle, virtualizedProps } = vi.hoisted(() => ({
   scrollToIndex: vi.fn(),
+  virtualizedLifecycle: vi.fn(),
   virtualizedProps: { current: undefined as undefined | Record<string, unknown> }
 }));
 
@@ -23,6 +24,10 @@ vi.mock("@/components/ai-elements/conversation", () => ({
   ) {
     virtualizedProps.current = props as unknown as Record<string, unknown>;
     useImperativeHandle(ref, () => ({ scrollToIndex }));
+    useEffect(() => {
+      virtualizedLifecycle("mounted");
+      return () => virtualizedLifecycle("unmounted");
+    }, []);
     return <div>{props.data.map((item, index) => <React.Fragment key={item.id}>{props.itemContent(index, item)}</React.Fragment>)}</div>;
   })
 }));
@@ -47,6 +52,7 @@ describe("Transcript scrolling", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     scrollToIndex.mockClear();
+    virtualizedLifecycle.mockClear();
   });
 
   afterEach(() => {
@@ -60,7 +66,7 @@ describe("Transcript scrolling", () => {
       { id: "assistant-2", kind: "text", role: "assistant", text: "Latest", status: "complete" }
     ];
 
-    act(() => root.render(<Transcript store={storeWith(parts)} />));
+    act(() => root.render(<Transcript sessionId="session-1" store={storeWith(parts)} />));
 
     expect(virtualizedProps.current?.initialTopMostItemIndex).toEqual({ index: 1, align: "end" });
     const followOutput = virtualizedProps.current?.followOutput as (isAtBottom: boolean) => "auto" | false;
@@ -72,10 +78,22 @@ describe("Transcript scrolling", () => {
     const assistant: UiPart = { id: "assistant-1", kind: "text", role: "assistant", text: "First", status: "complete" };
     const user: UiPart = { id: "user-1", kind: "text", role: "user", text: "My message", status: "complete" };
 
-    act(() => root.render(<Transcript store={storeWith([assistant])} />));
+    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([assistant])} />));
     scrollToIndex.mockClear();
-    act(() => root.render(<Transcript store={storeWith([assistant, user])} />));
+    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([assistant, user])} />));
 
     expect(scrollToIndex).toHaveBeenCalledWith({ index: 1, align: "end", behavior: "auto" });
+  });
+
+  it("updates a selected session without remounting the virtualized transcript", () => {
+    const first: UiPart = { id: "assistant-1", kind: "text", role: "assistant", text: "First session", status: "complete" };
+    const second: UiPart = { id: "assistant-2", kind: "text", role: "assistant", text: "Second session", status: "complete" };
+
+    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([first])} />));
+    scrollToIndex.mockClear();
+    act(() => root.render(<Transcript sessionId="session-2" store={storeWith([second])} />));
+
+    expect(virtualizedLifecycle.mock.calls).toEqual([["mounted"]]);
+    expect(scrollToIndex).toHaveBeenCalledWith({ index: 0, align: "end", behavior: "auto" });
   });
 });

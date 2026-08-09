@@ -28,7 +28,9 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(page.getByRole("button", { name: "New chat in project" })).toBeVisible();
     await expect(page.getByLabel("Model")).toBeVisible();
     await expect(page.getByLabel("Thinking level")).toBeVisible();
+    await page.locator(".sidebar").getByLabel("Open settings").click();
     await expect(page.getByLabel("Color theme")).toHaveValue("system");
+    await page.getByLabel("Back to chat").click();
     await page.evaluate(() => {
       const longTitle = `Investigate-${"very-long-session-name-".repeat(500)}`;
       const headerTitle = document.querySelector<HTMLElement>(".workspace-header strong");

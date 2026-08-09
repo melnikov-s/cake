@@ -220,8 +220,9 @@ export class WindowStore extends Store<Record<string, never>> {
     const names = new Map(state.projects.map((project) => [project.path, project.name]));
     const renamedSessions = this.globalSessions.map((session) => ({ ...session, workspaceName: names.get(session.workspacePath) ?? session.workspaceName }));
     this.globalSessions.splice(0, this.globalSessions.length, ...renamedSessions);
-    const paths = state.projects.map((project) => project.path);
-    for (const path of this.recentProjectPaths) if (!paths.includes(path)) paths.push(path);
+    const registeredPaths = new Set(state.projects.map((project) => project.path));
+    const paths = this.recentProjectPaths.filter((path) => registeredPaths.has(path));
+    for (const project of state.projects) if (!paths.includes(project.path)) paths.push(project.path);
     this.recentProjectPaths.splice(0, this.recentProjectPaths.length, ...paths);
   }
 
@@ -648,10 +649,7 @@ export class WindowStore extends Store<Record<string, never>> {
     const workspaceSessions = snapshot.sessions.map((session) => ({ ...session, workspacePath: snapshot.workspacePath, workspaceName }));
     this.globalSessions.splice(0, this.globalSessions.length, ...otherSessions, ...workspaceSessions);
     this.globalSessions.sort((left, right) => right.modified.localeCompare(left.modified));
-    const existing = this.recentProjectPaths.indexOf(snapshot.workspacePath);
-    if (existing >= 0) this.recentProjectPaths.splice(existing, 1);
-    this.recentProjectPaths.unshift(snapshot.workspacePath);
-    if (this.recentProjectPaths.length > 12) this.recentProjectPaths.splice(12);
+    if (!this.recentProjectPaths.includes(snapshot.workspacePath)) this.recentProjectPaths.push(snapshot.workspacePath);
     this.schedulePersist();
   }
 

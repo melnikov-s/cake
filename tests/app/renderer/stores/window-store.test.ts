@@ -283,6 +283,47 @@ describe("WindowStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("keeps project order stable when selecting a project", async () => {
+    const desktop = createDesktopClient();
+    const projects = ["/first", "/second", "/third"].map((path) => ({
+      path,
+      name: path.slice(1),
+      addedAt: new Date(0).toISOString(),
+      lastOpenedAt: new Date(0).toISOString(),
+      archivedSessionIds: []
+    }));
+    const applicationState = { schemaVersion: 1 as const, projects };
+    desktop.client.loadApplicationState = vi.fn(async () => applicationState);
+    desktop.client.loadWindowState = vi.fn(async () => ({
+      projectPath: "/first",
+      recentProjectPaths: projects.map((project) => project.path),
+      trustedProjectPaths: [],
+      draft: "",
+      theme: "system" as const,
+      thinkingExpanded: false,
+      sessionSearch: "",
+      draftsBySession: {}
+    }));
+    desktop.client.registerProject = vi.fn(async () => applicationState);
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+
+    await store.switchProject("/third");
+    const inspectId = store.activeOperations.at(-1)!;
+    desktop.emit({ type: "workspace-inspected", operationId: inspectId, path: "/third", trustRequired: false });
+    const openId = store.activeOperations.at(-1)!;
+    desktop.emit({
+      type: "session-snapshot-received",
+      operationId: openId,
+      snapshot: { ...snapshot, workspacePath: "/third", sessionId: "session-3", sessionFile: "/sessions/three.jsonl" }
+    });
+    await flush();
+
+    expect(store.projectPath).toBe("/third");
+    expect(store.recentProjectPaths).toEqual(["/first", "/second", "/third"]);
+    root[Symbol.dispose]();
+  });
+
   it("keeps inactive session models live and switches back before Pi responds", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);

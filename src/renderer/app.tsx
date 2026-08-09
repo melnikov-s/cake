@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useRef, useState, type ComponentProps, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import {
   Confirmation,
@@ -32,6 +32,7 @@ const CloseIcon = () => <Icon><path d="m6 6 12 12M18 6 6 18" /></Icon>;
 const PaperclipIcon = () => <Icon><path d="m20.5 11.5-8.9 8.9a6 6 0 0 1-8.5-8.5l9.6-9.6a4 4 0 0 1 5.7 5.7l-9.6 9.6a2 2 0 1 1-2.8-2.8l8.9-8.9" /></Icon>;
 const SendIcon = () => <Icon><path d="m5 12 7-7 7 7M12 19V5" /></Icon>;
 const SettingsIcon = () => <Icon><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" /></Icon>;
+const BackIcon = () => <Icon><path d="m15 18-6-6 6-6" /></Icon>;
 
 function SessionTree({ nodes, store }: { nodes: SessionTreeNode[]; store: WindowStore }) {
   return <ul className="session-tree">{nodes.map((node) => <li key={node.id} className={node.active ? "active" : ""}><div><button onClick={() => void store.navigateTo(node.id)}>{node.label || node.preview || node.type}</button><button title="Fork from here" onClick={() => void store.forkAt(node.id)}>Fork</button></div>{node.children.length > 0 && <SessionTree nodes={node.children} store={store} />}</li>)}</ul>;
@@ -112,15 +113,21 @@ const TranscriptList = forwardRef<HTMLDivElement, ComponentProps<"div">>(functio
   return <div ref={ref} className={`transcript-list ${className ?? ""}`} aria-label="Conversation" {...props} />;
 });
 
-export const Transcript = observer(function Transcript({ store }: { store: WindowStore }) {
+export const Transcript = observer(function Transcript({ store, sessionId }: { store: WindowStore; sessionId: string }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const items = groupTranscriptParts(store.parts);
   const latestUserPartId = store.parts.findLast((part) => part.kind === "text" && part.role === "user")?.id;
+  const itemCountRef = useRef(items.length);
+  itemCountRef.current = items.length;
 
   const scrollToLatest = useCallback(() => {
-    if (items.length === 0) return;
-    virtuosoRef.current?.scrollToIndex({ index: items.length - 1, align: "end", behavior: "auto" });
-  }, [items.length]);
+    if (itemCountRef.current === 0) return;
+    virtuosoRef.current?.scrollToIndex({ index: itemCountRef.current - 1, align: "end", behavior: "auto" });
+  }, []);
+
+  useLayoutEffect(() => {
+    scrollToLatest();
+  }, [sessionId, scrollToLatest]);
 
   useEffect(() => {
     if (!latestUserPartId) return;
@@ -180,7 +187,7 @@ function UiDialog({ request, store }: { request: UiRequestState; store: WindowSt
   );
 }
 
-const Sidebar = observer(function Sidebar({ store }: { store: WindowStore }) {
+const Sidebar = observer(function Sidebar({ store, onOpenSettings, settingsOpen }: { store: WindowStore; onOpenSettings: () => void; settingsOpen: boolean }) {
   const [searchExpanded, setSearchExpanded] = useState(Boolean(store.sessionSearch));
   const searchInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -219,13 +226,13 @@ const Sidebar = observer(function Sidebar({ store }: { store: WindowStore }) {
       </div>
       <div className="sidebar-footer">
         <div><strong>{store.piState === "ready" ? "Pi ready" : `Pi ${store.piState}`}</strong><span>{store.projectPath ? store.projectName : "Choose a workspace"}</span></div>
-        <select aria-label="Color theme" value={store.theme} onChange={(event) => store.setTheme(event.target.value as typeof store.theme)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
+        <button className={settingsOpen ? "sidebar-settings active" : "sidebar-settings"} type="button" aria-label="Open settings" aria-current={settingsOpen ? "page" : undefined} onClick={onOpenSettings}><SettingsIcon /></button>
       </div>
     </aside>
   );
 });
 
-const ComposerPanel = observer(function ComposerPanel({ store }: { store: WindowStore }) {
+const ComposerPanel = observer(function ComposerPanel({ store, onOpenSettings }: { store: WindowStore; onOpenSettings: () => void }) {
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
@@ -233,7 +240,6 @@ const ComposerPanel = observer(function ComposerPanel({ store }: { store: Window
     }
   };
   const selectedModel = store.session?.model;
-  const unauthenticatedProviders = store.modelsByProvider.filter((provider) => provider.models.some((model) => !model.authenticated));
   const commands = [
     { value: "/tree", label: "Tree", description: "Navigate or fork this session" },
     { value: "/changes", label: "Changes", description: "Inspect changed files" },
@@ -251,7 +257,7 @@ const ComposerPanel = observer(function ComposerPanel({ store }: { store: Window
             <button type="button" className="icon-button" aria-label="Attach files" title="Attach files" onClick={() => void store.addAttachments()}><PaperclipIcon /></button>
             <select aria-label="Model" value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onChange={(event) => void store.selectModel(event.target.value)}><option value="">Choose model</option>{store.modelsByProvider.map((provider) => <optgroup key={provider.id} label={provider.name}>{provider.models.map((model) => <option key={`${model.provider}/${model.id}`} value={`${model.provider}/${model.id}`}>{model.name}{model.authenticated ? "" : " · sign in"}</option>)}</optgroup>)}</select>
             <select aria-label="Thinking level" value={store.session?.thinkingLevel} onChange={(event) => void store.selectThinkingLevel(event.target.value as NonNullable<typeof store.session>["thinkingLevel"])}>{store.session?.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "No reasoning" : `${level.charAt(0).toUpperCase()}${level.slice(1)} reasoning`}</option>)}</select>
-            <details className="composer-settings"><summary aria-label="Provider settings"><SettingsIcon /></summary><div className="settings-popover"><strong>Providers</strong>{unauthenticatedProviders.length === 0 ? <span>All available providers are connected.</span> : unauthenticatedProviders.slice(0, 5).map((provider) => { const model = provider.models.find((item) => !item.authenticated)!; return <div key={provider.id}><span>{provider.name}</span>{model.authTypes.map((authType) => <Button key={authType} variant="outline" size="sm" type="button" onClick={() => void store.authenticate(model.provider, authType)}>{authType === "oauth" ? "Connect" : "Add key"}</Button>)}</div>; })}</div></details>
+            <button type="button" className="icon-button" aria-label="Open settings" title="Settings" onClick={onOpenSettings}><SettingsIcon /></button>
           </div>
           <div className="composer-actions">
             {store.isStreaming && <><Button variant="ghost" size="sm" type="button" onClick={() => void store.abort()}>Stop</Button><Button variant="outline" size="sm" type="button" disabled={!store.canSubmit} onClick={() => void store.submit("steer")}>Steer</Button></>}
@@ -266,8 +272,44 @@ const ComposerPanel = observer(function ComposerPanel({ store }: { store: Window
   );
 });
 
+export const SettingsPage = observer(function SettingsPage({ store }: { store: WindowStore }) {
+  const selectedModel = store.session?.model;
+  return (
+    <div className="settings-page">
+      <div className="settings-intro">
+        <span className="settings-kicker">Cake / Pi</span>
+        <h1>Settings</h1>
+        <p>Choose how Pi works in this chat and manage the providers it can use.</p>
+      </div>
+
+      <section className="settings-section" aria-labelledby="pi-settings-title">
+        <header><div><h2 id="pi-settings-title">Pi</h2><p>Model and reasoning changes apply to the current chat.</p></div><span className={`settings-runtime status-${store.piState}`}><i />{store.piState}</span></header>
+        {store.session ? <div className="settings-fields">
+          <label><span>Model<small>The model Pi uses for its next response.</small></span><select aria-label="Settings model" value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onChange={(event) => void store.selectModel(event.target.value)}><option value="">Choose model</option>{store.modelsByProvider.map((provider) => <optgroup key={provider.id} label={provider.name}>{provider.models.map((model) => <option key={`${model.provider}/${model.id}`} value={`${model.provider}/${model.id}`}>{model.name}{model.authenticated ? "" : " · setup required"}</option>)}</optgroup>)}</select></label>
+          <label><span>Reasoning<small>Controls how much time Pi spends thinking.</small></span><select aria-label="Settings thinking level" value={store.session.thinkingLevel} onChange={(event) => void store.selectThinkingLevel(event.target.value as NonNullable<typeof store.session>["thinkingLevel"])}>{store.session.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "Off" : level.charAt(0).toUpperCase() + level.slice(1)}</option>)}</select></label>
+        </div> : <p className="settings-empty">Open a project or start a one-off chat to choose a model and reasoning level.</p>}
+      </section>
+
+      <section className="settings-section" aria-labelledby="providers-title">
+        <header><div><h2 id="providers-title">Providers</h2><p>Connect the accounts and API keys that make models available to Pi.</p></div></header>
+        {store.modelsByProvider.length === 0 ? <p className="settings-empty">Provider details will appear after a chat is open.</p> : <div className="provider-list">{store.modelsByProvider.map((provider) => {
+          const authenticated = provider.models.some((model) => model.authenticated);
+          const authTypes = [...new Set(provider.models.flatMap((model) => model.authTypes))];
+          return <article className="provider-row" key={provider.id}><div className="provider-identity"><span className="provider-monogram">{provider.name.slice(0, 1).toUpperCase()}</span><span><strong>{provider.name}</strong><small>{provider.models.length} {provider.models.length === 1 ? "model" : "models"}</small></span></div><span className={authenticated ? "provider-state connected" : "provider-state"}><i />{authenticated ? "Connected" : "Not connected"}</span><div className="provider-actions">{authenticated ? <Button variant="outline" size="sm" type="button" onClick={() => void store.logout(provider.id)}>Disconnect</Button> : authTypes.map((authType) => <Button key={authType} variant={authType === "oauth" ? "default" : "outline"} size="sm" type="button" onClick={() => void store.authenticate(provider.id, authType)}>{authType === "oauth" ? "Connect" : "Add API key"}</Button>)}</div></article>;
+        })}</div>}
+      </section>
+
+      <section className="settings-section" aria-labelledby="appearance-title">
+        <header><div><h2 id="appearance-title">Appearance</h2><p>Choose how Cake looks on this device.</p></div></header>
+        <div className="settings-fields"><label><span>Theme<small>Follow your system or use a fixed appearance.</small></span><select aria-label="Color theme" value={store.theme} onChange={(event) => store.setTheme(event.target.value as typeof store.theme)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label></div>
+      </section>
+    </div>
+  );
+});
+
 export const App = observer(function App() {
   const store = useStore(WindowStore);
+  const [page, setPage] = useState<"chat" | "settings">("chat");
   useEffect(() => {
     document.documentElement.dataset.theme = store.theme;
     return () => { delete document.documentElement.dataset.theme; };
@@ -286,13 +328,13 @@ export const App = observer(function App() {
 
   return (
     <main className="app-shell">
-      <Sidebar store={store} />
+      <Sidebar store={store} settingsOpen={page === "settings"} onOpenSettings={() => setPage("settings")} />
       <section className="workspace" data-session-id={store.session?.sessionId}>
-        <header className="workspace-header"><div><strong>{store.extensionTitle ?? (store.session ? (store.session.sessions.find((item) => item.id === store.session?.sessionId)?.title || "New chat") : "Cake")}</strong>{store.projectPath && <span>{store.projectPath}</span>}</div>{store.session && <div className="header-actions"><button className="header-new" onClick={() => void store.openCommandPane("resources")}>Resources</button><button className="header-new" onClick={() => { const name = window.prompt("Session name", store.session?.sessions.find((item) => item.id === store.session?.sessionId)?.title); if (name) void store.renameCurrentSession(name); }}>Rename</button><button className="header-new" onClick={() => void store.startNewSession()}><PlusIcon /> New chat</button></div>}</header>
-        {!store.session ? (
+        <header className="workspace-header"><div>{page === "settings" && <button className="header-back" aria-label="Back to chat" onClick={() => setPage("chat")}><BackIcon /></button>}<strong>{page === "settings" ? "Settings" : store.extensionTitle ?? (store.session ? (store.session.sessions.find((item) => item.id === store.session?.sessionId)?.title || "New chat") : "Cake")}</strong>{page === "chat" && store.projectPath && <span>{store.projectPath}</span>}</div>{page === "chat" && store.session && <div className="header-actions"><button className="header-new" onClick={() => void store.openCommandPane("resources")}>Resources</button><button className="header-new" onClick={() => { const name = window.prompt("Session name", store.session?.sessions.find((item) => item.id === store.session?.sessionId)?.title); if (name) void store.renameCurrentSession(name); }}>Rename</button><button className="header-new" onClick={() => void store.startNewSession()}><PlusIcon /> New chat</button></div>}</header>
+        {page === "settings" ? <SettingsPage store={store} /> : !store.session ? (
           <div className="welcome"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build?</h1><p>Open a project for durable workspace chats, or start a one-off chat from your home directory.</p><div><Button size="lg" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.chooseProject()}><FolderIcon /> Open project</Button><Button size="lg" variant="outline" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.startOneOffChat()}><ChatIcon /> One-off chat</Button></div>{store.error && <p className="welcome-error" role="alert">{store.error}</p>}</div>
         ) : (
-          <div className="workbench"><div className="chat-layout"><Transcript key={store.session.sessionId} store={store} /><ComposerPanel store={store} /></div></div>
+          <div className="workbench"><div className="chat-layout"><Transcript sessionId={store.session.sessionId} store={store} /><ComposerPanel store={store} onOpenSettings={() => setPage("settings")} /></div></div>
         )}
       </section>
       <CommandPane store={store} />
