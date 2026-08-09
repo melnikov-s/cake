@@ -8,6 +8,7 @@ import { listWorkspaceSessions, loadWorkspaceSessionPreview } from "../agent/pi-
 import { ApplicationModel } from "./application-model";
 import { shouldAllowNavigation } from "./navigation-policy";
 import { PiWorkspaceDriver, type PiWorkspaceCommand } from "./pi-workspace-driver";
+import { ArtifactRepository } from "./artifact-repository";
 
 interface PiHost {
   path: string;
@@ -25,6 +26,7 @@ let nextWindowSlot = 0;
 let applicationModel = ApplicationModel.from({});
 
 if (process.env.CAKE_ELECTRON_USER_DATA) app.setPath("userData", process.env.CAKE_ELECTRON_USER_DATA);
+const artifactRepository = new ArtifactRepository(join(app.getPath("userData"), "artifacts"));
 
 function sendTo(target: WebContents, event: DesktopEvent) {
   if (!target.isDestroyed()) target.send("cake:event", event);
@@ -90,7 +92,7 @@ function launchPi(path: string) {
     existing.driver[Symbol.dispose]();
     piHosts.delete(path);
   }
-  const driver = new PiWorkspaceDriver({ workspacePath: path, emit: broadcast });
+  const driver = new PiWorkspaceDriver({ workspacePath: path, emit: broadcast, artifactRepository });
   const host: PiHost = { path, driver, state: "starting" };
   piHosts.set(path, host);
   setPiState(host, "starting");
@@ -140,6 +142,7 @@ function createWindow(slot = nextWindowSlot++) {
     windows.delete(window.id);
     windowSlots.delete(webContentsId);
     windowWorkspaces.delete(webContentsId);
+    if (path) piHosts.get(path)?.driver.cancelPendingRequests();
     if (path) scheduleIdle(path);
   });
   if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL);
@@ -239,6 +242,13 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
   if (request.type === "respond-ui") {
     dispatchToPi(path, request);
     return desktopResponseSchema.parse({ type: "ui-response-accepted", uiRequestId: request.uiRequestId });
+  }
+  if (request.type === "respond-artifact") {
+    dispatchToPi(path, request);
+    return desktopResponseSchema.parse({ type: "artifact-response-accepted", artifactRequestId: request.artifactRequestId });
+  }
+  if (request.type === "export-artifacts") {
+    return desktopResponseSchema.parse({ type: "artifacts-exported", markdown: await artifactRepository.exportMarkdown(request.workspacePath, request.sessionId) });
   }
   dispatchToPi(path, request satisfies PiWorkspaceCommand);
   return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });

@@ -40,7 +40,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       if (event.operationId && !this.windowStore.acceptSessionSnapshot(event)) return;
       this.sessionCache.upsert(event.snapshot);
       if (event.operationId || this.windowStore.isActiveSession(event.snapshot.workspacePath, event.snapshot.sessionId)) {
-        this.windowStore.applySessionSnapshot(event.snapshot, previousSessionId);
+        this.windowStore.applySessionSnapshot(event.snapshot, event.operationId ? previousSessionId : undefined);
       }
       return;
     }
@@ -55,6 +55,10 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     if (event.type === "streaming-changed") {
       this.sessionCache.find(event.sessionId)?.setStreaming(event.streaming);
       return;
+    }
+    if (event.type === "artifact-updated" || event.type === "artifact-requested") {
+      this.sessionCache.find(event.record.artifact.sessionId, event.record.workspacePath)?.upsertArtifact(event.record);
+      if (event.type === "artifact-updated") return;
     }
     this.windowStore.receive(event);
   }

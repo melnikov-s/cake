@@ -20,10 +20,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@earendil-works/pi-ai": "0.84.0",
     "@earendil-works/pi-coding-agent": "0.84.0",
     "@preact/signals-react": "3.10.3",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
+    "mermaid": "11.12.2",
     "r-state-tree": "0.10.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",

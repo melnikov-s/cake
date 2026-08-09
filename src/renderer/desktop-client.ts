@@ -11,6 +11,7 @@ import type {
   UiPart,
   WindowViewState
 } from "../ipc/session-contract";
+import type { ArtifactRecord } from "../ipc/artifact-contract";
 
 export type PiState = "starting" | "ready" | "stopped" | "failed";
 
@@ -23,6 +24,8 @@ export type DesktopClientEvent =
   | { type: "streaming-changed"; sessionId: string; streaming: boolean }
   | { type: "extension-ui-received"; sessionId: string; event: ExtensionUiEvent }
   | { type: "changes-received"; operationId: string; workspacePath: string; files: ChangedFile[] }
+  | { type: "artifact-updated"; record: ArtifactRecord }
+  | { type: "artifact-requested"; operationId: string; artifactRequestId: string; record: ArtifactRecord }
   | {
       type: "ui-requested";
       operationId: string;
@@ -66,6 +69,8 @@ export interface DesktopClient {
   navigateSession(input: { operationId: string; workspacePath: string; sessionId: string; entryId: string }): Promise<void>;
   inspectChanges(input: { operationId: string; workspacePath: string }): Promise<void>;
   respondToUi(input: { operationId: string; workspacePath: string; sessionId: string; uiRequestId: string; value?: string; cancelled: boolean }): Promise<void>;
+  respondToArtifact(input: { operationId: string; workspacePath: string; sessionId: string; artifactRequestId: string; value?: unknown; cancelled: boolean }): Promise<void>;
+  exportArtifacts(workspacePath: string, sessionId: string): Promise<string>;
   subscribe(listener: (event: DesktopClientEvent) => void): () => void;
 }
 
@@ -76,6 +81,8 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
   if (event.type === "part-updated" || event.type === "part-removed") return event;
   if (event.type === "session-streaming") return { type: "streaming-changed", sessionId: event.sessionId, streaming: event.streaming };
   if (event.type === "extension-ui") return { type: "extension-ui-received", sessionId: event.sessionId, event: event.event };
+  if (event.type === "artifact-updated") return event;
+  if (event.type === "artifact-requested") return { type: "artifact-requested", operationId: event.requestId, artifactRequestId: event.artifactRequestId, record: event.record };
   if (event.type === "changes-snapshot") return { type: "changes-received", operationId: event.requestId, workspacePath: event.workspacePath, files: event.files };
   if (event.type === "ui-request") return { type: "ui-requested", operationId: event.requestId, uiRequestId: event.uiRequestId, kind: event.kind, title: event.title, message: event.message, placeholder: event.placeholder, initialValue: event.initialValue, multiline: event.multiline, options: event.options };
   if (event.type === "complete") return { type: "operation-completed", operationId: event.requestId };
@@ -169,6 +176,15 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
     async respondToUi(input) {
       const response = await bridge.request({ type: "respond-ui", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, uiRequestId: input.uiRequestId, value: input.value, cancelled: input.cancelled });
       if (response.type !== "ui-response-accepted" || response.uiRequestId !== input.uiRequestId) throw new Error("Cake received a mismatched UI response");
+    },
+    async respondToArtifact(input) {
+      const response = await bridge.request({ type: "respond-artifact", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, artifactRequestId: input.artifactRequestId, value: input.value, cancelled: input.cancelled });
+      if (response.type !== "artifact-response-accepted" || response.artifactRequestId !== input.artifactRequestId) throw new Error("Cake received a mismatched artifact response");
+    },
+    async exportArtifacts(workspacePath, sessionId) {
+      const response = await bridge.request({ type: "export-artifacts", workspacePath, sessionId });
+      if (response.type !== "artifacts-exported") throw new Error("Cake could not export artifacts");
+      return response.markdown;
     },
     subscribe(listener) {
       return bridge.subscribe((event) => {

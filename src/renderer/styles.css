@@ -194,6 +194,35 @@
 .transcript-list { width: min(100%, 51rem); min-width: 0; max-width: 51rem; margin-inline: auto; padding: 42px 24px 0; }
 .transcript-item { min-width: 0; padding-bottom: 20px; }
 .transcript-footer { width: min(100%, 51rem); min-height: 210px; margin-inline: auto; padding: 0 24px 24px; }
+.artifacts-panel { display: grid; gap: 12px; margin: 8px 0 24px; }
+.artifacts-panel > header, .artifact > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.artifacts-panel > header > strong { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+.artifact { display: grid; gap: 12px; min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); box-shadow: 0 12px 40px -32px hsl(var(--shadow) / .35); }
+.artifact > header > div { display: flex; min-width: 0; align-items: baseline; gap: 9px; }
+.artifact > header strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.artifact > header span { color: var(--muted-foreground); font: 10px var(--font-mono); }
+.artifact-body { min-width: 0; overflow: hidden; }
+.artifact-fallback { color: var(--muted-foreground); font-size: 11px; }
+.artifact-fallback summary { cursor: pointer; }
+.artifact-fallback > div { margin-top: 8px; }
+.artifact-controls { display: flex; gap: 8px; margin-bottom: 8px; }
+.artifact-controls input { min-width: 0; flex: 1; height: 32px; padding: 0 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--background); color: var(--foreground); }
+.artifact-table-scroll { max-height: 30rem; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.artifact-table table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.artifact-table th, .artifact-table td { padding: 7px 9px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+.artifact-table th { position: sticky; z-index: 1; top: 0; background: var(--muted); }
+.artifact-table th button { border: 0; background: transparent; color: inherit; font: inherit; font-weight: 650; }
+.artifact-table tr:last-child td { border-bottom: 0; }
+.artifact-table th:last-child, .artifact-table td:last-child { border-right: 0; }
+.artifact-diagram, .artifact-html, .artifact-document { width: 100%; min-height: 22rem; border: 1px solid var(--border); border-radius: 8px; background: white; }
+.artifact-form { display: grid; gap: 11px; }
+.artifact-form label { display: grid; gap: 5px; font-size: 12px; }
+.artifact-form input:not([type="checkbox"]), .artifact-form textarea, .artifact-form select { width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--background); color: var(--foreground); }
+.artifact-form textarea { min-height: 7rem; resize: vertical; }
+.artifact-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.artifact-body img, .artifact-body video { max-width: 100%; max-height: 32rem; border-radius: 7px; }
+.artifact-body audio { width: 100%; }
+.artifact-diff { max-height: 36rem; margin: 0; overflow: auto; padding: 12px; border-radius: 8px; background: color-mix(in oklab, var(--background) 80%, black); font: 11px/1.55 var(--font-mono); white-space: pre; }
 .transcript-empty { overflow-y: auto; padding: 42px 24px 210px; }
 .transcript-empty > [aria-label="Conversation"] { width: min(100%, 48rem); min-width: 0; max-width: 48rem; margin-inline: auto; }
 .chat-empty { min-height: calc(100vh - 330px); }

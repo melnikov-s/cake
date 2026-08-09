@@ -71,4 +71,34 @@ describe("PiWorkspaceDriver", () => {
     await vi.waitFor(() => expect(promptSettled).toBe(2));
     expect(runtime.dispose).toHaveBeenCalledOnce();
   });
+
+  it("persists, emits, correlates, and terminally settles artifact requests", async () => {
+    const events: DesktopEvent[] = [];
+    let options: CakeRuntimeOptions | undefined;
+    let response: unknown = "pending";
+    const artifact = { protocol: "cake.artifact/v1" as const, id: "form-1", sessionId: snapshot.sessionId, revision: 1, kind: "form" as const, payload: { fields: [{ id: "answer", label: "Answer", type: "text" as const, required: true }], submitLabel: "Send" }, fallback: { markdown: "Answer" }, interaction: { mode: "request" as const } };
+    const repository = {
+      upsert: vi.fn(async (workspacePath: string, next: unknown) => ({ artifact: next as typeof artifact, workspacePath, digest: "a".repeat(64), createdAt: new Date(0).toISOString(), updatedAt: new Date(0).toISOString() })),
+      get: vi.fn(async () => undefined),
+      linkSession: vi.fn(async () => undefined),
+      listSession: vi.fn(async () => [])
+    };
+    const runtime: CakeRuntime = {
+      sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile, snapshot: vi.fn(async () => snapshot),
+      prompt: vi.fn(async () => { const record = await options!.persistArtifact!(artifact); response = await options!.requestArtifact!(record, new AbortController().signal); }),
+      abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
+    };
+    const driver = new PiWorkspaceDriver({ workspacePath: "/project", artifactRepository: repository, emit: (event) => events.push(event), createRuntime: vi.fn(async (next) => { options = next; return runtime; }) });
+    const openId = crypto.randomUUID(); driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", trusted: true, newSession: true });
+    await vi.waitFor(() => expect(events.some((event) => event.type === "complete" && event.requestId === openId)).toBe(true));
+    const operationId = crypto.randomUUID(); driver.dispatch({ type: "prompt", requestId: operationId, workspacePath: "/project", sessionId: snapshot.sessionId, text: "request", delivery: "prompt", attachments: [] });
+    await vi.waitFor(() => expect(events.some((event) => event.type === "artifact-requested")).toBe(true));
+    const request = events.find((event): event is Extract<DesktopEvent, { type: "artifact-requested" }> => event.type === "artifact-requested")!;
+    expect(events.some((event) => event.type === "artifact-updated")).toBe(true);
+    driver.dispatch({ type: "respond-artifact", requestId: operationId, workspacePath: "/project", sessionId: snapshot.sessionId, artifactRequestId: request.artifactRequestId, value: { answer: "yes" }, cancelled: false });
+    await vi.waitFor(() => expect(response).toEqual({ answer: "yes" }));
+    driver.dispatch({ type: "respond-artifact", requestId: operationId, workspacePath: "/project", sessionId: snapshot.sessionId, artifactRequestId: request.artifactRequestId, value: { answer: "late" }, cancelled: false });
+    expect(response).toEqual({ answer: "yes" });
+    driver[Symbol.dispose]();
+  });
 });

@@ -3,6 +3,10 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createCakeRuntime, inspectWorkspace, type CakeRuntime, type RuntimeUiRequest } from "../agent/pi-runtime";
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
+import { parseArtifactInput, type ArtifactRecord, type CakeArtifactV1 } from "../ipc/artifact-contract";
+import type { ArtifactRepository } from "./artifact-repository";
+
+type ArtifactRepositoryPort = Pick<ArtifactRepository, "upsert" | "get" | "listSession" | "linkSession">;
 
 type PiCommandType =
   | "inspect-workspace"
@@ -17,7 +21,8 @@ type PiCommandType =
   | "set-thinking"
   | "login"
   | "logout"
-  | "respond-ui";
+  | "respond-ui"
+  | "respond-artifact";
 
 export type PiWorkspaceCommand = Extract<DesktopRequest, { type: PiCommandType }>;
 
@@ -26,10 +31,16 @@ interface PendingUi {
   settle(value: string | undefined): void;
 }
 
+interface PendingArtifact {
+  operationId: string;
+  settle(value: unknown | undefined): void;
+}
+
 export interface PiWorkspaceDriverOptions {
   workspacePath: string;
   emit(event: DesktopEvent): void;
   createRuntime?: typeof createCakeRuntime;
+  artifactRepository?: ArtifactRepositoryPort;
 }
 
 const execFileAsync = promisify(execFile);
@@ -38,9 +49,11 @@ export class PiWorkspaceDriver {
   readonly workspacePath: string;
   private readonly emitEvent: PiWorkspaceDriverOptions["emit"];
   private readonly createRuntimeImpl: typeof createCakeRuntime;
+  private readonly artifactRepository: ArtifactRepositoryPort;
   private readonly runtimes = new Map<string, CakeRuntime>();
   private readonly pendingUi = new Map<string, PendingUi>();
-  private readonly operationContext = new AsyncLocalStorage<string>();
+  private readonly pendingArtifacts = new Map<string, PendingArtifact>();
+  private readonly operationContext = new AsyncLocalStorage<{ operationId: string; sessionId?: string }>();
   private trusted = false;
   private disposed = false;
 
@@ -48,6 +61,15 @@ export class PiWorkspaceDriver {
     this.workspacePath = options.workspacePath;
     this.emitEvent = options.emit;
     this.createRuntimeImpl = options.createRuntime ?? createCakeRuntime;
+    this.artifactRepository = options.artifactRepository ?? {
+      async upsert(workspacePath, artifact) {
+        const now = new Date().toISOString();
+        return { artifact: parseArtifactInput(artifact), workspacePath, digest: "0".repeat(64), createdAt: now, updatedAt: now };
+      },
+      async listSession() { return []; }
+      ,async get() { return undefined; }
+      ,async linkSession() { return undefined; }
+    };
   }
 
   dispatch(command: PiWorkspaceCommand) {
@@ -60,6 +82,11 @@ export class PiWorkspaceDriver {
     }
     if (command.type === "respond-ui") {
       const pending = this.pendingUi.get(command.uiRequestId);
+      if (pending?.operationId === command.requestId) pending.settle(command.cancelled ? undefined : command.value);
+      return;
+    }
+    if (command.type === "respond-artifact") {
+      const pending = this.pendingArtifacts.get(command.artifactRequestId);
       if (pending?.operationId === command.requestId) pending.settle(command.cancelled ? undefined : command.value);
       return;
     }
@@ -85,7 +112,10 @@ export class PiWorkspaceDriver {
     void this.run(command.requestId, async () => {
       const runtime = this.runtimeFor(command.sessionId);
       if (command.type === "abort") await runtime.abort();
-      else if (command.type === "prompt") await runtime.prompt(command.text, command.delivery, command.attachments);
+      else if (command.type === "prompt") {
+        await runtime.prompt(command.text, command.delivery, command.attachments);
+        this.emit({ type: "session-snapshot", snapshot: await runtime.snapshot() });
+      }
       else if (command.type === "set-model") await runtime.setModel(command.provider, command.modelId);
       else if (command.type === "set-thinking") await runtime.setThinkingLevel(command.level);
       else if (command.type === "login") await runtime.login(command.provider, command.authType);
@@ -97,7 +127,7 @@ export class PiWorkspaceDriver {
         const next = await this.createRuntime(false, forked.sessionId, forked.sessionFile);
         this.emit({ type: "session-snapshot", requestId: command.requestId, snapshot: await next.snapshot(command.requestId) });
       }
-    });
+    }, command.sessionId);
   }
 
   [Symbol.dispose]() {
@@ -105,17 +135,23 @@ export class PiWorkspaceDriver {
     this.disposed = true;
     for (const pending of this.pendingUi.values()) pending.settle(undefined);
     this.pendingUi.clear();
+    this.cancelPendingRequests();
     for (const runtime of this.runtimes.values()) runtime.dispose();
     this.runtimes.clear();
+  }
+
+  cancelPendingRequests() {
+    for (const pending of this.pendingArtifacts.values()) pending.settle(undefined);
+    this.pendingArtifacts.clear();
   }
 
   private emit(event: DesktopEvent) {
     if (!this.disposed) this.emitEvent(event);
   }
 
-  private async run(operationId: string, operation: () => Promise<void>) {
+  private async run(operationId: string, operation: () => Promise<void>, sessionId?: string) {
     try {
-      await this.operationContext.run(operationId, operation);
+      await this.operationContext.run({ operationId, sessionId }, operation);
       this.emit({ type: "complete", requestId: operationId });
     } catch (error) {
       this.emit({ type: "fatal", requestId: operationId, message: errorMessage(error) });
@@ -123,11 +159,14 @@ export class PiWorkspaceDriver {
       for (const pending of this.pendingUi.values()) {
         if (pending.operationId === operationId) pending.settle(undefined);
       }
+      for (const pending of this.pendingArtifacts.values()) {
+        if (pending.operationId === operationId) pending.settle(undefined);
+      }
     }
   }
 
   private requestUi(request: RuntimeUiRequest) {
-    const operationId = this.operationContext.getStore();
+    const operationId = this.operationContext.getStore()?.operationId;
     if (!operationId) throw new Error("Pi requested UI without an active Cake operation");
     const uiRequestId = crypto.randomUUID();
     return new Promise<string | undefined>((resolve) => {
@@ -160,6 +199,34 @@ export class PiWorkspaceDriver {
     });
   }
 
+  private async persistArtifact(artifact: CakeArtifactV1) {
+    const record = await this.artifactRepository.upsert(this.workspacePath, artifact);
+    const activeSessionId = this.operationContext.getStore()?.sessionId;
+    if (activeSessionId && activeSessionId !== artifact.sessionId) await this.artifactRepository.linkSession(record, activeSessionId);
+    this.emit({ type: "artifact-updated", record });
+    return record;
+  }
+
+  private requestArtifact(record: ArtifactRecord, signal: AbortSignal) {
+    const operationId = this.operationContext.getStore()?.operationId;
+    if (!operationId) throw new Error("Pi requested an artifact response without an active Cake operation");
+    const artifactRequestId = crypto.randomUUID();
+    return new Promise<unknown | undefined>((resolve) => {
+      let settled = false;
+      const settle = (value: unknown | undefined) => {
+        if (settled) return;
+        settled = true;
+        this.pendingArtifacts.delete(artifactRequestId);
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      };
+      const onAbort = () => settle(undefined);
+      this.pendingArtifacts.set(artifactRequestId, { operationId, settle });
+      signal.addEventListener("abort", onAbort, { once: true });
+      this.emit({ type: "artifact-requested", requestId: operationId, artifactRequestId, record });
+    });
+  }
+
   private runtimeFor(sessionId: string) {
     const runtime = this.runtimes.get(sessionId);
     if (!runtime) throw new Error("That session is not open in this workspace");
@@ -167,6 +234,8 @@ export class PiWorkspaceDriver {
   }
 
   private async createRuntime(newSession: boolean, sessionId?: string, sessionFile?: string) {
+    const requestedArtifactSessionId = sessionId;
+    let openedSessionId = sessionId;
     const runtime = await this.createRuntimeImpl({
       cwd: this.workspacePath,
       trusted: this.trusted,
@@ -174,12 +243,27 @@ export class PiWorkspaceDriver {
       sessionId,
       sessionFile,
       requestUi: (request) => this.requestUi(request),
+      persistArtifact: (artifact) => this.persistArtifact(artifact),
+      requestArtifact: (record, signal) => this.requestArtifact(record, signal),
+      listArtifacts: async (pointers) => {
+        const direct = await Promise.all(pointers.map((pointer) => this.artifactRepository.get(this.workspacePath, pointer.sessionId, pointer.artifactId)));
+        const sessionIds = [...new Set([requestedArtifactSessionId, openedSessionId].filter((value): value is string => Boolean(value)))];
+        const indexed = (await Promise.all(sessionIds.map((id) => this.artifactRepository.listSession(this.workspacePath, id)))).flat();
+        const records = new Map<string, ArtifactRecord>();
+        for (const record of [...direct, ...indexed]) {
+          if (!record) continue;
+          const current = records.get(record.artifact.id);
+          if (!current || record.artifact.revision > current.artifact.revision) records.set(record.artifact.id, record);
+        }
+        return [...records.values()];
+      },
       onEvent: (event) => {
         if (event.type === "snapshot") this.emit({ type: "session-snapshot", requestId: event.requestId, snapshot: event.snapshot });
         else if (event.type === "part-updated" || event.type === "part-removed" || event.type === "extension-ui") this.emit(event);
         else this.emit({ type: "session-streaming", sessionId: event.sessionId, streaming: event.streaming });
       }
     });
+    openedSessionId = runtime.sessionId;
     if (this.disposed) {
       runtime.dispose();
       throw new Error("The Pi workspace driver was disposed while opening a session");

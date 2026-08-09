@@ -50,6 +50,8 @@ function createDesktopClient(restoredPath?: string) {
     navigateSession: vi.fn(async () => undefined),
     inspectChanges: vi.fn(async () => undefined),
     respondToUi: vi.fn(async () => undefined),
+    respondToArtifact: vi.fn(async () => undefined),
+    exportArtifacts: vi.fn(async () => ""),
     subscribe(next) { listener = next; return vi.fn(); }
   };
   return { client, emit: (event: DesktopClientEvent) => listener?.(event) };
@@ -105,6 +107,20 @@ describe("WindowStore", () => {
     await store.startNewSession();
     expect(store.pendingTrustPath).toBeUndefined();
     expect(desktop.client.openWorkspace).toHaveBeenLastCalledWith(expect.objectContaining({ path: "/project", trusted: true, newSession: true }));
+    root[Symbol.dispose]();
+  });
+
+  it("cancels a pending artifact request before replacing the active session", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush(); await openSnapshot(store, desktop);
+    const operationId = crypto.randomUUID(); store.activeOperations.push(operationId);
+    const record = { artifact: { protocol: "cake.artifact/v1" as const, id: "form", sessionId: "session-1", revision: 1, kind: "form" as const, payload: { fields: [{ id: "answer", label: "Answer", type: "text" as const, required: true }], submitLabel: "Send" }, fallback: { markdown: "Answer" }, interaction: { mode: "request" as const } }, workspacePath: "/project", digest: "a".repeat(64), createdAt: new Date(0).toISOString(), updatedAt: new Date(0).toISOString() };
+    desktop.emit({ type: "artifact-requested", operationId, artifactRequestId: crypto.randomUUID(), record });
+    expect(store.artifactRequest).toBeDefined();
+    await store.startNewSession();
+    expect(desktop.client.respondToArtifact).toHaveBeenCalledWith(expect.objectContaining({ operationId, cancelled: true }));
+    expect(store.artifactRequest).toBeUndefined();
     root[Symbol.dispose]();
   });
 

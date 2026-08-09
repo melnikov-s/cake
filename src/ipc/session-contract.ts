@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { artifactRecordSchema } from "./artifact-contract";
 
 const boundedText = z.string().max(262_144);
 
@@ -189,6 +190,7 @@ export const sessionSnapshotSchema = z.object({
   extensionUi: extensionUiStateSchema.default({ statuses: [], widgets: [] }),
   sessions: z.array(sessionSummarySchema).max(10_000).default([]),
   tree: z.array(sessionTreeNodeSchema).max(50_000).default([])
+  ,artifacts: z.array(artifactRecordSchema).max(10_000).optional()
 });
 
 export const sessionPreviewSchema = z.object({
@@ -213,6 +215,8 @@ export const applicationStateSchema = z.object({
 
 export const windowViewStateSchema = z.object({
   projectPath: z.string().max(4_096).optional(),
+  selectedSessionId: z.string().max(256).optional(),
+  selectedSessionFile: z.string().max(4_096).optional(),
   recentProjectPaths: z.array(z.string().max(4_096)).max(50).default([]),
   trustedProjectPaths: z.array(z.string().max(4_096)).max(100).default([]),
   draft: z.string().max(262_144).default(""),

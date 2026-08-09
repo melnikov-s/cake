@@ -803,6 +803,7 @@ Current S3 checkpoint (2026-08-08):
 
 ### Stage S4 — Rich artifact protocol
 
+**Status:** Complete (2026-08-08)
 **Depends on:** S2
 **Workstream:** Can proceed in parallel with S3.
 **Outcome:** The agent can safely present and request interaction through first-class durable artifacts.
@@ -823,6 +824,34 @@ Acceptance checks:
 - A diagram and artifact survive application restart.
 - Raw HTML cannot access Node, Electron IPC, parent DOM, or network without a grant.
 - Unsupported artifact clients can read a useful Markdown fallback.
+
+Current S4 checkpoint (2026-08-08):
+
+- `cake.artifact/v1` is a shared, size-bounded Zod contract across the Pi
+  extension, main repository, IPC bridge, renderer Models, and interaction
+  responses. Stable IDs use explicit monotonically adjacent revisions.
+- Electron main persists atomic per-session metadata plus SHA-256-addressed
+  payload blobs under `userData/artifacts`. Pi session custom entries retain
+  versioned pointers and Markdown fallbacks; Pi remains the transcript authority.
+  Q4 is resolved at a 1 MiB UTF-8 JSON input/response limit.
+- The built-in Pi extension implements non-blocking `ui_present` and blocking
+  `ui_request`. Request IDs settle once; user cancellation, abort, session
+  replacement, window loss, and driver disposal cancel predictably, while late
+  responses are ignored.
+- Cake renders Markdown, sortable/filterable/selectable/exportable tables,
+  Mermaid, schema-defined forms, safe media, diffs, and raw HTML. Model HTML and
+  Mermaid SVG use empty-sandbox iframes; HTML receives a deny-by-default CSP and
+  has no Node, Electron, parent DOM, navigation, popup, download, or network
+  grant. Every artifact retains an exportable Markdown fallback.
+- Renderer `ArtifactModel` children are hydrated Cake-owned projections;
+  `WindowStore` owns pending response workflow. Persisted session references,
+  Pi custom-entry pointers, and Cake session aliases restore tables and diagrams
+  after application restart without copying the Pi transcript.
+- Contract, repository, Store, driver, renderer, and security tests are
+  deterministic. The real Electron smoke verifies table sorting, validated form
+  submission, explicit revision update, HTML isolation, Mermaid rendering, and
+  restart hydration. The stable contract is documented in
+  `docs/architecture/s4-artifact-protocol.md`. S4 is complete.
 
 ### Stage S5 — Cake widget SDK
 
@@ -971,7 +1000,6 @@ These are intentionally unresolved. Resolve each before the stage that depends o
 
 | ID | Question | Needed before |
 | --- | --- | --- |
-| Q4 | What is the durable artifact storage location and maximum inline payload size? | S4 implementation |
 | Q5 | Will generated React be supported in the first widget SDK release or follow installed widgets? | S5 planning |
 | Q6 | Which widget capabilities are safe and necessary for v1? | S5 implementation |
 | Q7 | What subset of restricted MDX provides enough value beyond widget manifests? | S5 implementation |
@@ -999,6 +1027,8 @@ These are intentionally unresolved. Resolve each before the stage that depends o
 | 2026-08-06 | Pin the initial Pi adapter contract to the public APIs documented in `docs/architecture/pi-0.84-contract.md`. | Decided | Q2 is resolved; upgrades must rerun the in-memory session, extension binding, confirmation, event projection, and disposal contract tests. |
 | 2026-08-07 | Keep Cake as one application package organized by Electron process boundaries. | Decided | `main`, `preload`, `renderer`, `agent`, and `ipc` are source directories in one build; packages are extracted only for demonstrated independent consumers or release lifecycles. |
 | 2026-08-07 | Use shadcn/ui and Tailwind CSS 4 as the renderer foundation, with AI Elements as the preferred source registry. | Decided | Cake copies selected component source, replaces AI SDK types with Cake-owned UI parts, records upstream provenance and modifications, and may select a Prompt Kit component when it is demonstrably preferable. |
+| 2026-08-08 | Store S4 artifact payloads under Electron user data as content-addressed blobs with atomic per-session metadata; cap v1 tool input and responses at 1 MiB UTF-8 JSON. | Decided | Resolves Q4; Pi custom entries contain only versioned pointers and Markdown fallbacks, while Cake owns durable artifact content. |
+| 2026-08-08 | Restore artifacts from Pi custom-entry pointers plus Cake session aliases, and persist the selected Pi session reference as window view state. | Decided | Artifact hydration survives Pi's transition from an in-memory runtime identifier to its durable session identity without making Cake authoritative for transcript history. |
 
 ## 19. Instructions for implementation agents
 

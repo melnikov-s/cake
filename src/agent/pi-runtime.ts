@@ -12,6 +12,7 @@ import {
   type ExtensionWidgetOptions,
   type InlineExtension
 } from "@earendil-works/pi-coding-agent";
+import { Type } from "@earendil-works/pi-ai";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type {
   Attachment,
@@ -27,6 +28,15 @@ import type {
   UiPart,
   SessionTreeNode
 } from "../ipc/session-contract";
+import {
+  artifactRecordSchema,
+  artifactPointerSchema,
+  parseArtifactInput,
+  validateArtifactResponse,
+  type ArtifactRecord,
+  type ArtifactPointer,
+  type CakeArtifactV1
+} from "../ipc/artifact-contract";
 
 export const piRuntimeVersion = "0.84.0" as const;
 
@@ -92,7 +102,98 @@ export interface CakeRuntimeOptions {
   sessionId?: string;
   sessionFile?: string;
   requestUi(request: RuntimeUiRequest): Promise<string | undefined>;
+  persistArtifact?(artifact: CakeArtifactV1): Promise<ArtifactRecord>;
+  requestArtifact?(record: ArtifactRecord, signal: AbortSignal): Promise<unknown | undefined>;
+  listArtifacts?(pointers: ArtifactPointer[]): Promise<ArtifactRecord[]>;
   onEvent(event: CakeRuntimeEvent): void;
+}
+
+export function createCakeArtifactExtension(options: Required<Pick<CakeRuntimeOptions, "persistArtifact" | "requestArtifact">>): InlineExtension {
+  return (pi) => {
+    const parameters = Type.Object({ artifact: Type.Any() });
+    const persist = async (input: unknown, sessionId: string) => {
+      const artifact = parseArtifactInput(input);
+      if (artifact.sessionId !== sessionId) throw new Error("Artifact sessionId does not match the active Pi session");
+      return options.persistArtifact(artifact);
+    };
+    const appendPointer = (record: ArtifactRecord) => {
+      pi.appendEntry("cake.artifact/v1", artifactPointerSchema.parse({
+        protocol: "cake.artifact/v1",
+        artifactId: record.artifact.id,
+        sessionId: record.artifact.sessionId,
+        revision: record.artifact.revision,
+        kind: record.artifact.kind,
+        digest: record.digest,
+        fallback: record.artifact.fallback
+      }));
+    };
+    pi.registerTool({
+      name: "ui_present",
+      label: "Present artifact",
+      description: "Create or explicitly revise a durable Cake artifact. Every artifact includes a readable Markdown fallback.",
+      parameters,
+      async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+        const record = await persist(params.artifact, ctx.sessionManager.getSessionId());
+        if (record.artifact.interaction?.mode === "request") throw new Error("ui_present requires present interaction mode");
+        appendPointer(record);
+        return { content: [{ type: "text", text: `Presented ${record.artifact.kind} artifact ${record.artifact.id} at revision ${record.artifact.revision}.` }], details: { artifactId: record.artifact.id, revision: record.artifact.revision } };
+      }
+    });
+    pi.registerTool({
+      name: "ui_request",
+      label: "Request artifact input",
+      description: "Display a durable Cake form and wait for one validated user response or cancellation.",
+      parameters,
+      async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+        const record = await persist(params.artifact, ctx.sessionManager.getSessionId());
+        if (record.artifact.interaction?.mode !== "request") throw new Error("ui_request requires request interaction mode");
+        appendPointer(record);
+        const value = await options.requestArtifact(record, signal ?? new AbortController().signal);
+        if (value === undefined) return { content: [{ type: "text", text: `The user cancelled artifact request ${record.artifact.id}.` }], details: { artifactId: record.artifact.id, cancelled: true } };
+        const validated = validateArtifactResponse(record.artifact.interaction.responseSchema, value);
+        return { content: [{ type: "text", text: `The user submitted a validated response for artifact ${record.artifact.id}: ${formatUnknown(validated, 8_000)}` }], details: { artifactId: record.artifact.id, cancelled: false, value: validated } };
+      }
+    });
+    pi.registerCommand("cake-artifacts", {
+      description: "Exercise Cake's built-in artifact renderers and structured response path",
+      async handler(_args, ctx) {
+        const sessionId = ctx.sessionManager.getSessionId();
+        const table = await persist({
+          protocol: "cake.artifact/v1", id: "cake-s4-table", sessionId, revision: 1, kind: "table", title: "S4 table",
+          payload: { columns: [{ id: "name", label: "Name", type: "text" }, { id: "score", label: "Score", type: "number" }], rows: [{ id: "row-a", name: "Alpha", score: 2 }, { id: "row-b", name: "Beta", score: 1 }], selectable: true },
+          fallback: { markdown: "| Name | Score |\n| --- | ---: |\n| Alpha | 2 |\n| Beta | 1 |" }, interaction: { mode: "present" }
+        }, sessionId);
+        appendPointer(table);
+        const diagram = await persist({
+          protocol: "cake.artifact/v1", id: "cake-s4-diagram", sessionId, revision: 1, kind: "diagram", title: "S4 diagram",
+          payload: { source: "flowchart LR\n  Agent --> Artifact\n  Artifact --> User" },
+          fallback: { markdown: "Agent → Artifact → User" }, interaction: { mode: "present" }
+        }, sessionId);
+        appendPointer(diagram);
+        const html = await persist({
+          protocol: "cake.artifact/v1", id: "cake-s4-html", sessionId, revision: 1, kind: "html", title: "Sandboxed HTML",
+          payload: { html: "<strong>Isolated HTML</strong><script>parent.document.body.textContent='compromised';fetch('https://example.com')</script>" },
+          fallback: { markdown: "**Isolated HTML**" }, interaction: { mode: "present" }
+        }, sessionId);
+        appendPointer(html);
+        const form = await persist({
+          protocol: "cake.artifact/v1", id: "cake-s4-form", sessionId, revision: 1, kind: "form", title: "S4 response",
+          payload: { fields: [{ id: "answer", label: "Answer", type: "text", required: true }], submitLabel: "Send response" },
+          fallback: { markdown: "S4 response form: **Answer** (required)." },
+          interaction: { mode: "request", responseSchema: { type: "object", required: ["answer"], properties: { answer: { type: "string", minLength: 1 } } } }
+        }, sessionId);
+        appendPointer(form);
+        const value = await options.requestArtifact(form, new AbortController().signal);
+        const validated = value === undefined ? undefined : validateArtifactResponse(form.artifact.interaction?.responseSchema, value);
+        if (validated !== undefined) {
+          const completedForm = await persist({ ...form.artifact, revision: 2, interaction: { mode: "present" }, fallback: { markdown: `${form.artifact.fallback.markdown}\n\n_Response submitted._` } }, sessionId);
+          appendPointer(completedForm);
+        }
+        ctx.ui.notify(value === undefined ? "Artifact request cancelled" : "Artifact response received", value === undefined ? "warning" : "info");
+        pi.sendMessage({ customType: "cake.artifact.demo", content: value === undefined ? "Artifact request cancelled." : `Artifact response: ${formatUnknown(validated, 1_000)}`, display: true });
+      }
+    });
+  };
 }
 
 export interface CakeRuntime {
@@ -255,6 +356,18 @@ function projectTree(sessionManager: SessionManager): SessionTreeNode[] {
   return sessionManager.getTree().map(visit);
 }
 
+function projectArtifactPointers(sessionManager: SessionManager): ArtifactPointer[] {
+  const pointers = new Map<string, ArtifactPointer>();
+  for (const entry of sessionManager.getBranch()) {
+    if (entry.type !== "custom" || Reflect.get(entry, "customType") !== "cake.artifact/v1") continue;
+    const parsed = artifactPointerSchema.safeParse(Reflect.get(entry, "data"));
+    if (!parsed.success) continue;
+    const current = pointers.get(parsed.data.artifactId);
+    if (!current || parsed.data.revision > current.revision) pointers.set(parsed.data.artifactId, parsed.data);
+  }
+  return [...pointers.values()];
+}
+
 function compatibilityCatalog(
   resourceLoader: DefaultResourceLoader,
   settingsManager: SettingsManager,
@@ -372,7 +485,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     modelsPath: `${agentDir}/models.json`,
     modelsStorePath: `${agentDir}/models-cache.json`
   });
-  const resourceLoader = new DefaultResourceLoader({ cwd: options.cwd, agentDir, settingsManager });
+  const persistArtifact = options.persistArtifact ?? (async (artifact: CakeArtifactV1) => artifactRecordSchema.parse({ artifact, workspacePath: options.cwd, digest: "0".repeat(64), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }));
+  const requestArtifact = options.requestArtifact ?? (async () => undefined);
+  const resourceLoader = new DefaultResourceLoader({ cwd: options.cwd, agentDir, settingsManager, extensionFactories: [createCakeArtifactExtension({ persistArtifact, requestArtifact })] });
   await resourceLoader.reload({ resolveProjectTrust: async () => options.trusted });
   const availableSessions = await SessionManager.list(options.cwd, options.sessionDir);
   const allowedSessionRoot = resolve(options.sessionDir ?? join(agentDir, "sessions"));
@@ -400,6 +515,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     settingsManager,
     sessionManager
   });
+  const cakeSessionId = session.sessionManager.getSessionId();
   let disposed = false;
   let activeStreamId = "stream-0";
   let streamIndex = 0;
@@ -411,14 +527,14 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   const extensionUi = createCakeExtensionUiContext({
     request: requestExtensionValue,
     state: extensionUiState,
-    emit: (event) => { if (!disposed) options.onEvent({ type: "extension-ui", sessionId: session.sessionId, event }); },
+    emit: (event) => { if (!disposed) options.onEvent({ type: "extension-ui", sessionId: cakeSessionId, event }); },
     addDiagnostic(method, message) {
       const key = `${method}:${message}`;
       if (compatibilityDiagnosticKeys.has(key)) return;
       compatibilityDiagnosticKeys.add(key);
       const diagnostic: ResourceDiagnostic = { id: `compatibility:${method}:${compatibilityDiagnosticKeys.size}`, severity: "warning", source: "compatibility", method, message };
       catalog.diagnostics.push(diagnostic);
-      if (!disposed) options.onEvent({ type: "extension-ui", sessionId: session.sessionId, event: { kind: "diagnostic", diagnostic } });
+      if (!disposed) options.onEvent({ type: "extension-ui", sessionId: cakeSessionId, event: { kind: "diagnostic", diagnostic } });
     }
   });
   await session.bindExtensions({ mode: "rpc", uiContext: extensionUi });
@@ -442,7 +558,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     const sessions = await listWorkspaceSessions(options.cwd, options.sessionDir);
     return {
       workspacePath: options.cwd,
-      sessionId: session.sessionId,
+      sessionId: cakeSessionId,
       sessionFile: session.sessionFile ?? "",
       parts: projectMessages(session.messages),
       model: session.model ? { provider: session.model.provider, id: session.model.id, name: session.model.name } : undefined,
@@ -458,6 +574,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       extensionUi: extensionUiState,
       sessions,
       tree: projectTree(session.sessionManager)
+      ,artifacts: await (options.listArtifacts?.(projectArtifactPointers(session.sessionManager)) ?? Promise.resolve([]))
     };
   }
 
@@ -472,42 +589,42 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     if (disposed) return;
     if (event.type === "agent_start") {
       activeStreamId = `stream-${++streamIndex}`;
-      options.onEvent({ type: "streaming", sessionId: session.sessionId, streaming: true });
+      options.onEvent({ type: "streaming", sessionId: cakeSessionId, streaming: true });
     }
     if (event.type === "message_update") {
       for (const part of partsFromMessage(event.message, activeStreamId, true)) {
-        options.onEvent({ type: "part-updated", sessionId: session.sessionId, part });
+        options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
       }
     }
     if (event.type === "message_end") {
       for (const part of partsFromMessage(event.message, activeStreamId)) {
-        options.onEvent({ type: "part-updated", sessionId: session.sessionId, part });
+        options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
       }
     }
     if (event.type === "tool_execution_start") {
-      options.onEvent({ type: "part-updated", sessionId: session.sessionId, part: { id: `tool-${event.toolCallId}`, kind: "tool", name: event.toolName, input: formatUnknown(event.args), state: "running" } });
+      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: `tool-${event.toolCallId}`, kind: "tool", name: event.toolName, input: formatUnknown(event.args), state: "running" } });
     }
     if (event.type === "tool_execution_update") {
-      options.onEvent({ type: "part-updated", sessionId: session.sessionId, part: { id: `tool-${event.toolCallId}`, kind: "tool", name: event.toolName, input: formatUnknown(event.args), output: formatUnknown(event.partialResult), state: "running" } });
+      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: `tool-${event.toolCallId}`, kind: "tool", name: event.toolName, input: formatUnknown(event.args), output: formatUnknown(event.partialResult), state: "running" } });
     }
     if (event.type === "tool_execution_end") {
-      options.onEvent({ type: "part-updated", sessionId: session.sessionId, part: { id: `tool-${event.toolCallId}`, kind: "tool", name: event.toolName, input: "", output: formatUnknown(event.result), state: event.isError ? "error" : "success" } });
+      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: `tool-${event.toolCallId}`, kind: "tool", name: event.toolName, input: "", output: formatUnknown(event.result), state: event.isError ? "error" : "success" } });
     }
     if (event.type === "auto_retry_start") {
-      options.onEvent({ type: "part-updated", sessionId: session.sessionId, part: { id: "active-retry", kind: "notice", tone: "warning", title: `Retry ${event.attempt}/${event.maxAttempts}`, detail: event.errorMessage } });
+      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "active-retry", kind: "notice", tone: "warning", title: `Retry ${event.attempt}/${event.maxAttempts}`, detail: event.errorMessage } });
     }
     if (event.type === "compaction_start") {
-      options.onEvent({ type: "part-updated", sessionId: session.sessionId, part: { id: "active-compaction", kind: "notice", tone: "info", title: "Compacting context", detail: event.reason } });
+      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "active-compaction", kind: "notice", tone: "info", title: "Compacting context", detail: event.reason } });
     }
     if (event.type === "agent_settled") {
-      options.onEvent({ type: "streaming", sessionId: session.sessionId, streaming: false });
+      options.onEvent({ type: "streaming", sessionId: cakeSessionId, streaming: false });
       void emitSnapshot();
     }
   });
 
   return {
-    sessionId: session.sessionId,
-    sessionFile: session.sessionFile ?? "",
+    sessionId: cakeSessionId,
+    get sessionFile() { return session.sessionFile ?? ""; },
     snapshot: makeSnapshot,
     async prompt(text, delivery, attachments) {
       if (disposed) throw new Error("The Cake runtime has been disposed");
@@ -544,7 +661,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         },
         notify(event) {
           const detail = event.type === "auth_url" ? event.url : event.type === "device_code" ? `${event.verificationUri}\nCode: ${event.userCode}` : event.message;
-          options.onEvent({ type: "part-updated", sessionId: session.sessionId, part: { id: "auth-status", kind: "notice", tone: "info", title: "Authentication", detail } });
+          options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "auth-status", kind: "notice", tone: "info", title: "Authentication", detail } });
         }
       });
       await emitSnapshot();

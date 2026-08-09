@@ -13,6 +13,7 @@ import type {
   ThinkingLevel,
   WindowViewState
 } from "../../ipc/session-contract";
+import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { DesktopClientEvent, PiState } from "../desktop-client";
 import { DesktopClientContext, SessionCacheContext } from "./context";
 
@@ -32,6 +33,12 @@ export interface ExtensionNotification {
   id: string;
   message: string;
   tone: "info" | "warning" | "error";
+}
+
+export interface ArtifactRequestState {
+  operationId: string;
+  artifactRequestId: string;
+  record: ArtifactRecord;
 }
 
 export class WindowStore extends Store<Record<string, never>> {
@@ -61,6 +68,7 @@ export class WindowStore extends Store<Record<string, never>> {
   changesLoading = false;
   error: string | undefined;
   uiRequest: UiRequestState | undefined;
+  artifactRequest: ArtifactRequestState | undefined;
   extensionTitle: string | undefined;
   extensionStatuses: ExtensionUiState["statuses"] = observable([]);
   extensionWidgets: ExtensionUiState["widgets"] = observable([]);
@@ -106,6 +114,10 @@ export class WindowStore extends Store<Record<string, never>> {
 
   get parts() {
     return this.session?.uiParts ?? [];
+  }
+
+  get artifacts() {
+    return this.session?.artifacts.map((artifact) => artifact.value) ?? [];
   }
 
   get isStreaming() {
@@ -180,7 +192,7 @@ export class WindowStore extends Store<Record<string, never>> {
       for (const sessionId of Object.keys(this.draftsBySession)) delete this.draftsBySession[sessionId];
       Object.assign(this.draftsBySession, state.draftsBySession);
       this.hydrated = true;
-      if (state.projectPath) await this.inspectPath(state.projectPath);
+      if (state.projectPath) await this.inspectPath(state.projectPath, false, state.selectedSessionId, state.selectedSessionFile);
     } catch (error) {
       if (this.signal.aborted) return;
       this.hydrated = true;
@@ -191,6 +203,8 @@ export class WindowStore extends Store<Record<string, never>> {
   private viewState(): WindowViewState {
     return {
       projectPath: this.projectPath,
+      selectedSessionId: this.session?.sessionId,
+      selectedSessionFile: this.session?.sessionFile,
       recentProjectPaths: this.recentProjectPaths.slice(),
       trustedProjectPaths: this.trustedProjectPaths.slice(),
       draft: this.draft,
@@ -349,12 +363,14 @@ export class WindowStore extends Store<Record<string, never>> {
   }
 
   private async openPath(path: string, trusted: boolean, newSession = false, sessionId?: string, sessionFile?: string) {
+    if (this.artifactRequest) await this.respondToArtifact(undefined, true);
     const revision = ++this.openRevision;
     const operationId = this.startOperation();
     this.activeOpenOperationId = operationId;
     this.activeOpenTarget = { path, sessionId, newSession };
     this.activeOpenExpectsEmpty = newSession;
     this.uiRequest = undefined;
+    this.artifactRequest = undefined;
     this.clearExtensionUi();
     this.commandPane = undefined;
     try {
@@ -552,6 +568,24 @@ export class WindowStore extends Store<Record<string, never>> {
     }
   }
 
+  async respondToArtifact(value?: unknown, cancelled = false) {
+    const request = this.artifactRequest;
+    if (!request) return;
+    this.artifactRequest = undefined;
+    try {
+      const context = this.sessionContext(); if (!context) throw new Error("No active session");
+      await this.client.respondToArtifact({ operationId: request.operationId, ...context, artifactRequestId: request.artifactRequestId, value, cancelled });
+    } catch (error) {
+      this.setError(error);
+    }
+  }
+
+  async exportArtifacts() {
+    const context = this.sessionContext();
+    if (!context) throw new Error("No active session");
+    return this.client.exportArtifacts(context.workspacePath, context.sessionId);
+  }
+
   dismissExtensionNotification(id: string) {
     const index = this.extensionNotifications.findIndex((item) => item.id === id);
     if (index >= 0) this.extensionNotifications.splice(index, 1);
@@ -606,7 +640,7 @@ export class WindowStore extends Store<Record<string, never>> {
     this.draft = restartDraft ?? this.draftsBySession[snapshot.sessionId] ?? (previousSessionId ? "" : this.draft);
     this.draftAfterAgentRestart = undefined;
     this.draftsBySession[snapshot.sessionId] = this.draft;
-    this.clearExtensionUi();
+    if (previousSessionId !== undefined) this.clearExtensionUi();
     this.applyExtensionUiState(snapshot.extensionUi);
     this.pendingOpen = undefined;
     const workspaceName = this.projects.find((project) => project.path === snapshot.workspacePath)?.name ?? this.nameFromPath(snapshot.workspacePath);
@@ -661,6 +695,7 @@ export class WindowStore extends Store<Record<string, never>> {
         this.activeOpenTarget = undefined;
         this.activeOpenExpectsEmpty = false;
         this.uiRequest = undefined;
+        this.artifactRequest = undefined;
       }
       if (event.state === "ready" && this.reopenAfterAgentRestart && this.projectPath && this.session) {
         this.reopenAfterAgentRestart = false;
@@ -680,6 +715,12 @@ export class WindowStore extends Store<Record<string, never>> {
       return;
     }
     if (event.type === "session-snapshot-received" || event.type === "part-updated" || event.type === "part-removed" || event.type === "streaming-changed") return;
+    if (event.type === "artifact-updated") return;
+    if (event.type === "artifact-requested") {
+      if (!this.activeOperations.includes(event.operationId) || !this.isActiveSession(event.record.workspacePath, event.record.artifact.sessionId)) return;
+      this.artifactRequest = event;
+      return;
+    }
     if (event.type === "extension-ui-received") {
       if (event.sessionId === this.session?.sessionId) this.receiveExtensionUi(event.event);
       return;

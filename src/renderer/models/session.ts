@@ -5,6 +5,8 @@ import { ModelOptionModel } from "./model-option";
 import { SessionSummaryModel } from "./session-summary";
 import { SessionTreeNodeModel } from "./session-tree-node";
 import { CompatibilityResourceModel, ResourceDiagnosticModel } from "./compatibility-resource";
+import { ArtifactModel } from "./artifact";
+import type { ArtifactRecord } from "../../ipc/artifact-contract";
 
 export class SessionModel extends Model {
   @state workspacePath = "";
@@ -21,6 +23,7 @@ export class SessionModel extends Model {
   @child(ResourceDiagnosticModel) resourceDiagnostics: ResourceDiagnosticModel[] = observable([]);
   @child(SessionSummaryModel) sessions: SessionSummaryModel[] = observable([]);
   @child(SessionTreeNodeModel) tree: SessionTreeNodeModel[] = observable([]);
+  @child(ArtifactModel) artifacts: ArtifactModel[] = observable([]);
 
   get loaded() {
     return Boolean(this.sessionId);
@@ -52,6 +55,7 @@ export class SessionModel extends Model {
       reconcileChildren(this.tree, snapshot.tree, SessionTreeNodeModel);
       reconcileChildren(this.resources, snapshot.compatibility.resources, CompatibilityResourceModel);
       reconcileChildren(this.resourceDiagnostics, snapshot.compatibility.diagnostics, ResourceDiagnosticModel);
+      reconcileArtifactRecords(this.artifacts, snapshot.artifacts ?? []);
     });
   }
 
@@ -81,6 +85,18 @@ export class SessionModel extends Model {
   setStreaming(streaming: boolean) {
     this.streaming = streaming;
   }
+
+  upsertArtifact(record: ArtifactRecord) {
+    reconcileArtifactRecords(this.artifacts, [
+      ...this.artifacts.filter((artifact) => artifact.id !== record.artifact.id).map((artifact) => artifact.value),
+      record
+    ]);
+  }
+}
+
+function reconcileArtifactRecords(target: ArtifactModel[], records: ArtifactRecord[]) {
+  const snapshots = records.map((record) => ({ ...record.artifact, workspacePath: record.workspacePath, digest: record.digest, createdAt: record.createdAt, updatedAt: record.updatedAt }));
+  reconcileChildren(target, snapshots, ArtifactModel);
 }
 
 function reconcileModelOptions(target: ModelOptionModel[], snapshots: SessionSnapshot["models"]) {

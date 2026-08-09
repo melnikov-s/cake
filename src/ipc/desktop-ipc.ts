@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { artifactRecordSchema } from "./artifact-contract";
 import {
   applicationStateSchema,
   attachmentSchema,
@@ -21,6 +22,8 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("session-streaming"), sessionId: z.string(), streaming: z.boolean() }),
   z.object({ type: z.literal("extension-ui"), sessionId: z.string().max(256), event: extensionUiEventSchema }),
   z.object({ type: z.literal("changes-snapshot"), requestId: z.uuid(), workspacePath: z.string().max(4_096), files: z.array(changedFileSchema).max(10_000) }),
+  z.object({ type: z.literal("artifact-updated"), record: artifactRecordSchema }),
+  z.object({ type: z.literal("artifact-requested"), requestId: z.uuid(), artifactRequestId: z.uuid(), record: artifactRecordSchema }),
   z.object({
     type: z.literal("ui-request"),
     requestId: z.uuid(),
@@ -72,6 +75,8 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("fork-session"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), entryId: z.string().max(256) }),
   z.object({ type: z.literal("navigate-session"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), entryId: z.string().max(256) }),
   z.object({ type: z.literal("inspect-changes"), requestId: z.uuid(), workspacePath: z.string().max(4_096) }),
+  z.object({ type: z.literal("respond-artifact"), requestId: z.uuid(), artifactRequestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), value: z.unknown().optional(), cancelled: z.boolean() }),
+  z.object({ type: z.literal("export-artifacts"), workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }),
   z.object({
     type: z.literal("respond-ui"),
     requestId: z.uuid(),
@@ -94,6 +99,8 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("window-created") }),
   z.object({ type: z.literal("accepted"), requestId: z.uuid() }),
   z.object({ type: z.literal("ui-response-accepted"), uiRequestId: z.uuid() })
+  ,z.object({ type: z.literal("artifact-response-accepted"), artifactRequestId: z.uuid() })
+  ,z.object({ type: z.literal("artifacts-exported"), markdown: z.string().max(20_000_000) })
 ]);
 
 export type DesktopEvent = z.infer<typeof desktopEventSchema>;

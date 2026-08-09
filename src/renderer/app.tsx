@@ -16,6 +16,7 @@ import { Reasoning } from "@/components/ai-elements/reasoning";
 import { Source } from "@/components/ai-elements/source";
 import { Tool } from "@/components/ai-elements/tool";
 import { Button } from "@/components/ui/button";
+import { ArtifactHost, downloadArtifactMarkdown } from "@/components/artifact-host";
 import type { CompatibilityResource, SessionTreeNode, UiPart } from "../ipc/session-contract";
 import { WindowStore, type UiRequestState } from "./stores/window-store";
 
@@ -42,7 +43,9 @@ function CommandPane({ store }: { store: WindowStore }) {
   const resourceGroups = store.commandPane === "resources"
     ? (["extension", "skill", "prompt", "package"] as CompatibilityResource["kind"][]).map((kind) => ({ kind, resources: store.session!.compatibility.resources.filter((item) => item.kind === kind) }))
     : [];
-  const diagnostics = store.commandPane === "resources" ? [...store.session.compatibility.diagnostics, ...store.compatibilityDiagnostics] : [];
+  const diagnostics = store.commandPane === "resources"
+    ? [...new Map([...store.session.compatibility.diagnostics, ...store.compatibilityDiagnostics].map((item) => [item.id, item])).values()]
+    : [];
   return (
     <div className="command-pane-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) store.closeCommandPane(); }}>
       <section className="command-pane secondary-surface" role="dialog" aria-modal="true" aria-labelledby="command-pane-title">
@@ -129,7 +132,7 @@ export const Transcript = observer(function Transcript({ store }: { store: Windo
   if (items.length === 0) {
     return (
       <div className="transcript transcript-empty">
-        <Conversation><div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</Conversation>
+        <Conversation><div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div><ArtifactsPanel store={store} />{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</Conversation>
       </div>
     );
   }
@@ -144,11 +147,16 @@ export const Transcript = observer(function Transcript({ store }: { store: Windo
       followOutput={(isAtBottom) => isAtBottom ? "auto" : false}
       components={{
         List: TranscriptList,
-        Footer: () => <div className="transcript-footer">{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</div>
+        Footer: () => <div className="transcript-footer"><ArtifactsPanel store={store} />{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</div>
       }}
       itemContent={(_index, item) => <div className="transcript-item">{item.kind === "activity-group" ? <ActivityGroup parts={item.parts} store={store} /> : <TranscriptPart part={item} store={store} />}</div>}
     />
   );
+});
+
+const ArtifactsPanel = observer(function ArtifactsPanel({ store }: { store: WindowStore }) {
+  if (store.artifacts.length === 0) return null;
+  return <section className="artifacts-panel" aria-label="Session artifacts"><header><strong>Artifacts</strong><Button variant="ghost" size="sm" onClick={() => { void store.exportArtifacts().then(downloadArtifactMarkdown); }}>Export Markdown</Button></header>{store.artifacts.map((record) => { const request = store.artifactRequest?.record.artifact.id === record.artifact.id ? store.artifactRequest : undefined; return <ArtifactHost key={record.artifact.id} record={record} requested={Boolean(request)} onSubmit={(value) => void store.respondToArtifact(value)} onCancel={() => void store.respondToArtifact(undefined, true)} />; })}</section>;
 });
 
 function UiDialog({ request, store }: { request: UiRequestState; store: WindowStore }) {
