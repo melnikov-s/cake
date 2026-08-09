@@ -187,7 +187,7 @@ function UiDialog({ request, store }: { request: UiRequestState; store: WindowSt
   );
 }
 
-const Sidebar = observer(function Sidebar({ store, onOpenSettings, settingsOpen }: { store: WindowStore; onOpenSettings: () => void; settingsOpen: boolean }) {
+const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, settingsOpen }: { store: WindowStore; onOpenSettings: () => void; onOpenChat: () => void; settingsOpen: boolean }) {
   const [searchExpanded, setSearchExpanded] = useState(Boolean(store.sessionSearch));
   const searchInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -202,24 +202,28 @@ const Sidebar = observer(function Sidebar({ store, onOpenSettings, settingsOpen 
     store.setSessionSearch("");
     setSearchExpanded(false);
   };
+  const navigateToChat = (action: () => void | Promise<unknown>) => {
+    onOpenChat();
+    void action();
+  };
   return (
     <aside className="sidebar">
       <div className="sidebar-brand"><span className="cake-mark">C</span><span>Cake</span><span className={`status-dot status-${store.piState}`} title={`Pi ${store.piState}`} /></div>
-      <button className="new-chat" onClick={() => void store.startOneOffChat()}><ChatIcon /><span>New chat</span><kbd>⌘N</kbd></button>
+      <button className="new-chat" onClick={() => navigateToChat(() => store.startOneOffChat())}><ChatIcon /><span>New chat</span><kbd>⌘N</kbd></button>
       <div className="sidebar-scroll">
         <div className="section-heading"><span>Sessions</span><div><button className={searchExpanded ? "search-trigger active" : "search-trigger"} aria-label={searchExpanded ? "Close session search" : "Search sessions"} aria-expanded={searchExpanded} onClick={() => searchExpanded ? closeSearch() : setSearchExpanded(true)}>{searchExpanded ? <CloseIcon /> : <SearchIcon />}</button></div></div>
         <div className={`session-filter global-session-filter ${searchExpanded ? "expanded" : ""}`} aria-hidden={!searchExpanded}><input ref={searchInput} aria-label="Search sessions" placeholder="Search all sessions" value={store.sessionSearch} disabled={!searchExpanded} onChange={(event) => store.setSessionSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") closeSearch(); }} /></div>
         {store.sessionSearch.trim() && <div className="global-session-results">
-          {store.searchedSessions.length === 0 ? <p className="sidebar-empty">No matching sessions.</p> : store.searchedSessions.slice(0, 50).map((session) => <div key={`${session.workspacePath}:${session.id}`} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && session.workspacePath === store.projectPath ? "active" : ""}`}><button className="session-row global-session-row" onClick={() => void store.openSession(session.workspacePath, session.id)}><span>{session.title}</span><small>{session.workspaceName}</small></button></div>)}
+          {store.searchedSessions.length === 0 ? <p className="sidebar-empty">No matching sessions.</p> : store.searchedSessions.slice(0, 50).map((session) => <div key={`${session.workspacePath}:${session.id}`} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && session.workspacePath === store.projectPath ? "active" : ""}`}><button className="session-row global-session-row" onClick={() => navigateToChat(() => store.openSession(session.workspacePath, session.id))}><span>{session.title}</span><small>{session.workspaceName}</small></button></div>)}
         </div>}
-        <div className="section-heading"><span>Projects</span><div><button aria-label="New window" title="New window" onClick={() => void store.createWindow()}>◫</button><button aria-label="Add project" onClick={() => void store.chooseProject()}><PlusIcon /></button></div></div>
+        <div className="section-heading"><span>Projects</span><div><button aria-label="New window" title="New window" onClick={() => void store.createWindow()}>◫</button><button aria-label="Add project" onClick={() => navigateToChat(() => store.chooseProject())}><PlusIcon /></button></div></div>
         {store.recentProjectPaths.length === 0 ? <p className="sidebar-empty">Add a folder to start a project.</p> : store.recentProjectPaths.map((path) => {
           const active = path === store.projectPath;
           const sessions = store.projectSessions(path);
           const visibleSessions = sessions.slice(0, store.sessionLimit(path));
           return <div className="project-group" key={path}>
-            <div className={`project-row ${active ? "active" : ""}`}><button className="project-open" title={path} onClick={() => void store.switchProject(path)}><FolderIcon /><span>{store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}</span></button>{active && <><button className="project-add" title="Rename project" aria-label="Rename project" onClick={() => { const name = window.prompt("Project name", store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)); if (name) void store.renameProject(path, name); }}>✎</button><button className="project-add" title="Remove project" aria-label="Remove project" onClick={() => { if (window.confirm(`Remove ${store.nameFromPath(path)} from Cake? Pi sessions and project files will not be deleted.`)) void store.removeProject(path); }}>−</button><button className="project-add" aria-label={`New chat in ${store.nameFromPath(path)}`} onClick={() => void store.startNewSession()}><PlusIcon /></button></>}</div>
-            {!store.sessionSearch.trim() && visibleSessions.map((session) => <div key={session.id} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && path === store.projectPath ? "active" : ""}`}><button className="session-row" onClick={() => void store.openSession(path, session.id)}><span>{session.title}</span>{session.id === store.session?.sessionId && path === store.projectPath && store.isStreaming && <i />}</button></div>)}
+            <div className={`project-row ${active ? "active" : ""}`}><button className="project-open" title={path} onClick={() => navigateToChat(() => store.switchProject(path))}><FolderIcon /><span>{store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}</span></button>{active && <><button className="project-add" title="Rename project" aria-label="Rename project" onClick={() => { const name = window.prompt("Project name", store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)); if (name) void store.renameProject(path, name); }}>✎</button><button className="project-add" title="Remove project" aria-label="Remove project" onClick={() => { if (window.confirm(`Remove ${store.nameFromPath(path)} from Cake? Pi sessions and project files will not be deleted.`)) void store.removeProject(path); }}>−</button><button className="project-add" aria-label={`New chat in ${store.nameFromPath(path)}`} onClick={() => navigateToChat(() => store.startNewSession())}><PlusIcon /></button></>}</div>
+            {!store.sessionSearch.trim() && visibleSessions.map((session) => <div key={session.id} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && path === store.projectPath ? "active" : ""}`}><button className="session-row" onClick={() => navigateToChat(() => store.openSession(path, session.id))}><span>{session.title}</span>{session.id === store.session?.sessionId && path === store.projectPath && store.isStreaming && <i />}</button></div>)}
             {!store.sessionSearch.trim() && sessions.length > visibleSessions.length && <button className="session-more" onClick={() => store.showMoreSessions(path)}>More <span>{sessions.length - visibleSessions.length}</span></button>}
           </div>;
         })}
@@ -232,7 +236,7 @@ const Sidebar = observer(function Sidebar({ store, onOpenSettings, settingsOpen 
   );
 });
 
-const ComposerPanel = observer(function ComposerPanel({ store, onOpenSettings }: { store: WindowStore; onOpenSettings: () => void }) {
+const ComposerPanel = observer(function ComposerPanel({ store }: { store: WindowStore }) {
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
@@ -257,7 +261,6 @@ const ComposerPanel = observer(function ComposerPanel({ store, onOpenSettings }:
             <button type="button" className="icon-button" aria-label="Attach files" title="Attach files" onClick={() => void store.addAttachments()}><PaperclipIcon /></button>
             <select aria-label="Model" value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onChange={(event) => void store.selectModel(event.target.value)}><option value="">Choose model</option>{store.modelsByProvider.map((provider) => <optgroup key={provider.id} label={provider.name}>{provider.models.map((model) => <option key={`${model.provider}/${model.id}`} value={`${model.provider}/${model.id}`}>{model.name}{model.authenticated ? "" : " · sign in"}</option>)}</optgroup>)}</select>
             <select aria-label="Thinking level" value={store.session?.thinkingLevel} onChange={(event) => void store.selectThinkingLevel(event.target.value as NonNullable<typeof store.session>["thinkingLevel"])}>{store.session?.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "No reasoning" : `${level.charAt(0).toUpperCase()}${level.slice(1)} reasoning`}</option>)}</select>
-            <button type="button" className="icon-button" aria-label="Open settings" title="Settings" onClick={onOpenSettings}><SettingsIcon /></button>
           </div>
           <div className="composer-actions">
             {store.isStreaming && <><Button variant="ghost" size="sm" type="button" onClick={() => void store.abort()}>Stop</Button><Button variant="outline" size="sm" type="button" disabled={!store.canSubmit} onClick={() => void store.submit("steer")}>Steer</Button></>}
@@ -328,13 +331,13 @@ export const App = observer(function App() {
 
   return (
     <main className="app-shell">
-      <Sidebar store={store} settingsOpen={page === "settings"} onOpenSettings={() => setPage("settings")} />
+      <Sidebar store={store} settingsOpen={page === "settings"} onOpenSettings={() => setPage("settings")} onOpenChat={() => setPage("chat")} />
       <section className="workspace" data-session-id={store.session?.sessionId}>
         <header className="workspace-header"><div>{page === "settings" && <button className="header-back" aria-label="Back to chat" onClick={() => setPage("chat")}><BackIcon /></button>}<strong>{page === "settings" ? "Settings" : store.extensionTitle ?? (store.session ? (store.session.sessions.find((item) => item.id === store.session?.sessionId)?.title || "New chat") : "Cake")}</strong>{page === "chat" && store.projectPath && <span>{store.projectPath}</span>}</div>{page === "chat" && store.session && <div className="header-actions"><button className="header-new" onClick={() => void store.openCommandPane("resources")}>Resources</button><button className="header-new" onClick={() => { const name = window.prompt("Session name", store.session?.sessions.find((item) => item.id === store.session?.sessionId)?.title); if (name) void store.renameCurrentSession(name); }}>Rename</button><button className="header-new" onClick={() => void store.startNewSession()}><PlusIcon /> New chat</button></div>}</header>
         {page === "settings" ? <SettingsPage store={store} /> : !store.session ? (
           <div className="welcome"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build?</h1><p>Open a project for durable workspace chats, or start a one-off chat from your home directory.</p><div><Button size="lg" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.chooseProject()}><FolderIcon /> Open project</Button><Button size="lg" variant="outline" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.startOneOffChat()}><ChatIcon /> One-off chat</Button></div>{store.error && <p className="welcome-error" role="alert">{store.error}</p>}</div>
         ) : (
-          <div className="workbench"><div className="chat-layout"><Transcript sessionId={store.session.sessionId} store={store} /><ComposerPanel store={store} onOpenSettings={() => setPage("settings")} /></div></div>
+          <div className="workbench"><div className="chat-layout"><Transcript sessionId={store.session.sessionId} store={store} /><ComposerPanel store={store} /></div></div>
         )}
       </section>
       <CommandPane store={store} />
