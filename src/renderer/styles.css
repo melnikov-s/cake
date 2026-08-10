@@ -88,7 +88,7 @@
 }
 
 .app-shell { display: grid; width: 100vw; max-width: 100vw; height: 100vh; overflow: hidden; grid-template-columns: 292px minmax(0, 1fr); background: var(--background); color: var(--foreground); transition: grid-template-columns 180ms ease; }
-.app-shell.sidebar-collapsed { grid-template-columns: 64px minmax(0, 1fr); }
+.app-shell.sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
 .sidebar { display: flex; min-width: 0; flex-direction: column; overflow: hidden; border-right: 1px solid color-mix(in oklab, var(--border) 72%, transparent); background: var(--sidebar); }
 .sidebar-window-tools { display: flex; height: 46px; flex: 0 0 46px; align-items: center; gap: 3px; padding: 0 12px 0 103px; -webkit-app-region: drag; }
 .sidebar-window-tools button, .brand-actions button { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--muted-foreground); -webkit-app-region: no-drag; }
@@ -150,21 +150,27 @@
 .sidebar-settings-icon { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--muted-foreground); }
 .sidebar-settings-icon svg { width: 17px; height: 17px; }
 .sidebar-settings:hover, .sidebar-settings.active, .sidebar-settings-icon:hover, .sidebar-settings-icon.active { background: var(--sidebar-hover); color: var(--foreground); }
-.sidebar-collapsed .sidebar-window-tools { justify-content: center; padding: 0; }
-.sidebar-collapsed .sidebar-window-tools button:not(:first-child), .sidebar-collapsed .sidebar-brand, .sidebar-collapsed .sidebar-scroll, .sidebar-collapsed .sidebar-settings { display: none; }
-.sidebar-collapsed .sidebar-footer { justify-content: center; padding-inline: 10px; }
+.sidebar-collapsed .sidebar { border-right: 0; }
+.sidebar-collapsed .sidebar-window-tools { padding: 0; }
+.sidebar-collapsed .sidebar-window-tools button, .sidebar-collapsed .sidebar-brand, .sidebar-collapsed .sidebar-scroll, .sidebar-collapsed .sidebar-settings { display: none; }
+.sidebar-collapsed .sidebar-footer { justify-content: center; margin-top: auto; padding-inline: 10px; }
 
 @media (prefers-reduced-motion: reduce) {
   .app-shell, .global-session-filter { transition: none; }
 }
 
-.workspace { display: grid; min-width: 0; min-height: 0; contain: inline-size; overflow: hidden; grid-template-rows: 52px minmax(0, 1fr); }
+.workspace { position: relative; display: grid; min-width: 0; min-height: 0; contain: inline-size; overflow: hidden; grid-template-rows: 52px minmax(0, 1fr); }
 .workspace-header { display: flex; width: 100%; max-width: 100%; min-width: 0; contain: inline-size; align-items: center; justify-content: space-between; overflow: hidden; padding: 0 20px; border-bottom: 1px solid color-mix(in oklab, var(--border) 65%, transparent); -webkit-app-region: drag; }
 .workspace-header > div { display: flex; width: 0; min-width: 0; flex: 1 1 0%; align-items: baseline; gap: 12px; overflow: hidden; }
 .workspace-header strong { display: block; min-width: 0; max-width: 100%; overflow: hidden; font-size: 13px; font-weight: 630; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-header span { overflow: hidden; color: var(--muted-foreground); font: 10px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
-.header-back { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--muted-foreground); -webkit-app-region: no-drag; }
-.header-back:hover { background: var(--muted); color: var(--foreground); }
+.header-back, .header-sidebar-toggle { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--muted-foreground); -webkit-app-region: no-drag; }
+.header-sidebar-toggle { display: none; }
+.workspace-settings-icon { position: absolute; z-index: 20; bottom: 16px; left: 16px; display: none; width: 32px; height: 32px; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--muted-foreground); }
+.workspace-settings-icon svg { width: 17px; height: 17px; }
+.sidebar-collapsed .workspace-header { padding-left: 84px; }
+.sidebar-collapsed .header-sidebar-toggle, .sidebar-collapsed .workspace-settings-icon { display: grid; }
+.header-back:hover, .header-sidebar-toggle:hover, .workspace-settings-icon:hover, .workspace-settings-icon.active { background: var(--muted); color: var(--foreground); }
 .welcome, .chat-empty { display: grid; place-items: center; align-content: center; text-align: center; }
 .welcome { padding: 40px; }
 .welcome h1, .chat-empty h1 { margin: 22px 0 0; font-family: var(--font-display); font-weight: 580; letter-spacing: -.045em; }
@@ -407,11 +413,14 @@
   .provider-actions { grid-column: 1 / -1; justify-content: flex-start; padding-left: 45px; }
 }
 @media (max-width: 620px) {
-  .app-shell { grid-template-columns: 64px minmax(0, 1fr); }
-  .sidebar-window-tools { justify-content: center; padding: 0; }.sidebar-window-tools button:not(:first-child), .sidebar-brand, .sidebar-scroll, .sidebar-settings { display: none; }
-  .sidebar-footer { justify-content: center; padding-inline: 10px; }
+  .app-shell { grid-template-columns: 0 minmax(0, 1fr); }
+  .sidebar-window-tools { padding: 0; }.sidebar-window-tools button, .sidebar-brand, .sidebar-scroll, .sidebar-settings { display: none; }
+  .sidebar-footer { justify-content: center; margin-top: auto; padding-inline: 10px; }
+  .sidebar { border-right: 0; }
+  .workspace-header { padding-left: 84px; }
+  .header-sidebar-toggle, .workspace-settings-icon { display: grid; }
   .composer-context select, .model-combobox.compact, .model-combobox.compact .model-combobox-input { max-width: 105px; }.composer-dock { padding-inline: 10px; }.transcript-list { padding-inline: 16px; }.transcript-footer { padding-inline: 16px; }.transcript-empty { padding-inline: 16px; }
-  .command-pane-backdrop { left: 64px; padding: 12px; }
+  .command-pane-backdrop { left: 0; padding: 12px; }
   .settings-page { padding: 32px 16px 60px; }
   .settings-intro { margin-bottom: 30px; }
   .settings-fields label, .settings-field { grid-template-columns: 1fr; gap: 10px; }

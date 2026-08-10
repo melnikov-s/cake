@@ -28,6 +28,21 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(page.getByRole("button", { name: "New chat in project" })).toBeVisible();
     await expect(page.getByLabel("Model")).toBeVisible();
     await expect(page.getByLabel("Thinking level")).toBeVisible();
+    await page.getByRole("button", { name: "Toggle sidebar" }).click();
+    await expect.poll(() => page.evaluate(() => {
+      const sidebar = document.querySelector(".sidebar")?.getBoundingClientRect();
+      const toggle = document.querySelector(".header-sidebar-toggle")?.getBoundingClientRect();
+      const settingsElement = document.querySelector(".workspace-settings-icon");
+      const settings = settingsElement?.getBoundingClientRect();
+      const composer = document.querySelector(".composer-dock");
+      return {
+        sidebarRemoved: sidebar?.width === 0,
+        toggleClearsWindowControls: Boolean(toggle && toggle.left >= 84),
+        settingsOnWorkspace: Boolean(settings && settings.left === 16 && Math.abs(innerHeight - settings.bottom - 16) < 1),
+        settingsAboveComposer: Boolean(settingsElement && composer && Number(getComputedStyle(settingsElement).zIndex) > Number(getComputedStyle(composer).zIndex))
+      };
+    })).toEqual({ sidebarRemoved: true, toggleClearsWindowControls: true, settingsOnWorkspace: true, settingsAboveComposer: true });
+    await page.getByRole("button", { name: "Toggle sidebar" }).click();
     await page.locator(".sidebar").getByLabel("Open settings").click();
     await expect(page.getByLabel("Color theme")).toHaveValue("system");
     await page.getByRole("button", { name: "New chat in project" }).click();
