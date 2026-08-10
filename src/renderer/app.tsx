@@ -39,7 +39,7 @@ const ForwardIcon = () => <Icon><path d="m9 18 6-6-6-6" /></Icon>;
 const SidebarIcon = () => <Icon><rect x="3.5" y="4" width="17" height="16" rx="3" /><path d="M9 4v16" /></Icon>;
 const ChevronIcon = () => <Icon size={13}><path d="m8 10 4 4 4-4" /></Icon>;
 const MoreIcon = () => <Icon><circle cx="5" cy="12" r=".7" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r=".7" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r=".7" fill="currentColor" stroke="none" /></Icon>;
-const HelpIcon = () => <Icon><circle cx="12" cy="12" r="8.5" /><path d="M9.8 9a2.35 2.35 0 1 1 3.2 2.2c-.8.35-1 1-1 1.8M12 16.7h.01" /></Icon>;
+const SettingsIcon = () => <Icon><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06-2.83 2.83-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21h-4v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06-2.83-2.83.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3v-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06 2.83-2.83.06.06A1.65 1.65 0 0 0 9 4.68h.08a1.65 1.65 0 0 0 1-1.51V3h4v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06 2.83 2.83-.06.06A1.65 1.65 0 0 0 19.32 9v.08a1.65 1.65 0 0 0 1.51 1H21v4h-.09A1.65 1.65 0 0 0 19.4 15z" /></Icon>;
 
 function CommandPane({ store }: { store: WindowStore }) {
   if (!store.commandPane || !store.session) return null;
@@ -237,7 +237,7 @@ const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, o
         })}
       </div>
       <div className="sidebar-footer">
-        <button className={settingsOpen ? "sidebar-settings active" : "sidebar-settings"} type="button" aria-label="Open settings" aria-current={settingsOpen ? "page" : undefined} onClick={onOpenSettings}><span className="profile-mark">C</span><span>Cake settings</span></button><HelpIcon />
+        <button className={settingsOpen ? "sidebar-settings active" : "sidebar-settings"} type="button" aria-label="Open Cake settings" aria-current={settingsOpen ? "page" : undefined} onClick={onOpenSettings}><span className="profile-mark">C</span><span>Cake settings</span></button><button className={settingsOpen ? "sidebar-settings-icon active" : "sidebar-settings-icon"} type="button" aria-label="Open settings" aria-current={settingsOpen ? "page" : undefined} onClick={onOpenSettings}><SettingsIcon /></button>
       </div>
     </aside>
   );
