@@ -112,12 +112,11 @@
 .session-row { position: relative; display: flex; width: calc(100% - 20px); max-width: calc(100% - 20px); min-width: 0; min-height: 31px; contain: inline-size; align-items: center; margin-left: 20px; padding: 6px 9px 6px 13px; border: 0; border-radius: 7px; background: transparent; color: var(--muted-foreground); font-size: 12.5px; line-height: 1.25; text-align: left; }
 .session-row span { display: block; width: 0; min-width: 0; flex: 1 1 0%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-row:hover { background: var(--sidebar-hover); color: var(--foreground); }
-.session-row.active { color: var(--foreground); font-weight: 570; }
-.session-row.active::before { position: absolute; left: 3px; width: 3px; height: 14px; border-radius: 9px; background: var(--accent); content: ""; }
 .session-row i { width: 6px; height: 6px; margin-left: auto; border-radius: 50%; background: var(--accent); animation: status-pulse 1.6s ease-in-out infinite; }
 .session-item { position: relative; display: flex; align-items: center; }
 .session-item .session-row { width: calc(100% - 20px); }
-.session-item.active .session-row { color: var(--foreground); font-weight: 570; }
+.session-item.active .session-row { background: var(--sidebar-active); color: var(--foreground); font-weight: 650; box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 1px color-mix(in oklab, var(--accent) 18%, transparent); }
+.session-item.active .session-row:hover { background: color-mix(in oklab, var(--sidebar-active) 88%, var(--accent)); }
 .session-more { margin: 1px 0 5px 33px; padding: 4px 7px; border: 0; border-radius: 6px; background: transparent; color: var(--muted-foreground); font-size: 11px; }
 .session-more:hover { background: var(--sidebar-hover); color: var(--foreground); }
 .session-more span { margin-left: 3px; opacity: .65; }
