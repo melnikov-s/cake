@@ -4,11 +4,11 @@ import { ComposerInput } from "./ai-elements/composer";
 
 type SlashCommand = SessionSnapshot["commands"][number];
 
-interface SlashCommandComboboxProps extends Omit<ComponentProps<typeof ComposerInput>, "onChange" | "onKeyDown" | "value"> {
+interface SlashCommandComboboxProps extends Omit<ComponentProps<typeof ComposerInput>, "onChange" | "onKeyDown" | "onSubmit" | "value"> {
   commands: SlashCommand[];
   value: string;
   onValueChange(value: string): void;
-  onSubmit(): void;
+  onSubmit(value?: string): void;
 }
 
 export function SlashCommandCombobox({ commands, value, onValueChange, onSubmit, ...inputProps }: SlashCommandComboboxProps) {
@@ -16,10 +16,10 @@ export function SlashCommandCombobox({ commands, value, onValueChange, onSubmit,
   const listboxId = useId();
   const [activeIndex, setActiveIndex] = useState(0);
   const [dismissedValue, setDismissedValue] = useState<string>();
-  const draft = value.trim();
+  const draft = value.trimStart();
   const commandPrefix = draft.slice(1).toLocaleLowerCase();
   const filteredCommands = useMemo(() => commands.filter((command) => command.name.toLocaleLowerCase().startsWith(commandPrefix)), [commands, commandPrefix]);
-  const eligible = draft.startsWith("/") && !draft.includes(" ") && filteredCommands.length > 0;
+  const eligible = draft.startsWith("/") && !/\s/.test(draft) && filteredCommands.length > 0;
   const open = eligible && dismissedValue !== value;
   const selectedIndex = Math.min(activeIndex, Math.max(0, filteredCommands.length - 1));
 
@@ -37,6 +37,12 @@ export function SlashCommandCombobox({ commands, value, onValueChange, onSubmit,
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
+  const execute = (command: SlashCommand) => {
+    const commandValue = `/${command.name}`;
+    onValueChange(commandValue);
+    onSubmit(commandValue);
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (open && event.key === "ArrowDown") {
       event.preventDefault();
@@ -46,13 +52,16 @@ export function SlashCommandCombobox({ commands, value, onValueChange, onSubmit,
       setActiveIndex((index) => (index - 1 + filteredCommands.length) % filteredCommands.length);
     } else if (open && event.key === "Enter" && !event.nativeEvent.isComposing) {
       event.preventDefault();
+      execute(filteredCommands[selectedIndex]!);
+    } else if (open && (event.key === "Tab" || event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+      event.preventDefault();
       choose(filteredCommands[selectedIndex]!);
     } else if (open && event.key === "Escape") {
       event.preventDefault();
       setDismissedValue(value);
     } else if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
-      onSubmit();
+      onSubmit(value);
     }
   };
 
@@ -68,7 +77,7 @@ export function SlashCommandCombobox({ commands, value, onValueChange, onSubmit,
         onMouseEnter={() => setActiveIndex(index)}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => choose(command)}
-      ><code>/{command.name}</code><span><strong>{command.description ?? command.name}</strong><small>{command.source} · {command.sourceInfo.scope}</small></span></button>)}
+      ><code>/{command.name}{command.argumentHint ? ` ${command.argumentHint}` : ""}</code><span><strong>{command.description ?? command.name}</strong><small>{command.source === "builtin" ? "Pi CLI" : `${command.source} · ${command.sourceInfo.scope}`}</small></span></button>)}
     </div>}
     <ComposerInput
       {...inputProps}

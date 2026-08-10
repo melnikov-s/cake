@@ -5,6 +5,8 @@ export class SessionTreeNodeModel extends Model {
   @id id = "";
   @state parentId: string | undefined;
   @state type = "";
+  @state messageRole: string | undefined;
+  @state editorText: string | undefined;
   @state label: string | undefined;
   @state preview = "";
   @state active = false;

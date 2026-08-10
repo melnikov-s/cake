@@ -84,6 +84,22 @@ export const modelOptionSchema = z.object({
   authTypes: z.array(z.enum(["api_key", "oauth"])).max(2)
 });
 
+export const sessionUsageSchema = z.object({
+  tokens: z.object({
+    input: z.number().int().nonnegative(),
+    output: z.number().int().nonnegative(),
+    cacheRead: z.number().int().nonnegative(),
+    cacheWrite: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative()
+  }),
+  cost: z.number().nonnegative(),
+  context: z.object({
+    tokens: z.number().int().nonnegative().nullable(),
+    contextWindow: z.number().int().positive(),
+    percent: z.number().nonnegative().nullable()
+  }).optional()
+});
+
 export const sessionSummarySchema = z.object({
   id: z.string().min(1).max(256),
   title: z.string().max(1_024),
@@ -103,6 +119,8 @@ export const sessionTreeNodeSchema: z.ZodType<{
   id: string;
   parentId?: string;
   type: string;
+  messageRole?: string;
+  editorText?: string;
   label?: string;
   preview: string;
   active: boolean;
@@ -111,6 +129,8 @@ export const sessionTreeNodeSchema: z.ZodType<{
   id: z.string().min(1).max(256),
   parentId: z.string().max(256).optional(),
   type: z.string().max(128),
+  messageRole: z.string().max(128).optional(),
+  editorText: boundedText.optional(),
   label: z.string().max(512).optional(),
   preview: z.string().max(2_048),
   active: z.boolean(),
@@ -169,7 +189,8 @@ export const extensionUiStateSchema = z.object({
 export const slashCommandSchema = z.object({
   name: z.string().min(1).max(256),
   description: z.string().max(4_096).optional(),
-  source: z.enum(["extension", "prompt", "skill"]),
+  argumentHint: z.string().max(512).optional(),
+  source: z.enum(["builtin", "extension", "prompt", "skill"]),
   sourceInfo: z.object({
     path: z.string().max(8_192),
     source: z.string().max(2_048),
@@ -177,6 +198,35 @@ export const slashCommandSchema = z.object({
     origin: z.enum(["package", "top-level"])
   })
 });
+
+const builtinSourceInfo = { path: "builtin:pi-cli", source: "Pi CLI", scope: "temporary", origin: "top-level" } as const;
+
+// Mirrors BUILTIN_SLASH_COMMANDS from @earendil-works/pi-coding-agent 0.84.0.
+// Pi's getCommands() intentionally returns only extension, prompt, and skill commands.
+export const piBuiltinSlashCommands = [
+  { name: "settings", description: "Open settings menu" },
+  { name: "model", description: "Select model (opens selector UI)", argumentHint: "<provider/model>" },
+  { name: "scoped-models", description: "Enable/disable models for Ctrl+P cycling" },
+  { name: "export", description: "Export session (HTML default, or specify path: .html/.jsonl)" },
+  { name: "import", description: "Import and resume a session from a JSONL file" },
+  { name: "share", description: "Share session as a secret GitHub gist" },
+  { name: "copy", description: "Copy last agent message to clipboard" },
+  { name: "name", description: "Set session display name" },
+  { name: "session", description: "Show session info and stats" },
+  { name: "changelog", description: "Show changelog entries" },
+  { name: "hotkeys", description: "Show all keyboard shortcuts" },
+  { name: "fork", description: "Create a new fork from a previous user message" },
+  { name: "clone", description: "Duplicate the current session at the current position" },
+  { name: "tree", description: "Navigate session tree (switch branches)" },
+  { name: "trust", description: "Save project trust decision for future sessions" },
+  { name: "login", description: "Configure provider authentication", argumentHint: "<provider>" },
+  { name: "logout", description: "Remove provider authentication" },
+  { name: "new", description: "Start a new session" },
+  { name: "compact", description: "Manually compact the session context" },
+  { name: "resume", description: "Resume a different session" },
+  { name: "reload", description: "Reload keybindings, extensions, skills, prompts, themes, and context files" },
+  { name: "quit", description: "Quit pi" }
+].map((command) => slashCommandSchema.parse({ ...command, source: "builtin", sourceInfo: builtinSourceInfo }));
 
 export const extensionUiEventSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("notify"), id: z.string().max(256), message: z.string().max(4_096), tone: z.enum(["info", "warning", "error"]) }),
@@ -199,6 +249,7 @@ export const sessionSnapshotSchema = z.object({
   streaming: z.boolean(),
   diagnostics: z.array(z.string().max(4_096)).max(1_000),
   commands: z.array(slashCommandSchema).max(20_000),
+  usage: sessionUsageSchema.optional(),
   compatibility: compatibilityCatalogSchema.default({ resources: [], diagnostics: [] }),
   extensionUi: extensionUiStateSchema.default({ statuses: [], widgets: [] }),
   sessions: z.array(sessionSummarySchema).max(10_000).default([]),

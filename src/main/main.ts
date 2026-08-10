@@ -123,7 +123,9 @@ function createWindow(slot = nextWindowSlot++) {
     height: 820,
     minWidth: 760,
     minHeight: 560,
-    backgroundColor: "#f5f0e8",
+    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    ...(process.platform === "darwin" ? { trafficLightPosition: { x: 18, y: 18 } } : {}),
+    backgroundColor: "#111315",
     webPreferences: { preload: join(import.meta.dirname, "../preload/preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
   const webContentsId = window.webContents.id;

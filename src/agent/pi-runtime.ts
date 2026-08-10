@@ -29,6 +29,7 @@ import type {
   UiPart,
   SessionTreeNode
 } from "../ipc/session-contract";
+import { piBuiltinSlashCommands } from "../ipc/session-contract";
 import {
   artifactRecordSchema,
   artifactPointerSchema,
@@ -256,7 +257,7 @@ function partsFromMessage(message: unknown, baseId: string, streaming = false): 
   }
 
   if (role === "assistant" && Array.isArray(content)) {
-    return content.flatMap((item, index): UiPart[] => {
+    const parts = content.flatMap((item, index): UiPart[] => {
       if (typeof item !== "object" || item === null) return [];
       const type = Reflect.get(item, "type");
       if (type === "text") {
@@ -276,6 +277,11 @@ function partsFromMessage(message: unknown, baseId: string, streaming = false): 
       }
       return [];
     });
+    const errorMessage = Reflect.get(message, "errorMessage");
+    if (!parts.some((part) => part.kind === "text") && typeof errorMessage === "string" && errorMessage.trim()) {
+      parts.push({ id: `${baseId}-error`, kind: "notice", tone: "error", title: "Model request failed", detail: errorMessage.trim() });
+    }
+    return parts;
   }
 
   if (role === "toolResult") {
@@ -336,11 +342,30 @@ function sourceTitle(url: string) {
 
 function entryPreview(entry: { type: string }) {
   const value = entry as unknown as Record<string, unknown>;
-  if (entry.type === "message") return textFromContent((value.message as { content?: unknown } | undefined)?.content).slice(0, 2_048);
+  if (entry.type === "message") {
+    const message = value.message as Record<string, unknown> | undefined;
+    const role = String(message?.role ?? "message");
+    const text = textFromContent(message?.content).replace(/[\n\t]+/g, " ").trim();
+    if (role === "user") return text.slice(0, 2_048);
+    if (role === "assistant") {
+      if (text) return text.slice(0, 2_048);
+      if (message?.stopReason === "aborted") return "(aborted)";
+      if (message?.errorMessage) return String(message.errorMessage).replace(/[\n\t]+/g, " ").trim().slice(0, 2_048);
+      return "";
+    }
+    if (role === "toolResult") return `[${String(message?.toolName ?? "tool")}]`;
+    if (role === "bashExecution") return `[bash]: ${String(message?.command ?? "")}`.slice(0, 2_048);
+    return `[${role}]`;
+  }
   if (entry.type === "compaction" || entry.type === "branch_summary") return String(value.summary ?? "").slice(0, 2_048);
   if (entry.type === "session_info") return String(value.name ?? "Session renamed").slice(0, 2_048);
   if (entry.type === "model_change") return `${String(value.provider ?? "")}/${String(value.modelId ?? "")}`;
   return entry.type.replaceAll("_", " ");
+}
+
+function entryMessageValue(entry: object, key: string) {
+  const message = Reflect.get(entry, "message");
+  return typeof message === "object" && message !== null ? Reflect.get(message, key) : undefined;
 }
 
 function projectTree(sessionManager: SessionManager): SessionTreeNode[] {
@@ -349,6 +374,10 @@ function projectTree(sessionManager: SessionManager): SessionTreeNode[] {
     id: node.entry.id,
     parentId: node.entry.parentId ?? undefined,
     type: node.entry.type,
+    messageRole: node.entry.type === "message" ? String(entryMessageValue(node.entry, "role") ?? "message") : undefined,
+    editorText: node.entry.type === "message" && entryMessageValue(node.entry, "role") === "user"
+      ? textFromContent(entryMessageValue(node.entry, "content"))
+      : undefined,
     label: node.label,
     preview: entryPreview(node.entry),
     active: activeIds.has(node.entry.id),
@@ -559,6 +588,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
 
   async function makeSnapshot(): Promise<SessionSnapshot> {
     const sessions = await listWorkspaceSessions(options.cwd, options.sessionDir);
+    const stats = session.getSessionStats();
     return {
       workspacePath: options.cwd,
       sessionId: cakeSessionId,
@@ -573,7 +603,16 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         ...extensionsResult.errors.map((error) => `${error.path}: ${error.error}`),
         ...(modelFallbackMessage ? [modelFallbackMessage] : [])
       ],
-      commands: getPiCommands(),
+      commands: [...piBuiltinSlashCommands, ...getPiCommands()],
+      usage: {
+        tokens: stats.tokens,
+        cost: stats.cost,
+        context: stats.contextUsage ? {
+          tokens: stats.contextUsage.tokens,
+          contextWindow: stats.contextUsage.contextWindow,
+          percent: stats.contextUsage.percent
+        } : undefined
+      },
       compatibility: catalog,
       extensionUi: extensionUiState,
       sessions,

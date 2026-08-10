@@ -108,12 +108,14 @@ describe("S1 Pi runtime", () => {
       { type: "message", id: "user-1", parentId: null, timestamp, message: { role: "user", content: "Hello", timestamp: Date.now() } },
       { type: "message", id: "assistant-tools", parentId: "user-1", timestamp, message: { role: "assistant", content: [{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "README.md" } }], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "toolUse", timestamp: Date.now() } },
       { type: "message", id: "tool-result", parentId: "assistant-tools", timestamp, message: { role: "toolResult", toolCallId: "call-1", toolName: "read", content: [{ type: "text", text: "result" }], isError: false, timestamp: Date.now() } },
-      { type: "message", id: "assistant-1", parentId: "tool-result", timestamp, message: { role: "assistant", content: [{ type: "text", text: "Hi" }], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() } }
+      { type: "message", id: "assistant-1", parentId: "tool-result", timestamp, message: { role: "assistant", content: [{ type: "text", text: "Hi" }], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() } },
+      { type: "message", id: "assistant-error", parentId: "assistant-1", timestamp, message: { role: "assistant", content: [], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "error", errorMessage: "Subscription authentication failed", timestamp: Date.now() } }
     ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
 
     const preview = await loadWorkspaceSessionPreview(directory, first.sessionId, sessionDir);
     expect(preview?.parts.some((part) => part.kind === "text" && part.text === "Hi")).toBe(true);
     expect(preview?.parts.some((part) => part.kind === "tool" && part.name === "read")).toBe(true);
+    expect(preview?.parts).toContainEqual(expect.objectContaining({ kind: "notice", tone: "error", detail: "Subscription authentication failed" }));
 
     const second = await createCakeRuntime({
       cwd: directory,
@@ -198,12 +200,23 @@ export default function (pi) {
 
     const firstSnapshot = await runtime.snapshot();
     expect(() => sessionSnapshotSchema.parse(firstSnapshot)).not.toThrow();
+    expect(firstSnapshot.usage).toMatchObject({
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      cost: 0
+    });
     const catalog = firstSnapshot.compatibility;
     expect(firstSnapshot.commands).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "settings", source: "builtin" }),
+      expect.objectContaining({ name: "tree", source: "builtin" }),
+      expect.objectContaining({ name: "quit", source: "builtin" }),
       expect.objectContaining({ name: "cake-compat", source: "extension" }),
       expect.objectContaining({ name: "fixture-prompt", source: "prompt" }),
       expect.objectContaining({ name: "skill:fixture-skill", source: "skill" })
     ]));
+    expect(firstSnapshot.commands.slice(0, 22).map((command) => command.name)).toEqual([
+      "settings", "model", "scoped-models", "export", "import", "share", "copy", "name", "session", "changelog", "hotkeys",
+      "fork", "clone", "tree", "trust", "login", "logout", "new", "compact", "resume", "reload", "quit"
+    ]);
     expect(catalog.resources).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "package", name: packageDir }),
       expect.objectContaining({ kind: "skill", name: "fixture-skill" }),

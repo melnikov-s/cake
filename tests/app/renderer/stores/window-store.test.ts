@@ -76,6 +76,25 @@ async function openSnapshot(store: WindowStore, desktop: ReturnType<typeof creat
 }
 
 describe("WindowStore", () => {
+  it("tracks provider disconnects and exposes failures for a retry", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush(); await openSnapshot(store, desktop);
+
+    await store.logout("openai-codex");
+    const operationId = store.activeOperations.at(-1)!;
+    expect(store.providerOperation("openai-codex")).toBe("logout");
+    expect(desktop.client.logout).toHaveBeenCalledWith(expect.objectContaining({ operationId, provider: "openai-codex" }));
+
+    desktop.emit({ type: "operation-failed", operationId, message: "Credential store delete failed" });
+    expect(store.providerOperation("openai-codex")).toBeUndefined();
+    expect(store.error).toBe("Credential store delete failed");
+
+    await store.logout("openai-codex");
+    expect(desktop.client.logout).toHaveBeenCalledTimes(2);
+    root[Symbol.dispose]();
+  });
+
   it("hydrates before persistence and reopens the persisted project", async () => {
     const desktop = createDesktopClient("/project");
     const { root, store } = mountTestStore(desktop.client);
@@ -435,18 +454,39 @@ describe("WindowStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("forwards slash commands to Pi instead of intercepting Cake-only commands", async () => {
+  it("opens Cake panes locally and forwards Pi resource commands", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     desktop.emit({ type: "pi-state-changed", state: "ready" });
     await openSnapshot(store, desktop, { ...snapshot, tree: [{ id: "entry-1", type: "message", preview: "Hello", active: true, children: [] }] });
+    store.setDraft("/tree");
+    await store.submit();
+
+    expect(store.commandPane).toBe("tree");
+    expect(desktop.client.submit).not.toHaveBeenCalled();
+
+    store.closeCommandPane();
     store.setDraft("/skill:review");
     await store.submit();
 
     expect(desktop.client.submit).toHaveBeenCalledWith(expect.objectContaining({ text: "/skill:review", delivery: "prompt" }));
     expect(store.commandPane).toBeUndefined();
     expect(store.draft).toBe("");
+    root[Symbol.dispose]();
+  });
+
+  it("restores a selected user message into the composer when navigating the tree", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop, { ...snapshot, tree: [{ id: "user-entry", type: "message", messageRole: "user", editorText: "Original user message\nwith formatting", preview: "Original user message with formatting", active: true, children: [] }] });
+
+    await store.navigateTo("user-entry");
+
+    expect(desktop.client.navigateSession).toHaveBeenCalledWith(expect.objectContaining({ entryId: "user-entry" }));
+    expect(store.draft).toBe("Original user message\nwith formatting");
+    expect(store.commandPane).toBeUndefined();
     root[Symbol.dispose]();
   });
 });

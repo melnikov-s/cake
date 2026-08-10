@@ -23,7 +23,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByText("Pi ready", { exact: true })).toBeVisible();
+    await expect(page.getByRole("status", { name: "Pi ready" })).toBeVisible();
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("button", { name: "New chat in project" })).toBeVisible();
     await expect(page.getByLabel("Model")).toBeVisible();
@@ -82,7 +82,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(page.getByLabel("Message")).toHaveValue("Persist this draft");
     expect(page.isClosed()).toBe(false);
     await page.getByRole("button", { name: "Restart and reopen" }).click();
-    await expect(page.getByText("Pi ready", { exact: true })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("status", { name: "Pi ready" })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByLabel("Message")).toHaveValue("Persist this draft", { timeout: 20_000 });
   } finally {
     await application.close();

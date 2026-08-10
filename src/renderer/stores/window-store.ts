@@ -10,6 +10,7 @@ import type {
   ProjectRecord,
   ResourceDiagnostic,
   SessionSnapshot,
+  SessionTreeNode,
   ThinkingLevel,
   WindowViewState
 } from "../../ipc/session-contract";
@@ -75,6 +76,7 @@ export class WindowStore extends Store<Record<string, never>> {
   extensionNotifications: ExtensionNotification[] = observable([]);
   compatibilityDiagnostics: ResourceDiagnostic[] = observable([]);
   activeOperations: string[] = [];
+  providerOperations: Record<string, { provider: string; kind: "login" | "logout" }> = observable({});
   private openRevision = 0;
   private reopenAfterAgentRestart = false;
   private draftAfterAgentRestart: string | undefined;
@@ -125,7 +127,12 @@ export class WindowStore extends Store<Record<string, never>> {
   }
 
   get canSubmit() {
-    return Boolean(this.session && !this.activeOpenOperationId && this.draft.trim() && this.piState === "ready");
+    return Boolean(this.session && !this.activeOpenOperationId && this.draft.trim() && (this.isLocalSlashCommand || this.piState === "ready"));
+  }
+
+  get isLocalSlashCommand() {
+    const command = this.draft.trim().toLocaleLowerCase();
+    return command === "/tree" || command === "/changes" || command === "/resources";
   }
 
   get projectName() {
@@ -451,9 +458,21 @@ export class WindowStore extends Store<Record<string, never>> {
 
   async navigateTo(entryId: string) {
     const context = this.sessionContext(); if (!context) return;
+    const findNode = (nodes: SessionTreeNode[]): SessionTreeNode | undefined => {
+      for (const node of nodes) {
+        if (node.id === entryId) return node;
+        const child = findNode(node.children);
+        if (child) return child;
+      }
+      return undefined;
+    };
+    const editorText = findNode(this.session?.tree ?? [])?.editorText;
     this.closeCommandPane();
     const operationId = this.startOperation();
-    try { await this.client.navigateSession({ operationId, ...context, entryId }); }
+    try {
+      await this.client.navigateSession({ operationId, ...context, entryId });
+      if (editorText !== undefined) this.setDraft(editorText);
+    }
     catch (error) { this.finishOperation(operationId); this.setError(error); }
   }
 
@@ -480,6 +499,12 @@ export class WindowStore extends Store<Record<string, never>> {
   async submit(deliveryOverride?: "steer") {
     if (!this.canSubmit) return;
     const text = this.draft.trim();
+    const command = text.toLocaleLowerCase();
+    if (command === "/tree" || command === "/changes" || command === "/resources") {
+      this.setDraft("");
+      await this.openCommandPane(command === "/tree" ? "tree" : command === "/changes" ? "changes" : "resources");
+      return;
+    }
     const delivery = deliveryOverride ?? (this.isStreaming ? "follow-up" : "prompt");
     const attachments = this.attachments.slice();
     const operationId = this.startOperation();
@@ -533,25 +558,35 @@ export class WindowStore extends Store<Record<string, never>> {
   }
 
   async authenticate(provider: string, authType: "api_key" | "oauth") {
+    if (this.providerOperation(provider)) return;
     const operationId = this.startOperation();
+    this.providerOperations[operationId] = { provider, kind: "login" };
     try {
       const context = this.sessionContext(); if (!context) throw new Error("No active session");
       await this.client.login({ operationId, ...context, provider, authType });
     } catch (error) {
+      delete this.providerOperations[operationId];
       this.setError(error);
       this.finishOperation(operationId);
     }
   }
 
   async logout(provider: string) {
+    if (this.providerOperation(provider)) return;
     const operationId = this.startOperation();
+    this.providerOperations[operationId] = { provider, kind: "logout" };
     try {
       const context = this.sessionContext(); if (!context) throw new Error("No active session");
       await this.client.logout({ operationId, ...context, provider });
     } catch (error) {
+      delete this.providerOperations[operationId];
       this.setError(error);
       this.finishOperation(operationId);
     }
+  }
+
+  providerOperation(provider: string) {
+    return Object.values(this.providerOperations).find((operation) => operation.provider === provider)?.kind;
   }
 
   async respondToUi(value?: string, cancelled = false) {
@@ -686,6 +721,7 @@ export class WindowStore extends Store<Record<string, never>> {
         this.reopenAfterAgentRestart = Boolean(this.projectPath && this.session);
         if (this.reopenAfterAgentRestart) this.draftAfterAgentRestart = this.draft;
         this.activeOperations.splice(0);
+        for (const operationId of Object.keys(this.providerOperations)) delete this.providerOperations[operationId];
         this.activeOpenOperationId = undefined;
         this.activeOpenTarget = undefined;
         this.activeOpenExpectsEmpty = false;
@@ -729,10 +765,12 @@ export class WindowStore extends Store<Record<string, never>> {
       return;
     }
     if (event.type === "operation-completed") {
+      delete this.providerOperations[event.operationId];
       this.finishOperation(event.operationId);
       return;
     }
     if (event.type === "operation-failed") {
+      if (event.operationId) delete this.providerOperations[event.operationId];
       if (event.operationId) this.finishOperation(event.operationId);
       if (event.operationId === this.activeOpenOperationId) {
         this.activeOpenOperationId = undefined;

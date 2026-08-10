@@ -18,8 +18,9 @@ import { Tool } from "@/components/ai-elements/tool";
 import { Button } from "@/components/ui/button";
 import { ArtifactHost, downloadArtifactMarkdown } from "@/components/artifact-host";
 import { ModelCombobox } from "@/components/model-combobox";
+import { SessionTree } from "@/components/session-tree";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
-import type { CompatibilityResource, SessionTreeNode, UiPart } from "../ipc/session-contract";
+import type { CompatibilityResource, UiPart } from "../ipc/session-contract";
 import { WindowStore, type UiRequestState } from "./stores/window-store";
 
 function Icon({ children, size = 16 }: { children: ReactNode; size?: number }) {
@@ -33,12 +34,12 @@ const SearchIcon = () => <Icon><circle cx="11" cy="11" r="6.5" /><path d="m16 16
 const CloseIcon = () => <Icon><path d="m6 6 12 12M18 6 6 18" /></Icon>;
 const PaperclipIcon = () => <Icon><path d="m20.5 11.5-8.9 8.9a6 6 0 0 1-8.5-8.5l9.6-9.6a4 4 0 0 1 5.7 5.7l-9.6 9.6a2 2 0 1 1-2.8-2.8l8.9-8.9" /></Icon>;
 const SendIcon = () => <Icon><path d="m5 12 7-7 7 7M12 19V5" /></Icon>;
-const SettingsIcon = () => <Icon><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" /></Icon>;
 const BackIcon = () => <Icon><path d="m15 18-6-6 6-6" /></Icon>;
-
-function SessionTree({ nodes, store }: { nodes: SessionTreeNode[]; store: WindowStore }) {
-  return <ul className="session-tree">{nodes.map((node) => <li key={node.id} className={node.active ? "active" : ""}><div><button onClick={() => void store.navigateTo(node.id)}>{node.label || node.preview || node.type}</button><button title="Fork from here" onClick={() => void store.forkAt(node.id)}>Fork</button></div>{node.children.length > 0 && <SessionTree nodes={node.children} store={store} />}</li>)}</ul>;
-}
+const ForwardIcon = () => <Icon><path d="m9 18 6-6-6-6" /></Icon>;
+const SidebarIcon = () => <Icon><rect x="3.5" y="4" width="17" height="16" rx="3" /><path d="M9 4v16" /></Icon>;
+const ChevronIcon = () => <Icon size={13}><path d="m8 10 4 4 4-4" /></Icon>;
+const MoreIcon = () => <Icon><circle cx="5" cy="12" r=".7" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r=".7" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r=".7" fill="currentColor" stroke="none" /></Icon>;
+const HelpIcon = () => <Icon><circle cx="12" cy="12" r="8.5" /><path d="M9.8 9a2.35 2.35 0 1 1 3.2 2.2c-.8.35-1 1-1 1.8M12 16.7h.01" /></Icon>;
 
 function CommandPane({ store }: { store: WindowStore }) {
   if (!store.commandPane || !store.session) return null;
@@ -54,7 +55,7 @@ function CommandPane({ store }: { store: WindowStore }) {
       <section className="command-pane secondary-surface" role="dialog" aria-modal="true" aria-labelledby="command-pane-title">
         <header><div><h2 id="command-pane-title">{title}</h2>{store.commandPane === "tree" && <span>Navigate or fork without rewriting Pi history</span>}</div><div>{store.commandPane === "changes" && <Button variant="outline" size="sm" onClick={() => void store.refreshChanges()}>Refresh</Button>}<Button variant="ghost" size="sm" aria-label={`Close ${title}`} onClick={() => store.closeCommandPane()}>Close</Button></div></header>
         {store.commandPane === "tree"
-          ? store.session.tree.length > 0 ? <SessionTree nodes={store.session.tree} store={store} /> : <p>This session has no branches yet.</p>
+          ? store.session.tree.length > 0 ? <SessionTree nodes={store.session.tree} onNavigate={(id) => void store.navigateTo(id)} onFork={(id) => void store.forkAt(id)} /> : <p>This session has no branches yet.</p>
           : store.commandPane === "changes"
             ? store.changesLoading ? <p>Loading changes…</p> : store.changedFiles.length === 0 ? <p>No changed files.</p> : store.changedFiles.map((file) => <details key={`${file.staged}-${file.path}`}><summary><code>{file.status}</code> {file.path}<span>+{file.additions} −{file.deletions}</span></summary><pre>{file.diff || "Diff unavailable for this file."}</pre></details>)
             : <div className="resource-catalog">{diagnostics.length > 0 && <section className="resource-diagnostics"><h3>Diagnostics</h3>{diagnostics.map((item) => <div key={item.id} className={`notice notice-${item.severity}`}><strong>{item.method ?? item.source}</strong><span>{item.message}{item.path ? `\n${item.path}` : ""}</span></div>)}</section>}{resourceGroups.map((group) => <section key={group.kind}><h3>{group.kind[0]!.toUpperCase() + group.kind.slice(1)}s <span>{group.resources.length}</span></h3>{group.resources.length === 0 ? <p>None discovered.</p> : group.resources.map((resource) => <article key={resource.id}><div><strong>{resource.name}</strong><small>{resource.scope} · {resource.origin}</small></div>{resource.description && <p>{resource.description}</p>}{resource.commands.length > 0 && <p><b>Commands</b> {resource.commands.map((command) => `/${command}`).join(", ")}</p>}{resource.tools.length > 0 && <p><b>Tools</b> {resource.tools.join(", ")}</p>}<code title={resource.path}>{resource.source}</code></article>)}</section>)}</div>}
@@ -189,7 +190,7 @@ function UiDialog({ request, store }: { request: UiRequestState; store: WindowSt
   );
 }
 
-const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, settingsOpen }: { store: WindowStore; onOpenSettings: () => void; onOpenChat: () => void; settingsOpen: boolean }) {
+const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, onToggle, settingsOpen }: { store: WindowStore; onOpenSettings: () => void; onOpenChat: () => void; onToggle: () => void; settingsOpen: boolean }) {
   const [searchExpanded, setSearchExpanded] = useState(Boolean(store.sessionSearch));
   const searchInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -215,28 +216,28 @@ const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, s
   };
   return (
     <aside className="sidebar">
-      <div className="sidebar-brand"><span className="cake-mark">C</span><span>Cake</span><span className={`status-dot status-${store.piState}`} title={`Pi ${store.piState}`} /></div>
+      <div className="sidebar-window-tools"><button aria-label="Toggle sidebar" onClick={onToggle}><SidebarIcon /></button><button aria-label="Back" disabled><BackIcon /></button><button aria-label="Forward" disabled><ForwardIcon /></button></div>
+      <div className="sidebar-brand"><div className="brand-menu"><span>Cake</span><ChevronIcon /></div><div className="brand-actions"><button className={searchExpanded ? "active" : ""} aria-label={searchExpanded ? "Close session search" : "Search sessions"} aria-expanded={searchExpanded} onClick={() => searchExpanded ? closeSearch() : setSearchExpanded(true)}>{searchExpanded ? <CloseIcon /> : <SearchIcon />}</button><span role="status" aria-label={`Pi ${store.piState}`} className={`runtime-indicator status-${store.piState}`} title={`Pi ${store.piState}`} /></div></div>
       <div className="sidebar-scroll">
-        <div className="section-heading"><span>Sessions</span><div><button className={searchExpanded ? "search-trigger active" : "search-trigger"} aria-label={searchExpanded ? "Close session search" : "Search sessions"} aria-expanded={searchExpanded} onClick={() => searchExpanded ? closeSearch() : setSearchExpanded(true)}>{searchExpanded ? <CloseIcon /> : <SearchIcon />}</button></div></div>
-        <button className="new-chat" onClick={() => navigateToChat(() => store.startOneOffChat())}><ChatIcon /><span>New chat</span><kbd>⌘N</kbd></button>
+        <button className="new-chat" onClick={() => navigateToChat(() => store.startOneOffChat())}><ChatIcon /><span>New chat</span></button>
         <div className={`session-filter global-session-filter ${searchExpanded ? "expanded" : ""}`} aria-hidden={!searchExpanded}><input ref={searchInput} aria-label="Search sessions" placeholder="Search all sessions" value={store.sessionSearch} disabled={!searchExpanded} onChange={(event) => store.setSessionSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") closeSearch(); }} /></div>
         {store.sessionSearch.trim() && <div className="global-session-results">
           {store.searchedSessions.length === 0 ? <p className="sidebar-empty">No matching sessions.</p> : store.searchedSessions.slice(0, 50).map((session) => <div key={`${session.workspacePath}:${session.id}`} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && session.workspacePath === store.projectPath ? "active" : ""}`}><button className="session-row global-session-row" aria-current={session.id === store.session?.sessionId && session.workspacePath === store.projectPath ? "page" : undefined} onClick={() => navigateToChat(() => store.openSession(session.workspacePath, session.id))} onContextMenu={(event) => renameSession(event, session.workspacePath, session.id, session.title)}><span>{session.title}</span><small>{session.workspaceName}</small></button></div>)}
         </div>}
-        <div className="section-heading"><span>Projects</span><div><button aria-label="Add project" onClick={() => navigateToChat(() => store.chooseProject())}><PlusIcon /></button></div></div>
+        <div className="section-heading projects-heading"><span>Projects</span><div><span className="project-options" aria-hidden="true"><MoreIcon /></span><button aria-label="Add project" onClick={() => navigateToChat(() => store.chooseProject())}><PlusIcon /></button></div></div>
         {store.recentProjectPaths.length === 0 ? <p className="sidebar-empty">Add a folder to start a project.</p> : store.recentProjectPaths.map((path) => {
           const active = path === store.projectPath;
           const sessions = store.projectSessions(path);
           const visibleSessions = sessions.slice(0, store.sessionLimit(path));
           return <div className="project-group" key={path}>
-            <div className={`project-row ${active ? "active" : ""}`}><button className="project-open" title={path} onClick={() => navigateToChat(() => store.switchProject(path))}><FolderIcon /><span>{store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}</span></button>{active && <button className="project-add" aria-label={`New chat in ${store.nameFromPath(path)}`} onClick={() => navigateToChat(() => store.startNewSession())}><PlusIcon /></button>}</div>
+            <div className="project-row" title={path}><div className="project-label"><FolderIcon /><span>{store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}</span></div><button className="project-add" aria-label={`New chat in ${store.nameFromPath(path)}`} onClick={() => { if (active) navigateToChat(() => store.startNewSession()); else navigateToChat(async () => { await store.switchProject(path); await store.startNewSession(); }); }}><PlusIcon /></button></div>
             {!store.sessionSearch.trim() && visibleSessions.map((session) => <div key={session.id} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && path === store.projectPath ? "active" : ""}`}><button className="session-row" aria-current={session.id === store.session?.sessionId && path === store.projectPath ? "page" : undefined} onClick={() => navigateToChat(() => store.openSession(path, session.id))} onContextMenu={(event) => renameSession(event, path, session.id, session.title)}><span>{session.title}</span>{session.id === store.session?.sessionId && path === store.projectPath && store.isStreaming && <i />}</button></div>)}
-            {!store.sessionSearch.trim() && sessions.length > visibleSessions.length && <button className="session-more" onClick={() => store.showMoreSessions(path)}>More <span>{sessions.length - visibleSessions.length}</span></button>}
+            {!store.sessionSearch.trim() && sessions.length > visibleSessions.length && <button className="session-more" onClick={() => store.showMoreSessions(path)}>Show more</button>}
           </div>;
         })}
       </div>
       <div className="sidebar-footer">
-        <button className={settingsOpen ? "sidebar-settings active" : "sidebar-settings"} type="button" aria-label="Open settings" aria-current={settingsOpen ? "page" : undefined} onClick={onOpenSettings}><SettingsIcon /></button>
+        <button className={settingsOpen ? "sidebar-settings active" : "sidebar-settings"} type="button" aria-label="Open settings" aria-current={settingsOpen ? "page" : undefined} onClick={onOpenSettings}><span className="profile-mark">C</span><span>Cake settings</span></button><HelpIcon />
       </div>
     </aside>
   );
@@ -244,12 +245,19 @@ const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, s
 
 const ComposerPanel = observer(function ComposerPanel({ store }: { store: WindowStore }) {
   const selectedModel = store.session?.model;
+  const usage = store.session?.usage;
+  const context = usage?.context;
+  const contextPercent = context?.percent === null || context?.percent === undefined ? undefined : Math.round(context.percent);
+  const contextLabel = contextPercent === undefined ? "Context usage unavailable" : `${contextPercent}% context used`;
+  const contextTitle = context
+    ? `${context.tokens === null ? "Unknown" : context.tokens.toLocaleString()} of ${context.contextWindow.toLocaleString()} context tokens`
+    : "Context usage is unavailable";
   return (
     <div className="composer-dock">
       {store.extensionWidgets.filter((widget) => widget.placement === "aboveEditor").map((widget) => <div className="legacy-widget" key={widget.key}><strong>{widget.key}</strong><pre>{widget.lines.join("\n")}</pre></div>)}
       <Composer className="workbench-composer" onSubmit={(event) => { event.preventDefault(); void store.submit(); }}>
         {store.attachments.length > 0 && <div className="attachment-list">{store.attachments.map((attachment, index) => <button type="button" key={`${attachment.kind}-${attachment.name}`} onClick={() => store.removeAttachment(index)}>{attachment.kind === "file" ? "@" : "▧"} {attachment.name} <span>×</span></button>)}</div>}
-        <SlashCommandCombobox aria-label="Message" commands={store.session?.commands ?? []} placeholder={store.isStreaming ? "Add the next instruction…" : `Ask Cake to work in ${store.projectName}…`} value={store.draft} onValueChange={(value) => store.setDraft(value)} onSubmit={() => void store.submit()} />
+        <SlashCommandCombobox aria-label="Message" commands={store.session?.commands ?? []} placeholder={store.isStreaming ? "Add the next instruction…" : `Ask Cake to work in ${store.projectName}…`} value={store.draft} onValueChange={(value) => store.setDraft(value)} onSubmit={(value) => { if (value !== undefined) store.setDraft(value); void store.submit(); }} />
         <ComposerToolbar className="composer-toolbar">
           <div className="composer-context">
             <button type="button" className="icon-button" aria-label="Attach files" title="Attach files" onClick={() => void store.addAttachments()}><PaperclipIcon /></button>
@@ -257,6 +265,7 @@ const ComposerPanel = observer(function ComposerPanel({ store }: { store: Window
             <select aria-label="Thinking level" value={store.session?.thinkingLevel} onChange={(event) => void store.selectThinkingLevel(event.target.value as NonNullable<typeof store.session>["thinkingLevel"])}>{store.session?.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "No reasoning" : `${level.charAt(0).toUpperCase()}${level.slice(1)} reasoning`}</option>)}</select>
           </div>
           <div className="composer-actions">
+            {usage && <div className="session-usage" aria-label={`${contextLabel}, session cost $${usage.cost.toFixed(3)}`} title={`${contextTitle} · ${usage.tokens.total.toLocaleString()} billed tokens`}><svg className="context-gauge" viewBox="0 0 36 36" aria-hidden="true"><circle className="context-gauge-track" cx="18" cy="18" r="15.5" pathLength="100" /><circle className="context-gauge-value" cx="18" cy="18" r="15.5" pathLength="100" strokeDasharray={`${Math.min(100, contextPercent ?? 0)} 100`} /><text x="18" y="18">{contextPercent === undefined ? "—" : `${contextPercent}%`}</text></svg><span className="session-cost">${usage.cost.toFixed(3)}</span></div>}
             {store.isStreaming && <><Button variant="ghost" size="sm" type="button" onClick={() => void store.abort()}>Stop</Button><Button variant="outline" size="sm" type="button" disabled={!store.canSubmit} onClick={() => void store.submit("steer")}>Steer</Button></>}
             <Button className="send-button" size="sm" type="submit" disabled={!store.canSubmit}>{store.isStreaming ? "Queue" : "Send"}<SendIcon /></Button>
           </div>
@@ -277,6 +286,7 @@ export const SettingsPage = observer(function SettingsPage({ store }: { store: W
         <h1>Settings</h1>
         <p>Choose how Pi works in this chat and manage the providers it can use.</p>
       </div>
+      {store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}
 
       <section className="settings-section" aria-labelledby="pi-settings-title">
         <header><div><h2 id="pi-settings-title">Pi</h2><p>Model and reasoning changes apply to the current chat.</p></div><span className={`settings-runtime status-${store.piState}`}><i />{store.piState}</span></header>
@@ -291,7 +301,8 @@ export const SettingsPage = observer(function SettingsPage({ store }: { store: W
         {store.modelsByProvider.length === 0 ? <p className="settings-empty">Provider details will appear after a chat is open.</p> : <div className="provider-list">{store.modelsByProvider.map((provider) => {
           const authenticated = provider.models.some((model) => model.authenticated);
           const authTypes = [...new Set(provider.models.flatMap((model) => model.authTypes))];
-          return <article className="provider-row" key={provider.id}><div className="provider-identity"><span className="provider-monogram">{provider.name.slice(0, 1).toUpperCase()}</span><span><strong>{provider.name}</strong><small>{provider.models.length} {provider.models.length === 1 ? "model" : "models"}</small></span></div><span className={authenticated ? "provider-state connected" : "provider-state"}><i />{authenticated ? "Connected" : "Not connected"}</span><div className="provider-actions">{authenticated ? <Button variant="outline" size="sm" type="button" onClick={() => void store.logout(provider.id)}>Disconnect</Button> : authTypes.map((authType) => <Button key={authType} variant={authType === "oauth" ? "default" : "outline"} size="sm" type="button" onClick={() => void store.authenticate(provider.id, authType)}>{authType === "oauth" ? "Connect" : "Add API key"}</Button>)}</div></article>;
+          const operation = store.providerOperation(provider.id);
+          return <article className="provider-row" key={provider.id}><div className="provider-identity"><span className="provider-monogram">{provider.name.slice(0, 1).toUpperCase()}</span><span><strong>{provider.name}</strong><small>{provider.models.length} {provider.models.length === 1 ? "model" : "models"}</small></span></div><span className={authenticated ? "provider-state connected" : "provider-state"}><i />{operation === "login" ? "Connecting…" : operation === "logout" ? "Disconnecting…" : authenticated ? "Connected" : "Not connected"}</span><div className="provider-actions">{authenticated ? <Button variant="outline" size="sm" type="button" disabled={Boolean(operation)} onClick={() => void store.logout(provider.id)}>{operation === "logout" ? "Disconnecting…" : "Disconnect"}</Button> : authTypes.map((authType) => <Button key={authType} variant={authType === "oauth" ? "default" : "outline"} size="sm" type="button" disabled={Boolean(operation)} onClick={() => void store.authenticate(provider.id, authType)}>{operation === "login" ? "Connecting…" : authType === "oauth" ? "Connect" : "Add API key"}</Button>)}</div></article>;
         })}</div>}
       </section>
 
@@ -306,6 +317,7 @@ export const SettingsPage = observer(function SettingsPage({ store }: { store: W
 export const App = observer(function App() {
   const store = useStore(WindowStore);
   const [page, setPage] = useState<"chat" | "settings">("chat");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   useEffect(() => {
     document.documentElement.dataset.theme = store.theme;
     return () => { delete document.documentElement.dataset.theme; };
@@ -323,8 +335,8 @@ export const App = observer(function App() {
   if (!store.hydrated) return <main className="loading-screen"><span className="cake-mark">C</span><p>Restoring Cake…</p></main>;
 
   return (
-    <main className="app-shell">
-      <Sidebar store={store} settingsOpen={page === "settings"} onOpenSettings={() => setPage("settings")} onOpenChat={() => setPage("chat")} />
+    <main className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      <Sidebar store={store} settingsOpen={page === "settings"} onToggle={() => setSidebarCollapsed((value) => !value)} onOpenSettings={() => setPage("settings")} onOpenChat={() => setPage("chat")} />
       <section className="workspace" data-session-id={store.session?.sessionId}>
         <header className="workspace-header"><div>{page === "settings" && <button className="header-back" aria-label="Back to chat" onClick={() => setPage("chat")}><BackIcon /></button>}<strong>{page === "settings" ? "Settings" : store.extensionTitle ?? (store.session ? (store.session.sessions.find((item) => item.id === store.session?.sessionId)?.title || "New chat") : "Cake")}</strong>{page === "chat" && store.projectPath && <span>{store.projectPath}</span>}</div></header>
         {page === "settings" ? <SettingsPage store={store} /> : !store.session ? (
