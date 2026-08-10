@@ -22,6 +22,35 @@ const snapshot: SessionSnapshot = {
 };
 
 describe("PiWorkspaceDriver", () => {
+  it("opens a dormant session before renaming it", async () => {
+    const events: DesktopEvent[] = [];
+    const runtime: CakeRuntime = {
+      sessionId: "session-2",
+      sessionFile: "/sessions/two.jsonl",
+      snapshot: vi.fn(async () => ({ ...snapshot, sessionId: "session-2", sessionFile: "/sessions/two.jsonl" })),
+      prompt: vi.fn(async () => undefined),
+      abort: vi.fn(async () => undefined),
+      setModel: vi.fn(async () => undefined),
+      setThinkingLevel: vi.fn(async () => undefined),
+      login: vi.fn(async () => undefined),
+      logout: vi.fn(async () => undefined),
+      rename: vi.fn(async () => undefined),
+      fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      navigate: vi.fn(async () => undefined),
+      dispose: vi.fn()
+    };
+    const createRuntime = vi.fn(async () => runtime);
+    const driver = new PiWorkspaceDriver({ workspacePath: "/project", emit: (event) => events.push(event), createRuntime });
+    const operationId = crypto.randomUUID();
+
+    driver.dispatch({ type: "rename-session", requestId: operationId, workspacePath: "/project", sessionId: "session-2", name: "Renamed" });
+
+    await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: operationId }));
+    expect(createRuntime).toHaveBeenCalledWith(expect.objectContaining({ newSession: false, sessionId: "session-2" }));
+    expect(runtime.rename).toHaveBeenCalledWith("Renamed");
+    driver[Symbol.dispose]();
+  });
+
   it("owns Pi directly and correlates extension UI without an internal transport", async () => {
     const events: DesktopEvent[] = [];
     let options: CakeRuntimeOptions | undefined;

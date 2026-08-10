@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type FormEvent, type ReactNode } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import {
   Confirmation,
@@ -8,7 +8,7 @@ import {
   ConfirmationRequest,
   ConfirmationTitle
 } from "@/components/ai-elements/confirmation";
-import { Composer, ComposerInput, ComposerToolbar } from "@/components/ai-elements/composer";
+import { Composer, ComposerToolbar } from "@/components/ai-elements/composer";
 import { Conversation, VirtualizedConversation, type VirtualizedConversationHandle } from "@/components/ai-elements/conversation";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
@@ -17,6 +17,8 @@ import { Source } from "@/components/ai-elements/source";
 import { Tool } from "@/components/ai-elements/tool";
 import { Button } from "@/components/ui/button";
 import { ArtifactHost, downloadArtifactMarkdown } from "@/components/artifact-host";
+import { ModelCombobox } from "@/components/model-combobox";
+import { SlashCommandCombobox } from "@/components/slash-command-combobox";
 import type { CompatibilityResource, SessionTreeNode, UiPart } from "../ipc/session-contract";
 import { WindowStore, type UiRequestState } from "./stores/window-store";
 
@@ -206,30 +208,34 @@ const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, s
     onOpenChat();
     void action();
   };
+  const renameSession = (event: React.MouseEvent, workspacePath: string, sessionId: string, title: string) => {
+    event.preventDefault();
+    const name = window.prompt("Session name", title);
+    if (name) void store.renameSession(workspacePath, sessionId, name);
+  };
   return (
     <aside className="sidebar">
       <div className="sidebar-brand"><span className="cake-mark">C</span><span>Cake</span><span className={`status-dot status-${store.piState}`} title={`Pi ${store.piState}`} /></div>
-      <button className="new-chat" onClick={() => navigateToChat(() => store.startOneOffChat())}><ChatIcon /><span>New chat</span><kbd>⌘N</kbd></button>
       <div className="sidebar-scroll">
         <div className="section-heading"><span>Sessions</span><div><button className={searchExpanded ? "search-trigger active" : "search-trigger"} aria-label={searchExpanded ? "Close session search" : "Search sessions"} aria-expanded={searchExpanded} onClick={() => searchExpanded ? closeSearch() : setSearchExpanded(true)}>{searchExpanded ? <CloseIcon /> : <SearchIcon />}</button></div></div>
+        <button className="new-chat" onClick={() => navigateToChat(() => store.startOneOffChat())}><ChatIcon /><span>New chat</span><kbd>⌘N</kbd></button>
         <div className={`session-filter global-session-filter ${searchExpanded ? "expanded" : ""}`} aria-hidden={!searchExpanded}><input ref={searchInput} aria-label="Search sessions" placeholder="Search all sessions" value={store.sessionSearch} disabled={!searchExpanded} onChange={(event) => store.setSessionSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") closeSearch(); }} /></div>
         {store.sessionSearch.trim() && <div className="global-session-results">
-          {store.searchedSessions.length === 0 ? <p className="sidebar-empty">No matching sessions.</p> : store.searchedSessions.slice(0, 50).map((session) => <div key={`${session.workspacePath}:${session.id}`} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && session.workspacePath === store.projectPath ? "active" : ""}`}><button className="session-row global-session-row" onClick={() => navigateToChat(() => store.openSession(session.workspacePath, session.id))}><span>{session.title}</span><small>{session.workspaceName}</small></button></div>)}
+          {store.searchedSessions.length === 0 ? <p className="sidebar-empty">No matching sessions.</p> : store.searchedSessions.slice(0, 50).map((session) => <div key={`${session.workspacePath}:${session.id}`} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && session.workspacePath === store.projectPath ? "active" : ""}`}><button className="session-row global-session-row" onClick={() => navigateToChat(() => store.openSession(session.workspacePath, session.id))} onContextMenu={(event) => renameSession(event, session.workspacePath, session.id, session.title)}><span>{session.title}</span><small>{session.workspaceName}</small></button></div>)}
         </div>}
-        <div className="section-heading"><span>Projects</span><div><button aria-label="New window" title="New window" onClick={() => void store.createWindow()}>◫</button><button aria-label="Add project" onClick={() => navigateToChat(() => store.chooseProject())}><PlusIcon /></button></div></div>
+        <div className="section-heading"><span>Projects</span><div><button aria-label="Add project" onClick={() => navigateToChat(() => store.chooseProject())}><PlusIcon /></button></div></div>
         {store.recentProjectPaths.length === 0 ? <p className="sidebar-empty">Add a folder to start a project.</p> : store.recentProjectPaths.map((path) => {
           const active = path === store.projectPath;
           const sessions = store.projectSessions(path);
           const visibleSessions = sessions.slice(0, store.sessionLimit(path));
           return <div className="project-group" key={path}>
-            <div className={`project-row ${active ? "active" : ""}`}><button className="project-open" title={path} onClick={() => navigateToChat(() => store.switchProject(path))}><FolderIcon /><span>{store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}</span></button>{active && <><button className="project-add" title="Rename project" aria-label="Rename project" onClick={() => { const name = window.prompt("Project name", store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)); if (name) void store.renameProject(path, name); }}>✎</button><button className="project-add" title="Remove project" aria-label="Remove project" onClick={() => { if (window.confirm(`Remove ${store.nameFromPath(path)} from Cake? Pi sessions and project files will not be deleted.`)) void store.removeProject(path); }}>−</button><button className="project-add" aria-label={`New chat in ${store.nameFromPath(path)}`} onClick={() => navigateToChat(() => store.startNewSession())}><PlusIcon /></button></>}</div>
-            {!store.sessionSearch.trim() && visibleSessions.map((session) => <div key={session.id} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && path === store.projectPath ? "active" : ""}`}><button className="session-row" onClick={() => navigateToChat(() => store.openSession(path, session.id))}><span>{session.title}</span>{session.id === store.session?.sessionId && path === store.projectPath && store.isStreaming && <i />}</button></div>)}
+            <div className={`project-row ${active ? "active" : ""}`}><button className="project-open" title={path} onClick={() => navigateToChat(() => store.switchProject(path))}><FolderIcon /><span>{store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}</span></button>{active && <button className="project-add" aria-label={`New chat in ${store.nameFromPath(path)}`} onClick={() => navigateToChat(() => store.startNewSession())}><PlusIcon /></button>}</div>
+            {!store.sessionSearch.trim() && visibleSessions.map((session) => <div key={session.id} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && path === store.projectPath ? "active" : ""}`}><button className="session-row" onClick={() => navigateToChat(() => store.openSession(path, session.id))} onContextMenu={(event) => renameSession(event, path, session.id, session.title)}><span>{session.title}</span>{session.id === store.session?.sessionId && path === store.projectPath && store.isStreaming && <i />}</button></div>)}
             {!store.sessionSearch.trim() && sessions.length > visibleSessions.length && <button className="session-more" onClick={() => store.showMoreSessions(path)}>More <span>{sessions.length - visibleSessions.length}</span></button>}
           </div>;
         })}
       </div>
       <div className="sidebar-footer">
-        <div><strong>{store.piState === "ready" ? "Pi ready" : `Pi ${store.piState}`}</strong><span>{store.projectPath ? store.projectName : "Choose a workspace"}</span></div>
         <button className={settingsOpen ? "sidebar-settings active" : "sidebar-settings"} type="button" aria-label="Open settings" aria-current={settingsOpen ? "page" : undefined} onClick={onOpenSettings}><SettingsIcon /></button>
       </div>
     </aside>
@@ -237,27 +243,17 @@ const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, s
 });
 
 const ComposerPanel = observer(function ComposerPanel({ store }: { store: WindowStore }) {
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-      event.preventDefault();
-      void store.submit();
-    }
-  };
   const selectedModel = store.session?.model;
-  const commandPrefix = store.draft.trim().slice(1).toLocaleLowerCase();
-  const commands = (store.session?.commands ?? [])
-    .filter((command) => command.name.toLocaleLowerCase().startsWith(commandPrefix));
   return (
     <div className="composer-dock">
       {store.extensionWidgets.filter((widget) => widget.placement === "aboveEditor").map((widget) => <div className="legacy-widget" key={widget.key}><strong>{widget.key}</strong><pre>{widget.lines.join("\n")}</pre></div>)}
       <Composer className="workbench-composer" onSubmit={(event) => { event.preventDefault(); void store.submit(); }}>
-        {store.draft.trim().startsWith("/") && !store.draft.trim().includes(" ") && commands.length > 0 && <div className="slash-command-menu" role="listbox" aria-label="Slash commands">{commands.map((command) => <button key={`${command.source}:${command.name}`} type="button" role="option" onClick={() => store.setDraft(`/${command.name} `)}><code>/{command.name}</code><span><strong>{command.description ?? command.name}</strong><small>{command.source} · {command.sourceInfo.scope}</small></span></button>)}</div>}
         {store.attachments.length > 0 && <div className="attachment-list">{store.attachments.map((attachment, index) => <button type="button" key={`${attachment.kind}-${attachment.name}`} onClick={() => store.removeAttachment(index)}>{attachment.kind === "file" ? "@" : "▧"} {attachment.name} <span>×</span></button>)}</div>}
-        <ComposerInput aria-label="Message" placeholder={store.isStreaming ? "Add the next instruction…" : `Ask Cake to work in ${store.projectName}…`} value={store.draft} onChange={(event) => store.setDraft(event.target.value)} onKeyDown={onKeyDown} />
+        <SlashCommandCombobox aria-label="Message" commands={store.session?.commands ?? []} placeholder={store.isStreaming ? "Add the next instruction…" : `Ask Cake to work in ${store.projectName}…`} value={store.draft} onValueChange={(value) => store.setDraft(value)} onSubmit={() => void store.submit()} />
         <ComposerToolbar className="composer-toolbar">
           <div className="composer-context">
             <button type="button" className="icon-button" aria-label="Attach files" title="Attach files" onClick={() => void store.addAttachments()}><PaperclipIcon /></button>
-            <select aria-label="Model" value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onChange={(event) => void store.selectModel(event.target.value)}><option value="">Choose model</option>{store.modelsByProvider.map((provider) => <optgroup key={provider.id} label={provider.name}>{provider.models.map((model) => <option key={`${model.provider}/${model.id}`} value={`${model.provider}/${model.id}`}>{model.name}{model.authenticated ? "" : " · sign in"}</option>)}</optgroup>)}</select>
+            <ModelCombobox ariaLabel="Model" groups={store.modelsByProvider} value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onSelect={(value) => void store.selectModel(value)} />
             <select aria-label="Thinking level" value={store.session?.thinkingLevel} onChange={(event) => void store.selectThinkingLevel(event.target.value as NonNullable<typeof store.session>["thinkingLevel"])}>{store.session?.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "No reasoning" : `${level.charAt(0).toUpperCase()}${level.slice(1)} reasoning`}</option>)}</select>
           </div>
           <div className="composer-actions">
@@ -268,7 +264,6 @@ const ComposerPanel = observer(function ComposerPanel({ store }: { store: Window
       </Composer>
       {store.extensionWidgets.filter((widget) => widget.placement === "belowEditor").map((widget) => <div className="legacy-widget" key={widget.key}><strong>{widget.key}</strong><pre>{widget.lines.join("\n")}</pre></div>)}
       {store.extensionStatuses.length > 0 && <div className="extension-statuses" role="status">{store.extensionStatuses.map((status) => <span key={status.key}><strong>{status.key}</strong> {status.text}</span>)}</div>}
-      <p className="composer-hint">Enter to {store.isStreaming ? "queue" : "send"} · Shift+Enter for a new line{store.isStreaming ? " · Steer changes the active turn" : ""}</p>
     </div>
   );
 });
@@ -286,7 +281,7 @@ export const SettingsPage = observer(function SettingsPage({ store }: { store: W
       <section className="settings-section" aria-labelledby="pi-settings-title">
         <header><div><h2 id="pi-settings-title">Pi</h2><p>Model and reasoning changes apply to the current chat.</p></div><span className={`settings-runtime status-${store.piState}`}><i />{store.piState}</span></header>
         {store.session ? <div className="settings-fields">
-          <label><span>Model<small>The model Pi uses for its next response.</small></span><select aria-label="Settings model" value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onChange={(event) => void store.selectModel(event.target.value)}><option value="">Choose model</option>{store.modelsByProvider.map((provider) => <optgroup key={provider.id} label={provider.name}>{provider.models.map((model) => <option key={`${model.provider}/${model.id}`} value={`${model.provider}/${model.id}`}>{model.name}{model.authenticated ? "" : " · setup required"}</option>)}</optgroup>)}</select></label>
+          <div className="settings-field"><span>Model<small>The model Pi uses for its next response.</small></span><ModelCombobox ariaLabel="Settings model" groups={store.modelsByProvider} value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onSelect={(value) => void store.selectModel(value)} variant="settings" /></div>
           <label><span>Reasoning<small>Controls how much time Pi spends thinking.</small></span><select aria-label="Settings thinking level" value={store.session.thinkingLevel} onChange={(event) => void store.selectThinkingLevel(event.target.value as NonNullable<typeof store.session>["thinkingLevel"])}>{store.session.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "Off" : level.charAt(0).toUpperCase() + level.slice(1)}</option>)}</select></label>
         </div> : <p className="settings-empty">Open a project or start a one-off chat to choose a model and reasoning level.</p>}
       </section>
@@ -331,7 +326,7 @@ export const App = observer(function App() {
     <main className="app-shell">
       <Sidebar store={store} settingsOpen={page === "settings"} onOpenSettings={() => setPage("settings")} onOpenChat={() => setPage("chat")} />
       <section className="workspace" data-session-id={store.session?.sessionId}>
-        <header className="workspace-header"><div>{page === "settings" && <button className="header-back" aria-label="Back to chat" onClick={() => setPage("chat")}><BackIcon /></button>}<strong>{page === "settings" ? "Settings" : store.extensionTitle ?? (store.session ? (store.session.sessions.find((item) => item.id === store.session?.sessionId)?.title || "New chat") : "Cake")}</strong>{page === "chat" && store.projectPath && <span>{store.projectPath}</span>}</div>{page === "chat" && store.session && <div className="header-actions"><button className="header-new" onClick={() => void store.openCommandPane("resources")}>Resources</button><button className="header-new" onClick={() => { const name = window.prompt("Session name", store.session?.sessions.find((item) => item.id === store.session?.sessionId)?.title); if (name) void store.renameCurrentSession(name); }}>Rename</button><button className="header-new" onClick={() => void store.startNewSession()}><PlusIcon /> New chat</button></div>}</header>
+        <header className="workspace-header"><div>{page === "settings" && <button className="header-back" aria-label="Back to chat" onClick={() => setPage("chat")}><BackIcon /></button>}<strong>{page === "settings" ? "Settings" : store.extensionTitle ?? (store.session ? (store.session.sessions.find((item) => item.id === store.session?.sessionId)?.title || "New chat") : "Cake")}</strong>{page === "chat" && store.projectPath && <span>{store.projectPath}</span>}</div></header>
         {page === "settings" ? <SettingsPage store={store} /> : !store.session ? (
           <div className="welcome"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build?</h1><p>Open a project for durable workspace chats, or start a one-off chat from your home directory.</p><div><Button size="lg" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.chooseProject()}><FolderIcon /> Open project</Button><Button size="lg" variant="outline" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.startOneOffChat()}><ChatIcon /> One-off chat</Button></div>{store.error && <p className="welcome-error" role="alert">{store.error}</p>}</div>
         ) : (

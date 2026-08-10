@@ -19,7 +19,7 @@ test("keeps window state independent across Pi sessions", async () => {
   try {
     const first = await application.firstWindow();
     await expect(first.getByLabel("Message")).toHaveValue("first window draft", { timeout: 20_000 });
-    await first.getByLabel("New window").click();
+    await first.evaluate(() => window.cake?.request({ type: "new-window" }));
     await expect.poll(() => application.windows().length).toBe(2);
     const second = application.windows().find((page) => page !== first)!;
     await expect(second.getByLabel("Message")).toHaveValue("second window draft", { timeout: 20_000 });

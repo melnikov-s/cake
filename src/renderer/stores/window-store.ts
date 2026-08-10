@@ -422,8 +422,17 @@ export class WindowStore extends Store<Record<string, never>> {
 
   async renameCurrentSession(name: string) {
     const context = this.sessionContext(); if (!context || !name.trim()) return;
+    await this.renameSession(context.workspacePath, context.sessionId, name);
+  }
+
+  async renameSession(workspacePath: string, sessionId: string, name: string) {
+    if (!name.trim()) return;
     const operationId = this.startOperation();
-    try { await this.client.renameSession({ operationId, ...context, name: name.trim() }); }
+    try {
+      await this.client.renameSession({ operationId, workspacePath, sessionId, name: name.trim() });
+      const session = this.globalSessions.find((item) => item.workspacePath === workspacePath && item.id === sessionId);
+      if (session) session.title = name.trim();
+    }
     catch (error) { this.finishOperation(operationId); this.setError(error); }
   }
 
@@ -474,16 +483,15 @@ export class WindowStore extends Store<Record<string, never>> {
     const delivery = deliveryOverride ?? (this.isStreaming ? "follow-up" : "prompt");
     const attachments = this.attachments.slice();
     const operationId = this.startOperation();
-    this.draft = "";
+    this.setDraft("");
     this.attachments.splice(0);
-    this.schedulePersist();
     try {
       const context = this.sessionContext();
       if (!context) throw new Error("No active session");
       await this.client.submit({ operationId, ...context, text, delivery, attachments });
     } catch (error) {
       this.setError(error);
-      this.draft = text;
+      this.setDraft(text);
       this.attachments.push(...attachments);
       this.finishOperation(operationId);
     }

@@ -197,6 +197,22 @@ describe("WindowStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("does not restore a submitted draft when a session snapshot arrives", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    desktop.emit({ type: "pi-state-changed", state: "ready" });
+    await openSnapshot(store, desktop);
+
+    store.setDraft("Already sent");
+    await store.submit();
+    desktop.emit({ type: "session-snapshot-received", snapshot: { ...snapshot, streaming: false } });
+
+    expect(store.draft).toBe("");
+    expect(store.draftsBySession["session-1"]).toBe("");
+    root[Symbol.dispose]();
+  });
+
   it("retains the previous transcript and rejects late snapshots while opening a new session", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
@@ -394,6 +410,28 @@ describe("WindowStore", () => {
     store.showMoreSessions("/other");
     expect(store.projectSessions("/other").slice(0, store.sessionLimit("/other"))).toHaveLength(12);
     expect(store.projectPath).toBeUndefined();
+    root[Symbol.dispose]();
+  });
+
+  it("renames the session targeted from the sidebar", async () => {
+    const desktop = createDesktopClient();
+    desktop.client.listSessions = vi.fn(async () => [{
+      id: "session-2",
+      title: "Old title",
+      created: new Date(0).toISOString(),
+      modified: new Date(0).toISOString(),
+      messageCount: 1,
+      archived: false,
+      workspacePath: "/other",
+      workspaceName: "Other"
+    }]);
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+
+    await store.renameSession("/other", "session-2", " New title ");
+
+    expect(desktop.client.renameSession).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/other", sessionId: "session-2", name: "New title" }));
+    expect(store.projectSessions("/other")[0]?.title).toBe("New title");
     root[Symbol.dispose]();
   });
 

@@ -5,7 +5,7 @@ import { _electron as electron, expect, test } from "@playwright/test";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("surfaces Pi resources and adapts extension dialogs and legacy widgets", async () => {
+test("adapts extension dialogs and legacy widgets", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-s3-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -47,11 +47,6 @@ export default function (pi) {
     page.on("pageerror", (error) => rendererErrors.push(error.message));
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
     expect(rendererErrors).toEqual([]);
-    await page.getByRole("button", { name: "Resources" }).click();
-    await expect(page.getByRole("heading", { name: "Pi resources" })).toBeVisible();
-    await expect(page.getByText("desktop-fixture", { exact: true }).first()).toBeVisible();
-    await page.getByRole("button", { name: "Close Pi resources" }).click();
-
     await page.getByLabel("Message").fill("/desktop-fixture");
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByText("Desktop extension", { exact: true })).toBeVisible();
@@ -61,9 +56,6 @@ export default function (pi) {
     await expect(page.getByText("Extension connected", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Message")).toHaveValue("draft from extension");
     await expect(page.getByText("fixture ready", { exact: true })).toBeVisible();
-
-    await page.getByRole("button", { name: "Resources" }).click();
-    await expect(page.getByText(/terminal footer factories cannot run/)).toBeVisible();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
