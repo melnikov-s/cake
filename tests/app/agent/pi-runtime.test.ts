@@ -199,6 +199,11 @@ export default function (pi) {
     const firstSnapshot = await runtime.snapshot();
     expect(() => sessionSnapshotSchema.parse(firstSnapshot)).not.toThrow();
     const catalog = firstSnapshot.compatibility;
+    expect(firstSnapshot.commands).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "cake-compat", source: "extension" }),
+      expect.objectContaining({ name: "fixture-prompt", source: "prompt" }),
+      expect.objectContaining({ name: "skill:fixture-skill", source: "skill" })
+    ]));
     expect(catalog.resources).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "package", name: packageDir }),
       expect.objectContaining({ kind: "skill", name: "fixture-skill" }),

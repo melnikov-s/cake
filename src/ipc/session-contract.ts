@@ -166,6 +166,18 @@ export const extensionUiStateSchema = z.object({
   })).max(100).default([])
 });
 
+export const slashCommandSchema = z.object({
+  name: z.string().min(1).max(256),
+  description: z.string().max(4_096).optional(),
+  source: z.enum(["extension", "prompt", "skill"]),
+  sourceInfo: z.object({
+    path: z.string().max(8_192),
+    source: z.string().max(2_048),
+    scope: resourceScopeSchema,
+    origin: z.enum(["package", "top-level"])
+  })
+});
+
 export const extensionUiEventSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("notify"), id: z.string().max(256), message: z.string().max(4_096), tone: z.enum(["info", "warning", "error"]) }),
   z.object({ kind: z.literal("status"), key: z.string().max(256), text: z.string().max(2_048).optional() }),
@@ -186,6 +198,7 @@ export const sessionSnapshotSchema = z.object({
   availableThinkingLevels: z.array(thinkingLevelSchema).max(7),
   streaming: z.boolean(),
   diagnostics: z.array(z.string().max(4_096)).max(1_000),
+  commands: z.array(slashCommandSchema).max(20_000),
   compatibility: compatibilityCatalogSchema.default({ resources: [], diagnostics: [] }),
   extensionUi: extensionUiStateSchema.default({ statuses: [], widgets: [] }),
   sessions: z.array(sessionSummarySchema).max(10_000).default([]),

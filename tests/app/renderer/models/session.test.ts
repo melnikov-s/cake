@@ -21,6 +21,7 @@ const snapshot: SessionSnapshot = {
   availableThinkingLevels: ["off", "medium"],
   streaming: true,
   diagnostics: [],
+  commands: [{ name: "skill:fixture", description: "Fixture skill", source: "skill", sourceInfo: { path: "/fixture/SKILL.md", source: "fixture", scope: "project", origin: "top-level" } }],
   compatibility: { resources: [{ id: "extension:/fixture.ts", kind: "extension", name: "fixture.ts", path: "/fixture.ts", source: "fixture", scope: "project", origin: "package", commands: ["fixture"], tools: [], enabled: true }], diagnostics: [{ id: "compat:one", severity: "warning", source: "compatibility", method: "custom", message: "Unavailable" }] },
   extensionUi: { statuses: [], widgets: [] },
   sessions: [{ id: "session-1", title: "Session", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 1, archived: false }],
@@ -45,6 +46,7 @@ describe("SessionModel", () => {
     expect(model.sessions).toBe(sessions);
     expect(model.tree).toBe(tree);
     expect(model.compatibility).toEqual(snapshot.compatibility);
+    expect(model.commands).toEqual(snapshot.commands);
     expect(isObservable(model.parts)).toBe(true);
     expect(isObservable(model.models)).toBe(true);
     expect(isObservable(model.availableThinkingLevels)).toBe(true);

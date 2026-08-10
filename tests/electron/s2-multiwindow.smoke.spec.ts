@@ -5,7 +5,7 @@ import { _electron as electron, expect, test } from "@playwright/test";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("keeps window state independent and opens Tree as a slash-command dialog", async () => {
+test("keeps window state independent across Pi sessions", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-s2-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -29,9 +29,6 @@ test("keeps window state independent and opens Tree as a slash-command dialog", 
     await expect.poll(() => second.locator(".workspace").getAttribute("data-session-id")).not.toBe(firstSession);
     await expect(first.getByLabel("Message")).toHaveValue("first window draft");
 
-    await first.getByLabel("Message").fill("/tree");
-    await first.getByLabel("Message").press("Enter");
-    await expect(first.getByRole("dialog", { name: "Session tree" })).toBeVisible();
     await expect(first.getByRole("navigation", { name: "Workspace surfaces" })).toHaveCount(0);
   } finally {
     await application.evaluate(() => { const reset = Reflect.get(globalThis, "cakeSmokeResetPi"); if (typeof reset === "function") reset(); });

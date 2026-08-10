@@ -125,12 +125,7 @@ export class WindowStore extends Store<Record<string, never>> {
   }
 
   get canSubmit() {
-    return Boolean(this.session && !this.activeOpenOperationId && this.draft.trim() && (this.isLocalSlashCommand || this.piState === "ready"));
-  }
-
-  get isLocalSlashCommand() {
-    const command = this.draft.trim().toLocaleLowerCase();
-    return command === "/tree" || command === "/changes" || command === "/resources";
+    return Boolean(this.session && !this.activeOpenOperationId && this.draft.trim() && this.piState === "ready");
   }
 
   get projectName() {
@@ -476,12 +471,6 @@ export class WindowStore extends Store<Record<string, never>> {
   async submit(deliveryOverride?: "steer") {
     if (!this.canSubmit) return;
     const text = this.draft.trim();
-    const command = text.toLocaleLowerCase();
-    if (command === "/tree" || command === "/changes" || command === "/resources") {
-      this.setDraft("");
-      await this.openCommandPane(command === "/tree" ? "tree" : command === "/changes" ? "changes" : "resources");
-      return;
-    }
     const delivery = deliveryOverride ?? (this.isStreaming ? "follow-up" : "prompt");
     const attachments = this.attachments.slice();
     const operationId = this.startOperation();

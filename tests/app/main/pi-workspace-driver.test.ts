@@ -14,6 +14,7 @@ const snapshot: SessionSnapshot = {
   availableThinkingLevels: ["off"],
   streaming: false,
   diagnostics: [],
+  commands: [],
   compatibility: { resources: [], diagnostics: [] },
   extensionUi: { statuses: [], widgets: [] },
   sessions: [],

@@ -14,6 +14,7 @@ const snapshot: SessionSnapshot = {
   availableThinkingLevels: ["off"],
   streaming: false,
   diagnostics: [],
+  commands: [],
   compatibility: { resources: [], diagnostics: [] },
   extensionUi: { statuses: [], widgets: [] },
   sessions: [],
@@ -396,28 +397,18 @@ describe("WindowStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("opens tree and changes as local slash-command panes", async () => {
+  it("forwards slash commands to Pi instead of intercepting Cake-only commands", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
+    desktop.emit({ type: "pi-state-changed", state: "ready" });
     await openSnapshot(store, desktop, { ...snapshot, tree: [{ id: "entry-1", type: "message", preview: "Hello", active: true, children: [] }] });
-    await store.renameCurrentSession("Renamed");
-    await store.forkAt("entry-1");
-    desktop.emit({ type: "session-snapshot-received", operationId: store.activeOperations.at(-1), snapshot: { ...snapshot, sessionId: "forked" } });
-    store.setDraft("/changes");
-    await store.submit();
-    const changesId = store.activeOperations.at(-1)!;
-    desktop.emit({ type: "changes-received", operationId: changesId, workspacePath: "/project", files: [{ path: "README.md", status: " M", staged: false, additions: 1, deletions: 0, diff: "+hello" }] });
-    expect(store.commandPane).toBe("changes");
-    store.setDraft("/tree");
+    store.setDraft("/skill:review");
     await store.submit();
 
-    expect(desktop.client.renameSession).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", sessionId: "session-1", name: "Renamed" }));
-    expect(desktop.client.forkSession).toHaveBeenCalledWith(expect.objectContaining({ entryId: "entry-1" }));
-    expect(store.changedFiles[0]?.path).toBe("README.md");
-    expect(store.commandPane).toBe("tree");
+    expect(desktop.client.submit).toHaveBeenCalledWith(expect.objectContaining({ text: "/skill:review", delivery: "prompt" }));
+    expect(store.commandPane).toBeUndefined();
     expect(store.draft).toBe("");
-    expect(desktop.client.submit).not.toHaveBeenCalled();
     root[Symbol.dispose]();
   });
 });

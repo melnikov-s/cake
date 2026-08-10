@@ -19,6 +19,7 @@ export class SessionModel extends Model {
   @state availableThinkingLevels: ThinkingLevel[] = observable([]);
   @state streaming = false;
   @state diagnostics: string[] = observable([]);
+  @state commands: SessionSnapshot["commands"] = observable([]);
   @child(CompatibilityResourceModel) resources: CompatibilityResourceModel[] = observable([]);
   @child(ResourceDiagnosticModel) resourceDiagnostics: ResourceDiagnosticModel[] = observable([]);
   @child(SessionSummaryModel) sessions: SessionSummaryModel[] = observable([]);
@@ -47,7 +48,8 @@ export class SessionModel extends Model {
         thinkingLevel: snapshot.thinkingLevel,
         availableThinkingLevels: snapshot.availableThinkingLevels,
         streaming: snapshot.streaming,
-        diagnostics: snapshot.diagnostics
+        diagnostics: snapshot.diagnostics,
+        commands: snapshot.commands
       } as Snapshot<this>);
       reconcileChildren(this.parts, snapshot.parts, MessageModel);
       reconcileModelOptions(this.models, snapshot.models);

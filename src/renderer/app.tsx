@@ -244,16 +244,14 @@ const ComposerPanel = observer(function ComposerPanel({ store }: { store: Window
     }
   };
   const selectedModel = store.session?.model;
-  const commands = [
-    { value: "/tree", label: "Tree", description: "Navigate or fork this session" },
-    { value: "/changes", label: "Changes", description: "Inspect changed files" },
-    { value: "/resources", label: "Resources", description: "Inspect Pi skills, prompts, packages, and extensions" }
-  ].filter((command) => command.value.startsWith(store.draft.trim().toLocaleLowerCase()));
+  const commandPrefix = store.draft.trim().slice(1).toLocaleLowerCase();
+  const commands = (store.session?.commands ?? [])
+    .filter((command) => command.name.toLocaleLowerCase().startsWith(commandPrefix));
   return (
     <div className="composer-dock">
       {store.extensionWidgets.filter((widget) => widget.placement === "aboveEditor").map((widget) => <div className="legacy-widget" key={widget.key}><strong>{widget.key}</strong><pre>{widget.lines.join("\n")}</pre></div>)}
       <Composer className="workbench-composer" onSubmit={(event) => { event.preventDefault(); void store.submit(); }}>
-        {store.draft.trim().startsWith("/") && commands.length > 0 && <div className="slash-command-menu" role="listbox" aria-label="Slash commands">{commands.map((command) => <button key={command.value} type="button" role="option" onClick={() => { store.setDraft(command.value); void store.submit(); }}><code>{command.value}</code><span><strong>{command.label}</strong><small>{command.description}</small></span></button>)}</div>}
+        {store.draft.trim().startsWith("/") && !store.draft.trim().includes(" ") && commands.length > 0 && <div className="slash-command-menu" role="listbox" aria-label="Slash commands">{commands.map((command) => <button key={`${command.source}:${command.name}`} type="button" role="option" onClick={() => store.setDraft(`/${command.name} `)}><code>/{command.name}</code><span><strong>{command.description ?? command.name}</strong><small>{command.source} · {command.sourceInfo.scope}</small></span></button>)}</div>}
         {store.attachments.length > 0 && <div className="attachment-list">{store.attachments.map((attachment, index) => <button type="button" key={`${attachment.kind}-${attachment.name}`} onClick={() => store.removeAttachment(index)}>{attachment.kind === "file" ? "@" : "▧"} {attachment.name} <span>×</span></button>)}</div>}
         <ComposerInput aria-label="Message" placeholder={store.isStreaming ? "Add the next instruction…" : `Ask Cake to work in ${store.projectName}…`} value={store.draft} onChange={(event) => store.setDraft(event.target.value)} onKeyDown={onKeyDown} />
         <ComposerToolbar className="composer-toolbar">

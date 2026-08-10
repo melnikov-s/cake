@@ -10,7 +10,8 @@ import {
   type AgentSessionEvent,
   type ExtensionUIContext,
   type ExtensionWidgetOptions,
-  type InlineExtension
+  type InlineExtension,
+  type SlashCommandInfo
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -487,7 +488,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   });
   const persistArtifact = options.persistArtifact ?? (async (artifact: CakeArtifactV1) => artifactRecordSchema.parse({ artifact, workspacePath: options.cwd, digest: "0".repeat(64), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }));
   const requestArtifact = options.requestArtifact ?? (async () => undefined);
-  const resourceLoader = new DefaultResourceLoader({ cwd: options.cwd, agentDir, settingsManager, extensionFactories: [createCakeArtifactExtension({ persistArtifact, requestArtifact })] });
+  let getPiCommands: () => SlashCommandInfo[] = () => [];
+  const commandCatalogExtension: InlineExtension = (pi) => { getPiCommands = () => pi.getCommands(); };
+  const resourceLoader = new DefaultResourceLoader({ cwd: options.cwd, agentDir, settingsManager, extensionFactories: [createCakeArtifactExtension({ persistArtifact, requestArtifact }), commandCatalogExtension] });
   await resourceLoader.reload({ resolveProjectTrust: async () => options.trusted });
   const availableSessions = await SessionManager.list(options.cwd, options.sessionDir);
   const allowedSessionRoot = resolve(options.sessionDir ?? join(agentDir, "sessions"));
@@ -570,6 +573,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         ...extensionsResult.errors.map((error) => `${error.path}: ${error.error}`),
         ...(modelFallbackMessage ? [modelFallbackMessage] : [])
       ],
+      commands: getPiCommands(),
       compatibility: catalog,
       extensionUi: extensionUiState,
       sessions,
