@@ -21,7 +21,19 @@ describe("Cake-owned conversation components", () => {
   it("renders Cake reasoning, tool, and composer props without AI SDK types", () => {
     const html = renderToStaticMarkup(<><Reasoning open onToggle={() => undefined}>trace</Reasoning><Tool part={{ id: "tool-1", kind: "tool", name: "read", input: "file", output: "contents", state: "success" }} /><Composer><ComposerInput defaultValue="prompt" /></Composer></>);
     expect(html).toContain("Reasoning");
-    expect(html).toContain("read · success");
+    expect(html).toContain("read");
+    expect(html).toContain("success");
     expect(html).toContain("prompt");
+  });
+
+  it("renders edit calls as a readable code diff", () => {
+    const html = renderToStaticMarkup(<Tool part={{ id: "tool-edit", kind: "tool", name: "edit", input: JSON.stringify({ path: "src/app.ts", edits: [{ oldText: "const old = true;", newText: "const fresh = true;" }] }), filePath: "src/app.ts", diff: "-4 const old = true;\n+4 const fresh = true;", state: "success" }} />);
+    expect(html).toContain("edit src/app.ts");
+    expect(html).toContain("Old line 4");
+    expect(html).toContain("New line 4");
+    expect(html).toContain("const fresh = true;");
+    expect(html).toContain("+1");
+    expect(html).toContain("−1");
+    expect(html).not.toContain("oldText");
   });
 });

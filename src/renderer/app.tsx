@@ -15,6 +15,7 @@ import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/
 import { Reasoning } from "@/components/ai-elements/reasoning";
 import { Source } from "@/components/ai-elements/source";
 import { Tool } from "@/components/ai-elements/tool";
+import { DiffView, diffStats } from "@/components/ai-elements/diff-view";
 import { Button } from "@/components/ui/button";
 import { ArtifactHost, downloadArtifactMarkdown } from "@/components/artifact-host";
 import { ModelCombobox } from "@/components/model-combobox";
@@ -57,7 +58,7 @@ function CommandPane({ store }: { store: WindowStore }) {
         {store.commandPane === "tree"
           ? store.session.tree.length > 0 ? <SessionTree nodes={store.session.tree} onNavigate={(id) => void store.navigateTo(id)} onFork={(id) => void store.forkAt(id)} /> : <p>This session has no branches yet.</p>
           : store.commandPane === "changes"
-            ? store.changesLoading ? <p>Loading changes…</p> : store.changedFiles.length === 0 ? <p>No changed files.</p> : store.changedFiles.map((file) => <details key={`${file.staged}-${file.path}`}><summary><code>{file.status}</code> {file.path}<span>+{file.additions} −{file.deletions}</span></summary><pre>{file.diff || "Diff unavailable for this file."}</pre></details>)
+            ? store.changesLoading ? <p>Loading changes…</p> : store.changedFiles.length === 0 ? <p>No changed files.</p> : store.changedFiles.map((file) => <details key={`${file.staged}-${file.path}`}><summary><code>{file.status}</code> {file.path}<span>+{file.additions} −{file.deletions}</span></summary>{file.diff ? <DiffView diff={file.diff} filePath={file.path} label={file.staged ? "Staged changes" : "Working tree changes"} /> : <p>Diff unavailable for this file.</p>}</details>)
             : <div className="resource-catalog">{diagnostics.length > 0 && <section className="resource-diagnostics"><h3>Diagnostics</h3>{diagnostics.map((item) => <div key={item.id} className={`notice notice-${item.severity}`}><strong>{item.method ?? item.source}</strong><span>{item.message}{item.path ? `\n${item.path}` : ""}</span></div>)}</section>}{resourceGroups.map((group) => <section key={group.kind}><h3>{group.kind[0]!.toUpperCase() + group.kind.slice(1)}s <span>{group.resources.length}</span></h3>{group.resources.length === 0 ? <p>None discovered.</p> : group.resources.map((resource) => <article key={resource.id}><div><strong>{resource.name}</strong><small>{resource.scope} · {resource.origin}</small></div>{resource.description && <p>{resource.description}</p>}{resource.commands.length > 0 && <p><b>Commands</b> {resource.commands.map((command) => `/${command}`).join(", ")}</p>}{resource.tools.length > 0 && <p><b>Tools</b> {resource.tools.join(", ")}</p>}<code title={resource.path}>{resource.source}</code></article>)}</section>)}</div>}
       </section>
     </div>
@@ -103,7 +104,9 @@ function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
 
 function ActivityGroup({ parts, store }: { parts: UiPart[]; store: WindowStore }) {
   const tools = parts.filter((part) => part.kind === "tool").length;
-  const label = tools === 0 ? "Reasoning" : `${tools} tool ${tools === 1 ? "call" : "calls"}`;
+  const editParts = parts.filter((part): part is Extract<UiPart, { kind: "tool" }> => part.kind === "tool" && part.name === "edit" && Boolean(part.diff));
+  const editTotals = editParts.reduce((total, part) => { const stats = diffStats(part.diff!); return { additions: total.additions + stats.additions, deletions: total.deletions + stats.deletions }; }, { additions: 0, deletions: 0 });
+  const label = editParts.length > 0 ? `${editParts.length} ${editParts.length === 1 ? "edit" : "edits"} · +${editTotals.additions} −${editTotals.deletions}` : tools === 0 ? "Reasoning" : `${tools} tool ${tools === 1 ? "call" : "calls"}`;
   return (
     <details className="activity-group" open={store.isStreaming || undefined}>
       <summary><span className={store.isStreaming ? "activity-pulse" : ""} />Work log <small>{label}</small></summary>

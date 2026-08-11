@@ -55,6 +55,8 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
     name: z.string().max(256),
     input: boundedText,
     output: boundedText.optional(),
+    filePath: z.string().max(8_192).optional(),
+    diff: boundedText.optional(),
     state: z.enum(["approval", "running", "success", "error", "denied"])
   }),
   z.object({

@@ -238,6 +238,20 @@ function formatUnknown(value: unknown, limit = 48_000) {
   return formatted.length > limit ? `${formatted.slice(0, limit)}\n…` : formatted;
 }
 
+function toolFilePath(toolName: string, args: unknown) {
+  if (toolName !== "edit" || typeof args !== "object" || args === null) return undefined;
+  const path = Reflect.get(args, "path") ?? Reflect.get(args, "file_path");
+  return typeof path === "string" ? path : undefined;
+}
+
+function toolResultDiff(toolName: string, result: unknown) {
+  if (toolName !== "edit" || typeof result !== "object" || result === null) return undefined;
+  const details = Reflect.get(result, "details");
+  if (typeof details !== "object" || details === null) return undefined;
+  const diff = Reflect.get(details, "diff") ?? Reflect.get(details, "patch");
+  return typeof diff === "string" ? diff : undefined;
+}
+
 function textFromContent(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
@@ -284,7 +298,9 @@ function partsFromMessage(message: unknown, baseId: string, streaming = false): 
         return [{ id: `${baseId}-reasoning-${index}`, kind: "reasoning", text: String(Reflect.get(item, "thinking") ?? ""), status: streaming ? "streaming" : "complete" }];
       }
       if (type === "toolCall") {
-        return [{ id: `tool-${String(Reflect.get(item, "id"))}`, kind: "tool", name: String(Reflect.get(item, "name") ?? "tool"), input: formatUnknown(Reflect.get(item, "arguments")), state: "running" }];
+        const name = String(Reflect.get(item, "name") ?? "tool");
+        const args = Reflect.get(item, "arguments");
+        return [{ id: `tool-${String(Reflect.get(item, "id"))}`, kind: "tool", name, input: formatUnknown(args), filePath: toolFilePath(name, args), state: "running" }];
       }
       return [];
     });
@@ -296,12 +312,15 @@ function partsFromMessage(message: unknown, baseId: string, streaming = false): 
   }
 
   if (role === "toolResult") {
+    const name = String(Reflect.get(message, "toolName") ?? "tool");
+    const details = Reflect.get(message, "details");
     return [{
       id: `tool-${String(Reflect.get(message, "toolCallId"))}`,
       kind: "tool",
-      name: String(Reflect.get(message, "toolName") ?? "tool"),
+      name,
       input: "",
-      output: textFromContent(content) || formatUnknown(Reflect.get(message, "details")),
+      output: textFromContent(content) || formatUnknown(details),
+      diff: toolResultDiff(name, { details }),
       state: Reflect.get(message, "isError") ? "error" : "success"
     }];
   }
@@ -325,7 +344,7 @@ function projectMessages(messages: readonly unknown[]) {
       }
       const existing = projected[existingIndex];
       projected[existingIndex] = existing?.kind === "tool" && part.kind === "tool"
-        ? { ...part, input: part.input || existing.input }
+        ? { ...existing, ...part, input: part.input || existing.input, filePath: part.filePath || existing.filePath }
         : part;
     }
   }
@@ -639,6 +658,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     options.onEvent({ type: "snapshot", requestId, snapshot });
   }
 
+  const activeToolCalls = new Map<string, { input: string; filePath?: string }>();
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     if (disposed) return;
     if (event.type === "agent_start") {
@@ -656,13 +676,19 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       }
     }
     if (event.type === "tool_execution_start") {
-      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: `tool-${event.toolCallId}`, kind: "tool", name: event.toolName, input: formatUnknown(event.args), state: "running" } });
+      const call = { input: formatUnknown(event.args), filePath: toolFilePath(event.toolName, event.args) };
+      activeToolCalls.set(event.toolCallId, call);
+      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: `tool-${event.toolCallId}`, kind: "tool", name: event.toolName, ...call, state: "running" } });
     }
     if (event.type === "tool_execution_update") {
-      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: `tool-${event.toolCallId}`, kind: "tool", name: event.toolName, input: formatUnknown(event.args), output: formatUnknown(event.partialResult), state: "running" } });
+      const call = activeToolCalls.get(event.toolCallId) ?? { input: formatUnknown(event.args), filePath: toolFilePath(event.toolName, event.args) };
+      activeToolCalls.set(event.toolCallId, call);
+      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: `tool-${event.toolCallId}`, kind: "tool", name: event.toolName, ...call, output: formatUnknown(event.partialResult), state: "running" } });
     }
     if (event.type === "tool_execution_end") {
-      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: `tool-${event.toolCallId}`, kind: "tool", name: event.toolName, input: "", output: formatUnknown(event.result), state: event.isError ? "error" : "success" } });
+      const call = activeToolCalls.get(event.toolCallId);
+      activeToolCalls.delete(event.toolCallId);
+      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: `tool-${event.toolCallId}`, kind: "tool", name: event.toolName, input: call?.input ?? "", output: formatUnknown(event.result), filePath: call?.filePath, diff: toolResultDiff(event.toolName, event.result), state: event.isError ? "error" : "success" } });
     }
     if (event.type === "auto_retry_start") {
       options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "active-retry", kind: "notice", tone: "warning", title: `Retry ${event.attempt}/${event.maxAttempts}`, detail: event.errorMessage } });

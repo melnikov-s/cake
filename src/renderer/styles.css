@@ -296,6 +296,28 @@
 .activity-group > summary > span { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-foreground); }
 .activity-group > div { display: grid; max-height: 28rem; gap: 8px; overflow-y: auto; padding: 0 9px 9px; }
 .activity-group > div > details { background: color-mix(in oklab, var(--card) 45%, transparent); }
+.tool-call > summary { display: flex; min-width: 0; align-items: center; list-style: none; }
+.tool-call > summary::-webkit-details-marker { display: none; }
+.tool-call > summary::after { margin-left: 8px; color: var(--muted-foreground); content: "+"; font-size: 13px; font-weight: 400; }
+.tool-call[open] > summary::after { content: "−"; }
+.tool-call > summary .tool-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-call > summary small { margin-left: auto; color: var(--muted-foreground); font: inherit; font-weight: 400; }
+.tool-edit { padding: 0 !important; overflow: hidden; }
+.tool-edit > summary { min-height: 38px; padding: 0 12px; }
+.diff-view { min-width: 0; border-top: 1px solid color-mix(in oklab, var(--border) 75%, transparent); background: color-mix(in oklab, var(--background) 70%, transparent); font-family: var(--font-mono); }
+.diff-view > header { display: flex; min-height: 31px; align-items: center; gap: 12px; padding: 0 10px; border-bottom: 1px solid color-mix(in oklab, var(--border) 68%, transparent); color: var(--muted-foreground); font-size: 10px; }
+.diff-view > header code { min-width: 0; overflow: hidden; color: var(--foreground); text-overflow: ellipsis; white-space: nowrap; }
+.diff-view > header span { display: flex; margin-left: auto; gap: 7px; font-style: normal; }
+.diff-view > header b { color: oklch(0.58 0.14 150); }.diff-view > header i { color: oklch(0.58 0.18 28); font-style: normal; font-weight: 700; }
+.diff-scroll { max-height: 24rem; overflow: auto; padding: 5px 0; font-size: 11px; line-height: 1.55; }
+.diff-line { display: grid; min-width: max-content; grid-template-columns: 3.5rem 3.5rem minmax(18rem, 1fr); }
+.diff-line > span { padding: 0 8px; color: color-mix(in oklab, var(--muted-foreground) 72%, transparent); text-align: right; user-select: none; }
+.diff-line > code { display: block; padding: 0 12px 0 8px; color: inherit; white-space: pre; }
+.diff-line > code b { display: inline-block; width: 1.25rem; color: var(--muted-foreground); user-select: none; }
+.diff-add { background: color-mix(in oklab, oklch(0.7 0.13 150) 14%, transparent); }.diff-add > code b { color: oklch(0.58 0.14 150); }
+.diff-remove { background: color-mix(in oklab, oklch(0.68 0.17 28) 13%, transparent); }.diff-remove > code b { color: oklch(0.58 0.18 28); }
+.diff-meta { margin: 4px 0; background: color-mix(in oklab, var(--accent) 9%, var(--muted)); color: var(--muted-foreground); }
+.diff-meta > code { grid-column: 2 / -1; padding-block: 2px; }
 .activity-pulse { background: var(--accent) !important; animation: status-pulse 1.6s ease-in-out infinite; }
 .assistant-loading { display: flex; width: fit-content; align-items: center; gap: 5px; padding: 8px 2px; color: var(--accent); }
 .assistant-loading > span { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: assistant-loading-pulse 1.2s ease-in-out infinite; }
