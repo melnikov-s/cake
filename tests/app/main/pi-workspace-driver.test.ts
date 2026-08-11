@@ -60,6 +60,7 @@ describe("PiWorkspaceDriver", () => {
       sessionFile: snapshot.sessionFile,
       snapshot: vi.fn(async () => snapshot),
       prompt: vi.fn(async () => {
+        options?.onEvent({ type: "part-updated", sessionId: snapshot.sessionId, part: { id: "user-1", kind: "text", role: "user", text: "hello", status: "complete" } });
         options?.onEvent({ type: "extension-ui", sessionId: snapshot.sessionId, event: { kind: "status", key: "fixture", text: "running" } });
         await options?.requestUi({ kind: "confirm", title: "Continue?", message: "Confirm" });
         promptSettled += 1;
@@ -89,6 +90,8 @@ describe("PiWorkspaceDriver", () => {
     const promptId = crypto.randomUUID();
     driver.dispatch({ type: "prompt", requestId: promptId, workspacePath: "/project", sessionId: snapshot.sessionId, text: "hello", delivery: "prompt", attachments: [] });
     await vi.waitFor(() => expect(events.some((event) => event.type === "ui-request" && event.requestId === promptId)).toBe(true));
+    await vi.waitFor(() => expect(events.some((event) => event.type === "session-snapshot" && event.requestId === undefined)).toBe(true));
+    expect(promptSettled).toBe(0);
     expect(events).toContainEqual({ type: "extension-ui", sessionId: snapshot.sessionId, event: { kind: "status", key: "fixture", text: "running" } });
     const request = events.find((event): event is Extract<DesktopEvent, { type: "ui-request" }> => event.type === "ui-request" && event.requestId === promptId)!;
     driver.dispatch({ type: "respond-ui", requestId: promptId, workspacePath: "/project", sessionId: snapshot.sessionId, uiRequestId: request.uiRequestId, value: "true", cancelled: false });

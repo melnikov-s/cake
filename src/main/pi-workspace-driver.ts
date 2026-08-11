@@ -238,6 +238,7 @@ export class PiWorkspaceDriver {
   private async createRuntime(newSession: boolean, sessionId?: string, sessionFile?: string) {
     const requestedArtifactSessionId = sessionId;
     let openedSessionId = sessionId;
+    const runtimeRef: { current?: CakeRuntime } = {};
     const runtime = await this.createRuntimeImpl({
       cwd: this.workspacePath,
       trusted: this.trusted,
@@ -261,10 +262,17 @@ export class PiWorkspaceDriver {
       },
       onEvent: (event) => {
         if (event.type === "snapshot") this.emit({ type: "session-snapshot", requestId: event.requestId, snapshot: event.snapshot });
-        else if (event.type === "part-updated" || event.type === "part-removed" || event.type === "extension-ui") this.emit(event);
+        else if (event.type === "part-updated" || event.type === "part-removed" || event.type === "extension-ui") {
+          this.emit(event);
+          if (event.type === "part-updated" && event.part.kind === "text" && event.part.role === "user" && event.part.status === "complete") {
+            const activeRuntime = runtimeRef.current;
+            if (activeRuntime) void activeRuntime.snapshot().then((snapshot) => this.emit({ type: "session-snapshot", snapshot }));
+          }
+        }
         else this.emit({ type: "session-streaming", sessionId: event.sessionId, streaming: event.streaming });
       }
     });
+    runtimeRef.current = runtime;
     openedSessionId = runtime.sessionId;
     if (this.disposed) {
       runtime.dispose();
