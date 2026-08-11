@@ -297,6 +297,12 @@
 .activity-group > div { display: grid; max-height: 28rem; gap: 8px; overflow-y: auto; padding: 0 9px 9px; }
 .activity-group > div > details { background: color-mix(in oklab, var(--card) 45%, transparent); }
 .activity-pulse { background: var(--accent) !important; animation: status-pulse 1.6s ease-in-out infinite; }
+.assistant-loading { display: flex; width: fit-content; align-items: center; gap: 5px; padding: 8px 2px; color: var(--accent); }
+.assistant-loading > span { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: assistant-loading-pulse 1.2s ease-in-out infinite; }
+.assistant-loading > span:nth-child(2) { animation-delay: .15s; }
+.assistant-loading > span:nth-child(3) { animation-delay: .3s; }
+@keyframes assistant-loading-pulse { 0%, 60%, 100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .assistant-loading > span { animation: none; opacity: .65; } }
 .composer-dock { position: absolute; z-index: 10; right: 0; bottom: 0; left: 0; width: 100%; max-width: 100%; min-width: 0; padding: 20px 24px 15px; background: linear-gradient(to bottom, transparent, var(--background) 28%); pointer-events: none; }
 .legacy-widget { display: grid; width: min(100%, 51.25rem); gap: 4px; margin: 5px auto; padding: 8px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); font: 10px var(--font-mono); pointer-events: auto; }
 .legacy-widget strong { color: var(--muted-foreground); }.legacy-widget pre { max-height: 8rem; margin: 0; overflow: auto; white-space: pre-wrap; }

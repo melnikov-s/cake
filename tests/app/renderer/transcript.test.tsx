@@ -34,8 +34,8 @@ vi.mock("@/components/ai-elements/conversation", () => ({
 
 import { Transcript } from "../../../src/renderer/app";
 
-function storeWith(parts: UiPart[]) {
-  return { parts, projectName: "Cake", error: undefined, thinkingExpanded: false, isStreaming: false, toggleThinking: vi.fn() } as unknown as WindowStore;
+function storeWith(parts: UiPart[], isStreaming = false) {
+  return { parts, projectName: "Cake", error: undefined, thinkingExpanded: false, isStreaming, toggleThinking: vi.fn() } as unknown as WindowStore;
 }
 
 describe("Transcript scrolling", () => {
@@ -95,5 +95,19 @@ describe("Transcript scrolling", () => {
 
     expect(virtualizedLifecycle.mock.calls).toEqual([["mounted"]]);
     expect(scrollToIndex).toHaveBeenCalledWith({ index: 0, align: "end", behavior: "auto" });
+  });
+
+  it("keeps the assistant loading indicator visible until streaming stops", () => {
+    const user: UiPart = { id: "user-1", kind: "text", role: "user", text: "My message", status: "complete" };
+    const assistant: UiPart = { id: "assistant-1", kind: "text", role: "assistant", text: "Working", status: "streaming" };
+
+    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([user], true)} />));
+    expect(container.querySelector(".assistant-loading")).not.toBeNull();
+
+    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([user, assistant], true)} />));
+    expect(container.querySelector(".assistant-loading")).not.toBeNull();
+
+    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([{ ...assistant, status: "complete" }], false)} />));
+    expect(container.querySelector(".assistant-loading")).toBeNull();
   });
 });

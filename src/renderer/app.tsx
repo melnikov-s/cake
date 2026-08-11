@@ -80,7 +80,7 @@ function TranscriptPart({ part, store }: { part: UiPart; store: WindowStore }) {
   return <div className={`notice notice-${part.tone}`} role={part.tone === "error" ? "alert" : "status"}><strong>{part.title}</strong>{part.detail && <span>{part.detail}</span>}</div>;
 }
 
-type TranscriptItem = UiPart | { kind: "activity-group"; id: string; parts: UiPart[] };
+type TranscriptItem = UiPart | { kind: "activity-group"; id: string; parts: UiPart[] } | { kind: "assistant-loading"; id: string };
 
 function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
   const items: TranscriptItem[] = [];
@@ -112,13 +112,26 @@ function ActivityGroup({ parts, store }: { parts: UiPart[]; store: WindowStore }
   );
 }
 
+function AssistantLoadingIndicator() {
+  return (
+    <div className="assistant-loading" role="status" aria-label="Cake is working">
+      <span aria-hidden="true" />
+      <span aria-hidden="true" />
+      <span aria-hidden="true" />
+    </div>
+  );
+}
+
 const TranscriptList = forwardRef<HTMLDivElement, ComponentProps<"div">>(function TranscriptList({ className, ...props }, ref) {
   return <div ref={ref} className={`transcript-list ${className ?? ""}`} aria-label="Conversation" {...props} />;
 });
 
 export const Transcript = observer(function Transcript({ store, sessionId }: { store: WindowStore; sessionId: string }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
-  const items = groupTranscriptParts(store.parts);
+  const items: TranscriptItem[] = [
+    ...groupTranscriptParts(store.parts),
+    ...(store.isStreaming ? [{ kind: "assistant-loading" as const, id: "assistant-loading" }] : [])
+  ];
   const latestUserPartId = store.parts.findLast((part) => part.kind === "text" && part.role === "user")?.id;
   const itemCountRef = useRef(items.length);
   itemCountRef.current = items.length;
@@ -139,10 +152,10 @@ export const Transcript = observer(function Transcript({ store, sessionId }: { s
     return () => cancelAnimationFrame(frame);
   }, [latestUserPartId, scrollToLatest]);
 
-  if (items.length === 0) {
+  if (store.parts.length === 0) {
     return (
       <div className="transcript transcript-empty">
-        <Conversation><div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div><ArtifactsPanel store={store} />{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</Conversation>
+        <Conversation><div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>{store.isStreaming && <AssistantLoadingIndicator />}<ArtifactsPanel store={store} />{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</Conversation>
       </div>
     );
   }
@@ -159,7 +172,7 @@ export const Transcript = observer(function Transcript({ store, sessionId }: { s
         List: TranscriptList,
         Footer: () => <div className="transcript-footer"><ArtifactsPanel store={store} />{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</div>
       }}
-      itemContent={(_index, item) => <div className="transcript-item">{item.kind === "activity-group" ? <ActivityGroup parts={item.parts} store={store} /> : <TranscriptPart part={item} store={store} />}</div>}
+      itemContent={(_index, item) => <div className="transcript-item">{item.kind === "activity-group" ? <ActivityGroup parts={item.parts} store={store} /> : item.kind === "assistant-loading" ? <AssistantLoadingIndicator /> : <TranscriptPart part={item} store={store} />}</div>}
     />
   );
 });
