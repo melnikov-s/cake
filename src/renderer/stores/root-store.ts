@@ -38,7 +38,10 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     if (event.type === "session-snapshot-received") {
       const previousSessionId = this.windowStore.session?.sessionId;
       if (event.operationId && !this.windowStore.acceptSessionSnapshot(event)) return;
+      const previous = this.sessionCache.find(event.snapshot.sessionId, event.snapshot.workspacePath);
+      const wasStreaming = previous?.streaming ?? false;
       this.sessionCache.upsert(event.snapshot);
+      this.windowStore.updateSessionActivity(event.snapshot.workspacePath, event.snapshot.sessionId, event.snapshot.streaming, wasStreaming);
       this.windowStore.reconcilePendingUserMessages(event.snapshot.sessionId);
       if (event.operationId || this.windowStore.isActiveSession(event.snapshot.workspacePath, event.snapshot.sessionId)) {
         this.windowStore.applySessionSnapshot(event.snapshot, event.operationId ? previousSessionId : undefined);
@@ -55,7 +58,10 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       return;
     }
     if (event.type === "streaming-changed") {
-      this.sessionCache.find(event.sessionId)?.setStreaming(event.streaming);
+      const session = this.sessionCache.find(event.sessionId);
+      const wasStreaming = session?.streaming ?? false;
+      session?.setStreaming(event.streaming);
+      if (session) this.windowStore.updateSessionActivity(session.workspacePath, event.sessionId, event.streaming, wasStreaming);
       return;
     }
     if (event.type === "artifact-updated" || event.type === "artifact-requested") {

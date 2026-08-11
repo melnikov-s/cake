@@ -127,7 +127,9 @@
 .session-row { position: relative; display: flex; width: calc(100% - 25px); max-width: calc(100% - 25px); min-width: 0; min-height: 31px; contain: inline-size; align-items: center; margin-left: 25px; padding: 6px 8px; border: 0; border-radius: 6px; background: transparent; color: color-mix(in oklab, var(--foreground) 86%, var(--muted-foreground)); font-size: 12.5px; line-height: 1.25; text-align: left; }
 .session-row span { display: block; width: 0; min-width: 0; flex: 1 1 0%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-row:hover { background: var(--sidebar-hover); color: var(--foreground); }
-.session-row i { width: 6px; height: 6px; margin-left: auto; border-radius: 50%; background: var(--accent); animation: status-pulse 1.6s ease-in-out infinite; }
+.session-row .session-status { width: 7px; height: 7px; flex: 0 0 7px; margin-left: 8px; border-radius: 50%; }
+.session-row .session-status-running { background: var(--accent); animation: status-pulse 1.6s ease-in-out infinite; }
+.session-row .session-status-unread { background: oklch(0.7 0.14 155); box-shadow: 0 0 0 2px color-mix(in oklab, oklch(0.7 0.14 155) 20%, transparent); }
 .session-item { position: relative; display: flex; align-items: center; }
 .session-item .session-row { width: calc(100% - 25px); }
 .session-item.active .session-row { background: var(--sidebar-active); color: var(--foreground); font-weight: 650; box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 1px color-mix(in oklab, var(--accent) 18%, transparent); }
@@ -141,7 +143,7 @@
 .global-session-filter.expanded { max-height: 32px; margin: 0 5px 10px; opacity: 1; transform: translateY(0); }
 .global-session-filter input { width: 100%; flex: none; }
 .global-session-results { margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid color-mix(in oklab, var(--border) 60%, transparent); }
-.global-session-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+.global-session-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 7px; }
 .global-session-row small { max-width: 82px; overflow: hidden; color: var(--muted-foreground); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-footer { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 16px; border-top: 1px solid color-mix(in oklab, var(--border) 65%, transparent); color: var(--muted-foreground); }
 .sidebar-settings { display: flex; min-width: 0; height: 36px; flex: 1; align-items: center; gap: 9px; padding: 0 4px; border: 0; border-radius: 8px; background: transparent; color: var(--foreground); font-size: 13px; text-align: left; }

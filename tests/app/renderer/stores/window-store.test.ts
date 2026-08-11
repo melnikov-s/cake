@@ -405,6 +405,27 @@ describe("WindowStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("tracks running sessions and marks background completions unread until opened", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+
+    await store.openSession("/project", "session-2");
+    const secondOpenId = store.activeOperations.at(-1)!;
+    desktop.emit({ type: "session-snapshot-received", operationId: secondOpenId, snapshot: { ...snapshot, sessionId: "session-2", sessionFile: "/sessions/two.jsonl" } });
+
+    desktop.emit({ type: "streaming-changed", sessionId: "session-1", streaming: true });
+    expect(store.sessionActivity("/project", "session-1")).toBe("running");
+
+    desktop.emit({ type: "streaming-changed", sessionId: "session-1", streaming: false });
+    expect(store.sessionActivity("/project", "session-1")).toBe("unread");
+
+    await store.openSession("/project", "session-1");
+    expect(store.sessionActivity("/project", "session-1")).toBeUndefined();
+    root[Symbol.dispose]();
+  });
+
   it("shows a fast persisted preview while an uncached Pi runtime activates", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);

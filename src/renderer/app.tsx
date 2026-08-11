@@ -230,6 +230,12 @@ const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, o
     const name = window.prompt("Session name", title);
     if (name) void store.renameSession(workspacePath, sessionId, name);
   };
+  const activityIndicator = (workspacePath: string, sessionId: string) => {
+    const activity = store.sessionActivity(workspacePath, sessionId);
+    if (!activity) return null;
+    const label = activity === "running" ? "Running" : "Ready, unread";
+    return <i className={`session-status session-status-${activity}`} role="img" aria-label={label} title={label} />;
+  };
   return (
     <aside className="sidebar">
       <div className="sidebar-window-tools"><button aria-label="Toggle sidebar" onClick={onToggle}><SidebarIcon /></button><button aria-label="Back" disabled><BackIcon /></button><button aria-label="Forward" disabled><ForwardIcon /></button></div>
@@ -238,7 +244,7 @@ const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, o
         <button className="new-chat" onClick={() => navigateToChat(() => store.startOneOffChat())}><ChatIcon /><span>New chat</span></button>
         <div className={`session-filter global-session-filter ${searchExpanded ? "expanded" : ""}`} aria-hidden={!searchExpanded}><input ref={searchInput} aria-label="Search sessions" placeholder="Search all sessions" value={store.sessionSearch} disabled={!searchExpanded} onChange={(event) => store.setSessionSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") closeSearch(); }} /></div>
         {store.sessionSearch.trim() && <div className="global-session-results">
-          {store.searchedSessions.length === 0 ? <p className="sidebar-empty">No matching sessions.</p> : store.searchedSessions.slice(0, 50).map((session) => <div key={`${session.workspacePath}:${session.id}`} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && session.workspacePath === store.projectPath ? "active" : ""}`}><button className="session-row global-session-row" aria-current={session.id === store.session?.sessionId && session.workspacePath === store.projectPath ? "page" : undefined} onClick={() => navigateToChat(() => store.openSession(session.workspacePath, session.id))} onContextMenu={(event) => renameSession(event, session.workspacePath, session.id, session.title)}><span>{session.title}</span><small>{session.workspaceName}</small></button></div>)}
+          {store.searchedSessions.length === 0 ? <p className="sidebar-empty">No matching sessions.</p> : store.searchedSessions.slice(0, 50).map((session) => <div key={`${session.workspacePath}:${session.id}`} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && session.workspacePath === store.projectPath ? "active" : ""}`}><button className="session-row global-session-row" aria-current={session.id === store.session?.sessionId && session.workspacePath === store.projectPath ? "page" : undefined} onClick={() => navigateToChat(() => store.openSession(session.workspacePath, session.id))} onContextMenu={(event) => renameSession(event, session.workspacePath, session.id, session.title)}><span>{session.title}</span><small>{session.workspaceName}</small>{activityIndicator(session.workspacePath, session.id)}</button></div>)}
         </div>}
         <div className="section-heading projects-heading"><span>Projects</span><div><span className="project-options" aria-hidden="true"><MoreIcon /></span><button aria-label="Add project" onClick={() => navigateToChat(() => store.chooseProject())}><PlusIcon /></button></div></div>
         {store.recentProjectPaths.length === 0 ? <p className="sidebar-empty">Add a folder to start a project.</p> : store.recentProjectPaths.map((path) => {
@@ -247,7 +253,7 @@ const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, o
           const visibleSessions = sessions.slice(0, store.sessionLimit(path));
           return <div className="project-group" key={path}>
             <div className="project-row" title={path}><div className="project-label"><FolderIcon /><span>{store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}</span></div><button className="project-add" aria-label={`New chat in ${store.nameFromPath(path)}`} onClick={() => { if (active) navigateToChat(() => store.startNewSession()); else navigateToChat(async () => { await store.switchProject(path); await store.startNewSession(); }); }}><PlusIcon /></button></div>
-            {!store.sessionSearch.trim() && visibleSessions.map((session) => <div key={session.id} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && path === store.projectPath ? "active" : ""}`}><button className="session-row" aria-current={session.id === store.session?.sessionId && path === store.projectPath ? "page" : undefined} onClick={() => navigateToChat(() => store.openSession(path, session.id))} onContextMenu={(event) => renameSession(event, path, session.id, session.title)}><span>{session.title}</span>{session.id === store.session?.sessionId && path === store.projectPath && store.isStreaming && <i />}</button></div>)}
+            {!store.sessionSearch.trim() && visibleSessions.map((session) => <div key={session.id} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && path === store.projectPath ? "active" : ""}`}><button className="session-row" aria-current={session.id === store.session?.sessionId && path === store.projectPath ? "page" : undefined} onClick={() => navigateToChat(() => store.openSession(path, session.id))} onContextMenu={(event) => renameSession(event, path, session.id, session.title)}><span>{session.title}</span>{activityIndicator(path, session.id)}</button></div>)}
             {!store.sessionSearch.trim() && sessions.length > visibleSessions.length && <button className="session-more" onClick={() => store.showMoreSessions(path)}>Show more</button>}
           </div>;
         })}

@@ -61,6 +61,7 @@ export class WindowStore extends Store<Record<string, never>> {
   recentProjectPaths: string[] = [];
   projects: ProjectRecord[] = [];
   globalSessions: GlobalSessionSummary[] = observable([]);
+  sessionActivityByKey: Record<string, "running" | "unread"> = observable({});
   trustedProjectPaths: string[] = [];
   pendingTrustPath: string | undefined;
   private pendingOpen: { inspectOperationId: string; path: string; newSession: boolean; sessionId?: string; sessionFile?: string } | undefined;
@@ -166,6 +167,33 @@ export class WindowStore extends Store<Record<string, never>> {
   projectSessions(workspacePath: string) {
     return this.globalSessions
       .filter((item) => item.workspacePath === workspacePath);
+  }
+
+  sessionActivity(workspacePath: string, sessionId: string) {
+    return this.sessionActivityByKey[this.sessionActivityKey(workspacePath, sessionId)];
+  }
+
+  updateSessionActivity(workspacePath: string, sessionId: string, streaming: boolean, wasStreaming = false) {
+    const key = this.sessionActivityKey(workspacePath, sessionId);
+    if (streaming) {
+      this.sessionActivityByKey[key] = "running";
+      return;
+    }
+    if (this.sessionActivityByKey[key] !== "running" && !wasStreaming) return;
+    if (this.isActiveSession(workspacePath, sessionId) || (this.activeOpenTarget?.path === workspacePath && this.activeOpenTarget.sessionId === sessionId)) {
+      delete this.sessionActivityByKey[key];
+    } else {
+      this.sessionActivityByKey[key] = "unread";
+    }
+  }
+
+  private sessionActivityKey(workspacePath: string, sessionId: string) {
+    return `${workspacePath}\u0000${sessionId}`;
+  }
+
+  private markSessionRead(workspacePath: string, sessionId: string) {
+    const key = this.sessionActivityKey(workspacePath, sessionId);
+    if (this.sessionActivityByKey[key] === "unread") delete this.sessionActivityByKey[key];
   }
 
   sessionLimit(workspacePath: string) {
@@ -322,6 +350,7 @@ export class WindowStore extends Store<Record<string, never>> {
   }
 
   async openSession(workspacePath: string, sessionId: string) {
+    this.markSessionRead(workspacePath, sessionId);
     if (workspacePath === this.projectPath && sessionId === this.session?.sessionId) return;
     const sameWorkspace = workspacePath === this.projectPath;
     const cached = this.showCachedSession(workspacePath, sessionId);
@@ -351,6 +380,7 @@ export class WindowStore extends Store<Record<string, never>> {
     if (previousSessionId) this.draftsBySession[previousSessionId] = this.draft;
     this.projectPath = workspacePath;
     this.selectedSessionId = sessionId;
+    this.markSessionRead(workspacePath, sessionId);
     this.draft = this.draftsBySession[sessionId] ?? "";
     this.clearExtensionUi();
     this.commandPane = undefined;
@@ -730,6 +760,7 @@ export class WindowStore extends Store<Record<string, never>> {
     if (previousSessionId) this.draftsBySession[previousSessionId] = this.draft;
     this.projectPath = snapshot.workspacePath;
     this.selectedSessionId = snapshot.sessionId;
+    this.markSessionRead(snapshot.workspacePath, snapshot.sessionId);
     this.draft = restartDraft ?? this.draftsBySession[snapshot.sessionId] ?? (previousSessionId ? "" : this.draft);
     this.draftAfterAgentRestart = undefined;
     this.draftsBySession[snapshot.sessionId] = this.draft;
