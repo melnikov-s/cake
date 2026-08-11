@@ -5,6 +5,7 @@ import type {
   ChangedFile,
   ExtensionUiEvent,
   ExtensionUiState,
+  FileSuggestion,
   GlobalSessionSummary,
   ModelOption,
   ProjectRecord,
@@ -509,6 +510,11 @@ export class WindowStore extends Store<Record<string, never>> {
     } catch (error) {
       this.setError(error);
     }
+  }
+
+  async suggestFiles(prefix: string): Promise<FileSuggestion[]> {
+    if (!this.projectPath) return [];
+    return this.client.suggestFiles(this.projectPath, prefix);
   }
 
   removeAttachment(index: number) {

@@ -13,6 +13,12 @@ export const thinkingLevelSchema = z.enum([
   "max"
 ]);
 
+export const fileSuggestionSchema = z.object({
+  value: z.string().min(1).max(4_096),
+  label: z.string().min(1).max(512),
+  description: z.string().max(4_096).optional()
+});
+
 export const attachmentSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("file"),
@@ -290,6 +296,7 @@ export const windowViewStateSchema = z.object({
   ,draftsBySession: z.record(z.string(), z.string().max(262_144)).default({})
 });
 
+export type FileSuggestion = z.infer<typeof fileSuggestionSchema>;
 export type Attachment = z.infer<typeof attachmentSchema>;
 export type UiPart = z.infer<typeof uiPartSchema>;
 export type ModelOption = z.infer<typeof modelOptionSchema>;

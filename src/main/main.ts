@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { app, BrowserWindow, dialog, ipcMain, type WebContents } from "electron";
 import { desktopRequestSchema, desktopResponseSchema, type DesktopEvent } from "../ipc/desktop-ipc";
 import { windowViewStateSchema, type Attachment, type WindowViewState } from "../ipc/session-contract";
-import { listWorkspaceSessions, loadWorkspaceSessionPreview } from "../agent/pi-runtime";
+import { listWorkspaceSessions, loadWorkspaceSessionPreview, suggestProjectFiles } from "../agent/pi-runtime";
 import { ApplicationModel } from "./application-model";
 import { shouldAllowNavigation } from "./navigation-policy";
 import { PiWorkspaceDriver, type PiWorkspaceCommand } from "./pi-workspace-driver";
@@ -179,6 +179,10 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
     return desktopResponseSchema.parse({ type: "home-directory", path });
   }
   if (request.type === "choose-attachments") return desktopResponseSchema.parse({ type: "attachments-chosen", attachments: owner ? await chooseAttachments(owner) : [] });
+  if (request.type === "suggest-files") {
+    if (!allowedProjectPaths.has(request.workspacePath)) throw new Error("Project path was not selected by the user");
+    return desktopResponseSchema.parse({ type: "file-suggestions", suggestions: await suggestProjectFiles(request.workspacePath, request.prefix) });
+  }
   if (request.type === "load-window-state") return desktopResponseSchema.parse({ type: "window-state-loaded", state: await loadWindowState(slot) });
   if (request.type === "save-window-state") {
     await saveWindowState(slot, request.state);

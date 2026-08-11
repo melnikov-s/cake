@@ -3,6 +3,7 @@ import type {
   Attachment,
   ApplicationState,
   ChangedFile,
+  FileSuggestion,
   GlobalSessionSummary,
   SessionSnapshot,
   SessionPreview,
@@ -45,6 +46,7 @@ export interface DesktopClient {
   chooseProject(): Promise<string | undefined>;
   getHomeDirectory(): Promise<string>;
   chooseAttachments(): Promise<Attachment[]>;
+  suggestFiles(workspacePath: string, prefix: string): Promise<FileSuggestion[]>;
   loadWindowState(): Promise<WindowViewState>;
   saveWindowState(state: WindowViewState): Promise<void>;
   loadApplicationState(): Promise<ApplicationState>;
@@ -111,6 +113,11 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       const response = await bridge.request({ type: "choose-attachments" });
       if (response.type !== "attachments-chosen") throw new Error("Cake received an invalid attachment response");
       return response.attachments;
+    },
+    async suggestFiles(workspacePath, prefix) {
+      const response = await bridge.request({ type: "suggest-files", workspacePath, prefix });
+      if (response.type !== "file-suggestions") throw new Error("Cake received invalid file suggestions");
+      return response.suggestions;
     },
     async loadWindowState() {
       const response = await bridge.request({ type: "load-window-state" });

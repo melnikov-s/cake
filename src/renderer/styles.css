@@ -317,6 +317,8 @@
 .slash-command-menu span { display: grid; gap: 2px; }
 .slash-command-menu strong { font-size: 12px; font-weight: 650; }
 .slash-command-menu small { color: var(--muted-foreground); font-size: 10px; }
+.file-mention-menu button { grid-template-columns: minmax(7rem, 11rem) minmax(0, 1fr); }
+.file-mention-menu strong { overflow: hidden; font: 11px var(--font-mono); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .workbench-composer textarea { min-height: 90px; max-height: 240px; font-size: 14px; }
 .attachment-list { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 6px 7px; }
 .attachment-list button { padding: 5px 9px; border: 0; border-radius: 7px; background: var(--muted); color: var(--foreground); font: 11px var(--font-mono); }

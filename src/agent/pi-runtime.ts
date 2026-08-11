@@ -14,9 +14,12 @@ import {
   type SlashCommandInfo
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
+import { CombinedAutocompleteProvider } from "@earendil-works/pi-tui";
+import { existsSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type {
   Attachment,
+  FileSuggestion,
   ModelOption,
   CompatibilityCatalog,
   ExtensionUiEvent,
@@ -44,6 +47,14 @@ export const piRuntimeVersion = "0.84.0" as const;
 
 export function inspectWorkspace(path: string) {
   return { path, trustRequired: hasTrustRequiringProjectResources(path) };
+}
+
+export async function suggestProjectFiles(cwd: string, prefix: string, fdPath?: string): Promise<FileSuggestion[]> {
+  const installedFd = join(getAgentDir(), "bin", process.platform === "win32" ? "fd.exe" : "fd");
+  const provider = new CombinedAutocompleteProvider([], cwd, fdPath ?? (existsSync(installedFd) ? installedFd : "fd"));
+  const text = `@${prefix}`;
+  const suggestions = await provider.getSuggestions([text], 0, text.length, { signal: AbortSignal.timeout(5_000) });
+  return (suggestions?.items ?? []).slice(0, 20).map(({ value, label, description }) => ({ value, label, description }));
 }
 
 export async function listWorkspaceSessions(cwd: string, sessionDir?: string): Promise<SessionSummary[]> {

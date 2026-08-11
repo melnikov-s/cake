@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,7 @@ import {
   inspectWorkspace,
   loadWorkspaceSessionPreview,
   piRuntimeVersion,
+  suggestProjectFiles,
   type CakeRuntime,
   type FoundationRuntime
 } from "../../../src/agent/pi-runtime";
@@ -28,6 +29,18 @@ async function createTemporaryDirectory() {
 }
 
 describe("Pi 0.84.0 foundation contract", () => {
+  it("uses Pi's fuzzy @ provider for project file suggestions", async () => {
+    const directory = await createTemporaryDirectory();
+    const fakeFd = join(directory, "fd");
+    await writeFile(fakeFd, "#!/bin/sh\nprintf 'src/\\nsrc/app.ts\\ntests/app.test.ts\\n'\n");
+    await chmod(fakeFd, 0o755);
+
+    expect(await suggestProjectFiles(directory, "app", fakeFd)).toEqual([
+      { value: "@src/app.ts", label: "app.ts", description: "src/app.ts" },
+      { value: "@tests/app.test.ts", label: "app.test.ts", description: "tests/app.test.ts" }
+    ]);
+  });
+
   it("creates an in-memory session, binds extension UI, and projects session events", async () => {
     const directory = await createTemporaryDirectory();
     const requestConfirm = vi.fn(async () => true);

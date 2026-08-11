@@ -27,6 +27,7 @@ function createDesktopClient(restoredPath?: string) {
     chooseProject: vi.fn(async () => "/project"),
     getHomeDirectory: vi.fn(async () => "/home/user"),
     chooseAttachments: vi.fn(async () => []),
+    suggestFiles: vi.fn(async () => []),
     loadWindowState: vi.fn(async () => ({ projectPath: restoredPath, recentProjectPaths: restoredPath ? [restoredPath] : [], trustedProjectPaths: [], draft: "saved", theme: "system" as const, thinkingExpanded: false, sessionSearch: "", draftsBySession: {} })),
     saveWindowState: vi.fn(async () => undefined),
     loadApplicationState: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
