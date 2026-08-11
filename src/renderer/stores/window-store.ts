@@ -12,6 +12,7 @@ import type {
   SessionSnapshot,
   SessionTreeNode,
   ThinkingLevel,
+  UiPart,
   WindowViewState
 } from "../../ipc/session-contract";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
@@ -42,6 +43,14 @@ export interface ArtifactRequestState {
   record: ArtifactRecord;
 }
 
+interface PendingUserMessage {
+  operationId: string;
+  workspacePath: string;
+  sessionId: string;
+  expectedOccurrence: number;
+  part: Extract<UiPart, { kind: "text" }>;
+}
+
 export class WindowStore extends Store<Record<string, never>> {
   readonly process = "renderer" as const;
   piState: PiState = "starting";
@@ -63,6 +72,7 @@ export class WindowStore extends Store<Record<string, never>> {
   thinkingExpanded = false;
   sessionSearch = "";
   commandPane: "changes" | "tree" | "resources" | undefined;
+  pendingUserMessages: PendingUserMessage[] = observable([]);
   draftsBySession: Record<string, string> = observable({});
   sessionLimitsByProject: Record<string, number> = observable({});
   changedFiles: ChangedFile[] = [];
@@ -114,8 +124,17 @@ export class WindowStore extends Store<Record<string, never>> {
       : undefined;
   }
 
-  get parts() {
+  get canonicalParts() {
     return this.session?.uiParts ?? [];
+  }
+
+  get parts() {
+    if (!this.projectPath || !this.selectedSessionId) return this.canonicalParts;
+    const pendingParts = this.pendingUserMessages
+      .filter((pending) => pending.workspacePath === this.projectPath && pending.sessionId === this.selectedSessionId)
+      .filter((pending) => this.userMessageOccurrenceCount(pending.workspacePath, pending.sessionId, pending.part.text) < pending.expectedOccurrence)
+      .map((pending) => pending.part);
+    return pendingParts.length > 0 ? [...this.canonicalParts, ...pendingParts] : this.canonicalParts;
   }
 
   get artifacts() {
@@ -507,18 +526,53 @@ export class WindowStore extends Store<Record<string, never>> {
     }
     const delivery = deliveryOverride ?? (this.isStreaming ? "follow-up" : "prompt");
     const attachments = this.attachments.slice();
+    const context = this.sessionContext();
+    if (!context) return;
     const operationId = this.startOperation();
     this.setDraft("");
     this.attachments.splice(0);
+    this.addPendingUserMessage(operationId, context.workspacePath, context.sessionId, text);
     try {
-      const context = this.sessionContext();
-      if (!context) throw new Error("No active session");
       await this.client.submit({ operationId, ...context, text, delivery, attachments });
     } catch (error) {
+      this.removePendingUserMessage(operationId);
       this.setError(error);
       this.setDraft(text);
       this.attachments.push(...attachments);
       this.finishOperation(operationId);
+    }
+  }
+
+  private addPendingUserMessage(operationId: string, workspacePath: string, sessionId: string, text: string) {
+    const earlierPendingCount = this.pendingUserMessages.filter((pending) =>
+      pending.workspacePath === workspacePath && pending.sessionId === sessionId && pending.part.text === text
+    ).length;
+    this.pendingUserMessages.push({
+      operationId,
+      workspacePath,
+      sessionId,
+      expectedOccurrence: this.userMessageOccurrenceCount(workspacePath, sessionId, text) + earlierPendingCount + 1,
+      part: { id: `optimistic-user-${operationId}`, kind: "text", role: "user", text, status: "complete" }
+    });
+  }
+
+  private removePendingUserMessage(operationId: string) {
+    const index = this.pendingUserMessages.findIndex((pending) => pending.operationId === operationId);
+    if (index >= 0) this.pendingUserMessages.splice(index, 1);
+  }
+
+  private userMessageOccurrenceCount(workspacePath: string, sessionId: string, text: string) {
+    return this.sessionCache.find(sessionId, workspacePath)?.uiParts.filter((part) =>
+      part.kind === "text" && part.role === "user" && part.status === "complete" && part.text === text
+    ).length ?? 0;
+  }
+
+  reconcilePendingUserMessages(sessionId: string) {
+    for (let index = this.pendingUserMessages.length - 1; index >= 0; index -= 1) {
+      const pending = this.pendingUserMessages[index]!;
+      if (pending.sessionId === sessionId && this.userMessageOccurrenceCount(pending.workspacePath, sessionId, pending.part.text) >= pending.expectedOccurrence) {
+        this.pendingUserMessages.splice(index, 1);
+      }
     }
   }
 
@@ -771,6 +825,7 @@ export class WindowStore extends Store<Record<string, never>> {
     }
     if (event.type === "operation-failed") {
       if (event.operationId) delete this.providerOperations[event.operationId];
+      if (event.operationId) this.removePendingUserMessage(event.operationId);
       if (event.operationId) this.finishOperation(event.operationId);
       if (event.operationId === this.activeOpenOperationId) {
         this.activeOpenOperationId = undefined;

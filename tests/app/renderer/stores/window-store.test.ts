@@ -216,6 +216,30 @@ describe("WindowStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("shows a submitted user message immediately and reconciles it with Pi's canonical part", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    desktop.emit({ type: "pi-state-changed", state: "ready" });
+    await openSnapshot(store, desktop);
+
+    store.setDraft("Show this now");
+    const submission = store.submit();
+
+    expect(store.parts).toEqual([
+      expect.objectContaining({ id: expect.stringMatching(/^optimistic-user-/), role: "user", text: "Show this now" })
+    ]);
+    await submission;
+
+    desktop.emit({ type: "part-updated", sessionId: "session-1", part: { id: "user-canonical", kind: "text", role: "user", text: "Show this now", status: "complete" } });
+
+    expect(store.parts).toEqual([
+      { id: "user-canonical", kind: "text", role: "user", text: "Show this now", status: "complete" }
+    ]);
+    expect(store.pendingUserMessages).toHaveLength(0);
+    root[Symbol.dispose]();
+  });
+
   it("does not restore a submitted draft when a session snapshot arrives", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);

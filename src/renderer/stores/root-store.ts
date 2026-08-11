@@ -39,6 +39,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       const previousSessionId = this.windowStore.session?.sessionId;
       if (event.operationId && !this.windowStore.acceptSessionSnapshot(event)) return;
       this.sessionCache.upsert(event.snapshot);
+      this.windowStore.reconcilePendingUserMessages(event.snapshot.sessionId);
       if (event.operationId || this.windowStore.isActiveSession(event.snapshot.workspacePath, event.snapshot.sessionId)) {
         this.windowStore.applySessionSnapshot(event.snapshot, event.operationId ? previousSessionId : undefined);
       }
@@ -46,6 +47,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     }
     if (event.type === "part-updated") {
       this.sessionCache.find(event.sessionId)?.upsertPart(event.part);
+      this.windowStore.reconcilePendingUserMessages(event.sessionId);
       return;
     }
     if (event.type === "part-removed") {
