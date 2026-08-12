@@ -536,7 +536,15 @@ export class WindowStore extends Store<Record<string, never>> {
     try {
       const selected = await this.client.chooseAttachments();
       if (this.signal.aborted) return;
-      this.attachments.push(...selected.filter((item) => !this.attachments.some((current) => current.kind === item.kind && current.name === item.name)));
+      const fileMentions = selected
+        .filter((item): item is Extract<Attachment, { kind: "file" }> => item.kind === "file")
+        .map((item) => /[\s"]/.test(item.path) ? `@"${item.path.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"` : `@${item.path}`);
+      if (fileMentions.length > 0) {
+        const separator = this.draft.length > 0 && !/\s$/.test(this.draft) ? " " : "";
+        this.setDraft(`${this.draft}${separator}${fileMentions.join(" ")}`);
+      }
+      const images = selected.filter((item): item is Extract<Attachment, { kind: "image" }> => item.kind === "image");
+      this.attachments.push(...images.filter((item) => !this.attachments.some((current) => current.kind === "image" && current.name === item.name)));
     } catch (error) {
       this.setError(error);
     }

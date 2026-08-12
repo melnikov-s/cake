@@ -77,6 +77,27 @@ async function openSnapshot(store: WindowStore, desktop: ReturnType<typeof creat
 }
 
 describe("WindowStore", () => {
+  it("inserts files chosen from the attachment browser as visible path mentions", async () => {
+    const desktop = createDesktopClient();
+    vi.mocked(desktop.client.chooseAttachments).mockResolvedValue([
+      { kind: "file", name: "foo", path: "/tmp/foo" },
+      { kind: "file", name: "notes.txt", path: "/tmp/my notes.txt" },
+      { kind: "image", name: "preview.png", mimeType: "image/png", data: "aW1hZ2U=" }
+    ]);
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+    store.setDraft("Review");
+
+    await store.addAttachments();
+
+    expect(store.draft).toBe('Review @/tmp/foo @"/tmp/my notes.txt"');
+    expect(store.attachments).toEqual([
+      { kind: "image", name: "preview.png", mimeType: "image/png", data: "aW1hZ2U=" }
+    ]);
+    root[Symbol.dispose]();
+  });
+
   it("tracks provider disconnects and exposes failures for a retry", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
