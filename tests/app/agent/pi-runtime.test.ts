@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +11,7 @@ import {
   loadWorkspaceSessionPreview,
   piRuntimeVersion,
   routeReviewPromptCache,
+  runReviewTurn,
   suggestProjectFiles,
   type CakeRuntime,
   type FoundationRuntime
@@ -67,6 +68,37 @@ describe("Pi 0.84.0 foundation contract", () => {
 
     expect(routeReviewPromptCache(payload, metadata, { provider: "openai", id: "gpt-5.5" })).toEqual({ ...payload, prompt_cache_key: "parent-session" });
     expect(routeReviewPromptCache({ messages: [] }, metadata, { provider: "anthropic", id: "claude" })).toEqual({ messages: [] });
+  });
+
+  it("forks a new review session from the parent branch before prompting", async () => {
+    const directory = await createTemporaryDirectory();
+    const parentDir = join(directory, "parents");
+    const reviewDir = join(directory, "reviews");
+    const agentDir = join(directory, "agent");
+    await mkdir(parentDir, { recursive: true });
+    const timestamp = new Date(0).toISOString();
+    const parentFile = join(parentDir, "parent.jsonl");
+    await writeFile(parentFile, [
+      { type: "session", version: 3, id: "parent-session", timestamp, cwd: directory },
+      { type: "message", id: "parent-user", parentId: null, timestamp, message: { role: "user", content: "Build the feature", timestamp: 0 } }
+    ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    const controller = new AbortController();
+    controller.abort();
+    const thread = {
+      id: "review-1", workspacePath: directory, sessionId: "parent-session", status: "open" as const, createdAt: timestamp, updatedAt: timestamp,
+      anchor: { path: "src/app.ts", start: { diffLine: 1 }, end: { diffLine: 1 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
+      pendingComments: [{ id: "comment-1", body: "Rename this", createdAt: timestamp }]
+    };
+
+    await expect(runReviewTurn({
+      cwd: directory, trusted: false, thread, sessionDir: reviewDir, agentDir, signal: controller.signal,
+      parent: { sessionId: "parent-session", sessionFile: parentFile, leafId: "parent-user", systemPrompt: "Parent prompt", activeTools: ["read"] }
+    })).rejects.toThrow("cancelled");
+
+    const reviewFile = join(reviewDir, (await readdir(reviewDir)).find((name) => name.endsWith(".jsonl"))!);
+    const entries = (await readFile(reviewFile, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    expect(entries).toContainEqual(expect.objectContaining({ type: "message", id: "parent-user", message: expect.objectContaining({ content: "Build the feature" }) }));
+    expect(entries).toContainEqual(expect.objectContaining({ type: "custom", customType: "cake.review-parent/v1", data: expect.objectContaining({ cacheKey: "parent-session", systemPrompt: "Parent prompt", parentUserOrdinal: 0 }) }));
   });
 
   it("gives assistant messages on either side of a tool call distinct live positions", () => {

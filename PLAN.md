@@ -31,7 +31,7 @@ flowchart LR
     S2 --> S4["Rich artifact protocol"]
     S3 --> S5["Agent-authored scenes and widgets"]
     S4 --> S5
-    S5 --> S6["Migration-aware packaging and release"]
+    S5 --> S6["Security, migration-aware packaging, and release"]
     S6 --> DONE["A desktop Pi whose native language includes interactive software"]
 
     R1["Risk: Pi API drift"] -.-> S1
@@ -51,7 +51,7 @@ The desktop is not merely a prettier terminal transcript. It changes what the ag
 - ask for structured input through a form;
 - show file, diff, image, audio, and chart views;
 - create a stateful interactive artifact the user can manipulate;
-- ask an agent to create trusted, user-owned React widgets, reorganize the default workspace scene, or build complete scene replacements;
+- create or modify trusted, user-owned React widgets and workspace scenes after explicit user authorization;
 - run a complete mini-application whose interface explicitly coordinates multiple Pi-backed model calls or agent sessions without forcing their internal work into the primary transcript;
 - receive structured interaction results back from the user;
 - use Pi extensions, skills, packages, providers, tools, session branching, and compaction wherever their semantics are presentation-independent.
@@ -68,7 +68,7 @@ Cake exists to combine:
 2. a multi-project and multi-session desktop shell;
 3. React for rich presentation;
 4. `r-state-tree` for explicit domain, workflow, lifecycle, and view-state ownership;
-5. a secure protocol for transient model-presented artifacts, plus a trusted source-customization layer for user-approved React scenes and widgets.
+5. two distinct paths for rich UI: model responses may request temporary interactive views through a validated, sandboxed artifact protocol; separately, with explicit user approval, an agent may edit user-owned React scene and widget source that runs as trusted application code.
 
 The product is successful when rich interactions feel native to the conversation rather than embedded webpages bolted onto a chat client.
 
@@ -98,7 +98,7 @@ Pi owns Pi sessions and transcripts. Cake owns Cake-specific application and art
 
 ### 3.6 Web-native first, terminal-compatible where practical
 
-Cake's workspace customization language is ordinary React and TypeScript guided primarily by Markdown conventions, examples, current source, and types. Existing Pi extensions retain non-visual behavior and primitive UI where possible. Arbitrary Pi TUI components are not promised automatic React conversion.
+Cake does not introduce a separate declarative language for workspace customization: user-owned scenes and widgets are ordinary React and TypeScript, with their conventions documented through Markdown, examples, current source, and types. Presentation-independent Pi extension behavior continues to run through Pi, and supported primitives such as `select`, `confirm`, and `input` are mapped to Cake controls. Custom Pi TUI components depend on a terminal renderer, so they require a deliberate React implementation rather than being translated automatically.
 
 ### 3.7 Dependency first, upstream second, fork last
 
@@ -1003,7 +1003,7 @@ Acceptance checks:
 - A runtime-broken optional widget is attributed and disabled without deleting its source; the prior working build can be restored in one step.
 - Trusted customization still cannot directly access Node or raw Electron IPC because the containing renderer cannot, while no false claim is made that it is isolated from Cake's renderer Stores or DOM.
 
-### Stage S6 — Security, packaging, release
+### Stage S6 — Security, migration-aware packaging, and release
 
 **Depends on:** S5
 **Outcome:** Cake can be distributed with confidence that development behavior, packaged behavior, customization migration/recovery, and actual security boundaries match.
