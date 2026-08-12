@@ -1,12 +1,14 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { createCakeRuntime, inspectWorkspace, loadPiChangelog, type CakeRuntime, type RuntimeUiRequest } from "../agent/pi-runtime";
+import { createCakeRuntime, inspectWorkspace, loadPiChangelog, runReviewTurn, type CakeRuntime, type RuntimeUiRequest } from "../agent/pi-runtime";
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
 import { parseArtifactInput, type ArtifactRecord, type CakeArtifactV1 } from "../ipc/artifact-contract";
 import type { ArtifactRepository } from "./artifact-repository";
+import type { ReviewRepository } from "./review-repository";
 
 type ArtifactRepositoryPort = Pick<ArtifactRepository, "upsert" | "get" | "listSession" | "linkSession">;
+type ReviewRepositoryPort = Pick<ReviewRepository, "get" | "attachAgentSession" | "agentSessionDirectory">;
 
 type PiCommandType =
   | "inspect-workspace"
@@ -18,6 +20,7 @@ type PiCommandType =
   | "inspect-changes"
   | "get-changelog"
   | "prompt"
+  | "submit-review-threads"
   | "abort"
   | "set-model"
   | "set-thinking"
@@ -43,7 +46,9 @@ export interface PiWorkspaceDriverOptions {
   workspacePath: string;
   emit(event: DesktopEvent): void;
   createRuntime?: typeof createCakeRuntime;
+  runReviewTurn?: typeof runReviewTurn;
   artifactRepository?: ArtifactRepositoryPort;
+  reviewRepository?: ReviewRepositoryPort;
   openExternal?: (url: string) => Promise<void>;
 }
 
@@ -53,7 +58,9 @@ export class PiWorkspaceDriver {
   readonly workspacePath: string;
   private readonly emitEvent: PiWorkspaceDriverOptions["emit"];
   private readonly createRuntimeImpl: typeof createCakeRuntime;
+  private readonly runReviewTurnImpl: typeof runReviewTurn;
   private readonly artifactRepository: ArtifactRepositoryPort;
+  private readonly reviewRepository: ReviewRepositoryPort;
   private readonly openExternal: NonNullable<PiWorkspaceDriverOptions["openExternal"]> | undefined;
   private readonly runtimes = new Map<string, CakeRuntime>();
   private readonly pendingUi = new Map<string, PendingUi>();
@@ -66,6 +73,7 @@ export class PiWorkspaceDriver {
     this.workspacePath = options.workspacePath;
     this.emitEvent = options.emit;
     this.createRuntimeImpl = options.createRuntime ?? createCakeRuntime;
+    this.runReviewTurnImpl = options.runReviewTurn ?? runReviewTurn;
     this.openExternal = options.openExternal;
     this.artifactRepository = options.artifactRepository ?? {
       async upsert(workspacePath, artifact) {
@@ -75,6 +83,11 @@ export class PiWorkspaceDriver {
       async listSession() { return []; }
       ,async get() { return undefined; }
       ,async linkSession() { return undefined; }
+    };
+    this.reviewRepository = options.reviewRepository ?? {
+      async get() { return undefined; },
+      async attachAgentSession() { throw new Error("Review persistence is unavailable"); },
+      agentSessionDirectory() { throw new Error("Review persistence is unavailable"); }
     };
   }
 
@@ -127,6 +140,10 @@ export class PiWorkspaceDriver {
         const runtime = this.runtimeFor(command.sessionId);
         this.emit({ type: "session-snapshot", snapshot: await runtime.snapshot() });
       }, command.sessionId);
+      return;
+    }
+    if (command.type === "submit-review-threads") {
+      void this.run(command.requestId, () => this.runReviewThreads(command), command.sessionId);
       return;
     }
     void this.run(command.requestId, async () => {
@@ -331,6 +348,34 @@ export class PiWorkspaceDriver {
       });
     }
     this.emit({ type: "changes-snapshot", requestId, workspacePath: this.workspacePath, files });
+  }
+
+  private async runReviewThreads(command: Extract<PiWorkspaceCommand, { type: "submit-review-threads" }>) {
+    this.runtimeFor(command.sessionId);
+    const failures: string[] = [];
+    for (const threadId of command.threadIds) {
+      const thread = await this.reviewRepository.get(this.workspacePath, command.sessionId, threadId);
+      if (!thread || thread.status !== "open" || thread.pendingComments.length === 0) continue;
+      this.emit({ type: "review-thread-streaming", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId, streaming: true });
+      try {
+        const agent = await this.runReviewTurnImpl({
+          cwd: this.workspacePath,
+          trusted: this.trusted,
+          thread,
+          sessionDir: this.reviewRepository.agentSessionDirectory(this.workspacePath, command.sessionId, threadId),
+          instruction: command.instruction,
+          model: command.model
+        });
+        const updated = await this.reviewRepository.attachAgentSession(this.workspacePath, command.sessionId, threadId, agent);
+        this.emit({ type: "review-thread-updated", thread: updated });
+        if (agent.error) failures.push(agent.error);
+      } catch (error) {
+        failures.push(errorMessage(error));
+      } finally {
+        this.emit({ type: "review-thread-streaming", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId, streaming: false });
+      }
+    }
+    if (failures.length > 0) throw new Error(`Review thread${failures.length === 1 ? "" : "s"} failed: ${failures.join("; ")}`);
   }
 }
 

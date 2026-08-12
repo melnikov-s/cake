@@ -22,6 +22,7 @@ import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { DesktopClientEvent, PiState } from "../desktop-client";
 import { diffStats } from "../components/ai-elements/diff-view";
 import { DesktopClientContext, SessionCacheContext } from "./context";
+import type { ReviewAnchor } from "../../ipc/review-contract";
 
 export interface UiRequestState {
   operationId: string;
@@ -54,6 +55,15 @@ interface PendingUserMessage {
   canonicalPartCount: number;
   expectedOccurrence: number;
   part: Extract<UiPart, { kind: "text" }>;
+}
+
+export interface ReviewRunState {
+  operationId: string;
+  workspacePath: string;
+  sessionId: string;
+  threadIds: string[];
+  commentCount: number;
+  status: "running" | "complete" | "error";
 }
 
 export class WindowStore extends Store<Record<string, never>> {
@@ -96,6 +106,10 @@ export class WindowStore extends Store<Record<string, never>> {
   compatibilityDiagnostics: ResourceDiagnostic[] = observable([]);
   activeOperations: string[] = [];
   providerOperations: Record<string, { provider: string; kind: "login" | "logout" }> = observable({});
+  reviewStreamingIds: string[] = observable([]);
+  reviewSubmissionsByOperation: Record<string, string[]> = observable({});
+  reviewRuns: ReviewRunState[] = observable([]);
+  activeReviewThreadId: string | undefined;
   private openRevision = 0;
   private reopenAfterAgentRestart = false;
   private draftAfterAgentRestart: string | undefined;
@@ -187,6 +201,45 @@ export class WindowStore extends Store<Record<string, never>> {
     return [...changesByFile.values()];
   }
 
+  get reviewThreads() { return this.session?.reviewThreads ?? []; }
+  reviewThreadsForSession(workspacePath: string, sessionId: string) { return this.sessionCache.find(sessionId, workspacePath)?.reviewThreads ?? []; }
+  private submittedReviewThreadIds() { return new Set(Object.values(this.reviewSubmissionsByOperation).flat()); }
+  pendingReviewThreadsForSession(workspacePath: string, sessionId: string) {
+    const submitting = this.submittedReviewThreadIds();
+    return this.reviewThreadsForSession(workspacePath, sessionId).filter((thread) => thread.pending && !submitting.has(thread.id));
+  }
+  chatReviewThreadsForSession(workspacePath: string, sessionId: string) {
+    const submitting = this.submittedReviewThreadIds();
+    return this.reviewThreadsForSession(workspacePath, sessionId).filter((thread) => thread.actionableCommentCount > 0 && !submitting.has(thread.id));
+  }
+  chatReviewCommentCountForSession(workspacePath: string, sessionId: string) {
+    return this.chatReviewThreadsForSession(workspacePath, sessionId).reduce((count, thread) => count + thread.actionableCommentCount, 0);
+  }
+  get openReviewThreads() { return this.reviewThreads.filter((thread) => thread.status === "open"); }
+  get pendingReviewThreads() {
+    const context = this.sessionContext();
+    return context ? this.pendingReviewThreadsForSession(context.workspacePath, context.sessionId) : [];
+  }
+  get pendingReviewCommentCount() {
+    return this.pendingReviewThreads.reduce((count, thread) => count + thread.messages.filter((message) => message.role === "user" && !message.delivered).length, 0);
+  }
+  get chatReviewThreads() {
+    const context = this.sessionContext();
+    return context ? this.chatReviewThreadsForSession(context.workspacePath, context.sessionId) : [];
+  }
+  get chatReviewCommentCount() {
+    const context = this.sessionContext();
+    return context ? this.chatReviewCommentCountForSession(context.workspacePath, context.sessionId) : 0;
+  }
+  reviewThreadStreaming(threadId: string) { return this.reviewStreamingIds.includes(threadId); }
+  get sessionReviewRuns() {
+    if (!this.projectPath || !this.session) return [];
+    return this.reviewRuns.filter((run) => run.workspacePath === this.projectPath && run.sessionId === this.session!.sessionId);
+  }
+  get activeReviewThread() {
+    return this.reviewThreads.find((thread) => thread.id === this.activeReviewThreadId) ?? this.openReviewThreads[0];
+  }
+
   get selectedSessionChange() {
     return typeof this.changeExplorerPath === "string"
       ? this.sessionChanges.find((change) => change.path === this.changeExplorerPath) ?? this.sessionChanges[0]
@@ -202,7 +255,7 @@ export class WindowStore extends Store<Record<string, never>> {
   }
 
   get canSubmit() {
-    return Boolean(this.session && !this.activeOpenOperationId && this.draft.trim() && (this.isLocalSlashCommand || this.piState === "ready"));
+    return Boolean(this.session && !this.activeOpenOperationId && (this.draft.trim() || this.pendingReviewThreads.length > 0) && (this.isLocalSlashCommand || this.piState === "ready"));
   }
 
   get isLocalSlashCommand() {
@@ -288,10 +341,18 @@ export class WindowStore extends Store<Record<string, never>> {
 
   private async hydrate() {
     try {
-      const [state, application, sessions] = await Promise.all([this.client.loadWindowState(), this.client.loadApplicationState(), this.client.listSessions()]);
+      const [state, application, sessionIndex] = await Promise.all([this.client.loadWindowState(), this.client.loadApplicationState(), this.client.listSessions()]);
       if (this.signal.aborted) return;
       this.applyApplicationState(application);
-      this.globalSessions.splice(0, this.globalSessions.length, ...sessions);
+      this.globalSessions.splice(0, this.globalSessions.length, ...sessionIndex.sessions);
+      const reviewsBySession = new Map<string, typeof sessionIndex.reviewThreads>();
+      for (const thread of sessionIndex.reviewThreads) {
+        const key = this.reviewSessionKey(thread.workspacePath, thread.sessionId);
+        const threads = reviewsBySession.get(key) ?? [];
+        threads.push(thread);
+        reviewsBySession.set(key, threads);
+      }
+      for (const session of sessionIndex.sessions) this.sessionCache.applyReviewThreads(session.workspacePath, session.id, reviewsBySession.get(this.reviewSessionKey(session.workspacePath, session.id)) ?? []);
       this.projectPath = state.projectPath;
       this.recentProjectPaths.splice(0, this.recentProjectPaths.length, ...state.recentProjectPaths);
       this.trustedProjectPaths.splice(0, this.trustedProjectPaths.length, ...state.trustedProjectPaths);
@@ -527,22 +588,74 @@ export class WindowStore extends Store<Record<string, never>> {
 
   closeCommandPane() { this.commandPane = undefined; }
 
-  async openSessionChanges() {
+  async openSessionChanges(threadId?: string) {
     this.commandPane = undefined;
-    this.changeExplorerPath = this.sessionChanges[0]?.path ?? null;
+    const thread = threadId ? this.reviewThreads.find((item) => item.id === threadId) : this.openReviewThreads[0];
+    this.activeReviewThreadId = thread?.id;
+    this.changeExplorerPath = thread?.anchor.path ?? this.sessionChanges[0]?.path ?? null;
     await this.refreshSession();
+  }
+
+  async createReviewThread(anchor: ReviewAnchor, body: string) {
+    const context = this.sessionContext();
+    if (!context || !body.trim()) return false;
+    try {
+      const thread = await this.client.createReviewThread({ ...context, anchor, body: body.trim() });
+      if (this.signal.aborted) return false;
+      this.sessionCache.upsertReviewThread(thread);
+      return true;
+    } catch (error) { this.setError(error); return false; }
+  }
+
+  async replyReviewThread(threadId: string, body: string) {
+    const context = this.sessionContext();
+    if (!context || !body.trim()) return false;
+    try {
+      const thread = await this.client.replyReviewThread({ ...context, threadId, body: body.trim() });
+      if (this.signal.aborted) return false;
+      this.sessionCache.upsertReviewThread(thread);
+      return true;
+    } catch (error) { this.setError(error); return false; }
+  }
+
+  async resolveReviewThread(threadId: string, resolved = true) {
+    const context = this.sessionContext();
+    if (!context) return false;
+    try {
+      const thread = await this.client.resolveReviewThread({ ...context, threadId, resolved });
+      if (this.signal.aborted) return false;
+      this.sessionCache.upsertReviewThread(thread);
+      return true;
+    } catch (error) { this.setError(error); return false; }
+  }
+
+  private async loadReviewThreads(workspacePath: string, sessionId: string) {
+    try {
+      const threads = await this.client.listReviewThreads(workspacePath, sessionId);
+      if (this.signal.aborted) return;
+      this.sessionCache.applyReviewThreads(workspacePath, sessionId, threads);
+    } catch (error) { if (!this.signal.aborted) this.setError(error); }
   }
 
   selectChangeExplorerFile(path: string) {
     if (this.sessionChanges.some((change) => change.path === path)) this.changeExplorerPath = path;
   }
 
-  closeChangeExplorer() { this.changeExplorerPath = undefined; }
+  focusReviewThread(threadId: string) {
+    const thread = this.reviewThreads.find((item) => item.id === threadId);
+    if (!thread) return;
+    this.activeReviewThreadId = thread.id;
+    this.changeExplorerPath = thread.anchor.path;
+  }
+
+  closeChangeExplorer() { this.changeExplorerPath = undefined; this.activeReviewThreadId = undefined; }
 
   private sessionContext() {
     if (!this.projectPath || !this.session) return undefined;
     return { workspacePath: this.projectPath, sessionId: this.session.sessionId };
   }
+
+  private reviewSessionKey(workspacePath: string, sessionId: string) { return `${workspacePath}\u0000${sessionId}`; }
 
   async refreshChanges() {
     if (!this.projectPath || this.changesLoading) return;
@@ -661,21 +774,59 @@ export class WindowStore extends Store<Record<string, never>> {
     }
     const delivery = deliveryOverride ?? (this.isStreaming ? "follow-up" : "prompt");
     const attachments = this.attachments.slice();
+    const reviews = this.pendingReviewThreads.map((thread) => thread.id);
     const context = this.sessionContext();
     if (!context) return;
-    const operationId = this.startOperation();
     this.setDraft("");
-    this.attachments.splice(0);
-    this.addPendingUserMessage(operationId, context.workspacePath, context.sessionId, text);
+    const submissions: Promise<void>[] = [];
+    if (reviews.length > 0) {
+      submissions.push(this.submitReviewComments(reviews, text || undefined));
+    }
+    if (text) {
+      const messageOperationId = this.startOperation();
+      this.attachments.splice(0);
+      this.addPendingUserMessage(messageOperationId, context.workspacePath, context.sessionId, text);
+      submissions.push(this.client.submit({ operationId: messageOperationId, ...context, text, delivery, attachments }).catch((error) => {
+        this.removePendingUserMessage(messageOperationId);
+        this.setError(error);
+        if (!this.draft.trim()) this.setDraft(text);
+        this.attachments.push(...attachments);
+        this.finishOperation(messageOperationId);
+      }));
+    }
+    await Promise.all(submissions);
+  }
+
+  async sendPendingReviewComments() {
+    const reviews = this.pendingReviewThreads.map((thread) => thread.id);
+    if (reviews.length === 0) return;
+    this.closeChangeExplorer();
+    await this.submitReviewComments(reviews);
+  }
+
+  private async submitReviewComments(threadIds: string[], instruction?: string) {
+    const context = this.sessionContext();
+    if (!context || threadIds.length === 0) return;
+    const operationId = this.startOperation();
+    this.reviewSubmissionsByOperation[operationId] = threadIds;
+    const commentCount = this.reviewThreads
+      .filter((thread) => threadIds.includes(thread.id))
+      .reduce((count, thread) => count + thread.messages.filter((message) => message.role === "user" && !message.delivered).length, 0);
+    this.reviewRuns.push({ operationId, ...context, threadIds: [...threadIds], commentCount: Math.max(commentCount, threadIds.length), status: "running" });
     try {
-      await this.client.submit({ operationId, ...context, text, delivery, attachments });
+      await this.client.submitReviewThreads({ operationId, ...context, threadIds, instruction, model: this.session?.model ? { provider: this.session.model.provider, id: this.session.model.id } : undefined });
     } catch (error) {
-      this.removePendingUserMessage(operationId);
+      delete this.reviewSubmissionsByOperation[operationId];
+      this.updateReviewRun(operationId, "error");
       this.setError(error);
-      this.setDraft(text);
-      this.attachments.push(...attachments);
       this.finishOperation(operationId);
     }
+  }
+
+  private updateReviewRun(operationId: string, status: ReviewRunState["status"]) {
+    const index = this.reviewRuns.findIndex((run) => run.operationId === operationId);
+    if (index < 0 || this.reviewRuns[index]!.status === status) return;
+    this.reviewRuns.splice(index, 1, { ...this.reviewRuns[index]!, status });
   }
 
   private addPendingUserMessage(operationId: string, workspacePath: string, sessionId: string, text: string) {
@@ -885,6 +1036,7 @@ export class WindowStore extends Store<Record<string, never>> {
     this.globalSessions.sort((left, right) => right.modified.localeCompare(left.modified));
     if (!this.recentProjectPaths.includes(snapshot.workspacePath)) this.recentProjectPaths.push(snapshot.workspacePath);
     this.schedulePersist();
+    void this.loadReviewThreads(snapshot.workspacePath, snapshot.sessionId);
   }
 
   isActiveSession(workspacePath: string, sessionId: string) {
@@ -924,6 +1076,7 @@ export class WindowStore extends Store<Record<string, never>> {
         if (this.reopenAfterAgentRestart) this.draftAfterAgentRestart = this.draft;
         this.activeOperations.splice(0);
         for (const operationId of Object.keys(this.providerOperations)) delete this.providerOperations[operationId];
+        for (const operationId of Object.keys(this.reviewSubmissionsByOperation)) delete this.reviewSubmissionsByOperation[operationId];
         this.activeOpenOperationId = undefined;
         this.activeOpenTarget = undefined;
         this.activeOpenExpectsEmpty = false;
@@ -949,6 +1102,18 @@ export class WindowStore extends Store<Record<string, never>> {
     }
     if (event.type === "session-snapshot-received" || event.type === "part-updated" || event.type === "part-removed" || event.type === "streaming-changed") return;
     if (event.type === "artifact-updated") return;
+    if (event.type === "review-threads-received") {
+      return;
+    }
+    if (event.type === "review-thread-updated") {
+      return;
+    }
+    if (event.type === "review-thread-streaming") {
+      const index = this.reviewStreamingIds.indexOf(event.threadId);
+      if (event.streaming && index < 0) this.reviewStreamingIds.push(event.threadId);
+      if (!event.streaming && index >= 0) this.reviewStreamingIds.splice(index, 1);
+      return;
+    }
     if (event.type === "artifact-requested") {
       if (!this.activeOperations.includes(event.operationId) || !this.isActiveSession(event.record.workspacePath, event.record.artifact.sessionId)) return;
       this.artifactRequest = event;
@@ -975,11 +1140,18 @@ export class WindowStore extends Store<Record<string, never>> {
     }
     if (event.type === "operation-completed") {
       delete this.providerOperations[event.operationId];
+      if (this.reviewSubmissionsByOperation[event.operationId]) {
+        const failed = this.reviewSubmissionsByOperation[event.operationId]!.some((threadId) => this.reviewThreads.find((thread) => thread.id === threadId)?.messages.at(-1)?.status === "error");
+        this.updateReviewRun(event.operationId, failed ? "error" : "complete");
+      }
+      delete this.reviewSubmissionsByOperation[event.operationId];
       this.finishOperation(event.operationId);
       return;
     }
     if (event.type === "operation-failed") {
       if (event.operationId) delete this.providerOperations[event.operationId];
+      if (event.operationId && this.reviewSubmissionsByOperation[event.operationId]) this.updateReviewRun(event.operationId, "error");
+      if (event.operationId) delete this.reviewSubmissionsByOperation[event.operationId];
       if (event.operationId) this.removePendingUserMessage(event.operationId);
       if (event.operationId) this.finishOperation(event.operationId);
       if (event.operationId === this.activeOpenOperationId) {

@@ -22,6 +22,35 @@ const snapshot: SessionSnapshot = {
 };
 
 describe("PiWorkspaceDriver", () => {
+  it("routes auxiliary review replies without appending a primary session snapshot", async () => {
+    const events: DesktopEvent[] = [];
+    const runtime: CakeRuntime = {
+      sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile, snapshot: vi.fn(async () => snapshot), prompt: vi.fn(async () => undefined), abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
+    };
+    const now = new Date(0).toISOString();
+    const thread = { id: "review-1", workspacePath: "/project", sessionId: snapshot.sessionId, status: "open" as const, createdAt: now, updatedAt: now, anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" }, pendingComments: [{ id: "message-1", body: "Rename this", createdAt: now }] };
+    const projected = { ...thread, agentSessionId: "review-session", messages: [{ id: "message-1", role: "user" as const, body: "Rename this", createdAt: now, delivered: true, status: "complete" as const }, { id: "message-2", role: "assistant" as const, body: "Renamed.", createdAt: now, delivered: true, status: "complete" as const }] };
+    const reviewRepository = { get: vi.fn(async () => thread), agentSessionDirectory: vi.fn(() => "/reviews/review-1"), attachAgentSession: vi.fn(async () => projected) };
+    const runReview = vi.fn(async () => ({ sessionId: "review-session", sessionFile: "/reviews/review-1/session.jsonl" }));
+    const driver = new PiWorkspaceDriver({ workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime), reviewRepository, runReviewTurn: runReview });
+    const openId = crypto.randomUUID();
+    driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", trusted: true, newSession: true });
+    await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
+    events.splice(0);
+
+    const requestId = crypto.randomUUID();
+    driver.dispatch({ type: "submit-review-threads", requestId, workspacePath: "/project", sessionId: snapshot.sessionId, threadIds: [thread.id] });
+    await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId }));
+
+    expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ thread }));
+    expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ sessionDir: "/reviews/review-1" }));
+    expect(reviewRepository.attachAgentSession).toHaveBeenCalledWith("/project", snapshot.sessionId, thread.id, expect.objectContaining({ sessionId: "review-session" }));
+    expect(events).toContainEqual(expect.objectContaining({ type: "review-thread-updated", thread: expect.objectContaining({ id: thread.id }) }));
+    expect(events.some((event) => event.type === "session-snapshot")).toBe(false);
+    expect(runtime.prompt).not.toHaveBeenCalled();
+    driver[Symbol.dispose]();
+  });
+
   it("opens a dormant session before renaming it", async () => {
     const events: DesktopEvent[] = [];
     const runtime: CakeRuntime = {

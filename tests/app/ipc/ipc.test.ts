@@ -11,6 +11,9 @@ describe("process IPC", () => {
     expect(desktopRequestSchema.parse({ type: "suggest-files", workspacePath: "/project", prefix: "src/app" })).toEqual({ type: "suggest-files", workspacePath: "/project", prefix: "src/app" });
     expect(desktopRequestSchema.parse({ type: "set-pi-setting", requestId, workspacePath: "/project", sessionId: "session", update: { key: "transport", value: "websocket" } })).toMatchObject({ update: { key: "transport", value: "websocket" } });
     expect(desktopRequestSchema.parse({ type: "get-changelog", requestId, workspacePath: "/project", sessionId: "session" })).toMatchObject({ type: "get-changelog", requestId });
+    const anchor = { path: "src/app.ts", start: { diffLine: 1, newLine: 4 }, end: { diffLine: 1, newLine: 4 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" };
+    expect(desktopRequestSchema.parse({ type: "create-review-thread", workspacePath: "/project", sessionId: "session", anchor, body: "Why?" })).toMatchObject({ body: "Why?" });
+    expect(desktopRequestSchema.parse({ type: "submit-review-threads", requestId, workspacePath: "/project", sessionId: "session", threadIds: [crypto.randomUUID()] })).toMatchObject({ type: "submit-review-threads" });
     expect(desktopEventSchema.parse({ type: "changelog-snapshot", requestId, workspacePath: "/project", sessionId: "session", markdown: "# Changelog" })).toMatchObject({ markdown: "# Changelog" });
     expect(desktopRequestSchema.safeParse({ type: "set-pi-setting", requestId, workspacePath: "/project", sessionId: "session", update: { key: "transport", value: "invalid" } }).success).toBe(false);
   });

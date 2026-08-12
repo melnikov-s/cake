@@ -6,6 +6,7 @@ import { ModelOptionModel } from "../../../../src/renderer/models/model-option";
 import { SessionModel } from "../../../../src/renderer/models/session";
 import { SessionSummaryModel } from "../../../../src/renderer/models/session-summary";
 import { SessionTreeNodeModel } from "../../../../src/renderer/models/session-tree-node";
+import { ReviewThreadModel } from "../../../../src/renderer/models/review-thread";
 
 const snapshot: SessionSnapshot = {
   workspacePath: "/project",
@@ -89,6 +90,30 @@ describe("SessionModel", () => {
     expect(model.parts[0]).toBe(message);
     expect(model.uiParts[0]).toMatchObject({ text: "Streaming" });
     expect(toSnapshot(model).sessionId).toBe("session-1");
+    model[Symbol.dispose]();
+  });
+
+  it("keeps one review model instance and derives actionable comments from its messages", () => {
+    const model = SessionModel.create({ workspacePath: "/project", sessionId: "session-1" });
+    const now = new Date(0).toISOString();
+    const thread = {
+      id: "review-1", workspacePath: "/project", sessionId: "session-1", status: "open" as const, createdAt: now, updatedAt: now,
+      anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
+      messages: [{ id: "comment-1", role: "user" as const, body: "Rename this", createdAt: now, delivered: false, status: "complete" as const }]
+    };
+    model.applyReviewThreads([thread]);
+    const review = model.reviewThreads[0]!;
+
+    expect(review).toBeInstanceOf(ReviewThreadModel);
+    expect(review.actionableCommentCount).toBe(1);
+
+    model.upsertReviewThread({ ...thread, updatedAt: new Date(1).toISOString(), messages: [
+      { ...thread.messages[0]!, delivered: true },
+      { id: "reply-1", role: "assistant", body: "Renamed it.", createdAt: new Date(1).toISOString(), delivered: true, status: "complete" }
+    ] });
+
+    expect(model.reviewThreads[0]).toBe(review);
+    expect(review.actionableCommentCount).toBe(0);
     model[Symbol.dispose]();
   });
 });

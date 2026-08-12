@@ -36,6 +36,7 @@ import type {
   UiPart,
   SessionTreeNode
 } from "../ipc/session-contract";
+import type { ReviewMessage, ReviewThreadRecord } from "../ipc/review-contract";
 import { piBuiltinSlashCommands } from "../ipc/session-contract";
 import {
   artifactRecordSchema,
@@ -132,6 +133,128 @@ export interface CakeRuntimeOptions {
   listArtifacts?(pointers: ArtifactPointer[]): Promise<ArtifactRecord[]>;
   openExternal?(url: string): Promise<void>;
   onEvent(event: CakeRuntimeEvent): void;
+}
+
+export interface ReviewTurnOptions {
+  cwd: string;
+  trusted: boolean;
+  thread: ReviewThreadRecord;
+  sessionDir: string;
+  instruction?: string;
+  model?: { provider: string; id: string };
+  agentDir?: string;
+}
+
+export interface ReviewTurnResult {
+  sessionId: string;
+  sessionFile: string;
+  error?: string;
+}
+
+export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewTurnResult> {
+  const agentDir = options.agentDir ?? getAgentDir();
+  const settingsManager = SettingsManager.create(options.cwd, agentDir, { projectTrusted: options.trusted });
+  const modelRuntime = await ModelRuntime.create({
+    authPath: `${agentDir}/auth.json`,
+    modelsPath: `${agentDir}/models.json`,
+    modelsStorePath: `${agentDir}/models-cache.json`
+  });
+  const resourceLoader = new DefaultResourceLoader({
+    cwd: options.cwd,
+    agentDir,
+    settingsManager,
+    noExtensions: true,
+    systemPrompt: reviewSystemPrompt(options.thread, options.instruction)
+  });
+  await resourceLoader.reload({ resolveProjectTrust: async () => options.trusted });
+  const sessionManager = options.thread.agentSessionFile
+    ? SessionManager.open(options.thread.agentSessionFile, options.sessionDir, options.cwd)
+    : SessionManager.create(options.cwd, options.sessionDir);
+  const { session } = await createAgentSession({
+    cwd: options.cwd,
+    agentDir,
+    modelRuntime,
+    resourceLoader,
+    settingsManager,
+    sessionManager
+  });
+  try {
+    await session.bindExtensions({ mode: "rpc" });
+    if (options.model) {
+      const model = modelRuntime.getModel(options.model.provider, options.model.id);
+      if (model) await session.setModel(model);
+    }
+    let failure = "";
+    const unsubscribe = session.subscribe((event) => {
+      if (event.type !== "message_end" || event.message.role !== "assistant") return;
+      if (event.message.errorMessage) failure = event.message.errorMessage;
+    });
+    try {
+      await session.prompt(options.thread.pendingComments.map((comment) => comment.body).join("\n\n"), { source: "interactive" });
+    } catch (error) {
+      failure ||= error instanceof Error ? error.message : String(error);
+    } finally {
+      unsubscribe();
+    }
+    if (!session.sessionFile) throw new Error("The review agent session was not persisted");
+    return { sessionId: session.sessionManager.getSessionId(), sessionFile: session.sessionFile, error: failure || undefined };
+  } finally {
+    session.dispose();
+  }
+}
+
+function reviewSystemPrompt(thread: ReviewThreadRecord, instruction?: string) {
+  const point = (value: ReviewThreadRecord["anchor"]["start"]) => `diff row ${value.diffLine}${value.oldLine ? `, old line ${value.oldLine}` : ""}${value.newLine ? `, new line ${value.newLine}` : ""}${value.column === undefined ? "" : `, column ${value.column}`}`;
+  return [
+    "You are replying inside an inline code-review thread in Cake. This is an auxiliary review turn: do not discuss routing or the main chat. Address the review comment directly. You may inspect and edit the workspace when that is the clearest way to address it. Finish with a concise response suitable for the inline thread.",
+    instruction?.trim() ? `Shared instruction from the reviewer:\n${instruction.trim()}` : "",
+    `File: ${thread.anchor.path}\nRange: ${point(thread.anchor.start)} through ${point(thread.anchor.end)}`,
+    thread.anchor.selectedText ? `Selected code:\n\`\`\`\n${thread.anchor.selectedText}\n\`\`\`` : "",
+    `Context before:\n\`\`\`\n${thread.anchor.contextBefore}\n\`\`\`\nContext after:\n\`\`\`\n${thread.anchor.contextAfter}\n\`\`\``,
+  ].filter(Boolean).join("\n\n");
+}
+
+export async function loadReviewSessionMessages(record: ReviewThreadRecord): Promise<ReviewMessage[]> {
+  if (!record.agentSessionFile) return [];
+  const manager = SessionManager.open(record.agentSessionFile, undefined, record.workspacePath);
+  return manager.getBranch().flatMap((entry): ReviewMessage[] => {
+    if (entry.type !== "message") return [];
+    const message = entry.message;
+    if (message.role !== "user" && message.role !== "assistant") return [];
+    const body = textFromContent(message.content).trim();
+    if (!body) return [];
+    return [{
+      id: entry.id,
+      role: message.role,
+      body,
+      createdAt: entry.timestamp,
+      delivered: true,
+      status: message.role === "assistant" && message.errorMessage ? "error" : "complete"
+    }];
+  });
+}
+
+export async function migrateLegacyReviewSession(thread: { workspacePath: string; messages: ReviewMessage[] }, sessionDir: string) {
+  const manager = SessionManager.create(thread.workspacePath, sessionDir);
+  const emptyUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+  for (const message of thread.messages) {
+    const timestamp = new Date(message.createdAt).getTime();
+    if (message.role === "user") manager.appendMessage({ role: "user", content: message.body, timestamp });
+    else manager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: message.body }],
+      api: "cake-review-migration",
+      provider: "cake",
+      model: "legacy-review",
+      usage: emptyUsage,
+      stopReason: message.status === "error" ? "error" : "stop",
+      errorMessage: message.status === "error" ? message.body : undefined,
+      timestamp
+    });
+  }
+  const sessionFile = manager.getSessionFile();
+  if (!sessionFile) throw new Error("Cake could not migrate the legacy review conversation into Pi");
+  return { sessionId: manager.getSessionId(), sessionFile };
 }
 
 export function createCakeArtifactExtension(options: Required<Pick<CakeRuntimeOptions, "persistArtifact" | "requestArtifact">>): InlineExtension {

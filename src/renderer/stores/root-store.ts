@@ -68,6 +68,16 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       this.sessionCache.find(event.record.artifact.sessionId, event.record.workspacePath)?.upsertArtifact(event.record);
       if (event.type === "artifact-updated") return;
     }
+    if (event.type === "review-threads-received") {
+      this.sessionCache.applyReviewThreads(event.workspacePath, event.sessionId, event.threads);
+      this.windowStore.receive(event);
+      return;
+    }
+    if (event.type === "review-thread-updated") {
+      this.sessionCache.upsertReviewThread(event.thread);
+      this.windowStore.receive(event);
+      return;
+    }
     this.windowStore.receive(event);
   }
 }

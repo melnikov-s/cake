@@ -36,6 +36,7 @@ describe("Sidebar projects", () => {
       session: { sessionId: "session-1" },
       isStreaming: false,
       sessionActivity: vi.fn(() => undefined),
+      chatReviewCommentCountForSession: vi.fn(() => 0),
       searchedSessions: [],
       projectSessions: () => [{ id: "session-1", title: "Add project collapsing" }],
       sessionLimit: () => 8,
@@ -80,6 +81,7 @@ describe("Sidebar projects", () => {
       ],
       sessionLimit: () => 8,
       sessionActivity: (_path: string, id: string) => id === "running" ? "running" : "unread",
+      chatReviewCommentCountForSession: vi.fn(() => 0),
       nameFromPath: () => "cake",
       setSessionSearch: vi.fn(),
       startOneOffChat: vi.fn(),
@@ -95,5 +97,19 @@ describe("Sidebar projects", () => {
 
     expect(container.querySelector('[data-session-id="running"] [aria-label="Running"]')).not.toBeNull();
     expect(container.querySelector('[data-session-id="ready"] [aria-label="Ready, unread"]')).not.toBeNull();
+  });
+
+  it("uses the canonical actionable-comment selector for session badges", () => {
+    const store = {
+      sessionSearch: "", recentProjectPaths: ["/work/cake"], projectPath: "/work/cake", projects: [{ path: "/work/cake", name: "Cake" }], session: { sessionId: "pending" }, searchedSessions: [],
+      projectSessions: () => [{ id: "pending", title: "Needs review" }, { id: "answered", title: "Already answered" }], sessionLimit: () => 8,
+      sessionActivity: vi.fn(() => undefined), chatReviewCommentCountForSession: (_path: string, id: string) => id === "pending" ? 1 : 0,
+      nameFromPath: () => "cake", setSessionSearch: vi.fn(), startOneOffChat: vi.fn(), chooseProject: vi.fn(), startNewSession: vi.fn(), switchProject: vi.fn(), openSession: vi.fn(), renameSession: vi.fn(), showMoreSessions: vi.fn()
+    } as unknown as WindowStore;
+
+    act(() => root.render(<Sidebar store={store} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
+
+    expect(container.querySelector('[data-session-id="pending"]')?.textContent).toContain("1 comment");
+    expect(container.querySelector('[data-session-id="answered"]')?.textContent).not.toContain("comments");
   });
 });

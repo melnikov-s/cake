@@ -7,6 +7,8 @@ import { SessionTreeNodeModel } from "./session-tree-node";
 import { CompatibilityResourceModel, ResourceDiagnosticModel } from "./compatibility-resource";
 import { ArtifactModel } from "./artifact";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
+import type { ReviewThread } from "../../ipc/review-contract";
+import { ReviewThreadModel } from "./review-thread";
 
 export class SessionModel extends Model {
   @state workspacePath = "";
@@ -28,6 +30,7 @@ export class SessionModel extends Model {
   @child(SessionTreeNodeModel) tree: SessionTreeNodeModel[] = observable([]);
   @state sessionChanges: SessionChange[] = observable([]);
   @child(ArtifactModel) artifacts: ArtifactModel[] = observable([]);
+  @child(ReviewThreadModel) reviewThreads: ReviewThreadModel[] = observable([]);
 
   get loaded() {
     return Boolean(this.sessionId);
@@ -99,6 +102,19 @@ export class SessionModel extends Model {
       ...this.artifacts.filter((artifact) => artifact.id !== record.artifact.id).map((artifact) => artifact.value),
       record
     ]);
+  }
+
+  applyReviewThreads(threads: ReviewThread[]) {
+    for (const thread of threads) this.upsertReviewThread(thread);
+  }
+
+  upsertReviewThread(thread: ReviewThread) {
+    const existing = this.reviewThreads.find((item) => item.id === thread.id);
+    if (existing) {
+      if (existing.updatedAt <= thread.updatedAt) applySnapshot(existing, thread as Snapshot<ReviewThreadModel>);
+      return;
+    }
+    this.reviewThreads.push(ReviewThreadModel.create(thread as Snapshot<ReviewThreadModel>));
   }
 }
 

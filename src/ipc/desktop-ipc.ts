@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { artifactRecordSchema } from "./artifact-contract";
+import { reviewAnchorSchema, reviewThreadSchema } from "./review-contract";
 import {
   applicationStateSchema,
   attachmentSchema,
@@ -27,6 +28,9 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("changelog-snapshot"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), markdown: z.string().max(1_000_000) }),
   z.object({ type: z.literal("artifact-updated"), record: artifactRecordSchema }),
   z.object({ type: z.literal("artifact-requested"), requestId: z.uuid(), artifactRequestId: z.uuid(), record: artifactRecordSchema }),
+  z.object({ type: z.literal("review-threads-snapshot"), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), threads: z.array(reviewThreadSchema).max(10_000) }),
+  z.object({ type: z.literal("review-thread-updated"), thread: reviewThreadSchema }),
+  z.object({ type: z.literal("review-thread-streaming"), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), threadId: z.string().max(256), streaming: z.boolean() }),
   z.object({
     type: z.literal("ui-request"),
     requestId: z.uuid(),
@@ -53,6 +57,10 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("load-application-state") }),
   z.object({ type: z.literal("list-sessions") }),
   z.object({ type: z.literal("load-session"), workspacePath: z.string().max(4_096), sessionId: z.string().min(1).max(256) }),
+  z.object({ type: z.literal("list-review-threads"), workspacePath: z.string().max(4_096), sessionId: z.string().min(1).max(256) }),
+  z.object({ type: z.literal("create-review-thread"), workspacePath: z.string().max(4_096), sessionId: z.string().min(1).max(256), anchor: reviewAnchorSchema, body: z.string().min(1).max(262_144) }),
+  z.object({ type: z.literal("reply-review-thread"), workspacePath: z.string().max(4_096), sessionId: z.string().min(1).max(256), threadId: z.string().min(1).max(256), body: z.string().min(1).max(262_144) }),
+  z.object({ type: z.literal("resolve-review-thread"), workspacePath: z.string().max(4_096), sessionId: z.string().min(1).max(256), threadId: z.string().min(1).max(256), resolved: z.boolean() }),
   z.object({ type: z.literal("register-project"), path: z.string().max(4_096), name: z.string().min(1).max(512) }),
   z.object({ type: z.literal("rename-project"), path: z.string().max(4_096), name: z.string().min(1).max(512) }),
   z.object({ type: z.literal("remove-project"), path: z.string().max(4_096) }),
@@ -70,6 +78,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     sessionFile: z.string().max(4_096).optional()
   }),
   z.object({ type: z.literal("prompt"), requestId: z.uuid(), text: z.string().min(1).max(262_144), delivery: z.enum(["prompt", "steer", "follow-up"]), attachments: z.array(attachmentSchema).max(20), workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }),
+  z.object({ type: z.literal("submit-review-threads"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), threadIds: z.array(z.string().min(1).max(256)).min(1).max(100), instruction: z.string().max(262_144).optional(), model: z.object({ provider: z.string().max(256), id: z.string().max(512) }).optional() }),
   z.object({ type: z.literal("abort"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }),
   z.object({ type: z.literal("set-model"), requestId: z.uuid(), provider: z.string(), modelId: z.string(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }),
   z.object({ type: z.literal("set-thinking"), requestId: z.uuid(), level: thinkingLevelSchema, workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }),
@@ -101,8 +110,10 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("window-state-loaded"), state: windowViewStateSchema }),
   z.object({ type: z.literal("window-state-saved") }),
   z.object({ type: z.literal("application-state-loaded"), state: applicationStateSchema }),
-  z.object({ type: z.literal("sessions-listed"), sessions: z.array(globalSessionSummarySchema).max(50_000) }),
+  z.object({ type: z.literal("sessions-listed"), sessions: z.array(globalSessionSummarySchema).max(50_000), reviewThreads: z.array(reviewThreadSchema).max(100_000) }),
   z.object({ type: z.literal("session-loaded"), session: sessionPreviewSchema.optional() }),
+  z.object({ type: z.literal("review-threads-loaded"), threads: z.array(reviewThreadSchema).max(10_000) }),
+  z.object({ type: z.literal("review-thread-saved"), thread: reviewThreadSchema }),
   z.object({ type: z.literal("application-state-updated"), state: applicationStateSchema }),
   z.object({ type: z.literal("window-created") }),
   z.object({ type: z.literal("accepted"), requestId: z.uuid() }),

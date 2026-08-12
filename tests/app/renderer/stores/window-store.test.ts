@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { reaction } from "r-state-tree";
 import type { SessionPreview, SessionSnapshot } from "../../../../src/ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../../../../src/renderer/desktop-client";
 import { mountRootStore } from "../../../../src/renderer/stores/root-store";
@@ -31,8 +32,13 @@ function createDesktopClient(restoredPath?: string) {
     loadWindowState: vi.fn(async () => ({ projectPath: restoredPath, recentProjectPaths: restoredPath ? [restoredPath] : [], trustedProjectPaths: [], draft: "saved", theme: "system" as const, thinkingExpanded: false, sessionSearch: "", draftsBySession: {} })),
     saveWindowState: vi.fn(async () => undefined),
     loadApplicationState: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
-    listSessions: vi.fn(async () => []),
+    listSessions: vi.fn(async () => ({ sessions: [], reviewThreads: [] })),
     loadSession: vi.fn(async () => undefined),
+    listReviewThreads: vi.fn(async () => []),
+    createReviewThread: vi.fn(async () => { throw new Error("not mocked"); }),
+    replyReviewThread: vi.fn(async () => { throw new Error("not mocked"); }),
+    resolveReviewThread: vi.fn(async () => { throw new Error("not mocked"); }),
+    submitReviewThreads: vi.fn(async () => undefined),
     registerProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
     renameProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
     removeProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
@@ -327,6 +333,121 @@ describe("WindowStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("submits pending review threads with an empty composer without adding to the primary prompt", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    desktop.emit({ type: "pi-state-changed", state: "ready" });
+    await openSnapshot(store, desktop);
+    await flush();
+    const now = new Date(0).toISOString();
+    desktop.emit({ type: "review-thread-updated", thread: {
+      id: "review-1", workspacePath: "/project", sessionId: "session-1", status: "open", createdAt: now, updatedAt: now,
+      anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
+      messages: [{ id: "comment-1", role: "user", body: "Rename this", createdAt: now, delivered: false, status: "complete" }]
+    } });
+    store.setDraft("");
+
+    expect(store.canSubmit).toBe(true);
+    await store.submit();
+
+    expect(desktop.client.submitReviewThreads).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", sessionId: "session-1", threadIds: ["review-1"], instruction: undefined }));
+    expect(desktop.client.submit).not.toHaveBeenCalled();
+    expect(store.pendingReviewThreads).toHaveLength(0);
+    expect(store.chatReviewCommentCount).toBe(0);
+    expect(store.openReviewThreads).toHaveLength(1);
+    expect(store.sessionReviewRuns).toEqual([expect.objectContaining({ commentCount: 1, status: "running" })]);
+    const operationId = vi.mocked(desktop.client.submitReviewThreads).mock.calls[0]![0].operationId;
+    desktop.emit({ type: "operation-completed", operationId });
+    expect(store.sessionReviewRuns).toEqual([expect.objectContaining({ commentCount: 1, status: "complete" })]);
+    expect(store.openReviewThreads).toHaveLength(1);
+    expect(store.parts).toEqual([]);
+    root[Symbol.dispose]();
+  });
+
+  it("excludes assistant-ended review threads from the chat comment count", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    desktop.emit({ type: "pi-state-changed", state: "ready" });
+    await openSnapshot(store, desktop);
+    const now = new Date(0).toISOString();
+    desktop.emit({ type: "review-thread-updated", thread: {
+      id: "review-1", workspacePath: "/project", sessionId: "session-1", status: "open", createdAt: now, updatedAt: now,
+      anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
+      messages: [
+        { id: "comment-1", role: "user", body: "Rename this", createdAt: now, delivered: true, status: "complete" },
+        { id: "reply-1", role: "assistant", body: "Renamed it.", createdAt: now, delivered: true, status: "complete" }
+      ]
+    } });
+
+    expect(store.openReviewThreads).toHaveLength(1);
+    expect(store.chatReviewThreads).toHaveLength(0);
+    expect(store.chatReviewCommentCount).toBe(0);
+    expect(store.chatReviewCommentCountForSession("/project", "session-1")).toBe(0);
+    root[Symbol.dispose]();
+  });
+
+  it("derives inactive-session and active-chat counts from the same review model", async () => {
+    const desktop = createDesktopClient();
+    const now = new Date(0).toISOString();
+    const thread = {
+      id: "review-shared", workspacePath: "/other", sessionId: "session-2", status: "open" as const, createdAt: now, updatedAt: now,
+      anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
+      messages: [{ id: "comment-shared", role: "user" as const, body: "Rename this", createdAt: now, delivered: false, status: "complete" as const }]
+    };
+    desktop.client.listSessions = vi.fn(async () => ({
+      sessions: [{ id: "session-2", title: "Review", created: now, modified: now, messageCount: 1, archived: false, workspacePath: "/other", workspaceName: "Other" }],
+      reviewThreads: [thread]
+    }));
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+
+    const model = root.sessionCache.find("session-2", "/other")!.reviewThreads[0]!;
+    expect(store.chatReviewCommentCountForSession("/other", "session-2")).toBe(1);
+    expect("reviewCount" in store.globalSessions[0]!).toBe(false);
+    const observedCounts: number[] = [];
+    const stop = reaction(() => store.chatReviewCommentCountForSession("/other", "session-2"), (count) => observedCounts.push(count));
+
+    desktop.emit({ type: "review-thread-updated", thread: {
+      ...thread,
+      messages: [
+        { ...thread.messages[0]!, delivered: true },
+        { id: "reply-shared", role: "assistant", body: "Renamed it.", createdAt: now, delivered: true, status: "complete" }
+      ]
+    } });
+
+    expect(root.sessionCache.find("session-2", "/other")!.reviewThreads[0]).toBe(model);
+    expect(store.chatReviewCommentCountForSession("/other", "session-2")).toBe(0);
+    expect(observedCounts).toEqual([0]);
+    stop();
+    root[Symbol.dispose]();
+  });
+
+  it("sends composer text to the primary conversation while also dispatching pending review comments", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    desktop.emit({ type: "pi-state-changed", state: "ready" });
+    await openSnapshot(store, desktop);
+    await flush();
+    const now = new Date(0).toISOString();
+    desktop.emit({ type: "review-thread-updated", thread: {
+      id: "review-1", workspacePath: "/project", sessionId: "session-1", status: "open", createdAt: now, updatedAt: now,
+      anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
+      messages: [{ id: "comment-1", role: "user", body: "Rename this", createdAt: now, delivered: false, status: "complete" }]
+    } });
+    store.setDraft("Also explain the overall change");
+
+    await store.submit();
+
+    expect(desktop.client.submit).toHaveBeenCalledWith(expect.objectContaining({ text: "Also explain the overall change", delivery: "prompt" }));
+    expect(desktop.client.submitReviewThreads).toHaveBeenCalledWith(expect.objectContaining({ threadIds: ["review-1"], instruction: "Also explain the overall change" }));
+    expect(store.parts).toEqual([expect.objectContaining({ role: "user", text: "Also explain the overall change" })]);
+    expect(store.pendingReviewThreads).toHaveLength(0);
+    root[Symbol.dispose]();
+  });
+
   it("shows a submitted user message immediately and reconciles it with Pi's canonical part", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
@@ -442,9 +563,10 @@ describe("WindowStore", () => {
       ]
     };
     desktop.client.loadApplicationState = vi.fn(async () => applicationState);
-    desktop.client.listSessions = vi.fn(async () => [
-      { id: "session-3", title: "Alpha elsewhere", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 3, archived: false, workspacePath: "/other", workspaceName: "Other" }
-    ]);
+    desktop.client.listSessions = vi.fn(async () => ({
+      sessions: [{ id: "session-3", title: "Alpha elsewhere", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 3, archived: false, workspacePath: "/other", workspaceName: "Other" }],
+      reviewThreads: []
+    }));
     desktop.client.registerProject = vi.fn(async () => applicationState);
     const { root, store } = mountTestStore(desktop.client);
     await flush();
@@ -584,16 +706,19 @@ describe("WindowStore", () => {
 
   it("reveals project sessions in batches without selecting the project", async () => {
     const desktop = createDesktopClient();
-    desktop.client.listSessions = vi.fn(async () => Array.from({ length: 12 }, (_, index) => ({
-      id: `other-${index}`,
-      title: `Other task ${index}`,
-      created: new Date(0).toISOString(),
-      modified: new Date(index).toISOString(),
-      messageCount: index,
-      archived: false,
-      workspacePath: "/other",
-      workspaceName: "Other"
-    })));
+    desktop.client.listSessions = vi.fn(async () => ({
+      sessions: Array.from({ length: 12 }, (_, index) => ({
+        id: `other-${index}`,
+        title: `Other task ${index}`,
+        created: new Date(0).toISOString(),
+        modified: new Date(index).toISOString(),
+        messageCount: index,
+        archived: false,
+        workspacePath: "/other",
+        workspaceName: "Other"
+      })),
+      reviewThreads: []
+    }));
     const { root, store } = mountTestStore(desktop.client);
     await flush();
 
@@ -608,7 +733,7 @@ describe("WindowStore", () => {
 
   it("renames the session targeted from the sidebar", async () => {
     const desktop = createDesktopClient();
-    desktop.client.listSessions = vi.fn(async () => [{
+    desktop.client.listSessions = vi.fn(async () => ({ sessions: [{
       id: "session-2",
       title: "Old title",
       created: new Date(0).toISOString(),
@@ -617,7 +742,7 @@ describe("WindowStore", () => {
       archived: false,
       workspacePath: "/other",
       workspaceName: "Other"
-    }]);
+    }], reviewThreads: [] }));
     const { root, store } = mountTestStore(desktop.client);
     await flush();
 

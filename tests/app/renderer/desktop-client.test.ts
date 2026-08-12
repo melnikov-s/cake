@@ -12,7 +12,7 @@ function createBridge() {
     if (input.type === "choose-attachments") return { type: "attachments-chosen", attachments: [] };
     if (input.type === "suggest-files") return { type: "file-suggestions", suggestions: [{ value: "@src/app.ts", label: "app.ts", description: "src/app.ts" }] };
     if (input.type === "load-window-state") return { type: "window-state-loaded", state: { draft: "", recentProjectPaths: [], trustedProjectPaths: [], theme: "system", thinkingExpanded: false, sessionSearch: "", draftsBySession: {} } };
-    if (input.type === "list-sessions") return { type: "sessions-listed", sessions: [] };
+    if (input.type === "list-sessions") return { type: "sessions-listed", sessions: [], reviewThreads: [] };
     if (input.type === "load-session") return { type: "session-loaded", session: undefined };
     return { type: "window-state-saved" };
   });
@@ -30,7 +30,7 @@ describe("desktop client", () => {
     const operationId = crypto.randomUUID();
 
     expect(await client.chooseProject()).toBe("/project");
-    expect(await client.listSessions()).toEqual([]);
+    expect(await client.listSessions()).toEqual({ sessions: [], reviewThreads: [] });
     expect(await client.loadSession("/project", "session")).toBeUndefined();
     expect(await client.suggestFiles("/project", "app")).toEqual([{ value: "@src/app.ts", label: "app.ts", description: "src/app.ts" }]);
     await client.openWorkspace({ operationId, path: "/project", trusted: true });

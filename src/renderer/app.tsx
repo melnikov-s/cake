@@ -23,7 +23,7 @@ import { ModelCombobox } from "@/components/model-combobox";
 import { SessionTree } from "@/components/session-tree";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
 import type { CompatibilityResource, UiPart } from "../ipc/session-contract";
-import { WindowStore, type UiRequestState } from "./stores/window-store";
+import { WindowStore, type ReviewRunState, type UiRequestState } from "./stores/window-store";
 
 function Icon({ children, size = 16 }: { children: ReactNode; size?: number }) {
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
@@ -112,7 +112,7 @@ function TranscriptPart({ part, store }: { part: UiPart; store: WindowStore }) {
   return <div className={`notice notice-${part.tone}`} role={part.tone === "error" ? "alert" : "status"}><strong>{part.title}</strong>{part.detail && <span>{part.detail}</span>}</div>;
 }
 
-type TranscriptItem = UiPart | { kind: "activity-group"; id: string; parts: UiPart[] } | { kind: "assistant-loading"; id: string };
+type TranscriptItem = UiPart | { kind: "activity-group"; id: string; parts: UiPart[] } | { kind: "assistant-loading"; id: string } | { kind: "review-run"; id: string; run: ReviewRunState };
 
 function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
   const items: TranscriptItem[] = [];
@@ -161,14 +161,32 @@ function AssistantLoadingIndicator() {
   );
 }
 
+function ReviewRunMessage({ run, store }: { run: ReviewRunState; store: WindowStore }) {
+  const count = run.commentCount;
+  const label = run.status === "running"
+    ? `Replying to ${count} ${count === 1 ? "comment" : "comments"}`
+    : run.status === "error"
+      ? `${count} ${count === 1 ? "comment needs" : "comments need"} another try`
+      : `${count} ${count === 1 ? "comment" : "comments"} replied`;
+  return <Message className="review-run-message mr-auto w-full">
+    <MessageLabel>{run.status === "running" ? "Cake · working" : "Cake"}</MessageLabel>
+    <button type="button" className={run.status} onClick={() => void store.openSessionChanges(run.threadIds[0])}>
+      {run.status === "running" && <span className="review-run-spinner" aria-hidden="true" />}
+      <strong>{label}</strong><span>View in Changes</span>
+    </button>
+  </Message>;
+}
+
 const TranscriptList = forwardRef<HTMLDivElement, ComponentProps<"div">>(function TranscriptList({ className, ...props }, ref) {
   return <div ref={ref} className={`transcript-list ${className ?? ""}`} aria-label="Conversation" {...props} />;
 });
 
 export const Transcript = observer(function Transcript({ store, sessionId }: { store: WindowStore; sessionId: string }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
+  const reviewRuns = store.sessionReviewRuns ?? [];
   const items: TranscriptItem[] = [
     ...groupTranscriptParts(store.visibleParts),
+    ...reviewRuns.map((run) => ({ kind: "review-run" as const, id: `review-run-${run.operationId}`, run })),
     ...(store.isStreaming ? [{ kind: "assistant-loading" as const, id: "assistant-loading" }] : [])
   ];
   const latestUserPartId = store.parts.findLast((part) => part.kind === "text" && part.role === "user")?.id;
@@ -191,7 +209,7 @@ export const Transcript = observer(function Transcript({ store, sessionId }: { s
     return () => cancelAnimationFrame(frame);
   }, [latestUserPartId, scrollToLatest]);
 
-  if (store.visibleParts.length === 0) {
+  if (store.visibleParts.length === 0 && reviewRuns.length === 0) {
     return (
       <div className="transcript transcript-empty">
         <Conversation><div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>{store.isStreaming && <AssistantLoadingIndicator />}<ArtifactsPanel store={store} />{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</Conversation>
@@ -211,7 +229,7 @@ export const Transcript = observer(function Transcript({ store, sessionId }: { s
         List: TranscriptList,
         Footer: () => <div className="transcript-footer"><ArtifactsPanel store={store} />{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</div>
       }}
-      itemContent={(_index, item) => <div className="transcript-item">{item.kind === "activity-group" ? <ActivityGroup parts={item.parts} store={store} /> : item.kind === "assistant-loading" ? <AssistantLoadingIndicator /> : <TranscriptPart part={item} store={store} />}</div>}
+      itemContent={(_index, item) => <div className="transcript-item">{item.kind === "activity-group" ? <ActivityGroup parts={item.parts} store={store} /> : item.kind === "assistant-loading" ? <AssistantLoadingIndicator /> : item.kind === "review-run" ? <ReviewRunMessage run={item.run} store={store} /> : <TranscriptPart part={item} store={store} />}</div>}
     />
   );
 });
@@ -289,7 +307,10 @@ export const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpen
         <button className="new-chat" onClick={() => navigateToChat(() => store.startOneOffChat())}><ChatIcon /><span>New chat</span></button>
         <div className={`session-filter global-session-filter ${searchExpanded ? "expanded" : ""}`} aria-hidden={!searchExpanded}><input ref={searchInput} aria-label="Search sessions" placeholder="Search all sessions" value={store.sessionSearch} disabled={!searchExpanded} onChange={(event) => store.setSessionSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") closeSearch(); }} /></div>
         {store.sessionSearch.trim() && <div className="global-session-results">
-          {store.searchedSessions.length === 0 ? <p className="sidebar-empty">No matching sessions.</p> : store.searchedSessions.slice(0, 50).map((session) => <div key={`${session.workspacePath}:${session.id}`} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && session.workspacePath === store.projectPath ? "active" : ""}`}><button className="session-row global-session-row" aria-current={session.id === store.session?.sessionId && session.workspacePath === store.projectPath ? "page" : undefined} onClick={() => navigateToChat(() => store.openSession(session.workspacePath, session.id))} onContextMenu={(event) => renameSession(event, session.workspacePath, session.id, session.title)}><span>{session.title}</span><small>{session.workspaceName}</small>{activityIndicator(session.workspacePath, session.id)}</button></div>)}
+          {store.searchedSessions.length === 0 ? <p className="sidebar-empty">No matching sessions.</p> : store.searchedSessions.slice(0, 50).map((session) => {
+            const actionableCommentCount = store.chatReviewCommentCountForSession(session.workspacePath, session.id);
+            return <div key={`${session.workspacePath}:${session.id}`} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && session.workspacePath === store.projectPath ? "active" : ""}`}><button className="session-row global-session-row" aria-current={session.id === store.session?.sessionId && session.workspacePath === store.projectPath ? "page" : undefined} onClick={() => navigateToChat(() => store.openSession(session.workspacePath, session.id))} onContextMenu={(event) => renameSession(event, session.workspacePath, session.id, session.title)}><span>{session.title}</span><small>{session.workspaceName}</small>{actionableCommentCount > 0 && <b className="session-review-count">{actionableCommentCount} {actionableCommentCount === 1 ? "comment" : "comments"}</b>}{activityIndicator(session.workspacePath, session.id)}</button></div>;
+          })}
         </div>}
         <div className="section-heading projects-heading"><span>Projects</span><div><span className="project-options" aria-hidden="true"><MoreIcon /></span><button aria-label="Add project" onClick={() => navigateToChat(() => store.chooseProject())}><PlusIcon /></button></div></div>
         {store.recentProjectPaths.length === 0 ? <p className="sidebar-empty">Add a folder to start a project.</p> : store.recentProjectPaths.map((path) => {
@@ -299,7 +320,10 @@ export const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpen
           const visibleSessions = sessions.slice(0, store.sessionLimit(path));
           return <div className="project-group" key={path}>
             <div className="project-row" title={path}><button className="project-label" type="button" aria-expanded={!collapsed} aria-label={`${collapsed ? "Expand" : "Collapse"} ${store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}`} onClick={() => toggleProject(path)}><span className={`project-disclosure ${collapsed ? "collapsed" : ""}`}><ChevronIcon /></span><FolderIcon /><span>{store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}</span></button><button className="project-add" aria-label={`New chat in ${store.nameFromPath(path)}`} onClick={() => { if (active) navigateToChat(() => store.startNewSession()); else navigateToChat(async () => { await store.switchProject(path); await store.startNewSession(); }); }}><PlusIcon /></button></div>
-            {!collapsed && !store.sessionSearch.trim() && visibleSessions.map((session) => <div key={session.id} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && path === store.projectPath ? "active" : ""}`}><button className="session-row" aria-current={session.id === store.session?.sessionId && path === store.projectPath ? "page" : undefined} onClick={() => navigateToChat(() => store.openSession(path, session.id))} onContextMenu={(event) => renameSession(event, path, session.id, session.title)}><span>{session.title}</span>{activityIndicator(path, session.id)}</button></div>)}
+            {!collapsed && !store.sessionSearch.trim() && visibleSessions.map((session) => {
+              const actionableCommentCount = store.chatReviewCommentCountForSession(path, session.id);
+              return <div key={session.id} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && path === store.projectPath ? "active" : ""}`}><button className="session-row" aria-current={session.id === store.session?.sessionId && path === store.projectPath ? "page" : undefined} onClick={() => navigateToChat(() => store.openSession(path, session.id))} onContextMenu={(event) => renameSession(event, path, session.id, session.title)}><span>{session.title}</span>{actionableCommentCount > 0 && <b className="session-review-count">{actionableCommentCount} {actionableCommentCount === 1 ? "comment" : "comments"}</b>}{activityIndicator(path, session.id)}</button></div>;
+            })}
             {!collapsed && !store.sessionSearch.trim() && sessions.length > visibleSessions.length && <button className="session-more" onClick={() => store.showMoreSessions(path)}>Show more</button>}
           </div>;
         })}
@@ -324,6 +348,7 @@ const ComposerPanel = observer(function ComposerPanel({ store }: { store: Window
     <div className="composer-dock">
       {store.extensionWidgets.filter((widget) => widget.placement === "aboveEditor").map((widget) => <div className="legacy-widget" key={widget.key}><strong>{widget.key}</strong><pre>{widget.lines.join("\n")}</pre></div>)}
       <Composer className="workbench-composer" onSubmit={(event) => { event.preventDefault(); void store.submit(); }}>
+        {store.chatReviewCommentCount > 0 && <div className="review-context-badge"><button type="button" onClick={() => void store.openSessionChanges()}><span>{store.chatReviewCommentCount}</span> {store.chatReviewCommentCount === 1 ? "comment ready to send" : "comments ready to send"}</button></div>}
         {store.attachments.length > 0 && <div className="attachment-list">{store.attachments.map((attachment, index) => <button type="button" key={`${attachment.kind}-${attachment.name}`} onClick={() => store.removeAttachment(index)}>{attachment.kind === "file" ? "@" : "▧"} {attachment.name} <span>×</span></button>)}</div>}
         <SlashCommandCombobox aria-label="Message" commands={store.session?.commands ?? []} suggestFiles={(prefix) => store.suggestFiles(prefix)} placeholder={store.isStreaming ? "Add the next instruction…" : `Ask Cake to work in ${store.projectName}…`} value={store.draft} onValueChange={(value) => store.setDraft(value)} onSubmit={(value) => { if (value !== undefined) store.setDraft(value); void store.submit(); }} />
         <ComposerToolbar className="composer-toolbar">

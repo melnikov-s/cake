@@ -4,11 +4,12 @@ import { homedir } from "node:os";
 import { app, BrowserWindow, dialog, ipcMain, shell, type WebContents } from "electron";
 import { desktopRequestSchema, desktopResponseSchema, type DesktopEvent } from "../ipc/desktop-ipc";
 import { windowViewStateSchema, type Attachment, type WindowViewState } from "../ipc/session-contract";
-import { listWorkspaceSessions, loadWorkspaceSessionPreview, suggestProjectFiles } from "../agent/pi-runtime";
+import { listWorkspaceSessions, loadReviewSessionMessages, loadWorkspaceSessionPreview, migrateLegacyReviewSession, suggestProjectFiles } from "../agent/pi-runtime";
 import { ApplicationModel } from "./application-model";
 import { shouldAllowNavigation } from "./navigation-policy";
 import { PiWorkspaceDriver, type PiWorkspaceCommand } from "./pi-workspace-driver";
 import { ArtifactRepository } from "./artifact-repository";
+import { ReviewRepository } from "./review-repository";
 
 interface PiHost {
   path: string;
@@ -27,6 +28,7 @@ let applicationModel = ApplicationModel.from({});
 
 if (process.env.CAKE_ELECTRON_USER_DATA) app.setPath("userData", process.env.CAKE_ELECTRON_USER_DATA);
 const artifactRepository = new ArtifactRepository(join(app.getPath("userData"), "artifacts"));
+const reviewRepository = new ReviewRepository(join(app.getPath("userData"), "reviews"), loadReviewSessionMessages, migrateLegacyReviewSession);
 
 function sendTo(target: WebContents, event: DesktopEvent) {
   if (!target.isDestroyed()) target.send("cake:event", event);
@@ -96,6 +98,7 @@ function launchPi(path: string) {
     workspacePath: path,
     emit: broadcast,
     artifactRepository,
+    reviewRepository,
     openExternal: async (url) => {
       const protocol = new URL(url).protocol;
       if (protocol !== "https:" && protocol !== "http:") throw new Error("Authentication URL must use HTTP or HTTPS");
@@ -206,7 +209,8 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
         return [];
       }
     }))).flat().sort((left, right) => right.modified.localeCompare(left.modified));
-    return desktopResponseSchema.parse({ type: "sessions-listed", sessions });
+    const reviewThreads = (await Promise.all(sessions.map((session) => reviewRepository.listSession(session.workspacePath, session.id)))).flat();
+    return desktopResponseSchema.parse({ type: "sessions-listed", sessions, reviewThreads });
   }
   if (request.type === "register-project") {
     allowedProjectPaths.add(request.path);
@@ -248,6 +252,24 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
   if (!allowedProjectPaths.has(path)) throw new Error("Project path was not selected by the user");
   if (request.type === "load-session") {
     return desktopResponseSchema.parse({ type: "session-loaded", session: await loadWorkspaceSessionPreview(request.workspacePath, request.sessionId) });
+  }
+  if (request.type === "list-review-threads") {
+    return desktopResponseSchema.parse({ type: "review-threads-loaded", threads: await reviewRepository.listSession(request.workspacePath, request.sessionId) });
+  }
+  if (request.type === "create-review-thread") {
+    const thread = await reviewRepository.create(request.workspacePath, request.sessionId, request.anchor, request.body);
+    broadcast({ type: "review-thread-updated", thread });
+    return desktopResponseSchema.parse({ type: "review-thread-saved", thread });
+  }
+  if (request.type === "reply-review-thread") {
+    const thread = await reviewRepository.reply(request.workspacePath, request.sessionId, request.threadId, request.body);
+    broadcast({ type: "review-thread-updated", thread });
+    return desktopResponseSchema.parse({ type: "review-thread-saved", thread });
+  }
+  if (request.type === "resolve-review-thread") {
+    const thread = await reviewRepository.resolve(request.workspacePath, request.sessionId, request.threadId, request.resolved);
+    broadcast({ type: "review-thread-updated", thread });
+    return desktopResponseSchema.parse({ type: "review-thread-saved", thread });
   }
   if (request.type === "open-workspace") {
     const previous = windowWorkspaces.get(event.sender.id);

@@ -14,6 +14,7 @@ import type {
   WindowViewState
 } from "../ipc/session-contract";
 import type { ArtifactRecord } from "../ipc/artifact-contract";
+import type { ReviewAnchor, ReviewThread } from "../ipc/review-contract";
 
 export type PiState = "starting" | "ready" | "stopped" | "failed";
 
@@ -29,6 +30,9 @@ export type DesktopClientEvent =
   | { type: "changelog-received"; operationId: string; workspacePath: string; sessionId: string; markdown: string }
   | { type: "artifact-updated"; record: ArtifactRecord }
   | { type: "artifact-requested"; operationId: string; artifactRequestId: string; record: ArtifactRecord }
+  | { type: "review-threads-received"; workspacePath: string; sessionId: string; threads: ReviewThread[] }
+  | { type: "review-thread-updated"; thread: ReviewThread }
+  | { type: "review-thread-streaming"; workspacePath: string; sessionId: string; threadId: string; streaming: boolean }
   | {
       type: "ui-requested";
       operationId: string;
@@ -52,8 +56,13 @@ export interface DesktopClient {
   loadWindowState(): Promise<WindowViewState>;
   saveWindowState(state: WindowViewState): Promise<void>;
   loadApplicationState(): Promise<ApplicationState>;
-  listSessions(): Promise<GlobalSessionSummary[]>;
+  listSessions(): Promise<{ sessions: GlobalSessionSummary[]; reviewThreads: ReviewThread[] }>;
   loadSession(workspacePath: string, sessionId: string): Promise<SessionPreview | undefined>;
+  listReviewThreads(workspacePath: string, sessionId: string): Promise<ReviewThread[]>;
+  createReviewThread(input: { workspacePath: string; sessionId: string; anchor: ReviewAnchor; body: string }): Promise<ReviewThread>;
+  replyReviewThread(input: { workspacePath: string; sessionId: string; threadId: string; body: string }): Promise<ReviewThread>;
+  resolveReviewThread(input: { workspacePath: string; sessionId: string; threadId: string; resolved: boolean }): Promise<ReviewThread>;
+  submitReviewThreads(input: { operationId: string; workspacePath: string; sessionId: string; threadIds: string[]; instruction?: string; model?: { provider: string; id: string } }): Promise<void>;
   registerProject(path: string, name: string): Promise<ApplicationState>;
   renameProject(path: string, name: string): Promise<ApplicationState>;
   removeProject(path: string): Promise<ApplicationState>;
@@ -90,6 +99,8 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
   if (event.type === "extension-ui") return { type: "extension-ui-received", sessionId: event.sessionId, event: event.event };
   if (event.type === "artifact-updated") return event;
   if (event.type === "artifact-requested") return { type: "artifact-requested", operationId: event.requestId, artifactRequestId: event.artifactRequestId, record: event.record };
+  if (event.type === "review-threads-snapshot") return { type: "review-threads-received", workspacePath: event.workspacePath, sessionId: event.sessionId, threads: event.threads };
+  if (event.type === "review-thread-updated" || event.type === "review-thread-streaming") return event;
   if (event.type === "changes-snapshot") return { type: "changes-received", operationId: event.requestId, workspacePath: event.workspacePath, files: event.files };
   if (event.type === "changelog-snapshot") return { type: "changelog-received", operationId: event.requestId, workspacePath: event.workspacePath, sessionId: event.sessionId, markdown: event.markdown };
   if (event.type === "ui-request") return { type: "ui-requested", operationId: event.requestId, uiRequestId: event.uiRequestId, kind: event.kind, title: event.title, message: event.message, placeholder: event.placeholder, initialValue: event.initialValue, multiline: event.multiline, options: event.options };
@@ -142,12 +153,32 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
     async listSessions() {
       const response = await bridge.request({ type: "list-sessions" });
       if (response.type !== "sessions-listed") throw new Error("Cake received an invalid session index");
-      return response.sessions;
+      return { sessions: response.sessions, reviewThreads: response.reviewThreads };
     },
     async loadSession(workspacePath, sessionId) {
       const response = await bridge.request({ type: "load-session", workspacePath, sessionId });
       if (response.type !== "session-loaded") throw new Error("Cake received invalid session content");
       return response.session;
+    },
+    async listReviewThreads(workspacePath, sessionId) {
+      const response = await bridge.request({ type: "list-review-threads", workspacePath, sessionId });
+      if (response.type !== "review-threads-loaded") throw new Error("Cake received invalid review threads");
+      return response.threads;
+    },
+    async createReviewThread(input) {
+      const response = await bridge.request({ type: "create-review-thread", ...input });
+      if (response.type !== "review-thread-saved") throw new Error("Cake could not save the review thread");
+      return response.thread;
+    },
+    async replyReviewThread(input) {
+      const response = await bridge.request({ type: "reply-review-thread", ...input });
+      if (response.type !== "review-thread-saved") throw new Error("Cake could not save the review reply");
+      return response.thread;
+    },
+    async resolveReviewThread(input) {
+      const response = await bridge.request({ type: "resolve-review-thread", ...input });
+      if (response.type !== "review-thread-saved") throw new Error("Cake could not update the review thread");
+      return response.thread;
     },
     async registerProject(path, name) {
       const response = await bridge.request({ type: "register-project", path, name });
@@ -177,6 +208,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
     inspectWorkspace: (input) => accept(bridge, { type: "inspect-workspace", requestId: input.operationId, path: input.path }),
     openWorkspace: (input) => accept(bridge, { type: "open-workspace", requestId: input.operationId, path: input.path, trusted: input.trusted, newSession: input.newSession ?? false, sessionId: input.sessionId, sessionFile: input.sessionFile }),
     submit: (input) => accept(bridge, { type: "prompt", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, text: input.text, delivery: input.delivery, attachments: input.attachments }),
+    submitReviewThreads: (input) => accept(bridge, { type: "submit-review-threads", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, threadIds: input.threadIds, instruction: input.instruction, model: input.model }),
     abort: (input) => accept(bridge, { type: "abort", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId }),
     setModel: (input) => accept(bridge, { type: "set-model", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, provider: input.provider, modelId: input.modelId }),
     setThinkingLevel: (input) => accept(bridge, { type: "set-thinking", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, level: input.level }),
