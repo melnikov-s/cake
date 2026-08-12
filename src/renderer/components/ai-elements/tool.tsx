@@ -1,4 +1,5 @@
 /* Adapted from Vercel AI Elements tool.tsx at 0c1f5e8c75273f0e95c8faa031544a8aa2bb1a5b (Apache-2.0). Uses Cake tool states. */
+import { useState } from "react";
 import type { UiPart } from "../../../ipc/session-contract";
 import { DiffView } from "./diff-view";
 import { Markdown } from "./markdown";
@@ -60,14 +61,21 @@ function editPreview(part: Extract<UiPart, { kind: "tool" }>) {
 }
 
 export function Tool({ part }: { part: Extract<UiPart, { kind: "tool" }> }) {
+  const [open, setOpen] = useState(false);
   const diff = editPreview(part);
   const title = toolTitle(part);
   const bash = part.name === "bash" && part.input ? part.input : undefined;
+  const hasDetails = Boolean(diff || bash || part.input || part.output);
   return (
-    <details className={`tool-call rounded-xl border border-border bg-muted/35 px-4 py-3${diff ? " tool-edit" : ""}`}>
-      <summary className="cursor-pointer font-mono text-xs font-semibold"><span className={`tool-state tool-${part.state}`} aria-label={part.state} /><span className="tool-title" title={title}>{title}</span></summary>
-      {diff ? <DiffView diff={diff} filePath={part.filePath} label={part.state === "running" ? "Proposed edit" : "Applied edit"} /> : bash ? <Markdown className="tool-input tool-bash-input mt-3 text-xs">{fencedBash(bash)}</Markdown> : part.input && <pre className="tool-input mt-3 overflow-x-auto whitespace-pre-wrap text-xs text-muted-foreground">{prettyJson(part.input)}</pre>}
-      {!diff && part.output && <pre className="tool-output mt-3 overflow-x-auto whitespace-pre-wrap border-t border-border pt-3 text-xs">{prettyJson(part.output)}</pre>}
-    </details>
+    <div className={`tool-call rounded-xl border border-border bg-muted/35 px-4 py-3${diff ? " tool-edit" : ""}${open ? " tool-open" : ""}`}>
+      <button type="button" className="tool-summary cursor-pointer font-mono text-xs font-semibold" onClick={() => setOpen((value) => !value)} aria-expanded={open} disabled={!hasDetails}>
+        <span className={`tool-state tool-${part.state}`} aria-label={part.state} /><span className="tool-title" title={title}>{title}</span>
+      </button>
+      {/* Keep Streamdown mounted: mounting it during a Virtuoso resize can feed its passive update back into measurement. */}
+      {hasDetails && <div className="tool-details" hidden={!open}>
+        {diff ? <DiffView diff={diff} filePath={part.filePath} label={part.state === "running" ? "Proposed edit" : "Applied edit"} /> : bash ? <Markdown className="tool-input tool-bash-input mt-3 text-xs">{fencedBash(bash)}</Markdown> : part.input && <pre className="tool-input mt-3 overflow-x-auto whitespace-pre-wrap text-xs text-muted-foreground">{prettyJson(part.input)}</pre>}
+        {!diff && part.output && <pre className="tool-output mt-3 overflow-x-auto whitespace-pre-wrap border-t border-border pt-3 text-xs">{prettyJson(part.output)}</pre>}
+      </div>}
+    </div>
   );
 }

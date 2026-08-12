@@ -403,7 +403,7 @@
 .activity-group-status > .tool-state { margin-right: 9px; }
 .activity-group > div { display: grid; width: 100%; max-width: 100%; min-width: 0; max-height: 28rem; contain: inline-size; gap: 8px; overflow-x: hidden; overflow-y: auto; padding: 0 9px 9px; }
 .activity-group > div > * { width: 100%; max-width: 100%; min-width: 0; }
-.activity-group > div > details { background: color-mix(in oklab, var(--card) 45%, transparent); }
+.activity-group > div > .tool-call { background: color-mix(in oklab, var(--card) 45%, transparent); }
 .reasoning-block, .tool-call { width: 100%; max-width: 100%; min-width: 0; overflow: hidden; }
 .reasoning-summary { display: flex; width: 100%; max-width: 100%; min-width: 0; align-items: center; overflow: hidden; color: inherit; text-align: left; }
 button.reasoning-summary { border: 0; background: transparent; }
@@ -411,17 +411,21 @@ button.reasoning-summary::after { flex: none; margin-left: 8px; color: var(--mut
 button.reasoning-summary[aria-expanded="true"]::after { content: "−"; }
 .reasoning-title { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reasoning-content { border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent); padding-top: 10px; }
-.tool-call > summary { display: flex; width: 100%; max-width: 100%; min-width: 0; align-items: center; overflow: hidden; list-style: none; }
-.tool-call > summary::-webkit-details-marker { display: none; }
-.tool-call > summary::after { flex: none; margin-left: 8px; color: var(--muted-foreground); content: "+"; font-size: 13px; font-weight: 400; }
-.tool-call[open] > summary::after { content: "−"; }
-.tool-call > summary .tool-title { width: 0; min-width: 0; flex: 1 1 0%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tool-call > summary small { flex: none; margin-left: 12px; color: var(--muted-foreground); font: inherit; font-weight: 400; }
+.tool-summary { display: flex; width: 100%; max-width: 100%; min-width: 0; align-items: center; overflow: hidden; border: 0; background: transparent; color: inherit; text-align: left; }
+.tool-summary::after { flex: none; margin-left: 8px; color: var(--muted-foreground); content: "+"; font-size: 13px; font-weight: 400; }
+.tool-summary[aria-expanded="true"]::after { content: "−"; }
+.tool-summary:disabled { cursor: default; }
+.tool-summary:disabled::after { content: ""; }
+.tool-summary .tool-title { width: 0; min-width: 0; flex: 1 1 0%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-open .tool-summary { align-items: flex-start; }
+.tool-open .tool-title { width: auto; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+.tool-details { min-width: 0; }
 .tool-input, .tool-output { max-width: 100%; overflow-x: hidden !important; overflow-wrap: anywhere; word-break: break-word; }
 .tool-bash-input [data-streamdown="code-block"] { max-width: 100%; margin: 0; overflow: hidden; }
 .tool-bash-input pre, .tool-bash-input code { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
 .tool-edit { padding: 0 !important; overflow: hidden; }
-.tool-edit > summary { min-height: 38px; padding: 0 12px; }
+.tool-edit > .tool-summary { min-height: 38px; padding: 0 12px; }
+.tool-edit.tool-open > .tool-summary { padding-block: 11px; }
 .diff-view { width: 100%; max-width: 100%; min-width: 0; overflow: hidden; border-top: 1px solid color-mix(in oklab, var(--border) 75%, transparent); background: color-mix(in oklab, var(--background) 70%, transparent); font-family: var(--font-mono); }
 .diff-view > header { display: flex; min-height: 31px; align-items: center; gap: 12px; padding: 0 10px; border-bottom: 1px solid color-mix(in oklab, var(--border) 68%, transparent); color: var(--muted-foreground); font-size: 10px; }
 .diff-view > header code { min-width: 0; overflow: hidden; color: var(--foreground); text-overflow: ellipsis; white-space: nowrap; }

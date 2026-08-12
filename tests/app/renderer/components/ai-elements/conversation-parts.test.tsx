@@ -67,8 +67,10 @@ describe("Cake-owned conversation components", () => {
   it("does not automatically expand running or failed tool calls", () => {
     const running = renderToStaticMarkup(<Tool part={{ id: "tool-running", kind: "tool", name: "edit", input: "", diff: "+new line", state: "running" }} />);
     const failed = renderToStaticMarkup(<Tool part={{ id: "tool-error", kind: "tool", name: "bash", input: "exit 1", state: "error" }} />);
-    expect(running).not.toMatch(/<details[^>]* open/);
-    expect(failed).not.toMatch(/<details[^>]* open/);
+    expect(running).toContain('aria-expanded="false"');
+    expect(failed).toContain('aria-expanded="false"');
+    expect(running).toMatch(/class="tool-details" hidden/);
+    expect(failed).toMatch(/class="tool-details" hidden/);
   });
 
   it("uses state indicators without redundant visible state labels", () => {

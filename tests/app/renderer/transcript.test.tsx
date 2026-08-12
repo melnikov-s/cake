@@ -103,18 +103,21 @@ describe("Transcript scrolling", () => {
 
     act(() => root.render(<Transcript sessionId="session-1" store={storeWith([running], true)} />));
     const log = container.querySelector<HTMLDetailsElement>(".activity-group")!;
-    const tool = container.querySelector<HTMLDetailsElement>(".tool-call")!;
+    const tool = container.querySelector<HTMLElement>(".tool-call")!;
+    const toolToggle = tool.querySelector<HTMLButtonElement>(".tool-summary")!;
     expect(log.open).toBe(false);
-    expect(tool.open).toBe(false);
+    expect(toolToggle.getAttribute("aria-expanded")).toBe("false");
 
     act(() => container.querySelector<HTMLElement>(".activity-group > summary")!.click());
-    act(() => container.querySelector<HTMLElement>(".tool-call > summary")!.click());
+    act(() => toolToggle.click());
     expect(log.open).toBe(true);
-    expect(tool.open).toBe(true);
+    expect(toolToggle.getAttribute("aria-expanded")).toBe("true");
+    expect(tool.classList.contains("tool-open")).toBe(true);
+    expect(tool.querySelector(".tool-details")).not.toBeNull();
 
     act(() => root.render(<Transcript sessionId="session-1" store={storeWith([{ ...running, state: "success" }], false)} />));
     expect(log.open).toBe(true);
-    expect(tool.open).toBe(true);
+    expect(toolToggle.getAttribute("aria-expanded")).toBe("true");
     expect(log.querySelector(':scope > summary .tool-success[aria-label="success"]')).not.toBeNull();
   });
 
