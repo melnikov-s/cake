@@ -13,6 +13,48 @@ export const thinkingLevelSchema = z.enum([
   "max"
 ]);
 
+export const piSettingsSchema = z.object({
+  autoCompact: z.boolean(),
+  autoResizeImages: z.boolean(),
+  blockImages: z.boolean(),
+  enableSkillCommands: z.boolean(),
+  steeringMode: z.enum(["one-at-a-time", "all"]),
+  followUpMode: z.enum(["one-at-a-time", "all"]),
+  transport: z.enum(["sse", "websocket", "websocket-cached", "auto"]),
+  httpIdleTimeoutMs: z.number().int().nonnegative(),
+  hideThinkingBlock: z.boolean(),
+  mermaidRenderingMode: z.enum(["off", "final", "streaming"]),
+  showCacheMissNotices: z.boolean(),
+  collapseChangelog: z.boolean(),
+  quietStartup: z.boolean(),
+  enableInstallTelemetry: z.boolean(),
+  defaultProjectTrust: z.enum(["ask", "always", "never"]),
+  doubleEscapeAction: z.enum(["fork", "tree", "none"]),
+  treeFilterMode: z.enum(["default", "no-tools", "user-only", "labeled-only", "all"]),
+  anthropicExtraUsageWarning: z.boolean()
+});
+
+export const piSettingUpdateSchema = z.discriminatedUnion("key", [
+  z.object({ key: z.literal("autoCompact"), value: z.boolean() }),
+  z.object({ key: z.literal("autoResizeImages"), value: z.boolean() }),
+  z.object({ key: z.literal("blockImages"), value: z.boolean() }),
+  z.object({ key: z.literal("enableSkillCommands"), value: z.boolean() }),
+  z.object({ key: z.literal("steeringMode"), value: z.enum(["one-at-a-time", "all"]) }),
+  z.object({ key: z.literal("followUpMode"), value: z.enum(["one-at-a-time", "all"]) }),
+  z.object({ key: z.literal("transport"), value: z.enum(["sse", "websocket", "websocket-cached", "auto"]) }),
+  z.object({ key: z.literal("httpIdleTimeoutMs"), value: z.number().int().nonnegative() }),
+  z.object({ key: z.literal("hideThinkingBlock"), value: z.boolean() }),
+  z.object({ key: z.literal("mermaidRenderingMode"), value: z.enum(["off", "final", "streaming"]) }),
+  z.object({ key: z.literal("showCacheMissNotices"), value: z.boolean() }),
+  z.object({ key: z.literal("collapseChangelog"), value: z.boolean() }),
+  z.object({ key: z.literal("quietStartup"), value: z.boolean() }),
+  z.object({ key: z.literal("enableInstallTelemetry"), value: z.boolean() }),
+  z.object({ key: z.literal("defaultProjectTrust"), value: z.enum(["ask", "always", "never"]) }),
+  z.object({ key: z.literal("doubleEscapeAction"), value: z.enum(["fork", "tree", "none"]) }),
+  z.object({ key: z.literal("treeFilterMode"), value: z.enum(["default", "no-tools", "user-only", "labeled-only", "all"]) }),
+  z.object({ key: z.literal("anthropicExtraUsageWarning"), value: z.boolean() })
+]);
+
 export const fileSuggestionSchema = z.object({
   value: z.string().min(1).max(4_096),
   label: z.string().min(1).max(512),
@@ -40,6 +82,7 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
     ...partBase,
     kind: z.literal("text"),
     role: z.enum(["user", "assistant"]),
+    entryId: z.string().min(1).max(256).optional(),
     text: boundedText,
     status: z.enum(["streaming", "complete", "error"])
   }),
@@ -89,6 +132,8 @@ export const modelOptionSchema = z.object({
   reasoning: z.boolean(),
   input: z.array(z.enum(["text", "image"])).max(2),
   authenticated: z.boolean(),
+  authSource: z.enum(["stored", "runtime", "environment", "fallback", "models_json_key", "models_json_command"]).optional(),
+  authLabel: z.string().max(512).optional(),
   authTypes: z.array(z.enum(["api_key", "oauth"])).max(2)
 });
 
@@ -152,6 +197,17 @@ export const changedFileSchema = z.object({
   additions: z.number().int().nonnegative(),
   deletions: z.number().int().nonnegative(),
   diff: boundedText
+});
+
+export const sessionChangeSchema = z.object({
+  id: z.string().min(1).max(256),
+  toolCallId: z.string().min(1).max(256),
+  toolName: z.string().min(1).max(256).optional(),
+  path: z.string().max(8_192),
+  additions: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+  diff: boundedText,
+  timestamp: z.string().datetime()
 });
 
 export const resourceScopeSchema = z.enum(["user", "project", "temporary"]);
@@ -254,6 +310,7 @@ export const sessionSnapshotSchema = z.object({
   models: z.array(modelOptionSchema).max(5_000),
   thinkingLevel: thinkingLevelSchema,
   availableThinkingLevels: z.array(thinkingLevelSchema).max(7),
+  piSettings: piSettingsSchema.optional(),
   streaming: z.boolean(),
   diagnostics: z.array(z.string().max(4_096)).max(1_000),
   commands: z.array(slashCommandSchema).max(20_000),
@@ -261,7 +318,8 @@ export const sessionSnapshotSchema = z.object({
   compatibility: compatibilityCatalogSchema.default({ resources: [], diagnostics: [] }),
   extensionUi: extensionUiStateSchema.default({ statuses: [], widgets: [] }),
   sessions: z.array(sessionSummarySchema).max(10_000).default([]),
-  tree: z.array(sessionTreeNodeSchema).max(50_000).default([])
+  tree: z.array(sessionTreeNodeSchema).max(50_000).default([]),
+  sessionChanges: z.array(sessionChangeSchema).max(20_000).optional()
   ,artifacts: z.array(artifactRecordSchema).max(10_000).optional()
 });
 
@@ -303,12 +361,15 @@ export type Attachment = z.infer<typeof attachmentSchema>;
 export type UiPart = z.infer<typeof uiPartSchema>;
 export type ModelOption = z.infer<typeof modelOptionSchema>;
 export type ThinkingLevel = z.infer<typeof thinkingLevelSchema>;
+export type PiSettings = z.infer<typeof piSettingsSchema>;
+export type PiSettingUpdate = z.infer<typeof piSettingUpdateSchema>;
 export type SessionSnapshot = z.infer<typeof sessionSnapshotSchema>;
 export type SessionPreview = z.infer<typeof sessionPreviewSchema>;
 export type SessionSummary = z.infer<typeof sessionSummarySchema>;
 export type GlobalSessionSummary = z.infer<typeof globalSessionSummarySchema>;
 export type SessionTreeNode = z.infer<typeof sessionTreeNodeSchema>;
 export type ChangedFile = z.infer<typeof changedFileSchema>;
+export type SessionChange = z.infer<typeof sessionChangeSchema>;
 export type CompatibilityResource = z.infer<typeof compatibilityResourceSchema>;
 export type ResourceDiagnostic = z.infer<typeof resourceDiagnosticSchema>;
 export type CompatibilityCatalog = z.infer<typeof compatibilityCatalogSchema>;

@@ -15,9 +15,10 @@ import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/
 import { Reasoning } from "@/components/ai-elements/reasoning";
 import { Source } from "@/components/ai-elements/source";
 import { Tool } from "@/components/ai-elements/tool";
-import { DiffView, diffStats } from "@/components/ai-elements/diff-view";
+import { diffStats } from "@/components/ai-elements/diff-view";
 import { Button } from "@/components/ui/button";
 import { ArtifactHost, downloadArtifactMarkdown } from "@/components/artifact-host";
+import { ChangeExplorer } from "@/components/change-explorer";
 import { ModelCombobox } from "@/components/model-combobox";
 import { SessionTree } from "@/components/session-tree";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
@@ -41,10 +42,14 @@ const SidebarIcon = () => <Icon><rect x="3.5" y="4" width="17" height="16" rx="3
 const ChevronIcon = () => <Icon size={13}><path d="m8 10 4 4 4-4" /></Icon>;
 const MoreIcon = () => <Icon><circle cx="5" cy="12" r=".7" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r=".7" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r=".7" fill="currentColor" stroke="none" /></Icon>;
 const SettingsIcon = () => <Icon><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06-2.83 2.83-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21h-4v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06-2.83-2.83.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3v-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06 2.83-2.83.06.06A1.65 1.65 0 0 0 9 4.68h.08a1.65 1.65 0 0 0 1-1.51V3h4v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06 2.83 2.83-.06.06A1.65 1.65 0 0 0 19.32 9v.08a1.65 1.65 0 0 0 1.51 1H21v4h-.09A1.65 1.65 0 0 0 19.4 15z" /></Icon>;
+const CopyIcon = () => <Icon size={15}><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></Icon>;
+const ForkIcon = () => <Icon size={15}><circle cx="6" cy="5" r="2" /><circle cx="18" cy="5" r="2" /><circle cx="12" cy="19" r="2" /><path d="M6 7v2a4 4 0 0 0 4 4h2M18 7v2a4 4 0 0 1-4 4h-2v4" /></Icon>;
+const CheckIcon = () => <Icon size={15}><path d="m5 12 4 4L19 6" /></Icon>;
+const ChangesIcon = () => <Icon size={15}><path d="M4 7h10M4 17h10M17 4v6M14 7l3 3 3-3M17 14v6M14 17l3 3 3-3" /></Icon>;
 
 function CommandPane({ store }: { store: WindowStore }) {
   if (!store.commandPane || !store.session) return null;
-  const title = store.commandPane === "tree" ? "Session tree" : store.commandPane === "changes" ? "Changed files" : "Pi resources";
+  const title = store.commandPane === "tree" ? "Session tree" : store.commandPane === "changelog" ? "Pi changelog" : "Pi resources";
   const resourceGroups = store.commandPane === "resources"
     ? (["extension", "skill", "prompt", "package"] as CompatibilityResource["kind"][]).map((kind) => ({ kind, resources: store.session!.compatibility.resources.filter((item) => item.kind === kind) }))
     : [];
@@ -52,29 +57,55 @@ function CommandPane({ store }: { store: WindowStore }) {
     ? [...new Map([...store.session.compatibility.diagnostics, ...store.compatibilityDiagnostics].map((item) => [item.id, item])).values()]
     : [];
   return (
-    <div className="command-pane-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) store.closeCommandPane(); }}>
-      <section className="command-pane secondary-surface" role="dialog" aria-modal="true" aria-labelledby="command-pane-title">
-        <header><div><h2 id="command-pane-title">{title}</h2>{store.commandPane === "tree" && <span>Navigate or fork without rewriting Pi history</span>}</div><div>{store.commandPane === "changes" && <Button variant="outline" size="sm" onClick={() => void store.refreshChanges()}>Refresh</Button>}<Button variant="ghost" size="sm" aria-label={`Close ${title}`} onClick={() => store.closeCommandPane()}>Close</Button></div></header>
+    <aside className="command-pane secondary-surface" aria-labelledby="command-pane-title">
+        <header><div><h2 id="command-pane-title">{title}</h2>{store.commandPane === "tree" && <span>Navigate or fork without rewriting Pi history</span>}{store.commandPane === "changelog" && <span>Version history for this agent runtime</span>}</div><div><Button variant="ghost" size="sm" aria-label={`Close ${title}`} onClick={() => store.closeCommandPane()}>Close</Button></div></header>
         {store.commandPane === "tree"
           ? store.session.tree.length > 0 ? <SessionTree nodes={store.session.tree} onNavigate={(id) => void store.navigateTo(id)} onFork={(id) => void store.forkAt(id)} /> : <p>This session has no branches yet.</p>
-          : store.commandPane === "changes"
-            ? store.changesLoading ? <p>Loading changes…</p> : store.changedFiles.length === 0 ? <p>No changed files.</p> : store.changedFiles.map((file) => <details key={`${file.staged}-${file.path}`}><summary><code>{file.status}</code> {file.path}<span>+{file.additions} −{file.deletions}</span></summary>{file.diff ? <DiffView diff={file.diff} filePath={file.path} label={file.staged ? "Staged changes" : "Working tree changes"} /> : <p>Diff unavailable for this file.</p>}</details>)
+          : store.commandPane === "changelog"
+            ? store.changelogLoading ? <p>Loading changelog…</p> : <Markdown className="pi-changelog">{store.changelogMarkdown || "No changelog entries found."}</Markdown>
             : <div className="resource-catalog">{diagnostics.length > 0 && <section className="resource-diagnostics"><h3>Diagnostics</h3>{diagnostics.map((item) => <div key={item.id} className={`notice notice-${item.severity}`}><strong>{item.method ?? item.source}</strong><span>{item.message}{item.path ? `\n${item.path}` : ""}</span></div>)}</section>}{resourceGroups.map((group) => <section key={group.kind}><h3>{group.kind[0]!.toUpperCase() + group.kind.slice(1)}s <span>{group.resources.length}</span></h3>{group.resources.length === 0 ? <p>None discovered.</p> : group.resources.map((resource) => <article key={resource.id}><div><strong>{resource.name}</strong><small>{resource.scope} · {resource.origin}</small></div>{resource.description && <p>{resource.description}</p>}{resource.commands.length > 0 && <p><b>Commands</b> {resource.commands.map((command) => `/${command}`).join(", ")}</p>}{resource.tools.length > 0 && <p><b>Tools</b> {resource.tools.join(", ")}</p>}<code title={resource.path}>{resource.source}</code></article>)}</section>)}</div>}
-      </section>
-    </div>
+    </aside>
+  );
+}
+
+function AssistantTextMessage({ part, store }: { part: Extract<UiPart, { kind: "text" }>; store: WindowStore }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timeout = window.setTimeout(() => setCopied(false), 1_500);
+    return () => window.clearTimeout(timeout);
+  }, [copied]);
+
+  const copy = async () => {
+    await navigator.clipboard.writeText(part.text);
+    setCopied(true);
+  };
+
+  return (
+    <Message className="assistant-message mr-auto w-full">
+      <div className="assistant-message-heading">
+        <MessageLabel>{part.status === "streaming" ? "Cake · working" : "Cake"}</MessageLabel>
+        {part.status !== "streaming" && <div className="assistant-message-actions" aria-label="Message actions">
+          <button type="button" aria-label={copied ? "Copied response" : "Copy response"} title={copied ? "Copied" : "Copy response"} onClick={() => void copy()}>{copied ? <CheckIcon /> : <CopyIcon />}</button>
+          {part.entryId && <button type="button" aria-label="Fork from response" title="Fork from response" onClick={() => void store.forkAt(part.entryId!)}><ForkIcon /></button>}
+        </div>}
+      </div>
+      <MessageContent><Markdown streaming={part.status === "streaming"}>{part.text}</Markdown></MessageContent>
+    </Message>
   );
 }
 
 function TranscriptPart({ part, store }: { part: UiPart; store: WindowStore }) {
   if (part.kind === "text") {
+    if (part.role === "assistant") return <AssistantTextMessage part={part} store={store} />;
     return (
-      <Message className={part.role === "user" ? "ml-auto w-[min(88%,42rem)]" : "mr-auto w-full"}>
-        <MessageLabel>{part.role === "user" ? "You" : part.status === "streaming" ? "Cake · working" : "Cake"}</MessageLabel>
-        <MessageContent className={part.role === "user" ? "user-message" : undefined}><Markdown>{part.text}</Markdown></MessageContent>
+      <Message className="ml-auto w-[min(88%,42rem)]">
+        <MessageLabel>You</MessageLabel>
+        <MessageContent className="user-message"><Markdown streaming={part.status === "streaming"}>{part.text}</Markdown></MessageContent>
       </Message>
     );
   }
-  if (part.kind === "reasoning") return <Reasoning open={store.thinkingExpanded} onToggle={() => store.toggleThinking()} streaming={part.status === "streaming"}><Markdown>{part.text}</Markdown></Reasoning>;
+  if (part.kind === "reasoning") return <Reasoning open={store.thinkingExpanded} onToggle={() => store.toggleThinking()} streaming={part.status === "streaming"}><Markdown streaming={part.status === "streaming"}>{part.text}</Markdown></Reasoning>;
   if (part.kind === "tool") return <Tool part={part} />;
   if (part.kind === "source") return <Source title={part.title} url={part.url} />;
   if (part.kind === "attachment") return <div className="w-fit rounded-full border border-border px-3 py-1 font-mono text-[0.68rem]">{part.attachmentKind} · {part.name}</div>;
@@ -103,14 +134,19 @@ function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
 }
 
 function ActivityGroup({ parts, store }: { parts: UiPart[]; store: WindowStore }) {
+  const logRef = useRef<HTMLDivElement>(null);
   const tools = parts.filter((part) => part.kind === "tool").length;
   const editParts = parts.filter((part): part is Extract<UiPart, { kind: "tool" }> => part.kind === "tool" && part.name === "edit" && Boolean(part.diff));
   const editTotals = editParts.reduce((total, part) => { const stats = diffStats(part.diff!); return { additions: total.additions + stats.additions, deletions: total.deletions + stats.deletions }; }, { additions: 0, deletions: 0 });
   const label = editParts.length > 0 ? `${editParts.length} ${editParts.length === 1 ? "edit" : "edits"} · +${editTotals.additions} −${editTotals.deletions}` : tools === 0 ? "Reasoning" : `${tools} tool ${tools === 1 ? "call" : "calls"}`;
+  useLayoutEffect(() => {
+    if (!store.isStreaming || !logRef.current) return;
+    logRef.current.scrollTop = logRef.current.scrollHeight;
+  });
   return (
     <details className="activity-group" open={store.isStreaming || undefined}>
       <summary><span className={store.isStreaming ? "activity-pulse" : ""} />Work log <small>{label}</small></summary>
-      <div>{parts.map((part) => <TranscriptPart key={part.id} part={part} store={store} />)}</div>
+      <div ref={logRef}>{parts.map((part) => <TranscriptPart key={part.id} part={part} store={store} />)}</div>
     </details>
   );
 }
@@ -132,7 +168,7 @@ const TranscriptList = forwardRef<HTMLDivElement, ComponentProps<"div">>(functio
 export const Transcript = observer(function Transcript({ store, sessionId }: { store: WindowStore; sessionId: string }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const items: TranscriptItem[] = [
-    ...groupTranscriptParts(store.parts),
+    ...groupTranscriptParts(store.visibleParts),
     ...(store.isStreaming ? [{ kind: "assistant-loading" as const, id: "assistant-loading" }] : [])
   ];
   const latestUserPartId = store.parts.findLast((part) => part.kind === "text" && part.role === "user")?.id;
@@ -155,7 +191,7 @@ export const Transcript = observer(function Transcript({ store, sessionId }: { s
     return () => cancelAnimationFrame(frame);
   }, [latestUserPartId, scrollToLatest]);
 
-  if (store.parts.length === 0) {
+  if (store.visibleParts.length === 0) {
     return (
       <div className="transcript transcript-empty">
         <Conversation><div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>{store.isStreaming && <AssistantLoadingIndicator />}<ArtifactsPanel store={store} />{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</Conversation>
@@ -206,8 +242,9 @@ function UiDialog({ request, store }: { request: UiRequestState; store: WindowSt
   );
 }
 
-const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, onToggle, settingsOpen }: { store: WindowStore; onOpenSettings: () => void; onOpenChat: () => void; onToggle: () => void; settingsOpen: boolean }) {
+export const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, onToggle, settingsOpen }: { store: WindowStore; onOpenSettings: () => void; onOpenChat: () => void; onToggle: () => void; settingsOpen: boolean }) {
   const [searchExpanded, setSearchExpanded] = useState(Boolean(store.sessionSearch));
+  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() => new Set());
   const searchInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (store.sessionSearch) setSearchExpanded(true);
@@ -230,6 +267,14 @@ const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, o
     const name = window.prompt("Session name", title);
     if (name) void store.renameSession(workspacePath, sessionId, name);
   };
+  const toggleProject = (path: string) => {
+    setCollapsedProjects((current) => {
+      const next = new Set(current);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
   const activityIndicator = (workspacePath: string, sessionId: string) => {
     const activity = store.sessionActivity(workspacePath, sessionId);
     if (!activity) return null;
@@ -239,7 +284,7 @@ const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, o
   return (
     <aside className="sidebar">
       <div className="sidebar-window-tools"><button aria-label="Toggle sidebar" onClick={onToggle}><SidebarIcon /></button><button aria-label="Back" disabled><BackIcon /></button><button aria-label="Forward" disabled><ForwardIcon /></button></div>
-      <div className="sidebar-brand"><div className="brand-menu"><span>Cake</span><ChevronIcon /></div><div className="brand-actions"><button className={searchExpanded ? "active" : ""} aria-label={searchExpanded ? "Close session search" : "Search sessions"} aria-expanded={searchExpanded} onClick={() => searchExpanded ? closeSearch() : setSearchExpanded(true)}>{searchExpanded ? <CloseIcon /> : <SearchIcon />}</button><span role="status" aria-label={`Pi ${store.piState}`} className={`runtime-indicator status-${store.piState}`} title={`Pi ${store.piState}`} /></div></div>
+      <div className="sidebar-brand"><div className="brand-menu"><span>Cake</span><ChevronIcon /></div><div className="brand-actions"><button className={searchExpanded ? "active" : ""} aria-label={searchExpanded ? "Close session search" : "Search sessions"} aria-expanded={searchExpanded} onClick={() => searchExpanded ? closeSearch() : setSearchExpanded(true)}>{searchExpanded ? <CloseIcon /> : <SearchIcon />}</button></div></div>
       <div className="sidebar-scroll">
         <button className="new-chat" onClick={() => navigateToChat(() => store.startOneOffChat())}><ChatIcon /><span>New chat</span></button>
         <div className={`session-filter global-session-filter ${searchExpanded ? "expanded" : ""}`} aria-hidden={!searchExpanded}><input ref={searchInput} aria-label="Search sessions" placeholder="Search all sessions" value={store.sessionSearch} disabled={!searchExpanded} onChange={(event) => store.setSessionSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") closeSearch(); }} /></div>
@@ -249,17 +294,18 @@ const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, o
         <div className="section-heading projects-heading"><span>Projects</span><div><span className="project-options" aria-hidden="true"><MoreIcon /></span><button aria-label="Add project" onClick={() => navigateToChat(() => store.chooseProject())}><PlusIcon /></button></div></div>
         {store.recentProjectPaths.length === 0 ? <p className="sidebar-empty">Add a folder to start a project.</p> : store.recentProjectPaths.map((path) => {
           const active = path === store.projectPath;
+          const collapsed = collapsedProjects.has(path);
           const sessions = store.projectSessions(path);
           const visibleSessions = sessions.slice(0, store.sessionLimit(path));
           return <div className="project-group" key={path}>
-            <div className="project-row" title={path}><div className="project-label"><FolderIcon /><span>{store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}</span></div><button className="project-add" aria-label={`New chat in ${store.nameFromPath(path)}`} onClick={() => { if (active) navigateToChat(() => store.startNewSession()); else navigateToChat(async () => { await store.switchProject(path); await store.startNewSession(); }); }}><PlusIcon /></button></div>
-            {!store.sessionSearch.trim() && visibleSessions.map((session) => <div key={session.id} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && path === store.projectPath ? "active" : ""}`}><button className="session-row" aria-current={session.id === store.session?.sessionId && path === store.projectPath ? "page" : undefined} onClick={() => navigateToChat(() => store.openSession(path, session.id))} onContextMenu={(event) => renameSession(event, path, session.id, session.title)}><span>{session.title}</span>{activityIndicator(path, session.id)}</button></div>)}
-            {!store.sessionSearch.trim() && sessions.length > visibleSessions.length && <button className="session-more" onClick={() => store.showMoreSessions(path)}>Show more</button>}
+            <div className="project-row" title={path}><button className="project-label" type="button" aria-expanded={!collapsed} aria-label={`${collapsed ? "Expand" : "Collapse"} ${store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}`} onClick={() => toggleProject(path)}><span className={`project-disclosure ${collapsed ? "collapsed" : ""}`}><ChevronIcon /></span><FolderIcon /><span>{store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}</span></button><button className="project-add" aria-label={`New chat in ${store.nameFromPath(path)}`} onClick={() => { if (active) navigateToChat(() => store.startNewSession()); else navigateToChat(async () => { await store.switchProject(path); await store.startNewSession(); }); }}><PlusIcon /></button></div>
+            {!collapsed && !store.sessionSearch.trim() && visibleSessions.map((session) => <div key={session.id} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && path === store.projectPath ? "active" : ""}`}><button className="session-row" aria-current={session.id === store.session?.sessionId && path === store.projectPath ? "page" : undefined} onClick={() => navigateToChat(() => store.openSession(path, session.id))} onContextMenu={(event) => renameSession(event, path, session.id, session.title)}><span>{session.title}</span>{activityIndicator(path, session.id)}</button></div>)}
+            {!collapsed && !store.sessionSearch.trim() && sessions.length > visibleSessions.length && <button className="session-more" onClick={() => store.showMoreSessions(path)}>Show more</button>}
           </div>;
         })}
       </div>
       <div className="sidebar-footer">
-        <button className={settingsOpen ? "sidebar-settings active" : "sidebar-settings"} type="button" aria-label="Open Cake settings" aria-current={settingsOpen ? "page" : undefined} onClick={onOpenSettings}><span className="profile-mark">C</span><span>Cake settings</span></button><button className={settingsOpen ? "sidebar-settings-icon active" : "sidebar-settings-icon"} type="button" aria-label="Open settings" aria-current={settingsOpen ? "page" : undefined} onClick={onOpenSettings}><SettingsIcon /></button>
+        <button className={settingsOpen ? "sidebar-settings-icon active" : "sidebar-settings-icon"} type="button" aria-label="Open settings" aria-current={settingsOpen ? "page" : undefined} onClick={onOpenSettings}><SettingsIcon /></button>
       </div>
     </aside>
   );
@@ -283,7 +329,7 @@ const ComposerPanel = observer(function ComposerPanel({ store }: { store: Window
         <ComposerToolbar className="composer-toolbar">
           <div className="composer-context">
             <button type="button" className="icon-button" aria-label="Attach files" title="Attach files" onClick={() => void store.addAttachments()}><PaperclipIcon /></button>
-            <ModelCombobox ariaLabel="Model" groups={store.modelsByProvider} value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onSelect={(value) => void store.selectModel(value)} />
+            <ModelCombobox ariaLabel="Model" groups={store.connectedModelsByProvider} value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onSelect={(value) => void store.selectModel(value)} />
             <select aria-label="Thinking level" value={store.session?.thinkingLevel} onChange={(event) => void store.selectThinkingLevel(event.target.value as NonNullable<typeof store.session>["thinkingLevel"])}>{store.session?.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "No reasoning" : `${level.charAt(0).toUpperCase()}${level.slice(1)} reasoning`}</option>)}</select>
           </div>
           <div className="composer-actions">
@@ -299,32 +345,91 @@ const ComposerPanel = observer(function ComposerPanel({ store }: { store: Window
   );
 });
 
+function SettingsToggle({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange(checked: boolean): void }) {
+  return <div className="settings-field"><span>{label}<small>{description}</small></span><button className="settings-switch" type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)}><i /></button></div>;
+}
+
 export const SettingsPage = observer(function SettingsPage({ store }: { store: WindowStore }) {
   const selectedModel = store.session?.model;
+  const pi = store.session?.piSettings;
+  const authNotice = store.parts.find((part) => part.kind === "notice" && part.id === "auth-status");
   return (
     <div className="settings-page">
       <div className="settings-intro">
         <span className="settings-kicker">Cake / Pi</span>
         <h1>Settings</h1>
-        <p>Choose how Pi works in this chat and manage the providers it can use.</p>
+        <p>Configure the same Pi runtime used by the CLI. These preferences are saved by Pi and follow you across projects.</p>
       </div>
       {store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}
+      {authNotice?.kind === "notice" && <div className={`notice notice-${authNotice.tone}`} role="status"><strong>{authNotice.title}</strong><span>{authNotice.detail}</span></div>}
 
       <section className="settings-section" aria-labelledby="pi-settings-title">
-        <header><div><h2 id="pi-settings-title">Pi</h2><p>Model and reasoning changes apply to the current chat.</p></div><span className={`settings-runtime status-${store.piState}`}><i />{store.piState}</span></header>
+        <header><div><h2 id="pi-settings-title">Current chat</h2><p>Model and reasoning changes apply to this chat and become Pi’s defaults.</p></div><span className={`settings-runtime status-${store.piState}`}><i />{store.piState}</span></header>
         {store.session ? <div className="settings-fields">
-          <div className="settings-field"><span>Model<small>The model Pi uses for its next response.</small></span><ModelCombobox ariaLabel="Settings model" groups={store.modelsByProvider} value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onSelect={(value) => void store.selectModel(value)} variant="settings" /></div>
+          <div className="settings-field"><span>Model<small>The model Pi uses for its next response.</small></span><ModelCombobox ariaLabel="Settings model" groups={store.connectedModelsByProvider} value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onSelect={(value) => void store.selectModel(value)} variant="settings" /></div>
           <label><span>Reasoning<small>Controls how much time Pi spends thinking.</small></span><select aria-label="Settings thinking level" value={store.session.thinkingLevel} onChange={(event) => void store.selectThinkingLevel(event.target.value as NonNullable<typeof store.session>["thinkingLevel"])}>{store.session.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "Off" : level.charAt(0).toUpperCase() + level.slice(1)}</option>)}</select></label>
         </div> : <p className="settings-empty">Open a project or start a one-off chat to choose a model and reasoning level.</p>}
+      </section>
+
+      <section className="settings-section" aria-labelledby="behavior-title">
+        <header><div><h2 id="behavior-title">Agent behavior</h2><p>Context, reasoning display, and queued message delivery.</p></div><span className="settings-source">Pi global</span></header>
+        {pi ? <div className="settings-fields">
+          <SettingsToggle label="Auto-compact" description="Compact context automatically when it gets too large." checked={pi.autoCompact} onChange={(value) => void store.setPiSetting({ key: "autoCompact", value })} />
+          <SettingsToggle label="Hide thinking" description="Hide reasoning blocks in assistant responses." checked={pi.hideThinkingBlock} onChange={(value) => void store.setPiSetting({ key: "hideThinkingBlock", value })} />
+          <label><span>Steering mode<small>How steering messages are delivered while Pi is working.</small></span><select aria-label="Steering mode" value={pi.steeringMode} onChange={(event) => void store.setPiSetting({ key: "steeringMode", value: event.target.value as typeof pi.steeringMode })}><option value="one-at-a-time">One at a time</option><option value="all">All at once</option></select></label>
+          <label><span>Follow-up mode<small>How queued follow-ups are delivered after Pi stops.</small></span><select aria-label="Follow-up mode" value={pi.followUpMode} onChange={(event) => void store.setPiSetting({ key: "followUpMode", value: event.target.value as typeof pi.followUpMode })}><option value="one-at-a-time">One at a time</option><option value="all">All at once</option></select></label>
+        </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
+      </section>
+
+      <section className="settings-section" aria-labelledby="content-title">
+        <header><div><h2 id="content-title">Content & resources</h2><p>Control images, skills, diagrams, and transcript diagnostics.</p></div></header>
+        {pi ? <div className="settings-fields">
+          <SettingsToggle label="Auto-resize images" description="Resize large images for better model compatibility." checked={pi.autoResizeImages} onChange={(value) => void store.setPiSetting({ key: "autoResizeImages", value })} />
+          <SettingsToggle label="Block images" description="Prevent images from being sent to model providers." checked={pi.blockImages} onChange={(value) => void store.setPiSetting({ key: "blockImages", value })} />
+          <SettingsToggle label="Skill commands" description="Register discovered skills as /skill:name commands." checked={pi.enableSkillCommands} onChange={(value) => void store.setPiSetting({ key: "enableSkillCommands", value })} />
+          <label><span>Mermaid diagrams<small>Choose when Pi renders Mermaid code blocks as diagrams.</small></span><select aria-label="Mermaid rendering" value={pi.mermaidRenderingMode} onChange={(event) => void store.setPiSetting({ key: "mermaidRenderingMode", value: event.target.value as typeof pi.mermaidRenderingMode })}><option value="off">Off</option><option value="final">Final responses</option><option value="streaming">While streaming</option></select></label>
+          <SettingsToggle label="Cache miss notices" description="Show notices for significant prompt-cache misses." checked={pi.showCacheMissNotices} onChange={(value) => void store.setPiSetting({ key: "showCacheMissNotices", value })} />
+        </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
+      </section>
+
+      <section className="settings-section" aria-labelledby="network-title">
+        <header><div><h2 id="network-title">Network</h2><p>Choose Pi’s provider transport and idle timeout.</p></div></header>
+        {pi ? <div className="settings-fields">
+          <label><span>Transport<small>Preferred transport when a provider supports more than one.</small></span><select aria-label="Provider transport" value={pi.transport} onChange={(event) => void store.setPiSetting({ key: "transport", value: event.target.value as typeof pi.transport })}><option value="auto">Automatic</option><option value="sse">SSE</option><option value="websocket">WebSocket</option><option value="websocket-cached">WebSocket cached</option></select></label>
+          <label><span>HTTP idle timeout<small>Maximum pause while Pi waits for HTTP data.</small></span><select aria-label="HTTP idle timeout" value={pi.httpIdleTimeoutMs} onChange={(event) => void store.setPiSetting({ key: "httpIdleTimeoutMs", value: Number(event.target.value) })}><option value={30_000}>30 seconds</option><option value={60_000}>1 minute</option><option value={120_000}>2 minutes</option><option value={300_000}>5 minutes</option><option value={0}>Disabled</option></select></label>
+        </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
+      </section>
+
+      <section className="settings-section" aria-labelledby="safety-title">
+        <header><div><h2 id="safety-title">Safety & privacy</h2><p>Trust defaults, warnings, and Pi’s optional update telemetry.</p></div></header>
+        {pi ? <div className="settings-fields">
+          <label><span>Default project trust<small>Fallback when no saved trust decision applies.</small></span><select aria-label="Default project trust" value={pi.defaultProjectTrust} onChange={(event) => void store.setPiSetting({ key: "defaultProjectTrust", value: event.target.value as typeof pi.defaultProjectTrust })}><option value="ask">Ask</option><option value="always">Always trust</option><option value="never">Never trust</option></select></label>
+          <SettingsToggle label="Anthropic extra usage warning" description="Warn when subscription authentication may use paid extra usage." checked={pi.anthropicExtraUsageWarning} onChange={(value) => void store.setPiSetting({ key: "anthropicExtraUsageWarning", value })} />
+          <SettingsToggle label="Install telemetry" description="Send Pi’s anonymous version/update ping after detected updates." checked={pi.enableInstallTelemetry} onChange={(value) => void store.setPiSetting({ key: "enableInstallTelemetry", value })} />
+        </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
+      </section>
+
+      <section className="settings-section" aria-labelledby="cli-title">
+        <header><div><h2 id="cli-title">Pi CLI</h2><p>Preferences shared with Pi’s terminal interface.</p></div></header>
+        {pi ? <div className="settings-fields">
+          <label><span>Double-escape action<small>Action Pi takes when Escape is pressed twice in an empty editor.</small></span><select aria-label="Double escape action" value={pi.doubleEscapeAction} onChange={(event) => void store.setPiSetting({ key: "doubleEscapeAction", value: event.target.value as typeof pi.doubleEscapeAction })}><option value="tree">Open tree</option><option value="fork">Fork</option><option value="none">None</option></select></label>
+          <label><span>Tree filter mode<small>Default filter used when Pi opens /tree.</small></span><select aria-label="Tree filter mode" value={pi.treeFilterMode} onChange={(event) => void store.setPiSetting({ key: "treeFilterMode", value: event.target.value as typeof pi.treeFilterMode })}><option value="default">Default</option><option value="no-tools">Hide tools</option><option value="user-only">User messages only</option><option value="labeled-only">Labeled only</option><option value="all">All entries</option></select></label>
+          <SettingsToggle label="Quiet startup" description="Disable Pi CLI’s verbose startup output." checked={pi.quietStartup} onChange={(value) => void store.setPiSetting({ key: "quietStartup", value })} />
+          <SettingsToggle label="Collapse changelog" description="Show a condensed changelog after Pi updates." checked={pi.collapseChangelog} onChange={(value) => void store.setPiSetting({ key: "collapseChangelog", value })} />
+        </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
       </section>
 
       <section className="settings-section" aria-labelledby="providers-title">
         <header><div><h2 id="providers-title">Providers</h2><p>Connect the accounts and API keys that make models available to Pi.</p></div></header>
         {store.modelsByProvider.length === 0 ? <p className="settings-empty">Provider details will appear after a chat is open.</p> : <div className="provider-list">{store.modelsByProvider.map((provider) => {
           const authenticated = provider.models.some((model) => model.authenticated);
+          const authenticatedModel = provider.models.find((model) => model.authenticated);
+          const authSource = authenticatedModel?.authSource;
+          const externallyManaged = Boolean(authenticated && authSource && authSource !== "stored" && authSource !== "runtime");
+          const connectionLabel = authenticatedModel?.authLabel ?? (authSource === "environment" ? "environment" : undefined);
           const authTypes = [...new Set(provider.models.flatMap((model) => model.authTypes))];
           const operation = store.providerOperation(provider.id);
-          return <article className="provider-row" key={provider.id}><div className="provider-identity"><span className="provider-monogram">{provider.name.slice(0, 1).toUpperCase()}</span><span><strong>{provider.name}</strong><small>{provider.models.length} {provider.models.length === 1 ? "model" : "models"}</small></span></div><span className={authenticated ? "provider-state connected" : "provider-state"}><i />{operation === "login" ? "Connecting…" : operation === "logout" ? "Disconnecting…" : authenticated ? "Connected" : "Not connected"}</span><div className="provider-actions">{authenticated ? <Button variant="outline" size="sm" type="button" disabled={Boolean(operation)} onClick={() => void store.logout(provider.id)}>{operation === "logout" ? "Disconnecting…" : "Disconnect"}</Button> : authTypes.map((authType) => <Button key={authType} variant={authType === "oauth" ? "default" : "outline"} size="sm" type="button" disabled={Boolean(operation)} onClick={() => void store.authenticate(provider.id, authType)}>{operation === "login" ? "Connecting…" : authType === "oauth" ? "Connect" : "Add API key"}</Button>)}</div></article>;
+          return <article className="provider-row" key={provider.id}><div className="provider-identity"><span className="provider-monogram">{provider.name.slice(0, 1).toUpperCase()}</span><span><strong>{provider.name}</strong><small>{provider.models.length} {provider.models.length === 1 ? "model" : "models"}</small></span></div><span className={authenticated ? "provider-state connected" : "provider-state"}><i />{operation === "login" ? "Connecting…" : operation === "logout" ? "Disconnecting…" : authenticated ? `Connected${connectionLabel ? ` · ${connectionLabel}` : ""}` : "Not connected"}</span><div className="provider-actions">{authenticated ? externallyManaged ? <small className="provider-managed" title="Remove this credential from its environment or configuration source, then restart Cake.">Remove externally, then restart</small> : <Button variant="outline" size="sm" type="button" disabled={Boolean(operation)} onClick={() => void store.logout(provider.id)}>{operation === "logout" ? "Disconnecting…" : "Disconnect"}</Button> : authTypes.map((authType) => <Button key={authType} variant={authType === "oauth" ? "default" : "outline"} size="sm" type="button" disabled={Boolean(operation)} onClick={() => void store.authenticate(provider.id, authType)}>{operation === "login" ? "Connecting…" : authType === "oauth" ? "Connect" : "Add API key"}</Button>)}</div></article>;
         })}</div>}
       </section>
 
@@ -348,20 +453,25 @@ export const App = observer(function App() {
     document.title = store.extensionTitle ? `${store.extensionTitle} · Cake` : "Cake";
   }, [store.extensionTitle]);
   useEffect(() => {
-    if (!store.commandPane) return;
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => { if (event.key === "Escape") store.closeCommandPane(); };
+    if (!store.commandPane && store.changeExplorerPath === undefined) return;
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (store.changeExplorerPath !== undefined) store.closeChangeExplorer();
+      else store.closeCommandPane();
+    };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [store, store.commandPane]);
+  }, [store, store.commandPane, store.changeExplorerPath]);
 
   if (!store.hydrated) return <main className="loading-screen"><span className="cake-mark">C</span><p>Restoring Cake…</p></main>;
+  if (store.changeExplorerPath !== undefined) return <ChangeExplorer store={store} />;
 
   return (
-    <main className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+    <main className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${store.commandPane ? "right-pane-open" : ""}`}>
       <Sidebar store={store} settingsOpen={page === "settings"} onToggle={() => setSidebarCollapsed((value) => !value)} onOpenSettings={() => setPage("settings")} onOpenChat={() => setPage("chat")} />
       <section className="workspace" data-session-id={store.session?.sessionId}>
         <button className={page === "settings" ? "workspace-settings-icon active" : "workspace-settings-icon"} type="button" aria-label="Open settings" aria-current={page === "settings" ? "page" : undefined} onClick={() => setPage("settings")}><SettingsIcon /></button>
-        <header className="workspace-header"><div><button className="header-sidebar-toggle" aria-label="Toggle sidebar" onClick={() => setSidebarCollapsed((value) => !value)}><SidebarIcon /></button>{page === "settings" && <button className="header-back" aria-label="Back to chat" onClick={() => setPage("chat")}><BackIcon /></button>}<strong>{page === "settings" ? "Settings" : store.extensionTitle ?? (store.session ? (store.session.sessions.find((item) => item.id === store.session?.sessionId)?.title || "New chat") : "Cake")}</strong>{page === "chat" && store.projectPath && <span>{store.projectPath}</span>}</div></header>
+        <header className="workspace-header"><div><button className="header-sidebar-toggle" aria-label="Toggle sidebar" onClick={() => setSidebarCollapsed((value) => !value)}><SidebarIcon /></button>{page === "settings" && <button className="header-back" aria-label="Back to chat" onClick={() => setPage("chat")}><BackIcon /></button>}<strong>{page === "settings" ? "Settings" : store.extensionTitle ?? (store.session ? (store.session.sessions.find((item) => item.id === store.session?.sessionId)?.title || "New chat") : "Cake")}</strong>{page === "chat" && store.projectPath && <span>{store.projectPath}</span>}</div>{page === "chat" && store.session && <button className="header-pane-toggle" type="button" aria-label="Open session changes" onClick={() => void store.openSessionChanges()}><ChangesIcon /><span>Changes</span>{store.sessionChanges.length > 0 && <b>{store.sessionChanges.length}</b>}</button>}</header>
         {page === "settings" ? <SettingsPage store={store} /> : !store.session ? (
           <div className="welcome"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build?</h1><p>Open a project for durable workspace chats, or start a one-off chat from your home directory.</p><div><Button size="lg" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.chooseProject()}><FolderIcon /> Open project</Button><Button size="lg" variant="outline" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.startOneOffChat()}><ChatIcon /> One-off chat</Button></div>{store.error && <p className="welcome-error" role="alert">{store.error}</p>}</div>
         ) : (

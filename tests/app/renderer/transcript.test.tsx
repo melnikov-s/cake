@@ -35,7 +35,7 @@ vi.mock("@/components/ai-elements/conversation", () => ({
 import { Transcript } from "../../../src/renderer/app";
 
 function storeWith(parts: UiPart[], isStreaming = false) {
-  return { parts, projectName: "Cake", error: undefined, thinkingExpanded: false, isStreaming, toggleThinking: vi.fn() } as unknown as WindowStore;
+  return { parts, visibleParts: parts, projectName: "Cake", error: undefined, thinkingExpanded: false, isStreaming, toggleThinking: vi.fn(), forkAt: vi.fn() } as unknown as WindowStore;
 }
 
 describe("Transcript scrolling", () => {
@@ -85,6 +85,19 @@ describe("Transcript scrolling", () => {
     expect(scrollToIndex).toHaveBeenCalledWith({ index: 1, align: "end", behavior: "auto" });
   });
 
+  it("keeps the streaming work log scrolled to its latest entry", () => {
+    const first: UiPart = { id: "reasoning-1", kind: "reasoning", text: "First thought", status: "streaming" };
+    const second: UiPart = { id: "tool-1", kind: "tool", name: "read", input: "file", state: "running" };
+
+    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([first], true)} />));
+    const log = container.querySelector<HTMLDivElement>(".activity-group > div")!;
+    Object.defineProperty(log, "scrollHeight", { configurable: true, value: 480 });
+
+    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([first, second], true)} />));
+
+    expect(log.scrollTop).toBe(480);
+  });
+
   it("updates a selected session without remounting the virtualized transcript", () => {
     const first: UiPart = { id: "assistant-1", kind: "text", role: "assistant", text: "First session", status: "complete" };
     const second: UiPart = { id: "assistant-2", kind: "text", role: "assistant", text: "Second session", status: "complete" };
@@ -109,5 +122,25 @@ describe("Transcript scrolling", () => {
 
     act(() => root.render(<Transcript sessionId="session-1" store={storeWith([{ ...assistant, status: "complete" }], false)} />));
     expect(container.querySelector(".assistant-loading")).toBeNull();
+  });
+
+  it("offers copy and fork actions on completed assistant messages only", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const parts: UiPart[] = [
+      { id: "user-1", kind: "text", role: "user", entryId: "user-entry", text: "Question", status: "complete" },
+      { id: "assistant-1", kind: "text", role: "assistant", entryId: "assistant-entry", text: "Answer", status: "complete" }
+    ];
+    const store = storeWith(parts);
+
+    act(() => root.render(<Transcript sessionId="session-1" store={store} />));
+
+    expect(container.querySelectorAll('[aria-label="Message actions"]')).toHaveLength(1);
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Copy response"]')!.click());
+    expect(writeText).toHaveBeenCalledWith("Answer");
+    expect(container.querySelector('[aria-label="Copied response"]')).not.toBeNull();
+
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Fork from response"]')!.click());
+    expect(store.forkAt).toHaveBeenCalledWith("assistant-entry");
   });
 });

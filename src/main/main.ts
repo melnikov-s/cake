@@ -1,7 +1,7 @@
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { homedir } from "node:os";
-import { app, BrowserWindow, dialog, ipcMain, type WebContents } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell, type WebContents } from "electron";
 import { desktopRequestSchema, desktopResponseSchema, type DesktopEvent } from "../ipc/desktop-ipc";
 import { windowViewStateSchema, type Attachment, type WindowViewState } from "../ipc/session-contract";
 import { listWorkspaceSessions, loadWorkspaceSessionPreview, suggestProjectFiles } from "../agent/pi-runtime";
@@ -92,7 +92,16 @@ function launchPi(path: string) {
     existing.driver[Symbol.dispose]();
     piHosts.delete(path);
   }
-  const driver = new PiWorkspaceDriver({ workspacePath: path, emit: broadcast, artifactRepository });
+  const driver = new PiWorkspaceDriver({
+    workspacePath: path,
+    emit: broadcast,
+    artifactRepository,
+    openExternal: async (url) => {
+      const protocol = new URL(url).protocol;
+      if (protocol !== "https:" && protocol !== "http:") throw new Error("Authentication URL must use HTTP or HTTPS");
+      await shell.openExternal(url);
+    }
+  });
   const host: PiHost = { path, driver, state: "starting" };
   piHosts.set(path, host);
   setPiState(host, "starting");

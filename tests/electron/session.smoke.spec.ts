@@ -23,7 +23,6 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByRole("status", { name: "Pi ready" })).toBeVisible();
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("button", { name: "New chat in project" })).toBeVisible();
     await expect(page.getByLabel("Model")).toBeVisible();
@@ -44,6 +43,9 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     })).toEqual({ sidebarRemoved: true, toggleClearsWindowControls: true, settingsOnWorkspace: true, settingsAboveComposer: true });
     await page.getByRole("button", { name: "Toggle sidebar" }).click();
     await page.locator(".sidebar").getByLabel("Open settings").click();
+    await expect(page.getByRole("switch", { name: "Auto-compact" })).toBeVisible();
+    await expect(page.getByLabel("Provider transport")).toHaveValue("auto");
+    await expect(page.getByLabel("Default project trust")).toHaveValue("ask");
     await expect(page.getByLabel("Color theme")).toHaveValue("system");
     await page.getByRole("button", { name: "New chat in project" }).click();
     await expect(page.getByLabel("Message")).toBeVisible();
@@ -97,8 +99,9 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(page.getByLabel("Message")).toHaveValue("Persist this draft");
     expect(page.isClosed()).toBe(false);
     await page.getByRole("button", { name: "Restart and reopen" }).click();
-    await expect(page.getByRole("status", { name: "Pi ready" })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/Pi runtime stopped/)).not.toBeVisible({ timeout: 20_000 });
     await expect(page.getByLabel("Message")).toHaveValue("Persist this draft", { timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

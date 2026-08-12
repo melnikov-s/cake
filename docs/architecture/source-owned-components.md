@@ -9,12 +9,13 @@ as application code. Registry packages are not runtime component authorities.
 | Cake component | Source | Revision | License | Cake changes |
 | --- | --- | --- | --- | --- |
 | `components/ai-elements/confirmation.tsx` | Vercel AI Elements `packages/elements/src/confirmation.tsx` | `0c1f5e8c75273f0e95c8faa031544a8aa2bb1a5b` | Apache-2.0 | Replaced `ToolUIPart` with Cake's `ConfirmationState`; removed AI SDK, Next.js, and upstream monorepo dependencies; adapted semantics and styling for the Electron extension-dialog path. |
-| `components/ai-elements/{conversation,message,markdown,code,reasoning,tool,source,composer}.tsx` | Vercel AI Elements counterparts under `packages/elements/src` | `0c1f5e8c75273f0e95c8faa031544a8aa2bb1a5b` | Apache-2.0 | Reduced to Cake's S1 conversation needs; replaced all AI SDK parts and hooks with Cake-owned props; removed syntax-highlighter, upload, scroll, Next.js, and transport dependencies; raw HTML is not parsed. |
+| `components/ai-elements/{conversation,message,markdown,code,reasoning,tool,source,composer}.tsx` | Vercel AI Elements counterparts under `packages/elements/src` | `0c1f5e8c75273f0e95c8faa031544a8aa2bb1a5b` | Apache-2.0 | Reduced to Cake's S1 conversation needs; replaced all AI SDK parts and hooks with Cake-owned props; removed AI SDK, upload, scroll, Next.js, and transport dependencies. The Markdown wrapper now delegates safe static/streaming rendering to Streamdown with its Shiki, KaTeX, and Mermaid plugins; raw HTML is skipped. |
 
 The adaptations retain useful compositional and accessibility patterns while
-accepting only Cake-owned props. Their browser dependency surface is React plus
-Cake's source-owned button and class-name utility. They do not add Node,
-Electron, AI SDK, transport, provider, or network dependencies.
+accepting only Cake-owned props. Their browser dependency surface is React,
+Cake's source-owned button and class-name utility, and the explicitly documented
+Streamdown Markdown renderer and plugins. They do not add Electron, AI SDK,
+transport, provider, or network dependencies.
 
 ## Import convention
 

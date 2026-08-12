@@ -1,4 +1,4 @@
-type DiffLine = {
+export type DiffLine = {
   key: string;
   kind: "add" | "remove" | "context" | "meta";
   oldNumber?: number;
@@ -6,7 +6,7 @@ type DiffLine = {
   content: string;
 };
 
-function parseDiff(diff: string): DiffLine[] {
+export function parseDiff(diff: string): DiffLine[] {
   let oldNumber: number | undefined;
   let newNumber: number | undefined;
   return diff.split("\n").map((line, index) => {

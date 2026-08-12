@@ -11,6 +11,10 @@ function model(provider: string, providerName: string, id: string, name: string)
   return { provider, providerName, id, name, authenticated: true, authTypes: [], input: ["text"], reasoning: true };
 }
 
+function disconnectedModel(provider: string, providerName: string, id: string, name: string): ModelOption {
+  return { ...model(provider, providerName, id, name), authenticated: false, authTypes: ["api_key"] };
+}
+
 const groups: ModelGroup[] = [
   { id: "openai", name: "OpenAI", models: [model("openai", "OpenAI", "gpt-5.5", "GPT-5.5")] },
   { id: "anthropic", name: "Anthropic", models: [model("anthropic", "Anthropic", "claude-sonnet-4", "Claude Sonnet 4")] }
@@ -57,5 +61,26 @@ describe("ModelCombobox", () => {
 
     expect(onSelect).toHaveBeenCalledWith("anthropic/claude-sonnet-4");
     expect(input.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("never renders models from disconnected providers", () => {
+    const mixedGroups: ModelGroup[] = [
+      ...groups,
+      { id: "nvidia", name: "NVIDIA", models: [
+        disconnectedModel("nvidia", "NVIDIA", "meta/llama-3.3-70b-instruct", "Llama 3.3 70b Instruct"),
+        disconnectedModel("nvidia", "NVIDIA", "mistralai/mistral-medium-3.5-128b", "Mistral Medium 3.5")
+      ] }
+    ];
+    act(() => root.render(<ModelCombobox ariaLabel="Model" groups={mixedGroups} value="openai/gpt-5.5" onSelect={vi.fn()} />));
+    const input = container.querySelector<HTMLInputElement>('[role="combobox"]')!;
+
+    act(() => input.click());
+
+    const options = container.querySelector('[role="listbox"]')?.textContent ?? "";
+    expect(options).toContain("GPT-5.5");
+    expect(options).not.toContain("NVIDIA");
+    expect(options).not.toContain("Llama");
+    expect(options).not.toContain("Mistral");
+    expect(options).not.toContain("Sign in");
   });
 });

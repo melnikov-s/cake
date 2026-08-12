@@ -1,7 +1,7 @@
 # Cake: Living Product and Implementation Plan
 
 > **Status:** Draft implementation specification
-> **Last updated:** 2026-08-08
+> **Last updated:** 2026-08-11
 > **Purpose:** This is the canonical description of Cake. An agent should be able to read this document, understand the product vision and architectural constraints, select the next incomplete milestone, and implement it without reconstructing the original product conversation.
 
 ## How to use and maintain this document
@@ -14,6 +14,8 @@ This is a living specification, not a historical proposal.
 - Do not mark a milestone complete until every acceptance check for that milestone passes.
 - Add newly discovered risks and open questions where they affect the route, not only in commit messages.
 - Keep Pi-specific code behind the Pi adapter boundary in `src/agent/pi-runtime.ts`. Other Cake modules must use Cake-owned contracts.
+- Treat the trusted user scene/widget source layer as ordinary application code, not as untrusted artifact content or a stable third-party plugin SDK. Preserve the explicit trust decision, compiler migration, safe-mode, and rollback rules in Section 9.
+- Maintain agent-facing release migration notes for every change that can affect user scenes or widgets; compatibility is a tested migration process rather than a promise to freeze renderer internals.
 - Treat `.agents/skills/r-state-tree/SKILL.md` and its bundled references as the authoritative implementation guidance for state placement, Store/Model design, lifecycle, async ownership, persistence, observability, and React integration. Agents changing those concerns must read and apply the skill before editing.
 - `pi-gui` is reference material only. Cake must not fork it or copy its implementation wholesale.
 
@@ -27,9 +29,9 @@ flowchart LR
     S1 --> S2["Projects and durable sessions"]
     S2 --> S3["Pi ecosystem compatibility"]
     S2 --> S4["Rich artifact protocol"]
-    S3 --> S5["Cake widget SDK"]
+    S3 --> S5["Agent-authored scenes and widgets"]
     S4 --> S5
-    S5 --> S6["Security, packaging, release"]
+    S5 --> S6["Migration-aware packaging and release"]
     S6 --> DONE["A desktop Pi whose native language includes interactive software"]
 
     R1["Risk: Pi API drift"] -.-> S1
@@ -49,7 +51,8 @@ The desktop is not merely a prettier terminal transcript. It changes what the ag
 - ask for structured input through a form;
 - show file, diff, image, audio, and chart views;
 - create a stateful interactive artifact the user can manipulate;
-- install or generate React-based widgets within a constrained runtime;
+- ask an agent to create trusted, user-owned React widgets, reorganize the default workspace scene, or build complete scene replacements;
+- run a complete mini-application whose interface explicitly coordinates multiple Pi-backed model calls or agent sessions without forcing their internal work into the primary transcript;
 - receive structured interaction results back from the user;
 - use Pi extensions, skills, packages, providers, tools, session branching, and compaction wherever their semantics are presentation-independent.
 
@@ -65,7 +68,7 @@ Cake exists to combine:
 2. a multi-project and multi-session desktop shell;
 3. React for rich presentation;
 4. `r-state-tree` for explicit domain, workflow, lifecycle, and view-state ownership;
-5. a secure protocol through which agents and extensions can present interactive artifacts.
+5. a secure protocol for transient model-presented artifacts, plus a trusted source-customization layer for user-approved React scenes and widgets.
 
 The product is successful when rich interactions feel native to the conversation rather than embedded webpages bolted onto a chat client.
 
@@ -75,17 +78,19 @@ The product is successful when rich interactions feel native to the conversation
 
 Cake depends on Pi's published packages and delegates agent behavior to Pi. It must not reimplement Pi's agent loop, model/provider support, core tool execution, session branching, compaction, skills, or extension discovery without a documented and compelling incompatibility.
 
-### 3.2 Minimal core, powerful extensions
+### 3.2 Minimal core, agent-shaped workspace
 
-Cake's core supplies stable primitives: conversation, artifacts, capabilities, persistence, and extension loading. Features with legitimate workflow variation should remain packages or extensions.
+Cake's core supplies conversation, artifacts, persistence, a resilient scene host, and enough source structure for an agent to reshape the workspace. The right side of the application is a React scene composed of widgets. A widget is ordinary trusted React source, not a schema-driven mini-application. The user may ask an agent to add one small widget, reorganize the default scene, create an alternate scene, or replace the scene completely.
 
 ### 3.3 The conversation remains primary
 
 Cake is not a general-purpose IDE. A file tree, diff, or artifact should appear because it supports the active work. Avoid filling the initial UI with permanent panels.
 
-### 3.4 Rich output is structured, not arbitrary privileged code
+### 3.4 Distinguish presented content from trusted customization
 
-The model may request HTML, widgets, and interactions, but model-generated content never executes in Cake's privileged renderer or Node process. Rich output crosses a versioned schema and a capability boundary.
+Content merely returned by a model never executes as privileged application code. Markdown, HTML, and conversational artifacts cross the versioned artifact protocol and remain schema-validated or sandboxed.
+
+A user may separately authorize the agent to create or modify a scene/widget customization. That source is user-owned, reviewable, and trusted with the same renderer authority as any other user-approved application edit. It may import Cake components, call `useStore`, read Models, extend Stores, and compose ordinary React. This explicit installation/editing action—not the fact that an LLM produced the text—moves code into the trusted customization layer.
 
 ### 3.5 One authority for every kind of state
 
@@ -93,7 +98,7 @@ Pi owns Pi sessions and transcripts. Cake owns Cake-specific application and art
 
 ### 3.6 Web-native first, terminal-compatible where practical
 
-Cake offers a native React/widget API. Existing Pi extensions retain non-visual behavior and primitive UI where possible. Arbitrary Pi TUI components are not promised automatic React conversion.
+Cake's workspace customization language is ordinary React and TypeScript guided primarily by Markdown conventions, examples, current source, and types. Existing Pi extensions retain non-visual behavior and primitive UI where possible. Arbitrary Pi TUI components are not promised automatic React conversion.
 
 ### 3.7 Dependency first, upstream second, fork last
 
@@ -117,7 +122,8 @@ Use published Pi APIs. If a required general-purpose seam is missing, prefer an 
 - Adapt compatible Pi extension UI primitives to desktop UI.
 - Present and persist rich Cake artifacts.
 - Allow structured interaction with artifacts and return results to the waiting tool or the next agent turn.
-- Load Cake-native widget packages.
+- Let a user ask the agent to create, edit, remove, and repair trusted React widgets and complete workspace scenes.
+- Let trusted scenes drive Pi-backed mini-app workflows: select models, start auxiliary completions or agent sessions, route explicit context and structured results, stream progress, accept steering/cancellation, and choose what is promoted into the primary transcript.
 - Recover cleanly after renderer reloads and reset failed Pi session runtimes.
 - Package for macOS first without embedding assumptions that prevent Windows and Linux support.
 
@@ -126,8 +132,8 @@ Use published Pi APIs. If a required general-purpose seam is missing, prefer an 
 - Building a full source-code editor or language-server-based IDE.
 - Replacing Pi's provider, auth, session, compaction, or package systems.
 - Automatically translating arbitrary terminal `Component` implementations into React.
-- Running model-generated JavaScript in the main Cake renderer.
-- Allowing widgets unrestricted filesystem, process, credential, clipboard, or network access.
+- Automatically executing JavaScript merely because it appeared in a model response or artifact.
+- Treating trusted user-installed scene/widget source as isolated or permission-restricted application code; it has renderer authority by design, while the renderer itself still has no broad Node or Electron access.
 - Making Pi's experimental remote client/server protocol a hard dependency before it is stable.
 - Pixel-matching Codex, `pi-gui`, or another existing app.
 
@@ -175,7 +181,8 @@ Every interactive artifact must provide a readable fallback for session export, 
 | Pi integration | Cake-owned adapter | Prevents Pi types and API drift from spreading through the app. |
 | Session authority | Pi session files and `SessionManager` | Preserves CLI compatibility and avoids divergent transcripts. |
 | Rich UI transport | Versioned Cake artifact protocol | Makes interactions serializable, testable, persistable, and secure. |
-| Third-party widget execution | Sandboxed web runtime | Keeps extension presentation code away from Electron and Node privileges. |
+| Trusted user scenes/widgets | Ordinary React + TypeScript compiled against Cake | User-approved agent edits are application customizations, may access renderer Stores directly, and are migrated by compiler diagnostics rather than insulated behind a frozen SDK. |
+| Untrusted rich content | Sandboxed artifact web runtime | Model-presented HTML and any future untrusted package code stay away from renderer, Electron, and Node privileges. |
 | `pi-gui` relationship | Reference only | Useful prior art; not a dependency or fork. |
 
 At the 2026-08-06 research snapshot, Pi's published coding-agent package exposes the SDK, session runtime, resource loader, package manager, settings, tools, and `ExtensionUIContext` needed for this design. Pin the exact Pi version selected during the foundation spike; do not use an unbounded range.
@@ -191,7 +198,8 @@ flowchart TB
         WindowStore["WindowStore"]
         UiAdapter["Cake UI projection"]
         Components["Cake-owned shadcn and adapted AI Elements components"]
-        Builtins["Trusted built-in widgets"]
+        SceneHost["Resilient scene host"]
+        UserWidgets["Trusted user scenes and widgets"]
         Frame["Sandboxed artifact iframe"]
         React <--> RootStore
         RootStore --> SessionModel
@@ -200,7 +208,8 @@ flowchart TB
         SessionModel --> UiAdapter
         UiAdapter --> Components
         Components --> React
-        React --> Builtins
+        React --> SceneHost
+        SceneHost --> UserWidgets
         React --> Frame
     end
 
@@ -227,10 +236,10 @@ flowchart TB
 
 Responsibilities:
 
-- **Renderer:** presentation, DOM interaction, window-local Stores, artifact host, and no broad Node access.
-- **Preload:** a narrow, typed, validated request/event API. It does not expose raw `ipcRenderer`.
-- **Main:** window lifecycle, native dialogs, app metadata persistence, and direct ownership of workspace-scoped Pi drivers, sessions, tools, providers, packages, and extensions.
-- **Artifact frame:** generated or third-party web code with no Node integration, no same-origin privilege, no direct Electron IPC, and no network by default.
+- **Renderer:** presentation, DOM interaction, window-local Stores, the resilient scene host, trusted user scene/widget code, artifact host, and no broad Node access. Trusted customizations share renderer authority and may use the same Store providers and preload-backed application intents as Cake's built-in React code.
+- **Preload:** a narrow, typed, validated request/event API. It does not expose raw `ipcRenderer`; trusted widgets do not bypass it.
+- **Main:** window lifecycle, native dialogs, app metadata persistence, customization compilation/migration orchestration, and direct ownership of workspace-scoped Pi drivers, sessions, tools, providers, packages, and extensions.
+- **Artifact frame:** untrusted model-presented or remote web content with no Node integration, no same-origin privilege, no direct Electron IPC, and no network by default. This boundary does not apply to explicitly trusted user scenes/widgets.
 
 Use one `PiWorkspaceDriver` per active workspace. Multiple sessions within a
 workspace share that in-process driver while retaining independent runtime and
@@ -339,6 +348,22 @@ Use Pi's `DefaultResourceLoader`, project trust behavior, package manager, skill
 
 Every compatibility downgrade must be observable in extension diagnostics. Do not fail silently when an extension believes it displayed or requested something important.
 
+### 6.6 Pi-backed mini-application workflows
+
+Cake uses Pi's SDK as the sole model, authentication, agent-loop, tool, and session runtime for custom mini-applications. Cake must not add a second provider abstraction, transcript database, or agent implementation merely to coordinate multiple models.
+
+A single Pi `AgentSession` owns one active model context and one active branch at a time. A workflow that needs independent or concurrent participants uses the narrowest Pi primitive that preserves the required semantics:
+
+- **Auxiliary completion:** call a selected configured model with an explicitly assembled context for bounded work that does not require an agent tool loop or independent transcript.
+- **Child agent session:** create an in-memory or durable Pi session when a participant needs its own multi-turn history, tools, streaming lifecycle, compaction, steering, or branching.
+- **Worker runtime:** use a separately managed Pi runtime when process isolation, independent failure recovery, or long-lived background execution is required.
+
+Pi remains authoritative for every child session's messages, tool loop, model state, usage, compaction, and session tree. Cake stores only references and application-owned workflow facts; it must not copy a child transcript into a Cake-owned competing history. Cake owns the concerns Pi does not define: workflow topology, role labels, context-routing decisions, mini-app domain data, presentation, user checkpoints, and the explicit policy for promoting selected results into the primary Pi session, an artifact, or neither.
+
+The renderer and trusted scene source do not receive the raw Pi SDK. Workflow Stores call Cake-owned intent-level ports such as `startWorkflow`, `promptParticipant`, `steerParticipant`, `cancelParticipant`, and `promoteResult`. The Pi adapter in Electron main maps those intents to pinned public Pi SDK APIs, validates every cross-process payload, and emits Cake-owned workflow events. This is a process and ownership boundary, not a competing runtime or a generic capability façade around React customization.
+
+Installed Pi council, subagent, and team extensions remain useful compatible backends and reference implementations. Cake must not make a terminal multiplexer, terminal pane, custom TUI renderer, globally installed `pi` executable, or one particular community extension a prerequisite for desktop mini-app workflows. Packaged execution must resolve Pi from Cake's bundled runtime and must be tested by actually running representative auxiliary and child-agent work, not merely by confirming that an extension registered its tools.
+
 ## 7. `r-state-tree` state architecture
 
 Cake uses Models for serializable application-owned domain state and Stores for mounted behavior, I/O, routing, and view/session workflows. Components read from Stores and call intent-level methods.
@@ -348,9 +373,12 @@ Cake uses Models for serializable application-owned domain state and Stores for 
 | State | Authority | Representation |
 | --- | --- | --- |
 | Pi transcript, session tree, compaction, model history | Pi | Pi session files; projected into the renderer `SessionModel` tree |
+| Auxiliary/child agent transcript, tools, usage, compaction, model history | Pi | Independent in-memory or durable Pi sessions; Cake retains references and projections only |
 | Provider credentials | Pi/auth runtime | Never copied into renderer Models |
 | Project registry and display metadata | Cake main process | Cake Model snapshot persisted atomically |
 | Artifact metadata and content pointers | Cake + Pi custom session entries | Cake artifact store plus session reference |
+| Mini-app domain data and workflow topology | Cake | Versioned Cake Models containing application facts and Pi session/result references, never copied Pi transcripts |
+| Live multi-model workflow progress, routing, cancellation, and subscriptions | Cake renderer/main coordination over Pi | Workflow Stores and Cake-owned event projections with explicit lifecycle and concurrency policy |
 | Window selection, panel state, composer draft, scroll | Cake renderer | Window Stores; selected fields snapshotted |
 | Live streaming and tool progress | Pi event stream | Ephemeral Stores |
 | Extension dialogs and active statuses | Main-process Pi driver/Cake bridge | Ephemeral Stores with cancellation |
@@ -375,12 +403,17 @@ Likely future Store candidates, subject to that boundary test:
   behavior becomes observable application state.
 - `ArtifactRepositoryStore` if artifact persistence and synchronization require
   mounted reactive orchestration rather than a repository service.
+- `PiWorkflowSupervisorStore` when multiple auxiliary calls or child sessions
+  require observable start, route, steer, cancel, retry, recovery, and usage
+  coordination. It depends on intent-level Pi adapter ports rather than raw
+  transport commands.
 
 Suggested Models:
 
 - `ApplicationModel`: schema version and durable app-owned metadata.
 - `ProjectModel`: stable ID, canonical path, display name, trust/display metadata, last-opened time.
 - `ArtifactModel`: artifact ID, session reference, kind, version, content digest/location, fallback, creation/update metadata.
+- `MiniAppWorkflowModel`: customization/workflow ID, versioned domain data, participant roles and Pi session references, explicit result references, routing history required for recovery, and promotion records. It does not contain copied Pi messages.
 - `PreferencesModel`: app-owned appearance and behavior preferences that do not belong to Pi.
 
 ### 7.3 Renderer tree
@@ -419,6 +452,7 @@ RootStore
     ├── ComposerStore
     ├── ToolExecutionStore
     ├── ArtifactHostStore
+    ├── MiniAppWorkflowStore
     ├── ExtensionUiStore
     ├── DiffStore
     └── SettingsViewStore
@@ -435,6 +469,10 @@ Implementation rules:
 - Do not persist constructor defaults before hydration completes.
 - React providers are lookup scopes, not ownership or disposal scopes.
 - Keep tiny focus, hover, measurement, and isolated input state in React only when it has no workflow meaning.
+- Trusted widgets may use `useStore(WindowStore)` and other explicitly provided Stores directly. Do not add capability façades merely to imitate a conventional plugin SDK.
+- Models are read directly and normally changed through their owning Model or Store methods to preserve invariants. This is an authoring convention enforced by guidance, review, tests, and agent repair—not a claimed runtime security boundary.
+- A widget that introduces coherent workflow state, subscriptions, timers, persistence, or async policy should add or compose the nearest meaningful Store owner rather than hiding application workflow in React effects.
+- A multi-model workflow Store owns its Pi event subscriptions, cancellation, retry/queue/take-latest policy, and late-result guards. It calls semantic workflow ports and never constructs raw IPC envelopes or exposes provider credentials to React.
 
 ## 8. Rich artifact protocol
 
@@ -455,7 +493,7 @@ interface CakeArtifactV1 {
   fallback: {
     markdown: string;
   };
-  capabilities?: WidgetCapability[];
+  capabilities?: ArtifactCapability[];
   interaction?: {
     mode: "present" | "request";
     responseSchema?: unknown;
@@ -463,7 +501,7 @@ interface CakeArtifactV1 {
 }
 ```
 
-The exact schema should be implemented with the repository's selected runtime schema library and shared across agent, main, preload, renderer, and widget SDK boundaries. Unknown versions or kinds must degrade to the Markdown fallback.
+The exact schema should be implemented with the repository's selected runtime schema library and shared across agent, main, preload, renderer, and sandboxed artifact-renderer boundaries. Unknown versions or kinds must degrade to the Markdown fallback.
 
 ### 8.2 Built-in artifact kinds
 
@@ -472,7 +510,7 @@ The exact schema should be implemented with the repository's selected runtime sc
 - **Diagram:** Mermaid source initially; later diagrams may register separately.
 - **Form:** schema-defined controls, validation, submit, and cancel.
 - **HTML:** rendered only in the artifact sandbox.
-- **Widget:** references a registered widget type and validated props.
+- **Artifact widget:** may reference a future registered, sandboxed artifact renderer and validated props. It is distinct from a trusted workspace widget or scene.
 - **Media:** image, audio, video, or document reference with safe URL handling.
 
 ### 8.3 Agent tools
@@ -494,7 +532,7 @@ Tool requirements:
 
 ### 8.4 Interaction routing
 
-Widget events never become arbitrary IPC calls. They are validated against the widget manifest and routed as one of:
+Sandboxed artifact events never become arbitrary IPC calls. They are validated against the artifact contract and routed as one of:
 
 - local presentation state update;
 - artifact persistence update;
@@ -502,72 +540,138 @@ Widget events never become arbitrary IPC calls. They are validated against the w
 - explicit new user message or follow-up, with visible user confirmation where appropriate;
 - request for a declared host capability.
 
-## 9. Widget SDK and runtime
+## 9. Trusted user scenes, widgets, and automatic migration
 
-### 9.1 Widget classes
+### 9.1 Core model
 
-1. **Built-in widgets:** shipped with Cake and allowed to render directly in the trusted React renderer.
-2. **Installed Cake widgets:** packaged React/web bundles loaded in an artifact sandbox.
-3. **Generated widgets:** agent-authored HTML or bundled React loaded in the same or stricter sandbox.
-4. **Legacy Pi widgets:** terminal text lines rendered as inert text.
+The right-hand workspace is a **scene**: an ordinary React component tree composed of **widgets**. A widget is an ordinary React component. Neither term implies a sandbox, serialized UI schema, capability façade, frozen SDK, or special component base class.
 
-### 9.2 Package manifest
+The default transcript and composer are widgets in the default scene. A user may ask the agent to:
 
-A Pi package may optionally add a Cake section without losing its Pi resources:
+- add, remove, or reorganize widgets in the current scene;
+- create an addon widget opened, focused, or toggled by a slash command;
+- create an alternate scene for a workflow such as code review;
+- replace the default scene completely;
+- extend application Stores or application behavior needed by that scene.
+
+Trusted customization source may import Cake's source-owned components and styles, use `observer`, call `useStore` for provided Stores, read Models, invoke application methods, and participate in the renderer like built-in code. Cake does not wrap it in a narrower host API merely to create an artificial plugin boundary. The renderer's existing sandbox still prevents both built-in and customized React code from directly acquiring Node or raw Electron IPC.
+
+This trust is explicit. Code shown in a transcript or artifact never installs or executes itself. Before first activation, Cake explains that the customization has renderer authority, shows its source or summary, and obtains user approval. Code copied from another person or registry is trusted only if the user chooses to install it; a future untrusted marketplace runtime is a separate architecture decision.
+
+### 9.2 Markdown is the authoring framework
+
+The primary widget system is an agent-facing Markdown guide plus current application source, TypeScript types, component examples, and verification commands. The guide must define:
+
+- canonical source locations and naming;
+- how scenes compose widgets and how the resilient scene host selects a scene;
+- how slash commands accept validated arguments, initialize workflow state, perform actions, toggle/focus widgets, or switch scenes;
+- how to use `observer`, `StoreProvider`, and `useStore` correctly;
+- the current Store/Model map and state-placement rules;
+- how to use Cake's intent-level Pi workflow ports for auxiliary completions, child agent sessions, explicit context routing, streaming, steering, cancellation, and result promotion without importing the raw Pi SDK into renderer source;
+- the source-owned component catalog, design tokens, accessibility rules, and visual examples;
+- lifecycle, async, persistence, and cleanup expectations;
+- required typecheck, lint, test, and build commands;
+- the trust model and the distinction between trusted customization and sandboxed artifact content.
+
+Keep runtime convention minimal. Prefer ordinary imports and components over a JSON UI DSL, generic widget props protocol, package capability manifest, or inheritance framework. A small generated scene/command registry and migration metadata are acceptable discovery and bookkeeping mechanisms, not an SDK compatibility boundary.
+
+### 9.3 Source shape and invocation
+
+The intended conceptual shape is:
+
+```text
+user-customizations/
+├── customization.json       # identity and migration bookkeeping
+├── scenes/
+│   ├── default-scene.tsx
+│   └── review-scene.tsx
+├── widgets/
+│   └── code-review-widget.tsx
+└── tests/
+```
+
+A customization record needs only information required to locate, compile, recover, and migrate source, for example:
 
 ```json
 {
-  "pi": {
-    "extensions": ["./extensions"],
-    "skills": ["./skills"]
-  },
-  "cake": {
-    "widgets": ["./dist/widgets.manifest.json"]
-  }
+  "id": "local-workspace",
+  "entry": "scenes/default-scene.tsx",
+  "generatedAgainst": "0.8.0"
 }
 ```
 
-The final manifest must declare widget type IDs, bundle entry, protocol version, props schema, response schema, capabilities, and fallback behavior.
+Slash-command invocation is ordinary application behavior. Commands may accept validated arguments, execute an action, show/hide/focus a widget, select a scene, or initialize a cancellable workflow. The agent registers commands in the current command table and may change that table when application architecture changes. Commands that send messages or alter application workflows use the same Store methods as built-in UI.
 
-### 9.3 Capability model
+### 9.4 Mini-app and multi-model workflow composition
 
-Capabilities are deny-by-default and narrowly named. Initial candidates:
+A trusted scene may be a complete mini-application rather than a passive view. It may coordinate multiple Pi-backed participants through Cake Stores and intent-level workflow methods while Pi remains authoritative for each participant's model calls, agent loop, tools, transcript, and usage.
 
-- `clipboard.write`
-- `file.openDialog`
-- `file.readSelected`
-- `artifact.persist`
-- `session.submitResponse`
-- `session.sendFollowUp`
-- `network.fetch` with explicit origin scopes
+The customization must be able to define and make inspectable:
 
-There is no generic `electron`, `node`, `filesystem`, `shell`, or `ipc` capability.
+- which configured model and Pi execution shape each participant uses;
+- the exact context selected for each invocation instead of implicitly sharing the primary transcript;
+- sequential, parallel, review, debate, synthesis, and user-checkpoint routing;
+- which participant events and intermediate results are visible in the scene;
+- cancellation, steering, retry, timeout, concurrency, and budget policy;
+- which results remain mini-app data, become durable artifacts, enter a child session, or are explicitly promoted into the primary Pi session;
+- versioned persistence and migration for application-owned domain data without copying Pi-owned transcripts;
+- remote-content origins and permissions when the scene embeds network media.
 
-Grants are scoped by widget package, project, capability, and when relevant origin/path. Sensitive grants require an explicit user decision and must be reviewable and revocable.
+For example, `/video-tutor <youtube-url>` may validate the URL, select a Video Tutor scene, display an origin-restricted video frame and synchronized transcript, and start Tutor, Researcher, and Fact-checker participants. The scene may route a selected timestamped transcript window to the Tutor, pass uncertain claims to the other participants, display their progress and disagreement, and promote only the user-selected synthesis into the primary transcript. Transcript acquisition, model execution, and other privileged work occur in Electron main through Pi extensions/tools or Cake's Pi adapter; the scene controls them through Stores and never receives Node, credentials, raw IPC, or the raw Pi SDK.
 
-### 9.4 Sandbox requirements
+### 9.5 Compatibility through compiler-driven migration
 
-- Use an iframe or equivalent isolated web contents without Node integration.
-- Do not grant same-origin access to the parent application.
-- Apply a restrictive CSP; scripts and styles come from controlled artifact resources.
-- Disable network by default and block top-level navigation, downloads, popups, and permission requests.
-- Communicate only through a versioned, validated `postMessage` bridge.
-- Bound payload size, message rate, render time, and retained memory.
-- Destroy the frame and revoke resources on artifact disposal.
-- Treat widget errors as artifact-local; they must not crash the conversation.
-- Never use `dangerouslySetInnerHTML` for model HTML in the trusted renderer.
+Cake intentionally does not promise that internal renderer Stores, Models, components, or scene structure remain source-compatible forever. Instead, it promises a safe automated migration workflow. TypeScript is the primary structural compatibility detector.
 
-### 9.5 React and MDX
+Every Cake release that can affect customizations must include agent-facing migration notes. Notes describe intent and behavior as well as symbol changes, with concrete before/after guidance where possible:
 
-Cake-native widgets may use React internally. Generated React is compiled outside the trusted renderer and executed only in the sandbox.
+```md
+### Widget and scene migrations
 
-MDX support, if added, is a restricted authoring format:
+- `WindowStore.parts` was removed. Read `WindowStore.session?.uiParts`.
+- `ComposerPanel` was renamed to `ComposerWidget`.
+- Scenes must now render beneath `WorkspaceSceneBoundary`.
+```
 
-- known registered components only;
-- no arbitrary imports;
-- no Node or Electron access;
-- no unbounded expressions in the trusted renderer;
-- deterministic Markdown fallback.
+Cake keeps each customization's `generatedAgainst` version so the agent can read all intervening notes. The agent may also inspect the current source, types, git diff, tests, and diagnostics; the changelog accelerates migration but never substitutes for the code.
+
+The staged update sequence is:
+
+1. Stage the new Cake version without replacing the working installation.
+2. Compile and typecheck every enabled customization against the staged version.
+3. If all checks pass, run focused render/integration tests and prepare activation.
+4. If checks fail, retain the exact TypeScript diagnostics and identify affected widgets/scenes.
+5. Ask whether the user wants the agent to repair them automatically, inspect changes, disable affected customizations, or postpone the update.
+6. Give the repair agent the customization source, diagnostics, all intervening migration notes, current relevant source/types, and verification commands.
+7. Repeat typecheck and tests until clean; show or summarize the patch according to user preference.
+8. Back up the previous source and compiled output, activate atomically, record the new `generatedAgainst` version, and retain rollback data.
+9. If activation or runtime checks fail, return to the previous working app/customization pair or boot with the affected customization disabled.
+
+Compiler success proves structural compatibility, not behavioral correctness. Release notes must call out semantic changes that types cannot detect. Focused widget render tests, runtime error capture, and rollback cover the remaining gap.
+
+### 9.6 Resilient host, errors, and safe mode
+
+Customization failure must not prevent Cake from opening the UI needed to diagnose and repair it. The signed/core shell and default recovery scene must be able to boot without loading user customization code.
+
+Requirements:
+
+- validate and compile customizations before activating an application update;
+- keep last-known-good source and compiled output;
+- render each optional widget and selected user scene beneath an error boundary;
+- attribute compile and runtime failures to the responsible customization;
+- offer automatic agent repair using diagnostics and release migration notes;
+- allow one widget, one scene, or all customizations to be disabled without deleting source;
+- provide a safe/default scene for recovery;
+- activate migrations transactionally and support one-step rollback;
+- keep repair history reviewable, preferably through a local version-control history.
+
+Runtime error capture must not imply that arbitrary semantic errors are automatically safe. A widget has renderer authority and may invoke real application intents. Trust, source review, tests, and rollback are the controls; sandbox capability claims are not.
+
+### 9.7 Separate artifact security boundary
+
+The artifact protocol remains the boundary for content presented during a conversation without explicit installation as trusted source. Raw HTML and any future untrusted artifact renderer continue to run in an isolated frame with restrictive CSP, validated messages, bounded resources, and no Node, Electron, parent DOM, or default network access.
+
+Do not weaken artifact isolation in order to implement trusted workspace widgets, and do not force trusted workspace scenes through the artifact protocol. They are different products with different trust decisions.
 
 ## 10. Data layout and durability
 
@@ -577,6 +681,9 @@ Use a dedicated Cake application directory for app-owned data. The exact OS-reso
 cake-data/
 ├── application.json          # schema-versioned Cake Model snapshot
 ├── artifacts/                # content-addressed artifact payloads and bundles
+├── workflows/                # mini-app domain data, routing history, Pi references, and recovery metadata
+├── customizations/           # trusted user scene/widget source, metadata, tests, and history
+├── customization-builds/     # staged and last-known-good compiled output
 ├── cache/                    # disposable derived data
 ├── logs/                     # redacted diagnostics
 ```
@@ -590,7 +697,10 @@ Durability rules:
 - Content digests for external artifact payloads.
 - Garbage collection only after proving no live session/custom entry references an artifact.
 - Credentials and provider secrets never enter Cake state snapshots, logs, renderer IPC, or artifacts.
-- Cache loss must not destroy sessions or artifacts declared durable.
+- Cache loss must not destroy sessions, artifacts declared durable, or user customization source.
+- Workflow storage may retain application-owned topology, media/transcript indexes, checkpoints, and references to Pi sessions/results, but must not become a duplicate transcript database. Durable child-agent history remains in Pi sessions.
+- Customization source and migration history are user-owned durable data. Compiled output is replaceable, but Cake retains a last-known-good build for recovery and rollback.
+- App updates are staged until enabled customizations compile against the candidate version or the user explicitly disables/postpones incompatible customizations.
 
 ## 11. Repository shape
 
@@ -599,17 +709,18 @@ cake/
 ├── src/
 │   ├── main/                 # Electron lifecycle, Pi drivers, native services, persisted metadata
 │   ├── preload/              # narrow contextBridge API; no application workflow
-│   ├── renderer/             # React frontend, window Stores, UI projections and components
+│   ├── renderer/             # React frontend, scene host, built-in widgets, Stores, projections, components
 │   ├── agent/                # Cake's thin Pi SDK adapter; executed by Electron main
 │   └── ipc/                  # validated main/preload/renderer transport schemas
 ├── examples/
 │   ├── extensions/
-│   └── widgets/
+│   └── customizations/       # ordinary React scenes/widgets and command examples
 ├── docs/
 │   ├── architecture/
 │   ├── extension-compatibility.md
-│   ├── security.md
-│   └── widget-sdk.md
+│   ├── customization-guide.md # primary agent-facing scene/widget formula
+│   ├── release-migrations.md  # versioned agent-facing customization changes
+│   └── security.md
 └── PLAN.md
 ```
 
@@ -739,9 +850,10 @@ Current S2 checkpoint (2026-08-07):
   owns selected project/session workflow, per-session drafts, search, transient
   command pane, pending operations, and stale-event filtering.
 - The session UI supports create/resume/rename/archive/restore, text search,
-  Pi-native fork and in-file tree navigation through `/tree`. Changed-file
-  summaries and diffs come from Git through the workspace driver and open
-  through `/changes`. These panes are transient and are not workspace tabs.
+  Pi-native fork and in-file tree navigation through `/tree`. The chat header's
+  Changes action opens a session-identified, full-application change explorer;
+  edits are combined by file, syntax-highlighted, and selectable from a changed-
+  file tree on the right. These panes are transient and are not workspace tabs.
 - Pi runtime failure exposes an explicit restart action. A recreated workspace
   driver securely reopens the selected Pi session from its validated session
   file, resubscribes the window, and preserves its draft. Empty Pi sessions are
@@ -853,48 +965,65 @@ Current S4 checkpoint (2026-08-08):
   restart hydration. The stable contract is documented in
   `docs/architecture/s4-artifact-protocol.md`. S4 is complete.
 
-### Stage S5 — Cake widget SDK
+### Stage S5 — Agent-authored scenes and widgets
 
 **Depends on:** S3 and S4
-**Outcome:** Developers and agents can extend Cake with React-powered widgets without entering the privileged application runtime.
+**Outcome:** A user can ask the agent to reshape Cake's right-hand workspace with trusted ordinary React, from a small slash-command widget through a complete Pi-backed multi-model mini-application, and Cake can automatically migrate that source across application updates.
 
 Work:
 
-- Publish the widget manifest, runtime API, test harness, and example package.
-- Implement bundle loading, schema validation, widget registry, and version negotiation.
-- Implement capability requests, grants, revocation, and audit display.
-- Implement sandbox lifecycle, crash/error UI, resource limits, and message-rate limits.
-- Add development hot reload for local widget packages.
-- Document React and restricted-MDX authoring.
+- Extract the current transcript/composer workbench into a default scene beneath a resilient `SceneHost` while leaving navigation, trust dialogs, recovery, and customization repair available outside user code.
+- Publish `docs/customization-guide.md` as the primary agent instruction: source locations, scene/widget formula, slash commands, Store/Model map, component/style catalog, examples, state placement, lifecycle, and verification.
+- Implement durable user customization source and minimal metadata, including `generatedAgainst`.
+- Let trusted customizations use ordinary React imports, `observer`, provided Stores, Models, source-owned components, and application methods without a capability façade.
+- Implement scene selection and a simple command registry supporting actions, widget toggle/focus, and complete scene switching.
+- Add validated slash-command arguments and workflow initialization so commands such as `/video-tutor <youtube-url>` can open a scene with explicit inputs and start cancellable work.
+- Extend the Cake-owned Pi adapter with intent-level workflow contracts for bounded auxiliary model completions and independent in-memory or durable child agent sessions. Support explicit model/role selection, context routing, event streaming, steering, cancellation, retries, usage, and result promotion while keeping Pi authoritative for every agent transcript and tool loop.
+- Add `MiniAppWorkflowModel` persistence for application-owned domain facts, participant/session references, checkpoints, routing and promotion history, plus a lifecycle-owning `MiniAppWorkflowStore`; never persist copied Pi transcripts in either.
+- Define a restricted remote-embed path for trusted scenes with explicit origin, navigation, storage, popup, download, autoplay/fullscreen, and network policy rather than broadly weakening the artifact or renderer CSP.
+- Prove bundled/package execution for representative Pi council/subagent shapes. Do not count extension discovery as execution compatibility, and do not require a terminal multiplexer, custom Pi TUI, or globally installed `pi` binary.
+- Add creation/edit/removal flows with explicit trust confirmation and source/patch review options.
+- Implement staged TypeScript compilation against the current or candidate Cake version and preserve exact diagnostics.
+- Add agent-facing release migration notes and feed all intervening notes, current source/types, diagnostics, and tests into automatic repair.
+- Implement last-known-good builds, per-widget/scene error boundaries, safe mode, disable controls, transactional activation, migration history, and rollback.
+- Add focused render/integration test templates and development reload for local customization source.
+- Keep conversational HTML and other non-installed generated content in the existing artifact sandbox.
 
 Acceptance checks:
 
-- A local package registers a React widget, receives validated props, maintains local state, and submits a validated response.
-- The same package cannot access filesystem, shell, credentials, Electron, or network without a declared and granted capability.
-- Removing or disabling the package leaves a readable fallback in prior sessions.
-- A broken widget affects only its artifact surface.
+- The agent creates a small React widget that reads live Store/Model state, invokes an existing application intent, uses Cake components, and is opened through a slash command.
+- The agent reorganizes the default scene and creates a complete alternate scene without introducing a JSON UI schema or capability wrapper.
+- A Video Tutor fixture invokes `/video-tutor <youtube-url>`, opens a complete scene with an origin-restricted embedded player and synchronized transcript, and persists its application-owned state across restart.
+- The Video Tutor starts at least two independently configured Pi-backed participants, shows their live state and usage, routes an explicitly selected transcript segment and structured intermediate result between them, supports steering/cancellation, and promotes only a user-selected synthesis into the primary session.
+- Direct auxiliary completions, durable child sessions, and the primary session retain distinct context/history semantics; Cake persists references and workflow facts without duplicating any Pi transcript.
+- A representative packaged child-agent or council workflow actually completes in Electron without a terminal pane or globally installed Pi executable, and an extension requiring unsupported TUI presentation receives an actionable compatibility diagnostic.
+- Cake clearly obtains user trust before first activation and can display the generated source or patch.
+- A fixture customization generated against an older Cake version fails staged `tsc`, receives deterministic diagnostics and migration notes, is repaired by the agent, passes typecheck/tests, and activates atomically.
+- A TypeScript-broken scene cannot prevent Cake from booting into its recovery UI.
+- A runtime-broken optional widget is attributed and disabled without deleting its source; the prior working build can be restored in one step.
+- Trusted customization still cannot directly access Node or raw Electron IPC because the containing renderer cannot, while no false claim is made that it is isolated from Cake's renderer Stores or DOM.
 
 ### Stage S6 — Security, packaging, release
 
 **Depends on:** S5
-**Outcome:** Cake can be distributed with confidence that development behavior, packaged behavior, and security boundaries match.
+**Outcome:** Cake can be distributed with confidence that development behavior, packaged behavior, customization migration/recovery, and actual security boundaries match.
 
 Work:
 
 - Complete the threat model and security review.
 - Add dependency and package provenance checks appropriate to executable extensions.
 - Verify CSP, navigation, permissions, protocol validation, path handling, and secret redaction.
-- Add macOS signing, notarization, install, update, and packaged smoke tests.
+- Add macOS signing, notarization, staged install/update, customization preflight/migration, rollback, and packaged smoke tests.
 - Add Windows and Linux packaging when the macOS release path is stable.
 - Add crash reports and diagnostics with opt-in and redaction.
-- Document recovery, data locations, trust, extension permissions, and uninstall behavior.
+- Document recovery, safe mode, customization trust and migration, data locations, extension permissions, and uninstall behavior.
 
 Acceptance checks:
 
 - A packaged macOS build completes the core real-app workflow.
-- Packaged Pi extensions and widget bundles resolve correctly.
-- Security tests prove generated content cannot cross its capability boundary.
-- App and renderer crashes plus Pi runtime reset have tested recovery behavior.
+- Packaged Pi extensions and trusted user customization bundles resolve correctly.
+- Security tests prove uninstalled generated content and sandboxed artifacts cannot cross their artifact boundary; tests separately confirm that trusted customization has the documented renderer authority.
+- App and renderer crashes, customization compile/runtime failures, failed migrations, and Pi runtime reset have tested recovery behavior.
 - A release checklist can be executed without undocumented local knowledge.
 
 ## 13. Testing strategy
@@ -906,7 +1035,9 @@ Acceptance checks:
 - Model snapshots, migrations, identifiers, and references.
 - Store lifecycle, cancellation, operation concurrency, and late-result guards.
 - Artifact storage, content addressing, revisions, and garbage-collection reachability.
-- Widget capability resolution and message validation.
+- Customization metadata, staged TypeScript diagnostics, version-range migration-note selection, transactional activation, and rollback.
+- Scene/command registration, safe-mode selection, and error attribution.
+- Workflow routing, transcript-authority separation, explicit context selection, promotion policy, cancellation, concurrency, usage aggregation, and late-result rejection.
 
 ### 13.2 Integration tests
 
@@ -916,6 +1047,8 @@ Acceptance checks:
 - Session replacement and resubscription.
 - Multiple windows and window-local state isolation.
 - Artifact persistence and fallback restoration.
+- Trusted customization compilation against current Stores/components and migration from an older fixture version.
+- Auxiliary completion and child-session orchestration through Cake-owned intents, including restart recovery without copied Pi history.
 
 ### 13.3 Electron end-to-end tests
 
@@ -929,15 +1062,24 @@ Use Playwright's Electron support for visible workflows:
 - table sorting and form response;
 - Pi runtime reset and session reopen;
 - renderer reload and app restart;
+- slash-command widget invocation and complete scene switching;
+- Video Tutor scene initialization with validated URL arguments, synchronized transcript state, multi-model routing, steering/cancellation, and explicit result promotion;
+- packaged headless council/child-agent execution without terminal panes or a globally installed Pi CLI;
+- staged update with TypeScript-detected customization repair;
+- broken-widget recovery, safe mode, and rollback;
 - packaged smoke test.
 
 Separate deterministic UI tests, live provider tests, native OS-surface tests, and packaged-release tests. Live credentials must always be opt-in.
 
-### 13.4 Security tests
+### 13.4 Security and trust-boundary tests
 
-- Attempt Node and Electron access from Markdown, HTML, installed widget, and generated widget contexts.
-- Attempt parent DOM access, top navigation, popup, download, clipboard, filesystem, and network access.
-- Fuzz protocol and widget messages within bounded test limits.
+- Attempt Node and raw Electron access from the ordinary renderer and trusted customization; both must remain constrained by the renderer/preload boundary.
+- Confirm trusted customization can access the documented renderer DOM, provided Stores, Models, components, and application intents; do not mislabel it as sandboxed.
+- Attempt parent DOM access, top navigation, popup, download, clipboard, filesystem, and network access from sandboxed Markdown/HTML/artifact contexts.
+- Confirm code merely present in a model response cannot install or execute without the explicit trusted-customization flow.
+- Confirm custom scenes cannot obtain raw Pi SDK objects, provider credentials, or arbitrary model/IPC access and can only invoke the documented intent-level workflow methods.
+- Confirm trusted remote embeds are restricted to approved origins and cannot navigate the parent, open uncontrolled popups/downloads, or weaken sandboxed artifact isolation.
+- Fuzz artifact protocol and sandbox bridge messages within bounded test limits.
 - Verify path traversal rejection and project-scope enforcement.
 - Verify secret fields never appear in renderer state, logs, crash reports, or artifact snapshots.
 
@@ -945,13 +1087,16 @@ Separate deterministic UI tests, live provider tests, native OS-surface tests, a
 
 Treat these as separate trust levels:
 
-1. Cake's signed application code.
-2. Pi and pinned application dependencies.
-3. User-approved global Pi extensions/packages with full Electron-main authority.
-4. Project-local Pi resources requiring project trust.
-5. Installed Cake widget presentation bundles running in a sandbox.
-6. Model-generated HTML, React, Markdown, and artifact data.
-7. Remote content and network responses.
+1. Cake's signed core and recovery shell.
+2. Explicitly approved, user-owned scene/widget customization source with trusted renderer authority.
+3. Pi and pinned application dependencies.
+4. User-approved global Pi extensions/packages with full Electron-main authority.
+5. Project-local Pi resources requiring project trust.
+6. Sandboxed model-presented HTML and future untrusted artifact renderers.
+7. Inert/model-presented Markdown and artifact data.
+8. Remote content and network responses.
+
+Trusted customization is intentionally not isolated from Cake's renderer DOM or provided Stores. It still cannot directly access Node or raw Electron IPC because neither can the renderer. This is a trust decision, not a capability grant. The signed recovery shell, staged compiler, and last-known-good build must remain available when customization source is broken.
 
 Key threats and mitigations:
 
@@ -962,7 +1107,13 @@ Key threats and mitigations:
 | Malicious Pi extension accesses the host or destabilizes Electron main | S1-S6 | Clear trust UI, project trust, exact dependency pins, and a future OS sandbox option; do not claim in-process execution provides isolation. |
 | Stale agent event mutates a replacement session | S2-S4 | Session generation/revision IDs and teardown before resubscription. |
 | Cake snapshot overwrites Pi or hydrated state | S1-S2 | Separate authorities and persistence readiness gates. |
-| Large or noisy widget degrades the app | S4-S6 | Payload, rate, time, frame, and memory limits; artifact-local termination. |
+| Large or noisy sandboxed artifact degrades the app | S4-S6 | Payload, rate, time, frame, and memory limits; artifact-local termination. |
+| Trusted customization no longer compiles after update | S5-S6 | Stage updates, run TypeScript against every enabled customization, supply diagnostics and release migration notes to the repair agent, and activate only after checks pass or explicit disablement. |
+| Trusted customization compiles but fails semantically at runtime | S5-S6 | Agent-facing behavioral migration notes, focused render/integration tests, per-widget/scene error boundaries, safe mode, last-known-good output, and rollback. |
+| Trusted customization invokes destructive application behavior | S5-S6 | Explicit installation trust, source/patch review, application confirmation for inherently destructive intents, tests, history, and rollback; do not claim renderer isolation. |
+| Workflow routing leaks unintended transcript or secret context to another model | S5-S6 | Explicit per-participant context assembly, inspectable routing, no ambient transcript sharing, credential exclusion, size limits, and tests proving only selected inputs cross each route. |
+| Child agents leak, outlive their scene, or commit late results after replacement | S5-S6 | Lifecycle-owning workflow Stores, Pi abort/dispose propagation, operation revisions, bounded concurrency, recovery metadata, and stale-event rejection. |
+| Council/subagent extension loads but cannot execute in packaged Electron | S5-S6 | Run real packaged execution fixtures, resolve workers from Cake's bundled Pi runtime, and diagnose unsupported terminal/TUI dependencies instead of treating registration as compatibility. |
 | Artifact data leaks secrets | S4-S6 | Explicit artifact creation, redaction rules, no implicit environment capture, reviewable persistence. |
 | Packaging omits dynamic Pi dependencies | S6 | Dependency audit and packaged real-app tests. |
 
@@ -979,6 +1130,9 @@ threat model or measured stability requires it.
 - Show Pi runtime lifecycle and reset state without exposing internal stack traces as the only user message.
 - Record protocol/version mismatch details.
 - Make artifact sandbox failures inspectable in development and understandable in production.
+- Persist exact customization compiler diagnostics, migration attempts, test results, active/previous build identity, and runtime error attribution without logging user source by default.
+- Record workflow/participant IDs, Pi session references, model IDs, lifecycle transitions, routing metadata, usage, cancellation, and result-promotion decisions without logging prompts, transcripts, credentials, or model outputs by default.
+- Present agent-facing release migration notes inside the update/repair flow.
 - Telemetry and crash submission are opt-in unless a later explicit product decision changes that policy.
 
 ## 16. Performance expectations
@@ -991,6 +1145,7 @@ Do not invent fixed performance targets before measurement, but preserve these q
 - Long transcripts should use virtualization without breaking search, selection, or streaming scroll behavior.
 - Inactive sessions should not retain unnecessary DOM trees or active artifact frames.
 - Agent-process and artifact resource consumption must be observable before adding automatic limits.
+- Concurrent auxiliary calls and child sessions must expose usage and lifecycle state; each workflow declares bounded concurrency, cancellation, retry, timeout, and late-result policy before automatic fan-out is enabled.
 
 Establish measured baselines during S1, S2, and S4, then replace qualitative expectations with evidence-based budgets.
 
@@ -1000,11 +1155,14 @@ These are intentionally unresolved. Resolve each before the stage that depends o
 
 | ID | Question | Needed before |
 | --- | --- | --- |
-| Q5 | Will generated React be supported in the first widget SDK release or follow installed widgets? | S5 planning |
-| Q6 | Which widget capabilities are safe and necessary for v1? | S5 implementation |
-| Q7 | What subset of restricted MDX provides enough value beyond widget manifests? | S5 implementation |
+| Q5 | Which packaged compilation/module-loading strategy lets trusted user source share Cake's React singleton, component imports, source maps, and types while preserving a core recovery boot path? | S5 implementation |
+| Q6 | Which agent execution flow performs pre-activation repairs when the currently installed renderer cannot load code built for the staged update? | S5 implementation |
+| Q7 | How should focused generated tests be selected and time-bounded during automatic migration without reducing `tsc` to a false guarantee of semantic correctness? | S5 implementation |
 | Q8 | Which OS-level sandbox, if any, should be offered for Pi tools and extensions? | S6 release |
-| Q9 | What update mechanism and release channels should Cake use? | S6 implementation |
+| Q9 | What update mechanism and release channels should Cake use, and how do release rollback and customization rollback remain atomic as one version pair? | S6 implementation |
+| Q10 | Which pinned Pi SDK path should Cake use for each workflow participant—direct completion, in-process child `AgentSession`, or separately managed runtime—and what criteria require escalation between them? | S5 implementation |
+| Q11 | What durable workflow schema stores mini-app domain data, Pi session/result references, routing checkpoints, and promotion history without duplicating transcripts or coupling to one customization? | S5 implementation |
+| Q12 | Which restricted-frame strategy and permission UI support trusted remote media such as YouTube while preserving renderer and artifact CSP boundaries? | S5 implementation |
 
 ## 18. Decision log
 
@@ -1029,6 +1187,12 @@ These are intentionally unresolved. Resolve each before the stage that depends o
 | 2026-08-07 | Use shadcn/ui and Tailwind CSS 4 as the renderer foundation, with AI Elements as the preferred source registry. | Decided | Cake copies selected component source, replaces AI SDK types with Cake-owned UI parts, records upstream provenance and modifications, and may select a Prompt Kit component when it is demonstrably preferable. |
 | 2026-08-08 | Store S4 artifact payloads under Electron user data as content-addressed blobs with atomic per-session metadata; cap v1 tool input and responses at 1 MiB UTF-8 JSON. | Decided | Resolves Q4; Pi custom entries contain only versioned pointers and Markdown fallbacks, while Cake owns durable artifact content. |
 | 2026-08-08 | Restore artifacts from Pi custom-entry pointers plus Cake session aliases, and persist the selected Pi session reference as window view state. | Decided | Artifact hydration survives Pi's transition from an in-memory runtime identifier to its durable session identity without making Cake authoritative for transcript history. |
+| 2026-08-11 | Treat user-approved agent-authored scenes and widgets as trusted ordinary React source rather than sandboxed packages behind a stable widget SDK. | Decided | Customizations may use renderer Stores, Models, components, DOM, and intents directly; the renderer/preload boundary still denies direct Node and raw Electron IPC. Artifact content remains sandboxed unless explicitly installed as trusted source. |
+| 2026-08-11 | Make Markdown guidance, current source/types, and examples the primary widget authoring framework. | Decided | Cake keeps only minimal scene hosting, command discovery, migration metadata, recovery, and build machinery; it does not introduce a JSON UI DSL, generic capability façade, or frozen widget interface. |
+| 2026-08-11 | Preserve customization compatibility through staged TypeScript checks and agent-driven migration instead of indefinitely preserving renderer internals. | Decided | Releases carry agent-facing behavioral migration notes; Cake offers automatic repair, tests the result, activates app/customization pairs atomically, and retains safe mode plus rollback. |
+| 2026-08-11 | Use the pinned Pi SDK for every mini-app model call, agent loop, tool execution, and agent transcript while keeping it behind Cake's main-process adapter. | Decided | Custom scenes receive Cake components, Stores, Models, and intent-level workflow methods rather than raw Pi objects; Cake coordinates but does not create a competing model or session runtime. |
+| 2026-08-11 | Treat multi-model mini-app coordination as Cake-owned workflow state over Pi-owned participant sessions. | Decided | Cake owns explicit context routing, roles, checkpoints, presentation, and result promotion; Pi remains authoritative for each participant's history, tools, usage, compaction, and session tree. |
+| 2026-08-11 | Do not make community council/subagent extensions or terminal process conventions the mini-app architecture boundary. | Decided | Cake remains compatible with useful headless extensions but provides bundled, desktop-native Pi workflow execution and tests real packaged execution rather than tool registration alone. |
 
 ## 19. Instructions for implementation agents
 
@@ -1049,8 +1213,14 @@ While implementing:
 - Preserve process boundaries and validate every cross-boundary payload.
 - Add abort, cleanup, and late-result handling for every async resource.
 - Do not introduce a second source of truth for Pi state.
+- For multi-model features, classify each participant as an auxiliary completion, child Pi session, or separately managed Pi runtime. Keep every agent transcript, tool loop, model state, compaction, and usage authoritative in Pi; Cake may persist only application-owned workflow facts and references.
+- Keep raw Pi SDK objects in `src/agent/pi-runtime.ts`. Renderer workflow Stores call intent-level Cake ports, own subscriptions and operation policy, and never assemble raw IPC envelopes or receive provider credentials.
+- Do not claim a council, subagent, or team extension works in Cake merely because its tool registered. Exercise its headless execution path in real or packaged Electron and emit actionable diagnostics for terminal/TUI-only dependencies.
 - Do not introduce AI SDK hooks, transports, provider packages, or message types into the Pi-backed conversation path; adapt copied AI Elements or Prompt Kit components to Cake-owned contracts.
-- Do not expose raw Electron IPC or Node APIs to the renderer or widget frames.
+- Do not expose raw Electron IPC or Node APIs to the renderer, trusted customizations, or artifact frames. Trusted customizations share renderer authority but do not receive a new process bridge.
+- When changing renderer Stores, Models, components, scene conventions, commands, or behavior visible to customizations, add concrete agent-facing release migration notes in the same change.
+- Do not add a widget capability façade, serialized UI DSL, or stable SDK merely to hide ordinary renderer internals from trusted user source. Add boundaries only for actual ownership, recovery, or untrusted-content requirements.
+- Ensure the signed recovery shell can boot and initiate repair without evaluating user customization code.
 - Do not claim compatibility for UI behavior that is actually ignored.
 - Add tests at the narrowest useful level and at the real Electron level when behavior crosses processes.
 - Update this plan when implementation evidence changes a decision, risk, open question, or acceptance check.
@@ -1072,7 +1242,11 @@ Cake fulfills the initial vision when all of the following are observable:
 - Existing headless Pi extensions, skills, packages, and primitive UI interactions work with documented compatibility.
 - The agent can present a sortable table, diagram, form, diff, media view, and sandboxed web artifact.
 - A user can interact with an artifact and return structured data to the agent.
-- A third-party React widget can be installed without gaining implicit desktop privileges.
+- A user can ask the agent to add a trusted React widget, reorganize the default workspace, or create a complete slash-command scene replacement using current Cake Stores and components.
+- A trusted scene can act as a durable mini-application that coordinates multiple Pi-backed models or agent sessions, explicitly controls context and result routing, streams and steers participants, and decides what—if anything—is promoted into the primary transcript.
+- A `/video-tutor <youtube-url>` reference workflow can embed restricted remote media, synchronize transcript/domain state, route selected context through multiple model roles, survive restart, and keep Pi participant histories distinct from Cake workflow data.
+- Cake detects structurally incompatible customizations with TypeScript during staged updates, can repair them using diagnostics and release migration notes, and can boot safely or roll back when compilation, tests, or runtime activation fail.
+- Trusted customization has the explicitly documented renderer authority but no direct Node or raw Electron IPC; uninstalled generated content and sandboxed artifacts do not gain that trust implicitly.
 - `r-state-tree` ownership makes durable domain state, workflow state, resources, and view state explicit.
 - Cake-owned shadcn and adapted AI Elements components render Cake-owned UI parts while Pi remains the only agent runtime.
 - Restart and crash recovery preserve authoritative sessions and durable artifacts.

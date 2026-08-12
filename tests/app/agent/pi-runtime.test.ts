@@ -1,17 +1,20 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createCakeRuntime,
   createFoundationRuntime,
+  createLiveMessageProjector,
   inspectWorkspace,
+  loadPiChangelog,
   loadWorkspaceSessionPreview,
   piRuntimeVersion,
   suggestProjectFiles,
   type CakeRuntime,
   type FoundationRuntime
 } from "../../../src/agent/pi-runtime";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { sessionSnapshotSchema } from "../../../src/ipc/session-contract";
 
 const temporaryDirectories: string[] = [];
@@ -29,6 +32,38 @@ async function createTemporaryDirectory() {
 }
 
 describe("Pi 0.84.0 foundation contract", () => {
+  it("gives assistant messages on either side of a tool call distinct live positions", () => {
+    const project = createLiveMessageProjector();
+    const assistant = (text: string) => ({ role: "assistant", content: [{ type: "text", text }] });
+    const event = (value: object) => value as AgentSessionEvent;
+
+    project(event({ type: "message_start", message: assistant("") }));
+    const beforeTool = project(event({ type: "message_update", message: assistant("I'll inspect that."), assistantMessageEvent: { type: "text_delta", delta: "I'll inspect that." } }));
+    project(event({ type: "message_end", message: assistant("I'll inspect that.") }));
+    project(event({ type: "message_start", message: assistant("") }));
+    const afterTool = project(event({ type: "message_update", message: assistant("Here is the result."), assistantMessageEvent: { type: "text_delta", delta: "Here is the result." } }));
+
+    expect(beforeTool[0]).toMatchObject({ id: "stream-1-text-0", text: "I'll inspect that." });
+    expect(afterTool[0]).toMatchObject({ id: "stream-2-text-0", text: "Here is the result." });
+  });
+
+  it("projects bash tool calls as commands instead of JSON arguments", () => {
+    const project = createLiveMessageProjector();
+    const message = { role: "assistant", content: [{ type: "toolCall", id: "bash-1", name: "bash", arguments: { command: "sleep 5" } }] };
+    project({ type: "message_start", message } as unknown as AgentSessionEvent);
+    const parts = project({
+      type: "message_end",
+      message
+    } as unknown as AgentSessionEvent);
+
+    expect(parts[0]).toMatchObject({ kind: "tool", name: "bash", input: "sleep 5" });
+  });
+
+  it("loads Pi's bundled changelog through its public package directory", () => {
+    expect(loadPiChangelog()).toContain("# Changelog");
+    expect(loadPiChangelog()).toContain("0.84.0");
+  });
+
   it("uses Pi's fuzzy @ provider for project file suggestions", async () => {
     const directory = await createTemporaryDirectory();
     const fakeFd = join(directory, "fd");
@@ -86,6 +121,49 @@ describe("Pi 0.84.0 foundation contract", () => {
 });
 
 describe("S1 Pi runtime", () => {
+  it("opens the OpenAI Codex browser login URL", async () => {
+    const directory = await createTemporaryDirectory();
+    const openExternal = vi.fn(async () => undefined);
+    const runtime = await createCakeRuntime({
+      cwd: directory,
+      agentDir: join(directory, "agent"),
+      sessionDir: join(directory, "sessions"),
+      trusted: false,
+      requestUi: async (request) => request.kind === "select" ? "browser" : undefined,
+      openExternal,
+      onEvent: () => undefined
+    });
+    runtimes.push(runtime);
+
+    await expect(runtime.login("openai-codex", "oauth")).rejects.toThrow("Authentication cancelled");
+    expect(openExternal).toHaveBeenCalledOnce();
+    expect(openExternal).toHaveBeenCalledWith(expect.stringMatching(/^https:\/\/auth\.openai\.com\/oauth\/authorize\?/));
+  });
+
+  it("reports environment OpenAI credentials as externally managed", async () => {
+    const directory = await createTemporaryDirectory();
+    const previousKey = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "test-openai-key";
+    try {
+      const runtime = await createCakeRuntime({
+        cwd: directory,
+        agentDir: join(directory, "agent"),
+        sessionDir: join(directory, "sessions"),
+        trusted: false,
+        requestUi: async () => undefined,
+        onEvent: () => undefined
+      });
+      runtimes.push(runtime);
+
+      const openai = (await runtime.snapshot()).models.find((model) => model.provider === "openai");
+      expect(openai).toMatchObject({ authenticated: true, authSource: "environment", authLabel: "OPENAI_API_KEY" });
+      await expect(runtime.logout("openai")).rejects.toThrow("managed outside Cake");
+    } finally {
+      if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = previousKey;
+    }
+  });
+
   it("detects project-local executable resources before loading them", async () => {
     const directory = await createTemporaryDirectory();
     await mkdir(join(directory, ".pi", "extensions"), { recursive: true });
@@ -112,6 +190,11 @@ describe("S1 Pi runtime", () => {
     expect(first.sessionFile).toMatch(/\.jsonl$/);
     expect(firstSnapshot.sessionId).toBe(first.sessionId);
     expect(firstSnapshot.parts).toEqual([]);
+    expect(firstSnapshot.piSettings).toMatchObject({ autoCompact: true, steeringMode: "one-at-a-time", transport: "auto" });
+    await first.setPiSetting({ key: "autoCompact", value: false });
+    await first.setPiSetting({ key: "steeringMode", value: "all" });
+    expect((await first.snapshot()).piSettings).toMatchObject({ autoCompact: false, steeringMode: "all" });
+    expect(JSON.parse(await readFile(join(agentDir, "settings.json"), "utf8"))).toMatchObject({ compaction: { enabled: false }, steeringMode: "all" });
     first.dispose();
     runtimes.splice(runtimes.indexOf(first), 1);
     await mkdir(sessionDir, { recursive: true });
@@ -121,7 +204,10 @@ describe("S1 Pi runtime", () => {
       { type: "message", id: "user-1", parentId: null, timestamp, message: { role: "user", content: "Hello", timestamp: Date.now() } },
       { type: "message", id: "assistant-tools", parentId: "user-1", timestamp, message: { role: "assistant", content: [{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "README.md" } }], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "toolUse", timestamp: Date.now() } },
       { type: "message", id: "tool-result", parentId: "assistant-tools", timestamp, message: { role: "toolResult", toolCallId: "call-1", toolName: "read", content: [{ type: "text", text: "result" }], isError: false, timestamp: Date.now() } },
-      { type: "message", id: "assistant-1", parentId: "tool-result", timestamp, message: { role: "assistant", content: [{ type: "text", text: "Hi" }], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() } },
+      { type: "message", id: "assistant-edit", parentId: "tool-result", timestamp, message: { role: "assistant", content: [{ type: "toolCall", id: "call-edit", name: "edit", arguments: { path: "src/app.ts", edits: [{ oldText: "old", newText: "new" }] } }], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "toolUse", timestamp: Date.now() } },
+      { type: "message", id: "edit-result", parentId: "assistant-edit", timestamp, message: { role: "toolResult", toolCallId: "call-edit", toolName: "edit", content: [{ type: "text", text: "Applied" }], details: { diff: "-1 old\n+1 new", patch: "@@ -1 +1 @@\n-old\n+new" }, isError: false, timestamp: Date.now() } },
+      { type: "compaction", id: "compaction-1", parentId: "edit-result", timestamp, summary: "Earlier work compacted", firstKeptEntryId: "assistant-edit", tokensBefore: 10 },
+      { type: "message", id: "assistant-1", parentId: "compaction-1", timestamp, message: { role: "assistant", content: [{ type: "text", text: "Hi" }], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() } },
       { type: "message", id: "assistant-error", parentId: "assistant-1", timestamp, message: { role: "assistant", content: [], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "error", errorMessage: "Subscription authentication failed", timestamp: Date.now() } }
     ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
 
@@ -145,16 +231,22 @@ describe("S1 Pi runtime", () => {
     const reopenedParts = (await second.snapshot()).parts;
     expect(reopenedParts.some((part) => part.kind === "text" && part.text === "Hi")).toBe(true);
     expect(reopenedParts.filter((part) => part.kind === "tool")).toEqual([
-      expect.objectContaining({ id: "tool-call-1", name: "read", input: expect.stringContaining("README.md"), output: "result", state: "success" })
+      expect.objectContaining({ id: "tool-call-edit", name: "edit", filePath: "src/app.ts", diff: "-1 old\n+1 new", state: "success" })
+    ]);
+    expect((await second.snapshot()).sessionChanges).toEqual([
+      expect.objectContaining({ id: "edit-result", toolCallId: "call-edit", toolName: "edit", path: "src/app.ts", additions: 1, deletions: 1, diff: "-1 old\n+1 new" })
     ]);
     expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
     await second.rename("Named session");
     expect((await second.snapshot()).sessions.find((item) => item.id === second.sessionId)?.title).toBe("Named session");
+    await second.navigate("assistant-tools");
+    expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
+    expect((await second.snapshot()).sessionChanges).toEqual([
+      expect.objectContaining({ toolCallId: "call-edit", path: "src/app.ts" })
+    ]);
     const fork = await second.fork("user-1");
     expect(fork.sessionId).not.toBe(second.sessionId);
     expect(fork.sessionFile).toMatch(/\.jsonl$/);
-    await second.navigate("user-1");
-    expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
 
     const isolated = await createCakeRuntime({
       cwd: directory,

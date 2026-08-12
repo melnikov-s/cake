@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { createCakeRuntime, inspectWorkspace, type CakeRuntime, type RuntimeUiRequest } from "../agent/pi-runtime";
+import { createCakeRuntime, inspectWorkspace, loadPiChangelog, type CakeRuntime, type RuntimeUiRequest } from "../agent/pi-runtime";
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
 import { parseArtifactInput, type ArtifactRecord, type CakeArtifactV1 } from "../ipc/artifact-contract";
 import type { ArtifactRepository } from "./artifact-repository";
@@ -14,11 +14,14 @@ type PiCommandType =
   | "rename-session"
   | "fork-session"
   | "navigate-session"
+  | "refresh-session"
   | "inspect-changes"
+  | "get-changelog"
   | "prompt"
   | "abort"
   | "set-model"
   | "set-thinking"
+  | "set-pi-setting"
   | "login"
   | "logout"
   | "respond-ui"
@@ -41,6 +44,7 @@ export interface PiWorkspaceDriverOptions {
   emit(event: DesktopEvent): void;
   createRuntime?: typeof createCakeRuntime;
   artifactRepository?: ArtifactRepositoryPort;
+  openExternal?: (url: string) => Promise<void>;
 }
 
 const execFileAsync = promisify(execFile);
@@ -50,6 +54,7 @@ export class PiWorkspaceDriver {
   private readonly emitEvent: PiWorkspaceDriverOptions["emit"];
   private readonly createRuntimeImpl: typeof createCakeRuntime;
   private readonly artifactRepository: ArtifactRepositoryPort;
+  private readonly openExternal: NonNullable<PiWorkspaceDriverOptions["openExternal"]> | undefined;
   private readonly runtimes = new Map<string, CakeRuntime>();
   private readonly pendingUi = new Map<string, PendingUi>();
   private readonly pendingArtifacts = new Map<string, PendingArtifact>();
@@ -61,6 +66,7 @@ export class PiWorkspaceDriver {
     this.workspacePath = options.workspacePath;
     this.emitEvent = options.emit;
     this.createRuntimeImpl = options.createRuntime ?? createCakeRuntime;
+    this.openExternal = options.openExternal;
     this.artifactRepository = options.artifactRepository ?? {
       async upsert(workspacePath, artifact) {
         const now = new Date().toISOString();
@@ -109,6 +115,20 @@ export class PiWorkspaceDriver {
       void this.run(command.requestId, () => this.inspectChanges(command.requestId));
       return;
     }
+    if (command.type === "get-changelog") {
+      void this.run(command.requestId, async () => {
+        this.runtimeFor(command.sessionId);
+        this.emit({ type: "changelog-snapshot", requestId: command.requestId, workspacePath: this.workspacePath, sessionId: command.sessionId, markdown: loadPiChangelog() });
+      }, command.sessionId);
+      return;
+    }
+    if (command.type === "refresh-session") {
+      void this.run(command.requestId, async () => {
+        const runtime = this.runtimeFor(command.sessionId);
+        this.emit({ type: "session-snapshot", snapshot: await runtime.snapshot() });
+      }, command.sessionId);
+      return;
+    }
     void this.run(command.requestId, async () => {
       const runtime = command.type === "rename-session"
         ? this.runtimes.get(command.sessionId) ?? await this.createRuntime(false, command.sessionId)
@@ -120,6 +140,7 @@ export class PiWorkspaceDriver {
       }
       else if (command.type === "set-model") await runtime.setModel(command.provider, command.modelId);
       else if (command.type === "set-thinking") await runtime.setThinkingLevel(command.level);
+      else if (command.type === "set-pi-setting") await runtime.setPiSetting(command.update);
       else if (command.type === "login") await runtime.login(command.provider, command.authType);
       else if (command.type === "logout") await runtime.logout(command.provider);
       else if (command.type === "rename-session") await runtime.rename(command.name);
@@ -248,6 +269,7 @@ export class PiWorkspaceDriver {
       requestUi: (request) => this.requestUi(request),
       persistArtifact: (artifact) => this.persistArtifact(artifact),
       requestArtifact: (record, signal) => this.requestArtifact(record, signal),
+      openExternal: this.openExternal,
       listArtifacts: async (pointers) => {
         const direct = await Promise.all(pointers.map((pointer) => this.artifactRepository.get(this.workspacePath, pointer.sessionId, pointer.artifactId)));
         const sessionIds = [...new Set([requestedArtifactSessionId, openedSessionId].filter((value): value is string => Boolean(value)))];

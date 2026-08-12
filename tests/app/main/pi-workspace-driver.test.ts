@@ -32,6 +32,7 @@ describe("PiWorkspaceDriver", () => {
       abort: vi.fn(async () => undefined),
       setModel: vi.fn(async () => undefined),
       setThinkingLevel: vi.fn(async () => undefined),
+      setPiSetting: vi.fn(async () => undefined),
       login: vi.fn(async () => undefined),
       logout: vi.fn(async () => undefined),
       rename: vi.fn(async () => undefined),
@@ -68,6 +69,7 @@ describe("PiWorkspaceDriver", () => {
       abort: vi.fn(async () => undefined),
       setModel: vi.fn(async () => undefined),
       setThinkingLevel: vi.fn(async () => undefined),
+      setPiSetting: vi.fn(async () => undefined),
       login: vi.fn(async () => undefined),
       logout: vi.fn(async () => undefined),
       rename: vi.fn(async () => undefined),
@@ -79,13 +81,37 @@ describe("PiWorkspaceDriver", () => {
       options = next;
       return runtime;
     });
-    const driver = new PiWorkspaceDriver({ workspacePath: "/project", emit: (event) => events.push(event), createRuntime });
+    const openExternal = vi.fn(async () => undefined);
+    const driver = new PiWorkspaceDriver({ workspacePath: "/project", emit: (event) => events.push(event), createRuntime, openExternal });
     const openId = crypto.randomUUID();
 
     driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", trusted: true, newSession: true });
     await vi.waitFor(() => expect(events.some((event) => event.type === "complete" && event.requestId === openId)).toBe(true));
     expect(createRuntime).toHaveBeenCalledOnce();
+    await options?.openExternal?.("https://auth.example.test/");
+    expect(openExternal).toHaveBeenCalledWith("https://auth.example.test/");
     expect(events).toContainEqual({ type: "session-snapshot", requestId: openId, snapshot });
+
+    const refreshId = crypto.randomUUID();
+    driver.dispatch({ type: "refresh-session", requestId: refreshId, workspacePath: "/project", sessionId: snapshot.sessionId });
+    await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: refreshId }));
+    expect(events).toContainEqual({ type: "session-snapshot", snapshot });
+
+    const changelogId = crypto.randomUUID();
+    driver.dispatch({ type: "get-changelog", requestId: changelogId, workspacePath: "/project", sessionId: snapshot.sessionId });
+    await vi.waitFor(() => expect(events.some((event) => event.type === "complete" && event.requestId === changelogId)).toBe(true));
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "changelog-snapshot",
+      requestId: changelogId,
+      workspacePath: "/project",
+      sessionId: snapshot.sessionId,
+      markdown: expect.stringContaining("0.84.0")
+    }));
+
+    const settingId = crypto.randomUUID();
+    driver.dispatch({ type: "set-pi-setting", requestId: settingId, workspacePath: "/project", sessionId: snapshot.sessionId, update: { key: "autoCompact", value: false } });
+    await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: settingId }));
+    expect(runtime.setPiSetting).toHaveBeenCalledWith({ key: "autoCompact", value: false });
 
     const promptId = crypto.randomUUID();
     driver.dispatch({ type: "prompt", requestId: promptId, workspacePath: "/project", sessionId: snapshot.sessionId, text: "hello", delivery: "prompt", attachments: [] });
@@ -119,7 +145,7 @@ describe("PiWorkspaceDriver", () => {
     const runtime: CakeRuntime = {
       sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile, snapshot: vi.fn(async () => snapshot),
       prompt: vi.fn(async () => { const record = await options!.persistArtifact!(artifact); response = await options!.requestArtifact!(record, new AbortController().signal); }),
-      abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
+      abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
     };
     const driver = new PiWorkspaceDriver({ workspacePath: "/project", artifactRepository: repository, emit: (event) => events.push(event), createRuntime: vi.fn(async (next) => { options = next; return runtime; }) });
     const openId = crypto.randomUUID(); driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", trusted: true, newSession: true });

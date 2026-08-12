@@ -34,8 +34,10 @@ describe("desktop client", () => {
     expect(await client.loadSession("/project", "session")).toBeUndefined();
     expect(await client.suggestFiles("/project", "app")).toEqual([{ value: "@src/app.ts", label: "app.ts", description: "src/app.ts" }]);
     await client.openWorkspace({ operationId, path: "/project", trusted: true });
+    await client.getChangelog({ operationId, workspacePath: "/project", sessionId: "session" });
 
     expect(desktop.request).toHaveBeenCalledWith({ type: "open-workspace", requestId: operationId, path: "/project", trusted: true, newSession: false, sessionId: undefined, sessionFile: undefined });
+    expect(desktop.request).toHaveBeenCalledWith({ type: "get-changelog", requestId: operationId, workspacePath: "/project", sessionId: "session" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "load-session", workspacePath: "/project", sessionId: "session" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "suggest-files", workspacePath: "/project", prefix: "app" });
   });
@@ -48,7 +50,9 @@ describe("desktop client", () => {
     const requestId = crypto.randomUUID();
 
     desktop.emit({ type: "workspace-inspected", requestId, path: "/project", trustRequired: true });
+    desktop.emit({ type: "changelog-snapshot", requestId, workspacePath: "/project", sessionId: "session", markdown: "# Changelog" });
 
     expect(listener).toHaveBeenCalledWith({ type: "workspace-inspected", operationId: requestId, path: "/project", trustRequired: true });
+    expect(listener).toHaveBeenCalledWith({ type: "changelog-received", operationId: requestId, workspacePath: "/project", sessionId: "session", markdown: "# Changelog" });
   });
 });

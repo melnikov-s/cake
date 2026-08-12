@@ -26,13 +26,16 @@ export function ModelCombobox({ ariaLabel, groups, value, onSelect, variant = "c
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
-  const allModels = useMemo(() => groups.flatMap((group) => group.models), [groups]);
+  const selectableGroups = useMemo(() => groups
+    .map((group) => ({ ...group, models: group.models.filter((model) => model.authenticated) }))
+    .filter((group) => group.models.length > 0), [groups]);
+  const allModels = useMemo(() => selectableGroups.flatMap((group) => group.models), [selectableGroups]);
   const selectedModel = allModels.find((model) => modelValue(model) === value);
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const filteredGroups = useMemo(() => groups.map((group) => ({
+  const filteredGroups = useMemo(() => selectableGroups.map((group) => ({
     ...group,
     models: group.models.filter((model) => !normalizedQuery || `${model.name}\n${model.id}\n${group.name}`.toLocaleLowerCase().includes(normalizedQuery))
-  })).filter((group) => group.models.length > 0), [groups, normalizedQuery]);
+  })).filter((group) => group.models.length > 0), [selectableGroups, normalizedQuery]);
   const filteredModels = filteredGroups.flatMap((group) => group.models);
 
   useEffect(() => {
@@ -135,7 +138,7 @@ export function ModelCombobox({ ariaLabel, groups, value, onSelect, variant = "c
               onMouseEnter={() => setActiveIndex(index)}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => choose(model)}
-            ><span><strong>{model.name}</strong><small>{model.id}</small></span>{selected ? <i aria-hidden="true">✓</i> : !model.authenticated ? <em>Sign in</em> : null}</button>;
+            ><span><strong>{model.name}</strong><small>{model.id}</small></span>{selected ? <i aria-hidden="true">✓</i> : null}</button>;
           })}
         </div>)}
       </div>

@@ -4,6 +4,8 @@ import { StoreProvider } from "r-state-tree/react";
 import { App } from "./app";
 import { createDesktopClient } from "./desktop-client";
 import { mountRootStore } from "./stores/root-store";
+import "katex/dist/katex.min.css";
+import "streamdown/styles.css";
 import "./styles.css";
 
 const root = createRoot(document.getElementById("root")!);

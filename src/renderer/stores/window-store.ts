@@ -8,8 +8,10 @@ import type {
   FileSuggestion,
   GlobalSessionSummary,
   ModelOption,
+  PiSettingUpdate,
   ProjectRecord,
   ResourceDiagnostic,
+  SessionChange,
   SessionSnapshot,
   SessionTreeNode,
   ThinkingLevel,
@@ -18,6 +20,7 @@ import type {
 } from "../../ipc/session-contract";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { DesktopClientEvent, PiState } from "../desktop-client";
+import { diffStats } from "../components/ai-elements/diff-view";
 import { DesktopClientContext, SessionCacheContext } from "./context";
 
 export interface UiRequestState {
@@ -48,6 +51,7 @@ interface PendingUserMessage {
   operationId: string;
   workspacePath: string;
   sessionId: string;
+  canonicalPartCount: number;
   expectedOccurrence: number;
   part: Extract<UiPart, { kind: "text" }>;
 }
@@ -73,12 +77,15 @@ export class WindowStore extends Store<Record<string, never>> {
   attachments: Attachment[] = [];
   thinkingExpanded = false;
   sessionSearch = "";
-  commandPane: "changes" | "tree" | "resources" | undefined;
+  commandPane: "changelog" | "tree" | "resources" | undefined;
+  changeExplorerPath: string | null | undefined;
   pendingUserMessages: PendingUserMessage[] = observable([]);
   draftsBySession: Record<string, string> = observable({});
   sessionLimitsByProject: Record<string, number> = observable({});
   changedFiles: ChangedFile[] = [];
   changesLoading = false;
+  changelogMarkdown = "";
+  changelogLoading = false;
   error: string | undefined;
   uiRequest: UiRequestState | undefined;
   artifactRequest: ArtifactRequestState | undefined;
@@ -134,13 +141,60 @@ export class WindowStore extends Store<Record<string, never>> {
     if (!this.projectPath || !this.selectedSessionId) return this.canonicalParts;
     const pendingParts = this.pendingUserMessages
       .filter((pending) => pending.workspacePath === this.projectPath && pending.sessionId === this.selectedSessionId)
-      .filter((pending) => this.userMessageOccurrenceCount(pending.workspacePath, pending.sessionId, pending.part.text) < pending.expectedOccurrence)
-      .map((pending) => pending.part);
-    return pendingParts.length > 0 ? [...this.canonicalParts, ...pendingParts] : this.canonicalParts;
+      .filter((pending) => this.userMessageOccurrenceCount(pending.workspacePath, pending.sessionId, pending.part.text) < pending.expectedOccurrence);
+    if (pendingParts.length === 0) return this.canonicalParts;
+    const parts = [...this.canonicalParts];
+    pendingParts.forEach((pending, offset) => {
+      parts.splice(Math.min(pending.canonicalPartCount + offset, parts.length), 0, pending.part);
+    });
+    return parts;
+  }
+
+  get visibleParts() {
+    return this.session?.piSettings?.hideThinkingBlock
+      ? this.parts.filter((part) => part.kind !== "reasoning")
+      : this.parts;
   }
 
   get artifacts() {
     return this.session?.artifacts.map((artifact) => artifact.value) ?? [];
+  }
+
+  get sessionChanges() {
+    const changesByCall = new Map((this.session?.sessionChanges ?? []).map((change) => [change.toolCallId, change]));
+    for (const part of this.canonicalParts) {
+      if (part.kind !== "tool" || part.name !== "edit" || part.state !== "success" || !part.filePath || !part.diff) continue;
+      const toolCallId = part.id.startsWith("tool-") ? part.id.slice(5) : part.id;
+      if (changesByCall.has(toolCallId)) continue;
+      const stats = diffStats(part.diff);
+      changesByCall.set(toolCallId, { id: part.id, toolCallId, toolName: part.name, path: part.filePath, ...stats, diff: part.diff, timestamp: new Date(0).toISOString() });
+    }
+    const changesByFile = new Map<string, SessionChange>();
+    for (const change of changesByCall.values()) {
+      const existing = changesByFile.get(change.path);
+      if (!existing) {
+        changesByFile.set(change.path, { ...change, id: `file:${change.path}` });
+        continue;
+      }
+      changesByFile.set(change.path, {
+        ...existing,
+        additions: existing.additions + change.additions,
+        deletions: existing.deletions + change.deletions,
+        diff: `${existing.diff}\n${change.diff}`,
+        timestamp: change.timestamp
+      });
+    }
+    return [...changesByFile.values()];
+  }
+
+  get selectedSessionChange() {
+    return typeof this.changeExplorerPath === "string"
+      ? this.sessionChanges.find((change) => change.path === this.changeExplorerPath) ?? this.sessionChanges[0]
+      : this.sessionChanges[0];
+  }
+
+  get sessionTitle() {
+    return this.session?.sessions.find((item) => item.id === this.session?.sessionId)?.title || "New chat";
   }
 
   get isStreaming() {
@@ -153,7 +207,7 @@ export class WindowStore extends Store<Record<string, never>> {
 
   get isLocalSlashCommand() {
     const command = this.draft.trim().toLocaleLowerCase();
-    return command === "/tree" || command === "/changes" || command === "/resources";
+    return command === "/tree" || command === "/resources" || command === "/changelog";
   }
 
   get projectName() {
@@ -224,6 +278,12 @@ export class WindowStore extends Store<Record<string, never>> {
       groups.set(model.provider, group);
     }
     return [...groups.entries()].map(([id, group]) => ({ id, ...group }));
+  }
+
+  get connectedModelsByProvider() {
+    return this.modelsByProvider
+      .map((group) => ({ ...group, models: group.models.filter((model) => model.authenticated) }))
+      .filter((group) => group.models.length > 0);
   }
 
   private async hydrate() {
@@ -384,6 +444,7 @@ export class WindowStore extends Store<Record<string, never>> {
     this.draft = this.draftsBySession[sessionId] ?? "";
     this.clearExtensionUi();
     this.commandPane = undefined;
+    this.changeExplorerPath = undefined;
     this.schedulePersist();
     return true;
   }
@@ -426,6 +487,7 @@ export class WindowStore extends Store<Record<string, never>> {
     this.artifactRequest = undefined;
     this.clearExtensionUi();
     this.commandPane = undefined;
+    this.changeExplorerPath = undefined;
     try {
       await this.client.openWorkspace({ operationId, path, trusted, newSession, sessionId, sessionFile });
       void this.client.registerProject(path, this.nameFromPath(path)).then((state) => this.applyApplicationState(state)).catch((error) => this.setError(error));
@@ -458,12 +520,24 @@ export class WindowStore extends Store<Record<string, never>> {
 
   setSessionSearch(value: string) { this.sessionSearch = value; this.schedulePersist(); }
 
-  async openCommandPane(pane: "changes" | "tree" | "resources") {
+  async openCommandPane(pane: "changelog" | "tree" | "resources") {
     this.commandPane = pane;
-    if (pane === "changes") await this.refreshChanges();
+    if (pane === "changelog") await this.refreshChangelog();
   }
 
   closeCommandPane() { this.commandPane = undefined; }
+
+  async openSessionChanges() {
+    this.commandPane = undefined;
+    this.changeExplorerPath = this.sessionChanges[0]?.path ?? null;
+    await this.refreshSession();
+  }
+
+  selectChangeExplorerFile(path: string) {
+    if (this.sessionChanges.some((change) => change.path === path)) this.changeExplorerPath = path;
+  }
+
+  closeChangeExplorer() { this.changeExplorerPath = undefined; }
 
   private sessionContext() {
     if (!this.projectPath || !this.session) return undefined;
@@ -475,6 +549,23 @@ export class WindowStore extends Store<Record<string, never>> {
     const operationId = this.startOperation(); this.changesLoading = true;
     try { await this.client.inspectChanges({ operationId, workspacePath: this.projectPath }); }
     catch (error) { this.changesLoading = false; this.finishOperation(operationId); this.setError(error); }
+  }
+
+  async refreshSession() {
+    const context = this.sessionContext();
+    if (!context) return;
+    const operationId = this.startOperation();
+    try { await this.client.refreshSession({ operationId, ...context }); }
+    catch (error) { this.finishOperation(operationId); this.setError(error); }
+  }
+
+  async refreshChangelog() {
+    const context = this.sessionContext();
+    if (!context || this.changelogLoading) return;
+    const operationId = this.startOperation();
+    this.changelogLoading = true;
+    try { await this.client.getChangelog({ operationId, ...context }); }
+    catch (error) { this.changelogLoading = false; this.finishOperation(operationId); this.setError(error); }
   }
 
   async renameCurrentSession(name: string) {
@@ -563,9 +654,9 @@ export class WindowStore extends Store<Record<string, never>> {
     if (!this.canSubmit) return;
     const text = this.draft.trim();
     const command = text.toLocaleLowerCase();
-    if (command === "/tree" || command === "/changes" || command === "/resources") {
+    if (command === "/tree" || command === "/resources" || command === "/changelog") {
       this.setDraft("");
-      await this.openCommandPane(command === "/tree" ? "tree" : command === "/changes" ? "changes" : "resources");
+      await this.openCommandPane(command === "/tree" ? "tree" : command === "/changelog" ? "changelog" : "resources");
       return;
     }
     const delivery = deliveryOverride ?? (this.isStreaming ? "follow-up" : "prompt");
@@ -595,6 +686,7 @@ export class WindowStore extends Store<Record<string, never>> {
       operationId,
       workspacePath,
       sessionId,
+      canonicalPartCount: this.sessionCache.find(sessionId, workspacePath)?.uiParts.length ?? 0,
       expectedOccurrence: this.userMessageOccurrenceCount(workspacePath, sessionId, text) + earlierPendingCount + 1,
       part: { id: `optimistic-user-${operationId}`, kind: "text", role: "user", text, status: "complete" }
     });
@@ -649,6 +741,17 @@ export class WindowStore extends Store<Record<string, never>> {
     try {
       const context = this.sessionContext(); if (!context) throw new Error("No active session");
       await this.client.setThinkingLevel({ operationId, ...context, level });
+    } catch (error) {
+      this.setError(error);
+      this.finishOperation(operationId);
+    }
+  }
+
+  async setPiSetting(update: PiSettingUpdate) {
+    const operationId = this.startOperation();
+    try {
+      const context = this.sessionContext(); if (!context) throw new Error("No active session");
+      await this.client.setPiSetting({ operationId, ...context, update });
     } catch (error) {
       this.setError(error);
       this.finishOperation(operationId);
@@ -857,6 +960,13 @@ export class WindowStore extends Store<Record<string, never>> {
     }
     if (event.type === "changes-received" && event.workspacePath === this.projectPath) {
       this.changedFiles.splice(0, this.changedFiles.length, ...event.files); this.changesLoading = false; this.finishOperation(event.operationId); return;
+    }
+    if (event.type === "changelog-received") {
+      this.finishOperation(event.operationId);
+      this.changelogLoading = false;
+      if (!this.isActiveSession(event.workspacePath, event.sessionId)) return;
+      this.changelogMarkdown = event.markdown;
+      return;
     }
     if (event.type === "ui-requested") {
       if (!this.activeOperations.includes(event.operationId)) return;

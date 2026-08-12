@@ -24,6 +24,13 @@ types validated in `src/ipc`. The renderer boundary translates those DTOs into
 intent-level `DesktopClient` operations and application events consumed by
 `WindowStore`; the Store does not depend on IPC types.
 
+Pi's `/changelog` is an interactive-mode command rather than an
+`AgentSession.prompt()` command. Cake handles it locally: the active workspace
+driver reads Pi's bundled `CHANGELOG.md` through the public `getPackageDir()`
+export, sends the markdown over validated IPC on demand, and renders it in the
+shared command pane. It is never added to the session transcript or sent to a
+model.
+
 The S0 extension UI adapter implements `confirm`. Other primitive methods have
 safe inert defaults where possible, while TUI-only methods fail explicitly.
 Completing the remaining primitive UI adapter belongs to Stage S3.

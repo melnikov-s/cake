@@ -45,12 +45,15 @@ function createDesktopClient(restoredPath?: string) {
     abort: vi.fn(async () => undefined),
     setModel: vi.fn(async () => undefined),
     setThinkingLevel: vi.fn(async () => undefined),
+    setPiSetting: vi.fn(async () => undefined),
     login: vi.fn(async () => undefined),
     logout: vi.fn(async () => undefined),
     renameSession: vi.fn(async () => undefined),
     forkSession: vi.fn(async () => undefined),
     navigateSession: vi.fn(async () => undefined),
+    refreshSession: vi.fn(async () => undefined),
     inspectChanges: vi.fn(async () => undefined),
+    getChangelog: vi.fn(async () => undefined),
     respondToUi: vi.fn(async () => undefined),
     respondToArtifact: vi.fn(async () => undefined),
     exportArtifacts: vi.fn(async () => ""),
@@ -95,6 +98,37 @@ describe("WindowStore", () => {
     expect(store.attachments).toEqual([
       { kind: "image", name: "preview.png", mimeType: "image/png", data: "aW1hZ2U=" }
     ]);
+    root[Symbol.dispose]();
+  });
+
+  it("offers only authenticated models while retaining all providers in settings", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop, {
+      ...snapshot,
+      models: [
+        { provider: "openai", providerName: "OpenAI", id: "gpt", name: "GPT", reasoning: true, input: ["text"], authenticated: true, authTypes: ["api_key"] },
+        { provider: "anthropic", providerName: "Anthropic", id: "claude", name: "Claude", reasoning: true, input: ["text"], authenticated: false, authTypes: ["api_key", "oauth"] }
+      ]
+    });
+
+    expect(store.modelsByProvider.map((group) => group.id)).toEqual(["openai", "anthropic"]);
+    expect(store.connectedModelsByProvider).toHaveLength(1);
+    expect(store.connectedModelsByProvider[0]).toMatchObject({ id: "openai", models: [expect.objectContaining({ id: "gpt" })] });
+    root[Symbol.dispose]();
+  });
+
+  it("routes Pi-owned settings through the active session", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush(); await openSnapshot(store, desktop);
+
+    await store.setPiSetting({ key: "autoCompact", value: false });
+    const operationId = store.activeOperations.at(-1)!;
+    expect(desktop.client.setPiSetting).toHaveBeenCalledWith({ operationId, workspacePath: "/project", sessionId: "session-1", update: { key: "autoCompact", value: false } });
+    desktop.emit({ type: "operation-completed", operationId });
+    expect(store.activeOperations).not.toContain(operationId);
     root[Symbol.dispose]();
   });
 
@@ -184,6 +218,61 @@ describe("WindowStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("combines durable session edits with a newly completed live edit", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop, {
+      ...snapshot,
+      sessionChanges: [{ id: "edit-result-1", toolCallId: "edit-1", path: "src/one.ts", additions: 1, deletions: 1, diff: "-1 old\n+1 new", timestamp: new Date(0).toISOString() }]
+    });
+
+    desktop.emit({ type: "part-updated", sessionId: "session-1", part: { id: "tool-edit-2", kind: "tool", name: "edit", input: "", filePath: "src/two.ts", diff: "+2 added", state: "success" } });
+
+    expect(store.sessionChanges).toEqual([
+      expect.objectContaining({ toolCallId: "edit-1", path: "src/one.ts" }),
+      expect.objectContaining({ toolCallId: "edit-2", path: "src/two.ts", additions: 1, deletions: 0 })
+    ]);
+    root[Symbol.dispose]();
+  });
+
+  it("combines repeated session edits into one change per file", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop, {
+      ...snapshot,
+      sessionChanges: [
+        { id: "edit-result-1", toolCallId: "edit-1", toolName: "edit", path: "PLAN.md", additions: 2, deletions: 1, diff: "-1 old\n+1 new\n+2 more", timestamp: new Date(0).toISOString() },
+        { id: "edit-result-2", toolCallId: "edit-2", toolName: "edit", path: "PLAN.md", additions: 3, deletions: 2, diff: "-4 before\n-5 before\n+4 after\n+5 after\n+6 added", timestamp: new Date(1).toISOString() }
+      ]
+    });
+
+    expect(store.sessionChanges).toEqual([
+      expect.objectContaining({ id: "file:PLAN.md", path: "PLAN.md", additions: 5, deletions: 3, diff: expect.stringContaining("+6 added") })
+    ]);
+    await store.openSessionChanges();
+    expect(store.selectedSessionChange).toMatchObject({ path: "PLAN.md", additions: 5, deletions: 3 });
+    expect(store.commandPane).toBeUndefined();
+    store.closeChangeExplorer();
+    expect(store.changeExplorerPath).toBeUndefined();
+    root[Symbol.dispose]();
+  });
+
+  it("opens the fullscreen change explorer and refreshes the authoritative session snapshot", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush(); await openSnapshot(store, desktop, { ...snapshot, sessionChanges: [{ id: "edit-result", toolCallId: "edit-1", path: "PLAN.md", additions: 1, deletions: 0, diff: "+1 plan", timestamp: new Date(0).toISOString() }] });
+
+    await store.openSessionChanges();
+    expect(store.changeExplorerPath).toBe("PLAN.md");
+    expect(desktop.client.refreshSession).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", sessionId: "session-1" }));
+
+    store.closeChangeExplorer();
+    expect(store.changeExplorerPath).toBeUndefined();
+    root[Symbol.dispose]();
+  });
+
   it("projects extension UI only for the active session and clears it on replacement", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
@@ -259,6 +348,24 @@ describe("WindowStore", () => {
       { id: "user-canonical", kind: "text", role: "user", text: "Show this now", status: "complete" }
     ]);
     expect(store.pendingUserMessages).toHaveLength(0);
+    root[Symbol.dispose]();
+  });
+
+  it("keeps streamed reasoning below an optimistic user message", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    desktop.emit({ type: "pi-state-changed", state: "ready" });
+    await openSnapshot(store, desktop);
+
+    store.setDraft("Think about this");
+    await store.submit();
+    desktop.emit({ type: "part-updated", sessionId: "session-1", part: { id: "reasoning-1", kind: "reasoning", text: "Working it out", status: "streaming" } });
+
+    expect(store.parts.map((part) => part.id)).toEqual([
+      expect.stringMatching(/^optimistic-user-/),
+      "reasoning-1"
+    ]);
     root[Symbol.dispose]();
   });
 
@@ -532,6 +639,17 @@ describe("WindowStore", () => {
 
     expect(store.commandPane).toBe("tree");
     expect(desktop.client.submit).not.toHaveBeenCalled();
+
+    store.closeCommandPane();
+    store.setDraft("/changelog");
+    await store.submit();
+
+    expect(store.commandPane).toBe("changelog");
+    expect(desktop.client.getChangelog).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", sessionId: "session-1" }));
+    expect(desktop.client.submit).not.toHaveBeenCalled();
+    const changelogId = store.activeOperations.at(-1)!;
+    desktop.emit({ type: "changelog-received", operationId: changelogId, workspacePath: "/project", sessionId: "session-1", markdown: "# Changelog\n\n## 0.84.0" });
+    expect(store.changelogMarkdown).toContain("0.84.0");
 
     store.closeCommandPane();
     store.setDraft("/skill:review");

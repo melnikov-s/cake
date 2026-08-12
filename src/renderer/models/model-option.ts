@@ -9,5 +9,7 @@ export class ModelOptionModel extends Model {
   @state reasoning = false;
   @state input: ModelOption["input"] = observable([]);
   @state authenticated = false;
+  @state authSource: ModelOption["authSource"] = undefined;
+  @state authLabel: ModelOption["authLabel"] = undefined;
   @state authTypes: ModelOption["authTypes"] = observable([]);
 }

@@ -1,5 +1,5 @@
 import { Model, applySnapshot, batch, child, observable, state, type Snapshot } from "r-state-tree";
-import type { SessionPreview, SessionSnapshot, ThinkingLevel, UiPart } from "../../ipc/session-contract";
+import type { SessionChange, SessionPreview, SessionSnapshot, ThinkingLevel, UiPart } from "../../ipc/session-contract";
 import { MessageModel } from "./message";
 import { ModelOptionModel } from "./model-option";
 import { SessionSummaryModel } from "./session-summary";
@@ -17,6 +17,7 @@ export class SessionModel extends Model {
   @child(ModelOptionModel) models: ModelOptionModel[] = observable([]);
   @state thinkingLevel: ThinkingLevel = "off";
   @state availableThinkingLevels: ThinkingLevel[] = observable([]);
+  @state piSettings: SessionSnapshot["piSettings"] = undefined;
   @state streaming = false;
   @state diagnostics: string[] = observable([]);
   @state commands: SessionSnapshot["commands"] = observable([]);
@@ -25,6 +26,7 @@ export class SessionModel extends Model {
   @child(ResourceDiagnosticModel) resourceDiagnostics: ResourceDiagnosticModel[] = observable([]);
   @child(SessionSummaryModel) sessions: SessionSummaryModel[] = observable([]);
   @child(SessionTreeNodeModel) tree: SessionTreeNodeModel[] = observable([]);
+  @state sessionChanges: SessionChange[] = observable([]);
   @child(ArtifactModel) artifacts: ArtifactModel[] = observable([]);
 
   get loaded() {
@@ -48,10 +50,12 @@ export class SessionModel extends Model {
         model: snapshot.model,
         thinkingLevel: snapshot.thinkingLevel,
         availableThinkingLevels: snapshot.availableThinkingLevels,
+        piSettings: snapshot.piSettings,
         streaming: snapshot.streaming,
         diagnostics: snapshot.diagnostics,
         commands: snapshot.commands,
-        usage: snapshot.usage
+        usage: snapshot.usage,
+        sessionChanges: snapshot.sessionChanges ?? []
       } as Snapshot<this>);
       reconcileChildren(this.parts, snapshot.parts, MessageModel);
       reconcileModelOptions(this.models, snapshot.models);

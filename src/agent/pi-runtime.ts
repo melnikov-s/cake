@@ -6,6 +6,7 @@ import {
   SettingsManager,
   createAgentSession,
   getAgentDir,
+  getPackageDir,
   hasTrustRequiringProjectResources,
   type AgentSessionEvent,
   type ExtensionUIContext,
@@ -15,16 +16,19 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 import { CombinedAutocompleteProvider } from "@earendil-works/pi-tui";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type {
   Attachment,
-  FileSuggestion,
   ModelOption,
+  PiSettings,
+  PiSettingUpdate,
   CompatibilityCatalog,
   ExtensionUiEvent,
   ExtensionUiState,
+  FileSuggestion,
   ResourceDiagnostic,
+  SessionChange,
   SessionSnapshot,
   SessionPreview,
   SessionSummary,
@@ -44,6 +48,14 @@ import {
 } from "../ipc/artifact-contract";
 
 export const piRuntimeVersion = "0.84.0" as const;
+
+export function loadPiChangelog() {
+  try {
+    return readFileSync(join(getPackageDir(), "CHANGELOG.md"), "utf8");
+  } catch {
+    return "# Changelog\n\nNo changelog entries found.";
+  }
+}
 
 export function inspectWorkspace(path: string) {
   return { path, trustRequired: hasTrustRequiringProjectResources(path) };
@@ -118,6 +130,7 @@ export interface CakeRuntimeOptions {
   persistArtifact?(artifact: CakeArtifactV1): Promise<ArtifactRecord>;
   requestArtifact?(record: ArtifactRecord, signal: AbortSignal): Promise<unknown | undefined>;
   listArtifacts?(pointers: ArtifactPointer[]): Promise<ArtifactRecord[]>;
+  openExternal?(url: string): Promise<void>;
   onEvent(event: CakeRuntimeEvent): void;
 }
 
@@ -217,6 +230,7 @@ export interface CakeRuntime {
   abort(): Promise<void>;
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: ThinkingLevel): Promise<void>;
+  setPiSetting(update: PiSettingUpdate): Promise<void>;
   login(provider: string, authType: "api_key" | "oauth"): Promise<void>;
   logout(provider: string): Promise<void>;
   rename(name: string): Promise<void>;
@@ -238,18 +252,34 @@ function formatUnknown(value: unknown, limit = 48_000) {
   return formatted.length > limit ? `${formatted.slice(0, limit)}\n…` : formatted;
 }
 
-function toolFilePath(toolName: string, args: unknown) {
-  if (toolName !== "edit" || typeof args !== "object" || args === null) return undefined;
+function formatToolInput(toolName: string, args: unknown) {
+  if (toolName === "bash" && typeof args === "object" && args !== null) {
+    const command = Reflect.get(args, "command");
+    if (typeof command === "string") return formatUnknown(command);
+  }
+  return formatUnknown(args);
+}
+
+function toolFilePath(_toolName: string, args: unknown) {
+  if (typeof args !== "object" || args === null) return undefined;
   const path = Reflect.get(args, "path") ?? Reflect.get(args, "file_path");
   return typeof path === "string" ? path : undefined;
 }
 
-function toolResultDiff(toolName: string, result: unknown) {
-  if (toolName !== "edit" || typeof result !== "object" || result === null) return undefined;
+function toolResultDiff(_toolName: string, result: unknown) {
+  if (typeof result !== "object" || result === null) return undefined;
   const details = Reflect.get(result, "details");
   if (typeof details !== "object" || details === null) return undefined;
   const diff = Reflect.get(details, "diff") ?? Reflect.get(details, "patch");
   return typeof diff === "string" ? diff : undefined;
+}
+
+function diffLineStats(diff: string) {
+  const lines = diff.split("\n");
+  return {
+    additions: lines.filter((line) => line.startsWith("+") && !line.startsWith("+++")).length,
+    deletions: lines.filter((line) => line.startsWith("-") && !line.startsWith("---")).length
+  };
 }
 
 function textFromContent(content: unknown): string {
@@ -262,7 +292,7 @@ function textFromContent(content: unknown): string {
     .join("\n");
 }
 
-function partsFromMessage(message: unknown, baseId: string, streaming = false): UiPart[] {
+function partsFromMessage(message: unknown, baseId: string, streaming = false, entryId?: string): UiPart[] {
   if (typeof message !== "object" || message === null) return [];
   const role = Reflect.get(message, "role");
   const content = Reflect.get(message, "content");
@@ -270,7 +300,7 @@ function partsFromMessage(message: unknown, baseId: string, streaming = false): 
   if (role === "user") {
     const parts: UiPart[] = [];
     const text = textFromContent(content);
-    if (text) parts.push({ id: `${baseId}-text`, kind: "text", role: "user", text, status: "complete" });
+    if (text) parts.push({ id: `${baseId}-text`, kind: "text", role: "user", entryId, text, status: "complete" });
     if (Array.isArray(content)) {
       content.forEach((item, index) => {
         if (typeof item === "object" && item !== null && Reflect.get(item, "type") === "image") {
@@ -290,7 +320,7 @@ function partsFromMessage(message: unknown, baseId: string, streaming = false): 
         if (!text) return [];
         const sources = [...new Set(text.match(/https?:\/\/[^\s)\]}>,]+/g) ?? [])].slice(0, 20);
         return [
-          { id: `${baseId}-text-${index}`, kind: "text", role: "assistant", text, status: streaming ? "streaming" : Reflect.get(message, "errorMessage") ? "error" : "complete" },
+          { id: `${baseId}-text-${index}`, kind: "text", role: "assistant", entryId, text, status: streaming ? "streaming" : Reflect.get(message, "errorMessage") ? "error" : "complete" },
           ...sources.map((url, sourceIndex): UiPart => ({ id: `${baseId}-source-${index}-${sourceIndex}`, kind: "source", title: sourceTitle(url), url }))
         ];
       }
@@ -300,7 +330,7 @@ function partsFromMessage(message: unknown, baseId: string, streaming = false): 
       if (type === "toolCall") {
         const name = String(Reflect.get(item, "name") ?? "tool");
         const args = Reflect.get(item, "arguments");
-        return [{ id: `tool-${String(Reflect.get(item, "id"))}`, kind: "tool", name, input: formatUnknown(args), filePath: toolFilePath(name, args), state: "running" }];
+        return [{ id: `tool-${String(Reflect.get(item, "id"))}`, kind: "tool", name, input: formatToolInput(name, args), filePath: toolFilePath(name, args), state: "running" }];
       }
       return [];
     });
@@ -331,11 +361,36 @@ function partsFromMessage(message: unknown, baseId: string, streaming = false): 
   return [];
 }
 
-function projectMessages(messages: readonly unknown[]) {
+export function createLiveMessageProjector() {
+  let activeStreamId: string | undefined;
+  let streamIndex = 0;
+
+  const nextStreamId = () => `stream-${++streamIndex}`;
+
+  return (event: AgentSessionEvent): UiPart[] => {
+    if (event.type === "message_start" && event.message.role === "assistant") {
+      activeStreamId = nextStreamId();
+      return [];
+    }
+    if (event.type === "message_update") {
+      activeStreamId ??= nextStreamId();
+      return partsFromMessage(event.message, activeStreamId, true);
+    }
+    if (event.type === "message_end" && event.message.role === "assistant") {
+      activeStreamId ??= nextStreamId();
+      const parts = partsFromMessage(event.message, activeStreamId);
+      activeStreamId = undefined;
+      return parts;
+    }
+    return [];
+  };
+}
+
+function projectMessages(messages: readonly unknown[], entryIds: readonly (string | undefined)[] = []) {
   const projected: UiPart[] = [];
   const indexes = new Map<string, number>();
   for (const [messageIndex, message] of messages.entries()) {
-    for (const part of partsFromMessage(message, `message-${messageIndex}`)) {
+    for (const part of partsFromMessage(message, `message-${messageIndex}`, false, entryIds[messageIndex])) {
       const existingIndex = indexes.get(part.id);
       if (existingIndex === undefined) {
         indexes.set(part.id, projected.length);
@@ -349,6 +404,35 @@ function projectMessages(messages: readonly unknown[]) {
     }
   }
   return projected;
+}
+
+function messageFingerprint(message: unknown) {
+  if (typeof message !== "object" || message === null) return undefined;
+  try {
+    return JSON.stringify({
+      role: Reflect.get(message, "role"),
+      content: Reflect.get(message, "content"),
+      toolCallId: Reflect.get(message, "toolCallId")
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+function messageEntryIds(messages: readonly unknown[], sessionManager: SessionManager) {
+  const branchMessages = sessionManager.getBranch().flatMap((entry) => entry.type === "message"
+    ? [{ id: entry.id, message: Reflect.get(entry, "message") }]
+    : []);
+  let branchIndex = 0;
+  return messages.map((message) => {
+    const fingerprint = messageFingerprint(message);
+    const matchIndex = branchMessages.findIndex((candidate, index) => index >= branchIndex && (
+      candidate.message === message || (fingerprint !== undefined && messageFingerprint(candidate.message) === fingerprint)
+    ));
+    if (matchIndex < 0) return undefined;
+    branchIndex = matchIndex + 1;
+    return branchMessages[matchIndex]!.id;
+  });
 }
 
 function imageContent(attachments: Attachment[]) {
@@ -426,6 +510,38 @@ function projectArtifactPointers(sessionManager: SessionManager): ArtifactPointe
     if (!current || parsed.data.revision > current.revision) pointers.set(parsed.data.artifactId, parsed.data);
   }
   return [...pointers.values()];
+}
+
+export function projectSessionChanges(sessionManager: SessionManager): SessionChange[] {
+  const toolCalls = new Map<string, { name: string; path: string }>();
+  const changes: SessionChange[] = [];
+  for (const entry of sessionManager.getEntries()) {
+    if (entry.type !== "message") continue;
+    const message = Reflect.get(entry, "message");
+    if (typeof message !== "object" || message === null) continue;
+    const role = Reflect.get(message, "role");
+    if (role === "assistant") {
+      const content = Reflect.get(message, "content");
+      if (!Array.isArray(content)) continue;
+      for (const item of content) {
+        if (typeof item !== "object" || item === null || Reflect.get(item, "type") !== "toolCall") continue;
+        const toolCallId = Reflect.get(item, "id");
+        const toolName = Reflect.get(item, "name");
+        const path = typeof toolName === "string" ? toolFilePath(toolName, Reflect.get(item, "arguments")) : undefined;
+        if (typeof toolCallId === "string" && typeof toolName === "string" && path) toolCalls.set(toolCallId, { name: toolName, path });
+      }
+      continue;
+    }
+    if (role !== "toolResult" || Reflect.get(message, "isError") === true) continue;
+    const toolCallId = Reflect.get(message, "toolCallId");
+    if (typeof toolCallId !== "string") continue;
+    const call = toolCalls.get(toolCallId);
+    const details = Reflect.get(message, "details");
+    const diff = call ? toolResultDiff(call.name, { details }) : undefined;
+    if (!call || !diff) continue;
+    changes.push({ id: entry.id, toolCallId, toolName: call.name, path: call.path, ...diffLineStats(diff), diff, timestamp: entry.timestamp });
+  }
+  return changes;
 }
 
 function compatibilityCatalog(
@@ -579,8 +695,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   });
   const cakeSessionId = session.sessionManager.getSessionId();
   let disposed = false;
-  let activeStreamId = "stream-0";
-  let streamIndex = 0;
+  const projectLiveMessage = createLiveMessageProjector();
   const catalog = compatibilityCatalog(resourceLoader, settingsManager, options.cwd, agentDir);
   const extensionUiState: ExtensionUiState = { statuses: [], widgets: [] };
   const compatibilityDiagnosticKeys = new Set(catalog.diagnostics.map((item) => `${item.method ?? ""}:${item.message}`));
@@ -603,7 +718,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
 
   async function modelOptions(): Promise<ModelOption[]> {
     const providers = modelRuntime.getProviders();
-    const authenticated = new Map(await Promise.all(providers.map(async (provider) => [provider.id, Boolean(await modelRuntime.checkAuth(provider.id))] as const)));
+    const authentication = new Map(await Promise.all(providers.map(async (provider) => [provider.id, await modelRuntime.checkAuth(provider.id)] as const)));
     return providers.flatMap((provider) => provider.getModels().map((model) => ({
       provider: provider.id,
       providerName: provider.name,
@@ -611,7 +726,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       name: model.name,
       reasoning: model.reasoning,
       input: model.input,
-      authenticated: authenticated.get(provider.id) ?? false,
+      authenticated: Boolean(authentication.get(provider.id)),
+      authSource: modelRuntime.getProviderAuthStatus(provider.id).source,
+      authLabel: authentication.get(provider.id)?.source ?? modelRuntime.getProviderAuthStatus(provider.id).label,
       authTypes: [provider.auth.apiKey ? "api_key" as const : undefined, provider.auth.oauth ? "oauth" as const : undefined].filter((type): type is "api_key" | "oauth" => Boolean(type))
     })));
   }
@@ -623,11 +740,31 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       workspacePath: options.cwd,
       sessionId: cakeSessionId,
       sessionFile: session.sessionFile ?? "",
-      parts: projectMessages(session.messages),
+      parts: projectMessages(session.messages, messageEntryIds(session.messages, session.sessionManager)),
       model: session.model ? { provider: session.model.provider, id: session.model.id, name: session.model.name } : undefined,
       models: await modelOptions(),
       thinkingLevel: session.thinkingLevel,
       availableThinkingLevels: session.getAvailableThinkingLevels(),
+      piSettings: {
+        autoCompact: session.autoCompactionEnabled,
+        autoResizeImages: settingsManager.getImageAutoResize(),
+        blockImages: settingsManager.getBlockImages(),
+        enableSkillCommands: settingsManager.getEnableSkillCommands(),
+        steeringMode: session.steeringMode,
+        followUpMode: session.followUpMode,
+        transport: settingsManager.getTransport(),
+        httpIdleTimeoutMs: settingsManager.getHttpIdleTimeoutMs(),
+        hideThinkingBlock: settingsManager.getHideThinkingBlock(),
+        mermaidRenderingMode: settingsManager.getMermaidRenderingMode(),
+        showCacheMissNotices: settingsManager.getShowCacheMissNotices(),
+        collapseChangelog: settingsManager.getCollapseChangelog(),
+        quietStartup: settingsManager.getQuietStartup(),
+        enableInstallTelemetry: settingsManager.getEnableInstallTelemetry(),
+        defaultProjectTrust: settingsManager.getDefaultProjectTrust(),
+        doubleEscapeAction: settingsManager.getDoubleEscapeAction(),
+        treeFilterMode: settingsManager.getTreeFilterMode(),
+        anthropicExtraUsageWarning: settingsManager.getWarnings().anthropicExtraUsage ?? true
+      } satisfies PiSettings,
       streaming: session.isStreaming,
       diagnostics: [
         ...extensionsResult.errors.map((error) => `${error.path}: ${error.error}`),
@@ -646,7 +783,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       compatibility: catalog,
       extensionUi: extensionUiState,
       sessions,
-      tree: projectTree(session.sessionManager)
+      tree: projectTree(session.sessionManager),
+      sessionChanges: projectSessionChanges(session.sessionManager)
       ,artifacts: await (options.listArtifacts?.(projectArtifactPointers(session.sessionManager)) ?? Promise.resolve([]))
     };
   }
@@ -662,26 +800,18 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     if (disposed) return;
     if (event.type === "agent_start") {
-      activeStreamId = `stream-${++streamIndex}`;
       options.onEvent({ type: "streaming", sessionId: cakeSessionId, streaming: true });
     }
-    if (event.type === "message_update") {
-      for (const part of partsFromMessage(event.message, activeStreamId, true)) {
-        options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
-      }
-    }
-    if (event.type === "message_end") {
-      for (const part of partsFromMessage(event.message, activeStreamId)) {
-        options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
-      }
+    for (const part of projectLiveMessage(event)) {
+      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
     }
     if (event.type === "tool_execution_start") {
-      const call = { input: formatUnknown(event.args), filePath: toolFilePath(event.toolName, event.args) };
+      const call = { input: formatToolInput(event.toolName, event.args), filePath: toolFilePath(event.toolName, event.args) };
       activeToolCalls.set(event.toolCallId, call);
       options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: `tool-${event.toolCallId}`, kind: "tool", name: event.toolName, ...call, state: "running" } });
     }
     if (event.type === "tool_execution_update") {
-      const call = activeToolCalls.get(event.toolCallId) ?? { input: formatUnknown(event.args), filePath: toolFilePath(event.toolName, event.args) };
+      const call = activeToolCalls.get(event.toolCallId) ?? { input: formatToolInput(event.toolName, event.args), filePath: toolFilePath(event.toolName, event.args) };
       activeToolCalls.set(event.toolCallId, call);
       options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: `tool-${event.toolCallId}`, kind: "tool", name: event.toolName, ...call, output: formatUnknown(event.partialResult), state: "running" } });
     }
@@ -725,6 +855,31 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       session.setThinkingLevel(level);
       await emitSnapshot();
     },
+    async setPiSetting(update) {
+      if (update.key === "autoCompact") session.setAutoCompactionEnabled(update.value);
+      else if (update.key === "autoResizeImages") settingsManager.setImageAutoResize(update.value);
+      else if (update.key === "blockImages") settingsManager.setBlockImages(update.value);
+      else if (update.key === "enableSkillCommands") settingsManager.setEnableSkillCommands(update.value);
+      else if (update.key === "steeringMode") session.setSteeringMode(update.value);
+      else if (update.key === "followUpMode") session.setFollowUpMode(update.value);
+      else if (update.key === "transport") {
+        settingsManager.setTransport(update.value);
+        session.agent.transport = update.value;
+      }
+      else if (update.key === "httpIdleTimeoutMs") settingsManager.setHttpIdleTimeoutMs(update.value);
+      else if (update.key === "hideThinkingBlock") settingsManager.setHideThinkingBlock(update.value);
+      else if (update.key === "mermaidRenderingMode") settingsManager.setMermaidRenderingMode(update.value);
+      else if (update.key === "showCacheMissNotices") settingsManager.setShowCacheMissNotices(update.value);
+      else if (update.key === "collapseChangelog") settingsManager.setCollapseChangelog(update.value);
+      else if (update.key === "quietStartup") settingsManager.setQuietStartup(update.value);
+      else if (update.key === "enableInstallTelemetry") settingsManager.setEnableInstallTelemetry(update.value);
+      else if (update.key === "defaultProjectTrust") settingsManager.setDefaultProjectTrust(update.value);
+      else if (update.key === "doubleEscapeAction") settingsManager.setDoubleEscapeAction(update.value);
+      else if (update.key === "treeFilterMode") settingsManager.setTreeFilterMode(update.value);
+      else if (update.key === "anthropicExtraUsageWarning") settingsManager.setWarnings({ ...settingsManager.getWarnings(), anthropicExtraUsage: update.value });
+      await settingsManager.flush();
+      await emitSnapshot();
+    },
     async login(provider, authType) {
       await modelRuntime.login(provider, authType, {
         async prompt(prompt) {
@@ -742,11 +897,21 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         notify(event) {
           const detail = event.type === "auth_url" ? event.url : event.type === "device_code" ? `${event.verificationUri}\nCode: ${event.userCode}` : event.message;
           options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "auth-status", kind: "notice", tone: "info", title: "Authentication", detail } });
+          const url = event.type === "auth_url" ? event.url : event.type === "device_code" ? event.verificationUri : undefined;
+          if (url && options.openExternal) {
+            void options.openExternal(url).catch((error) => {
+              options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "auth-status", kind: "notice", tone: "error", title: "Could not open authentication", detail: `${error instanceof Error ? error.message : String(error)}\n${detail}` } });
+            });
+          }
         }
       });
       await emitSnapshot();
     },
     async logout(provider) {
+      const status = modelRuntime.getProviderAuthStatus(provider);
+      if (status.configured && status.source && status.source !== "stored" && status.source !== "runtime") {
+        throw new Error(`${status.label ?? provider} is managed outside Cake. Remove that credential source and restart Cake to disconnect it.`);
+      }
       await modelRuntime.logout(provider);
       await emitSnapshot();
     },
