@@ -29,6 +29,7 @@ function createDesktopClient(restoredPath?: string) {
     getHomeDirectory: vi.fn(async () => "/home/user"),
     chooseAttachments: vi.fn(async () => []),
     suggestFiles: vi.fn(async () => []),
+    listWorkspaceFiles: vi.fn(async () => []),
     readWorkspaceFile: vi.fn(async () => ""),
     loadWindowState: vi.fn(async () => ({ projectPath: restoredPath, recentProjectPaths: restoredPath ? [restoredPath] : [], draft: "saved", theme: "system" as const, thinkingExpanded: false, sessionSearch: "", draftsBySession: {} })),
     saveWindowState: vi.fn(async () => undefined),
@@ -292,6 +293,25 @@ describe("WindowStore", () => {
 
     store.closeChangeExplorer();
     expect(store.changeExplorerPath).toBeUndefined();
+    root[Symbol.dispose]();
+  });
+
+  it("loads the full project tree for the workspace browser and keeps selection window-local", async () => {
+    const desktop = createDesktopClient();
+    vi.mocked(desktop.client.listWorkspaceFiles).mockResolvedValue(["PLAN.md", "src/app.ts", "src/main.ts"]);
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+
+    await store.openWorkspaceBrowser();
+
+    expect(desktop.client.listWorkspaceFiles).toHaveBeenCalledWith("/project");
+    expect(store.workspaceFiles).toEqual(["PLAN.md", "src/app.ts", "src/main.ts"]);
+    expect(store.workspaceBrowserPath).toBe("PLAN.md");
+    store.selectWorkspaceFile("src/main.ts");
+    expect(store.workspaceBrowserPath).toBe("src/main.ts");
+    store.closeWorkspaceBrowser();
+    expect(store.workspaceBrowserPath).toBeUndefined();
     root[Symbol.dispose]();
   });
 

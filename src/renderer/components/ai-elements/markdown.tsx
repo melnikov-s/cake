@@ -15,18 +15,18 @@ const components: Components = {
 const mermaid = createMermaidPlugin({ config: { securityLevel: "strict" } });
 const plugins = { code, math, mermaid };
 
-type MarkdownProps = Omit<StreamdownProps, "children" | "components" | "mode" | "plugins" | "skipHtml"> & {
+type MarkdownProps = Omit<StreamdownProps, "children" | "components" | "isAnimating" | "mode" | "plugins" | "skipHtml"> & {
   children: string;
-  streaming?: boolean;
 };
 
-export function Markdown({ children, className, streaming = false, ...props }: MarkdownProps) {
+export function Markdown({ children, className, ...props }: MarkdownProps) {
   return (
     <Streamdown
       className={cn("markdown-content min-w-0 max-w-full break-words [overflow-wrap:anywhere]", className)}
       components={components}
-      isAnimating={streaming}
-      mode={streaming ? "streaming" : "static"}
+      // Streaming mode mirrors parsed blocks through passive React state. Store updates already drive rendering.
+      isAnimating={false}
+      mode="static"
       plugins={plugins}
       skipHtml
       {...props}

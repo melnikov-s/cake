@@ -89,6 +89,9 @@ export class WindowStore extends Store<Record<string, never>> {
   sessionSearch = "";
   commandPane: "changelog" | "tree" | "resources" | undefined;
   changeExplorerPath: string | null | undefined;
+  workspaceBrowserPath: string | null | undefined;
+  workspaceFiles: string[] = observable([]);
+  workspaceFilesLoading = false;
   pendingUserMessages: PendingUserMessage[] = observable([]);
   draftsBySession: Record<string, string> = observable({});
   sessionLimitsByProject: Record<string, number> = observable({});
@@ -111,6 +114,7 @@ export class WindowStore extends Store<Record<string, never>> {
   reviewRuns: ReviewRunState[] = observable([]);
   activeReviewThreadId: string | undefined;
   private openRevision = 0;
+  private browseRevision = 0;
   private reopenAfterAgentRestart = false;
   private draftAfterAgentRestart: string | undefined;
   private persistTimer: ReturnType<typeof setTimeout> | undefined;
@@ -514,6 +518,7 @@ export class WindowStore extends Store<Record<string, never>> {
     this.clearExtensionUi();
     this.commandPane = undefined;
     this.changeExplorerPath = undefined;
+    this.workspaceBrowserPath = undefined;
     this.schedulePersist();
     return true;
   }
@@ -562,6 +567,7 @@ export class WindowStore extends Store<Record<string, never>> {
     this.clearExtensionUi();
     this.commandPane = undefined;
     this.changeExplorerPath = undefined;
+    this.workspaceBrowserPath = undefined;
     try {
       await this.client.openWorkspace({ operationId, path, newSession, sessionId, sessionFile });
       void this.client.registerProject(path, this.nameFromPath(path)).then((state) => this.applyApplicationState(state)).catch((error) => this.setError(error));
@@ -603,10 +609,54 @@ export class WindowStore extends Store<Record<string, never>> {
 
   async openSessionChanges(threadId?: string) {
     this.commandPane = undefined;
-    const thread = threadId ? this.reviewThreads.find((item) => item.id === threadId) : this.openReviewThreads[0];
+    const thread = threadId ? this.reviewThreads.find((item) => item.id === threadId) : this.openReviewThreads.find((item) => item.anchor.view !== "file");
+    if (thread?.anchor.view === "file") {
+      await this.openWorkspaceBrowser(thread.anchor.path);
+      this.activeReviewThreadId = thread.id;
+      return;
+    }
+    this.workspaceBrowserPath = undefined;
     this.activeReviewThreadId = thread?.id;
     this.changeExplorerPath = thread?.anchor.path ?? this.sessionChanges[0]?.path ?? null;
     await this.refreshSession();
+  }
+
+  async openWorkspaceBrowser(path?: string) {
+    if (!this.projectPath) return;
+    this.commandPane = undefined;
+    this.changeExplorerPath = undefined;
+    this.activeReviewThreadId = undefined;
+    this.workspaceBrowserPath = path ?? this.workspaceFiles[0] ?? null;
+    const revision = ++this.browseRevision;
+    this.workspaceFilesLoading = true;
+    try {
+      const files = await this.client.listWorkspaceFiles(this.projectPath);
+      if (this.signal.aborted || revision !== this.browseRevision) return;
+      this.workspaceFiles.splice(0, this.workspaceFiles.length, ...files);
+      this.workspaceBrowserPath = path && files.includes(path) ? path : files[0] ?? null;
+    } catch (error) {
+      if (revision === this.browseRevision) this.setError(error);
+    } finally {
+      if (revision === this.browseRevision) this.workspaceFilesLoading = false;
+    }
+  }
+
+  selectWorkspaceFile(path: string) {
+    if (this.workspaceFiles.includes(path)) this.workspaceBrowserPath = path;
+  }
+
+  focusWorkspaceReviewThread(threadId: string) {
+    const thread = this.reviewThreads.find((item) => item.id === threadId && item.anchor.view === "file");
+    if (!thread || !this.workspaceFiles.includes(thread.anchor.path)) return;
+    this.activeReviewThreadId = thread.id;
+    this.workspaceBrowserPath = thread.anchor.path;
+  }
+
+  closeWorkspaceBrowser() {
+    this.browseRevision += 1;
+    this.workspaceBrowserPath = undefined;
+    this.workspaceFilesLoading = false;
+    this.activeReviewThreadId = undefined;
   }
 
   async createReviewThread(anchor: ReviewAnchor, body: string) {

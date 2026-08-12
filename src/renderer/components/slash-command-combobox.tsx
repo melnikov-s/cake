@@ -92,10 +92,6 @@ export function SlashCommandCombobox({ commands, value, suggestFiles, onValueCha
   }, [value]);
 
   useEffect(() => {
-    setActiveIndex(0);
-  }, [commandPrefix, fileMention?.key]);
-
-  useEffect(() => {
     const revision = ++requestRevision.current;
     if (!fileMention || !suggestFilesRef.current) {
       setFileResults({ key: "", items: [] });
@@ -141,6 +137,7 @@ export function SlashCommandCombobox({ commands, value, suggestFiles, onValueCha
     const nextCursor = fileMention.start + item.value.length + suffix.length - trailingQuoteOffset;
     pendingCursor.current = nextCursor;
     setCursor(nextCursor);
+    setActiveIndex(0);
     setDismissedMention(undefined);
     onValueChange(nextValue);
     requestAnimationFrame(() => {
@@ -208,12 +205,16 @@ export function SlashCommandCombobox({ commands, value, suggestFiles, onValueCha
       aria-activedescendant={open ? `${listboxId}-option-${selectedIndex}` : undefined}
       value={value}
       onChange={(event) => {
+        setActiveIndex(0);
         setDismissedValue(undefined);
         setDismissedMention(undefined);
         setCursor(event.target.selectionStart ?? event.target.value.length);
         onValueChange(event.target.value);
       }}
-      onSelect={(event) => setCursor(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
+      onSelect={(event) => {
+        setActiveIndex(0);
+        setCursor(event.currentTarget.selectionStart ?? event.currentTarget.value.length);
+      }}
       onKeyDown={onKeyDown}
     />
   </>;

@@ -53,6 +53,7 @@ export interface DesktopClient {
   getHomeDirectory(): Promise<string>;
   chooseAttachments(): Promise<Attachment[]>;
   suggestFiles(workspacePath: string, prefix: string): Promise<FileSuggestion[]>;
+  listWorkspaceFiles(workspacePath: string): Promise<string[]>;
   readWorkspaceFile(workspacePath: string, path: string): Promise<string>;
   loadWindowState(): Promise<WindowViewState>;
   saveWindowState(state: WindowViewState): Promise<void>;
@@ -137,6 +138,11 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       const response = await bridge.request({ type: "suggest-files", workspacePath, prefix });
       if (response.type !== "file-suggestions") throw new Error("Cake received invalid file suggestions");
       return response.suggestions;
+    },
+    async listWorkspaceFiles(workspacePath) {
+      const response = await bridge.request({ type: "list-workspace-files", workspacePath });
+      if (response.type !== "workspace-files") throw new Error("Cake received an invalid workspace file list");
+      return response.files;
     },
     async readWorkspaceFile(workspacePath, path) {
       const response = await bridge.request({ type: "read-workspace-file", workspacePath, path });

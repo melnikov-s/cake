@@ -1,5 +1,7 @@
-import { readFile, realpath } from "node:fs/promises";
-import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { readFile, readdir, realpath } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { basename, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { app, BrowserWindow, dialog, ipcMain, shell, type WebContents } from "electron";
 import { desktopRequestSchema, desktopResponseSchema, type DesktopEvent } from "../ipc/desktop-ipc";
@@ -165,6 +167,30 @@ function createWindow(slot = nextWindowSlot++) {
 }
 
 const imageMimeTypes: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp" };
+const runFile = promisify(execFile);
+
+async function listWorkspaceFiles(workspacePath: string) {
+  const workspace = await realpath(workspacePath);
+  try {
+    const { stdout } = await runFile("git", ["-C", workspace, "ls-files", "--cached", "--others", "--exclude-standard", "-z"], { encoding: "utf8", timeout: 10_000, maxBuffer: 16_000_000 });
+    return stdout.split("\0").filter(Boolean).slice(0, 50_000).sort((left, right) => left.localeCompare(right));
+  } catch {
+    const files: string[] = [];
+    const omitted = new Set([".git", "node_modules", "dist", "out", ".cache"]);
+    const visit = async (directory: string, prefix = "") => {
+      if (files.length >= 50_000) return;
+      const entries = await readdir(directory, { withFileTypes: true });
+      await Promise.all(entries.map(async (entry) => {
+        if (files.length >= 50_000 || entry.isSymbolicLink() || omitted.has(entry.name)) return;
+        const path = prefix ? `${prefix}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) await visit(join(directory, entry.name), path);
+        else if (entry.isFile()) files.push(path.split(sep).join("/"));
+      }));
+    };
+    await visit(workspace);
+    return files.sort((left, right) => left.localeCompare(right)).slice(0, 50_000);
+  }
+}
 
 async function chooseAttachments(window: BrowserWindow): Promise<Attachment[]> {
   const result = await dialog.showOpenDialog(window, { properties: ["openFile", "multiSelections"] });
@@ -194,6 +220,10 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
   if (request.type === "suggest-files") {
     if (!allowedProjectPaths.has(request.workspacePath)) throw new Error("Project path was not selected by the user");
     return desktopResponseSchema.parse({ type: "file-suggestions", suggestions: await suggestProjectFiles(request.workspacePath, request.prefix) });
+  }
+  if (request.type === "list-workspace-files") {
+    if (!allowedProjectPaths.has(request.workspacePath)) throw new Error("Project path was not selected by the user");
+    return desktopResponseSchema.parse({ type: "workspace-files", files: await listWorkspaceFiles(request.workspacePath) });
   }
   if (request.type === "read-workspace-file") {
     if (!allowedProjectPaths.has(request.workspacePath)) throw new Error("Project path was not selected by the user");

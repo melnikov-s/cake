@@ -19,6 +19,7 @@ import { diffStats } from "@/components/ai-elements/diff-view";
 import { Button } from "@/components/ui/button";
 import { ArtifactHost, downloadArtifactMarkdown } from "@/components/artifact-host";
 import { ChangeExplorer } from "@/components/change-explorer";
+import { WorkspaceBrowser } from "@/components/workspace-browser";
 import { ModelCombobox } from "@/components/model-combobox";
 import { SessionTree } from "@/components/session-tree";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
@@ -46,6 +47,7 @@ const CopyIcon = () => <Icon size={15}><rect x="8" y="8" width="11" height="11" 
 const ForkIcon = () => <Icon size={15}><circle cx="6" cy="5" r="2" /><circle cx="18" cy="5" r="2" /><circle cx="12" cy="19" r="2" /><path d="M6 7v2a4 4 0 0 0 4 4h2M18 7v2a4 4 0 0 1-4 4h-2v4" /></Icon>;
 const CheckIcon = () => <Icon size={15}><path d="m5 12 4 4L19 6" /></Icon>;
 const ChangesIcon = () => <Icon size={15}><path d="M4 7h10M4 17h10M17 4v6M14 7l3 3 3-3M17 14v6M14 17l3 3 3-3" /></Icon>;
+const BrowseIcon = () => <Icon size={15}><path d="M4 5.5h6l1.8 2H20v11H4z" /><path d="M4 9h16" /></Icon>;
 
 function CommandPane({ store }: { store: WindowStore }) {
   if (!store.commandPane || !store.session) return null;
@@ -84,7 +86,7 @@ function AssistantTextMessage({ part, store }: { part: Extract<UiPart, { kind: "
   return (
     <Message className="assistant-message mr-auto w-full">
       <MessageLabel>{part.status === "streaming" ? "Cake · working" : "Cake"}</MessageLabel>
-      <MessageContent className="assistant-message-content"><Markdown streaming={part.status === "streaming"}>{part.text}</Markdown></MessageContent>
+      <MessageContent className="assistant-message-content"><Markdown>{part.text}</Markdown></MessageContent>
       {part.status !== "streaming" && <div className="assistant-message-actions" aria-label="Message actions">
         <button type="button" aria-label={copied ? "Copied response" : "Copy response"} title={copied ? "Copied" : "Copy response"} onClick={() => void copy()}>{copied ? <CheckIcon /> : <CopyIcon />}</button>
         {part.entryId && <button type="button" aria-label="Fork response into new chat" title="Fork into new chat" onClick={() => void store.forkAt(part.entryId!)}><ForkIcon /></button>}
@@ -99,11 +101,11 @@ function TranscriptPart({ part, store }: { part: UiPart; store: WindowStore }) {
     return (
       <Message className="ml-auto w-[min(88%,42rem)]">
         <MessageLabel>You</MessageLabel>
-        <MessageContent className="user-message"><Markdown streaming={part.status === "streaming"}>{part.text}</Markdown></MessageContent>
+        <MessageContent className="user-message"><Markdown>{part.text}</Markdown></MessageContent>
       </Message>
     );
   }
-  if (part.kind === "reasoning") return <Reasoning open={store.thinkingExpanded} onToggle={() => store.toggleThinking()} streaming={part.status === "streaming"}><Markdown streaming={part.status === "streaming"}>{part.text}</Markdown></Reasoning>;
+  if (part.kind === "reasoning") return <Reasoning open={store.thinkingExpanded} onToggle={() => store.toggleThinking()} streaming={part.status === "streaming"}><Markdown>{part.text}</Markdown></Reasoning>;
   if (part.kind === "tool") return <Tool part={part} />;
   if (part.kind === "source") return <Source title={part.title} url={part.url} />;
   if (part.kind === "attachment") return <div className="w-fit rounded-full border border-border px-3 py-1 font-mono text-[0.68rem]">{part.attachmentKind} · {part.name}</div>;
@@ -259,17 +261,15 @@ function UiDialog({ request, store }: { request: UiRequestState; store: WindowSt
 }
 
 export const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, onToggle, settingsOpen }: { store: WindowStore; onOpenSettings: () => void; onOpenChat: () => void; onToggle: () => void; settingsOpen: boolean }) {
-  const [searchExpanded, setSearchExpanded] = useState(Boolean(store.sessionSearch));
+  const [searchExpanded, setSearchExpanded] = useState(false);
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() => new Set());
   const searchInput = useRef<HTMLInputElement>(null);
+  const searchOpen = searchExpanded || Boolean(store.sessionSearch);
   useEffect(() => {
-    if (store.sessionSearch) setSearchExpanded(true);
-  }, [store.sessionSearch]);
-  useEffect(() => {
-    if (!searchExpanded) return;
+    if (!searchOpen) return;
     const frame = requestAnimationFrame(() => searchInput.current?.focus());
     return () => cancelAnimationFrame(frame);
-  }, [searchExpanded]);
+  }, [searchOpen]);
   const closeSearch = () => {
     store.setSessionSearch("");
     setSearchExpanded(false);
@@ -300,10 +300,10 @@ export const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpen
   return (
     <aside className="sidebar">
       <div className="sidebar-window-tools"><button aria-label="Toggle sidebar" onClick={onToggle}><SidebarIcon /></button><button aria-label="Back" disabled><BackIcon /></button><button aria-label="Forward" disabled><ForwardIcon /></button></div>
-      <div className="sidebar-brand"><div className="brand-menu"><span>Cake</span><ChevronIcon /></div><div className="brand-actions"><button className={searchExpanded ? "active" : ""} aria-label={searchExpanded ? "Close session search" : "Search sessions"} aria-expanded={searchExpanded} onClick={() => searchExpanded ? closeSearch() : setSearchExpanded(true)}>{searchExpanded ? <CloseIcon /> : <SearchIcon />}</button></div></div>
+      <div className="sidebar-brand"><div className="brand-menu"><span>Cake</span><ChevronIcon /></div><div className="brand-actions"><button className={searchOpen ? "active" : ""} aria-label={searchOpen ? "Close session search" : "Search sessions"} aria-expanded={searchOpen} onClick={() => searchOpen ? closeSearch() : setSearchExpanded(true)}>{searchOpen ? <CloseIcon /> : <SearchIcon />}</button></div></div>
       <div className="sidebar-scroll">
         <button className="new-chat" onClick={() => navigateToChat(() => store.startOneOffChat())}><ChatIcon /><span>New chat</span></button>
-        <div className={`session-filter global-session-filter ${searchExpanded ? "expanded" : ""}`} aria-hidden={!searchExpanded}><input ref={searchInput} aria-label="Search sessions" placeholder="Search all sessions" value={store.sessionSearch} disabled={!searchExpanded} onChange={(event) => store.setSessionSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") closeSearch(); }} /></div>
+        <div className={`session-filter global-session-filter ${searchOpen ? "expanded" : ""}`} aria-hidden={!searchOpen}><input ref={searchInput} aria-label="Search sessions" placeholder="Search all sessions" value={store.sessionSearch} disabled={!searchOpen} onChange={(event) => store.setSessionSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") closeSearch(); }} /></div>
         {store.sessionSearch.trim() && <div className="global-session-results">
           {store.searchedSessions.length === 0 ? <p className="sidebar-empty">No matching sessions.</p> : store.searchedSessions.slice(0, 50).map((session) => {
             const actionableCommentCount = store.chatReviewCommentCountForSession(session.workspacePath, session.id);
@@ -475,25 +475,26 @@ export const App = observer(function App() {
     document.title = store.extensionTitle ? `${store.extensionTitle} · Cake` : "Cake";
   }, [store.extensionTitle]);
   useEffect(() => {
-    if (!store.commandPane && store.changeExplorerPath === undefined) return;
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (store.changeExplorerPath !== undefined) store.closeChangeExplorer();
-      else store.closeCommandPane();
+      if (store.workspaceBrowserPath !== undefined) store.closeWorkspaceBrowser();
+      else if (store.changeExplorerPath !== undefined) store.closeChangeExplorer();
+      else if (store.commandPane) store.closeCommandPane();
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [store, store.commandPane, store.changeExplorerPath]);
+  }, [store]);
 
   if (!store.hydrated) return <main className="loading-screen"><span className="cake-mark">C</span><p>Restoring Cake…</p></main>;
   if (store.changeExplorerPath !== undefined) return <ChangeExplorer store={store} />;
+  if (store.workspaceBrowserPath !== undefined) return <WorkspaceBrowser store={store} />;
 
   return (
     <main className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${store.commandPane ? "right-pane-open" : ""}`}>
       <Sidebar store={store} settingsOpen={page === "settings"} onToggle={() => setSidebarCollapsed((value) => !value)} onOpenSettings={() => setPage("settings")} onOpenChat={() => setPage("chat")} />
       <section className="workspace" data-session-id={store.session?.sessionId}>
         <button className={page === "settings" ? "workspace-settings-icon active" : "workspace-settings-icon"} type="button" aria-label="Open settings" aria-current={page === "settings" ? "page" : undefined} onClick={() => setPage("settings")}><SettingsIcon /></button>
-        <header className="workspace-header"><div><button className="header-sidebar-toggle" aria-label="Toggle sidebar" onClick={() => setSidebarCollapsed((value) => !value)}><SidebarIcon /></button>{page === "settings" && <button className="header-back" aria-label="Back to chat" onClick={() => setPage("chat")}><BackIcon /></button>}<strong>{page === "settings" ? "Settings" : store.extensionTitle ?? (store.session ? store.sessionTitle : "Cake")}</strong>{page === "chat" && store.projectPath && <span>{store.projectPath}</span>}</div>{page === "chat" && store.session && <button className="header-pane-toggle" type="button" aria-label="Open session changes" onClick={() => void store.openSessionChanges()}><ChangesIcon /><span>Changes</span>{store.sessionChanges.length > 0 && <b>{store.sessionChanges.length}</b>}</button>}</header>
+        <header className="workspace-header"><div><button className="header-sidebar-toggle" aria-label="Toggle sidebar" onClick={() => setSidebarCollapsed((value) => !value)}><SidebarIcon /></button>{page === "settings" && <button className="header-back" aria-label="Back to chat" onClick={() => setPage("chat")}><BackIcon /></button>}<strong>{page === "settings" ? "Settings" : store.extensionTitle ?? (store.session ? store.sessionTitle : "Cake")}</strong>{page === "chat" && store.projectPath && <span>{store.projectPath}</span>}</div>{page === "chat" && store.session && <div className="header-pane-actions"><button className="header-pane-toggle" type="button" aria-label="Browse project files" onClick={() => void store.openWorkspaceBrowser()}><BrowseIcon /><span>Browse</span></button><button className="header-pane-toggle" type="button" aria-label="Open session changes" onClick={() => void store.openSessionChanges()}><ChangesIcon /><span>Changes</span>{store.sessionChanges.length > 0 && <b>{store.sessionChanges.length}</b>}</button></div>}</header>
         {page === "settings" ? <SettingsPage store={store} /> : !store.session ? (
           <div className="welcome"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build?</h1><p>Open a project for durable workspace chats, or start a one-off chat from your home directory.</p><div><Button size="lg" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.chooseProject()}><FolderIcon /> Open project</Button><Button size="lg" variant="outline" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.startOneOffChat()}><ChatIcon /> One-off chat</Button></div>{store.error && <p className="welcome-error" role="alert">{store.error}</p>}</div>
         ) : (
