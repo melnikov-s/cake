@@ -4,6 +4,7 @@ import {
   ModelRuntime,
   SessionManager,
   SettingsManager,
+  convertToLlm,
   createAgentSession,
   getAgentDir,
   getPackageDir,
@@ -142,13 +143,114 @@ export interface ReviewTurnOptions {
   sessionDir: string;
   instruction?: string;
   model?: { provider: string; id: string };
+  parent?: ReviewParentContext;
   agentDir?: string;
+}
+
+export interface ReviewParentContext {
+  sessionId: string;
+  sessionFile: string;
+  leafId?: string;
+  systemPrompt?: string;
+  activeTools?: string[];
+  model?: { provider: string; id: string };
 }
 
 export interface ReviewTurnResult {
   sessionId: string;
   sessionFile: string;
   error?: string;
+}
+
+const reviewParentEntryType = "cake.review-parent/v1";
+
+interface ReviewParentMetadata {
+  cacheKey: string;
+  systemPrompt: string;
+  activeTools: string[];
+  parentUserOrdinal: number;
+  model?: { provider: string; id: string };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function reviewParentMetadata(value: unknown): ReviewParentMetadata | undefined {
+  if (!isRecord(value) || typeof value.cacheKey !== "string" || typeof value.systemPrompt !== "string") return undefined;
+  if (!Array.isArray(value.activeTools) || !value.activeTools.every((tool) => typeof tool === "string")) return undefined;
+  if (!Number.isInteger(value.parentUserOrdinal)) return undefined;
+  const model = isRecord(value.model) && typeof value.model.provider === "string" && typeof value.model.id === "string"
+    ? { provider: value.model.provider, id: value.model.id }
+    : undefined;
+  return { cacheKey: value.cacheKey, systemPrompt: value.systemPrompt, activeTools: value.activeTools, parentUserOrdinal: value.parentUserOrdinal as number, model };
+}
+
+function storedReviewParent(manager: SessionManager) {
+  for (const entry of manager.getEntries().toReversed()) {
+    if (entry.type === "custom" && entry.customType === reviewParentEntryType) return reviewParentMetadata(entry.data);
+  }
+  return undefined;
+}
+
+function explicitPromptCachingModel(model: ReviewParentMetadata["model"]) {
+  if (!model || (model.provider !== "openai" && model.provider !== "openai-codex")) return false;
+  const match = /^gpt-(\d+)\.(\d+)/.exec(model.id);
+  return Boolean(match && (Number(match[1]) > 5 || (Number(match[1]) === 5 && Number(match[2]) >= 6)));
+}
+
+function markCacheBreakpoint(message: Record<string, unknown>) {
+  if (typeof message.content === "string") {
+    message.content = [{ type: "text", text: message.content, prompt_cache_breakpoint: { mode: "explicit" } }];
+    return true;
+  }
+  if (!Array.isArray(message.content)) return false;
+  for (let index = message.content.length - 1; index >= 0; index--) {
+    const block = message.content[index];
+    if (!isRecord(block) || !["input_text", "input_image", "input_file", "text", "image_url", "input_audio", "file", "refusal"].includes(String(block.type))) continue;
+    message.content[index] = { ...block, prompt_cache_breakpoint: { mode: "explicit" } };
+    return true;
+  }
+  return false;
+}
+
+/** @internal Exported for deterministic cache-routing contract tests. */
+export function routeReviewPromptCache(payload: unknown, metadata: ReviewParentMetadata, selectedModel = metadata.model): unknown {
+  if (!isRecord(payload) || !("prompt_cache_key" in payload)) return payload;
+  const routed: Record<string, unknown> = { ...payload, prompt_cache_key: metadata.cacheKey };
+  if (!explicitPromptCachingModel(selectedModel)) return routed;
+  const messagesKey = Array.isArray(routed.input) ? "input" : Array.isArray(routed.messages) ? "messages" : undefined;
+  if (!messagesKey) return routed;
+  let userOrdinal = -1;
+  let marked = false;
+  const messages = (routed[messagesKey] as unknown[]).map((message) => {
+    if (!isRecord(message) || message.role !== "user") return message;
+    userOrdinal += 1;
+    if (userOrdinal !== metadata.parentUserOrdinal) return message;
+    const copy = { ...message };
+    marked = markCacheBreakpoint(copy);
+    return copy;
+  });
+  if (!marked) return routed;
+  const existingOptions = isRecord(routed.prompt_cache_options) ? routed.prompt_cache_options : {};
+  return { ...routed, [messagesKey]: messages, prompt_cache_options: { ...existingOptions, mode: "explicit" } };
+}
+
+function reviewForkExtension(metadata: ReviewParentMetadata, reviewContext: string, selectedModel?: { provider: string; id: string }): InlineExtension {
+  return (pi) => {
+    pi.on("before_agent_start", () => ({
+      systemPrompt: metadata.systemPrompt,
+      message: { customType: "cake.review-context", content: reviewContext, display: false }
+    }));
+    pi.on("before_provider_request", (event) => routeReviewPromptCache(event.payload, metadata, selectedModel));
+  };
+}
+
+function reviewArtifactExtension(): InlineExtension {
+  return createCakeArtifactExtension({
+    persistArtifact: async (artifact) => artifactRecordSchema.parse({ artifact, workspacePath: "review", digest: "0".repeat(64), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
+    requestArtifact: async () => undefined
+  });
 }
 
 export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewTurnResult> {
@@ -159,7 +261,32 @@ export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewT
     modelsPath: `${agentDir}/models.json`,
     modelsStorePath: `${agentDir}/models-cache.json`
   });
-  const resourceLoader = new DefaultResourceLoader({
+  let sessionManager: SessionManager;
+  let parentMetadata: ReviewParentMetadata | undefined;
+  if (options.thread.agentSessionFile) {
+    sessionManager = SessionManager.open(options.thread.agentSessionFile, options.sessionDir, options.cwd);
+    parentMetadata = storedReviewParent(sessionManager);
+  } else if (options.parent?.sessionFile && options.parent.systemPrompt && options.parent.activeTools) {
+    sessionManager = SessionManager.forkFrom(options.parent.sessionFile, options.cwd, options.sessionDir);
+    if (options.parent.leafId) sessionManager.branch(options.parent.leafId);
+    const parentMessages = convertToLlm(sessionManager.buildSessionContext().messages);
+    parentMetadata = {
+      cacheKey: options.parent.sessionId,
+      systemPrompt: options.parent.systemPrompt,
+      activeTools: options.parent.activeTools,
+      parentUserOrdinal: parentMessages.filter((message) => message.role === "user").length - 1,
+      model: options.parent.model
+    };
+    sessionManager.appendCustomEntry(reviewParentEntryType, parentMetadata);
+  } else {
+    sessionManager = SessionManager.create(options.cwd, options.sessionDir);
+  }
+  const resourceLoader = new DefaultResourceLoader(parentMetadata ? {
+    cwd: options.cwd,
+    agentDir,
+    settingsManager,
+    extensionFactories: [reviewArtifactExtension(), reviewForkExtension(parentMetadata, reviewContextMessage(options.thread, options.instruction), options.model ?? parentMetadata.model)]
+  } : {
     cwd: options.cwd,
     agentDir,
     settingsManager,
@@ -167,9 +294,6 @@ export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewT
     systemPrompt: reviewSystemPrompt(options.thread, options.instruction)
   });
   await resourceLoader.reload({ resolveProjectTrust: async () => options.trusted });
-  const sessionManager = options.thread.agentSessionFile
-    ? SessionManager.open(options.thread.agentSessionFile, options.sessionDir, options.cwd)
-    : SessionManager.create(options.cwd, options.sessionDir);
   const { session } = await createAgentSession({
     cwd: options.cwd,
     agentDir,
@@ -180,9 +304,11 @@ export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewT
   });
   try {
     await session.bindExtensions({ mode: "rpc" });
+    if (parentMetadata) session.setActiveToolsByName(parentMetadata.activeTools);
     if (options.model) {
       const model = modelRuntime.getModel(options.model.provider, options.model.id);
-      if (model) await session.setModel(model);
+      if (!model) throw new Error(`Unknown review model ${options.model.provider}/${options.model.id}`);
+      await session.setModel(model);
     }
     let failure = "";
     const unsubscribe = session.subscribe((event) => {
@@ -203,6 +329,10 @@ export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewT
   }
 }
 
+function reviewContextMessage(thread: ReviewThreadRecord, instruction?: string) {
+  return `${reviewSystemPrompt(thread, instruction)}\n\nThe user's immediately preceding message in this review thread is the comment to address.`;
+}
+
 function reviewSystemPrompt(thread: ReviewThreadRecord, instruction?: string) {
   const point = (value: ReviewThreadRecord["anchor"]["start"]) => `diff row ${value.diffLine}${value.oldLine ? `, old line ${value.oldLine}` : ""}${value.newLine ? `, new line ${value.newLine}` : ""}${value.column === undefined ? "" : `, column ${value.column}`}`;
   return [
@@ -217,7 +347,9 @@ function reviewSystemPrompt(thread: ReviewThreadRecord, instruction?: string) {
 export async function loadReviewSessionMessages(record: ReviewThreadRecord): Promise<ReviewMessage[]> {
   if (!record.agentSessionFile) return [];
   const manager = SessionManager.open(record.agentSessionFile, undefined, record.workspacePath);
-  return manager.getBranch().flatMap((entry): ReviewMessage[] => {
+  const branch = manager.getBranch();
+  const parentBoundary = branch.findLastIndex((entry) => entry.type === "custom" && entry.customType === reviewParentEntryType);
+  return branch.slice(parentBoundary + 1).flatMap((entry): ReviewMessage[] => {
     if (entry.type !== "message") return [];
     const message = entry.message;
     if (message.role !== "user" && message.role !== "assistant") return [];
@@ -348,6 +480,7 @@ export function createCakeArtifactExtension(options: Required<Pick<CakeRuntimeOp
 export interface CakeRuntime {
   readonly sessionId: string;
   readonly sessionFile: string;
+  getReviewParentContext?(): ReviewParentContext;
   snapshot(requestId?: string): Promise<SessionSnapshot>;
   prompt(text: string, delivery: "prompt" | "steer" | "follow-up", attachments: Attachment[]): Promise<void>;
   abort(): Promise<void>;
@@ -958,6 +1091,18 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   return {
     sessionId: cakeSessionId,
     get sessionFile() { return session.sessionFile ?? ""; },
+    getReviewParentContext() {
+      if (!session.sessionFile) throw new Error("The parent session is not persisted");
+      const leafId = session.sessionManager.getLeafId() ?? undefined;
+      return {
+        sessionId: cakeSessionId,
+        sessionFile: session.sessionFile,
+        leafId,
+        systemPrompt: session.systemPrompt,
+        activeTools: session.getActiveToolNames(),
+        model: session.model ? { provider: session.model.provider, id: session.model.id } : undefined
+      };
+    },
     snapshot: makeSnapshot,
     async prompt(text, delivery, attachments) {
       if (disposed) throw new Error("The Cake runtime has been disposed");

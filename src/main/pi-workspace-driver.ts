@@ -347,7 +347,8 @@ export class PiWorkspaceDriver {
   }
 
   private async runReviewThreads(command: Extract<PiWorkspaceCommand, { type: "submit-review-threads" }>) {
-    this.runtimeFor(command.sessionId);
+    const parentRuntime = this.runtimeFor(command.sessionId);
+    const parent = parentRuntime.getReviewParentContext?.();
     const failures: string[] = [];
     for (const threadId of command.threadIds) {
       const thread = await this.reviewRepository.get(this.workspacePath, command.sessionId, threadId);
@@ -360,7 +361,8 @@ export class PiWorkspaceDriver {
           thread,
           sessionDir: this.reviewRepository.agentSessionDirectory(this.workspacePath, command.sessionId, threadId),
           instruction: command.instruction,
-          model: command.model
+          model: command.model,
+          parent
         });
         const updated = await this.reviewRepository.attachAgentSession(this.workspacePath, command.sessionId, threadId, agent);
         this.emit({ type: "review-thread-updated", thread: updated });

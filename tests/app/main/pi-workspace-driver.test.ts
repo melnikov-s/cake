@@ -25,7 +25,9 @@ describe("PiWorkspaceDriver", () => {
   it("routes auxiliary review replies without appending a primary session snapshot", async () => {
     const events: DesktopEvent[] = [];
     const runtime: CakeRuntime = {
-      sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile, snapshot: vi.fn(async () => snapshot), prompt: vi.fn(async () => undefined), abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
+      sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile,
+      getReviewParentContext: vi.fn(() => ({ sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile, leafId: "parent-leaf", systemPrompt: "Parent prompt", activeTools: ["read"], model: { provider: "openai-codex", id: "gpt-5.6-sol" } })),
+      snapshot: vi.fn(async () => snapshot), prompt: vi.fn(async () => undefined), abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
     };
     const now = new Date(0).toISOString();
     const thread = { id: "review-1", workspacePath: "/project", sessionId: snapshot.sessionId, status: "open" as const, createdAt: now, updatedAt: now, anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" }, pendingComments: [{ id: "message-1", body: "Rename this", createdAt: now }] };
@@ -44,6 +46,7 @@ describe("PiWorkspaceDriver", () => {
 
     expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ thread }));
     expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ sessionDir: "/reviews/review-1" }));
+    expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ parent: expect.objectContaining({ sessionId: snapshot.sessionId, leafId: "parent-leaf", systemPrompt: "Parent prompt" }) }));
     expect(reviewRepository.attachAgentSession).toHaveBeenCalledWith("/project", snapshot.sessionId, thread.id, expect.objectContaining({ sessionId: "review-session" }));
     expect(events).toContainEqual(expect.objectContaining({ type: "review-thread-updated", thread: expect.objectContaining({ id: thread.id }) }));
     expect(events.some((event) => event.type === "session-snapshot")).toBe(false);

@@ -10,6 +10,7 @@ import {
   loadPiChangelog,
   loadWorkspaceSessionPreview,
   piRuntimeVersion,
+  routeReviewPromptCache,
   suggestProjectFiles,
   type CakeRuntime,
   type FoundationRuntime
@@ -32,6 +33,42 @@ async function createTemporaryDirectory() {
 }
 
 describe("Pi 0.84.0 foundation contract", () => {
+  it("routes a forked GPT-5.6 review through the parent cache breakpoint", () => {
+    const payload = {
+      model: "gpt-5.6-sol",
+      prompt_cache_key: "child-session",
+      input: [
+        { role: "user", content: [{ type: "input_text", text: "Earlier input" }] },
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "Earlier answer" }] },
+        { role: "user", content: [{ type: "input_text", text: "Latest parent input" }] },
+        { type: "message", role: "assistant", content: [{ type: "output_text", text: "Latest answer" }] },
+        { role: "user", content: [{ type: "input_text", text: "Review comment" }] }
+      ]
+    };
+
+    const routed = routeReviewPromptCache(payload, {
+      cacheKey: "parent-session",
+      systemPrompt: "Parent prompt",
+      activeTools: ["read"],
+      parentUserOrdinal: 1,
+      model: { provider: "openai-codex", id: "gpt-5.6-sol" }
+    }) as typeof payload & { prompt_cache_options: { mode: string } };
+
+    expect(routed.prompt_cache_key).toBe("parent-session");
+    expect(routed.prompt_cache_options).toEqual({ mode: "explicit" });
+    expect(routed.input[0]).toEqual(payload.input[0]);
+    expect(routed.input[2]).toEqual({ role: "user", content: [{ type: "input_text", text: "Latest parent input", prompt_cache_breakpoint: { mode: "explicit" } }] });
+    expect(routed.input[4]).toEqual(payload.input[4]);
+  });
+
+  it("keeps cache routing model-neutral while avoiding unsupported explicit fields", () => {
+    const payload = { prompt_cache_key: "child-session", input: [{ role: "user", content: "Parent input" }] };
+    const metadata = { cacheKey: "parent-session", systemPrompt: "Parent", activeTools: [], parentUserOrdinal: 0 };
+
+    expect(routeReviewPromptCache(payload, metadata, { provider: "openai", id: "gpt-5.5" })).toEqual({ ...payload, prompt_cache_key: "parent-session" });
+    expect(routeReviewPromptCache({ messages: [] }, metadata, { provider: "anthropic", id: "claude" })).toEqual({ messages: [] });
+  });
+
   it("gives assistant messages on either side of a tool call distinct live positions", () => {
     const project = createLiveMessageProjector();
     const assistant = (text: string) => ({ role: "assistant", content: [{ type: "text", text }] });
