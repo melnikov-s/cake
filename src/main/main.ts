@@ -1,4 +1,4 @@
-import { readFile, readdir, realpath } from "node:fs/promises";
+import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { basename, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -169,11 +169,28 @@ function createWindow(slot = nextWindowSlot++) {
 const imageMimeTypes: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp" };
 const runFile = promisify(execFile);
 
+async function regularWorkspaceFiles(workspace: string, paths: string[]) {
+  const files: string[] = [];
+  for (let offset = 0; offset < paths.length; offset += 200) {
+    const batch = await Promise.all(paths.slice(offset, offset + 200).map(async (path) => {
+      try {
+        const target = resolve(workspace, path);
+        const relativePath = relative(workspace, target);
+        if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath)) return undefined;
+        return (await lstat(target)).isFile() ? path : undefined;
+      } catch { return undefined; }
+    }));
+    files.push(...batch.filter((path): path is string => Boolean(path)));
+  }
+  return files;
+}
+
 async function listWorkspaceFiles(workspacePath: string) {
   const workspace = await realpath(workspacePath);
   try {
     const { stdout } = await runFile("git", ["-C", workspace, "ls-files", "--cached", "--others", "--exclude-standard", "-z"], { encoding: "utf8", timeout: 10_000, maxBuffer: 16_000_000 });
-    return stdout.split("\0").filter(Boolean).slice(0, 50_000).sort((left, right) => left.localeCompare(right));
+    const paths = stdout.split("\0").filter(Boolean).slice(0, 50_000).sort((left, right) => left.localeCompare(right));
+    return regularWorkspaceFiles(workspace, paths);
   } catch {
     const files: string[] = [];
     const omitted = new Set([".git", "node_modules", "dist", "out", ".cache"]);

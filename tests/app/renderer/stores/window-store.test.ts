@@ -307,7 +307,7 @@ describe("WindowStore", () => {
 
     expect(desktop.client.listWorkspaceFiles).toHaveBeenCalledWith("/project");
     expect(store.workspaceFiles).toEqual(["PLAN.md", "src/app.ts", "src/main.ts"]);
-    expect(store.workspaceBrowserPath).toBe("PLAN.md");
+    expect(store.workspaceBrowserPath).toBeNull();
     store.selectWorkspaceFile("src/main.ts");
     expect(store.workspaceBrowserPath).toBe("src/main.ts");
     store.closeWorkspaceBrowser();

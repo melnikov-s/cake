@@ -626,14 +626,15 @@ export class WindowStore extends Store<Record<string, never>> {
     this.commandPane = undefined;
     this.changeExplorerPath = undefined;
     this.activeReviewThreadId = undefined;
-    this.workspaceBrowserPath = path ?? this.workspaceFiles[0] ?? null;
+    this.workspaceBrowserPath = path ?? null;
+    this.workspaceFiles.splice(0);
     const revision = ++this.browseRevision;
     this.workspaceFilesLoading = true;
     try {
       const files = await this.client.listWorkspaceFiles(this.projectPath);
       if (this.signal.aborted || revision !== this.browseRevision) return;
       this.workspaceFiles.splice(0, this.workspaceFiles.length, ...files);
-      this.workspaceBrowserPath = path && files.includes(path) ? path : files[0] ?? null;
+      this.workspaceBrowserPath = path && files.includes(path) ? path : null;
     } catch (error) {
       if (revision === this.browseRevision) this.setError(error);
     } finally {
