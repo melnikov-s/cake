@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { app, BrowserWindow, dialog, ipcMain, shell, type WebContents } from "electron";
 import { desktopRequestSchema, desktopResponseSchema, type DesktopEvent } from "../ipc/desktop-ipc";
 import { windowViewStateSchema, type Attachment, type WindowViewState } from "../ipc/session-contract";
-import { listWorkspaceSessions, loadReviewSessionMessages, loadWorkspaceSessionPreview, migrateLegacyReviewSession, suggestProjectFiles } from "../agent/pi-runtime";
+import { inspectWorkspace, listWorkspaceSessions, loadReviewSessionMessages, loadWorkspaceSessionPreview, migrateLegacyReviewSession, suggestProjectFiles } from "../agent/pi-runtime";
 import { ApplicationModel } from "./application-model";
 import { shouldAllowNavigation } from "./navigation-policy";
 import { PiWorkspaceDriver, type PiWorkspaceCommand } from "./pi-workspace-driver";
@@ -23,8 +23,13 @@ const windowSlots = new Map<number, number>();
 const windowWorkspaces = new Map<number, string>();
 const piHosts = new Map<string, PiHost>();
 const allowedProjectPaths = new Set<string>();
+const pendingTrustRequests = new Map<string, string>();
 let nextWindowSlot = 0;
 let applicationModel = ApplicationModel.from({});
+
+function clearPendingTrustRequests(webContentsId: number) {
+  for (const key of pendingTrustRequests.keys()) if (key.startsWith(`${webContentsId}:`)) pendingTrustRequests.delete(key);
+}
 
 if (process.env.CAKE_ELECTRON_USER_DATA) app.setPath("userData", process.env.CAKE_ELECTRON_USER_DATA);
 const artifactRepository = new ArtifactRepository(join(app.getPath("userData"), "artifacts"));
@@ -64,10 +69,7 @@ function statePath(slot: number) {
 
 async function loadWindowState(slot: number): Promise<WindowViewState> {
   try {
-    const state = windowViewStateSchema.parse(JSON.parse(await readFile(statePath(slot), "utf8")));
-    if (state.projectPath) allowedProjectPaths.add(state.projectPath);
-    for (const path of state.recentProjectPaths) allowedProjectPaths.add(path);
-    return state;
+    return windowViewStateSchema.parse(JSON.parse(await readFile(statePath(slot), "utf8")));
   } catch {
     return windowViewStateSchema.parse({});
   }
@@ -99,6 +101,7 @@ function launchPi(path: string) {
     emit: broadcast,
     artifactRepository,
     reviewRepository,
+    isTrusted: () => applicationModel.isProjectTrusted(path),
     openExternal: async (url) => {
       const protocol = new URL(url).protocol;
       if (protocol !== "https:" && protocol !== "http:") throw new Error("Authentication URL must use HTTP or HTTPS");
@@ -156,6 +159,7 @@ function createWindow(slot = nextWindowSlot++) {
     windows.delete(window.id);
     windowSlots.delete(webContentsId);
     windowWorkspaces.delete(webContentsId);
+    clearPendingTrustRequests(webContentsId);
     if (path) piHosts.get(path)?.driver.cancelPendingRequests();
     if (path) scheduleIdle(path);
   });
@@ -213,23 +217,33 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
     return desktopResponseSchema.parse({ type: "sessions-listed", sessions, reviewThreads });
   }
   if (request.type === "register-project") {
-    allowedProjectPaths.add(request.path);
+    if (!allowedProjectPaths.has(request.path)) throw new Error("Project path was not selected by the user");
     applicationModel.upsertProject(request.path, request.name);
     await persistApplicationState();
     return desktopResponseSchema.parse({ type: "application-state-updated", state: applicationModel.snapshot() });
   }
   if (request.type === "rename-project") {
+    if (!allowedProjectPaths.has(request.path)) throw new Error("Project path was not selected by the user");
     applicationModel.projects.find((project) => project.path === request.path)?.rename(request.name);
     await persistApplicationState();
     return desktopResponseSchema.parse({ type: "application-state-updated", state: applicationModel.snapshot() });
   }
   if (request.type === "remove-project") {
+    if (!allowedProjectPaths.has(request.path)) throw new Error("Project path was not selected by the user");
     applicationModel.removeProject(request.path);
     allowedProjectPaths.delete(request.path);
+    const host = piHosts.get(request.path);
+    if (host) {
+      piHosts.delete(request.path);
+      host.driver[Symbol.dispose]();
+      setPiState(host, "stopped");
+    }
+    for (const [webContentsId, workspacePath] of windowWorkspaces) if (workspacePath === request.path) windowWorkspaces.delete(webContentsId);
     await persistApplicationState();
     return desktopResponseSchema.parse({ type: "application-state-updated", state: applicationModel.snapshot() });
   }
   if (request.type === "archive-session") {
+    if (!allowedProjectPaths.has(request.path)) throw new Error("Project path was not selected by the user");
     applicationModel.projects.find((project) => project.path === request.path)?.setSessionArchived(request.sessionId, request.archived);
     await persistApplicationState();
     return desktopResponseSchema.parse({ type: "application-state-updated", state: applicationModel.snapshot() });
@@ -239,6 +253,7 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
     return desktopResponseSchema.parse({ type: "window-created" });
   }
   if (request.type === "restart-pi") {
+    if (!allowedProjectPaths.has(request.path)) throw new Error("Project path was not selected by the user");
     const old = piHosts.get(request.path);
     if (old) {
       piHosts.delete(request.path);
@@ -248,8 +263,28 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
     launchPi(request.path);
     return desktopResponseSchema.parse({ type: "accepted", requestId: crypto.randomUUID() });
   }
+  if (request.type === "respond-workspace-trust") {
+    if (!allowedProjectPaths.has(request.path)) throw new Error("Project path was not selected by the user");
+    const key = `${event.sender.id}:${request.requestId}`;
+    if (pendingTrustRequests.get(key) !== request.path) throw new Error("Workspace trust request is no longer pending");
+    pendingTrustRequests.delete(key);
+    if (request.approved) {
+      applicationModel.trustProject(request.path);
+      await persistApplicationState();
+    }
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
   const path = request.type === "open-workspace" || request.type === "inspect-workspace" ? request.path : request.workspacePath;
   if (!allowedProjectPaths.has(path)) throw new Error("Project path was not selected by the user");
+  if (request.type === "inspect-workspace") {
+    const inspection = inspectWorkspace(path);
+    const trustRequired = inspection.trustRequired && !applicationModel.isProjectTrusted(path);
+    const key = `${event.sender.id}:${request.requestId}`;
+    clearPendingTrustRequests(event.sender.id);
+    if (trustRequired) pendingTrustRequests.set(key, path);
+    sendTo(event.sender, { type: "workspace-inspected", requestId: request.requestId, path, trustRequired });
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
   if (request.type === "load-session") {
     return desktopResponseSchema.parse({ type: "session-loaded", session: await loadWorkspaceSessionPreview(request.workspacePath, request.sessionId) });
   }
@@ -272,6 +307,10 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
     return desktopResponseSchema.parse({ type: "review-thread-saved", thread });
   }
   if (request.type === "open-workspace") {
+    if (inspectWorkspace(path).trustRequired && !applicationModel.isProjectTrusted(path)) {
+      throw new Error("Project-local executable resources have not been trusted by the user");
+    }
+    clearPendingTrustRequests(event.sender.id);
     const previous = windowWorkspaces.get(event.sender.id);
     windowWorkspaces.set(event.sender.id, path);
     if (previous && previous !== path) scheduleIdle(previous);

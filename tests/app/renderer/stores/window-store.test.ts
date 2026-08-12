@@ -29,9 +29,9 @@ function createDesktopClient(restoredPath?: string) {
     getHomeDirectory: vi.fn(async () => "/home/user"),
     chooseAttachments: vi.fn(async () => []),
     suggestFiles: vi.fn(async () => []),
-    loadWindowState: vi.fn(async () => ({ projectPath: restoredPath, recentProjectPaths: restoredPath ? [restoredPath] : [], trustedProjectPaths: [], draft: "saved", theme: "system" as const, thinkingExpanded: false, sessionSearch: "", draftsBySession: {} })),
+    loadWindowState: vi.fn(async () => ({ projectPath: restoredPath, recentProjectPaths: restoredPath ? [restoredPath] : [], draft: "saved", theme: "system" as const, thinkingExpanded: false, sessionSearch: "", draftsBySession: {} })),
     saveWindowState: vi.fn(async () => undefined),
-    loadApplicationState: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
+    loadApplicationState: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], trustedProjectPaths: [] })),
     listSessions: vi.fn(async () => ({ sessions: [], reviewThreads: [] })),
     loadSession: vi.fn(async () => undefined),
     listReviewThreads: vi.fn(async () => []),
@@ -39,13 +39,14 @@ function createDesktopClient(restoredPath?: string) {
     replyReviewThread: vi.fn(async () => { throw new Error("not mocked"); }),
     resolveReviewThread: vi.fn(async () => { throw new Error("not mocked"); }),
     submitReviewThreads: vi.fn(async () => undefined),
-    registerProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
-    renameProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
-    removeProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
-    archiveSession: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [] })),
+    registerProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], trustedProjectPaths: [] })),
+    renameProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], trustedProjectPaths: [] })),
+    removeProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], trustedProjectPaths: [] })),
+    archiveSession: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], trustedProjectPaths: [] })),
     createWindow: vi.fn(async () => undefined),
     restartPi: vi.fn(async () => undefined),
     inspectWorkspace: vi.fn(async () => undefined),
+    respondToWorkspaceTrust: vi.fn(async () => undefined),
     openWorkspace: vi.fn(async () => undefined),
     submit: vi.fn(async () => undefined),
     abort: vi.fn(async () => undefined),
@@ -179,16 +180,15 @@ describe("WindowStore", () => {
 
     expect(store.pendingTrustPath).toBe("/project");
     await store.resolveProjectTrust(true);
-    expect(desktop.client.openWorkspace).toHaveBeenCalledWith(expect.objectContaining({ path: "/project", trusted: true }));
+    expect(desktop.client.respondToWorkspaceTrust).toHaveBeenCalledWith({ operationId: inspectId, path: "/project", approved: true });
+    expect(desktop.client.openWorkspace).toHaveBeenCalledWith(expect.objectContaining({ path: "/project" }));
     const openId = store.activeOperations[0]!;
     desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot });
 
     expect(store.session?.sessionFile).toBe("/sessions/one.jsonl");
-    expect(store.trustedProjectPaths).toContain("/project");
-
     await store.startNewSession();
     expect(store.pendingTrustPath).toBeUndefined();
-    expect(desktop.client.openWorkspace).toHaveBeenLastCalledWith(expect.objectContaining({ path: "/project", trusted: true, newSession: true }));
+    expect(desktop.client.openWorkspace).toHaveBeenLastCalledWith(expect.objectContaining({ path: "/project", newSession: true }));
     root[Symbol.dispose]();
   });
 
@@ -557,6 +557,7 @@ describe("WindowStore", () => {
     const desktop = createDesktopClient();
     const applicationState = {
       schemaVersion: 1 as const,
+      trustedProjectPaths: [],
       projects: [
         { path: "/project", name: "Project", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString(), archivedSessionIds: ["session-2"] },
         { path: "/other", name: "Other", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString(), archivedSessionIds: [] }
@@ -603,12 +604,11 @@ describe("WindowStore", () => {
       lastOpenedAt: new Date(0).toISOString(),
       archivedSessionIds: []
     }));
-    const applicationState = { schemaVersion: 1 as const, projects };
+    const applicationState = { schemaVersion: 1 as const, projects, trustedProjectPaths: [] };
     desktop.client.loadApplicationState = vi.fn(async () => applicationState);
     desktop.client.loadWindowState = vi.fn(async () => ({
       projectPath: "/first",
       recentProjectPaths: projects.map((project) => project.path),
-      trustedProjectPaths: [],
       draft: "",
       theme: "system" as const,
       thinkingExpanded: false,

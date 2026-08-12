@@ -70,7 +70,8 @@ export interface DesktopClient {
   createWindow(): Promise<void>;
   restartPi(path: string): Promise<void>;
   inspectWorkspace(input: { operationId: string; path: string }): Promise<void>;
-  openWorkspace(input: { operationId: string; path: string; trusted: boolean; newSession?: boolean; sessionId?: string; sessionFile?: string }): Promise<void>;
+  respondToWorkspaceTrust(input: { operationId: string; path: string; approved: boolean }): Promise<void>;
+  openWorkspace(input: { operationId: string; path: string; newSession?: boolean; sessionId?: string; sessionFile?: string }): Promise<void>;
   submit(input: { operationId: string; workspacePath: string; sessionId: string; text: string; delivery: "prompt" | "steer" | "follow-up"; attachments: Attachment[] }): Promise<void>;
   abort(input: { operationId: string; workspacePath: string; sessionId: string }): Promise<void>;
   setModel(input: { operationId: string; workspacePath: string; sessionId: string; provider: string; modelId: string }): Promise<void>;
@@ -206,7 +207,8 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
     },
     async restartPi(path) { await bridge.request({ type: "restart-pi", path }); },
     inspectWorkspace: (input) => accept(bridge, { type: "inspect-workspace", requestId: input.operationId, path: input.path }),
-    openWorkspace: (input) => accept(bridge, { type: "open-workspace", requestId: input.operationId, path: input.path, trusted: input.trusted, newSession: input.newSession ?? false, sessionId: input.sessionId, sessionFile: input.sessionFile }),
+    respondToWorkspaceTrust: (input) => accept(bridge, { type: "respond-workspace-trust", requestId: input.operationId, path: input.path, approved: input.approved }),
+    openWorkspace: (input) => accept(bridge, { type: "open-workspace", requestId: input.operationId, path: input.path, newSession: input.newSession ?? false, sessionId: input.sessionId, sessionFile: input.sessionFile }),
     submit: (input) => accept(bridge, { type: "prompt", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, text: input.text, delivery: input.delivery, attachments: input.attachments }),
     submitReviewThreads: (input) => accept(bridge, { type: "submit-review-threads", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, threadIds: input.threadIds, instruction: input.instruction, model: input.model }),
     abort: (input) => accept(bridge, { type: "abort", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId }),

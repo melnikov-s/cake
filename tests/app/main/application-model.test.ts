@@ -5,16 +5,19 @@ describe("ApplicationModel", () => {
   it("owns project metadata and Cake-only session archive state", () => {
     const model = ApplicationModel.from({});
     const project = model.upsertProject("/work/cake", "cake");
+    model.trustProject("/work/cake");
     project.rename("Cake desktop");
     project.setSessionArchived("session-1", true);
 
     expect(model.snapshot()).toMatchObject({
       schemaVersion: 1,
+      trustedProjectPaths: ["/work/cake"],
       projects: [{ path: "/work/cake", name: "Cake desktop", archivedSessionIds: ["session-1"] }]
     });
 
     project.setSessionArchived("session-1", false);
     model.removeProject("/work/cake");
     expect(model.snapshot().projects).toEqual([]);
+    expect(model.isProjectTrusted("/work/cake")).toBe(false);
   });
 });

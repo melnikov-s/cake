@@ -76,7 +76,6 @@ export class WindowStore extends Store<Record<string, never>> {
   projects: ProjectRecord[] = [];
   globalSessions: GlobalSessionSummary[] = observable([]);
   sessionActivityByKey: Record<string, "running" | "unread"> = observable({});
-  trustedProjectPaths: string[] = [];
   pendingTrustPath: string | undefined;
   private pendingOpen: { inspectOperationId: string; path: string; newSession: boolean; sessionId?: string; sessionFile?: string } | undefined;
   private activeOpenOperationId: string | undefined;
@@ -355,7 +354,6 @@ export class WindowStore extends Store<Record<string, never>> {
       for (const session of sessionIndex.sessions) this.sessionCache.applyReviewThreads(session.workspacePath, session.id, reviewsBySession.get(this.reviewSessionKey(session.workspacePath, session.id)) ?? []);
       this.projectPath = state.projectPath;
       this.recentProjectPaths.splice(0, this.recentProjectPaths.length, ...state.recentProjectPaths);
-      this.trustedProjectPaths.splice(0, this.trustedProjectPaths.length, ...state.trustedProjectPaths);
       this.draft = state.draft;
       this.theme = state.theme;
       this.thinkingExpanded = state.thinkingExpanded;
@@ -377,7 +375,6 @@ export class WindowStore extends Store<Record<string, never>> {
       selectedSessionId: this.session?.sessionId,
       selectedSessionFile: this.session?.sessionFile,
       recentProjectPaths: this.recentProjectPaths.slice(),
-      trustedProjectPaths: this.trustedProjectPaths.slice(),
       draft: this.draft,
       theme: this.theme,
       thinkingExpanded: this.thinkingExpanded,
@@ -467,7 +464,7 @@ export class WindowStore extends Store<Record<string, never>> {
       await this.chooseProject();
       return;
     }
-    await this.openPath(this.projectPath, this.trustedProjectPaths.includes(this.projectPath), true);
+    await this.openPath(this.projectPath, true);
   }
 
   async openSession(workspacePath: string, sessionId: string) {
@@ -476,7 +473,7 @@ export class WindowStore extends Store<Record<string, never>> {
     const sameWorkspace = workspacePath === this.projectPath;
     const cached = this.showCachedSession(workspacePath, sessionId);
     if (!cached) void this.loadSessionPreview(workspacePath, sessionId);
-    if (sameWorkspace) await this.openPath(workspacePath, this.trustedProjectPaths.includes(workspacePath), false, sessionId);
+    if (sameWorkspace) await this.openPath(workspacePath, false, sessionId);
     else await this.inspectPath(workspacePath, false, sessionId);
   }
 
@@ -514,6 +511,7 @@ export class WindowStore extends Store<Record<string, never>> {
     const revision = ++this.openRevision;
     const operationId = this.startOperation();
     this.clearExtensionUi();
+    this.pendingTrustPath = undefined;
     this.pendingOpen = { inspectOperationId: operationId, path, newSession, sessionId, sessionFile };
     try {
       await this.client.inspectWorkspace({ operationId, path });
@@ -527,17 +525,21 @@ export class WindowStore extends Store<Record<string, never>> {
     const pending = this.pendingOpen;
     if (!pending || !this.pendingTrustPath) return;
     this.pendingTrustPath = undefined;
+    try {
+      await this.client.respondToWorkspaceTrust({ operationId: pending.inspectOperationId, path: pending.path, approved: trusted });
+    } catch (error) {
+      this.pendingOpen = undefined;
+      this.setError(error);
+      return;
+    }
     if (!trusted) {
       this.pendingOpen = undefined;
       return;
     }
-    if (!this.trustedProjectPaths.includes(pending.path)) this.trustedProjectPaths.push(pending.path);
-    if (this.trustedProjectPaths.length > 100) this.trustedProjectPaths.splice(0, this.trustedProjectPaths.length - 100);
-    this.schedulePersist();
-    await this.openPath(pending.path, true, pending.newSession, pending.sessionId, pending.sessionFile);
+    await this.openPath(pending.path, pending.newSession, pending.sessionId, pending.sessionFile);
   }
 
-  private async openPath(path: string, trusted: boolean, newSession = false, sessionId?: string, sessionFile?: string) {
+  private async openPath(path: string, newSession = false, sessionId?: string, sessionFile?: string) {
     if (this.artifactRequest) await this.respondToArtifact(undefined, true);
     const revision = ++this.openRevision;
     const operationId = this.startOperation();
@@ -550,7 +552,7 @@ export class WindowStore extends Store<Record<string, never>> {
     this.commandPane = undefined;
     this.changeExplorerPath = undefined;
     try {
-      await this.client.openWorkspace({ operationId, path, trusted, newSession, sessionId, sessionFile });
+      await this.client.openWorkspace({ operationId, path, newSession, sessionId, sessionFile });
       void this.client.registerProject(path, this.nameFromPath(path)).then((state) => this.applyApplicationState(state)).catch((error) => this.setError(error));
     } catch (error) {
       if (revision === this.openRevision) this.setError(error);
@@ -1093,10 +1095,9 @@ export class WindowStore extends Store<Record<string, never>> {
       this.finishOperation(event.operationId);
       const pending = this.pendingOpen;
       if (!pending || pending.inspectOperationId !== event.operationId) return;
-      if (event.trustRequired && !this.trustedProjectPaths.includes(event.path)) this.pendingTrustPath = event.path;
+      if (event.trustRequired) this.pendingTrustPath = event.path;
       else {
-        const trusted = event.trustRequired && this.trustedProjectPaths.includes(event.path);
-        void this.openPath(event.path, trusted, pending.newSession, pending.sessionId, pending.sessionFile);
+        void this.openPath(event.path, pending.newSession, pending.sessionId, pending.sessionFile);
       }
       return;
     }

@@ -4,7 +4,8 @@ import { desktopEventSchema, desktopRequestSchema } from "../../../src/ipc/deskt
 describe("process IPC", () => {
   it("accepts session lifecycle and prompt requests", () => {
     const requestId = crypto.randomUUID();
-    expect(desktopRequestSchema.parse({ type: "open-workspace", requestId, path: "/project", trusted: true, newSession: true })).toMatchObject({ type: "open-workspace", requestId, newSession: true });
+    expect(desktopRequestSchema.parse({ type: "open-workspace", requestId, path: "/project", newSession: true })).toMatchObject({ type: "open-workspace", requestId, newSession: true });
+    expect(desktopRequestSchema.parse({ type: "respond-workspace-trust", requestId, path: "/project", approved: true })).toMatchObject({ approved: true });
     expect(desktopRequestSchema.parse({ type: "prompt", requestId, workspacePath: "/project", sessionId: "session", text: "hello", delivery: "prompt", attachments: [] })).toMatchObject({ text: "hello" });
     expect(desktopRequestSchema.parse({ type: "list-sessions" })).toEqual({ type: "list-sessions" });
     expect(desktopRequestSchema.parse({ type: "load-session", workspacePath: "/project", sessionId: "session" })).toEqual({ type: "load-session", workspacePath: "/project", sessionId: "session" });
@@ -35,7 +36,7 @@ describe("process IPC", () => {
   });
 
   it("rejects malformed project and UI requests", () => {
-    expect(desktopRequestSchema.safeParse({ type: "open-workspace", requestId: "bad", path: "/project", trusted: true }).success).toBe(false);
+    expect(desktopRequestSchema.safeParse({ type: "open-workspace", requestId: "bad", path: "/project" }).success).toBe(false);
     expect(desktopRequestSchema.safeParse({ type: "respond-ui", requestId: crypto.randomUUID(), uiRequestId: "bad", cancelled: false }).success).toBe(false);
   });
 });

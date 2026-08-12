@@ -32,9 +32,9 @@ describe("PiWorkspaceDriver", () => {
     const projected = { ...thread, agentSessionId: "review-session", messages: [{ id: "message-1", role: "user" as const, body: "Rename this", createdAt: now, delivered: true, status: "complete" as const }, { id: "message-2", role: "assistant" as const, body: "Renamed.", createdAt: now, delivered: true, status: "complete" as const }] };
     const reviewRepository = { get: vi.fn(async () => thread), agentSessionDirectory: vi.fn(() => "/reviews/review-1"), attachAgentSession: vi.fn(async () => projected) };
     const runReview = vi.fn(async () => ({ sessionId: "review-session", sessionFile: "/reviews/review-1/session.jsonl" }));
-    const driver = new PiWorkspaceDriver({ workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime), reviewRepository, runReviewTurn: runReview });
+    const driver = new PiWorkspaceDriver({ workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime), reviewRepository, runReviewTurn: runReview, isTrusted: () => true });
     const openId = crypto.randomUUID();
-    driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", trusted: true, newSession: true });
+    driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
     events.splice(0);
 
@@ -111,12 +111,13 @@ describe("PiWorkspaceDriver", () => {
       return runtime;
     });
     const openExternal = vi.fn(async () => undefined);
-    const driver = new PiWorkspaceDriver({ workspacePath: "/project", emit: (event) => events.push(event), createRuntime, openExternal });
+    const driver = new PiWorkspaceDriver({ workspacePath: "/project", emit: (event) => events.push(event), createRuntime, openExternal, isTrusted: () => true });
     const openId = crypto.randomUUID();
 
-    driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", trusted: true, newSession: true });
+    driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
     await vi.waitFor(() => expect(events.some((event) => event.type === "complete" && event.requestId === openId)).toBe(true));
     expect(createRuntime).toHaveBeenCalledOnce();
+    expect(createRuntime).toHaveBeenCalledWith(expect.objectContaining({ trusted: true }));
     await options?.openExternal?.("https://auth.example.test/");
     expect(openExternal).toHaveBeenCalledWith("https://auth.example.test/");
     expect(events).toContainEqual({ type: "session-snapshot", requestId: openId, snapshot });
@@ -176,8 +177,8 @@ describe("PiWorkspaceDriver", () => {
       prompt: vi.fn(async () => { const record = await options!.persistArtifact!(artifact); response = await options!.requestArtifact!(record, new AbortController().signal); }),
       abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
     };
-    const driver = new PiWorkspaceDriver({ workspacePath: "/project", artifactRepository: repository, emit: (event) => events.push(event), createRuntime: vi.fn(async (next) => { options = next; return runtime; }) });
-    const openId = crypto.randomUUID(); driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", trusted: true, newSession: true });
+    const driver = new PiWorkspaceDriver({ workspacePath: "/project", artifactRepository: repository, emit: (event) => events.push(event), createRuntime: vi.fn(async (next) => { options = next; return runtime; }), isTrusted: () => true });
+    const openId = crypto.randomUUID(); driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
     await vi.waitFor(() => expect(events.some((event) => event.type === "complete" && event.requestId === openId)).toBe(true));
     const operationId = crypto.randomUUID(); driver.dispatch({ type: "prompt", requestId: operationId, workspacePath: "/project", sessionId: snapshot.sessionId, text: "request", delivery: "prompt", attachments: [] });
     await vi.waitFor(() => expect(events.some((event) => event.type === "artifact-requested")).toBe(true));

@@ -11,7 +11,7 @@ function createBridge() {
     if (input.type === "get-home-directory") return { type: "home-directory", path: "/home/user" };
     if (input.type === "choose-attachments") return { type: "attachments-chosen", attachments: [] };
     if (input.type === "suggest-files") return { type: "file-suggestions", suggestions: [{ value: "@src/app.ts", label: "app.ts", description: "src/app.ts" }] };
-    if (input.type === "load-window-state") return { type: "window-state-loaded", state: { draft: "", recentProjectPaths: [], trustedProjectPaths: [], theme: "system", thinkingExpanded: false, sessionSearch: "", draftsBySession: {} } };
+    if (input.type === "load-window-state") return { type: "window-state-loaded", state: { draft: "", recentProjectPaths: [], theme: "system", thinkingExpanded: false, sessionSearch: "", draftsBySession: {} } };
     if (input.type === "list-sessions") return { type: "sessions-listed", sessions: [], reviewThreads: [] };
     if (input.type === "load-session") return { type: "session-loaded", session: undefined };
     return { type: "window-state-saved" };
@@ -33,10 +33,12 @@ describe("desktop client", () => {
     expect(await client.listSessions()).toEqual({ sessions: [], reviewThreads: [] });
     expect(await client.loadSession("/project", "session")).toBeUndefined();
     expect(await client.suggestFiles("/project", "app")).toEqual([{ value: "@src/app.ts", label: "app.ts", description: "src/app.ts" }]);
-    await client.openWorkspace({ operationId, path: "/project", trusted: true });
+    await client.respondToWorkspaceTrust({ operationId, path: "/project", approved: true });
+    await client.openWorkspace({ operationId, path: "/project" });
     await client.getChangelog({ operationId, workspacePath: "/project", sessionId: "session" });
 
-    expect(desktop.request).toHaveBeenCalledWith({ type: "open-workspace", requestId: operationId, path: "/project", trusted: true, newSession: false, sessionId: undefined, sessionFile: undefined });
+    expect(desktop.request).toHaveBeenCalledWith({ type: "respond-workspace-trust", requestId: operationId, path: "/project", approved: true });
+    expect(desktop.request).toHaveBeenCalledWith({ type: "open-workspace", requestId: operationId, path: "/project", newSession: false, sessionId: undefined, sessionFile: undefined });
     expect(desktop.request).toHaveBeenCalledWith({ type: "get-changelog", requestId: operationId, workspacePath: "/project", sessionId: "session" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "load-session", workspacePath: "/project", sessionId: "session" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "suggest-files", workspacePath: "/project", prefix: "app" });

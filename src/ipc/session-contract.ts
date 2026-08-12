@@ -340,7 +340,8 @@ export const projectRecordSchema = z.object({
 
 export const applicationStateSchema = z.object({
   schemaVersion: z.literal(1).default(1),
-  projects: z.array(projectRecordSchema).max(200).default([])
+  projects: z.array(projectRecordSchema).max(200).default([]),
+  trustedProjectPaths: z.array(z.string().max(4_096)).max(200).default([])
 });
 
 export const windowViewStateSchema = z.object({
@@ -348,7 +349,6 @@ export const windowViewStateSchema = z.object({
   selectedSessionId: z.string().max(256).optional(),
   selectedSessionFile: z.string().max(4_096).optional(),
   recentProjectPaths: z.array(z.string().max(4_096)).max(50).default([]),
-  trustedProjectPaths: z.array(z.string().max(4_096)).max(100).default([]),
   draft: z.string().max(262_144).default(""),
   theme: z.enum(["system", "light", "dark"]).default("system"),
   thinkingExpanded: z.boolean().default(false)

@@ -68,11 +68,11 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("new-window") }),
   z.object({ type: z.literal("restart-pi"), path: z.string().max(4_096) }),
   z.object({ type: z.literal("inspect-workspace"), requestId: z.uuid(), path: z.string().max(4_096) }),
+  z.object({ type: z.literal("respond-workspace-trust"), requestId: z.uuid(), path: z.string().max(4_096), approved: z.boolean() }),
   z.object({
     type: z.literal("open-workspace"),
     requestId: z.uuid(),
     path: z.string().max(4_096),
-    trusted: z.boolean(),
     newSession: z.boolean().default(false),
     sessionId: z.string().min(1).max(256).optional(),
     sessionFile: z.string().max(4_096).optional()

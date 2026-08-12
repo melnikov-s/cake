@@ -35,6 +35,8 @@ export class ApplicationModel extends Model {
   schemaVersion = 1 as const;
   @child(ProjectModel)
   projects: ProjectModel[] = [];
+  @state
+  trustedProjectPaths: string[] = [];
 
   static from(input: unknown) {
     return ApplicationModel.create(applicationStateSchema.parse(input));
@@ -54,6 +56,21 @@ export class ApplicationModel extends Model {
 
   removeProject(path: string) {
     this.projects = this.projects.filter((project) => project.path !== path);
+    this.revokeProjectTrust(path);
+  }
+
+  trustProject(path: string) {
+    if (this.trustedProjectPaths.includes(path)) return;
+    if (this.trustedProjectPaths.length >= 200) throw new Error("Project trust registry is full");
+    this.trustedProjectPaths = [...this.trustedProjectPaths, path];
+  }
+
+  revokeProjectTrust(path: string) {
+    this.trustedProjectPaths = this.trustedProjectPaths.filter((trustedPath) => trustedPath !== path);
+  }
+
+  isProjectTrusted(path: string) {
+    return this.trustedProjectPaths.includes(path);
   }
 
   snapshot(): ApplicationState {

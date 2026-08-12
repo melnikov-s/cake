@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { createCakeRuntime, inspectWorkspace, loadPiChangelog, runReviewTurn, type CakeRuntime, type RuntimeUiRequest } from "../agent/pi-runtime";
+import { createCakeRuntime, loadPiChangelog, runReviewTurn, type CakeRuntime, type RuntimeUiRequest } from "../agent/pi-runtime";
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
 import { parseArtifactInput, type ArtifactRecord, type CakeArtifactV1 } from "../ipc/artifact-contract";
 import type { ArtifactRepository } from "./artifact-repository";
@@ -11,7 +11,6 @@ type ArtifactRepositoryPort = Pick<ArtifactRepository, "upsert" | "get" | "listS
 type ReviewRepositoryPort = Pick<ReviewRepository, "get" | "attachAgentSession" | "agentSessionDirectory">;
 
 type PiCommandType =
-  | "inspect-workspace"
   | "open-workspace"
   | "rename-session"
   | "fork-session"
@@ -50,6 +49,7 @@ export interface PiWorkspaceDriverOptions {
   artifactRepository?: ArtifactRepositoryPort;
   reviewRepository?: ReviewRepositoryPort;
   openExternal?: (url: string) => Promise<void>;
+  isTrusted?: () => boolean;
 }
 
 const execFileAsync = promisify(execFile);
@@ -62,6 +62,7 @@ export class PiWorkspaceDriver {
   private readonly artifactRepository: ArtifactRepositoryPort;
   private readonly reviewRepository: ReviewRepositoryPort;
   private readonly openExternal: NonNullable<PiWorkspaceDriverOptions["openExternal"]> | undefined;
+  private readonly isTrusted: () => boolean;
   private readonly runtimes = new Map<string, CakeRuntime>();
   private readonly pendingUi = new Map<string, PendingUi>();
   private readonly pendingArtifacts = new Map<string, PendingArtifact>();
@@ -75,6 +76,7 @@ export class PiWorkspaceDriver {
     this.createRuntimeImpl = options.createRuntime ?? createCakeRuntime;
     this.runReviewTurnImpl = options.runReviewTurn ?? runReviewTurn;
     this.openExternal = options.openExternal;
+    this.isTrusted = options.isTrusted ?? (() => false);
     this.artifactRepository = options.artifactRepository ?? {
       async upsert(workspacePath, artifact) {
         const now = new Date().toISOString();
@@ -93,7 +95,7 @@ export class PiWorkspaceDriver {
 
   dispatch(command: PiWorkspaceCommand) {
     if (this.disposed) throw new Error("The Pi workspace driver has been disposed");
-    const routedPath = command.type === "inspect-workspace" || command.type === "open-workspace"
+    const routedPath = command.type === "open-workspace"
       ? command.path
       : command.workspacePath;
     if (routedPath !== this.workspacePath) {
@@ -109,15 +111,9 @@ export class PiWorkspaceDriver {
       if (pending?.operationId === command.requestId) pending.settle(command.cancelled ? undefined : command.value);
       return;
     }
-    if (command.type === "inspect-workspace") {
-      const inspection = inspectWorkspace(command.path);
-      this.emit({ type: "workspace-inspected", requestId: command.requestId, ...inspection });
-      this.emit({ type: "complete", requestId: command.requestId });
-      return;
-    }
     if (command.type === "open-workspace") {
       void this.run(command.requestId, async () => {
-        this.trusted ||= command.trusted;
+        this.trusted ||= this.isTrusted();
         const existing = command.sessionId ? this.runtimes.get(command.sessionId) : undefined;
         const runtime = existing ?? await this.createRuntime(command.newSession, command.sessionId, command.sessionFile);
         this.emit({ type: "session-snapshot", requestId: command.requestId, snapshot: await runtime.snapshot(command.requestId) });
