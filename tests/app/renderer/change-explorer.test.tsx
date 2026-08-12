@@ -98,6 +98,33 @@ describe("ChangeExplorer", () => {
     expect(container.querySelector('[aria-label="Full session changes to src/app.ts"]')).not.toBeNull();
   });
 
+  it("adds a comment from a line in the full file view", async () => {
+    const createReviewThread = vi.fn(async () => true);
+    const store = {
+      sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review", reviewThreads: [],
+      reviewThreadStreaming: vi.fn(() => false), createReviewThread, replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
+      selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn(), readWorkspaceFile: vi.fn(async () => "const fresh = true;\nconst unchanged = true;")
+    } as unknown as WindowStore;
+    act(() => root.render(<ChangeExplorer store={store} />));
+    await act(async () => container.querySelector<HTMLButtonElement>('.change-explorer-view-toggle button:last-child')!.click());
+
+    act(() => container.querySelector<HTMLButtonElement>('.change-explorer-full-file .review-gutter button[aria-label="Comment on line 2"]')!.click());
+    const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Review comment"]')!;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, "Explain this line");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => container.querySelector<HTMLButtonElement>(".review-composer button[type=submit]")!.click());
+
+    expect(createReviewThread).toHaveBeenCalledWith(expect.objectContaining({
+      path: "src/app.ts",
+      view: "full",
+      start: expect.objectContaining({ diffLine: 1, newLine: 2 }),
+      selectedText: "const unchanged = true;",
+      diff: changes[0]!.diff
+    }), "Explain this line");
+  });
+
   it("opens the same inline comment composer from a gutter line", () => {
     const store = {
       sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review", reviewThreads: [],

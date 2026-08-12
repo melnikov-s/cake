@@ -11,7 +11,7 @@ export const reviewPointSchema = z.object({
 
 export const reviewAnchorSchema = z.object({
   path: z.string().min(1).max(8_192),
-  view: z.enum(["diff", "file"]).optional(),
+  view: z.enum(["diff", "full", "file"]).optional(),
   start: reviewPointSchema,
   end: reviewPointSchema,
   selectedText: boundedReviewText,

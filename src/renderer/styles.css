@@ -251,6 +251,7 @@
 .change-explorer-line.meta > code { grid-column: 3; padding-block: 3px; }
 .change-explorer-full-file .change-explorer-line { grid-template-columns: 4.25rem minmax(30rem, 1fr); }
 .change-explorer-full-file .change-explorer-line > code { padding-left: 14px; }
+.change-explorer-full-file .review-composer, .change-explorer-full-file .review-thread, .change-explorer-full-file .review-thread-resolved { grid-column: 1 / 3; }
 .workspace-source .change-explorer-line { grid-template-columns: 4.25rem minmax(30rem, 1fr); }
 .workspace-source .review-composer, .workspace-source .review-thread, .workspace-source .review-thread-resolved { grid-column: 1 / 3; }
 .change-explorer-file-state { display: grid; align-content: center; justify-items: center; gap: 5px; color: var(--muted-foreground); font-size: 12px; }

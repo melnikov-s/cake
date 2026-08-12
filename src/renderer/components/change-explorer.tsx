@@ -72,6 +72,19 @@ function reviewAnchor(change: SessionChange, lines: ReturnType<typeof parseDiff>
   };
 }
 
+function fullFileReviewAnchor(change: SessionChange, lines: string[], startIndex: number, endIndex: number, selectedText: string, startColumn?: number, endColumn?: number): ReviewAnchor {
+  return {
+    path: change.path,
+    view: "full",
+    start: { diffLine: startIndex, oldLine: startIndex + 1, newLine: startIndex + 1, column: startColumn },
+    end: { diffLine: endIndex, oldLine: endIndex + 1, newLine: endIndex + 1, column: endColumn },
+    selectedText,
+    contextBefore: lines.slice(Math.max(0, startIndex - 3), startIndex).join("\n"),
+    contextAfter: lines.slice(endIndex + 1, endIndex + 4).join("\n"),
+    diff: change.diff
+  };
+}
+
 function elementForNode(node: Node | null) {
   return node instanceof HTMLElement ? node : node?.parentElement ?? null;
 }
@@ -162,7 +175,7 @@ const HighlightedDiff = observer(function HighlightedDiff({ change, store }: { c
   const source = useMemo(() => lines.map((line) => line.kind === "meta" ? "" : line.content).join("\n"), [lines]);
   const [tokens, setTokens] = useState<HighlightTokens>();
   const [composer, setComposer] = useState<{ anchor: ReviewAnchor; floating: boolean; position?: { left: number; top: number } }>();
-  const threads = store.reviewThreads.filter((thread) => thread.anchor.view !== "file" && thread.anchor.path === change.path);
+  const threads = store.reviewThreads.filter((thread) => thread.anchor.view !== "file" && thread.anchor.view !== "full" && thread.anchor.path === change.path);
 
   useEffect(() => {
     let active = true;
@@ -210,12 +223,14 @@ function FullFile({ change, store }: { change: SessionChange; store: WindowStore
   const [source, setSource] = useState<string>();
   const [tokens, setTokens] = useState<HighlightTokens>();
   const [error, setError] = useState<string>();
+  const [composer, setComposer] = useState<{ anchor: ReviewAnchor; floating: boolean; position?: { left: number; top: number } }>();
 
   useEffect(() => {
     let active = true;
     setSource(undefined);
     setTokens(undefined);
     setError(undefined);
+    setComposer(undefined);
     void store.readWorkspaceFile(change.path).then((content) => {
       if (!active) return;
       setSource(content);
@@ -231,6 +246,31 @@ function FullFile({ change, store }: { change: SessionChange; store: WindowStore
   if (error) return <div className="change-explorer-file-state" role="alert"><strong>Unable to show the full file</strong><span>{error}</span></div>;
   if (source === undefined) return <div className="change-explorer-file-state"><span>Loading full file…</span></div>;
   const sourceLines = source.split("\n");
+  const threads = store.reviewThreads.filter((thread) => thread.anchor.view === "full" && thread.anchor.path === change.path);
+  const selectText = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest("button, textarea, .review-thread, .review-composer")) return;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.anchorNode || !selection.focusNode) return;
+    const anchorRow = elementForNode(selection.anchorNode)?.closest<HTMLElement>(".change-explorer-line[data-source-index]");
+    const focusRow = elementForNode(selection.focusNode)?.closest<HTMLElement>(".change-explorer-line[data-source-index]");
+    if (!anchorRow || !focusRow || !event.currentTarget.contains(anchorRow) || !event.currentTarget.contains(focusRow)) return;
+    const anchorIndex = Number(anchorRow.dataset.sourceIndex);
+    const focusIndex = Number(focusRow.dataset.sourceIndex);
+    const forward = anchorIndex < focusIndex || (anchorIndex === focusIndex && selection.anchorOffset <= selection.focusOffset);
+    const startIndex = Math.min(anchorIndex, focusIndex);
+    const endIndex = Math.max(anchorIndex, focusIndex);
+    const startNode = forward ? selection.anchorNode : selection.focusNode;
+    const endNode = forward ? selection.focusNode : selection.anchorNode;
+    const startCode = elementForNode(startNode)?.closest<HTMLElement>("code");
+    const endCode = elementForNode(endNode)?.closest<HTMLElement>("code");
+    if (!startCode || !endCode) return;
+    const rect = selection.getRangeAt(0).getBoundingClientRect();
+    setComposer({
+      anchor: fullFileReviewAnchor(change, sourceLines, startIndex, endIndex, selection.toString(), selectionColumn(startCode, startNode, forward ? selection.anchorOffset : selection.focusOffset), selectionColumn(endCode, endNode, forward ? selection.focusOffset : selection.anchorOffset)),
+      floating: true,
+      position: { left: Math.min(window.innerWidth - 390, Math.max(16, rect.left)), top: Math.min(window.innerHeight - 250, rect.bottom + 8) }
+    });
+  };
   const diffLines = parseDiff(change.diff);
   const addedLines = new Set(diffLines.filter((line) => line.kind === "add" && line.newNumber !== undefined).map((line) => line.newNumber!));
   const removalsBefore = new Map<number, typeof diffLines>();
@@ -253,39 +293,43 @@ function FullFile({ change, store }: { change: SessionChange; store: WindowStore
   const removedRows = (lineNumber: number) => (removalsBefore.get(lineNumber) ?? []).map((line) => <div className="change-explorer-line remove" role="row" key={`remove-${line.key}`}>
     <span>{line.oldNumber}</span><code><b>−</b>{line.content || " "}</code>
   </div>);
-  return <div className="change-explorer-diff change-explorer-full-file" role="table" aria-label={`Full file ${change.path}`}>{sourceLines.map((line, index) => {
+  return <div className="change-explorer-diff change-explorer-full-file" role="table" aria-label={`Full file ${change.path}`} onMouseUp={selectText}>{sourceLines.map((line, index) => {
     const lineNumber = index + 1;
     const added = addedLines.has(lineNumber);
-    return <Fragment key={lineNumber}>{removedRows(lineNumber)}<div className={`change-explorer-line ${added ? "add" : "context"}`} role="row">
-      <span>{lineNumber}</span><code><b>{added ? "+" : " "}</b>{(tokens?.[index] ?? []).length > 0
+    return <Fragment key={lineNumber}>{removedRows(lineNumber)}<div className={`change-explorer-line ${added ? "add" : "context"}`} data-source-index={index} role="row">
+      <span className="review-gutter"><button aria-label={`Comment on line ${lineNumber}`} onClick={() => setComposer({ anchor: fullFileReviewAnchor(change, sourceLines, index, index, line, 0, line.length), floating: false })}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5" /></svg></button>{lineNumber}</span><code><b>{added ? "+" : " "}</b>{(tokens?.[index] ?? []).length > 0
         ? tokens![index]!.map((token, tokenIndex) => <i className="syntax-token" style={token.htmlStyle as CSSProperties} key={`${tokenIndex}-${token.content}`}>{token.content}</i>)
         : line || " "}</code>
-    </div></Fragment>;
-  })}{removedRows(sourceLines.length + 1)}</div>;
+    </div>{composer && !composer.floating && composer.anchor.end.diffLine === index && <ReviewComposer anchor={composer.anchor} onSave={(body) => store.createReviewThread(composer.anchor, body)} onCancel={() => setComposer(undefined)} />}{threads.filter((thread) => thread.anchor.end.diffLine === index).map((thread) => <ReviewThreadCard key={`${thread.id}:${thread.status}`} thread={thread} store={store} />)}</Fragment>;
+  })}{removedRows(sourceLines.length + 1)}{composer?.floating && <ReviewComposer anchor={composer.anchor} floating position={composer.position} onSave={(body) => store.createReviewThread(composer.anchor, body)} onCancel={() => setComposer(undefined)} />}</div>;
 }
 
 export const ChangeExplorer = observer(function ChangeExplorer({ store }: { store: WindowStore }) {
   const [view, setView] = useState<"diff" | "file">("diff");
   const change = store.selectedSessionChange;
   const tree = useMemo(() => fileTree(store.sessionChanges), [store.sessionChanges]);
-  const diffThreads = store.reviewThreads.filter((thread) => thread.anchor.view !== "file");
-  const indexedThreads = [...diffThreads].sort((left, right) => Number(left.status === "resolved") - Number(right.status === "resolved"));
+  const changeThreads = store.reviewThreads.filter((thread) => thread.anchor.view !== "file");
+  const indexedThreads = [...changeThreads].sort((left, right) => Number(left.status === "resolved") - Number(right.status === "resolved"));
+  const activeChangeThread = changeThreads.find((thread) => thread.id === store.activeReviewThreadId);
   const pendingCount = store.pendingReviewCommentCount ?? store.pendingReviewThreads?.length ?? 0;
   const focusThread = (threadId: string) => {
+    const thread = changeThreads.find((item) => item.id === threadId);
+    if (thread) setView(thread.anchor.view === "full" ? "file" : "diff");
     store.focusReviewThread(threadId);
     requestAnimationFrame(() => scrollToReviewThread(threadId));
   };
   useEffect(() => {
-    if (!store.activeReviewThreadId) return;
-    scrollToReviewThread(store.activeReviewThreadId);
-  }, [change?.path, store.activeReviewThreadId]);
+    if (!activeChangeThread) return;
+    setView(activeChangeThread.anchor.view === "full" ? "file" : "diff");
+    scrollToReviewThread(activeChangeThread.id);
+  }, [change?.path, activeChangeThread?.id, activeChangeThread?.anchor.view]);
   if (!change) return <main className="change-explorer-empty"><div><small>{store.sessionTitle}</small><h1>No session changes</h1><p>This session has no recorded file diffs.</p><Button variant="outline" onClick={() => store.closeChangeExplorer()}>Return to chat</Button></div></main>;
   return <main className="change-explorer">
     <section className="change-explorer-file">
       <header><div><small>Session changes · {store.sessionTitle}</small><h1>{change.path}</h1></div><div className="change-explorer-view-toggle" role="group" aria-label="File view"><button type="button" className={view === "diff" ? "active" : ""} aria-pressed={view === "diff"} onClick={() => setView("diff")}>Diff</button><button type="button" className={view === "file" ? "active" : ""} aria-pressed={view === "file"} onClick={() => setView("file")}>Full file</button></div><span><b>+{change.additions}</b><i>−{change.deletions}</i></span></header>
       {view === "diff" ? <HighlightedDiff change={change} store={store} /> : <FullFile change={change} store={store} />}
     </section>
-    <aside className="change-explorer-tree"><header><div><strong>Changed files</strong><small>{store.sessionChanges.length} {store.sessionChanges.length === 1 ? "file" : "files"}</small></div><div className="change-explorer-actions">{pendingCount > 0 && <Button size="sm" onClick={() => void store.sendPendingReviewComments()}>Send ({pendingCount})</Button>}<Button variant="ghost" size="sm" onClick={() => store.closeChangeExplorer()}>Done</Button></div></header><div className="change-explorer-sidebar-body"><nav aria-label="Changed files"><ChangeTree nodes={tree.children} selectedPath={change.path} onSelect={(path) => store.selectChangeExplorerFile(path)} /></nav><section className="review-thread-index" aria-label="Review threads"><header><strong>Comments</strong><span>{diffThreads.length}</span></header>{diffThreads.length === 0 ? <p>No comments yet.</p> : <ol>{indexedThreads.map((thread) => {
+    <aside className="change-explorer-tree"><header><div><strong>Changed files</strong><small>{store.sessionChanges.length} {store.sessionChanges.length === 1 ? "file" : "files"}</small></div><div className="change-explorer-actions">{pendingCount > 0 && <Button size="sm" onClick={() => void store.sendPendingReviewComments()}>Send ({pendingCount})</Button>}<Button variant="ghost" size="sm" onClick={() => store.closeChangeExplorer()}>Done</Button></div></header><div className="change-explorer-sidebar-body"><nav aria-label="Changed files"><ChangeTree nodes={tree.children} selectedPath={change.path} onSelect={(path) => store.selectChangeExplorerFile(path)} /></nav><section className="review-thread-index" aria-label="Review threads"><header><strong>Comments</strong><span>{changeThreads.length}</span></header>{changeThreads.length === 0 ? <p>No comments yet.</p> : <ol>{indexedThreads.map((thread) => {
       const state = thread.status === "resolved" ? "Resolved" : store.reviewThreadStreaming(thread.id) ? "Working" : thread.pending ? "Pending" : "Replied";
       return <li key={thread.id}><button className={`${thread.status === "resolved" ? "resolved" : ""} ${store.activeReviewThread?.id === thread.id ? "active" : ""}`} onClick={() => focusThread(thread.id)}><i className={state.toLowerCase()} /><span><strong>{threadPreview(thread)}</strong><small>{threadLocation(thread)}</small></span><em>{state}</em></button></li>;
     })}</ol>}</section></div></aside>
