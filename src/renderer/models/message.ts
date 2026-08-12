@@ -11,6 +11,7 @@ export class MessageModel extends Model {
   @id id = "";
   @state kind: UiPart["kind"] = "notice";
   @state role: TextRole | undefined;
+  @state entryId: string | undefined;
   @state text: string | undefined;
   @state status: PartStatus | undefined;
   @state name: string | undefined;
@@ -29,7 +30,7 @@ export class MessageModel extends Model {
   get value(): UiPart {
     switch (this.kind) {
       case "text":
-        return { id: this.id, kind: this.kind, role: this.role!, text: this.text!, status: this.status! };
+        return { id: this.id, kind: this.kind, role: this.role!, entryId: this.entryId, text: this.text!, status: this.status! };
       case "reasoning":
         return { id: this.id, kind: this.kind, text: this.text!, status: this.status as "streaming" | "complete" };
       case "tool":

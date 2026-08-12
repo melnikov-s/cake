@@ -95,7 +95,7 @@ function AssistantTextMessage({ part, store }: { part: Extract<UiPart, { kind: "
   );
 }
 
-function TranscriptPart({ part, store }: { part: UiPart; store: WindowStore }) {
+const TranscriptPart = observer(function TranscriptPart({ part, store }: { part: UiPart; store: WindowStore }) {
   if (part.kind === "text") {
     if (part.role === "assistant") return <AssistantTextMessage part={part} store={store} />;
     return (
@@ -110,7 +110,7 @@ function TranscriptPart({ part, store }: { part: UiPart; store: WindowStore }) {
   if (part.kind === "source") return <Source title={part.title} url={part.url} />;
   if (part.kind === "attachment") return <div className="w-fit rounded-full border border-border px-3 py-1 font-mono text-[0.68rem]">{part.attachmentKind} · {part.name}</div>;
   return <div className={`notice notice-${part.tone}`} role={part.tone === "error" ? "alert" : "status"}><strong>{part.title}</strong>{part.detail && <span>{part.detail}</span>}</div>;
-}
+});
 
 type TranscriptItem = UiPart | { kind: "activity-group"; id: string; parts: UiPart[] } | { kind: "assistant-loading"; id: string } | { kind: "review-run"; id: string; run: ReviewRunState };
 
@@ -184,10 +184,15 @@ const TranscriptList = forwardRef<HTMLDivElement, ComponentProps<"div">>(functio
 export const Transcript = observer(function Transcript({ store, sessionId }: { store: WindowStore; sessionId: string }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const reviewRuns = store.sessionReviewRuns ?? [];
+  const latestPart = store.visibleParts.at(-1);
+  const workLogIsActive = latestPart?.kind === "reasoning"
+    ? latestPart.status === "streaming"
+    : latestPart?.kind === "tool" && latestPart.state === "running";
+  const showAssistantLoading = store.isStreaming && !workLogIsActive;
   const items: TranscriptItem[] = [
     ...groupTranscriptParts(store.visibleParts),
     ...reviewRuns.map((run) => ({ kind: "review-run" as const, id: `review-run-${run.operationId}`, run })),
-    ...(store.isStreaming ? [{ kind: "assistant-loading" as const, id: "assistant-loading" }] : [])
+    ...(showAssistantLoading ? [{ kind: "assistant-loading" as const, id: "assistant-loading" }] : [])
   ];
   const latestUserPartId = store.parts.findLast((part) => part.kind === "text" && part.role === "user")?.id;
   const itemCountRef = useRef(items.length);
@@ -212,7 +217,7 @@ export const Transcript = observer(function Transcript({ store, sessionId }: { s
   if (store.visibleParts.length === 0 && reviewRuns.length === 0) {
     return (
       <div className="transcript transcript-empty">
-        <Conversation><div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>{store.isStreaming && <AssistantLoadingIndicator />}<ArtifactsPanel store={store} />{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</Conversation>
+        <Conversation><div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>{showAssistantLoading && <AssistantLoadingIndicator />}<ArtifactsPanel store={store} />{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</Conversation>
       </div>
     );
   }

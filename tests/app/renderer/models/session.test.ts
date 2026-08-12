@@ -12,7 +12,7 @@ const snapshot: SessionSnapshot = {
   workspacePath: "/project",
   sessionId: "session-1",
   sessionFile: "/sessions/one.jsonl",
-  parts: [{ id: "message-1", kind: "text", role: "assistant", text: "Hello", status: "streaming" }],
+  parts: [{ id: "message-1", kind: "text", role: "assistant", entryId: "assistant-entry-1", text: "Hello", status: "streaming" }],
   model: { provider: "openai", id: "model-1", name: "Model" },
   models: [
     { provider: "openai", providerName: "OpenAI", id: "model-1", name: "Model", reasoning: true, input: ["text", "image"], authenticated: true, authTypes: ["api_key"] },
@@ -73,7 +73,7 @@ describe("SessionModel", () => {
 
     model.applySnapshot(snapshot);
     expect(updates).toHaveLength(1);
-    expect(model.uiParts[0]).toMatchObject({ text: "Hello", status: "streaming" });
+    expect(model.uiParts[0]).toMatchObject({ entryId: "assistant-entry-1", text: "Hello", status: "streaming" });
     stop();
     model[Symbol.dispose]();
   });

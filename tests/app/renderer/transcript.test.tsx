@@ -117,6 +117,21 @@ describe("Transcript scrolling", () => {
     expect(tool.open).toBe(true);
   });
 
+  it("does not show assistant loading dots while the work log is active", () => {
+    const user: UiPart = { id: "user-1", kind: "text", role: "user", text: "My message", status: "complete" };
+    const reasoning: UiPart = { id: "reasoning-1", kind: "reasoning", text: "Working it out", status: "streaming" };
+    const tool: UiPart = { id: "tool-1", kind: "tool", name: "read", input: "file", state: "running" };
+
+    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([user, reasoning], true)} />));
+    expect(container.querySelector(".assistant-loading")).toBeNull();
+
+    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([user, { ...reasoning, status: "complete" }, tool], true)} />));
+    expect(container.querySelector(".assistant-loading")).toBeNull();
+
+    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([user, { ...reasoning, status: "complete" }, { ...tool, state: "success" }], true)} />));
+    expect(container.querySelector(".assistant-loading")).not.toBeNull();
+  });
+
   it("updates a selected session without remounting the virtualized transcript", () => {
     const first: UiPart = { id: "assistant-1", kind: "text", role: "assistant", text: "First session", status: "complete" };
     const second: UiPart = { id: "assistant-2", kind: "text", role: "assistant", text: "Second session", status: "complete" };
