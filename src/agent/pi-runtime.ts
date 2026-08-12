@@ -141,6 +141,7 @@ export interface ReviewTurnOptions {
   trusted: boolean;
   thread: ReviewThreadRecord;
   sessionDir: string;
+  signal?: AbortSignal;
   instruction?: string;
   model?: { provider: string; id: string };
   parent?: ReviewParentContext;
@@ -303,27 +304,34 @@ export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewT
     sessionManager
   });
   try {
-    await session.bindExtensions({ mode: "rpc" });
-    if (parentMetadata) session.setActiveToolsByName(parentMetadata.activeTools);
-    if (options.model) {
-      const model = modelRuntime.getModel(options.model.provider, options.model.id);
-      if (!model) throw new Error(`Unknown review model ${options.model.provider}/${options.model.id}`);
-      await session.setModel(model);
-    }
-    let failure = "";
-    const unsubscribe = session.subscribe((event) => {
-      if (event.type !== "message_end" || event.message.role !== "assistant") return;
-      if (event.message.errorMessage) failure = event.message.errorMessage;
-    });
+    if (options.signal?.aborted) throw new Error("The review run was cancelled");
+    const abort = () => { void session.abort(); };
+    options.signal?.addEventListener("abort", abort, { once: true });
     try {
-      await session.prompt(options.thread.pendingComments.map((comment) => comment.body).join("\n\n"), { source: "interactive" });
-    } catch (error) {
-      failure ||= error instanceof Error ? error.message : String(error);
+      await session.bindExtensions({ mode: "rpc" });
+      if (parentMetadata) session.setActiveToolsByName(parentMetadata.activeTools);
+      if (options.model) {
+        const model = modelRuntime.getModel(options.model.provider, options.model.id);
+        if (!model) throw new Error(`Unknown review model ${options.model.provider}/${options.model.id}`);
+        await session.setModel(model);
+      }
+      let failure = "";
+      const unsubscribe = session.subscribe((event) => {
+        if (event.type !== "message_end" || event.message.role !== "assistant") return;
+        if (event.message.errorMessage) failure = event.message.errorMessage;
+      });
+      try {
+        await session.prompt(options.thread.pendingComments.map((comment) => comment.body).join("\n\n"), { source: "interactive" });
+      } catch (error) {
+        failure ||= error instanceof Error ? error.message : String(error);
+      } finally {
+        unsubscribe();
+      }
+      if (!session.sessionFile) throw new Error("The review agent session was not persisted");
+      return { sessionId: session.sessionManager.getSessionId(), sessionFile: session.sessionFile, error: failure || undefined };
     } finally {
-      unsubscribe();
+      options.signal?.removeEventListener("abort", abort);
     }
-    if (!session.sessionFile) throw new Error("The review agent session was not persisted");
-    return { sessionId: session.sessionManager.getSessionId(), sessionFile: session.sessionFile, error: failure || undefined };
   } finally {
     session.dispose();
   }

@@ -8,7 +8,7 @@ import type { ArtifactRepository } from "./artifact-repository";
 import type { ReviewRepository } from "./review-repository";
 
 type ArtifactRepositoryPort = Pick<ArtifactRepository, "upsert" | "get" | "listSession" | "linkSession">;
-type ReviewRepositoryPort = Pick<ReviewRepository, "get" | "attachAgentSession" | "agentSessionDirectory">;
+type ReviewRepositoryPort = Pick<ReviewRepository, "claimPending" | "completeRun" | "failRun" | "recoverRunning" | "agentSessionDirectory">;
 
 type PiCommandType =
   | "open-workspace"
@@ -67,6 +67,8 @@ export class PiWorkspaceDriver {
   private readonly pendingUi = new Map<string, PendingUi>();
   private readonly pendingArtifacts = new Map<string, PendingArtifact>();
   private readonly operationContext = new AsyncLocalStorage<{ operationId: string; sessionId?: string }>();
+  private readonly activeReviewRuns = new Map<string, AbortController>();
+  private readonly reviewRecovery: Promise<void>;
   private trusted = false;
   private disposed = false;
 
@@ -87,10 +89,14 @@ export class PiWorkspaceDriver {
       ,async linkSession() { return undefined; }
     };
     this.reviewRepository = options.reviewRepository ?? {
-      async get() { return undefined; },
-      async attachAgentSession() { throw new Error("Review persistence is unavailable"); },
+      async claimPending() { return undefined; },
+      async completeRun() { throw new Error("Review persistence is unavailable"); },
+      async failRun() { throw new Error("Review persistence is unavailable"); },
+      async recoverRunning() {},
       agentSessionDirectory() { throw new Error("Review persistence is unavailable"); }
     };
+    this.reviewRecovery = this.reviewRepository.recoverRunning(this.workspacePath);
+    void this.reviewRecovery.catch(() => undefined);
   }
 
   dispatch(command: PiWorkspaceCommand) {
@@ -169,6 +175,8 @@ export class PiWorkspaceDriver {
   [Symbol.dispose]() {
     if (this.disposed) return;
     this.disposed = true;
+    for (const controller of this.activeReviewRuns.values()) controller.abort();
+    this.activeReviewRuns.clear();
     for (const pending of this.pendingUi.values()) pending.settle(undefined);
     this.pendingUi.clear();
     this.cancelPendingRequests();
@@ -349,10 +357,14 @@ export class PiWorkspaceDriver {
   private async runReviewThreads(command: Extract<PiWorkspaceCommand, { type: "submit-review-threads" }>) {
     const parentRuntime = this.runtimeFor(command.sessionId);
     const parent = parentRuntime.getReviewParentContext?.();
+    await this.reviewRecovery;
     const failures: string[] = [];
     for (const threadId of command.threadIds) {
-      const thread = await this.reviewRepository.get(this.workspacePath, command.sessionId, threadId);
-      if (!thread || thread.status !== "open" || thread.pendingComments.length === 0) continue;
+      const runId = crypto.randomUUID();
+      const thread = await this.reviewRepository.claimPending(this.workspacePath, command.sessionId, threadId, runId);
+      if (!thread) continue;
+      const controller = new AbortController();
+      this.activeReviewRuns.set(runId, controller);
       this.emit({ type: "review-thread-streaming", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId, streaming: true });
       try {
         const agent = await this.runReviewTurnImpl({
@@ -360,16 +372,26 @@ export class PiWorkspaceDriver {
           trusted: this.trusted,
           thread,
           sessionDir: this.reviewRepository.agentSessionDirectory(this.workspacePath, command.sessionId, threadId),
+          signal: controller.signal,
           instruction: command.instruction,
           model: command.model,
           parent
         });
-        const updated = await this.reviewRepository.attachAgentSession(this.workspacePath, command.sessionId, threadId, agent);
-        this.emit({ type: "review-thread-updated", thread: updated });
-        if (agent.error) failures.push(agent.error);
+        if (agent.error) {
+          const updated = await this.reviewRepository.failRun(this.workspacePath, command.sessionId, threadId, runId, agent.error, agent);
+          if (updated) this.emit({ type: "review-thread-updated", thread: updated });
+          failures.push(agent.error);
+        } else {
+          const updated = await this.reviewRepository.completeRun(this.workspacePath, command.sessionId, threadId, runId, agent);
+          if (updated) this.emit({ type: "review-thread-updated", thread: updated });
+        }
       } catch (error) {
-        failures.push(errorMessage(error));
+        const message = errorMessage(error);
+        const updated = await this.reviewRepository.failRun(this.workspacePath, command.sessionId, threadId, runId, message);
+        if (updated) this.emit({ type: "review-thread-updated", thread: updated });
+        failures.push(message);
       } finally {
+        this.activeReviewRuns.delete(runId);
         this.emit({ type: "review-thread-streaming", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId, streaming: false });
       }
     }

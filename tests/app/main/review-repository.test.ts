@@ -18,9 +18,13 @@ describe("ReviewRepository", () => {
     expect(created.messages[0]).toMatchObject({ role: "user", delivered: false });
     expect((await repository.listSession("/project", "session")).filter((thread) => thread.status === "open")).toHaveLength(1);
 
-    const answered = await repository.attachAgentSession("/project", "session", created.id, { sessionId: "pi-review", sessionFile: "/reviews/pi-review.jsonl" });
-    expect(answered.agentSessionId).toBe("pi-review");
-    expect(answered.messages).toEqual(projectedMessages);
+    const runId = crypto.randomUUID();
+    const claimed = await repository.claimPending("/project", "session", created.id, runId);
+    expect(claimed?.submission).toMatchObject({ status: "running", runId });
+    const answered = await repository.completeRun("/project", "session", created.id, runId, { sessionId: "pi-review", sessionFile: "/reviews/pi-review.jsonl" });
+    expect(answered).toBeDefined();
+    expect(answered!.agentSessionId).toBe("pi-review");
+    expect(answered!.messages).toEqual(projectedMessages);
     const record = await repository.get("/project", "session", created.id);
     expect(record).toMatchObject({ agentSessionId: "pi-review", agentSessionFile: "/reviews/pi-review.jsonl", pendingComments: [] });
     expect(record).not.toHaveProperty("messages");
@@ -50,5 +54,45 @@ describe("ReviewRepository", () => {
       { role: "user", body: "Why this name?" },
       { role: "assistant", body: "It describes the value." }
     ]);
+  });
+
+  it("atomically claims pending comments and rejects stale completion", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-review-claims-")); directories.push(root);
+    const repository = new ReviewRepository(root);
+    const anchor = { path: "src/app.ts", start: { diffLine: 1 }, end: { diffLine: 1 }, selectedText: "", contextBefore: "", contextAfter: "", diff: "" };
+    const created = await repository.create("/project", "session", anchor, "Explain this");
+    const firstRun = crypto.randomUUID();
+    const secondRun = crypto.randomUUID();
+
+    const [first, second] = await Promise.all([
+      repository.claimPending("/project", "session", created.id, firstRun),
+      repository.claimPending("/project", "session", created.id, secondRun)
+    ]);
+    const winner = first ?? second;
+    expect([first, second].filter(Boolean)).toHaveLength(1);
+    expect(winner?.submission).toMatchObject({ status: "running" });
+
+    const staleRun = winner?.submission?.runId === firstRun ? secondRun : firstRun;
+    expect(await repository.completeRun("/project", "session", created.id, staleRun, { sessionId: "stale", sessionFile: "/stale.jsonl" })).toBeUndefined();
+    expect((await repository.get("/project", "session", created.id))?.pendingComments).toHaveLength(1);
+
+    await repository.reply("/project", "session", created.id, "A later comment");
+    await repository.completeRun("/project", "session", created.id, winner!.submission!.runId, { sessionId: "winner", sessionFile: "/winner.jsonl" });
+    expect((await repository.get("/project", "session", created.id))?.pendingComments).toEqual([expect.objectContaining({ body: "A later comment" })]);
+  });
+
+  it("recovers abandoned running claims as retryable failures", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-review-recovery-")); directories.push(root);
+    const repository = new ReviewRepository(root);
+    const anchor = { path: "src/app.ts", start: { diffLine: 1 }, end: { diffLine: 1 }, selectedText: "", contextBefore: "", contextAfter: "", diff: "" };
+    const created = await repository.create("/project", "session", anchor, "Explain this");
+    await repository.claimPending("/project", "session", created.id, crypto.randomUUID());
+
+    await repository.recoverRunning("/project");
+
+    const recovered = await repository.get("/project", "session", created.id);
+    expect(recovered?.submission).toMatchObject({ status: "failed", error: expect.stringContaining("Retry") });
+    expect(recovered?.pendingComments).toHaveLength(1);
+    expect(await repository.claimPending("/project", "session", created.id, crypto.randomUUID())).toBeDefined();
   });
 });

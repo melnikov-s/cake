@@ -32,7 +32,13 @@ describe("PiWorkspaceDriver", () => {
     const now = new Date(0).toISOString();
     const thread = { id: "review-1", workspacePath: "/project", sessionId: snapshot.sessionId, status: "open" as const, createdAt: now, updatedAt: now, anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" }, pendingComments: [{ id: "message-1", body: "Rename this", createdAt: now }] };
     const projected = { ...thread, agentSessionId: "review-session", messages: [{ id: "message-1", role: "user" as const, body: "Rename this", createdAt: now, delivered: true, status: "complete" as const }, { id: "message-2", role: "assistant" as const, body: "Renamed.", createdAt: now, delivered: true, status: "complete" as const }] };
-    const reviewRepository = { get: vi.fn(async () => thread), agentSessionDirectory: vi.fn(() => "/reviews/review-1"), attachAgentSession: vi.fn(async () => projected) };
+    const reviewRepository = {
+      recoverRunning: vi.fn(async () => undefined),
+      claimPending: vi.fn(async (_workspacePath: string, _sessionId: string, _threadId: string, runId: string) => ({ ...thread, submission: { status: "running" as const, runId, commentIds: ["message-1"], startedAt: now } })),
+      agentSessionDirectory: vi.fn(() => "/reviews/review-1"),
+      completeRun: vi.fn(async () => projected),
+      failRun: vi.fn(async () => projected)
+    };
     const runReview = vi.fn(async () => ({ sessionId: "review-session", sessionFile: "/reviews/review-1/session.jsonl" }));
     const driver = new PiWorkspaceDriver({ workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime), reviewRepository, runReviewTurn: runReview, isTrusted: () => true });
     const openId = crypto.randomUUID();
@@ -44,14 +50,47 @@ describe("PiWorkspaceDriver", () => {
     driver.dispatch({ type: "submit-review-threads", requestId, workspacePath: "/project", sessionId: snapshot.sessionId, threadIds: [thread.id] });
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId }));
 
-    expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ thread }));
+    expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ thread: expect.objectContaining({ id: thread.id, submission: expect.objectContaining({ status: "running" }) }) }));
     expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ sessionDir: "/reviews/review-1" }));
     expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ parent: expect.objectContaining({ sessionId: snapshot.sessionId, leafId: "parent-leaf", systemPrompt: "Parent prompt" }) }));
-    expect(reviewRepository.attachAgentSession).toHaveBeenCalledWith("/project", snapshot.sessionId, thread.id, expect.objectContaining({ sessionId: "review-session" }));
+    expect(reviewRepository.completeRun).toHaveBeenCalledWith("/project", snapshot.sessionId, thread.id, expect.any(String), expect.objectContaining({ sessionId: "review-session" }));
     expect(events).toContainEqual(expect.objectContaining({ type: "review-thread-updated", thread: expect.objectContaining({ id: thread.id }) }));
     expect(events.some((event) => event.type === "session-snapshot")).toBe(false);
     expect(runtime.prompt).not.toHaveBeenCalled();
     driver[Symbol.dispose]();
+  });
+
+  it("cancels an active review turn when the workspace driver is disposed", async () => {
+    const events: DesktopEvent[] = [];
+    const runtime: CakeRuntime = {
+      sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile, snapshot: vi.fn(async () => snapshot), prompt: vi.fn(async () => undefined), abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
+    };
+    const now = new Date(0).toISOString();
+    const thread = { id: "review-1", workspacePath: "/project", sessionId: snapshot.sessionId, status: "open" as const, createdAt: now, updatedAt: now, anchor: { path: "src/app.ts", start: { diffLine: 1 }, end: { diffLine: 1 }, selectedText: "", contextBefore: "", contextAfter: "", diff: "" }, pendingComments: [{ id: "comment-1", body: "Explain", createdAt: now }] };
+    const failRun = vi.fn(async () => undefined);
+    const reviewRepository = {
+      recoverRunning: vi.fn(async () => undefined),
+      claimPending: vi.fn(async (_workspacePath: string, _sessionId: string, _threadId: string, runId: string) => ({ ...thread, submission: { status: "running" as const, runId, commentIds: ["comment-1"], startedAt: now } })),
+      agentSessionDirectory: vi.fn(() => "/reviews/review-1"),
+      completeRun: vi.fn(async () => undefined),
+      failRun
+    };
+    let reviewSignal: AbortSignal | undefined;
+    const runReview = vi.fn(async ({ signal }: { signal?: AbortSignal }) => {
+      reviewSignal = signal;
+      return new Promise<never>((_resolve, reject) => signal?.addEventListener("abort", () => reject(new Error("cancelled")), { once: true }));
+    });
+    const driver = new PiWorkspaceDriver({ workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime), reviewRepository, runReviewTurn: runReview as never, isTrusted: () => true });
+    const openId = crypto.randomUUID();
+    driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
+    await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
+    driver.dispatch({ type: "submit-review-threads", requestId: crypto.randomUUID(), workspacePath: "/project", sessionId: snapshot.sessionId, threadIds: [thread.id] });
+    await vi.waitFor(() => expect(runReview).toHaveBeenCalledOnce());
+
+    driver[Symbol.dispose]();
+
+    expect(reviewSignal?.aborted).toBe(true);
+    await vi.waitFor(() => expect(failRun).toHaveBeenCalledWith("/project", snapshot.sessionId, thread.id, expect.any(String), "cancelled"));
   });
 
   it("opens a dormant session before renaming it", async () => {

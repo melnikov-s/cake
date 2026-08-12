@@ -34,6 +34,12 @@ export const pendingReviewCommentSchema = z.object({
   createdAt: z.string().datetime()
 });
 
+export const reviewSubmissionSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("running"), runId: z.string().uuid(), commentIds: z.array(z.string().min(1).max(256)).min(1), startedAt: z.string().datetime() }),
+  z.object({ status: z.literal("answered"), runId: z.string().uuid(), commentIds: z.array(z.string().min(1).max(256)).min(1), completedAt: z.string().datetime() }),
+  z.object({ status: z.literal("failed"), runId: z.string().uuid(), commentIds: z.array(z.string().min(1).max(256)).min(1), failedAt: z.string().datetime(), error: boundedReviewText })
+]);
+
 export const reviewThreadRecordSchema = z.object({
   id: z.string().min(1).max(256),
   workspacePath: z.string().min(1).max(4_096),
@@ -42,6 +48,7 @@ export const reviewThreadRecordSchema = z.object({
   agentSessionFile: z.string().min(1).max(8_192).optional(),
   anchor: reviewAnchorSchema,
   pendingComments: z.array(pendingReviewCommentSchema).max(10_000),
+  submission: reviewSubmissionSchema.optional(),
   status: z.enum(["open", "resolved"]),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -65,6 +72,7 @@ export type ReviewPoint = z.infer<typeof reviewPointSchema>;
 export type ReviewAnchor = z.infer<typeof reviewAnchorSchema>;
 export type ReviewMessage = z.infer<typeof reviewMessageSchema>;
 export type PendingReviewComment = z.infer<typeof pendingReviewCommentSchema>;
+export type ReviewSubmission = z.infer<typeof reviewSubmissionSchema>;
 export type ReviewThreadRecord = z.infer<typeof reviewThreadRecordSchema>;
 export type ReviewThread = z.infer<typeof reviewThreadSchema>;
 
