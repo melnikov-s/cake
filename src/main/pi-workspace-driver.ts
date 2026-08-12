@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { createCakeRuntime, loadPiChangelog, runReviewTurn, type CakeRuntime, type RuntimeUiRequest } from "../agent/pi-runtime";
+import { createCakeRuntime, loadPiChangelog, runReviewTurn, type CakeRuntime, type ReviewMainEditRequest, type RuntimeUiRequest } from "../agent/pi-runtime";
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
 import { parseArtifactInput, type ArtifactRecord, type CakeArtifactV1 } from "../ipc/artifact-contract";
 import type { ArtifactRepository } from "./artifact-repository";
@@ -375,7 +375,8 @@ export class PiWorkspaceDriver {
           signal: controller.signal,
           instruction: command.instruction,
           model: command.model,
-          parent
+          parent,
+          requestMainEdit: (request) => this.deliverReviewEdit(parentRuntime, request)
         });
         if (agent.error) {
           const updated = await this.reviewRepository.failRun(this.workspacePath, command.sessionId, threadId, runId, agent.error, agent);
@@ -397,6 +398,31 @@ export class PiWorkspaceDriver {
     }
     if (failures.length > 0) throw new Error(`Review thread${failures.length === 1 ? "" : "s"} failed: ${failures.join("; ")}`);
   }
+
+  private async deliverReviewEdit(parentRuntime: CakeRuntime, request: ReviewMainEditRequest) {
+    const message = formatReviewEditRequest(request);
+    const snapshot = await parentRuntime.snapshot();
+    let delivery: "prompt" | "follow-up" = snapshot.streaming ? "follow-up" : "prompt";
+    try {
+      await parentRuntime.prompt(message, delivery, []);
+    } catch (error) {
+      if (delivery !== "prompt" || !errorMessage(error).includes("already processing")) throw error;
+      delivery = "follow-up";
+      await parentRuntime.prompt(message, delivery, []);
+    }
+    return { delivery };
+  }
+}
+
+function formatReviewEditRequest(request: ReviewMainEditRequest) {
+  return [
+    `Apply the code-review request from thread ${request.threadId}.`,
+    `File: ${request.path}`,
+    `Requested change:\n${request.requestedChange}`,
+    request.rationale ? `Rationale:\n${request.rationale}` : "",
+    request.acceptanceCriteria.length > 0 ? `Acceptance criteria:\n${request.acceptanceCriteria.map((criterion) => `- ${criterion}`).join("\n")}` : "",
+    "Make the change in the workspace, verify it appropriately, and mention the review thread ID in your result."
+  ].filter(Boolean).join("\n\n");
 }
 
 function errorMessage(error: unknown) {

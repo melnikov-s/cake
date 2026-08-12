@@ -10,6 +10,7 @@ import {
   loadPiChangelog,
   loadWorkspaceSessionPreview,
   piRuntimeVersion,
+  reviewActiveToolNames,
   routeReviewPromptCache,
   runReviewTurn,
   suggestProjectFiles,
@@ -34,6 +35,13 @@ async function createTemporaryDirectory() {
 }
 
 describe("Pi 0.84.0 foundation contract", () => {
+  it("limits review sessions to read-only inspection and main-session handoff", () => {
+    expect(reviewActiveToolNames).toEqual(["read", "grep", "find", "ls", "request_main_edit"]);
+    expect(reviewActiveToolNames).not.toContain("edit");
+    expect(reviewActiveToolNames).not.toContain("write");
+    expect(reviewActiveToolNames).not.toContain("bash");
+  });
+
   it("routes a forked GPT-5.6 review through the parent cache breakpoint", () => {
     const payload = {
       model: "gpt-5.6-sol",
