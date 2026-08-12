@@ -1,4 +1,4 @@
-import { readFile, realpath, rename, writeFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { homedir } from "node:os";
 import { app, BrowserWindow, dialog, ipcMain, shell, type WebContents } from "electron";
@@ -10,6 +10,7 @@ import { shouldAllowNavigation } from "./navigation-policy";
 import { PiWorkspaceDriver, type PiWorkspaceCommand } from "./pi-workspace-driver";
 import { ArtifactRepository } from "./artifact-repository";
 import { ReviewRepository } from "./review-repository";
+import { SerializedFileWriter } from "./serialized-file-writer";
 
 interface PiHost {
   path: string;
@@ -26,6 +27,7 @@ const allowedProjectPaths = new Set<string>();
 const pendingTrustRequests = new Map<string, string>();
 let nextWindowSlot = 0;
 let applicationModel = ApplicationModel.from({});
+const stateFileWriter = new SerializedFileWriter();
 
 function clearPendingTrustRequests(webContentsId: number) {
   for (const key of pendingTrustRequests.keys()) if (key.startsWith(`${webContentsId}:`)) pendingTrustRequests.delete(key);
@@ -57,10 +59,7 @@ async function loadApplicationState() {
 }
 
 async function persistApplicationState() {
-  const target = appStatePath();
-  const temporary = `${target}.${process.pid}.tmp`;
-  await writeFile(temporary, `${JSON.stringify(applicationModel.snapshot(), null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  await rename(temporary, target);
+  await stateFileWriter.write(appStatePath(), `${JSON.stringify(applicationModel.snapshot(), null, 2)}\n`);
 }
 
 function statePath(slot: number) {
@@ -77,10 +76,7 @@ async function loadWindowState(slot: number): Promise<WindowViewState> {
 
 async function saveWindowState(slot: number, state: WindowViewState) {
   const parsed = windowViewStateSchema.parse(state);
-  const target = statePath(slot);
-  const temporary = `${target}.${process.pid}.tmp`;
-  await writeFile(temporary, `${JSON.stringify(parsed, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  await rename(temporary, target);
+  await stateFileWriter.write(statePath(slot), `${JSON.stringify(parsed, null, 2)}\n`);
 }
 
 function setPiState(host: PiHost, state: PiHost["state"]) {

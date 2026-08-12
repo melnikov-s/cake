@@ -144,7 +144,7 @@ function ActivityGroup({ parts, store }: { parts: UiPart[]; store: WindowStore }
     logRef.current.scrollTop = logRef.current.scrollHeight;
   });
   return (
-    <details className="activity-group" open={store.isStreaming || undefined}>
+    <details className="activity-group">
       <summary><span className={store.isStreaming ? "activity-pulse" : ""} />Work log <small>{label}</small></summary>
       <div ref={logRef}>{parts.map((part) => <TranscriptPart key={part.id} part={part} store={store} />)}</div>
     </details>
@@ -314,12 +314,11 @@ export const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpen
         </div>}
         <div className="section-heading projects-heading"><span>Projects</span><div><span className="project-options" aria-hidden="true"><MoreIcon /></span><button aria-label="Add project" onClick={() => navigateToChat(() => store.chooseProject())}><PlusIcon /></button></div></div>
         {store.recentProjectPaths.length === 0 ? <p className="sidebar-empty">Add a folder to start a project.</p> : store.recentProjectPaths.map((path) => {
-          const active = path === store.projectPath;
           const collapsed = collapsedProjects.has(path);
           const sessions = store.projectSessions(path);
           const visibleSessions = sessions.slice(0, store.sessionLimit(path));
           return <div className="project-group" key={path}>
-            <div className="project-row" title={path}><button className="project-label" type="button" aria-expanded={!collapsed} aria-label={`${collapsed ? "Expand" : "Collapse"} ${store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}`} onClick={() => toggleProject(path)}><span className={`project-disclosure ${collapsed ? "collapsed" : ""}`}><ChevronIcon /></span><FolderIcon /><span>{store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}</span></button><button className="project-add" aria-label={`New chat in ${store.nameFromPath(path)}`} onClick={() => { if (active) navigateToChat(() => store.startNewSession()); else navigateToChat(async () => { await store.switchProject(path); await store.startNewSession(); }); }}><PlusIcon /></button></div>
+            <div className="project-row" title={path}><button className="project-label" type="button" aria-expanded={!collapsed} aria-label={`${collapsed ? "Expand" : "Collapse"} ${store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}`} onClick={() => toggleProject(path)}><span className={`project-disclosure ${collapsed ? "collapsed" : ""}`}><ChevronIcon /></span><FolderIcon /><span>{store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}</span></button><button className="project-add" aria-label={`New chat in ${store.nameFromPath(path)}`} onClick={() => navigateToChat(() => store.startNewSession(path))}><PlusIcon /></button></div>
             {!collapsed && !store.sessionSearch.trim() && visibleSessions.map((session) => {
               const actionableCommentCount = store.chatReviewCommentCountForSession(path, session.id);
               return <div key={session.id} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && path === store.projectPath ? "active" : ""}`}><button className="session-row" aria-current={session.id === store.session?.sessionId && path === store.projectPath ? "page" : undefined} onClick={() => navigateToChat(() => store.openSession(path, session.id))} onContextMenu={(event) => renameSession(event, path, session.id, session.title)}><span>{session.title}</span>{actionableCommentCount > 0 && <b className="session-review-count">{actionableCommentCount} {actionableCommentCount === 1 ? "comment" : "comments"}</b>}{activityIndicator(path, session.id)}</button></div>;

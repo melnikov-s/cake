@@ -112,4 +112,22 @@ describe("Sidebar projects", () => {
     expect(container.querySelector('[data-session-id="pending"]')?.textContent).toContain("1 comment");
     expect(container.querySelector('[data-session-id="answered"]')?.textContent).not.toContain("comments");
   });
+
+  it("starts a new session with the selected inactive project path", () => {
+    const startNewSession = vi.fn();
+    const switchProject = vi.fn();
+    const store = {
+      sessionSearch: "", recentProjectPaths: ["/work/first", "/work/second"], projectPath: "/work/first",
+      projects: [{ path: "/work/first", name: "First" }, { path: "/work/second", name: "Second" }], session: { sessionId: "session-1" }, searchedSessions: [],
+      projectSessions: () => [], sessionLimit: () => 8, sessionActivity: vi.fn(() => undefined), chatReviewCommentCountForSession: vi.fn(() => 0),
+      nameFromPath: (path: string) => path.split("/").at(-1)!, setSessionSearch: vi.fn(), startOneOffChat: vi.fn(), chooseProject: vi.fn(),
+      startNewSession, switchProject, openSession: vi.fn(), renameSession: vi.fn(), showMoreSessions: vi.fn()
+    } as unknown as WindowStore;
+
+    act(() => root.render(<Sidebar store={store} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="New chat in second"]')!.click());
+
+    expect(startNewSession).toHaveBeenCalledWith("/work/second");
+    expect(switchProject).not.toHaveBeenCalled();
+  });
 });

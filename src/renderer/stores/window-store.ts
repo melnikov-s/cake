@@ -464,12 +464,13 @@ export class WindowStore extends Store<Record<string, never>> {
     catch (error) { this.setError(error); }
   }
 
-  async startNewSession() {
-    if (!this.projectPath) {
+  async startNewSession(path = this.projectPath) {
+    if (!path) {
       await this.chooseProject();
       return;
     }
-    await this.openPath(this.projectPath, true);
+    if (path === this.projectPath) await this.openPath(path, true);
+    else await this.inspectPath(path, true);
   }
 
   async openSession(workspacePath: string, sessionId: string) {

@@ -193,6 +193,21 @@ describe("WindowStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("creates a new session directly in an inactive project", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+
+    await store.startNewSession("/other");
+    const inspectId = store.activeOperations.at(-1)!;
+    expect(desktop.client.inspectWorkspace).toHaveBeenLastCalledWith({ operationId: inspectId, path: "/other" });
+
+    desktop.emit({ type: "workspace-inspected", operationId: inspectId, path: "/other", trustRequired: false });
+    expect(desktop.client.openWorkspace).toHaveBeenLastCalledWith(expect.objectContaining({ path: "/other", newSession: true }));
+    root[Symbol.dispose]();
+  });
+
   it("cancels a pending artifact request before replacing the active session", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
