@@ -65,7 +65,7 @@ export function Tool({ part }: { part: Extract<UiPart, { kind: "tool" }> }) {
   const bash = part.name === "bash" && part.input ? part.input : undefined;
   return (
     <details className={`tool-call rounded-xl border border-border bg-muted/35 px-4 py-3${diff ? " tool-edit" : ""}`}>
-      <summary className="cursor-pointer font-mono text-xs font-semibold"><span className={`tool-state tool-${part.state}`} aria-label={part.state} /><span className="tool-title" title={title}>{title}</span>{part.state !== "success" && <small>{part.state}</small>}</summary>
+      <summary className="cursor-pointer font-mono text-xs font-semibold"><span className={`tool-state tool-${part.state}`} aria-label={part.state} /><span className="tool-title" title={title}>{title}</span></summary>
       {diff ? <DiffView diff={diff} filePath={part.filePath} label={part.state === "running" ? "Proposed edit" : "Applied edit"} /> : bash ? <Markdown className="tool-input tool-bash-input mt-3 text-xs">{fencedBash(bash)}</Markdown> : part.input && <pre className="tool-input mt-3 overflow-x-auto whitespace-pre-wrap text-xs text-muted-foreground">{prettyJson(part.input)}</pre>}
       {!diff && part.output && <pre className="tool-output mt-3 overflow-x-auto whitespace-pre-wrap border-t border-border pt-3 text-xs">{prettyJson(part.output)}</pre>}
     </details>

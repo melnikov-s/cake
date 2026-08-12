@@ -105,7 +105,7 @@ const TranscriptPart = observer(function TranscriptPart({ part, store }: { part:
       </Message>
     );
   }
-  if (part.kind === "reasoning") return <Reasoning open={store.thinkingExpanded} onToggle={() => store.toggleThinking()} streaming={part.status === "streaming"}><Markdown>{part.text}</Markdown></Reasoning>;
+  if (part.kind === "reasoning") return <Reasoning open={store.thinkingExpanded} onToggle={() => store.toggleThinking()} streaming={part.status === "streaming"} hasContent={Boolean(part.text.trim())}><Markdown>{part.text}</Markdown></Reasoning>;
   if (part.kind === "tool") return <Tool part={part} />;
   if (part.kind === "source") return <Source title={part.title} url={part.url} />;
   if (part.kind === "attachment") return <div className="w-fit rounded-full border border-border px-3 py-1 font-mono text-[0.68rem]">{part.attachmentKind} · {part.name}</div>;
@@ -136,6 +136,13 @@ function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
 function ActivityGroup({ parts, store }: { parts: UiPart[]; store: WindowStore }) {
   const logRef = useRef<HTMLDivElement>(null);
   const tools = parts.filter((part) => part.kind === "tool").length;
+  const reasoningParts = parts.filter((part): part is Extract<UiPart, { kind: "reasoning" }> => part.kind === "reasoning");
+  const reasoningHasContent = reasoningParts.some((part) => Boolean(part.text.trim()));
+  const reasoningIsStreaming = reasoningParts.some((part) => part.status === "streaming");
+  const toolParts = parts.filter((part): part is Extract<UiPart, { kind: "tool" }> => part.kind === "tool");
+  const activityState = reasoningIsStreaming || toolParts.some((part) => part.state === "running")
+    ? "running"
+    : toolParts.some((part) => part.state === "error" || part.state === "denied") ? "error" : "success";
   const editParts = parts.filter((part): part is Extract<UiPart, { kind: "tool" }> => part.kind === "tool" && part.name === "edit" && Boolean(part.diff));
   const editTotals = editParts.reduce((total, part) => { const stats = diffStats(part.diff!); return { additions: total.additions + stats.additions, deletions: total.deletions + stats.deletions }; }, { additions: 0, deletions: 0 });
   const label = editParts.length > 0 ? `${editParts.length} ${editParts.length === 1 ? "edit" : "edits"} · +${editTotals.additions} −${editTotals.deletions}` : tools === 0 ? "Reasoning" : `${tools} tool ${tools === 1 ? "call" : "calls"}`;
@@ -143,9 +150,12 @@ function ActivityGroup({ parts, store }: { parts: UiPart[]; store: WindowStore }
     if (!store.isStreaming || !logRef.current) return;
     logRef.current.scrollTop = logRef.current.scrollHeight;
   });
+  if (tools === 0 && !reasoningHasContent) {
+    return <div className="activity-group activity-group-status" role="status"><span className={`tool-state tool-${activityState}`} aria-label={activityState} />{reasoningIsStreaming ? "Thinking…" : "Reasoning details not exposed"}</div>;
+  }
   return (
     <details className="activity-group">
-      <summary><span className={store.isStreaming ? "activity-pulse" : ""} />Work log <small>{label}</small></summary>
+      <summary><span className={`tool-state tool-${activityState}`} aria-label={activityState} />Work log <small>{label}</small></summary>
       <div ref={logRef}>{parts.map((part) => <TranscriptPart key={part.id} part={part} store={store} />)}</div>
     </details>
   );
@@ -184,11 +194,13 @@ const TranscriptList = forwardRef<HTMLDivElement, ComponentProps<"div">>(functio
 export const Transcript = observer(function Transcript({ store, sessionId }: { store: WindowStore; sessionId: string }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const reviewRuns = store.sessionReviewRuns ?? [];
-  const latestPart = store.visibleParts.at(-1);
-  const workLogIsActive = latestPart?.kind === "reasoning"
-    ? latestPart.status === "streaming"
-    : latestPart?.kind === "tool" && latestPart.state === "running";
-  const showAssistantLoading = store.isStreaming && !workLogIsActive;
+  const latestUserIndex = store.visibleParts.findLastIndex((part) => part.kind === "text" && part.role === "user");
+  const currentTurnParts = store.visibleParts.slice(latestUserIndex + 1);
+  const workLogIsActive = currentTurnParts.some((part) => part.kind === "reasoning"
+    ? part.status === "streaming"
+    : part.kind === "tool" && part.state === "running");
+  const assistantMessageIsStreaming = currentTurnParts.some((part) => part.kind === "text" && part.role === "assistant" && part.status === "streaming");
+  const showAssistantLoading = store.isStreaming && assistantMessageIsStreaming && !workLogIsActive;
   const items: TranscriptItem[] = [
     ...groupTranscriptParts(store.visibleParts),
     ...reviewRuns.map((run) => ({ kind: "review-run" as const, id: `review-run-${run.operationId}`, run })),

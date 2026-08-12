@@ -32,6 +32,27 @@ describe("Cake-owned conversation components", () => {
     expect(html).toContain("prompt");
   });
 
+  it("does not offer an empty reasoning block as expandable content", () => {
+    const html = renderToStaticMarkup(<Reasoning open={false} onToggle={() => undefined} hasContent={false}> </Reasoning>);
+    expect(html).toContain("Reasoning details not exposed");
+    expect(html).not.toContain("<button");
+    expect(html).not.toContain("· show");
+  });
+
+  it("does not claim an empty streaming block is unavailable before it finishes", () => {
+    const html = renderToStaticMarkup(<Reasoning open={false} onToggle={() => undefined} hasContent={false} streaming> </Reasoning>);
+    expect(html).toContain("Thinking…");
+    expect(html).toContain('class="tool-state tool-running" aria-label="running"');
+    expect(html).not.toContain("not exposed");
+  });
+
+  it("labels completed and active reasoning with the same state indicators as tools", () => {
+    const completed = renderToStaticMarkup(<Reasoning open={false} onToggle={() => undefined}>trace</Reasoning>);
+    const active = renderToStaticMarkup(<Reasoning open={false} onToggle={() => undefined} streaming>trace</Reasoning>);
+    expect(completed).toContain('class="tool-state tool-success" aria-label="success"');
+    expect(active).toContain('class="tool-state tool-running" aria-label="running"');
+  });
+
   it("renders edit calls as a readable code diff", () => {
     const html = renderToStaticMarkup(<Tool part={{ id: "tool-edit", kind: "tool", name: "edit", input: JSON.stringify({ path: "src/app.ts", edits: [{ oldText: "const old = true;", newText: "const fresh = true;" }] }), filePath: "src/app.ts", diff: "-4 const old = true;\n+4 const fresh = true;", state: "success" }} />);
     expect(html).toContain("edit src/app.ts");
@@ -50,10 +71,16 @@ describe("Cake-owned conversation components", () => {
     expect(failed).not.toMatch(/<details[^>]* open/);
   });
 
-  it("uses the green indicator without a redundant visible success label", () => {
-    const html = renderToStaticMarkup(<Tool part={{ id: "tool-success", kind: "tool", name: "read", input: "README.md", state: "success" }} />);
-    expect(html).toContain('class="tool-state tool-success" aria-label="success"');
-    expect(html).not.toContain("<small>success</small>");
+  it("uses state indicators without redundant visible state labels", () => {
+    const running = renderToStaticMarkup(<Tool part={{ id: "tool-running", kind: "tool", name: "bash", input: "sleep 1", state: "running" }} />);
+    const success = renderToStaticMarkup(<Tool part={{ id: "tool-success", kind: "tool", name: "read", input: "README.md", state: "success" }} />);
+    const error = renderToStaticMarkup(<Tool part={{ id: "tool-error", kind: "tool", name: "bash", input: "exit 1", state: "error" }} />);
+    expect(running).toContain('class="tool-state tool-running" aria-label="running"');
+    expect(success).toContain('class="tool-state tool-success" aria-label="success"');
+    expect(error).toContain('class="tool-state tool-error" aria-label="error"');
+    expect(running).not.toContain("<small>running</small>");
+    expect(success).not.toContain("<small>success</small>");
+    expect(error).not.toContain("<small>error</small>");
   });
 
   it("renders bash commands as highlighted shell code instead of JSON", () => {
