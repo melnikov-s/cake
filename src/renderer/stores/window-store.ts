@@ -807,7 +807,6 @@ export class WindowStore extends Store<Record<string, never>> {
   async sendPendingReviewComments() {
     const reviews = this.pendingReviewThreads.map((thread) => thread.id);
     if (reviews.length === 0) return;
-    this.closeChangeExplorer();
     await this.submitReviewComments(reviews);
   }
 

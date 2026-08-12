@@ -230,19 +230,22 @@ describe("ChangeExplorer", () => {
     expect(replyReviewThread).toHaveBeenLastCalledWith("review-1", "Second reply");
   });
 
-  it("sends pending comments from Changes and closes the view", () => {
+  it("sends pending comments without closing Changes", () => {
     const sendPendingReviewComments = vi.fn(async () => undefined);
+    const closeChangeExplorer = vi.fn();
     const store = {
       sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review", reviewThreads: [],
       pendingReviewThreads: [{ id: "review-1" }], pendingReviewCommentCount: 2,
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
-      selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn(), sendPendingReviewComments
+      selectChangeExplorerFile: vi.fn(), closeChangeExplorer, sendPendingReviewComments
     } as unknown as WindowStore;
     act(() => root.render(<ChangeExplorer store={store} />));
 
     act(() => container.querySelector<HTMLButtonElement>(".change-explorer-actions button")!.click());
 
     expect(sendPendingReviewComments).toHaveBeenCalledOnce();
+    expect(closeChangeExplorer).not.toHaveBeenCalled();
+    expect(container.querySelector(".change-explorer")).not.toBeNull();
     expect(container.querySelector(".change-explorer-actions")?.textContent).toContain("Send (2)");
   });
 

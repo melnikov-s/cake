@@ -366,6 +366,30 @@ describe("WindowStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("keeps the change explorer open while pending review comments run", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop, {
+      ...snapshot,
+      sessionChanges: [{ id: "edit-result", toolCallId: "edit-1", path: "src/app.ts", additions: 1, deletions: 0, diff: "+1 value", timestamp: new Date(0).toISOString() }]
+    });
+    const now = new Date(0).toISOString();
+    desktop.emit({ type: "review-thread-updated", thread: {
+      id: "review-1", workspacePath: "/project", sessionId: "session-1", status: "open", createdAt: now, updatedAt: now,
+      anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 1 }, end: { diffLine: 1, newLine: 1 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
+      messages: [{ id: "comment-1", role: "user", body: "Explain this", createdAt: now, delivered: false, status: "complete" }]
+    } });
+    await store.openSessionChanges("review-1");
+
+    await store.sendPendingReviewComments();
+
+    expect(store.changeExplorerPath).toBe("src/app.ts");
+    expect(store.activeReviewThreadId).toBe("review-1");
+    expect(desktop.client.submitReviewThreads).toHaveBeenCalledWith(expect.objectContaining({ threadIds: ["review-1"] }));
+    root[Symbol.dispose]();
+  });
+
   it("excludes assistant-ended review threads from the chat comment count", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
