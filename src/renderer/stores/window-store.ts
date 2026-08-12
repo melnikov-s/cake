@@ -25,6 +25,20 @@ import { DesktopClientContext, SessionCacheContext } from "./context";
 import type { ReviewAnchor } from "../../ipc/review-contract";
 import { displaySessionTitle } from "../models/session-title";
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("Could not read the pasted image"));
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      const data = result.slice(result.indexOf(",") + 1);
+      if (data.length > 20_000_000) reject(new Error(`${file.name || "Pasted image"} is too large (15 MB maximum)`));
+      else resolve(data);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export interface UiRequestState {
   operationId: string;
   uiRequestId: string;
@@ -55,7 +69,8 @@ interface PendingUserMessage {
   sessionId: string;
   canonicalPartCount: number;
   expectedOccurrence: number;
-  part: Extract<UiPart, { kind: "text" }>;
+  text: string;
+  parts: UiPart[];
 }
 
 export interface ReviewRunState {
@@ -164,11 +179,13 @@ export class WindowStore extends Store<Record<string, never>> {
     if (!this.projectPath || !this.selectedSessionId) return this.canonicalParts;
     const pendingParts = this.pendingUserMessages
       .filter((pending) => pending.workspacePath === this.projectPath && pending.sessionId === this.selectedSessionId)
-      .filter((pending) => this.userMessageOccurrenceCount(pending.workspacePath, pending.sessionId, pending.part.text) < pending.expectedOccurrence);
+      .filter((pending) => this.userMessageOccurrenceCount(pending.workspacePath, pending.sessionId, pending.text, pending.parts) < pending.expectedOccurrence);
     if (pendingParts.length === 0) return this.canonicalParts;
     const parts = [...this.canonicalParts];
-    pendingParts.forEach((pending, offset) => {
-      parts.splice(Math.min(pending.canonicalPartCount + offset, parts.length), 0, pending.part);
+    let offset = 0;
+    pendingParts.forEach((pending) => {
+      parts.splice(Math.min(pending.canonicalPartCount + offset, parts.length), 0, ...pending.parts);
+      offset += pending.parts.length;
     });
     return parts;
   }
@@ -268,7 +285,7 @@ export class WindowStore extends Store<Record<string, never>> {
   }
 
   get canSubmit() {
-    return Boolean(this.session && !this.activeOpenOperationId && (this.draft.trim() || this.pendingReviewThreads.length > 0) && (this.isLocalSlashCommand || this.piState === "ready"));
+    return Boolean(this.session && !this.activeOpenOperationId && (this.draft.trim() || this.attachments.length > 0 || this.pendingReviewThreads.length > 0) && (this.isLocalSlashCommand || this.piState === "ready"));
   }
 
   get isLocalSlashCommand() {
@@ -818,6 +835,22 @@ export class WindowStore extends Store<Record<string, never>> {
     }
   }
 
+  async addPastedImages(files: readonly File[]) {
+    try {
+      const available = Math.max(0, 20 - this.attachments.length);
+      const images = files.filter((file) => file.type.startsWith("image/")).slice(0, available);
+      const attachments = await Promise.all(images.map(async (file, index): Promise<Extract<Attachment, { kind: "image" }>> => ({
+        kind: "image",
+        name: file.name || `Pasted image ${index + 1}`,
+        mimeType: file.type,
+        data: await fileToBase64(file)
+      })));
+      this.attachments.push(...attachments);
+    } catch (error) {
+      this.setError(error);
+    }
+  }
+
   async suggestFiles(prefix: string): Promise<FileSuggestion[]> {
     if (!this.projectPath) return [];
     return this.client.suggestFiles(this.projectPath, prefix);
@@ -846,10 +879,10 @@ export class WindowStore extends Store<Record<string, never>> {
     if (reviews.length > 0) {
       submissions.push(this.submitReviewComments(reviews, text || undefined));
     }
-    if (text) {
+    if (text || attachments.length > 0) {
       const messageOperationId = this.startOperation();
       this.attachments.splice(0);
-      this.addPendingUserMessage(messageOperationId, context.workspacePath, context.sessionId, text);
+      this.addPendingUserMessage(messageOperationId, context.workspacePath, context.sessionId, text, attachments);
       submissions.push(this.client.submit({ operationId: messageOperationId, ...context, text, delivery, attachments }).catch((error) => {
         this.removePendingUserMessage(messageOperationId);
         this.setError(error);
@@ -892,17 +925,33 @@ export class WindowStore extends Store<Record<string, never>> {
     this.reviewRuns.splice(index, 1, { ...this.reviewRuns[index]!, status });
   }
 
-  private addPendingUserMessage(operationId: string, workspacePath: string, sessionId: string, text: string) {
+  private addPendingUserMessage(operationId: string, workspacePath: string, sessionId: string, text: string, attachments: Attachment[]) {
+    const imageParts: UiPart[] = attachments.flatMap((attachment, index) => attachment.kind === "image" ? [{
+      id: `optimistic-user-${operationId}-attachment-${index}`,
+      kind: "attachment" as const,
+      name: attachment.name,
+      mediaType: attachment.mimeType,
+      attachmentKind: "image" as const,
+      data: attachment.data
+    }] : []);
+    const parts: UiPart[] = [
+      ...(text ? [{ id: `optimistic-user-${operationId}`, kind: "text" as const, role: "user" as const, text, status: "complete" as const }] : []),
+      ...imageParts
+    ];
+    const firstImageData = imageParts[0]?.kind === "attachment" ? imageParts[0].data : undefined;
     const earlierPendingCount = this.pendingUserMessages.filter((pending) =>
-      pending.workspacePath === workspacePath && pending.sessionId === sessionId && pending.part.text === text
+      pending.workspacePath === workspacePath && pending.sessionId === sessionId && pending.text === text && (
+        Boolean(text) || pending.parts.some((part) => part.kind === "attachment" && part.data === firstImageData)
+      )
     ).length;
     this.pendingUserMessages.push({
       operationId,
       workspacePath,
       sessionId,
       canonicalPartCount: this.sessionCache.find(sessionId, workspacePath)?.uiParts.length ?? 0,
-      expectedOccurrence: this.userMessageOccurrenceCount(workspacePath, sessionId, text) + earlierPendingCount + 1,
-      part: { id: `optimistic-user-${operationId}`, kind: "text", role: "user", text, status: "complete" }
+      expectedOccurrence: this.userMessageOccurrenceCount(workspacePath, sessionId, text, parts) + earlierPendingCount + 1,
+      text,
+      parts
     });
   }
 
@@ -911,16 +960,17 @@ export class WindowStore extends Store<Record<string, never>> {
     if (index >= 0) this.pendingUserMessages.splice(index, 1);
   }
 
-  private userMessageOccurrenceCount(workspacePath: string, sessionId: string, text: string) {
-    return this.sessionCache.find(sessionId, workspacePath)?.uiParts.filter((part) =>
-      part.kind === "text" && part.role === "user" && part.status === "complete" && part.text === text
-    ).length ?? 0;
+  private userMessageOccurrenceCount(workspacePath: string, sessionId: string, text: string, parts: UiPart[] = []) {
+    const canonical = this.sessionCache.find(sessionId, workspacePath)?.uiParts ?? [];
+    if (text) return canonical.filter((part) => part.kind === "text" && part.role === "user" && part.status === "complete" && part.text === text).length;
+    const image = parts.find((part): part is Extract<UiPart, { kind: "attachment" }> => part.kind === "attachment" && part.attachmentKind === "image");
+    return image?.data ? canonical.filter((part) => part.kind === "attachment" && part.data === image.data).length : 0;
   }
 
   reconcilePendingUserMessages(sessionId: string) {
     for (let index = this.pendingUserMessages.length - 1; index >= 0; index -= 1) {
       const pending = this.pendingUserMessages[index]!;
-      if (pending.sessionId === sessionId && this.userMessageOccurrenceCount(pending.workspacePath, sessionId, pending.part.text) >= pending.expectedOccurrence) {
+      if (pending.sessionId === sessionId && this.userMessageOccurrenceCount(pending.workspacePath, sessionId, pending.text, pending.parts) >= pending.expectedOccurrence) {
         this.pendingUserMessages.splice(index, 1);
       }
     }

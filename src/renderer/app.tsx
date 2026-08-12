@@ -108,7 +108,9 @@ const TranscriptPart = observer(function TranscriptPart({ part, store }: { part:
   if (part.kind === "reasoning") return <Reasoning open={store.thinkingExpanded} onToggle={() => store.toggleThinking()} streaming={part.status === "streaming"} hasContent={Boolean(part.text.trim())}><Markdown>{part.text}</Markdown></Reasoning>;
   if (part.kind === "tool") return <Tool part={part} />;
   if (part.kind === "source") return <Source title={part.title} url={part.url} />;
-  if (part.kind === "attachment") return <div className="w-fit rounded-full border border-border px-3 py-1 font-mono text-[0.68rem]">{part.attachmentKind} · {part.name}</div>;
+  if (part.kind === "attachment") return part.attachmentKind === "image" && part.data
+    ? <figure className="transcript-image"><img src={`data:${part.mediaType};base64,${part.data}`} alt={part.name} /><figcaption>{part.name}</figcaption></figure>
+    : <div className="w-fit rounded-full border border-border px-3 py-1 font-mono text-[0.68rem]">{part.attachmentKind} · {part.name}</div>;
   return <div className={`notice notice-${part.tone}`} role={part.tone === "error" ? "alert" : "status"}><strong>{part.title}</strong>{part.detail && <span>{part.detail}</span>}</div>;
 });
 
@@ -192,7 +194,7 @@ const TranscriptList = forwardRef<HTMLDivElement, ComponentProps<"div">>(functio
 export const Transcript = observer(function Transcript({ store, sessionId }: { store: WindowStore; sessionId: string }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const reviewRuns = store.sessionReviewRuns ?? [];
-  const latestUserIndex = store.visibleParts.findLastIndex((part) => part.kind === "text" && part.role === "user");
+  const latestUserIndex = store.visibleParts.findLastIndex((part) => (part.kind === "text" && part.role === "user") || (part.kind === "attachment" && part.attachmentKind === "image"));
   const currentTurnParts = store.visibleParts.slice(latestUserIndex + 1);
   const workLogIsActive = currentTurnParts.some((part) => part.kind === "reasoning"
     ? part.status === "streaming"
@@ -204,7 +206,7 @@ export const Transcript = observer(function Transcript({ store, sessionId }: { s
     ...reviewRuns.map((run) => ({ kind: "review-run" as const, id: `review-run-${run.operationId}`, run })),
     ...(showAssistantLoading ? [{ kind: "assistant-loading" as const, id: "assistant-loading" }] : [])
   ];
-  const latestUserPartId = store.parts.findLast((part) => part.kind === "text" && part.role === "user")?.id;
+  const latestUserPartId = store.parts.findLast((part) => (part.kind === "text" && part.role === "user") || (part.kind === "attachment" && part.attachmentKind === "image"))?.id;
   const itemCountRef = useRef(items.length);
   itemCountRef.current = items.length;
 
@@ -361,8 +363,22 @@ const ComposerPanel = observer(function ComposerPanel({ store }: { store: Window
       {store.extensionWidgets.filter((widget) => widget.placement === "aboveEditor").map((widget) => <div className="legacy-widget" key={widget.key}><strong>{widget.key}</strong><pre>{widget.lines.join("\n")}</pre></div>)}
       <Composer className="workbench-composer" onSubmit={(event) => { event.preventDefault(); void store.submit(); }}>
         {store.chatReviewCommentCount > 0 && <div className="review-context-badge"><button type="button" onClick={() => void store.openSessionChanges()}><span>{store.chatReviewCommentCount}</span> {store.chatReviewCommentCount === 1 ? "comment ready to send" : "comments ready to send"}</button></div>}
-        {store.attachments.length > 0 && <div className="attachment-list">{store.attachments.map((attachment, index) => <button type="button" key={`${attachment.kind}-${attachment.name}`} onClick={() => store.removeAttachment(index)}>{attachment.kind === "file" ? "@" : "▧"} {attachment.name} <span>×</span></button>)}</div>}
-        <SlashCommandCombobox aria-label="Message" commands={store.session?.commands ?? []} suggestFiles={(prefix) => store.suggestFiles(prefix)} placeholder={store.isStreaming ? "Add the next instruction…" : `Ask Cake to work in ${store.projectName}…`} value={store.draft} onValueChange={(value) => store.setDraft(value)} onSubmit={(value) => { if (value !== undefined) store.setDraft(value); void store.submit(); }} />
+        {store.attachments.length > 0 && <div className="attachment-list">{store.attachments.map((attachment, index) => attachment.kind === "image"
+          ? <button className="image-attachment" type="button" aria-label={`Remove ${attachment.name}`} key={`${attachment.kind}-${attachment.name}-${index}`} onClick={() => store.removeAttachment(index)}><img src={`data:${attachment.mimeType};base64,${attachment.data}`} alt="" /><span>{attachment.name}<b aria-hidden="true">×</b></span></button>
+          : <button type="button" key={`${attachment.kind}-${attachment.name}-${index}`} onClick={() => store.removeAttachment(index)}>@ {attachment.name} <span>×</span></button>)}</div>}
+        <SlashCommandCombobox aria-label="Message" commands={store.session?.commands ?? []} suggestFiles={(prefix) => store.suggestFiles(prefix)} placeholder={store.isStreaming ? "Add the next instruction…" : `Ask Cake to work in ${store.projectName}…`} value={store.draft} onValueChange={(value) => store.setDraft(value)} onPaste={(event) => {
+          const images = [...event.clipboardData.files].filter((file) => file.type.startsWith("image/"));
+          if (images.length === 0) {
+            for (const item of event.clipboardData.items) {
+              if (!item.type.startsWith("image/")) continue;
+              const file = item.getAsFile();
+              if (file) images.push(file);
+            }
+          }
+          if (images.length === 0) return;
+          event.preventDefault();
+          void store.addPastedImages(images);
+        }} onSubmit={(value) => { if (value !== undefined) store.setDraft(value); void store.submit(); }} />
         <ComposerToolbar className="composer-toolbar">
           <div className="composer-context">
             <button type="button" className="icon-button" aria-label="Attach files" title="Attach files" onClick={() => void store.addAttachments()}><PaperclipIcon /></button>

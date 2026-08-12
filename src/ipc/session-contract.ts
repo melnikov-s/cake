@@ -113,7 +113,8 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
     kind: z.literal("attachment"),
     name: z.string().max(512),
     mediaType: z.string().max(128),
-    attachmentKind: z.enum(["file", "image"])
+    attachmentKind: z.enum(["file", "image"]),
+    data: z.string().max(20_000_000).optional()
   }),
   z.object({
     ...partBase,

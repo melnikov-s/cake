@@ -110,6 +110,28 @@ describe("WindowStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("turns pasted clipboard images into Pi image attachments", async () => {
+    class MockFileReader {
+      result: string | ArrayBuffer | null = null;
+      error: DOMException | null = null;
+      onload: ((event: ProgressEvent<FileReader>) => void) | null = null;
+      onerror: ((event: ProgressEvent<FileReader>) => void) | null = null;
+      readAsDataURL() {
+        this.result = "data:image/png;base64,Y2xpcGJvYXJk";
+        this.onload?.({} as ProgressEvent<FileReader>);
+      }
+    }
+    vi.stubGlobal("FileReader", MockFileReader);
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+
+    await store.addPastedImages([{ name: "", type: "image/png" } as File]);
+
+    expect(store.attachments).toEqual([{ kind: "image", name: "Pasted image 1", mimeType: "image/png", data: "Y2xpcGJvYXJk" }]);
+    root[Symbol.dispose]();
+    vi.unstubAllGlobals();
+  });
+
   it("offers only authenticated models while retaining all providers in settings", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
@@ -528,6 +550,29 @@ describe("WindowStore", () => {
     expect(store.parts).toEqual([
       { id: "user-canonical", kind: "text", role: "user", text: "Show this now", status: "complete" }
     ]);
+    expect(store.pendingUserMessages).toHaveLength(0);
+    root[Symbol.dispose]();
+  });
+
+  it("submits an image without text and keeps it visible while Pi persists it", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    desktop.emit({ type: "pi-state-changed", state: "ready" });
+    await openSnapshot(store, desktop);
+    store.setDraft("");
+    store.attachments.push({ kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" });
+
+    await store.submit();
+
+    expect(desktop.client.submit).toHaveBeenCalledWith(expect.objectContaining({
+      text: "",
+      attachments: [{ kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" }]
+    }));
+    expect(store.parts).toEqual([expect.objectContaining({ kind: "attachment", name: "clipboard.png", data: "aW1hZ2U=" })]);
+
+    desktop.emit({ type: "part-updated", sessionId: "session-1", part: { id: "user-image", kind: "attachment", name: "Image 1", mediaType: "image/png", attachmentKind: "image", data: "aW1hZ2U=" } });
+    expect(store.parts).toEqual([{ id: "user-image", kind: "attachment", name: "Image 1", mediaType: "image/png", attachmentKind: "image", data: "aW1hZ2U=" }]);
     expect(store.pendingUserMessages).toHaveLength(0);
     root[Symbol.dispose]();
   });

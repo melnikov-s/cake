@@ -624,7 +624,8 @@ function partsFromMessage(message: unknown, baseId: string, streaming = false, e
     if (Array.isArray(content)) {
       content.forEach((item, index) => {
         if (typeof item === "object" && item !== null && Reflect.get(item, "type") === "image") {
-          parts.push({ id: `${baseId}-attachment-${index}`, kind: "attachment", name: `Image ${index + 1}`, mediaType: String(Reflect.get(item, "mimeType") ?? "image"), attachmentKind: "image" });
+          const data = Reflect.get(item, "data");
+          parts.push({ id: `${baseId}-attachment-${index}`, kind: "attachment", name: `Image ${index + 1}`, mediaType: String(Reflect.get(item, "mimeType") ?? "image"), attachmentKind: "image", data: typeof data === "string" ? data : undefined });
         }
       });
     }

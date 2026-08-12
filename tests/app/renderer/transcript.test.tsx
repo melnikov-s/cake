@@ -222,4 +222,14 @@ describe("Transcript scrolling", () => {
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="Fork response into new chat"]')!.click());
     expect(store.forkAt).toHaveBeenCalledWith("assistant-entry");
   });
+
+  it("renders submitted image attachments from Pi's persisted base64 block", () => {
+    const image: UiPart = { id: "image-1", kind: "attachment", name: "Image 1", mediaType: "image/png", attachmentKind: "image", data: "aW1hZ2U=" };
+
+    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([image])} />));
+
+    const preview = container.querySelector<HTMLImageElement>(".transcript-image img")!;
+    expect(preview.src).toBe("data:image/png;base64,aW1hZ2U=");
+    expect(preview.alt).toBe("Image 1");
+  });
 });

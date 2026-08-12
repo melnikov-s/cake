@@ -278,7 +278,7 @@ describe("S1 Pi runtime", () => {
     const timestamp = new Date().toISOString();
     await writeFile(first.sessionFile, [
       { type: "session", version: 3, id: first.sessionId, timestamp, cwd: directory },
-      { type: "message", id: "user-1", parentId: null, timestamp, message: { role: "user", content: "Hello", timestamp: Date.now() } },
+      { type: "message", id: "user-1", parentId: null, timestamp, message: { role: "user", content: [{ type: "text", text: "Hello" }, { type: "image", data: "aW1hZ2U=", mimeType: "image/png" }], timestamp: Date.now() } },
       { type: "message", id: "assistant-tools", parentId: "user-1", timestamp, message: { role: "assistant", content: [{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "README.md" } }], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "toolUse", timestamp: Date.now() } },
       { type: "message", id: "tool-result", parentId: "assistant-tools", timestamp, message: { role: "toolResult", toolCallId: "call-1", toolName: "read", content: [{ type: "text", text: "result" }], isError: false, timestamp: Date.now() } },
       { type: "message", id: "assistant-edit", parentId: "tool-result", timestamp, message: { role: "assistant", content: [{ type: "toolCall", id: "call-edit", name: "edit", arguments: { path: "src/app.ts", edits: [{ oldText: "old", newText: "new" }] } }], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "toolUse", timestamp: Date.now() } },
@@ -291,6 +291,7 @@ describe("S1 Pi runtime", () => {
     const preview = await loadWorkspaceSessionPreview(directory, first.sessionId, sessionDir);
     expect(preview?.parts.some((part) => part.kind === "text" && part.text === "Hi")).toBe(true);
     expect(preview?.parts.some((part) => part.kind === "tool" && part.name === "read")).toBe(true);
+    expect(preview?.parts).toContainEqual(expect.objectContaining({ kind: "attachment", attachmentKind: "image", mediaType: "image/png", data: "aW1hZ2U=" }));
     expect(preview?.parts).toContainEqual(expect.objectContaining({ kind: "notice", tone: "error", detail: "Subscription authentication failed" }));
 
     const second = await createCakeRuntime({

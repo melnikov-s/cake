@@ -7,6 +7,8 @@ describe("process IPC", () => {
     expect(desktopRequestSchema.parse({ type: "open-workspace", requestId, path: "/project", newSession: true })).toMatchObject({ type: "open-workspace", requestId, newSession: true });
     expect(desktopRequestSchema.parse({ type: "respond-workspace-trust", requestId, path: "/project", approved: true })).toMatchObject({ approved: true });
     expect(desktopRequestSchema.parse({ type: "prompt", requestId, workspacePath: "/project", sessionId: "session", text: "hello", delivery: "prompt", attachments: [] })).toMatchObject({ text: "hello" });
+    expect(desktopRequestSchema.parse({ type: "prompt", requestId, workspacePath: "/project", sessionId: "session", text: "", delivery: "prompt", attachments: [{ kind: "image", name: "paste.png", mimeType: "image/png", data: "aW1hZ2U=" }] })).toMatchObject({ text: "", attachments: [{ kind: "image" }] });
+    expect(() => desktopRequestSchema.parse({ type: "prompt", requestId, workspacePath: "/project", sessionId: "session", text: "", delivery: "prompt", attachments: [] })).toThrow();
     expect(desktopRequestSchema.parse({ type: "list-sessions" })).toEqual({ type: "list-sessions" });
     expect(desktopRequestSchema.parse({ type: "load-session", workspacePath: "/project", sessionId: "session" })).toEqual({ type: "load-session", workspacePath: "/project", sessionId: "session" });
     expect(desktopRequestSchema.parse({ type: "suggest-files", workspacePath: "/project", prefix: "src/app" })).toEqual({ type: "suggest-files", workspacePath: "/project", prefix: "src/app" });

@@ -79,7 +79,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     sessionId: z.string().min(1).max(256).optional(),
     sessionFile: z.string().max(4_096).optional()
   }),
-  z.object({ type: z.literal("prompt"), requestId: z.uuid(), text: z.string().min(1).max(262_144), delivery: z.enum(["prompt", "steer", "follow-up"]), attachments: z.array(attachmentSchema).max(20), workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }),
+  z.object({ type: z.literal("prompt"), requestId: z.uuid(), text: z.string().max(262_144), delivery: z.enum(["prompt", "steer", "follow-up"]), attachments: z.array(attachmentSchema).max(20), workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }).refine((request) => Boolean(request.text.trim() || request.attachments.length), { message: "A prompt requires text or an attachment" }),
   z.object({ type: z.literal("submit-review-threads"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), threadIds: z.array(z.string().min(1).max(256)).min(1).max(100), instruction: z.string().max(262_144).optional(), model: z.object({ provider: z.string().max(256), id: z.string().max(512) }).optional() }),
   z.object({ type: z.literal("abort"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }),
   z.object({ type: z.literal("set-model"), requestId: z.uuid(), provider: z.string(), modelId: z.string(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }),

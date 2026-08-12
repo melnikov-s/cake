@@ -24,6 +24,7 @@ export class MessageModel extends Model {
   @state url: string | undefined;
   @state mediaType: string | undefined;
   @state attachmentKind: AttachmentKind | undefined;
+  @state data: string | undefined;
   @state tone: NoticeTone | undefined;
   @state detail: string | undefined;
 
@@ -38,7 +39,7 @@ export class MessageModel extends Model {
       case "source":
         return { id: this.id, kind: this.kind, title: this.title!, url: this.url! };
       case "attachment":
-        return { id: this.id, kind: this.kind, name: this.name!, mediaType: this.mediaType!, attachmentKind: this.attachmentKind! };
+        return { id: this.id, kind: this.kind, name: this.name!, mediaType: this.mediaType!, attachmentKind: this.attachmentKind!, data: this.data };
       case "notice":
         return { id: this.id, kind: this.kind, tone: this.tone!, title: this.title!, detail: this.detail };
     }
