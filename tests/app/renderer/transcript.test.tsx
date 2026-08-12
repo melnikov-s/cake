@@ -98,6 +98,25 @@ describe("Transcript scrolling", () => {
     expect(log.scrollTop).toBe(480);
   });
 
+  it("leaves work log expansion under user control as streaming changes", () => {
+    const running: UiPart = { id: "tool-1", kind: "tool", name: "read", input: "file", state: "running" };
+
+    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([running], true)} />));
+    const log = container.querySelector<HTMLDetailsElement>(".activity-group")!;
+    const tool = container.querySelector<HTMLDetailsElement>(".tool-call")!;
+    expect(log.open).toBe(false);
+    expect(tool.open).toBe(false);
+
+    act(() => container.querySelector<HTMLElement>(".activity-group > summary")!.click());
+    act(() => container.querySelector<HTMLElement>(".tool-call > summary")!.click());
+    expect(log.open).toBe(true);
+    expect(tool.open).toBe(true);
+
+    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([{ ...running, state: "success" }], false)} />));
+    expect(log.open).toBe(true);
+    expect(tool.open).toBe(true);
+  });
+
   it("updates a selected session without remounting the virtualized transcript", () => {
     const first: UiPart = { id: "assistant-1", kind: "text", role: "assistant", text: "First session", status: "complete" };
     const second: UiPart = { id: "assistant-2", kind: "text", role: "assistant", text: "Second session", status: "complete" };

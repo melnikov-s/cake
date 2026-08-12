@@ -43,10 +43,30 @@ describe("Cake-owned conversation components", () => {
     expect(html).not.toContain("oldText");
   });
 
+  it("does not automatically expand running or failed tool calls", () => {
+    const running = renderToStaticMarkup(<Tool part={{ id: "tool-running", kind: "tool", name: "edit", input: "", diff: "+new line", state: "running" }} />);
+    const failed = renderToStaticMarkup(<Tool part={{ id: "tool-error", kind: "tool", name: "bash", input: "exit 1", state: "error" }} />);
+    expect(running).not.toMatch(/<details[^>]* open/);
+    expect(failed).not.toMatch(/<details[^>]* open/);
+  });
+
+  it("uses the green indicator without a redundant visible success label", () => {
+    const html = renderToStaticMarkup(<Tool part={{ id: "tool-success", kind: "tool", name: "read", input: "README.md", state: "success" }} />);
+    expect(html).toContain('class="tool-state tool-success" aria-label="success"');
+    expect(html).not.toContain("<small>success</small>");
+  });
+
   it("renders bash commands as highlighted shell code instead of JSON", () => {
     const html = renderToStaticMarkup(<Tool part={{ id: "tool-bash", kind: "tool", name: "bash", input: "for file in *.ts; do\n  echo \"$file\"\ndone", state: "success" }} />);
+    expect(html).toContain('title="bash for file in *.ts; do echo &quot;$file&quot; done"');
     expect(html).toContain("for file in *.ts; do");
     expect(html).toContain("language-bash");
     expect(html).not.toContain("&quot;command&quot;");
+  });
+
+  it("includes a parsed file path in a read summary and pretty-prints compact JSON", () => {
+    const html = renderToStaticMarkup(<Tool part={{ id: "tool-read", kind: "tool", name: "read", input: '{"path":"Sources/QuickEyeApp/AnnotationInputView.swift","offset":12}', state: "success" }} />);
+    expect(html).toContain('title="read Sources/QuickEyeApp/AnnotationInputView.swift"');
+    expect(html).toContain('{\n  &quot;path&quot;: &quot;Sources/QuickEyeApp/AnnotationInputView.swift&quot;,\n  &quot;offset&quot;: 12\n}');
   });
 });

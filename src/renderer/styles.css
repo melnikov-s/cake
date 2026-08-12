@@ -390,33 +390,37 @@
 .markdown-content .contains-task-list { padding-left: .25em; list-style: none; }
 .user-message .markdown-content a { color: inherit; }
 .user-message .markdown-content :not(pre) > code { border-color: color-mix(in oklab, var(--background) 25%, transparent); background: color-mix(in oklab, var(--background) 12%, transparent); }
-.activity-group { min-width: 0; border: 1px solid color-mix(in oklab, var(--border) 72%, transparent); border-radius: 10px; background: color-mix(in oklab, var(--muted) 35%, transparent); }
-.activity-group > summary { display: flex; min-height: 38px; align-items: center; gap: 8px; padding: 0 12px; color: var(--muted-foreground); font: 11px var(--font-mono); cursor: pointer; list-style: none; }
+.activity-group { width: 100%; max-width: 100%; min-width: 0; contain: inline-size; overflow: hidden; border: 1px solid color-mix(in oklab, var(--border) 72%, transparent); border-radius: 10px; background: color-mix(in oklab, var(--muted) 35%, transparent); }
+.activity-group > summary { display: flex; width: 100%; max-width: 100%; min-width: 0; min-height: 38px; align-items: center; gap: 8px; overflow: hidden; padding: 0 12px; color: var(--muted-foreground); font: 11px var(--font-mono); cursor: pointer; list-style: none; }
 .activity-group > summary::-webkit-details-marker { display: none; }
-.activity-group > summary::after { margin-left: auto; content: "+"; font-size: 14px; }
+.activity-group > summary::after { flex: none; margin-left: auto; content: "+"; font-size: 14px; }
 .activity-group[open] > summary::after { content: "−"; }
 .activity-group > summary small { font: inherit; opacity: .72; }
-.activity-group > summary > span { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-foreground); }
-.activity-group > div { display: grid; max-height: 28rem; gap: 8px; overflow-y: auto; padding: 0 9px 9px; }
+.activity-group > summary > span { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: var(--muted-foreground); }
+.activity-group > div { display: grid; width: 100%; max-width: 100%; min-width: 0; max-height: 28rem; contain: inline-size; gap: 8px; overflow-x: hidden; overflow-y: auto; padding: 0 9px 9px; }
+.activity-group > div > * { width: 100%; max-width: 100%; min-width: 0; }
 .activity-group > div > details { background: color-mix(in oklab, var(--card) 45%, transparent); }
-.tool-call > summary { display: flex; min-width: 0; align-items: center; list-style: none; }
+.tool-call { width: 100%; max-width: 100%; min-width: 0; overflow: hidden; }
+.tool-call > summary { display: flex; width: 100%; max-width: 100%; min-width: 0; align-items: center; overflow: hidden; list-style: none; }
 .tool-call > summary::-webkit-details-marker { display: none; }
-.tool-call > summary::after { margin-left: 8px; color: var(--muted-foreground); content: "+"; font-size: 13px; font-weight: 400; }
+.tool-call > summary::after { flex: none; margin-left: 8px; color: var(--muted-foreground); content: "+"; font-size: 13px; font-weight: 400; }
 .tool-call[open] > summary::after { content: "−"; }
-.tool-call > summary .tool-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tool-call > summary small { margin-left: auto; color: var(--muted-foreground); font: inherit; font-weight: 400; }
-.tool-bash-input [data-streamdown="code-block"] { margin: 0; }
+.tool-call > summary .tool-title { width: 0; min-width: 0; flex: 1 1 0%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-call > summary small { flex: none; margin-left: 12px; color: var(--muted-foreground); font: inherit; font-weight: 400; }
+.tool-input, .tool-output { max-width: 100%; overflow-x: hidden !important; overflow-wrap: anywhere; word-break: break-word; }
+.tool-bash-input [data-streamdown="code-block"] { max-width: 100%; margin: 0; overflow: hidden; }
+.tool-bash-input pre, .tool-bash-input code { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
 .tool-edit { padding: 0 !important; overflow: hidden; }
 .tool-edit > summary { min-height: 38px; padding: 0 12px; }
-.diff-view { min-width: 0; border-top: 1px solid color-mix(in oklab, var(--border) 75%, transparent); background: color-mix(in oklab, var(--background) 70%, transparent); font-family: var(--font-mono); }
+.diff-view { width: 100%; max-width: 100%; min-width: 0; overflow: hidden; border-top: 1px solid color-mix(in oklab, var(--border) 75%, transparent); background: color-mix(in oklab, var(--background) 70%, transparent); font-family: var(--font-mono); }
 .diff-view > header { display: flex; min-height: 31px; align-items: center; gap: 12px; padding: 0 10px; border-bottom: 1px solid color-mix(in oklab, var(--border) 68%, transparent); color: var(--muted-foreground); font-size: 10px; }
 .diff-view > header code { min-width: 0; overflow: hidden; color: var(--foreground); text-overflow: ellipsis; white-space: nowrap; }
 .diff-view > header span { display: flex; margin-left: auto; gap: 7px; font-style: normal; }
 .diff-view > header b { color: oklch(0.58 0.14 150); }.diff-view > header i { color: oklch(0.58 0.18 28); font-style: normal; font-weight: 700; }
-.diff-scroll { max-height: 24rem; overflow: auto; padding: 5px 0; font-size: 11px; line-height: 1.55; }
-.diff-line { display: grid; min-width: max-content; grid-template-columns: 3.5rem 3.5rem minmax(18rem, 1fr); }
+.diff-scroll { width: 100%; max-width: 100%; min-width: 0; max-height: 24rem; overflow-x: hidden; overflow-y: auto; padding: 5px 0; font-size: 11px; line-height: 1.55; }
+.diff-line { display: grid; width: 100%; max-width: 100%; min-width: 0; grid-template-columns: 3.5rem 3.5rem minmax(0, 1fr); }
 .diff-line > span { padding: 0 8px; color: color-mix(in oklab, var(--muted-foreground) 72%, transparent); text-align: right; user-select: none; }
-.diff-line > code { display: block; padding: 0 12px 0 8px; color: inherit; white-space: pre; }
+.diff-line > code { display: block; min-width: 0; overflow: hidden; padding: 0 12px 0 8px; color: inherit; text-overflow: ellipsis; white-space: nowrap; }
 .diff-line > code b { display: inline-block; width: 1.25rem; color: var(--muted-foreground); user-select: none; }
 .diff-add { background: color-mix(in oklab, oklch(0.7 0.13 150) 14%, transparent); }.diff-add > code b { color: oklch(0.58 0.14 150); }
 .diff-remove { background: color-mix(in oklab, oklch(0.68 0.17 28) 13%, transparent); }.diff-remove > code b { color: oklch(0.58 0.18 28); }
@@ -531,8 +535,8 @@
 .status-dot { width: 7px; height: 7px; border-radius: 999px; background: oklch(0.68 0.01 250); box-shadow: 0 0 0 3px color-mix(in oklab, currentColor 8%, transparent); }
 .status-ready { background: oklch(0.68 0.15 155); }
 .status-failed, .status-stopped { background: oklch(0.62 0.19 28); }
-.tool-state { display: inline-block; width: 7px; height: 7px; margin-right: 9px; border-radius: 999px; background: oklch(0.65 0.01 250); }
-.tool-running, .tool-approval { background: var(--accent); }.tool-success { background: oklch(0.68 0.15 155); }.tool-error, .tool-denied { background: oklch(0.62 0.19 28); }
+.tool-state { display: inline-block; width: 7px; height: 7px; flex: 0 0 7px; margin-right: 9px; border-radius: 999px; background: oklch(0.65 0.01 250); }
+.tool-running, .tool-approval { background: var(--accent); }.tool-running { animation: status-pulse 1.6s ease-in-out infinite; }.tool-success { background: oklch(0.68 0.15 155); }.tool-error, .tool-denied { background: oklch(0.62 0.19 28); }
 .notice { display: grid; gap: 5px; padding: 13px 16px; border-left: 3px solid var(--border); border-radius: 8px; background: color-mix(in oklab, var(--muted) 65%, transparent); font-size: 13px; line-height: 1.5; }
 .notice span { color: var(--muted-foreground); white-space: pre-wrap; }.notice-warning { border-left-color: var(--accent); }.notice-error { border-left-color: oklch(0.62 0.19 28); }
 .dialog-backdrop { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 24px; background: color-mix(in oklab, var(--foreground) 28%, transparent); backdrop-filter: blur(8px); }

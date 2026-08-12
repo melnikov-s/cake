@@ -9,6 +9,39 @@ function fencedBash(command: string) {
   return `${fence}bash\n${command}\n${fence}`;
 }
 
+function parseJson(value: string) {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function oneLine(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function toolTitle(part: Extract<UiPart, { kind: "tool" }>) {
+  if (part.name === "edit" && part.filePath) return `edit ${part.filePath}`;
+
+  const parsed = parseJson(part.input);
+  const structured = typeof parsed === "object" && parsed !== null ? parsed as Record<string, unknown> : undefined;
+  const detail = part.name === "bash"
+    ? part.input
+    : part.filePath
+      ?? ["command", "path", "file_path", "query", "pattern", "url"]
+        .map((key) => structured?.[key])
+        .find((value): value is string => typeof value === "string")
+      ?? (typeof parsed === "string" ? parsed : parsed === undefined ? part.input : "");
+  const summary = oneLine(detail);
+  return summary ? `${part.name} ${summary}` : part.name;
+}
+
+function prettyJson(value: string) {
+  const parsed = parseJson(value);
+  return parsed === undefined ? value : JSON.stringify(parsed, null, 2);
+}
+
 function editPreview(part: Extract<UiPart, { kind: "tool" }>) {
   if (part.name !== "edit") return undefined;
   if (part.diff) return part.diff;
@@ -28,13 +61,13 @@ function editPreview(part: Extract<UiPart, { kind: "tool" }>) {
 
 export function Tool({ part }: { part: Extract<UiPart, { kind: "tool" }> }) {
   const diff = editPreview(part);
-  const title = part.name === "edit" && part.filePath ? `edit ${part.filePath}` : part.name;
+  const title = toolTitle(part);
   const bash = part.name === "bash" && part.input ? part.input : undefined;
   return (
-    <details className={`tool-call rounded-xl border border-border bg-muted/35 px-4 py-3${diff ? " tool-edit" : ""}`} open={part.state === "error" || (part.state === "running" && Boolean(diff))}>
-      <summary className="cursor-pointer font-mono text-xs font-semibold"><span className={`tool-state tool-${part.state}`} /><span className="tool-title" title={title}>{title}</span><small>{part.state}</small></summary>
-      {diff ? <DiffView diff={diff} filePath={part.filePath} label={part.state === "running" ? "Proposed edit" : "Applied edit"} /> : bash ? <Markdown className="tool-input tool-bash-input mt-3 text-xs">{fencedBash(bash)}</Markdown> : part.input && <pre className="tool-input mt-3 overflow-x-auto whitespace-pre-wrap text-xs text-muted-foreground">{part.input}</pre>}
-      {!diff && part.output && <pre className="tool-output mt-3 overflow-x-auto whitespace-pre-wrap border-t border-border pt-3 text-xs">{part.output}</pre>}
+    <details className={`tool-call rounded-xl border border-border bg-muted/35 px-4 py-3${diff ? " tool-edit" : ""}`}>
+      <summary className="cursor-pointer font-mono text-xs font-semibold"><span className={`tool-state tool-${part.state}`} aria-label={part.state} /><span className="tool-title" title={title}>{title}</span>{part.state !== "success" && <small>{part.state}</small>}</summary>
+      {diff ? <DiffView diff={diff} filePath={part.filePath} label={part.state === "running" ? "Proposed edit" : "Applied edit"} /> : bash ? <Markdown className="tool-input tool-bash-input mt-3 text-xs">{fencedBash(bash)}</Markdown> : part.input && <pre className="tool-input mt-3 overflow-x-auto whitespace-pre-wrap text-xs text-muted-foreground">{prettyJson(part.input)}</pre>}
+      {!diff && part.output && <pre className="tool-output mt-3 overflow-x-auto whitespace-pre-wrap border-t border-border pt-3 text-xs">{prettyJson(part.output)}</pre>}
     </details>
   );
 }
