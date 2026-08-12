@@ -118,7 +118,7 @@ describe("Transcript scrolling", () => {
     act(() => root.render(<Transcript sessionId="session-1" store={storeWith([{ ...running, state: "success" }], false)} />));
     expect(log.open).toBe(true);
     expect(toolToggle.getAttribute("aria-expanded")).toBe("true");
-    expect(log.querySelector(':scope > summary .tool-success[aria-label="success"]')).not.toBeNull();
+    expect(log.querySelector(':scope > summary .work-log-state[aria-label="complete"]')).not.toBeNull();
   });
 
   it("shows empty reasoning as a non-expandable status", () => {
@@ -128,7 +128,7 @@ describe("Transcript scrolling", () => {
 
     const status = container.querySelector<HTMLElement>(".activity-group-status")!;
     expect(status.textContent).toContain("Reasoning details not exposed");
-    expect(status.querySelector('.tool-success[aria-label="success"]')).not.toBeNull();
+    expect(status.querySelector('.work-log-state[aria-label="complete"]')).not.toBeNull();
     expect(container.querySelector(".activity-group > summary")).toBeNull();
     expect(container.querySelector("button")).toBeNull();
   });
@@ -139,8 +139,19 @@ describe("Transcript scrolling", () => {
     act(() => root.render(<Transcript sessionId="session-1" store={storeWith([empty], true)} />));
 
     expect(container.querySelector(".activity-group-status")?.textContent).toContain("Thinking…");
-    expect(container.querySelector('.activity-group-status .tool-running[aria-label="running"]')).not.toBeNull();
+    expect(container.querySelector('.activity-group-status .work-log-running[aria-label="working"]')).not.toBeNull();
     expect(container.querySelector(".assistant-loading")).toBeNull();
+  });
+
+  it("keeps the completed work log neutral when an individual call failed", () => {
+    const failed: UiPart = { id: "tool-1", kind: "tool", name: "bash", input: "exit 1", state: "error" };
+
+    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([failed])} />));
+
+    const log = container.querySelector<HTMLElement>(".activity-group")!;
+    expect(log.querySelector(':scope > summary .work-log-state[aria-label="complete"]')).not.toBeNull();
+    expect(log.querySelector(':scope > summary .tool-error')).toBeNull();
+    expect(log.querySelector('.tool-call .tool-error[aria-label="error"]')).not.toBeNull();
   });
 
   it("does not show assistant loading dots while the work log is active", () => {

@@ -398,24 +398,21 @@
 .activity-group > summary::after { flex: none; margin-left: auto; content: "+"; font-size: 14px; }
 .activity-group[open] > summary::after { content: "−"; }
 .activity-group > summary small { font: inherit; opacity: .72; }
-.activity-group > summary > .tool-state { margin-right: 0; }
+.activity-group > summary > .work-log-state { margin-right: 0; }
 .activity-group-status { display: flex; min-height: 38px; align-items: center; padding: 0 12px; color: var(--muted-foreground); font: 11px var(--font-mono); }
-.activity-group-status > .tool-state { margin-right: 9px; }
+.activity-group-status > .work-log-state { margin-right: 9px; }
+.work-log-state { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 999px; background: var(--accent); }
+.work-log-running { animation: status-pulse 1.6s ease-in-out infinite; }
 .activity-group > div { display: grid; width: 100%; max-width: 100%; min-width: 0; max-height: 28rem; contain: inline-size; gap: 8px; overflow-x: hidden; overflow-y: auto; padding: 0 9px 9px; }
 .activity-group > div > * { width: 100%; max-width: 100%; min-width: 0; }
 .activity-group > div > .tool-call { background: color-mix(in oklab, var(--card) 45%, transparent); }
 .reasoning-block, .tool-call { width: 100%; max-width: 100%; min-width: 0; overflow: hidden; }
 .reasoning-summary { display: flex; width: 100%; max-width: 100%; min-width: 0; align-items: center; overflow: hidden; color: inherit; text-align: left; }
 button.reasoning-summary { border: 0; background: transparent; }
-button.reasoning-summary::after { flex: none; margin-left: 8px; color: var(--muted-foreground); content: "+"; font-size: 13px; font-weight: 400; }
-button.reasoning-summary[aria-expanded="true"]::after { content: "−"; }
 .reasoning-title { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reasoning-content { border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent); padding-top: 10px; }
 .tool-summary { display: flex; width: 100%; max-width: 100%; min-width: 0; align-items: center; overflow: hidden; border: 0; background: transparent; color: inherit; text-align: left; }
-.tool-summary::after { flex: none; margin-left: 8px; color: var(--muted-foreground); content: "+"; font-size: 13px; font-weight: 400; }
-.tool-summary[aria-expanded="true"]::after { content: "−"; }
 .tool-summary:disabled { cursor: default; }
-.tool-summary:disabled::after { content: ""; }
 .tool-summary .tool-title { width: 0; min-width: 0; flex: 1 1 0%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-open .tool-summary { align-items: flex-start; }
 .tool-open .tool-title { width: auto; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }

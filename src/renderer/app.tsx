@@ -140,9 +140,7 @@ function ActivityGroup({ parts, store }: { parts: UiPart[]; store: WindowStore }
   const reasoningHasContent = reasoningParts.some((part) => Boolean(part.text.trim()));
   const reasoningIsStreaming = reasoningParts.some((part) => part.status === "streaming");
   const toolParts = parts.filter((part): part is Extract<UiPart, { kind: "tool" }> => part.kind === "tool");
-  const activityState = reasoningIsStreaming || toolParts.some((part) => part.state === "running")
-    ? "running"
-    : toolParts.some((part) => part.state === "error" || part.state === "denied") ? "error" : "success";
+  const activityIsRunning = reasoningIsStreaming || toolParts.some((part) => part.state === "running");
   const editParts = parts.filter((part): part is Extract<UiPart, { kind: "tool" }> => part.kind === "tool" && part.name === "edit" && Boolean(part.diff));
   const editTotals = editParts.reduce((total, part) => { const stats = diffStats(part.diff!); return { additions: total.additions + stats.additions, deletions: total.deletions + stats.deletions }; }, { additions: 0, deletions: 0 });
   const label = editParts.length > 0 ? `${editParts.length} ${editParts.length === 1 ? "edit" : "edits"} · +${editTotals.additions} −${editTotals.deletions}` : tools === 0 ? "Reasoning" : `${tools} tool ${tools === 1 ? "call" : "calls"}`;
@@ -151,11 +149,11 @@ function ActivityGroup({ parts, store }: { parts: UiPart[]; store: WindowStore }
     logRef.current.scrollTop = logRef.current.scrollHeight;
   });
   if (tools === 0 && !reasoningHasContent) {
-    return <div className="activity-group activity-group-status" role="status"><span className={`tool-state tool-${activityState}`} aria-label={activityState} />{reasoningIsStreaming ? "Thinking…" : "Reasoning details not exposed"}</div>;
+    return <div className="activity-group activity-group-status" role="status"><span className={`work-log-state${activityIsRunning ? " work-log-running" : ""}`} aria-label={activityIsRunning ? "working" : "complete"} />{reasoningIsStreaming ? "Thinking…" : "Reasoning details not exposed"}</div>;
   }
   return (
     <details className="activity-group">
-      <summary><span className={`tool-state tool-${activityState}`} aria-label={activityState} />Work log <small>{label}</small></summary>
+      <summary><span className={`work-log-state${activityIsRunning ? " work-log-running" : ""}`} aria-label={activityIsRunning ? "working" : "complete"} />Work log <small>{label}</small></summary>
       <div ref={logRef}>{parts.map((part) => <TranscriptPart key={part.id} part={part} store={store} />)}</div>
     </details>
   );
