@@ -208,7 +208,66 @@ const HighlightedDiff = observer(function HighlightedDiff({ change, store }: { c
     {composer?.floating && <ReviewComposer anchor={composer.anchor} floating position={composer.position} onSave={(body) => store.createReviewThread(composer.anchor, body)} onCancel={() => { setComposer(undefined); window.getSelection()?.removeAllRanges(); }} />}</div>;
 });
 
+function FullFile({ change, store }: { change: SessionChange; store: WindowStore }) {
+  const [source, setSource] = useState<string>();
+  const [tokens, setTokens] = useState<HighlightTokens>();
+  const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    let active = true;
+    setSource(undefined);
+    setTokens(undefined);
+    setError(undefined);
+    void store.readWorkspaceFile(change.path).then((content) => {
+      if (!active) return;
+      setSource(content);
+      const apply = (result: NonNullable<HighlightResult>) => { if (active) setTokens(result.tokens); };
+      const immediate = code.highlight({ code: content, language: languageFor(change.path), themes: code.getThemes() }, apply);
+      if (immediate) apply(immediate);
+    }).catch((reason: unknown) => {
+      if (active) setError(reason instanceof Error ? reason.message : "The file could not be loaded");
+    });
+    return () => { active = false; };
+  }, [change.path, store]);
+
+  if (error) return <div className="change-explorer-file-state" role="alert"><strong>Unable to show the full file</strong><span>{error}</span></div>;
+  if (source === undefined) return <div className="change-explorer-file-state"><span>Loading full file…</span></div>;
+  const sourceLines = source.split("\n");
+  const diffLines = parseDiff(change.diff);
+  const addedLines = new Set(diffLines.filter((line) => line.kind === "add" && line.newNumber !== undefined).map((line) => line.newNumber!));
+  const removalsBefore = new Map<number, typeof diffLines>();
+  diffLines.forEach((line, index) => {
+    if (line.kind !== "remove") return;
+    let insertionLine: number | undefined;
+    for (let nextIndex = index + 1; nextIndex < diffLines.length && diffLines[nextIndex]!.kind !== "meta"; nextIndex++) {
+      if (diffLines[nextIndex]!.newNumber !== undefined) { insertionLine = diffLines[nextIndex]!.newNumber; break; }
+    }
+    if (insertionLine === undefined) {
+      for (let previousIndex = index - 1; previousIndex >= 0 && diffLines[previousIndex]!.kind !== "meta"; previousIndex--) {
+        if (diffLines[previousIndex]!.newNumber !== undefined) { insertionLine = diffLines[previousIndex]!.newNumber! + 1; break; }
+      }
+    }
+    insertionLine ??= 1;
+    const removals = removalsBefore.get(insertionLine) ?? [];
+    removals.push(line);
+    removalsBefore.set(insertionLine, removals);
+  });
+  const removedRows = (lineNumber: number) => (removalsBefore.get(lineNumber) ?? []).map((line) => <div className="change-explorer-line remove" role="row" key={`remove-${line.key}`}>
+    <span>{line.oldNumber}</span><code><b>−</b>{line.content || " "}</code>
+  </div>);
+  return <div className="change-explorer-diff change-explorer-full-file" role="table" aria-label={`Full file ${change.path}`}>{sourceLines.map((line, index) => {
+    const lineNumber = index + 1;
+    const added = addedLines.has(lineNumber);
+    return <Fragment key={lineNumber}>{removedRows(lineNumber)}<div className={`change-explorer-line ${added ? "add" : "context"}`} role="row">
+      <span>{lineNumber}</span><code><b>{added ? "+" : " "}</b>{(tokens?.[index] ?? []).length > 0
+        ? tokens![index]!.map((token, tokenIndex) => <i className="syntax-token" style={token.htmlStyle as CSSProperties} key={`${tokenIndex}-${token.content}`}>{token.content}</i>)
+        : line || " "}</code>
+    </div></Fragment>;
+  })}{removedRows(sourceLines.length + 1)}</div>;
+}
+
 export const ChangeExplorer = observer(function ChangeExplorer({ store }: { store: WindowStore }) {
+  const [view, setView] = useState<"diff" | "file">("diff");
   const change = store.selectedSessionChange;
   const tree = useMemo(() => fileTree(store.sessionChanges), [store.sessionChanges]);
   const indexedThreads = [...store.reviewThreads].sort((left, right) => Number(left.status === "resolved") - Number(right.status === "resolved"));
@@ -224,8 +283,8 @@ export const ChangeExplorer = observer(function ChangeExplorer({ store }: { stor
   if (!change) return <main className="change-explorer-empty"><div><small>{store.sessionTitle}</small><h1>No session changes</h1><p>This session has no recorded file diffs.</p><Button variant="outline" onClick={() => store.closeChangeExplorer()}>Return to chat</Button></div></main>;
   return <main className="change-explorer">
     <section className="change-explorer-file">
-      <header><div><small>Session changes · {store.sessionTitle}</small><h1>{change.path}</h1></div><span><b>+{change.additions}</b><i>−{change.deletions}</i></span></header>
-      <HighlightedDiff change={change} store={store} />
+      <header><div><small>Session changes · {store.sessionTitle}</small><h1>{change.path}</h1></div><div className="change-explorer-view-toggle" role="group" aria-label="File view"><button type="button" className={view === "diff" ? "active" : ""} aria-pressed={view === "diff"} onClick={() => setView("diff")}>Diff</button><button type="button" className={view === "file" ? "active" : ""} aria-pressed={view === "file"} onClick={() => setView("file")}>Full file</button></div><span><b>+{change.additions}</b><i>−{change.deletions}</i></span></header>
+      {view === "diff" ? <HighlightedDiff change={change} store={store} /> : <FullFile change={change} store={store} />}
     </section>
     <aside className="change-explorer-tree"><header><div><strong>Changed files</strong><small>{store.sessionChanges.length} {store.sessionChanges.length === 1 ? "file" : "files"}</small></div><div className="change-explorer-actions">{pendingCount > 0 && <Button size="sm" onClick={() => void store.sendPendingReviewComments()}>Send ({pendingCount})</Button>}<Button variant="ghost" size="sm" onClick={() => store.closeChangeExplorer()}>Done</Button></div></header><div className="change-explorer-sidebar-body"><nav aria-label="Changed files"><ChangeTree nodes={tree.children} selectedPath={change.path} onSelect={(path) => store.selectChangeExplorerFile(path)} /></nav><section className="review-thread-index" aria-label="Review threads"><header><strong>Comments</strong><span>{store.reviewThreads.length}</span></header>{store.reviewThreads.length === 0 ? <p>No comments yet.</p> : <ol>{indexedThreads.map((thread) => {
       const state = thread.status === "resolved" ? "Resolved" : store.reviewThreadStreaming(thread.id) ? "Working" : thread.pending ? "Pending" : "Replied";

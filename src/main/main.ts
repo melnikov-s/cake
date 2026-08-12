@@ -1,5 +1,5 @@
-import { readFile, rename, writeFile } from "node:fs/promises";
-import { basename, extname, join } from "node:path";
+import { readFile, realpath, rename, writeFile } from "node:fs/promises";
+import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { homedir } from "node:os";
 import { app, BrowserWindow, dialog, ipcMain, shell, type WebContents } from "electron";
 import { desktopRequestSchema, desktopResponseSchema, type DesktopEvent } from "../ipc/desktop-ipc";
@@ -198,6 +198,17 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
   if (request.type === "suggest-files") {
     if (!allowedProjectPaths.has(request.workspacePath)) throw new Error("Project path was not selected by the user");
     return desktopResponseSchema.parse({ type: "file-suggestions", suggestions: await suggestProjectFiles(request.workspacePath, request.prefix) });
+  }
+  if (request.type === "read-workspace-file") {
+    if (!allowedProjectPaths.has(request.workspacePath)) throw new Error("Project path was not selected by the user");
+    if (isAbsolute(request.path)) throw new Error("Workspace file path must be relative");
+    const workspace = await realpath(request.workspacePath);
+    const target = await realpath(resolve(workspace, request.path));
+    const relativePath = relative(workspace, target);
+    if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath)) throw new Error("File is outside the selected project");
+    const content = await readFile(target, "utf8");
+    if (content.length > 2_000_000) throw new Error("File is too large to display");
+    return desktopResponseSchema.parse({ type: "workspace-file", content });
   }
   if (request.type === "load-window-state") return desktopResponseSchema.parse({ type: "window-state-loaded", state: await loadWindowState(slot) });
   if (request.type === "save-window-state") {

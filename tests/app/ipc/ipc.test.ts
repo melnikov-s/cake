@@ -10,6 +10,7 @@ describe("process IPC", () => {
     expect(desktopRequestSchema.parse({ type: "list-sessions" })).toEqual({ type: "list-sessions" });
     expect(desktopRequestSchema.parse({ type: "load-session", workspacePath: "/project", sessionId: "session" })).toEqual({ type: "load-session", workspacePath: "/project", sessionId: "session" });
     expect(desktopRequestSchema.parse({ type: "suggest-files", workspacePath: "/project", prefix: "src/app" })).toEqual({ type: "suggest-files", workspacePath: "/project", prefix: "src/app" });
+    expect(desktopRequestSchema.parse({ type: "read-workspace-file", workspacePath: "/project", path: "src/app.ts" })).toEqual({ type: "read-workspace-file", workspacePath: "/project", path: "src/app.ts" });
     expect(desktopRequestSchema.parse({ type: "set-pi-setting", requestId, workspacePath: "/project", sessionId: "session", update: { key: "transport", value: "websocket" } })).toMatchObject({ update: { key: "transport", value: "websocket" } });
     expect(desktopRequestSchema.parse({ type: "get-changelog", requestId, workspacePath: "/project", sessionId: "session" })).toMatchObject({ type: "get-changelog", requestId });
     const anchor = { path: "src/app.ts", start: { diffLine: 1, newLine: 4 }, end: { diffLine: 1, newLine: 4 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" };

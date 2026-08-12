@@ -226,6 +226,9 @@
 .change-explorer-file { display: grid; min-width: 0; min-height: 0; overflow: hidden; grid-template-rows: 62px minmax(0, 1fr); }
 .change-explorer-file > header { display: flex; min-width: 0; align-items: center; gap: 18px; padding: 0 20px 0 103px; border-bottom: 1px solid var(--border); background: color-mix(in oklab, var(--background) 94%, var(--card)); -webkit-app-region: drag; }
 .change-explorer-file > header > div { min-width: 0; flex: 1; }
+.change-explorer-file > header > .change-explorer-view-toggle { display: flex; flex: none; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 7px; background: color-mix(in oklab, var(--muted) 65%, transparent); -webkit-app-region: no-drag; }
+.change-explorer-view-toggle button { height: 25px; padding: 0 9px; border: 0; border-radius: 5px; background: transparent; color: var(--muted-foreground); font-size: 10px; font-weight: 600; cursor: pointer; }
+.change-explorer-view-toggle button:hover { color: var(--foreground); }.change-explorer-view-toggle button.active { background: var(--card); color: var(--foreground); box-shadow: 0 1px 2px color-mix(in oklab, black 12%, transparent); }
 .change-explorer-file > header small { display: block; margin-bottom: 3px; color: var(--muted-foreground); font: 9px var(--font-mono); letter-spacing: .11em; text-transform: uppercase; }
 .change-explorer-file h1 { overflow: hidden; margin: 0; font: 600 13px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .change-explorer-file > header > span { display: flex; gap: 8px; font: 10px var(--font-mono); }
@@ -245,6 +248,10 @@
 .change-explorer-line.remove { background: color-mix(in oklab, oklch(0.68 0.17 28) 10%, transparent); }.change-explorer-line.remove > code > b { color: oklch(0.65 0.18 28); }
 .change-explorer-line.meta { margin: 8px 0; background: color-mix(in oklab, var(--accent) 8%, var(--muted)); color: var(--muted-foreground); }
 .change-explorer-line.meta > code { grid-column: 3; padding-block: 3px; }
+.change-explorer-full-file .change-explorer-line { grid-template-columns: 4.25rem minmax(30rem, 1fr); }
+.change-explorer-full-file .change-explorer-line > code { padding-left: 14px; }
+.change-explorer-file-state { display: grid; align-content: center; justify-items: center; gap: 5px; color: var(--muted-foreground); font-size: 12px; }
+.change-explorer-file-state strong { color: var(--foreground); }.change-explorer-file-state span { max-width: 34rem; text-align: center; }
 .syntax-token { font-style: normal; }
 :root[data-theme="dark"] .syntax-token { color: var(--shiki-dark) !important; }
 .review-composer, .review-thread, .review-thread-resolved { grid-column: 1 / 4; width: min(720px, calc(100vw - 380px)); margin: 8px 24px 10px 5.35rem; font-family: var(--font-sans); }

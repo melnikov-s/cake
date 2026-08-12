@@ -66,6 +66,38 @@ describe("ChangeExplorer", () => {
     expect(store.selectChangeExplorerFile).toHaveBeenCalledWith("src/app.ts");
   });
 
+  it("toggles between the diff and the full workspace file", async () => {
+    const readWorkspaceFile = vi.fn(async () => "const fresh = true;\nconst unchanged = true;");
+    const store = {
+      sessionChanges: changes,
+      selectedSessionChange: changes[0],
+      sessionTitle: "Review",
+      reviewThreads: [],
+      reviewThreadStreaming: vi.fn(() => false),
+      createReviewThread: vi.fn(async () => undefined),
+      replyReviewThread: vi.fn(async () => undefined),
+      resolveReviewThread: vi.fn(async () => undefined),
+      selectChangeExplorerFile: vi.fn(),
+      closeChangeExplorer: vi.fn(),
+      readWorkspaceFile
+    } as unknown as WindowStore;
+
+    act(() => root.render(<ChangeExplorer store={store} />));
+    expect(container.querySelector('[aria-label="Full session changes to src/app.ts"]')).not.toBeNull();
+
+    await act(async () => container.querySelector<HTMLButtonElement>('.change-explorer-view-toggle button[aria-pressed="false"]')!.click());
+
+    expect(readWorkspaceFile).toHaveBeenCalledWith("src/app.ts");
+    expect(container.querySelector('[aria-label="Full file src/app.ts"]')?.textContent).toContain("const fresh = true;");
+    expect(container.querySelectorAll(".change-explorer-full-file .change-explorer-line")).toHaveLength(3);
+    expect(container.querySelector(".change-explorer-full-file .remove")?.textContent).toContain("−const old = true;");
+    expect(container.querySelector(".change-explorer-full-file .add")?.textContent).toContain("+const fresh = true;");
+    expect(container.querySelector(".change-explorer-full-file .context")?.textContent).toContain("const unchanged = true;");
+
+    act(() => container.querySelector<HTMLButtonElement>('.change-explorer-view-toggle button:first-child')!.click());
+    expect(container.querySelector('[aria-label="Full session changes to src/app.ts"]')).not.toBeNull();
+  });
+
   it("opens the same inline comment composer from a gutter line", () => {
     const store = {
       sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review", reviewThreads: [],

@@ -140,6 +140,11 @@ export class WindowStore extends Store<Record<string, never>> {
     return sessions;
   }
 
+  async readWorkspaceFile(path: string) {
+    if (!this.projectPath) throw new Error("No project is open");
+    return this.client.readWorkspaceFile(this.projectPath, path);
+  }
+
   get session() {
     return this.selectedSessionId && this.projectPath
       ? this.sessionCache.find(this.selectedSessionId, this.projectPath)
