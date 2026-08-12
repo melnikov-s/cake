@@ -23,6 +23,7 @@ import type { DesktopClientEvent, PiState } from "../desktop-client";
 import { diffStats } from "../components/ai-elements/diff-view";
 import { DesktopClientContext, SessionCacheContext } from "./context";
 import type { ReviewAnchor } from "../../ipc/review-contract";
+import { displaySessionTitle } from "../models/session-title";
 
 export interface UiRequestState {
   operationId: string;
@@ -251,7 +252,11 @@ export class WindowStore extends Store<Record<string, never>> {
   }
 
   get sessionTitle() {
-    return this.session?.sessions.find((item) => item.id === this.session?.sessionId)?.title || "New chat";
+    return this.session?.sessions.find((item) => item.id === this.session?.sessionId)?.displayTitle || "New chat";
+  }
+
+  sessionDisplayTitle(title: string) {
+    return displaySessionTitle(title);
   }
 
   get isStreaming() {

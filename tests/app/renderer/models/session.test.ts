@@ -78,6 +78,16 @@ describe("SessionModel", () => {
     model[Symbol.dispose]();
   });
 
+  it("derives a capped display title without changing the stored title", () => {
+    const title = "A title that is deliberately much longer than forty characters";
+    const model = SessionSummaryModel.create({ id: "session-1", title });
+
+    expect(model.displayTitle).toBe("A title that is deliberately much longe…");
+    expect(Array.from(model.displayTitle)).toHaveLength(40);
+    expect(model.title).toBe(title);
+    model[Symbol.dispose]();
+  });
+
   it("creates and updates message children without replacing the parts array", () => {
     const model = SessionModel.create();
     model.applySnapshot(snapshot);
