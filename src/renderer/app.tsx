@@ -83,14 +83,12 @@ function AssistantTextMessage({ part, store }: { part: Extract<UiPart, { kind: "
 
   return (
     <Message className="assistant-message mr-auto w-full">
-      <div className="assistant-message-heading">
-        <MessageLabel>{part.status === "streaming" ? "Cake · working" : "Cake"}</MessageLabel>
-        {part.status !== "streaming" && <div className="assistant-message-actions" aria-label="Message actions">
-          <button type="button" aria-label={copied ? "Copied response" : "Copy response"} title={copied ? "Copied" : "Copy response"} onClick={() => void copy()}>{copied ? <CheckIcon /> : <CopyIcon />}</button>
-          {part.entryId && <button type="button" aria-label="Fork from response" title="Fork from response" onClick={() => void store.forkAt(part.entryId!)}><ForkIcon /></button>}
-        </div>}
-      </div>
-      <MessageContent><Markdown streaming={part.status === "streaming"}>{part.text}</Markdown></MessageContent>
+      <MessageLabel>{part.status === "streaming" ? "Cake · working" : "Cake"}</MessageLabel>
+      <MessageContent className="assistant-message-content"><Markdown streaming={part.status === "streaming"}>{part.text}</Markdown></MessageContent>
+      {part.status !== "streaming" && <div className="assistant-message-actions" aria-label="Message actions">
+        <button type="button" aria-label={copied ? "Copied response" : "Copy response"} title={copied ? "Copied" : "Copy response"} onClick={() => void copy()}>{copied ? <CheckIcon /> : <CopyIcon />}</button>
+        {part.entryId && <button type="button" aria-label="Fork response into new chat" title="Fork into new chat" onClick={() => void store.forkAt(part.entryId!)}><ForkIcon /></button>}
+      </div>}
     </Message>
   );
 }

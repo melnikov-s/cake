@@ -154,12 +154,16 @@ describe("Transcript scrolling", () => {
 
     act(() => root.render(<Transcript sessionId="session-1" store={store} />));
 
-    expect(container.querySelectorAll('[aria-label="Message actions"]')).toHaveLength(1);
+    const message = container.querySelector<HTMLElement>(".assistant-message")!;
+    const content = message.querySelector<HTMLElement>(".assistant-message-content")!;
+    const actions = message.querySelector<HTMLElement>('[aria-label="Message actions"]')!;
+    expect(actions).not.toBeNull();
+    expect(content.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Copy response"]')!.click());
     expect(writeText).toHaveBeenCalledWith("Answer");
     expect(container.querySelector('[aria-label="Copied response"]')).not.toBeNull();
 
-    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Fork from response"]')!.click());
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Fork response into new chat"]')!.click());
     expect(store.forkAt).toHaveBeenCalledWith("assistant-entry");
   });
 });
