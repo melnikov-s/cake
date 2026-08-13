@@ -393,10 +393,18 @@ describe("MainChatStore", () => {
     store.setDraft("Do this next");
     await root.messageComposerStore.submit();
     expect(desktop.client.submit).toHaveBeenLastCalledWith(expect.objectContaining({ text: "Do this next", delivery: "follow-up" }));
+    expect(root.messageComposerStore.parts).toEqual([]);
+    expect(root.messageComposerStore.pendingUserMessages).toEqual([]);
 
     store.setDraft("Change direction");
     await root.messageComposerStore.submit("steer");
     expect(desktop.client.submit).toHaveBeenLastCalledWith(expect.objectContaining({ text: "Change direction", delivery: "steer" }));
+    expect(root.messageComposerStore.parts).toEqual([]);
+    expect(root.messageComposerStore.pendingUserMessages).toEqual([]);
+
+    desktop.emit({ type: "part-updated", sessionId: "session-1", part: { id: "follow-up-canonical", kind: "text", role: "user", text: "Do this next", status: "complete" } });
+    desktop.emit({ type: "part-updated", sessionId: "session-1", part: { id: "steer-canonical", kind: "text", role: "user", text: "Change direction", status: "complete" } });
+    expect(root.messageComposerStore.parts.map((part) => part.id)).toEqual(["follow-up-canonical", "steer-canonical"]);
     root[Symbol.dispose]();
   });
 

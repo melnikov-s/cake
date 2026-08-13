@@ -45,7 +45,7 @@ export interface MessageComposerStoreProps {
   reportError(error: unknown): void;
 }
 
-/** Owns attachments, optimistic user messages, and prompt delivery. */
+/** Owns attachments, optimistic immediate prompts, and prompt delivery. */
 export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   attachments: Attachment[] = observable([]);
   pendingUserMessages: PendingUserMessage[] = observable([]);
@@ -119,7 +119,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     if (text || attachments.length > 0) {
       const operationId = this.props.startOperation();
       this.attachments.splice(0);
-      this.addPendingUserMessage(operationId, workspacePath, sessionId, text, attachments);
+      if (delivery === "prompt") this.addPendingUserMessage(operationId, workspacePath, sessionId, text, attachments);
       submissions.push(this.props.client.submit({ operationId, workspacePath, sessionId, text, delivery, attachments }).catch((error) => {
         this.removePendingUserMessage(operationId);
         this.props.reportError(error);
