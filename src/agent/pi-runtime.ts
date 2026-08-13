@@ -17,6 +17,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 import { CombinedAutocompleteProvider } from "@earendil-works/pi-tui";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
@@ -37,8 +38,8 @@ import type {
   UiPart,
   SessionTreeEntry
 } from "../ipc/session-contract";
-import type { ReviewMessage, ReviewThreadRecord } from "../ipc/review-contract";
-import { piBuiltinSlashCommands } from "../ipc/session-contract";
+import { REVIEW_TEXT_MAX_LENGTH, type ReviewMessage, type ReviewThreadRecord } from "../ipc/review-contract";
+import { piBuiltinSlashCommands, SESSION_TITLE_MAX_LENGTH, slashCommandSchema } from "../ipc/session-contract";
 import {
   artifactRecordSchema,
   artifactPointerSchema,
@@ -57,6 +58,12 @@ const gitCheckpointSchema = z.object({
   capturedAt: z.string().datetime()
 });
 export type GitCheckpoint = z.infer<typeof gitCheckpointSchema>;
+
+function boundedProjectionKey(value: string, maximum = 256) {
+  if (value.length <= maximum) return value;
+  const digest = createHash("sha256").update(value).digest("hex").slice(0, 16);
+  return `${value.slice(0, maximum - digest.length - 1)}:${digest}`;
+}
 
 export function loadPiChangelog() {
   try {
@@ -83,7 +90,7 @@ export async function listWorkspaceSessions(cwd: string, sessionDir?: string): P
   const idsByPath = new Map(sessions.map((item) => [item.path, item.id]));
   return sessions.map((item) => ({
     id: item.id,
-    title: item.name || item.firstMessage || "New chat",
+    title: (item.name || item.firstMessage || "New chat").slice(0, SESSION_TITLE_MAX_LENGTH),
     created: item.created.toISOString(),
     modified: item.modified.toISOString(),
     messageCount: item.messageCount,
@@ -369,7 +376,7 @@ export async function loadReviewSessionMessages(record: ReviewThreadRecord): Pro
     if (entry.type !== "message") return [];
     const message = entry.message;
     if (message.role !== "user" && message.role !== "assistant") return [];
-    const body = textFromContent(message.content).trim();
+    const body = textFromContent(message.content).trim().slice(0, REVIEW_TEXT_MAX_LENGTH);
     if (!body) return [];
     return [{
       id: entry.id,
@@ -539,7 +546,7 @@ function formatToolInput(toolName: string, args: unknown) {
 function toolFilePath(_toolName: string, args: unknown) {
   if (typeof args !== "object" || args === null) return undefined;
   const path = Reflect.get(args, "path") ?? Reflect.get(args, "file_path");
-  return typeof path === "string" ? path : undefined;
+  return typeof path === "string" && path.length <= 8_192 ? path : undefined;
 }
 
 function toolResultDiff(_toolName: string, result: unknown) {
@@ -573,7 +580,7 @@ function partsFromMessage(message: unknown, baseId: string, streaming = false, e
       content.forEach((item, index) => {
         if (typeof item === "object" && item !== null && Reflect.get(item, "type") === "image") {
           const data = Reflect.get(item, "data");
-          parts.push({ id: `${baseId}-attachment-${index}`, kind: "attachment", name: `Image ${index + 1}`, mediaType: String(Reflect.get(item, "mimeType") ?? "image"), attachmentKind: "image", data: typeof data === "string" ? data : undefined });
+          parts.push({ id: `${baseId}-attachment-${index}`, kind: "attachment", name: `Image ${index + 1}`, mediaType: String(Reflect.get(item, "mimeType") ?? "image").slice(0, 128), attachmentKind: "image", data: typeof data === "string" && data.length <= 20_000_000 ? data : undefined });
         }
       });
     }
@@ -587,7 +594,7 @@ function partsFromMessage(message: unknown, baseId: string, streaming = false, e
       if (type === "text") {
         const text = String(Reflect.get(item, "text") ?? "");
         if (!text) return [];
-        const sources = [...new Set(text.match(/https?:\/\/[^\s)\]}>,]+/g) ?? [])].slice(0, 20);
+        const sources = [...new Set(text.match(/https?:\/\/[^\s)\]}>,]+/g) ?? [])].filter((url) => url.length <= 8_192).slice(0, 20);
         return [
           { id: `${baseId}-text-${index}`, kind: "text", role: "assistant", entryId, text, status: streaming ? "streaming" : Reflect.get(message, "errorMessage") ? "error" : "complete" },
           ...sources.map((url, sourceIndex): UiPart => ({ id: `${baseId}-source-${index}-${sourceIndex}`, kind: "source", title: sourceTitle(url), url }))
@@ -599,7 +606,7 @@ function partsFromMessage(message: unknown, baseId: string, streaming = false, e
       if (type === "toolCall") {
         const name = String(Reflect.get(item, "name") ?? "tool");
         const args = Reflect.get(item, "arguments");
-        return [{ id: `tool-${String(Reflect.get(item, "id"))}`, kind: "tool", name, input: formatToolInput(name, args), filePath: toolFilePath(name, args), state: "running" }];
+        return [{ id: boundedProjectionKey(`tool-${String(Reflect.get(item, "id"))}`), kind: "tool", name, input: formatToolInput(name, args), filePath: toolFilePath(name, args), state: "running" }];
       }
       return [];
     });
@@ -614,7 +621,7 @@ function partsFromMessage(message: unknown, baseId: string, streaming = false, e
     const name = String(Reflect.get(message, "toolName") ?? "tool");
     const details = Reflect.get(message, "details");
     return [{
-      id: `tool-${String(Reflect.get(message, "toolCallId"))}`,
+      id: boundedProjectionKey(`tool-${String(Reflect.get(message, "toolCallId"))}`),
       kind: "tool",
       name,
       input: "",
@@ -812,8 +819,8 @@ function compatibilityCatalog(
     id: `extension:${extension.resolvedPath}`.slice(0, 8_192), kind: "extension",
     name: extension.path.split(/[\\/]/).pop() ?? extension.path, path: extension.path,
     source: extension.sourceInfo.source, scope: extension.sourceInfo.scope,
-    origin: extension.sourceInfo.origin, commands: [...extension.commands.keys()].sort(),
-    tools: [...extension.tools.keys()].sort(), enabled: !extension.hidden
+    origin: extension.sourceInfo.origin, commands: [...extension.commands.keys()].filter((name) => name.length <= 256).sort(),
+    tools: [...extension.tools.keys()].filter((name) => name.length <= 256).sort(), enabled: !extension.hidden
   });
   for (const configured of packages) resources.push({
     id: `package:${configured.scope}:${configured.source}`.slice(0, 8_192), kind: "package",
@@ -839,6 +846,7 @@ function createCakeExtensionUiContext(options: {
   const degraded = (method: string, detail: string) => options.addDiagnostic(method, `${method} is unavailable in Cake: ${detail}`);
   const dialog = (request: RuntimeUiRequest) => options.request(request);
   const setWidget = (key: string, content: unknown, widgetOptions?: ExtensionWidgetOptions) => {
+    key = boundedProjectionKey(key);
     if (typeof content === "function") {
       degraded("setWidget(component)", "terminal Component factories cannot be translated to React; provide legacy string lines or a Cake widget");
       return;
@@ -858,12 +866,17 @@ function createCakeExtensionUiContext(options: {
   };
 
   return {
-    select: (title, values, opts) => dialog({ kind: "select", title, message: title, options: values.map((value) => ({ id: value, label: value })), signal: opts?.signal, timeout: opts?.timeout }),
+    async select(title, values, opts) {
+      const projected = values.slice(0, 100).map((value) => ({ id: boundedProjectionKey(value), label: value, value }));
+      const selected = await dialog({ kind: "select", title, message: title, options: projected.map(({ id, label }) => ({ id, label })), signal: opts?.signal, timeout: opts?.timeout });
+      return projected.find((option) => option.id === selected)?.value;
+    },
     async confirm(title, message, opts) { return (await dialog({ kind: "confirm", title, message, signal: opts?.signal, timeout: opts?.timeout })) === "true"; },
     input: (title, placeholder, opts) => dialog({ kind: "text", title, message: title, placeholder, signal: opts?.signal, timeout: opts?.timeout }),
     notify(message, tone = "info") { options.emit({ kind: "notify", id: crypto.randomUUID(), message, tone }); },
     onTerminalInput() { degraded("onTerminalInput", "raw terminal input has no desktop equivalent"); return () => undefined; },
     setStatus(key, text) {
+      key = boundedProjectionKey(key);
       const index = options.state.statuses.findIndex((status) => status.key === key);
       if (text === undefined) { if (index >= 0) options.state.statuses.splice(index, 1); }
       else if (index >= 0) options.state.statuses.splice(index, 1, { key, text });
@@ -962,7 +975,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   async function modelOptions(): Promise<ModelOption[]> {
     const providers = modelRuntime.getProviders();
     const authentication = new Map(await Promise.all(providers.map(async (provider) => [provider.id, await modelRuntime.checkAuth(provider.id)] as const)));
-    return providers.flatMap((provider) => provider.getModels().map((model) => ({
+    return providers.flatMap((provider) => provider.getModels()
+      .filter((model) => provider.id.length <= 256 && model.id.length <= 512)
+      .map((model) => ({
       provider: provider.id,
       providerName: provider.name,
       id: model.id,
@@ -973,7 +988,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       authSource: modelRuntime.getProviderAuthStatus(provider.id).source,
       authLabel: authentication.get(provider.id)?.source ?? modelRuntime.getProviderAuthStatus(provider.id).label,
       authTypes: [provider.auth.apiKey ? "api_key" as const : undefined, provider.auth.oauth ? "oauth" as const : undefined].filter((type): type is "api_key" | "oauth" => Boolean(type))
-    })));
+      })));
   }
 
   async function makeSnapshot(): Promise<SessionSnapshot> {
@@ -1013,7 +1028,10 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         ...extensionsResult.errors.map((error) => `${error.path}: ${error.error}`),
         ...(modelFallbackMessage ? [modelFallbackMessage] : [])
       ],
-      commands: [...piBuiltinSlashCommands, ...getPiCommands()],
+      commands: [...piBuiltinSlashCommands, ...getPiCommands()].flatMap((command) => {
+        const parsed = slashCommandSchema.safeParse(command);
+        return parsed.success ? [parsed.data] : [];
+      }),
       usage: {
         tokens: stats.tokens,
         cost: stats.cost,
@@ -1084,17 +1102,17 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     if (event.type === "tool_execution_start") {
       const call = { input: formatToolInput(event.toolName, event.args), filePath: toolFilePath(event.toolName, event.args) };
       activeToolCalls.set(event.toolCallId, call);
-      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: `tool-${event.toolCallId}`, kind: "tool", name: event.toolName, ...call, state: "running" } });
+      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: boundedProjectionKey(`tool-${event.toolCallId}`), kind: "tool", name: event.toolName, ...call, state: "running" } });
     }
     if (event.type === "tool_execution_update") {
       const call = activeToolCalls.get(event.toolCallId) ?? { input: formatToolInput(event.toolName, event.args), filePath: toolFilePath(event.toolName, event.args) };
       activeToolCalls.set(event.toolCallId, call);
-      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: `tool-${event.toolCallId}`, kind: "tool", name: event.toolName, ...call, output: formatUnknown(event.partialResult), state: "running" } });
+      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: boundedProjectionKey(`tool-${event.toolCallId}`), kind: "tool", name: event.toolName, ...call, output: formatUnknown(event.partialResult), state: "running" } });
     }
     if (event.type === "tool_execution_end") {
       const call = activeToolCalls.get(event.toolCallId);
       activeToolCalls.delete(event.toolCallId);
-      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: `tool-${event.toolCallId}`, kind: "tool", name: event.toolName, input: call?.input ?? "", output: formatUnknown(event.result), filePath: call?.filePath, diff: toolResultDiff(event.toolName, event.result), state: event.isError ? "error" : "success" } });
+      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: boundedProjectionKey(`tool-${event.toolCallId}`), kind: "tool", name: event.toolName, input: call?.input ?? "", output: formatUnknown(event.result), filePath: call?.filePath, diff: toolResultDiff(event.toolName, event.result), state: event.isError ? "error" : "success" } });
     }
     if (event.type === "auto_retry_start") {
       options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "active-retry", kind: "notice", tone: "warning", title: `Retry ${event.attempt}/${event.maxAttempts}`, detail: event.errorMessage } });

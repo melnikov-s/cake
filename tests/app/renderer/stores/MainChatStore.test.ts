@@ -280,6 +280,19 @@ describe("MainChatStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("keeps the Changes surface closed when its startup refresh completes", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop, snapshot, [
+      { path: "src/one.ts", status: "modified", additions: 1, deletions: 0, diff: "+new" }
+    ]);
+
+    expect(root.changesStore.changes).toHaveLength(1);
+    expect(root.changesStore.path).toBeUndefined();
+    root[Symbol.dispose]();
+  });
+
   it("resolves a review anchored to the old side of a Git rename", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);

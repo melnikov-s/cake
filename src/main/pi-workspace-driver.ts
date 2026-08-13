@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createCakeRuntime, loadPiChangelog, runReviewTurn, type CakeRuntime, type RuntimeUiRequest } from "../agent/pi-runtime";
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
 import { parseArtifactInput, type ArtifactRecord, type CakeArtifactV1 } from "../ipc/artifact-contract";
+import { REVIEW_TEXT_MAX_LENGTH } from "../ipc/review-contract";
 import type { ArtifactRepository } from "./artifact-repository";
 import type { ReviewRepository } from "./review-repository";
 import { captureWorkspaceCheckpoint, collectCheckpointChanges } from "./git-changes";
@@ -376,5 +377,5 @@ export class PiWorkspaceDriver {
 }
 
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
+  return (error instanceof Error ? error.message : String(error)).slice(0, REVIEW_TEXT_MAX_LENGTH);
 }

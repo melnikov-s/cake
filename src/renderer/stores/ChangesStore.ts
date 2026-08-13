@@ -57,11 +57,14 @@ export class ChangesStore extends Store<ChangesStoreProps> {
   receive(event: DesktopClientEvent) {
     if (event.type === "changes-received") {
       if (event.operationId !== this.activeOperationId || event.workspacePath !== this.props.projectPath() || event.sessionId !== this.props.sessionId()) return;
+      const wasOpen = this.path !== undefined;
       this.changes.splice(0, this.changes.length, ...event.files);
       const requested = this.preferredPath;
       this.preferredPath = undefined;
-      const selected = this.changeForPath(requested ?? this.path ?? undefined);
-      this.path = selected?.path ?? this.changes[0]?.path ?? null;
+      if (wasOpen) {
+        const selected = this.changeForPath(requested ?? this.path ?? undefined);
+        this.path = selected?.path ?? this.changes[0]?.path ?? null;
+      }
       this.error = undefined;
       this.finishRefresh(event.operationId);
       return;

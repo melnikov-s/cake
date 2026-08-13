@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { artifactRecordSchema } from "./artifact-contract";
 import { reviewAnchorSchema, reviewThreadSchema } from "./review-contract";
+import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import {
   applicationStateSchema,
   attachmentSchema,
@@ -24,11 +25,11 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("part-removed"), sessionId: z.string(), partId: z.string().max(256) }),
   z.object({ type: z.literal("session-streaming"), sessionId: z.string(), streaming: z.boolean() }),
   z.object({ type: z.literal("extension-ui"), sessionId: z.string().max(256), event: extensionUiEventSchema }),
-  z.object({ type: z.literal("changes-snapshot"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), files: z.array(changedFileSchema).max(10_000) }),
-  z.object({ type: z.literal("changelog-snapshot"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), markdown: z.string().max(1_000_000) }),
+  z.object({ type: z.literal("changes-snapshot"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), files: ipcProjectionArray(changedFileSchema, 10_000) }),
+  z.object({ type: z.literal("changelog-snapshot"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), markdown: ipcProjectionString(1_000_000) }),
   z.object({ type: z.literal("artifact-updated"), record: artifactRecordSchema }),
   z.object({ type: z.literal("artifact-requested"), requestId: z.uuid(), artifactRequestId: z.uuid(), record: artifactRecordSchema }),
-  z.object({ type: z.literal("review-threads-snapshot"), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), threads: z.array(reviewThreadSchema).max(10_000) }),
+  z.object({ type: z.literal("review-threads-snapshot"), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), threads: ipcProjectionArray(reviewThreadSchema, 10_000) }),
   z.object({ type: z.literal("review-thread-updated"), thread: reviewThreadSchema }),
   z.object({ type: z.literal("review-thread-streaming"), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), threadId: z.string().max(256), streaming: z.boolean() }),
   z.object({
@@ -36,15 +37,15 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     requestId: z.uuid(),
     uiRequestId: z.uuid(),
     kind: z.enum(["confirm", "text", "secret", "select", "manual_code", "editor"]),
-    title: z.string().max(512),
-    message: z.string().max(4_096),
-    placeholder: z.string().max(512).optional(),
-    initialValue: z.string().max(262_144).optional(),
+    title: ipcProjectionString(512),
+    message: ipcProjectionString(4_096),
+    placeholder: ipcProjectionString(512).optional(),
+    initialValue: ipcProjectionString(262_144).optional(),
     multiline: z.boolean().optional(),
-    options: z.array(z.object({ id: z.string().max(256), label: z.string().max(512) })).max(100).optional()
+    options: ipcProjectionArray(z.object({ id: ipcProjectionString(256), label: ipcProjectionString(512) }), 100).optional()
   }),
   z.object({ type: z.literal("complete"), requestId: z.uuid() }),
-  z.object({ type: z.literal("fatal"), requestId: z.uuid().optional(), message: z.string().max(2_048) })
+  z.object({ type: z.literal("fatal"), requestId: z.uuid().optional(), message: ipcProjectionString(2_048) })
 ]);
 
 export const desktopRequestSchema = z.discriminatedUnion("type", [
@@ -113,9 +114,9 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("window-state-loaded"), state: windowViewStateSchema }),
   z.object({ type: z.literal("window-state-saved") }),
   z.object({ type: z.literal("application-state-loaded"), state: applicationStateSchema }),
-  z.object({ type: z.literal("sessions-listed"), sessions: z.array(globalSessionSummarySchema).max(50_000), reviewThreads: z.array(reviewThreadSchema).max(100_000) }),
+  z.object({ type: z.literal("sessions-listed"), sessions: ipcProjectionArray(globalSessionSummarySchema, 50_000), reviewThreads: ipcProjectionArray(reviewThreadSchema, 100_000) }),
   z.object({ type: z.literal("session-loaded"), session: sessionPreviewSchema.optional() }),
-  z.object({ type: z.literal("review-threads-loaded"), threads: z.array(reviewThreadSchema).max(10_000) }),
+  z.object({ type: z.literal("review-threads-loaded"), threads: ipcProjectionArray(reviewThreadSchema, 10_000) }),
   z.object({ type: z.literal("review-thread-saved"), thread: reviewThreadSchema }),
   z.object({ type: z.literal("application-state-updated"), state: applicationStateSchema }),
   z.object({ type: z.literal("window-created") }),

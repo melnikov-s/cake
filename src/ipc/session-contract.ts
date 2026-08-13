@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { artifactRecordSchema } from "./artifact-contract";
+import { ipcProjectionArray, ipcProjectionString } from "./projection";
 
-const boundedText = z.string().max(262_144);
+export const SESSION_TITLE_MAX_LENGTH = 1_024;
+
+const boundedText = ipcProjectionString(262_144);
 
 export const thinkingLevelSchema = z.enum([
   "off",
@@ -57,8 +60,8 @@ export const piSettingUpdateSchema = z.discriminatedUnion("key", [
 
 export const fileSuggestionSchema = z.object({
   value: z.string().min(1).max(4_096),
-  label: z.string().min(1).max(512),
-  description: z.string().max(4_096).optional()
+  label: ipcProjectionString(512).pipe(z.string().min(1)),
+  description: ipcProjectionString(4_096).optional()
 });
 
 export const attachmentSchema = z.discriminatedUnion("kind", [
@@ -95,7 +98,7 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
   z.object({
     ...partBase,
     kind: z.literal("tool"),
-    name: z.string().max(256),
+    name: ipcProjectionString(256),
     input: boundedText,
     output: boundedText.optional(),
     filePath: z.string().max(8_192).optional(),
@@ -105,13 +108,13 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
   z.object({
     ...partBase,
     kind: z.literal("source"),
-    title: z.string().max(1_024),
+    title: ipcProjectionString(1_024),
     url: z.string().max(8_192)
   }),
   z.object({
     ...partBase,
     kind: z.literal("attachment"),
-    name: z.string().max(512),
+    name: ipcProjectionString(512),
     mediaType: z.string().max(128),
     attachmentKind: z.enum(["file", "image"]),
     data: z.string().max(20_000_000).optional()
@@ -120,22 +123,22 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
     ...partBase,
     kind: z.literal("notice"),
     tone: z.enum(["info", "warning", "error"]),
-    title: z.string().max(512),
+    title: ipcProjectionString(512),
     detail: boundedText.optional()
   })
 ]);
 
 export const modelOptionSchema = z.object({
   provider: z.string().max(256),
-  providerName: z.string().max(512),
+  providerName: ipcProjectionString(512),
   id: z.string().max(512),
-  name: z.string().max(1_024),
+  name: ipcProjectionString(1_024),
   reasoning: z.boolean(),
-  input: z.array(z.enum(["text", "image"])).max(2),
+  input: ipcProjectionArray(z.enum(["text", "image"]), 2),
   authenticated: z.boolean(),
   authSource: z.enum(["stored", "runtime", "environment", "fallback", "models_json_key", "models_json_command"]).optional(),
-  authLabel: z.string().max(512).optional(),
-  authTypes: z.array(z.enum(["api_key", "oauth"])).max(2)
+  authLabel: ipcProjectionString(512).optional(),
+  authTypes: ipcProjectionArray(z.enum(["api_key", "oauth"]), 2)
 });
 
 export const sessionUsageSchema = z.object({
@@ -156,7 +159,7 @@ export const sessionUsageSchema = z.object({
 
 export const sessionSummarySchema = z.object({
   id: z.string().min(1).max(256),
-  title: z.string().max(1_024),
+  title: ipcProjectionString(SESSION_TITLE_MAX_LENGTH),
   created: z.string().datetime(),
   modified: z.string().datetime(),
   messageCount: z.number().int().nonnegative(),
@@ -166,7 +169,7 @@ export const sessionSummarySchema = z.object({
 
 export const globalSessionSummarySchema = sessionSummarySchema.extend({
   workspacePath: z.string().min(1).max(4_096),
-  workspaceName: z.string().min(1).max(512)
+  workspaceName: ipcProjectionString(512).pipe(z.string().min(1))
 });
 
 export const sessionTreeEntrySchema = z.object({
@@ -175,8 +178,8 @@ export const sessionTreeEntrySchema = z.object({
   type: z.string().max(128),
   messageRole: z.string().max(128).optional(),
   editorText: boundedText.optional(),
-  label: z.string().max(512).optional(),
-  preview: z.string().max(2_048),
+  label: ipcProjectionString(512).optional(),
+  preview: ipcProjectionString(2_048),
   active: z.boolean()
 });
 
@@ -194,14 +197,14 @@ export const resourceScopeSchema = z.enum(["user", "project", "temporary"]);
 export const compatibilityResourceSchema = z.object({
   id: z.string().min(1).max(8_192),
   kind: z.enum(["skill", "prompt", "package", "extension"]),
-  name: z.string().min(1).max(1_024),
-  description: z.string().max(4_096).optional(),
+  name: ipcProjectionString(1_024).pipe(z.string().min(1)),
+  description: ipcProjectionString(4_096).optional(),
   path: z.string().max(8_192).optional(),
-  source: z.string().max(2_048),
+  source: ipcProjectionString(2_048),
   scope: resourceScopeSchema,
   origin: z.enum(["package", "top-level"]),
-  commands: z.array(z.string().max(256)).max(1_000).default([]),
-  tools: z.array(z.string().max(256)).max(1_000).default([]),
+  commands: ipcProjectionArray(z.string().max(256), 1_000).default([]),
+  tools: ipcProjectionArray(z.string().max(256), 1_000).default([]),
   enabled: z.boolean().default(true)
 });
 
@@ -209,34 +212,34 @@ export const resourceDiagnosticSchema = z.object({
   id: z.string().min(1).max(8_192),
   severity: z.enum(["info", "warning", "error"]),
   source: z.enum(["extension", "skill", "prompt", "package", "compatibility", "runtime"]),
-  message: z.string().max(4_096),
+  message: ipcProjectionString(4_096),
   path: z.string().max(8_192).optional(),
-  method: z.string().max(256).optional()
+  method: ipcProjectionString(256).optional()
 });
 
 export const compatibilityCatalogSchema = z.object({
-  resources: z.array(compatibilityResourceSchema).max(20_000).default([]),
-  diagnostics: z.array(resourceDiagnosticSchema).max(5_000).default([])
+  resources: ipcProjectionArray(compatibilityResourceSchema, 20_000).default([]),
+  diagnostics: ipcProjectionArray(resourceDiagnosticSchema, 5_000).default([])
 });
 
 export const extensionUiStateSchema = z.object({
-  title: z.string().max(512).optional(),
-  statuses: z.array(z.object({ key: z.string().max(256), text: z.string().max(2_048) })).max(100).default([]),
-  widgets: z.array(z.object({
+  title: ipcProjectionString(512).optional(),
+  statuses: ipcProjectionArray(z.object({ key: z.string().max(256), text: ipcProjectionString(2_048) }), 100).default([]),
+  widgets: ipcProjectionArray(z.object({
     key: z.string().max(256),
-    lines: z.array(z.string().max(4_096)).max(1_000),
+    lines: ipcProjectionArray(ipcProjectionString(4_096), 1_000),
     placement: z.enum(["aboveEditor", "belowEditor"])
-  })).max(100).default([])
+  }), 100).default([])
 });
 
 export const slashCommandSchema = z.object({
   name: z.string().min(1).max(256),
-  description: z.string().max(4_096).optional(),
-  argumentHint: z.string().max(512).optional(),
+  description: ipcProjectionString(4_096).optional(),
+  argumentHint: ipcProjectionString(512).optional(),
   source: z.enum(["builtin", "extension", "prompt", "skill"]),
   sourceInfo: z.object({
     path: z.string().max(8_192),
-    source: z.string().max(2_048),
+    source: ipcProjectionString(2_048),
     scope: resourceScopeSchema,
     origin: z.enum(["package", "top-level"])
   })
@@ -272,11 +275,11 @@ export const piBuiltinSlashCommands = [
 ].map((command) => slashCommandSchema.parse({ ...command, source: "builtin", sourceInfo: builtinSourceInfo }));
 
 export const extensionUiEventSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("notify"), id: z.string().max(256), message: z.string().max(4_096), tone: z.enum(["info", "warning", "error"]) }),
-  z.object({ kind: z.literal("status"), key: z.string().max(256), text: z.string().max(2_048).optional() }),
-  z.object({ kind: z.literal("title"), title: z.string().max(512) }),
+  z.object({ kind: z.literal("notify"), id: ipcProjectionString(256), message: ipcProjectionString(4_096), tone: z.enum(["info", "warning", "error"]) }),
+  z.object({ kind: z.literal("status"), key: z.string().max(256), text: ipcProjectionString(2_048).optional() }),
+  z.object({ kind: z.literal("title"), title: ipcProjectionString(512) }),
   z.object({ kind: z.literal("editor-text"), text: boundedText, mode: z.enum(["replace", "insert"]) }),
-  z.object({ kind: z.literal("widget"), key: z.string().max(256), lines: z.array(z.string().max(4_096)).max(1_000).optional(), placement: z.enum(["aboveEditor", "belowEditor"]) }),
+  z.object({ kind: z.literal("widget"), key: z.string().max(256), lines: ipcProjectionArray(ipcProjectionString(4_096), 1_000).optional(), placement: z.enum(["aboveEditor", "belowEditor"]) }),
   z.object({ kind: z.literal("diagnostic"), diagnostic: resourceDiagnosticSchema })
 ]);
 
@@ -284,28 +287,28 @@ export const sessionSnapshotSchema = z.object({
   workspacePath: z.string().max(4_096),
   sessionId: z.string().min(1).max(256),
   sessionFile: z.string().max(4_096),
-  parts: z.array(uiPartSchema).max(50_000),
+  parts: ipcProjectionArray(uiPartSchema, 50_000),
   model: z.object({ provider: z.string(), id: z.string(), name: z.string() }).optional(),
-  models: z.array(modelOptionSchema).max(5_000),
+  models: ipcProjectionArray(modelOptionSchema, 5_000),
   thinkingLevel: thinkingLevelSchema,
-  availableThinkingLevels: z.array(thinkingLevelSchema).max(7),
+  availableThinkingLevels: ipcProjectionArray(thinkingLevelSchema, 7),
   piSettings: piSettingsSchema.optional(),
   streaming: z.boolean(),
-  diagnostics: z.array(z.string().max(4_096)).max(1_000),
-  commands: z.array(slashCommandSchema).max(20_000),
+  diagnostics: ipcProjectionArray(ipcProjectionString(4_096), 1_000),
+  commands: ipcProjectionArray(slashCommandSchema, 20_000),
   usage: sessionUsageSchema.optional(),
   compatibility: compatibilityCatalogSchema.default({ resources: [], diagnostics: [] }),
   extensionUi: extensionUiStateSchema.default({ statuses: [], widgets: [] }),
-  sessions: z.array(sessionSummarySchema).max(10_000).default([]),
-  tree: z.array(sessionTreeEntrySchema).max(50_000).default([]),
-  artifacts: z.array(artifactRecordSchema).max(10_000).optional()
+  sessions: ipcProjectionArray(sessionSummarySchema, 10_000).default([]),
+  tree: ipcProjectionArray(sessionTreeEntrySchema, 50_000).default([]),
+  artifacts: ipcProjectionArray(artifactRecordSchema, 10_000).optional()
 });
 
 export const sessionPreviewSchema = z.object({
   workspacePath: z.string().max(4_096),
   sessionId: z.string().min(1).max(256),
   sessionFile: z.string().max(4_096),
-  parts: z.array(uiPartSchema).max(50_000)
+  parts: ipcProjectionArray(uiPartSchema, 50_000)
 });
 
 export const projectRecordSchema = z.object({

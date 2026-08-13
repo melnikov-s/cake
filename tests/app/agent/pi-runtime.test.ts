@@ -9,6 +9,7 @@ import {
   inspectWorkspace,
   loadPiChangelog,
   loadWorkspaceSessionPreview,
+  listWorkspaceSessions,
   piRuntimeVersion,
   routeReviewPromptCache,
   runReviewTurn,
@@ -46,6 +47,24 @@ function maximumObjectDepth(value: unknown) {
 }
 
 describe("Pi 0.84.0 foundation contract", () => {
+  it("keeps session listing alive when Pi's first-message title exceeds Cake's IPC limit", async () => {
+    const directory = await createTemporaryDirectory();
+    const sessionDir = join(directory, "sessions");
+    const timestamp = new Date().toISOString();
+    await mkdir(sessionDir, { recursive: true });
+    await writeFile(join(sessionDir, "long-title.jsonl"), [
+      { type: "session", version: 3, id: "long-title", timestamp, cwd: directory },
+      { type: "message", id: "user-1", parentId: null, timestamp, message: { role: "user", content: [{ type: "text", text: "x".repeat(2_048) }], timestamp: Date.now() } }
+    ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+
+    const [summary] = await listWorkspaceSessions(directory, sessionDir);
+
+    expect(summary).toBeDefined();
+    if (!summary) throw new Error("Expected Pi to list the session fixture");
+    expect(summary.title).toBe("x".repeat(1_024));
+    expect(() => sessionSnapshotSchema.shape.sessions.parse([summary])).not.toThrow();
+  });
+
   it("persists Git checkpoints in the Pi session branch and reloads them", async () => {
     const directory = await createTemporaryDirectory();
     const sessionDir = join(directory, "sessions");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { desktopEventSchema, desktopRequestSchema } from "../../../src/ipc/desktop-ipc";
+import { desktopEventSchema, desktopRequestSchema, desktopResponseSchema } from "../../../src/ipc/desktop-ipc";
 
 describe("process IPC", () => {
   it("accepts session lifecycle and prompt requests", () => {
@@ -25,13 +25,42 @@ describe("process IPC", () => {
     expect(desktopRequestSchema.safeParse({ type: "set-pi-setting", requestId, workspacePath: "/project", sessionId: "session", update: { key: "transport", value: "invalid" } }).success).toBe(false);
   });
 
-  it("rejects oversized transcript parts", () => {
+  it("clips oversized projected metadata instead of dropping the IPC payload", () => {
     const result = desktopEventSchema.safeParse({
       type: "part-updated",
       sessionId: "session",
       part: { id: "message", kind: "text", role: "assistant", text: "x".repeat(262_145), status: "streaming" }
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    if (!result.success || result.data.type !== "part-updated" || result.data.part.kind !== "text") throw new Error("Expected a clipped text projection");
+    expect(result.data.part.text).toHaveLength(262_144);
+
+    const ui = desktopEventSchema.parse({
+      type: "ui-request",
+      requestId: crypto.randomUUID(),
+      uiRequestId: crypto.randomUUID(),
+      kind: "text",
+      title: "t".repeat(1_024),
+      message: "m".repeat(8_192)
+    });
+    expect(ui.type === "ui-request" && ui.title).toHaveLength(512);
+    expect(ui.type === "ui-request" && ui.message).toHaveLength(4_096);
+
+    const response = desktopResponseSchema.parse({
+      type: "sessions-listed",
+      sessions: [{
+        id: "session",
+        title: "s".repeat(2_048),
+        created: new Date(0).toISOString(),
+        modified: new Date(0).toISOString(),
+        messageCount: 1,
+        archived: false,
+        workspacePath: "/project",
+        workspaceName: "Project"
+      }],
+      reviewThreads: []
+    });
+    expect(response.type === "sessions-listed" && response.sessions[0]?.title).toHaveLength(1_024);
   });
 
   it("validates correlated secret UI responses without logging them", () => {

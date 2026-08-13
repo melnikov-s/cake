@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-const boundedReviewText = z.string().max(262_144);
+export const REVIEW_TEXT_MAX_LENGTH = 262_144;
+const boundedReviewText = z.string().max(REVIEW_TEXT_MAX_LENGTH);
 
 export const reviewPointSchema = z.object({
   diffLine: z.number().int().nonnegative(),
@@ -87,7 +88,7 @@ export function projectReviewThread(record: ReviewThreadRecord, messages: Review
     messages: [
       ...messages,
       ...record.pendingComments.map((comment) => ({ ...comment, role: "user" as const, delivered: false, status: "complete" as const }))
-    ],
+    ].slice(-10_000),
     status: record.status,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
