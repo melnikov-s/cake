@@ -22,8 +22,8 @@ vi.mock("@streamdown/code", () => ({
 import { ChangeExplorer } from "../../../src/renderer/components/change-explorer";
 
 const changes: ChangedFile[] = [
-  { path: "src/app.ts", status: "modified", staged: false, unstaged: true, additions: 1, deletions: 1, diff: "-1 const old = true;\n+1 const fresh = true;" },
-  { path: "PLAN.md", status: "modified", staged: false, unstaged: true, additions: 1, deletions: 0, diff: "+1 # Plan" }
+  { path: "src/app.ts", status: "modified", additions: 1, deletions: 1, diff: "-1 const old = true;\n+1 const fresh = true;" },
+  { path: "PLAN.md", status: "modified", additions: 1, deletions: 0, diff: "+1 # Plan" }
 ];
 
 function explorerProps(store: MainChatStore) {
@@ -114,7 +114,7 @@ describe("ChangeExplorer", () => {
     } as unknown as MainChatStore;
 
     act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
-    expect(container.querySelector('[aria-label="Workspace changes to src/app.ts"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Session changes to src/app.ts"]')).not.toBeNull();
 
     await act(async () => container.querySelector<HTMLButtonElement>('.change-explorer-view-toggle button[aria-pressed="false"]')!.click());
 
@@ -126,7 +126,7 @@ describe("ChangeExplorer", () => {
     expect(container.querySelector(".change-explorer-full-file .context")?.textContent).toContain("const unchanged = true;");
 
     act(() => container.querySelector<HTMLButtonElement>('.change-explorer-view-toggle button:first-child')!.click());
-    expect(container.querySelector('[aria-label="Workspace changes to src/app.ts"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Session changes to src/app.ts"]')).not.toBeNull();
   });
 
   it("adds a comment from a line in the full file view", async () => {

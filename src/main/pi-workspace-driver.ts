@@ -4,7 +4,7 @@ import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
 import { parseArtifactInput, type ArtifactRecord, type CakeArtifactV1 } from "../ipc/artifact-contract";
 import type { ArtifactRepository } from "./artifact-repository";
 import type { ReviewRepository } from "./review-repository";
-import { collectWorkspaceChanges } from "./git-changes";
+import { captureWorkspaceCheckpoint, collectCheckpointChanges } from "./git-changes";
 
 type ArtifactRepositoryPort = Pick<ArtifactRepository, "upsert" | "get" | "listSession" | "linkSession">;
 type ReviewRepositoryPort = Pick<ReviewRepository, "claimPending" | "completeRun" | "failRun" | "recoverRunning" | "agentSessionDirectory">;
@@ -46,6 +46,7 @@ export interface PiWorkspaceDriverOptions {
   runReviewTurn?: typeof runReviewTurn;
   artifactRepository?: ArtifactRepositoryPort;
   reviewRepository?: ReviewRepositoryPort;
+  captureCheckpoint?: typeof captureWorkspaceCheckpoint;
   openExternal?: (url: string) => Promise<void>;
   isTrusted?: () => boolean;
 }
@@ -57,6 +58,7 @@ export class PiWorkspaceDriver {
   private readonly runReviewTurnImpl: typeof runReviewTurn;
   private readonly artifactRepository: ArtifactRepositoryPort;
   private readonly reviewRepository: ReviewRepositoryPort;
+  private readonly captureCheckpoint: typeof captureWorkspaceCheckpoint;
   private readonly openExternal: NonNullable<PiWorkspaceDriverOptions["openExternal"]> | undefined;
   private readonly isTrusted: () => boolean;
   private readonly runtimes = new Map<string, CakeRuntime>();
@@ -74,6 +76,7 @@ export class PiWorkspaceDriver {
     this.createRuntimeImpl = options.createRuntime ?? createCakeRuntime;
     this.runReviewTurnImpl = options.runReviewTurn ?? runReviewTurn;
     this.openExternal = options.openExternal;
+    this.captureCheckpoint = options.captureCheckpoint ?? captureWorkspaceCheckpoint;
     this.isTrusted = options.isTrusted ?? (() => false);
     this.artifactRepository = options.artifactRepository ?? {
       async upsert(workspacePath, artifact) {
@@ -123,7 +126,7 @@ export class PiWorkspaceDriver {
       return;
     }
     if (command.type === "inspect-changes") {
-      void this.run(command.requestId, () => this.inspectChanges(command.requestId));
+      void this.run(command.requestId, () => this.inspectChanges(command.requestId, command.sessionId), command.sessionId);
       return;
     }
     if (command.type === "get-changelog") {
@@ -280,6 +283,7 @@ export class PiWorkspaceDriver {
       persistArtifact: (artifact) => this.persistArtifact(artifact),
       requestArtifact: (record, signal) => this.requestArtifact(record, signal),
       openExternal: this.openExternal,
+      captureGitCheckpoint: (activeSessionId) => this.captureCheckpoint(this.workspacePath, activeSessionId),
       listArtifacts: async (pointers) => {
         const direct = await Promise.all(pointers.map((pointer) => this.artifactRepository.get(this.workspacePath, pointer.sessionId, pointer.artifactId)));
         const sessionIds = [...new Set([requestedArtifactSessionId, openedSessionId].filter((value): value is string => Boolean(value)))];
@@ -311,12 +315,18 @@ export class PiWorkspaceDriver {
       throw new Error("The Pi workspace driver was disposed while opening a session");
     }
     this.runtimes.set(runtime.sessionId, runtime);
+    void runtime.ensureInitialGitCheckpoint?.().catch(() => undefined);
     return runtime;
   }
 
-  private async inspectChanges(requestId: string) {
-    const files = await collectWorkspaceChanges(this.workspacePath);
-    this.emit({ type: "changes-snapshot", requestId, workspacePath: this.workspacePath, files });
+  private async inspectChanges(requestId: string, sessionId: string) {
+    const runtime = this.runtimeFor(sessionId);
+    const initial = await runtime.ensureInitialGitCheckpoint?.();
+    await runtime.waitForGitCheckpoints?.();
+    const latest = runtime.gitCheckpoints?.().at(-1) ?? initial;
+    if (!initial || !latest) throw new Error("Git checkpoints are unavailable for this session");
+    const files = await collectCheckpointChanges(this.workspacePath, initial.tree, latest.tree);
+    this.emit({ type: "changes-snapshot", requestId, workspacePath: this.workspacePath, sessionId, files });
   }
 
   private async runReviewThreads(command: Extract<PiWorkspaceCommand, { type: "submit-review-threads" }>) {
@@ -360,6 +370,7 @@ export class PiWorkspaceDriver {
         this.emit({ type: "review-thread-streaming", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId, streaming: false });
       }
     }
+    await parentRuntime.captureLatestGitCheckpoint?.();
     if (failures.length > 0) throw new Error(`Review thread${failures.length === 1 ? "" : "s"} failed: ${failures.join("; ")}`);
   }
 }

@@ -269,7 +269,7 @@ describe("MainChatStore", () => {
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop, snapshot, [
-      { path: "src/one.ts", status: "modified", staged: false, unstaged: true, additions: 1, deletions: 1, diff: "-old\n+new" }
+      { path: "src/one.ts", status: "modified", additions: 1, deletions: 1, diff: "-old\n+new" }
     ]);
 
     desktop.emit({ type: "part-updated", sessionId: "session-1", part: { id: "tool-edit-2", kind: "tool", name: "edit", input: "", filePath: "src/two.ts", diff: "+2 added", state: "success" } });
@@ -285,7 +285,7 @@ describe("MainChatStore", () => {
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop, snapshot, [
-      { path: "docs/plan.md", previousPath: "PLAN.md", status: "renamed", staged: false, unstaged: true, additions: 0, deletions: 0, diff: "similarity index 100%" }
+      { path: "docs/plan.md", previousPath: "PLAN.md", status: "renamed", additions: 0, deletions: 0, diff: "similarity index 100%" }
     ]);
 
     await root.changesStore.open("PLAN.md");
@@ -301,7 +301,7 @@ describe("MainChatStore", () => {
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop, snapshot, [
-      { path: "PLAN.md", status: "modified", staged: false, unstaged: true, additions: 1, deletions: 0, diff: "+plan" }
+      { path: "PLAN.md", status: "modified", additions: 1, deletions: 0, diff: "+plan" }
     ]);
     vi.mocked(desktop.client.inspectChanges).mockClear();
 
@@ -424,7 +424,7 @@ describe("MainChatStore", () => {
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop, snapshot, [
-      { path: "src/app.ts", status: "modified", staged: false, unstaged: true, additions: 1, deletions: 0, diff: "+value" }
+      { path: "src/app.ts", status: "modified", additions: 1, deletions: 0, diff: "+value" }
     ]);
     const now = new Date(0).toISOString();
     desktop.emit({ type: "review-thread-updated", thread: {

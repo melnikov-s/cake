@@ -46,6 +46,47 @@ function maximumObjectDepth(value: unknown) {
 }
 
 describe("Pi 0.84.0 foundation contract", () => {
+  it("persists Git checkpoints in the Pi session branch and reloads them", async () => {
+    const directory = await createTemporaryDirectory();
+    const sessionDir = join(directory, "sessions");
+    const agentDir = join(directory, "agent");
+    let capture = 0;
+    const first = await createCakeRuntime({
+      cwd: directory, agentDir, sessionDir, trusted: false, newSession: true,
+      requestUi: async () => undefined,
+      captureGitCheckpoint: async () => ({ tree: String(++capture).padStart(40, "a"), ref: `refs/cake/checkpoints/${capture}` }),
+      onEvent: () => undefined
+    });
+    runtimes.push(first);
+
+    const initial = await first.ensureInitialGitCheckpoint!();
+    const latest = await first.captureLatestGitCheckpoint!();
+    expect(first.gitCheckpoints!().map((checkpoint) => checkpoint.tree)).toEqual([initial?.tree, latest?.tree]);
+    const sessionId = first.sessionId;
+    const sessionFile = first.sessionFile;
+    first.dispose();
+    runtimes.splice(runtimes.indexOf(first), 1);
+    const timestamp = new Date().toISOString();
+    await mkdir(sessionDir, { recursive: true });
+    await writeFile(sessionFile, [
+      { type: "session", version: 3, id: sessionId, timestamp, cwd: directory },
+      { type: "custom", id: "checkpoint-1", parentId: null, timestamp, customType: "cake.git-checkpoint/v1", data: initial },
+      { type: "custom", id: "checkpoint-2", parentId: "checkpoint-1", timestamp, customType: "cake.git-checkpoint/v1", data: latest },
+      { type: "message", id: "assistant-1", parentId: "checkpoint-2", timestamp, message: { role: "assistant", content: [{ type: "text", text: "done" }], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() } }
+    ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+
+    const second = await createCakeRuntime({
+      cwd: directory, agentDir, sessionDir, trusted: false, sessionId, sessionFile,
+      requestUi: async () => undefined,
+      captureGitCheckpoint: async () => ({ tree: "f".repeat(40), ref: "refs/cake/checkpoints/f" }),
+      onEvent: () => undefined
+    });
+    runtimes.push(second);
+
+    expect(await second.ensureInitialGitCheckpoint!()).toMatchObject({ tree: initial?.tree });
+    expect(second.gitCheckpoints!().map((checkpoint) => checkpoint.tree)).toEqual([initial?.tree, latest?.tree]);
+  });
+
   it("routes a forked GPT-5.6 review through the parent cache breakpoint", () => {
     const payload = {
       model: "gpt-5.6-sol",

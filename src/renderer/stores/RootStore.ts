@@ -46,6 +46,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     return createStore(BrowseStore, {
       client: this.client,
       projectPath: () => this.mainChatStore.projectPath,
+      sessionId: () => this.mainChatStore.session?.sessionId,
       reportError: (error) => this.mainChatStore.setError(error)
     });
   }
@@ -55,6 +56,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     return createStore(ChangesStore, {
       client: this.client,
       projectPath: () => this.mainChatStore.projectPath,
+      sessionId: () => this.mainChatStore.session?.sessionId,
       startOperation: () => this.mainChatStore.startOperation(),
       finishOperation: (operationId) => this.mainChatStore.finishOperation(operationId),
       reportError: (error) => this.mainChatStore.setError(error)

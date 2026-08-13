@@ -19,6 +19,7 @@ import { Type } from "@earendil-works/pi-ai";
 import { CombinedAutocompleteProvider } from "@earendil-works/pi-tui";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { z } from "zod";
 import type {
   Attachment,
   ModelOption,
@@ -49,6 +50,13 @@ import {
 } from "../ipc/artifact-contract";
 
 export const piRuntimeVersion = "0.84.0" as const;
+const gitCheckpointEntryType = "cake.git-checkpoint/v1";
+const gitCheckpointSchema = z.object({
+  tree: z.string().regex(/^[0-9a-f]{40,64}$/),
+  ref: z.string().min(1).max(1_024),
+  capturedAt: z.string().datetime()
+});
+export type GitCheckpoint = z.infer<typeof gitCheckpointSchema>;
 
 export function loadPiChangelog() {
   try {
@@ -132,6 +140,7 @@ export interface CakeRuntimeOptions {
   requestArtifact?(record: ArtifactRecord, signal: AbortSignal): Promise<unknown | undefined>;
   listArtifacts?(pointers: ArtifactPointer[]): Promise<ArtifactRecord[]>;
   openExternal?(url: string): Promise<void>;
+  captureGitCheckpoint?(sessionId: string): Promise<{ tree: string; ref: string }>;
   onEvent(event: CakeRuntimeEvent): void;
 }
 
@@ -499,6 +508,10 @@ export interface CakeRuntime {
   rename(name: string): Promise<void>;
   fork(entryId: string): Promise<{ sessionId: string; sessionFile: string }>;
   navigate(entryId: string): Promise<void>;
+  ensureInitialGitCheckpoint?(): Promise<GitCheckpoint | undefined>;
+  captureLatestGitCheckpoint?(): Promise<GitCheckpoint | undefined>;
+  waitForGitCheckpoints?(): Promise<void>;
+  gitCheckpoints?(): GitCheckpoint[];
   dispose(): void;
 }
 
@@ -924,6 +937,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   });
   const cakeSessionId = session.sessionManager.getSessionId();
   let disposed = false;
+  let checkpointQueue = Promise.resolve<unknown>(undefined);
   const projectLiveMessage = createLiveMessageProjector();
   const catalog = compatibilityCatalog(resourceLoader, settingsManager, options.cwd, agentDir);
   const extensionUiState: ExtensionUiState = { statuses: [], widgets: [] };
@@ -1024,6 +1038,40 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     options.onEvent({ type: "snapshot", requestId, snapshot });
   }
 
+  function gitCheckpoints() {
+    const checkpoints: GitCheckpoint[] = [];
+    for (const entry of session.sessionManager.getBranch()) {
+      if (entry.type !== "custom" || entry.customType !== gitCheckpointEntryType) continue;
+      const parsed = gitCheckpointSchema.safeParse(entry.data);
+      if (parsed.success) checkpoints.push(parsed.data);
+    }
+    return checkpoints;
+  }
+
+  function captureGitCheckpoint() {
+    if (!options.captureGitCheckpoint) return Promise.resolve(undefined);
+    const operation = checkpointQueue.then(async () => {
+      if (disposed) throw new Error("The Cake runtime has been disposed");
+      const captured = await options.captureGitCheckpoint!(cakeSessionId);
+      const checkpoint = gitCheckpointSchema.parse({ ...captured, capturedAt: new Date().toISOString() });
+      const latest = gitCheckpoints().at(-1);
+      if (latest?.tree === checkpoint.tree) return latest;
+      session.sessionManager.appendCustomEntry(gitCheckpointEntryType, checkpoint);
+      return checkpoint;
+    });
+    checkpointQueue = operation.catch(() => undefined);
+    return operation;
+  }
+
+  async function ensureInitialGitCheckpoint() {
+    const persisted = session.sessionManager.getEntries().flatMap((entry) => {
+      if (entry.type !== "custom" || entry.customType !== gitCheckpointEntryType) return [];
+      const parsed = gitCheckpointSchema.safeParse(entry.data);
+      return parsed.success ? [parsed.data] : [];
+    });
+    return persisted[0] ?? await captureGitCheckpoint();
+  }
+
   const activeToolCalls = new Map<string, { input: string; filePath?: string }>();
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     if (disposed) return;
@@ -1056,7 +1104,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     }
     if (event.type === "agent_settled") {
       options.onEvent({ type: "streaming", sessionId: cakeSessionId, streaming: false });
-      void emitSnapshot();
+      void captureGitCheckpoint().catch(() => undefined).finally(() => emitSnapshot());
     }
   });
 
@@ -1160,9 +1208,16 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       await emitSnapshot();
     },
     async fork(entryId) {
+      const initialCheckpoint = session.sessionManager.getEntries().flatMap((entry) => {
+        if (entry.type !== "custom" || entry.customType !== gitCheckpointEntryType) return [];
+        const parsed = gitCheckpointSchema.safeParse(entry.data);
+        return parsed.success ? [parsed.data] : [];
+      })[0];
       const sessionFile = session.sessionManager.createBranchedSession(entryId);
       if (!sessionFile) throw new Error("The current session is not persisted");
       const forked = SessionManager.open(sessionFile, options.sessionDir, options.cwd);
+      const forkHasCheckpoint = forked.getEntries().some((entry) => entry.type === "custom" && entry.customType === gitCheckpointEntryType);
+      if (initialCheckpoint && !forkHasCheckpoint) forked.appendCustomEntry(gitCheckpointEntryType, initialCheckpoint);
       return { sessionId: forked.getSessionId(), sessionFile };
     },
     async navigate(entryId) {
@@ -1170,6 +1225,10 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       if (result.cancelled) throw new Error("Session tree navigation was cancelled");
       await emitSnapshot();
     },
+    ensureInitialGitCheckpoint,
+    captureLatestGitCheckpoint: captureGitCheckpoint,
+    async waitForGitCheckpoints() { await checkpointQueue; },
+    gitCheckpoints,
     dispose() {
       if (disposed) return;
       disposed = true;

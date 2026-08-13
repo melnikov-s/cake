@@ -183,9 +183,7 @@ export const sessionTreeEntrySchema = z.object({
 export const changedFileSchema = z.object({
   path: z.string().max(4_096),
   previousPath: z.string().max(4_096).optional(),
-  status: z.enum(["added", "modified", "deleted", "renamed", "copied", "untracked", "conflicted"]),
-  staged: z.boolean(),
-  unstaged: z.boolean(),
+  status: z.enum(["added", "modified", "deleted", "renamed", "copied"]),
   additions: z.number().int().nonnegative(),
   deletions: z.number().int().nonnegative(),
   diff: boundedText

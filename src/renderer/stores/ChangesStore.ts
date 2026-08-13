@@ -5,6 +5,7 @@ import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 export interface ChangesStoreProps {
   client: DesktopClient;
   projectPath(): string | undefined;
+  sessionId(): string | undefined;
   startOperation(): string;
   finishOperation(operationId: string): void;
   reportError(error: unknown): void;
@@ -33,7 +34,8 @@ export class ChangesStore extends Store<ChangesStoreProps> {
 
   async refresh() {
     const workspacePath = this.props.projectPath();
-    if (!workspacePath) return;
+    const sessionId = this.props.sessionId();
+    if (!workspacePath || !sessionId) return;
     if (this.activeOperationId) {
       this.refreshPending = true;
       return;
@@ -43,7 +45,7 @@ export class ChangesStore extends Store<ChangesStoreProps> {
     this.loading = true;
     this.error = undefined;
     try {
-      await this.props.client.inspectChanges({ operationId, workspacePath });
+      await this.props.client.inspectChanges({ operationId, workspacePath, sessionId });
     } catch (error) {
       if (this.activeOperationId !== operationId) return;
       this.error = errorMessage(error);
@@ -54,7 +56,7 @@ export class ChangesStore extends Store<ChangesStoreProps> {
 
   receive(event: DesktopClientEvent) {
     if (event.type === "changes-received") {
-      if (event.operationId !== this.activeOperationId || event.workspacePath !== this.props.projectPath()) return;
+      if (event.operationId !== this.activeOperationId || event.workspacePath !== this.props.projectPath() || event.sessionId !== this.props.sessionId()) return;
       this.changes.splice(0, this.changes.length, ...event.files);
       const requested = this.preferredPath;
       this.preferredPath = undefined;

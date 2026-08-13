@@ -37,10 +37,12 @@ describe("desktop client", () => {
     expect(await client.listWorkspaceFiles("/project")).toEqual(["PLAN.md", "src/app.ts"]);
     await client.respondToWorkspaceTrust({ operationId, path: "/project", approved: true });
     await client.openWorkspace({ operationId, path: "/project" });
+    await client.inspectChanges({ operationId, workspacePath: "/project", sessionId: "session" });
     await client.getChangelog({ operationId, workspacePath: "/project", sessionId: "session" });
 
     expect(desktop.request).toHaveBeenCalledWith({ type: "respond-workspace-trust", requestId: operationId, path: "/project", approved: true });
     expect(desktop.request).toHaveBeenCalledWith({ type: "open-workspace", requestId: operationId, path: "/project", newSession: false, sessionId: undefined, sessionFile: undefined });
+    expect(desktop.request).toHaveBeenCalledWith({ type: "inspect-changes", requestId: operationId, workspacePath: "/project", sessionId: "session" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "get-changelog", requestId: operationId, workspacePath: "/project", sessionId: "session" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "load-session", workspacePath: "/project", sessionId: "session" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "suggest-files", workspacePath: "/project", prefix: "app" });
@@ -56,8 +58,10 @@ describe("desktop client", () => {
 
     desktop.emit({ type: "workspace-inspected", requestId, path: "/project", trustRequired: true });
     desktop.emit({ type: "changelog-snapshot", requestId, workspacePath: "/project", sessionId: "session", markdown: "# Changelog" });
+    desktop.emit({ type: "changes-snapshot", requestId, workspacePath: "/project", sessionId: "session", files: [] });
 
     expect(listener).toHaveBeenCalledWith({ type: "workspace-inspected", operationId: requestId, path: "/project", trustRequired: true });
     expect(listener).toHaveBeenCalledWith({ type: "changelog-received", operationId: requestId, workspacePath: "/project", sessionId: "session", markdown: "# Changelog" });
+    expect(listener).toHaveBeenCalledWith({ type: "changes-received", operationId: requestId, workspacePath: "/project", sessionId: "session", files: [] });
   });
 });

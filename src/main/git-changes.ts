@@ -1,48 +1,64 @@
 import { execFile } from "node:child_process";
-import { realpath } from "node:fs/promises";
-import { relative, resolve, sep } from "node:path";
+import { createHash } from "node:crypto";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import type { ChangedFile } from "../ipc/session-contract";
 
 const execFileAsync = promisify(execFile);
-const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 const maxStatusBuffer = 4_000_000;
 const maxDiffBuffer = 2_000_000;
 const maxDiffLength = 262_144;
 
-interface StatusEntry {
+interface ChangeEntry {
   path: string;
   previousPath?: string;
-  indexStatus: string;
-  worktreeStatus: string;
-  untracked?: boolean;
+  changeCode?: string;
 }
 
-export async function collectWorkspaceChanges(workspacePath: string): Promise<ChangedFile[]> {
-  const canonicalWorkspace = await realpath(resolve(workspacePath));
-  const root = await realpath((await git(canonicalWorkspace, ["rev-parse", "--show-toplevel"], maxStatusBuffer)).trim());
-  const prefix = relative(root, canonicalWorkspace);
-  if (prefix === ".." || prefix.startsWith(`..${sep}`)) throw new Error("The workspace is outside its Git repository");
+export interface WorkspaceCheckpoint {
+  tree: string;
+  ref: string;
+}
+
+/** Captures the complete non-ignored workspace state without mutating Git's real index. */
+export async function captureWorkspaceCheckpoint(workspacePath: string, sessionId: string): Promise<WorkspaceCheckpoint> {
+  const { root, prefix } = await resolveRepository(workspacePath);
+  const temporaryDirectory = await mkdtemp(join(tmpdir(), "cake-git-checkpoint-"));
+  const indexPath = join(temporaryDirectory, "index");
+  const environment = { ...process.env, GIT_INDEX_FILE: indexPath };
+  try {
+    if (await hasHead(root)) await git(root, ["read-tree", "HEAD"], maxStatusBuffer, environment);
+    else await git(root, ["read-tree", "--empty"], maxStatusBuffer, environment);
+    await git(root, ["add", "-A", "--", prefix || "."], maxStatusBuffer, environment);
+    const tree = (await git(root, ["write-tree"], maxStatusBuffer, environment)).trim();
+    const sessionKey = createHash("sha256").update(sessionId).digest("hex").slice(0, 32);
+    const ref = `refs/cake/checkpoints/${sessionKey}/${tree}`;
+    await git(root, ["update-ref", ref, tree], maxStatusBuffer);
+    return { tree, ref };
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+}
+
+/** Compares two immutable session checkpoints. The current working tree is not consulted. */
+export async function collectCheckpointChanges(workspacePath: string, initialTree: string, latestTree: string): Promise<ChangedFile[]> {
+  const { root, prefix } = await resolveRepository(workspacePath);
+  await git(root, ["cat-file", "-e", `${initialTree}^{tree}`], maxStatusBuffer);
+  await git(root, ["cat-file", "-e", `${latestTree}^{tree}`], maxStatusBuffer);
   const pathspec = prefix || ".";
-  const status = await git(root, ["-c", "status.relativePaths=false", "status", "--porcelain=v2", "-z", "--untracked-files=all", "--", pathspec], maxStatusBuffer);
-  const entries = parsePorcelainV2(status).filter((entry) => withinWorkspace(entry.path, prefix));
-  const baseline = await hasHead(root) ? "HEAD" : emptyTree;
+  const changed = await git(root, ["diff", "--name-status", "-z", "--find-renames", "--find-copies", initialTree, latestTree, "--", pathspec], maxStatusBuffer);
+  const entries = parseNameStatus(changed).filter((entry) => withinWorkspace(entry.path, prefix));
   const files: ChangedFile[] = [];
   for (const entry of entries) {
-    const diff = entry.untracked
-      ? await untrackedDiff(root, entry.path)
-      : await trackedDiff(root, baseline, entry);
-    const workspaceRelativePath = fromRepositoryPath(entry.path, prefix);
-    const previousPath = entry.previousPath && withinWorkspace(entry.previousPath, prefix)
-      ? fromRepositoryPath(entry.previousPath, prefix)
-      : undefined;
+    const paths = entry.previousPath ? [entry.previousPath, entry.path] : [entry.path];
+    const diff = await git(root, ["diff", "--no-ext-diff", "--find-renames", "--find-copies", initialTree, latestTree, "--", ...paths], maxDiffBuffer);
     const lines = diff.split("\n");
     files.push({
-      path: workspaceRelativePath,
-      previousPath,
+      path: fromRepositoryPath(entry.path, prefix),
+      previousPath: entry.previousPath && withinWorkspace(entry.previousPath, prefix) ? fromRepositoryPath(entry.previousPath, prefix) : undefined,
       status: changeStatus(entry),
-      staged: entry.indexStatus !== "." && entry.indexStatus !== "?",
-      unstaged: entry.worktreeStatus !== "." || Boolean(entry.untracked),
       additions: lines.filter((line) => line.startsWith("+") && !line.startsWith("+++")).length,
       deletions: lines.filter((line) => line.startsWith("-") && !line.startsWith("---")).length,
       diff: diff.slice(0, maxDiffLength)
@@ -51,32 +67,29 @@ export async function collectWorkspaceChanges(workspacePath: string): Promise<Ch
   return files;
 }
 
-export function parsePorcelainV2(output: string): StatusEntry[] {
+async function resolveRepository(workspacePath: string) {
+  const canonicalWorkspace = await realpath(resolve(workspacePath));
+  const root = await realpath((await git(canonicalWorkspace, ["rev-parse", "--show-toplevel"], maxStatusBuffer)).trim());
+  const prefix = relative(root, canonicalWorkspace);
+  if (prefix === ".." || prefix.startsWith(`..${sep}`)) throw new Error("The workspace is outside its Git repository");
+  return { root, prefix };
+}
+
+export function parseNameStatus(output: string): ChangeEntry[] {
   const records = output.split("\0");
-  const entries: StatusEntry[] = [];
-  for (let index = 0; index < records.length; index++) {
-    const record = records[index];
-    if (!record) continue;
-    if (record.startsWith("1 ")) {
-      const match = /^1 ([^ ]{2}) (?:[^ ]+ ){6}([\s\S]*)$/.exec(record);
-      if (match) entries.push({ path: match[2]!, indexStatus: match[1]![0]!, worktreeStatus: match[1]![1]! });
+  const entries: ChangeEntry[] = [];
+  for (let index = 0; index < records.length;) {
+    const status = records[index++];
+    if (!status) continue;
+    const changeCode = status[0]!;
+    if (changeCode === "R" || changeCode === "C") {
+      const previousPath = records[index++];
+      const path = records[index++];
+      if (previousPath !== undefined && path !== undefined) entries.push({ path, previousPath, changeCode });
       continue;
     }
-    if (record.startsWith("2 ")) {
-      const match = /^2 ([^ ]{2}) (?:[^ ]+ ){7}([\s\S]*)$/.exec(record);
-      const previousPath = records[index + 1];
-      if (match && previousPath !== undefined) {
-        entries.push({ path: match[2]!, previousPath, indexStatus: match[1]![0]!, worktreeStatus: match[1]![1]! });
-        index += 1;
-      }
-      continue;
-    }
-    if (record.startsWith("u ")) {
-      const match = /^u ([^ ]{2}) (?:[^ ]+ ){8}([\s\S]*)$/.exec(record);
-      if (match) entries.push({ path: match[2]!, indexStatus: match[1]![0]!, worktreeStatus: match[1]![1]! });
-      continue;
-    }
-    if (record.startsWith("? ")) entries.push({ path: record.slice(2), indexStatus: "?", worktreeStatus: "?", untracked: true });
+    const path = records[index++];
+    if (path !== undefined) entries.push({ path, changeCode });
   }
   return entries;
 }
@@ -90,22 +103,8 @@ async function hasHead(root: string) {
   }
 }
 
-async function trackedDiff(root: string, baseline: string, entry: StatusEntry) {
-  const paths = entry.previousPath ? [entry.previousPath, entry.path] : [entry.path];
-  return git(root, ["diff", "--no-ext-diff", "--find-renames", "--find-copies", baseline, "--", ...paths], maxDiffBuffer);
-}
-
-async function untrackedDiff(root: string, path: string) {
-  try {
-    return await git(root, ["diff", "--no-index", "--no-ext-diff", "--", "/dev/null", path], maxDiffBuffer);
-  } catch (error) {
-    if (typeof error === "object" && error !== null && "code" in error && Number(error.code) === 1 && "stdout" in error) return String(error.stdout);
-    throw error;
-  }
-}
-
-async function git(cwd: string, args: string[], maxBuffer: number) {
-  return (await execFileAsync("git", args, { cwd, maxBuffer })).stdout;
+async function git(cwd: string, args: string[], maxBuffer: number, env?: NodeJS.ProcessEnv) {
+  return (await execFileAsync("git", args, { cwd, maxBuffer, env })).stdout;
 }
 
 function withinWorkspace(path: string, prefix: string) {
@@ -116,12 +115,9 @@ function fromRepositoryPath(path: string, prefix: string) {
   return prefix ? path.slice(prefix.length + 1) : path;
 }
 
-function changeStatus(entry: StatusEntry): ChangedFile["status"] {
-  if (entry.untracked) return "untracked";
-  if (entry.previousPath) return entry.indexStatus === "C" || entry.worktreeStatus === "C" ? "copied" : "renamed";
-  const codes = `${entry.indexStatus}${entry.worktreeStatus}`;
-  if (codes.includes("U")) return "conflicted";
-  if (codes.includes("D")) return "deleted";
-  if (codes.includes("A")) return "added";
+function changeStatus(entry: ChangeEntry): ChangedFile["status"] {
+  if (entry.previousPath) return entry.changeCode === "C" ? "copied" : "renamed";
+  if (entry.changeCode === "D") return "deleted";
+  if (entry.changeCode === "A") return "added";
   return "modified";
 }
