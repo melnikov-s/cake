@@ -24,7 +24,9 @@ import { ModelCombobox } from "@/components/model-combobox";
 import { SessionTree } from "@/components/session-tree";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
 import type { CompatibilityResource, UiPart } from "../ipc/session-contract";
-import { WindowStore, type ReviewRunState, type UiRequestState } from "./stores/window-store";
+import { MainChatStore, type UiRequestState } from "./stores/MainChatStore";
+import type { ReviewRunState } from "./stores/ReviewsStore";
+type WindowStore = MainChatStore;
 
 function Icon({ children, size = 16 }: { children: ReactNode; size?: number }) {
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
@@ -495,7 +497,7 @@ export const SettingsPage = observer(function SettingsPage({ store }: { store: W
 });
 
 export const App = observer(function App() {
-  const store = useStore(WindowStore);
+  const store = useStore(MainChatStore);
   const [page, setPage] = useState<"chat" | "settings">("chat");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   useEffect(() => {

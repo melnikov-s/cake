@@ -1,8 +1,8 @@
 import { Store, child, createStore, mount } from "r-state-tree";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
-import { DesktopClientContext, SessionCacheContext } from "./context";
-import { SessionCacheStore } from "./session-cache-store";
-import { WindowStore } from "./window-store";
+import { DesktopClientContext, SessionCacheContext } from "./StoreContext";
+import { SessionCacheStore } from "./SessionCacheStore";
+import { MainChatStore } from "./MainChatStore";
 
 export class RootStore extends Store<{ client: DesktopClient }> {
   [DesktopClientContext.provide]() {
@@ -25,8 +25,13 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   }
 
   @child
+  get mainChatStore() {
+    return createStore(MainChatStore);
+  }
+
+  /** @deprecated Use mainChatStore. */
   get windowStore() {
-    return createStore(WindowStore);
+    return this.mainChatStore;
   }
 
   constructor(props: RootStore["props"]) {
@@ -36,21 +41,21 @@ export class RootStore extends Store<{ client: DesktopClient }> {
 
   private receive(event: DesktopClientEvent) {
     if (event.type === "session-snapshot-received") {
-      const previousSessionId = this.windowStore.session?.sessionId;
-      if (event.operationId && !this.windowStore.acceptSessionSnapshot(event)) return;
+      const previousSessionId = this.mainChatStore.session?.sessionId;
+      if (event.operationId && !this.mainChatStore.acceptSessionSnapshot(event)) return;
       const previous = this.sessionCache.find(event.snapshot.sessionId, event.snapshot.workspacePath);
       const wasStreaming = previous?.streaming ?? false;
       this.sessionCache.upsert(event.snapshot);
-      this.windowStore.updateSessionActivity(event.snapshot.workspacePath, event.snapshot.sessionId, event.snapshot.streaming, wasStreaming);
-      this.windowStore.reconcilePendingUserMessages(event.snapshot.sessionId);
-      if (event.operationId || this.windowStore.isActiveSession(event.snapshot.workspacePath, event.snapshot.sessionId)) {
-        this.windowStore.applySessionSnapshot(event.snapshot, event.operationId ? previousSessionId : undefined);
+      this.mainChatStore.updateSessionActivity(event.snapshot.workspacePath, event.snapshot.sessionId, event.snapshot.streaming, wasStreaming);
+      this.mainChatStore.reconcilePendingUserMessages(event.snapshot.sessionId);
+      if (event.operationId || this.mainChatStore.isActiveSession(event.snapshot.workspacePath, event.snapshot.sessionId)) {
+        this.mainChatStore.applySessionSnapshot(event.snapshot, event.operationId ? previousSessionId : undefined);
       }
       return;
     }
     if (event.type === "part-updated") {
       this.sessionCache.find(event.sessionId)?.upsertPart(event.part);
-      this.windowStore.reconcilePendingUserMessages(event.sessionId);
+      this.mainChatStore.reconcilePendingUserMessages(event.sessionId);
       return;
     }
     if (event.type === "part-removed") {
@@ -61,7 +66,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       const session = this.sessionCache.find(event.sessionId);
       const wasStreaming = session?.streaming ?? false;
       session?.setStreaming(event.streaming);
-      if (session) this.windowStore.updateSessionActivity(session.workspacePath, event.sessionId, event.streaming, wasStreaming);
+      if (session) this.mainChatStore.updateSessionActivity(session.workspacePath, event.sessionId, event.streaming, wasStreaming);
       return;
     }
     if (event.type === "artifact-updated" || event.type === "artifact-requested") {
@@ -70,15 +75,15 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     }
     if (event.type === "review-threads-received") {
       this.sessionCache.applyReviewThreads(event.workspacePath, event.sessionId, event.threads);
-      this.windowStore.receive(event);
+      this.mainChatStore.receive(event);
       return;
     }
     if (event.type === "review-thread-updated") {
       this.sessionCache.upsertReviewThread(event.thread);
-      this.windowStore.receive(event);
+      this.mainChatStore.receive(event);
       return;
     }
-    this.windowStore.receive(event);
+    this.mainChatStore.receive(event);
   }
 }
 

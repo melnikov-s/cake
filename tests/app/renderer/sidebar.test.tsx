@@ -5,7 +5,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "../../../src/renderer/app";
-import type { WindowStore } from "../../../src/renderer/stores/window-store";
+import type { WindowStore } from "../../../src/renderer/stores/WindowStore";
 
 describe("Sidebar projects", () => {
   let container: HTMLDivElement;

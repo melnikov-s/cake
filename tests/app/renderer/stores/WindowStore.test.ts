@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { reaction } from "r-state-tree";
 import type { SessionPreview, SessionSnapshot } from "../../../../src/ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../../../../src/renderer/desktop-client";
-import { mountRootStore } from "../../../../src/renderer/stores/root-store";
-import type { WindowStore } from "../../../../src/renderer/stores/window-store";
+import { mountRootStore } from "../../../../src/renderer/stores/RootStore";
+import type { WindowStore } from "../../../../src/renderer/stores/WindowStore";
 
 const snapshot: SessionSnapshot = {
   workspacePath: "/project",

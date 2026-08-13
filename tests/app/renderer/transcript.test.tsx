@@ -5,7 +5,7 @@ import React, { act, forwardRef, useEffect, useImperativeHandle } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UiPart } from "../../../src/ipc/session-contract";
-import type { WindowStore } from "../../../src/renderer/stores/window-store";
+import type { WindowStore } from "../../../src/renderer/stores/WindowStore";
 
 const { scrollToIndex, virtualizedLifecycle, virtualizedProps } = vi.hoisted(() => ({
   scrollToIndex: vi.fn(),

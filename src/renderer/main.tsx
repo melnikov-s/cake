@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { StoreProvider } from "r-state-tree/react";
 import { App } from "./app";
 import { createDesktopClient } from "./desktop-client";
-import { mountRootStore } from "./stores/root-store";
+import { mountRootStore } from "./stores/RootStore";
 import "katex/dist/katex.min.css";
 import "streamdown/styles.css";
 import "./styles.css";
@@ -21,11 +21,11 @@ if (!window.cake) {
   );
 } else {
   const rootStore = mountRootStore(createDesktopClient(window.cake));
-  const windowStore = rootStore.windowStore;
+  const mainChatStore = rootStore.mainChatStore;
   root.render(
     <StrictMode>
       <StoreProvider store={rootStore}>
-        <StoreProvider store={windowStore}>
+        <StoreProvider store={mainChatStore}>
           <App />
         </StoreProvider>
       </StoreProvider>

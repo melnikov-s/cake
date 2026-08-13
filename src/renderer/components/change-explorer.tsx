@@ -5,7 +5,7 @@ import type { SessionChange } from "../../ipc/session-contract";
 import type { ReviewAnchor, ReviewPoint } from "../../ipc/review-contract";
 import { parseDiff } from "./ai-elements/diff-view";
 import { Button } from "./ui/button";
-import type { WindowStore } from "../stores/window-store";
+import type { WindowStore } from "../stores/WindowStore";
 import type { ReviewThreadModel } from "../models/review-thread";
 
 type HighlightResult = ReturnType<typeof code.highlight>;

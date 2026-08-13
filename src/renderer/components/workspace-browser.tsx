@@ -3,7 +3,7 @@ import { Fragment, useEffect, useMemo, useState, type CSSProperties, type MouseE
 import { observer } from "r-state-tree/react";
 import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { ReviewThreadModel } from "../models/review-thread";
-import type { WindowStore } from "../stores/window-store";
+import type { WindowStore } from "../stores/WindowStore";
 import { ReviewComposer, ReviewThreadCard } from "./change-explorer";
 import { Button } from "./ui/button";
 

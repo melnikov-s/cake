@@ -1,4 +1,4 @@
-import { Store, observable, untracked } from "r-state-tree";
+import { Store, child, createStore, observable, untracked } from "r-state-tree";
 import type {
   Attachment,
   ApplicationState,
@@ -6,12 +6,9 @@ import type {
   ExtensionUiEvent,
   ExtensionUiState,
   FileSuggestion,
-  GlobalSessionSummary,
   ModelOption,
   PiSettingUpdate,
-  ProjectRecord,
   ResourceDiagnostic,
-  SessionChange,
   SessionSnapshot,
   SessionTreeNode,
   ThinkingLevel,
@@ -20,10 +17,13 @@ import type {
 } from "../../ipc/session-contract";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { DesktopClientEvent, PiState } from "../desktop-client";
-import { diffStats } from "../components/ai-elements/diff-view";
-import { DesktopClientContext, SessionCacheContext } from "./context";
+import { BrowseStore } from "./BrowseStore";
+import { ChangesStore } from "./ChangesStore";
+import { DesktopClientContext, SessionCacheContext } from "./StoreContext";
 import type { ReviewAnchor } from "../../ipc/review-contract";
-import { displaySessionTitle } from "../models/session-title";
+import { ReviewsStore } from "./ReviewsStore";
+export type { ReviewRunState } from "./ReviewsStore";
+import { SidebarStore } from "./SidebarStore";
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -73,25 +73,13 @@ interface PendingUserMessage {
   parts: UiPart[];
 }
 
-export interface ReviewRunState {
-  operationId: string;
-  workspacePath: string;
-  sessionId: string;
-  threadIds: string[];
-  commentCount: number;
-  status: "running" | "complete" | "error";
-}
-
-export class WindowStore extends Store<Record<string, never>> {
+/** Owns the active conversation and coordinates its Sidebar, Browse, Changes, and Reviews surfaces. */
+export class MainChatStore extends Store<Record<string, never>> {
   readonly process = "renderer" as const;
   piState: PiState = "starting";
   hydrated = false;
   projectPath: string | undefined;
   selectedSessionId: string | undefined;
-  recentProjectPaths: string[] = [];
-  projects: ProjectRecord[] = [];
-  globalSessions: GlobalSessionSummary[] = observable([]);
-  sessionActivityByKey: Record<string, "running" | "unread"> = observable({});
   pendingTrustPath: string | undefined;
   private pendingOpen: { inspectOperationId: string; path: string; newSession: boolean; sessionId?: string; sessionFile?: string } | undefined;
   private activeOpenOperationId: string | undefined;
@@ -101,15 +89,9 @@ export class WindowStore extends Store<Record<string, never>> {
   theme: "system" | "light" | "dark" = "system";
   attachments: Attachment[] = [];
   thinkingExpanded = false;
-  sessionSearch = "";
   commandPane: "changelog" | "tree" | "resources" | undefined;
-  changeExplorerPath: string | null | undefined;
-  workspaceBrowserPath: string | null | undefined;
-  workspaceFiles: string[] = observable([]);
-  workspaceFilesLoading = false;
   pendingUserMessages: PendingUserMessage[] = observable([]);
   draftsBySession: Record<string, string> = observable({});
-  sessionLimitsByProject: Record<string, number> = observable({});
   changedFiles: ChangedFile[] = [];
   changesLoading = false;
   changelogMarkdown = "";
@@ -124,17 +106,12 @@ export class WindowStore extends Store<Record<string, never>> {
   compatibilityDiagnostics: ResourceDiagnostic[] = observable([]);
   activeOperations: string[] = [];
   providerOperations: Record<string, { provider: string; kind: "login" | "logout" }> = observable({});
-  reviewStreamingIds: string[] = observable([]);
-  reviewSubmissionsByOperation: Record<string, string[]> = observable({});
-  reviewRuns: ReviewRunState[] = observable([]);
-  activeReviewThreadId: string | undefined;
   private openRevision = 0;
-  private browseRevision = 0;
   private reopenAfterAgentRestart = false;
   private draftAfterAgentRestart: string | undefined;
   private persistTimer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(props: WindowStore["props"]) {
+  constructor(props: MainChatStore["props"]) {
     super(props);
     this.effect(() => {
       untracked(() => { void this.hydrate(); });
@@ -143,6 +120,68 @@ export class WindowStore extends Store<Record<string, never>> {
       };
     });
   }
+
+  @child
+  get reviewStore() {
+    return createStore(ReviewsStore, {
+      client: this.client,
+      sessionCache: this.sessionCache,
+      context: () => this.sessionContext(),
+      model: () => this.session?.model,
+      startOperation: () => this.startOperation(),
+      finishOperation: (operationId) => this.finishOperation(operationId),
+      reportError: (error) => this.setError(error)
+    });
+  }
+
+  @child
+  get sidebarStore() {
+    return createStore(SidebarStore, {
+      activeSession: () => this.projectPath && this.selectedSessionId
+        ? { workspacePath: this.projectPath, sessionId: this.selectedSessionId }
+        : undefined
+    });
+  }
+
+  @child
+  get browseStore() {
+    return createStore(BrowseStore, {
+      client: this.client,
+      projectPath: () => this.projectPath,
+      reportError: (error) => this.setError(error)
+    });
+  }
+
+  @child
+  get changesStore() {
+    return createStore(ChangesStore, {
+      session: () => this.session,
+      refreshSession: () => this.refreshSession()
+    });
+  }
+
+  // Transitional aliases keep external integrations source-compatible while UI
+  // consumers migrate to the focused child Stores.
+  get reviewStreamingIds() { return this.reviewStore.streamingThreadIds; }
+  get reviewSubmissionsByOperation() { return this.reviewStore.submissionsByOperation; }
+  get reviewRuns() { return this.reviewStore.runs; }
+  get activeReviewThreadId() { return this.reviewStore.activeThreadId; }
+  set activeReviewThreadId(id: string | undefined) { this.reviewStore.activeThreadId = id; }
+  get recentProjectPaths() { return this.sidebarStore.recentProjectPaths; }
+  get projects() { return this.sidebarStore.projects; }
+  get globalSessions() { return this.sidebarStore.sessions; }
+  get sessionActivityByKey() { return this.sidebarStore.activityBySession; }
+  get sessionSearch() { return this.sidebarStore.search; }
+  set sessionSearch(search: string) { this.sidebarStore.search = search; }
+  get sessionLimitsByProject() { return this.sidebarStore.limitsByProject; }
+  get workspaceBrowserPath() { return this.browseStore.path; }
+  set workspaceBrowserPath(path: string | null | undefined) { this.browseStore.path = path; }
+  get workspaceFiles() { return this.browseStore.files; }
+  get workspaceFilesLoading() { return this.browseStore.loading; }
+  get changeExplorerPath() { return this.changesStore.path; }
+  set changeExplorerPath(path: string | null | undefined) { this.changesStore.path = path; }
+  get sessionChanges() { return this.changesStore.changes; }
+  get selectedSessionChange() { return this.changesStore.selected; }
 
   get isBusy() {
     return this.activeOperations.length > 0;
@@ -160,9 +199,8 @@ export class WindowStore extends Store<Record<string, never>> {
     return sessions;
   }
 
-  async readWorkspaceFile(path: string) {
-    if (!this.projectPath) throw new Error("No project is open");
-    return this.client.readWorkspaceFile(this.projectPath, path);
+  readWorkspaceFile(path: string) {
+    return this.browseStore.readFile(path);
   }
 
   get session() {
@@ -200,84 +238,26 @@ export class WindowStore extends Store<Record<string, never>> {
     return this.session?.artifacts.map((artifact) => artifact.value) ?? [];
   }
 
-  get sessionChanges() {
-    const changesByCall = new Map((this.session?.sessionChanges ?? []).map((change) => [change.toolCallId, change]));
-    for (const part of this.canonicalParts) {
-      if (part.kind !== "tool" || part.name !== "edit" || part.state !== "success" || !part.filePath || !part.diff) continue;
-      const toolCallId = part.id.startsWith("tool-") ? part.id.slice(5) : part.id;
-      if (changesByCall.has(toolCallId)) continue;
-      const stats = diffStats(part.diff);
-      changesByCall.set(toolCallId, { id: part.id, toolCallId, toolName: part.name, path: part.filePath, ...stats, diff: part.diff, timestamp: new Date(0).toISOString() });
-    }
-    const changesByFile = new Map<string, SessionChange>();
-    for (const change of changesByCall.values()) {
-      const existing = changesByFile.get(change.path);
-      if (!existing) {
-        changesByFile.set(change.path, { ...change, id: `file:${change.path}` });
-        continue;
-      }
-      changesByFile.set(change.path, {
-        ...existing,
-        additions: existing.additions + change.additions,
-        deletions: existing.deletions + change.deletions,
-        diff: `${existing.diff}\n${change.diff}`,
-        timestamp: change.timestamp
-      });
-    }
-    return [...changesByFile.values()];
-  }
-
-  get reviewThreads() { return this.session?.reviewThreads ?? []; }
-  reviewThreadsForSession(workspacePath: string, sessionId: string) { return this.sessionCache.find(sessionId, workspacePath)?.reviewThreads ?? []; }
-  private submittedReviewThreadIds() { return new Set(Object.values(this.reviewSubmissionsByOperation).flat()); }
-  pendingReviewThreadsForSession(workspacePath: string, sessionId: string) {
-    const submitting = this.submittedReviewThreadIds();
-    return this.reviewThreadsForSession(workspacePath, sessionId).filter((thread) => thread.pending && !submitting.has(thread.id));
-  }
-  chatReviewThreadsForSession(workspacePath: string, sessionId: string) {
-    const submitting = this.submittedReviewThreadIds();
-    return this.reviewThreadsForSession(workspacePath, sessionId).filter((thread) => thread.actionableCommentCount > 0 && !submitting.has(thread.id));
-  }
-  chatReviewCommentCountForSession(workspacePath: string, sessionId: string) {
-    return this.chatReviewThreadsForSession(workspacePath, sessionId).reduce((count, thread) => count + thread.actionableCommentCount, 0);
-  }
-  get openReviewThreads() { return this.reviewThreads.filter((thread) => thread.status === "open"); }
-  get pendingReviewThreads() {
-    const context = this.sessionContext();
-    return context ? this.pendingReviewThreadsForSession(context.workspacePath, context.sessionId) : [];
-  }
-  get pendingReviewCommentCount() {
-    return this.pendingReviewThreads.reduce((count, thread) => count + thread.messages.filter((message) => message.role === "user" && !message.delivered).length, 0);
-  }
-  get chatReviewThreads() {
-    const context = this.sessionContext();
-    return context ? this.chatReviewThreadsForSession(context.workspacePath, context.sessionId) : [];
-  }
-  get chatReviewCommentCount() {
-    const context = this.sessionContext();
-    return context ? this.chatReviewCommentCountForSession(context.workspacePath, context.sessionId) : 0;
-  }
-  reviewThreadStreaming(threadId: string) { return this.reviewStreamingIds.includes(threadId); }
-  get sessionReviewRuns() {
-    if (!this.projectPath || !this.session) return [];
-    return this.reviewRuns.filter((run) => run.workspacePath === this.projectPath && run.sessionId === this.session!.sessionId);
-  }
-  get activeReviewThread() {
-    return this.reviewThreads.find((thread) => thread.id === this.activeReviewThreadId) ?? this.openReviewThreads[0];
-  }
-
-  get selectedSessionChange() {
-    return typeof this.changeExplorerPath === "string"
-      ? this.sessionChanges.find((change) => change.path === this.changeExplorerPath) ?? this.sessionChanges[0]
-      : this.sessionChanges[0];
-  }
+  get reviewThreads() { return this.reviewStore.threads; }
+  reviewThreadsForSession(workspacePath: string, sessionId: string) { return this.reviewStore.threadsForSession(workspacePath, sessionId); }
+  pendingReviewThreadsForSession(workspacePath: string, sessionId: string) { return this.reviewStore.pendingThreadsForSession(workspacePath, sessionId); }
+  chatReviewThreadsForSession(workspacePath: string, sessionId: string) { return this.reviewStore.chatThreadsForSession(workspacePath, sessionId); }
+  chatReviewCommentCountForSession(workspacePath: string, sessionId: string) { return this.reviewStore.chatCommentCountForSession(workspacePath, sessionId); }
+  get openReviewThreads() { return this.reviewStore.openThreads; }
+  get pendingReviewThreads() { return this.reviewStore.pendingThreads; }
+  get pendingReviewCommentCount() { return this.reviewStore.pendingCommentCount; }
+  get chatReviewThreads() { return this.reviewStore.chatThreads; }
+  get chatReviewCommentCount() { return this.reviewStore.chatCommentCount; }
+  reviewThreadStreaming(threadId: string) { return this.reviewStore.threadStreaming(threadId); }
+  get sessionReviewRuns() { return this.reviewStore.sessionRuns; }
+  get activeReviewThread() { return this.reviewStore.activeThread; }
 
   get sessionTitle() {
     return this.session?.sessions.find((item) => item.id === this.session?.sessionId)?.displayTitle || "New chat";
   }
 
   sessionDisplayTitle(title: string) {
-    return displaySessionTitle(title);
+    return this.sidebarStore.sessionDisplayTitle(title);
   }
 
   get isStreaming() {
@@ -301,57 +281,17 @@ export class WindowStore extends Store<Record<string, never>> {
     return this.projectPath ? this.projectSessions(this.projectPath) : [];
   }
 
-  projectSessions(workspacePath: string) {
-    return this.globalSessions
-      .filter((item) => item.workspacePath === workspacePath);
-  }
-
-  sessionActivity(workspacePath: string, sessionId: string) {
-    return this.sessionActivityByKey[this.sessionActivityKey(workspacePath, sessionId)];
-  }
-
+  projectSessions(workspacePath: string) { return this.sidebarStore.projectSessions(workspacePath); }
+  sessionActivity(workspacePath: string, sessionId: string) { return this.sidebarStore.sessionActivity(workspacePath, sessionId); }
   updateSessionActivity(workspacePath: string, sessionId: string, streaming: boolean, wasStreaming = false) {
-    const key = this.sessionActivityKey(workspacePath, sessionId);
-    if (streaming) {
-      this.sessionActivityByKey[key] = "running";
-      return;
-    }
-    if (this.sessionActivityByKey[key] !== "running" && !wasStreaming) return;
-    if (this.isActiveSession(workspacePath, sessionId) || (this.activeOpenTarget?.path === workspacePath && this.activeOpenTarget.sessionId === sessionId)) {
-      delete this.sessionActivityByKey[key];
-    } else {
-      this.sessionActivityByKey[key] = "unread";
-    }
+    const opening = this.activeOpenTarget?.path === workspacePath && this.activeOpenTarget.sessionId === sessionId;
+    this.sidebarStore.updateSessionActivity(workspacePath, sessionId, streaming, wasStreaming, opening);
   }
-
-  private sessionActivityKey(workspacePath: string, sessionId: string) {
-    return `${workspacePath}\u0000${sessionId}`;
-  }
-
-  private markSessionRead(workspacePath: string, sessionId: string) {
-    const key = this.sessionActivityKey(workspacePath, sessionId);
-    if (this.sessionActivityByKey[key] === "unread") delete this.sessionActivityByKey[key];
-  }
-
-  sessionLimit(workspacePath: string) {
-    return this.sessionLimitsByProject[workspacePath] ?? 10;
-  }
-
-  showMoreSessions(workspacePath: string) {
-    this.sessionLimitsByProject[workspacePath] = this.sessionLimit(workspacePath) + 10;
-  }
-
-  get searchedSessions() {
-    const query = this.sessionSearch.trim().toLocaleLowerCase();
-    if (!query) return [];
-    return this.globalSessions
-      .filter((item) => `${item.title}\n${item.workspaceName}\n${item.workspacePath}`.toLocaleLowerCase().includes(query));
-  }
-
-  nameFromPath(path: string) {
-    const normalized = path.replace(/\/+$/, "");
-    return normalized.slice(normalized.lastIndexOf("/") + 1) || path;
-  }
+  private markSessionRead(workspacePath: string, sessionId: string) { this.sidebarStore.markSessionRead(workspacePath, sessionId); }
+  sessionLimit(workspacePath: string) { return this.sidebarStore.sessionLimit(workspacePath); }
+  showMoreSessions(workspacePath: string) { this.sidebarStore.showMoreSessions(workspacePath); }
+  get searchedSessions() { return this.sidebarStore.searchedSessions; }
+  nameFromPath(path: string) { return this.sidebarStore.nameFromPath(path); }
 
   get modelsByProvider() {
     const groups = new Map<string, { name: string; models: ModelOption[] }>();
@@ -415,14 +355,7 @@ export class WindowStore extends Store<Record<string, never>> {
   }
 
   private applyApplicationState(state: ApplicationState) {
-    this.projects.splice(0, this.projects.length, ...state.projects);
-    const names = new Map(state.projects.map((project) => [project.path, project.name]));
-    const renamedSessions = this.globalSessions.map((session) => ({ ...session, workspaceName: names.get(session.workspacePath) ?? session.workspaceName }));
-    this.globalSessions.splice(0, this.globalSessions.length, ...renamedSessions);
-    const registeredPaths = new Set(state.projects.map((project) => project.path));
-    const paths = this.recentProjectPaths.filter((path) => registeredPaths.has(path));
-    for (const project of state.projects) if (!paths.includes(project.path)) paths.push(project.path);
-    this.recentProjectPaths.splice(0, this.recentProjectPaths.length, ...paths);
+    this.sidebarStore.applyApplicationState(state);
   }
 
   private schedulePersist() {
@@ -639,97 +572,45 @@ export class WindowStore extends Store<Record<string, never>> {
   }
 
   async openWorkspaceBrowser(path?: string) {
-    if (!this.projectPath) return;
     this.commandPane = undefined;
-    this.changeExplorerPath = undefined;
+    this.changesStore.close();
     this.activeReviewThreadId = undefined;
-    this.workspaceBrowserPath = path ?? null;
-    this.workspaceFiles.splice(0);
-    const revision = ++this.browseRevision;
-    this.workspaceFilesLoading = true;
-    try {
-      const files = await this.client.listWorkspaceFiles(this.projectPath);
-      if (this.signal.aborted || revision !== this.browseRevision) return;
-      this.workspaceFiles.splice(0, this.workspaceFiles.length, ...files);
-      this.workspaceBrowserPath = path && files.includes(path) ? path : null;
-    } catch (error) {
-      if (revision === this.browseRevision) this.setError(error);
-    } finally {
-      if (revision === this.browseRevision) this.workspaceFilesLoading = false;
-    }
+    await this.browseStore.open(path);
   }
 
   selectWorkspaceFile(path: string) {
-    if (this.workspaceFiles.includes(path)) this.workspaceBrowserPath = path;
+    this.browseStore.select(path);
   }
 
   focusWorkspaceReviewThread(threadId: string) {
     const thread = this.reviewThreads.find((item) => item.id === threadId && item.anchor.view === "file");
     if (!thread || !this.workspaceFiles.includes(thread.anchor.path)) return;
     this.activeReviewThreadId = thread.id;
-    this.workspaceBrowserPath = thread.anchor.path;
+    this.browseStore.focusPath(thread.anchor.path);
   }
 
   closeWorkspaceBrowser() {
-    this.browseRevision += 1;
-    this.workspaceBrowserPath = undefined;
-    this.workspaceFilesLoading = false;
+    this.browseStore.close();
     this.activeReviewThreadId = undefined;
   }
 
-  async createReviewThread(anchor: ReviewAnchor, body: string) {
-    const context = this.sessionContext();
-    if (!context || !body.trim()) return false;
-    try {
-      const thread = await this.client.createReviewThread({ ...context, anchor, body: body.trim() });
-      if (this.signal.aborted) return false;
-      this.sessionCache.upsertReviewThread(thread);
-      return true;
-    } catch (error) { this.setError(error); return false; }
-  }
-
-  async replyReviewThread(threadId: string, body: string) {
-    const context = this.sessionContext();
-    if (!context || !body.trim()) return false;
-    try {
-      const thread = await this.client.replyReviewThread({ ...context, threadId, body: body.trim() });
-      if (this.signal.aborted) return false;
-      this.sessionCache.upsertReviewThread(thread);
-      return true;
-    } catch (error) { this.setError(error); return false; }
-  }
-
-  async resolveReviewThread(threadId: string, resolved = true) {
-    const context = this.sessionContext();
-    if (!context) return false;
-    try {
-      const thread = await this.client.resolveReviewThread({ ...context, threadId, resolved });
-      if (this.signal.aborted) return false;
-      this.sessionCache.upsertReviewThread(thread);
-      return true;
-    } catch (error) { this.setError(error); return false; }
-  }
-
-  private async loadReviewThreads(workspacePath: string, sessionId: string) {
-    try {
-      const threads = await this.client.listReviewThreads(workspacePath, sessionId);
-      if (this.signal.aborted) return;
-      this.sessionCache.applyReviewThreads(workspacePath, sessionId, threads);
-    } catch (error) { if (!this.signal.aborted) this.setError(error); }
-  }
+  createReviewThread(anchor: ReviewAnchor, body: string) { return this.reviewStore.createThread(anchor, body); }
+  replyReviewThread(threadId: string, body: string) { return this.reviewStore.replyThread(threadId, body); }
+  resolveReviewThread(threadId: string, resolved = true) { return this.reviewStore.resolveThread(threadId, resolved); }
+  private loadReviewThreads(workspacePath: string, sessionId: string) { return this.reviewStore.loadThreads(workspacePath, sessionId); }
 
   selectChangeExplorerFile(path: string) {
-    if (this.sessionChanges.some((change) => change.path === path)) this.changeExplorerPath = path;
+    this.changesStore.select(path);
   }
 
   focusReviewThread(threadId: string) {
     const thread = this.reviewThreads.find((item) => item.id === threadId);
     if (!thread) return;
     this.activeReviewThreadId = thread.id;
-    this.changeExplorerPath = thread.anchor.path;
+    this.changesStore.focusPath(thread.anchor.path);
   }
 
-  closeChangeExplorer() { this.changeExplorerPath = undefined; this.activeReviewThreadId = undefined; }
+  closeChangeExplorer() { this.changesStore.close(); this.activeReviewThreadId = undefined; }
 
   private sessionContext() {
     if (!this.projectPath || !this.session) return undefined;
@@ -894,36 +775,8 @@ export class WindowStore extends Store<Record<string, never>> {
     await Promise.all(submissions);
   }
 
-  async sendPendingReviewComments() {
-    const reviews = this.pendingReviewThreads.map((thread) => thread.id);
-    if (reviews.length === 0) return;
-    await this.submitReviewComments(reviews);
-  }
-
-  private async submitReviewComments(threadIds: string[], instruction?: string) {
-    const context = this.sessionContext();
-    if (!context || threadIds.length === 0) return;
-    const operationId = this.startOperation();
-    this.reviewSubmissionsByOperation[operationId] = threadIds;
-    const commentCount = this.reviewThreads
-      .filter((thread) => threadIds.includes(thread.id))
-      .reduce((count, thread) => count + thread.messages.filter((message) => message.role === "user" && !message.delivered).length, 0);
-    this.reviewRuns.push({ operationId, ...context, threadIds: [...threadIds], commentCount: Math.max(commentCount, threadIds.length), status: "running" });
-    try {
-      await this.client.submitReviewThreads({ operationId, ...context, threadIds, instruction, model: this.session?.model ? { provider: this.session.model.provider, id: this.session.model.id } : undefined });
-    } catch (error) {
-      delete this.reviewSubmissionsByOperation[operationId];
-      this.updateReviewRun(operationId, "error");
-      this.setError(error);
-      this.finishOperation(operationId);
-    }
-  }
-
-  private updateReviewRun(operationId: string, status: ReviewRunState["status"]) {
-    const index = this.reviewRuns.findIndex((run) => run.operationId === operationId);
-    if (index < 0 || this.reviewRuns[index]!.status === status) return;
-    this.reviewRuns.splice(index, 1, { ...this.reviewRuns[index]!, status });
-  }
+  sendPendingReviewComments() { return this.reviewStore.submitPending(); }
+  private submitReviewComments(threadIds: string[], instruction?: string) { return this.reviewStore.submitThreads(threadIds, instruction); }
 
   private addPendingUserMessage(operationId: string, workspacePath: string, sessionId: string, text: string, attachments: Attachment[]) {
     const imageParts: UiPart[] = attachments.flatMap((attachment, index) => attachment.kind === "image" ? [{
@@ -1143,11 +996,7 @@ export class WindowStore extends Store<Record<string, never>> {
     this.applyExtensionUiState(snapshot.extensionUi);
     this.pendingOpen = undefined;
     const workspaceName = this.projects.find((project) => project.path === snapshot.workspacePath)?.name ?? this.nameFromPath(snapshot.workspacePath);
-    const otherSessions = this.globalSessions.filter((session) => session.workspacePath !== snapshot.workspacePath);
-    const workspaceSessions = snapshot.sessions.map((session) => ({ ...session, workspacePath: snapshot.workspacePath, workspaceName }));
-    this.globalSessions.splice(0, this.globalSessions.length, ...otherSessions, ...workspaceSessions);
-    this.globalSessions.sort((left, right) => right.modified.localeCompare(left.modified));
-    if (!this.recentProjectPaths.includes(snapshot.workspacePath)) this.recentProjectPaths.push(snapshot.workspacePath);
+    this.sidebarStore.applyWorkspaceSessions(snapshot.workspacePath, workspaceName, snapshot.sessions);
     this.schedulePersist();
     void this.loadReviewThreads(snapshot.workspacePath, snapshot.sessionId);
   }
@@ -1181,6 +1030,7 @@ export class WindowStore extends Store<Record<string, never>> {
   }
 
   receive(event: DesktopClientEvent) {
+    this.reviewStore.receive(event);
     if (event.type === "pi-state-changed") {
       if (event.workspacePath && event.workspacePath !== this.projectPath && event.workspacePath !== this.pendingOpen?.path) return;
       this.piState = event.state;
@@ -1189,7 +1039,6 @@ export class WindowStore extends Store<Record<string, never>> {
         if (this.reopenAfterAgentRestart) this.draftAfterAgentRestart = this.draft;
         this.activeOperations.splice(0);
         for (const operationId of Object.keys(this.providerOperations)) delete this.providerOperations[operationId];
-        for (const operationId of Object.keys(this.reviewSubmissionsByOperation)) delete this.reviewSubmissionsByOperation[operationId];
         this.activeOpenOperationId = undefined;
         this.activeOpenTarget = undefined;
         this.activeOpenExpectsEmpty = false;
@@ -1220,12 +1069,7 @@ export class WindowStore extends Store<Record<string, never>> {
     if (event.type === "review-thread-updated") {
       return;
     }
-    if (event.type === "review-thread-streaming") {
-      const index = this.reviewStreamingIds.indexOf(event.threadId);
-      if (event.streaming && index < 0) this.reviewStreamingIds.push(event.threadId);
-      if (!event.streaming && index >= 0) this.reviewStreamingIds.splice(index, 1);
-      return;
-    }
+    if (event.type === "review-thread-streaming") return;
     if (event.type === "artifact-requested") {
       if (!this.activeOperations.includes(event.operationId) || !this.isActiveSession(event.record.workspacePath, event.record.artifact.sessionId)) return;
       this.artifactRequest = event;
@@ -1252,18 +1096,11 @@ export class WindowStore extends Store<Record<string, never>> {
     }
     if (event.type === "operation-completed") {
       delete this.providerOperations[event.operationId];
-      if (this.reviewSubmissionsByOperation[event.operationId]) {
-        const failed = this.reviewSubmissionsByOperation[event.operationId]!.some((threadId) => this.reviewThreads.find((thread) => thread.id === threadId)?.messages.at(-1)?.status === "error");
-        this.updateReviewRun(event.operationId, failed ? "error" : "complete");
-      }
-      delete this.reviewSubmissionsByOperation[event.operationId];
       this.finishOperation(event.operationId);
       return;
     }
     if (event.type === "operation-failed") {
       if (event.operationId) delete this.providerOperations[event.operationId];
-      if (event.operationId && this.reviewSubmissionsByOperation[event.operationId]) this.updateReviewRun(event.operationId, "error");
-      if (event.operationId) delete this.reviewSubmissionsByOperation[event.operationId];
       if (event.operationId) this.removePendingUserMessage(event.operationId);
       if (event.operationId) this.finishOperation(event.operationId);
       if (event.operationId === this.activeOpenOperationId) {
