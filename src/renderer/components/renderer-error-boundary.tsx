@@ -1,0 +1,54 @@
+import { Component, type ErrorInfo, type ReactNode } from "react";
+
+interface RendererErrorBoundaryProps {
+  children: ReactNode;
+  onReload?: () => void;
+}
+
+interface RendererErrorBoundaryState {
+  error?: Error;
+  componentStack?: string;
+}
+
+function reloadRenderer() {
+  window.location.reload();
+}
+
+function errorDetails(error: Error, componentStack?: string) {
+  const stack = error.stack ?? `${error.name}: ${error.message}`;
+  const reactStack = componentStack?.trim();
+  return reactStack ? `${stack}\n\nReact component stack:\n${reactStack}` : stack;
+}
+
+export class RendererErrorBoundary extends Component<RendererErrorBoundaryProps, RendererErrorBoundaryState> {
+  state: RendererErrorBoundaryState = {};
+
+  static getDerivedStateFromError(error: Error): RendererErrorBoundaryState {
+    return { error };
+  }
+
+  componentDidCatch(_error: Error, info: ErrorInfo) {
+    this.setState({ componentStack: info.componentStack ?? undefined });
+  }
+
+  render() {
+    const { error } = this.state;
+    if (!error) return this.props.children;
+
+    return (
+      <main className="renderer-crash" role="alert">
+        <section className="renderer-crash-card">
+          <div className="renderer-crash-mark" aria-hidden="true">!</div>
+          <p className="renderer-crash-eyebrow">Cake encountered an error</p>
+          <h1>The renderer crashed</h1>
+          <p>Your project and session data are safe. Reload Cake to restart the interface.</p>
+          <button type="button" autoFocus onClick={this.props.onReload ?? reloadRenderer}>Reload Cake</button>
+          <details open>
+            <summary>Error details</summary>
+            <pre>{errorDetails(error, this.state.componentStack)}</pre>
+          </details>
+        </section>
+      </main>
+    );
+  }
+}
