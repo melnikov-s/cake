@@ -160,8 +160,6 @@ export class MainChatStore extends Store<Record<string, never>> {
     });
   }
 
-  // Transitional aliases keep external integrations source-compatible while UI
-  // consumers migrate to the focused child Stores.
   get reviewStreamingIds() { return this.reviewStore.streamingThreadIds; }
   get reviewSubmissionsByOperation() { return this.reviewStore.submissionsByOperation; }
   get reviewRuns() { return this.reviewStore.runs; }

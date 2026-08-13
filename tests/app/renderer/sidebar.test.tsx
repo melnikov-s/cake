@@ -5,7 +5,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "../../../src/renderer/app";
-import type { WindowStore } from "../../../src/renderer/stores/WindowStore";
+import type { MainChatStore } from "../../../src/renderer/stores/MainChatStore";
 
 describe("Sidebar projects", () => {
   let container: HTMLDivElement;
@@ -51,7 +51,7 @@ describe("Sidebar projects", () => {
       openSession: vi.fn(),
       renameSession: vi.fn(),
       showMoreSessions: vi.fn()
-    } as unknown as WindowStore;
+    } as unknown as MainChatStore;
 
     act(() => root.render(<Sidebar store={store} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
 
@@ -94,7 +94,7 @@ describe("Sidebar projects", () => {
       openSession: vi.fn(),
       renameSession: vi.fn(),
       showMoreSessions: vi.fn()
-    } as unknown as WindowStore;
+    } as unknown as MainChatStore;
 
     act(() => root.render(<Sidebar store={store} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
 
@@ -109,7 +109,7 @@ describe("Sidebar projects", () => {
       sessionActivity: vi.fn(() => undefined), chatReviewCommentCountForSession: (_path: string, id: string) => id === "pending" ? 1 : 0,
       sessionDisplayTitle,
       nameFromPath: () => "cake", setSessionSearch: vi.fn(), startOneOffChat: vi.fn(), chooseProject: vi.fn(), startNewSession: vi.fn(), switchProject: vi.fn(), openSession: vi.fn(), renameSession: vi.fn(), showMoreSessions: vi.fn()
-    } as unknown as WindowStore;
+    } as unknown as MainChatStore;
 
     act(() => root.render(<Sidebar store={store} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
 
@@ -127,7 +127,7 @@ describe("Sidebar projects", () => {
       sessionDisplayTitle,
       nameFromPath: (path: string) => path.split("/").at(-1)!, setSessionSearch: vi.fn(), startOneOffChat: vi.fn(), chooseProject: vi.fn(),
       startNewSession, switchProject, openSession: vi.fn(), renameSession: vi.fn(), showMoreSessions: vi.fn()
-    } as unknown as WindowStore;
+    } as unknown as MainChatStore;
 
     act(() => root.render(<Sidebar store={store} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="New chat in second"]')!.click());

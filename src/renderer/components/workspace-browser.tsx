@@ -3,7 +3,7 @@ import { Fragment, useEffect, useMemo, useState, type CSSProperties, type MouseE
 import { observer } from "r-state-tree/react";
 import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { ReviewThreadModel } from "../models/review-thread";
-import type { WindowStore } from "../stores/WindowStore";
+import type { MainChatStore } from "../stores/MainChatStore";
 import { ReviewComposer, ReviewThreadCard } from "./change-explorer";
 import { Button } from "./ui/button";
 
@@ -81,7 +81,7 @@ function sourceAnchor(path: string, lines: string[], startIndex: number, endInde
   };
 }
 
-const SourceFile = observer(function SourceFile({ path, store }: { path: string; store: WindowStore }) {
+const SourceFile = observer(function SourceFile({ path, store }: { path: string; store: MainChatStore }) {
   const [source, setSource] = useState<string>();
   const [tokens, setTokens] = useState<HighlightTokens>();
   const [error, setError] = useState<string>();
@@ -137,7 +137,7 @@ function threadPreview(thread: ReviewThreadModel) {
   return body.length > 72 ? `${body.slice(0, 72)}…` : body;
 }
 
-export const WorkspaceBrowser = observer(function WorkspaceBrowser({ store }: { store: WindowStore }) {
+export const WorkspaceBrowser = observer(function WorkspaceBrowser({ store }: { store: MainChatStore }) {
   const tree = useMemo(() => projectTree(store.workspaceFiles), [store.workspaceFiles]);
   const path = typeof store.workspaceBrowserPath === "string" ? store.workspaceBrowserPath : undefined;
   const threads = store.reviewThreads.filter((thread) => thread.anchor.view === "file").sort((left, right) => Number(left.status === "resolved") - Number(right.status === "resolved"));

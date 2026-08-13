@@ -3,7 +3,7 @@ import { reaction } from "r-state-tree";
 import type { SessionPreview, SessionSnapshot } from "../../../../src/ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../../../../src/renderer/desktop-client";
 import { mountRootStore } from "../../../../src/renderer/stores/RootStore";
-import type { WindowStore } from "../../../../src/renderer/stores/WindowStore";
+import type { MainChatStore } from "../../../../src/renderer/stores/MainChatStore";
 
 const snapshot: SessionSnapshot = {
   workspacePath: "/project",
@@ -77,10 +77,10 @@ async function flush() {
 
 function mountTestStore(client: DesktopClient) {
   const root = mountRootStore(client);
-  return { root, store: root.windowStore };
+  return { root, store: root.mainChatStore };
 }
 
-async function openSnapshot(store: WindowStore, desktop: ReturnType<typeof createDesktopClient>, nextSnapshot = snapshot) {
+async function openSnapshot(store: MainChatStore, desktop: ReturnType<typeof createDesktopClient>, nextSnapshot = snapshot) {
   await store.chooseProject();
   const inspectId = store.activeOperations.at(-1)!;
   desktop.emit({ type: "workspace-inspected", operationId: inspectId, path: nextSnapshot.workspacePath, trustRequired: false });
@@ -88,7 +88,7 @@ async function openSnapshot(store: WindowStore, desktop: ReturnType<typeof creat
   desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot: nextSnapshot });
 }
 
-describe("WindowStore", () => {
+describe("MainChatStore", () => {
   it("inserts files chosen from the attachment browser as visible path mentions", async () => {
     const desktop = createDesktopClient();
     vi.mocked(desktop.client.chooseAttachments).mockResolvedValue([

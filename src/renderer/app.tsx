@@ -26,7 +26,6 @@ import { SlashCommandCombobox } from "@/components/slash-command-combobox";
 import type { CompatibilityResource, UiPart } from "../ipc/session-contract";
 import { MainChatStore, type UiRequestState } from "./stores/MainChatStore";
 import type { ReviewRunState } from "./stores/ReviewsStore";
-type WindowStore = MainChatStore;
 
 function Icon({ children, size = 16 }: { children: ReactNode; size?: number }) {
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
@@ -51,7 +50,7 @@ const CheckIcon = () => <Icon size={15}><path d="m5 12 4 4L19 6" /></Icon>;
 const ChangesIcon = () => <Icon size={15}><path d="M4 7h10M4 17h10M17 4v6M14 7l3 3 3-3M17 14v6M14 17l3 3 3-3" /></Icon>;
 const BrowseIcon = () => <Icon size={15}><path d="M4 5.5h6l1.8 2H20v11H4z" /><path d="M4 9h16" /></Icon>;
 
-function CommandPane({ store }: { store: WindowStore }) {
+function CommandPane({ store }: { store: MainChatStore }) {
   if (!store.commandPane || !store.session) return null;
   const title = store.commandPane === "tree" ? "Session tree" : store.commandPane === "changelog" ? "Pi changelog" : "Pi resources";
   const resourceGroups = store.commandPane === "resources"
@@ -72,7 +71,7 @@ function CommandPane({ store }: { store: WindowStore }) {
   );
 }
 
-function AssistantTextMessage({ part, store }: { part: Extract<UiPart, { kind: "text" }>; store: WindowStore }) {
+function AssistantTextMessage({ part, store }: { part: Extract<UiPart, { kind: "text" }>; store: MainChatStore }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -97,7 +96,7 @@ function AssistantTextMessage({ part, store }: { part: Extract<UiPart, { kind: "
   );
 }
 
-const TranscriptPart = observer(function TranscriptPart({ part, store }: { part: UiPart; store: WindowStore }) {
+const TranscriptPart = observer(function TranscriptPart({ part, store }: { part: UiPart; store: MainChatStore }) {
   if (part.kind === "text") {
     if (part.role === "assistant") return <AssistantTextMessage part={part} store={store} />;
     return (
@@ -137,7 +136,7 @@ function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
   return items;
 }
 
-function ActivityGroup({ parts, store }: { parts: UiPart[]; store: WindowStore }) {
+function ActivityGroup({ parts, store }: { parts: UiPart[]; store: MainChatStore }) {
   const logRef = useRef<HTMLDivElement>(null);
   const tools = parts.filter((part) => part.kind === "tool").length;
   const reasoningParts = parts.filter((part): part is Extract<UiPart, { kind: "reasoning" }> => part.kind === "reasoning");
@@ -173,7 +172,7 @@ function AssistantLoadingIndicator() {
   );
 }
 
-function ReviewRunMessage({ run, store }: { run: ReviewRunState; store: WindowStore }) {
+function ReviewRunMessage({ run, store }: { run: ReviewRunState; store: MainChatStore }) {
   const count = run.commentCount;
   const label = run.status === "running"
     ? `Replying to ${count} ${count === 1 ? "comment" : "comments"}`
@@ -193,7 +192,7 @@ const TranscriptList = forwardRef<HTMLDivElement, ComponentProps<"div">>(functio
   return <div ref={ref} className={`transcript-list ${className ?? ""}`} aria-label="Conversation" {...props} />;
 });
 
-export const Transcript = observer(function Transcript({ store, sessionId }: { store: WindowStore; sessionId: string }) {
+export const Transcript = observer(function Transcript({ store, sessionId }: { store: MainChatStore; sessionId: string }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const reviewRuns = store.sessionReviewRuns ?? [];
   const latestUserIndex = store.visibleParts.findLastIndex((part) => (part.kind === "text" && part.role === "user") || (part.kind === "attachment" && part.attachmentKind === "image"));
@@ -253,12 +252,12 @@ export const Transcript = observer(function Transcript({ store, sessionId }: { s
   );
 });
 
-const ArtifactsPanel = observer(function ArtifactsPanel({ store }: { store: WindowStore }) {
+const ArtifactsPanel = observer(function ArtifactsPanel({ store }: { store: MainChatStore }) {
   if (store.artifacts.length === 0) return null;
   return <section className="artifacts-panel" aria-label="Session artifacts"><header><strong>Artifacts</strong><Button variant="ghost" size="sm" onClick={() => { void store.exportArtifacts().then(downloadArtifactMarkdown); }}>Export Markdown</Button></header>{store.artifacts.map((record) => { const request = store.artifactRequest?.record.artifact.id === record.artifact.id ? store.artifactRequest : undefined; return <ArtifactHost key={record.artifact.id} record={record} requested={Boolean(request)} onSubmit={(value) => void store.respondToArtifact(value)} onCancel={() => void store.respondToArtifact(undefined, true)} />; })}</section>;
 });
 
-function UiDialog({ request, store }: { request: UiRequestState; store: WindowStore }) {
+function UiDialog({ request, store }: { request: UiRequestState; store: MainChatStore }) {
   const [value, setValue] = useState(request.kind === "confirm" ? "true" : request.initialValue ?? "");
   const submit = (event: FormEvent) => { event.preventDefault(); void store.respondToUi(value); };
   return (
@@ -279,7 +278,7 @@ function UiDialog({ request, store }: { request: UiRequestState; store: WindowSt
   );
 }
 
-export const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, onToggle, settingsOpen }: { store: WindowStore; onOpenSettings: () => void; onOpenChat: () => void; onToggle: () => void; settingsOpen: boolean }) {
+export const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, onToggle, settingsOpen }: { store: MainChatStore; onOpenSettings: () => void; onOpenChat: () => void; onToggle: () => void; settingsOpen: boolean }) {
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() => new Set());
   const searchInput = useRef<HTMLInputElement>(null);
@@ -351,7 +350,7 @@ export const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpen
   );
 });
 
-const ComposerPanel = observer(function ComposerPanel({ store }: { store: WindowStore }) {
+const ComposerPanel = observer(function ComposerPanel({ store }: { store: MainChatStore }) {
   const selectedModel = store.session?.model;
   const usage = store.session?.usage;
   const context = usage?.context;
@@ -404,7 +403,7 @@ function SettingsToggle({ label, description, checked, onChange }: { label: stri
   return <div className="settings-field"><span>{label}<small>{description}</small></span><button className="settings-switch" type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)}><i /></button></div>;
 }
 
-export const SettingsPage = observer(function SettingsPage({ store }: { store: WindowStore }) {
+export const SettingsPage = observer(function SettingsPage({ store }: { store: MainChatStore }) {
   const selectedModel = store.session?.model;
   const pi = store.session?.piSettings;
   const authNotice = store.parts.find((part) => part.kind === "notice" && part.id === "auth-status");

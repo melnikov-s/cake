@@ -5,7 +5,7 @@ import React, { act, forwardRef, useEffect, useImperativeHandle } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UiPart } from "../../../src/ipc/session-contract";
-import type { WindowStore } from "../../../src/renderer/stores/WindowStore";
+import type { MainChatStore } from "../../../src/renderer/stores/MainChatStore";
 
 const { scrollToIndex, virtualizedLifecycle, virtualizedProps } = vi.hoisted(() => ({
   scrollToIndex: vi.fn(),
@@ -35,7 +35,7 @@ vi.mock("@/components/ai-elements/conversation", () => ({
 import { Transcript } from "../../../src/renderer/app";
 
 function storeWith(parts: UiPart[], isStreaming = false) {
-  return { parts, visibleParts: parts, projectName: "Cake", error: undefined, thinkingExpanded: false, isStreaming, toggleThinking: vi.fn(), forkAt: vi.fn() } as unknown as WindowStore;
+  return { parts, visibleParts: parts, projectName: "Cake", error: undefined, thinkingExpanded: false, isStreaming, toggleThinking: vi.fn(), forkAt: vi.fn() } as unknown as MainChatStore;
 }
 
 describe("Transcript scrolling", () => {

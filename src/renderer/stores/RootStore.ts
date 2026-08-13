@@ -29,11 +29,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     return createStore(MainChatStore);
   }
 
-  /** @deprecated Use mainChatStore. */
-  get windowStore() {
-    return this.mainChatStore;
-  }
-
   constructor(props: RootStore["props"]) {
     super(props);
     this.effect(() => this.client.subscribe((event) => this.receive(event)));

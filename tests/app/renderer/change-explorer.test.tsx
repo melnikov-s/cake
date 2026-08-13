@@ -5,7 +5,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionChange } from "../../../src/ipc/session-contract";
-import type { WindowStore } from "../../../src/renderer/stores/WindowStore";
+import type { MainChatStore } from "../../../src/renderer/stores/MainChatStore";
 
 vi.mock("@streamdown/code", () => ({
   code: {
@@ -53,7 +53,7 @@ describe("ChangeExplorer", () => {
       resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(),
       closeChangeExplorer: vi.fn()
-    } as unknown as WindowStore;
+    } as unknown as MainChatStore;
 
     act(() => root.render(<ChangeExplorer store={store} />));
 
@@ -80,7 +80,7 @@ describe("ChangeExplorer", () => {
       selectChangeExplorerFile: vi.fn(),
       closeChangeExplorer: vi.fn(),
       readWorkspaceFile
-    } as unknown as WindowStore;
+    } as unknown as MainChatStore;
 
     act(() => root.render(<ChangeExplorer store={store} />));
     expect(container.querySelector('[aria-label="Full session changes to src/app.ts"]')).not.toBeNull();
@@ -104,7 +104,7 @@ describe("ChangeExplorer", () => {
       sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review", reviewThreads: [],
       reviewThreadStreaming: vi.fn(() => false), createReviewThread, replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn(), readWorkspaceFile: vi.fn(async () => "const fresh = true;\nconst unchanged = true;")
-    } as unknown as WindowStore;
+    } as unknown as MainChatStore;
     act(() => root.render(<ChangeExplorer store={store} />));
     await act(async () => container.querySelector<HTMLButtonElement>('.change-explorer-view-toggle button:last-child')!.click());
 
@@ -130,7 +130,7 @@ describe("ChangeExplorer", () => {
       sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review", reviewThreads: [],
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn()
-    } as unknown as WindowStore;
+    } as unknown as MainChatStore;
     act(() => root.render(<ChangeExplorer store={store} />));
     const add = container.querySelector<HTMLButtonElement>('.review-gutter button[aria-label="Comment on line 1"]')!;
     act(() => add.click());
@@ -143,7 +143,7 @@ describe("ChangeExplorer", () => {
       sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review", reviewThreads: [],
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn()
-    } as unknown as WindowStore;
+    } as unknown as MainChatStore;
     const escaped = vi.fn();
     window.addEventListener("keydown", escaped);
     act(() => root.render(<ChangeExplorer store={store} />));
@@ -163,7 +163,7 @@ describe("ChangeExplorer", () => {
       sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review", reviewThreads: [],
       reviewThreadStreaming: vi.fn(() => false), createReviewThread, replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn()
-    } as unknown as WindowStore;
+    } as unknown as MainChatStore;
     act(() => root.render(<ChangeExplorer store={store} />));
     act(() => container.querySelector<HTMLButtonElement>('.review-gutter button[aria-label="Comment on line 1"]')!.click());
     const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Review comment"]')!;
@@ -205,7 +205,7 @@ describe("ChangeExplorer", () => {
       sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review", reviewThreads: [thread],
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread,
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn()
-    } as unknown as WindowStore;
+    } as unknown as MainChatStore;
     act(() => root.render(<ChangeExplorer store={store} />));
 
     act(() => container.querySelector<HTMLButtonElement>(".review-thread header button")!.click());
@@ -231,7 +231,7 @@ describe("ChangeExplorer", () => {
       sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review", reviewThreads: [thread],
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => true), replyReviewThread, resolveReviewThread: vi.fn(async () => true),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn(), focusReviewThread: vi.fn()
-    } as unknown as WindowStore;
+    } as unknown as MainChatStore;
     act(() => root.render(<ChangeExplorer store={store} />));
 
     const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Reply to review thread"]')!;
@@ -265,7 +265,7 @@ describe("ChangeExplorer", () => {
       pendingReviewThreads: [{ id: "review-1" }], pendingReviewCommentCount: 2,
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer, sendPendingReviewComments
-    } as unknown as WindowStore;
+    } as unknown as MainChatStore;
     act(() => root.render(<ChangeExplorer store={store} />));
 
     act(() => container.querySelector<HTMLButtonElement>(".change-explorer-actions button")!.click());
@@ -287,7 +287,7 @@ describe("ChangeExplorer", () => {
       sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review", reviewThreads: [thread], pendingReviewThreads: [thread], pendingReviewCommentCount: 1,
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn(), sendPendingReviewComments: vi.fn(async () => undefined), focusReviewThread
-    } as unknown as WindowStore;
+    } as unknown as MainChatStore;
     act(() => root.render(<ChangeExplorer store={store} />));
 
     expect(container.querySelector(".review-navigation")).toBeNull();
@@ -308,7 +308,7 @@ describe("ChangeExplorer", () => {
       reviewThreads: [makeThread("resolved-1", "resolved", "Finished comment"), makeThread("open-1", "open", "Active comment")], pendingReviewThreads: [], pendingReviewCommentCount: 0,
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn(), focusReviewThread: vi.fn()
-    } as unknown as WindowStore;
+    } as unknown as MainChatStore;
     act(() => root.render(<ChangeExplorer store={store} />));
 
     const rows = [...container.querySelectorAll<HTMLButtonElement>(".review-thread-index li button")];

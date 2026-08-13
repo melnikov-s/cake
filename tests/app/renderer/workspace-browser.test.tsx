@@ -4,7 +4,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { WindowStore } from "../../../src/renderer/stores/WindowStore";
+import type { MainChatStore } from "../../../src/renderer/stores/MainChatStore";
 
 vi.mock("@streamdown/code", () => ({
   code: {
@@ -39,7 +39,7 @@ describe("WorkspaceBrowser", () => {
       projectName: "cake", reviewThreads: [], pendingReviewCommentCount: 0, activeReviewThread: undefined,
       readWorkspaceFile: vi.fn(async () => "const cake = true;\nexport { cake };") , selectWorkspaceFile, closeWorkspaceBrowser: vi.fn(),
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => true), replyReviewThread: vi.fn(async () => true), resolveReviewThread: vi.fn(async () => true), focusWorkspaceReviewThread: vi.fn(), sendPendingReviewComments: vi.fn()
-    } as unknown as WindowStore;
+    } as unknown as MainChatStore;
 
     await act(async () => root.render(<WorkspaceBrowser store={store} />));
 
@@ -58,7 +58,7 @@ describe("WorkspaceBrowser", () => {
       projectName: "cake", reviewThreads: [], pendingReviewCommentCount: 0, activeReviewThread: undefined,
       readWorkspaceFile: vi.fn(async () => "const cake = true;"), selectWorkspaceFile: vi.fn(), closeWorkspaceBrowser: vi.fn(),
       reviewThreadStreaming: vi.fn(() => false), createReviewThread, replyReviewThread: vi.fn(async () => true), resolveReviewThread: vi.fn(async () => true), focusWorkspaceReviewThread: vi.fn(), sendPendingReviewComments: vi.fn()
-    } as unknown as WindowStore;
+    } as unknown as MainChatStore;
     await act(async () => root.render(<WorkspaceBrowser store={store} />));
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="Ask about line 1"]')!.click());
     const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Review comment"]')!;

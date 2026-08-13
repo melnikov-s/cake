@@ -5,7 +5,7 @@ import type { SessionChange } from "../../ipc/session-contract";
 import type { ReviewAnchor, ReviewPoint } from "../../ipc/review-contract";
 import { parseDiff } from "./ai-elements/diff-view";
 import { Button } from "./ui/button";
-import type { WindowStore } from "../stores/WindowStore";
+import type { MainChatStore } from "../stores/MainChatStore";
 import type { ReviewThreadModel } from "../models/review-thread";
 
 type HighlightResult = ReturnType<typeof code.highlight>;
@@ -125,7 +125,7 @@ export function ReviewComposer({ anchor, floating, position, onSave, onCancel }:
   </form>;
 }
 
-export const ReviewThreadCard = observer(function ReviewThreadCard({ thread, store, onFocus }: { thread: ReviewThreadModel; store: WindowStore; onFocus?: () => void }) {
+export const ReviewThreadCard = observer(function ReviewThreadCard({ thread, store, onFocus }: { thread: ReviewThreadModel; store: MainChatStore; onFocus?: () => void }) {
   const [reply, setReply] = useState("");
   const [replying, setReplying] = useState(false);
   const [expanded, setExpanded] = useState(thread.status === "open");
@@ -170,7 +170,7 @@ function scrollToReviewThread(threadId: string) {
   [...document.querySelectorAll<HTMLElement>("[data-review-thread-id]")].find((element) => element.dataset.reviewThreadId === threadId)?.scrollIntoView({ block: "center" });
 }
 
-const HighlightedDiff = observer(function HighlightedDiff({ change, store }: { change: SessionChange; store: WindowStore }) {
+const HighlightedDiff = observer(function HighlightedDiff({ change, store }: { change: SessionChange; store: MainChatStore }) {
   const lines = useMemo(() => parseDiff(change.diff), [change.diff]);
   const source = useMemo(() => lines.map((line) => line.kind === "meta" ? "" : line.content).join("\n"), [lines]);
   const [tokens, setTokens] = useState<HighlightTokens>();
@@ -219,7 +219,7 @@ const HighlightedDiff = observer(function HighlightedDiff({ change, store }: { c
     {composer?.floating && <ReviewComposer anchor={composer.anchor} floating position={composer.position} onSave={(body) => store.createReviewThread(composer.anchor, body)} onCancel={() => { setComposer(undefined); window.getSelection()?.removeAllRanges(); }} />}</div>;
 });
 
-function FullFile({ change, store }: { change: SessionChange; store: WindowStore }) {
+function FullFile({ change, store }: { change: SessionChange; store: MainChatStore }) {
   const [source, setSource] = useState<string>();
   const [tokens, setTokens] = useState<HighlightTokens>();
   const [error, setError] = useState<string>();
@@ -304,7 +304,7 @@ function FullFile({ change, store }: { change: SessionChange; store: WindowStore
   })}{removedRows(sourceLines.length + 1)}{composer?.floating && <ReviewComposer anchor={composer.anchor} floating position={composer.position} onSave={(body) => store.createReviewThread(composer.anchor, body)} onCancel={() => setComposer(undefined)} />}</div>;
 }
 
-export const ChangeExplorer = observer(function ChangeExplorer({ store }: { store: WindowStore }) {
+export const ChangeExplorer = observer(function ChangeExplorer({ store }: { store: MainChatStore }) {
   const [view, setView] = useState<"diff" | "file">("diff");
   const change = store.selectedSessionChange;
   const tree = useMemo(() => fileTree(store.sessionChanges), [store.sessionChanges]);
