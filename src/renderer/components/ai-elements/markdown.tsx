@@ -14,22 +14,25 @@ const components: Components = {
 
 const mermaid = createMermaidPlugin({ config: { securityLevel: "strict" } });
 const plugins = { code, math, mermaid };
+const staticBlocks: NonNullable<StreamdownProps["parseMarkdownIntoBlocksFn"]> = () => [];
 
-type MarkdownProps = Omit<StreamdownProps, "children" | "components" | "isAnimating" | "mode" | "plugins" | "skipHtml"> & {
+type MarkdownProps = Omit<StreamdownProps, "children" | "components" | "isAnimating" | "mode" | "parseMarkdownIntoBlocksFn" | "plugins" | "skipHtml"> & {
   children: string;
 };
 
 export function Markdown({ children, className, ...props }: MarkdownProps) {
   return (
     <Streamdown
+      {...props}
       className={cn("markdown-content min-w-0 max-w-full break-words [overflow-wrap:anywhere]", className)}
       components={components}
-      // Streaming mode mirrors parsed blocks through passive React state. Store updates already drive rendering.
+      // Streamdown mirrors parsed blocks through passive state even in static mode. The static render path does not
+      // consume those blocks, so keep their identity stable and let Store updates drive the rendered source directly.
       isAnimating={false}
       mode="static"
+      parseMarkdownIntoBlocksFn={staticBlocks}
       plugins={plugins}
       skipHtml
-      {...props}
     >
       {children}
     </Streamdown>
