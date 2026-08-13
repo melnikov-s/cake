@@ -1,11 +1,33 @@
 /**
  * @vitest-environment jsdom
  */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "../../../src/renderer/app";
 import type { MainChatStore } from "../../../src/renderer/stores/MainChatStore";
+
+function sidebarProps(store: MainChatStore) {
+  const legacy = store as unknown as Record<string, any>;
+  return {
+    store: {
+      get search() { return legacy.sessionSearch; },
+      set search(value) { legacy.sessionSearch = value; },
+      recentProjectPaths: legacy.recentProjectPaths,
+      projects: legacy.projects,
+      searchedSessions: legacy.searchedSessions,
+      projectSessions: legacy.projectSessions,
+      sessionLimit: legacy.sessionLimit,
+      showMoreSessions: legacy.showMoreSessions,
+      nameFromPath: legacy.nameFromPath,
+      sessionActivity: legacy.sessionActivity,
+      sessionDisplayTitle: legacy.sessionDisplayTitle
+    } as any,
+    chat: store,
+    reviews: { chatCommentCountForSession: legacy.chatReviewCommentCountForSession } as any
+  };
+}
 
 describe("Sidebar projects", () => {
   let container: HTMLDivElement;
@@ -53,7 +75,7 @@ describe("Sidebar projects", () => {
       showMoreSessions: vi.fn()
     } as unknown as MainChatStore;
 
-    act(() => root.render(<Sidebar store={store} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
+    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
 
     const projectToggle = container.querySelector<HTMLButtonElement>('[aria-label="Collapse Cake"]')!;
     expect(projectToggle.getAttribute("aria-expanded")).toBe("true");
@@ -96,7 +118,7 @@ describe("Sidebar projects", () => {
       showMoreSessions: vi.fn()
     } as unknown as MainChatStore;
 
-    act(() => root.render(<Sidebar store={store} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
+    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
 
     expect(container.querySelector('[data-session-id="running"] [aria-label="Running"]')).not.toBeNull();
     expect(container.querySelector('[data-session-id="ready"] [aria-label="Ready, unread"]')).not.toBeNull();
@@ -111,7 +133,7 @@ describe("Sidebar projects", () => {
       nameFromPath: () => "cake", setSessionSearch: vi.fn(), startOneOffChat: vi.fn(), chooseProject: vi.fn(), startNewSession: vi.fn(), switchProject: vi.fn(), openSession: vi.fn(), renameSession: vi.fn(), showMoreSessions: vi.fn()
     } as unknown as MainChatStore;
 
-    act(() => root.render(<Sidebar store={store} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
+    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
 
     expect(container.querySelector('[data-session-id="pending"]')?.textContent).toContain("1 comment");
     expect(container.querySelector('[data-session-id="answered"]')?.textContent).not.toContain("comments");
@@ -129,7 +151,7 @@ describe("Sidebar projects", () => {
       startNewSession, switchProject, openSession: vi.fn(), renameSession: vi.fn(), showMoreSessions: vi.fn()
     } as unknown as MainChatStore;
 
-    act(() => root.render(<Sidebar store={store} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
+    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="New chat in second"]')!.click());
 
     expect(startNewSession).toHaveBeenCalledWith("/work/second");

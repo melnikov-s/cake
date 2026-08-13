@@ -1,80 +1,34 @@
-import { Store, child, createStore, observable, untracked } from "r-state-tree";
+import { Store, observable, untracked } from "r-state-tree";
 import type {
-  Attachment,
   ApplicationState,
-  ChangedFile,
-  ExtensionUiEvent,
-  ExtensionUiState,
-  FileSuggestion,
-  ModelOption,
-  PiSettingUpdate,
-  ResourceDiagnostic,
   SessionSnapshot,
   SessionTreeNode,
-  ThinkingLevel,
-  UiPart,
   WindowViewState
 } from "../../ipc/session-contract";
-import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { DesktopClientEvent, PiState } from "../desktop-client";
-import { BrowseStore } from "./BrowseStore";
-import { ChangesStore } from "./ChangesStore";
+import type { BrowseStore } from "./BrowseStore";
+import type { ChangesStore } from "./ChangesStore";
 import { DesktopClientContext, SessionCacheContext } from "./StoreContext";
-import type { ReviewAnchor } from "../../ipc/review-contract";
-import { ReviewsStore } from "./ReviewsStore";
-export type { ReviewRunState } from "./ReviewsStore";
-import { SidebarStore } from "./SidebarStore";
+import type { ReviewsStore } from "./ReviewsStore";
+import type { SidebarStore } from "./SidebarStore";
+import type { SettingsStore } from "./SettingsStore";
+import type { ExtensionUiStore } from "./ExtensionUiStore";
+import type { ArtifactInteractionStore } from "./ArtifactInteractionStore";
+import type { MessageComposerStore } from "./MessageComposerStore";
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error ?? new Error("Could not read the pasted image"));
-    reader.onload = () => {
-      const result = String(reader.result ?? "");
-      const data = result.slice(result.indexOf(",") + 1);
-      if (data.length > 20_000_000) reject(new Error(`${file.name || "Pasted image"} is too large (15 MB maximum)`));
-      else resolve(data);
-    };
-    reader.readAsDataURL(file);
-  });
+export interface MainChatStoreProps {
+  sidebar(): SidebarStore;
+  browse(): BrowseStore;
+  changes(): ChangesStore;
+  reviews(): ReviewsStore;
+  settings(): SettingsStore;
+  extensionUi(): ExtensionUiStore;
+  artifacts(): ArtifactInteractionStore;
+  composer(): MessageComposerStore;
 }
 
-export interface UiRequestState {
-  operationId: string;
-  uiRequestId: string;
-  kind: "confirm" | "text" | "secret" | "select" | "manual_code" | "editor";
-  title: string;
-  message: string;
-  placeholder?: string;
-  initialValue?: string;
-  multiline?: boolean;
-  options?: Array<{ id: string; label: string }>;
-}
-
-export interface ExtensionNotification {
-  id: string;
-  message: string;
-  tone: "info" | "warning" | "error";
-}
-
-export interface ArtifactRequestState {
-  operationId: string;
-  artifactRequestId: string;
-  record: ArtifactRecord;
-}
-
-interface PendingUserMessage {
-  operationId: string;
-  workspacePath: string;
-  sessionId: string;
-  canonicalPartCount: number;
-  expectedOccurrence: number;
-  text: string;
-  parts: UiPart[];
-}
-
-/** Owns the active conversation and coordinates its Sidebar, Browse, Changes, and Reviews surfaces. */
-export class MainChatStore extends Store<Record<string, never>> {
+/** Owns the active conversation, composer, and session interaction workflow. */
+export class MainChatStore extends Store<MainChatStoreProps> {
   readonly process = "renderer" as const;
   piState: PiState = "starting";
   hydrated = false;
@@ -86,26 +40,13 @@ export class MainChatStore extends Store<Record<string, never>> {
   private activeOpenTarget: { path: string; sessionId?: string; newSession: boolean } | undefined;
   private activeOpenExpectsEmpty = false;
   draft = "";
-  theme: "system" | "light" | "dark" = "system";
-  attachments: Attachment[] = [];
   thinkingExpanded = false;
   commandPane: "changelog" | "tree" | "resources" | undefined;
-  pendingUserMessages: PendingUserMessage[] = observable([]);
   draftsBySession: Record<string, string> = observable({});
-  changedFiles: ChangedFile[] = [];
-  changesLoading = false;
   changelogMarkdown = "";
   changelogLoading = false;
   error: string | undefined;
-  uiRequest: UiRequestState | undefined;
-  artifactRequest: ArtifactRequestState | undefined;
-  extensionTitle: string | undefined;
-  extensionStatuses: ExtensionUiState["statuses"] = observable([]);
-  extensionWidgets: ExtensionUiState["widgets"] = observable([]);
-  extensionNotifications: ExtensionNotification[] = observable([]);
-  compatibilityDiagnostics: ResourceDiagnostic[] = observable([]);
   activeOperations: string[] = [];
-  providerOperations: Record<string, { provider: string; kind: "login" | "logout" }> = observable({});
   private openRevision = 0;
   private reopenAfterAgentRestart = false;
   private draftAfterAgentRestart: string | undefined;
@@ -121,65 +62,14 @@ export class MainChatStore extends Store<Record<string, never>> {
     });
   }
 
-  @child
-  get reviewStore() {
-    return createStore(ReviewsStore, {
-      client: this.client,
-      sessionCache: this.sessionCache,
-      context: () => this.sessionContext(),
-      model: () => this.session?.model,
-      startOperation: () => this.startOperation(),
-      finishOperation: (operationId) => this.finishOperation(operationId),
-      reportError: (error) => this.setError(error)
-    });
-  }
-
-  @child
-  get sidebarStore() {
-    return createStore(SidebarStore, {
-      activeSession: () => this.projectPath && this.selectedSessionId
-        ? { workspacePath: this.projectPath, sessionId: this.selectedSessionId }
-        : undefined
-    });
-  }
-
-  @child
-  get browseStore() {
-    return createStore(BrowseStore, {
-      client: this.client,
-      projectPath: () => this.projectPath,
-      reportError: (error) => this.setError(error)
-    });
-  }
-
-  @child
-  get changesStore() {
-    return createStore(ChangesStore, {
-      session: () => this.session,
-      refreshSession: () => this.refreshSession()
-    });
-  }
-
-  get reviewStreamingIds() { return this.reviewStore.streamingThreadIds; }
-  get reviewSubmissionsByOperation() { return this.reviewStore.submissionsByOperation; }
-  get reviewRuns() { return this.reviewStore.runs; }
-  get activeReviewThreadId() { return this.reviewStore.activeThreadId; }
-  set activeReviewThreadId(id: string | undefined) { this.reviewStore.activeThreadId = id; }
-  get recentProjectPaths() { return this.sidebarStore.recentProjectPaths; }
-  get projects() { return this.sidebarStore.projects; }
-  get globalSessions() { return this.sidebarStore.sessions; }
-  get sessionActivityByKey() { return this.sidebarStore.activityBySession; }
-  get sessionSearch() { return this.sidebarStore.search; }
-  set sessionSearch(search: string) { this.sidebarStore.search = search; }
-  get sessionLimitsByProject() { return this.sidebarStore.limitsByProject; }
-  get workspaceBrowserPath() { return this.browseStore.path; }
-  set workspaceBrowserPath(path: string | null | undefined) { this.browseStore.path = path; }
-  get workspaceFiles() { return this.browseStore.files; }
-  get workspaceFilesLoading() { return this.browseStore.loading; }
-  get changeExplorerPath() { return this.changesStore.path; }
-  set changeExplorerPath(path: string | null | undefined) { this.changesStore.path = path; }
-  get sessionChanges() { return this.changesStore.changes; }
-  get selectedSessionChange() { return this.changesStore.selected; }
+  private get sidebar() { return this.props.sidebar(); }
+  private get browse() { return this.props.browse(); }
+  private get changes() { return this.props.changes(); }
+  private get reviews() { return this.props.reviews(); }
+  private get settings() { return this.props.settings(); }
+  private get extensionUi() { return this.props.extensionUi(); }
+  private get artifactInteractions() { return this.props.artifacts(); }
+  private get composer() { return this.props.composer(); }
 
   get isBusy() {
     return this.activeOperations.length > 0;
@@ -197,10 +87,6 @@ export class MainChatStore extends Store<Record<string, never>> {
     return sessions;
   }
 
-  readWorkspaceFile(path: string) {
-    return this.browseStore.readFile(path);
-  }
-
   get session() {
     return this.selectedSessionId && this.projectPath
       ? this.sessionCache.find(this.selectedSessionId, this.projectPath)
@@ -211,51 +97,22 @@ export class MainChatStore extends Store<Record<string, never>> {
     return this.session?.uiParts ?? [];
   }
 
-  get parts() {
-    if (!this.projectPath || !this.selectedSessionId) return this.canonicalParts;
-    const pendingParts = this.pendingUserMessages
-      .filter((pending) => pending.workspacePath === this.projectPath && pending.sessionId === this.selectedSessionId)
-      .filter((pending) => this.userMessageOccurrenceCount(pending.workspacePath, pending.sessionId, pending.text, pending.parts) < pending.expectedOccurrence);
-    if (pendingParts.length === 0) return this.canonicalParts;
-    const parts = [...this.canonicalParts];
-    let offset = 0;
-    pendingParts.forEach((pending) => {
-      parts.splice(Math.min(pending.canonicalPartCount + offset, parts.length), 0, ...pending.parts);
-      offset += pending.parts.length;
-    });
-    return parts;
-  }
-
   get visibleParts() {
     return this.session?.piSettings?.hideThinkingBlock
-      ? this.parts.filter((part) => part.kind !== "reasoning")
-      : this.parts;
+      ? this.composer.parts.filter((part) => part.kind !== "reasoning")
+      : this.composer.parts;
   }
 
   get artifacts() {
     return this.session?.artifacts.map((artifact) => artifact.value) ?? [];
   }
 
-  get reviewThreads() { return this.reviewStore.threads; }
-  reviewThreadsForSession(workspacePath: string, sessionId: string) { return this.reviewStore.threadsForSession(workspacePath, sessionId); }
-  pendingReviewThreadsForSession(workspacePath: string, sessionId: string) { return this.reviewStore.pendingThreadsForSession(workspacePath, sessionId); }
-  chatReviewThreadsForSession(workspacePath: string, sessionId: string) { return this.reviewStore.chatThreadsForSession(workspacePath, sessionId); }
-  chatReviewCommentCountForSession(workspacePath: string, sessionId: string) { return this.reviewStore.chatCommentCountForSession(workspacePath, sessionId); }
-  get openReviewThreads() { return this.reviewStore.openThreads; }
-  get pendingReviewThreads() { return this.reviewStore.pendingThreads; }
-  get pendingReviewCommentCount() { return this.reviewStore.pendingCommentCount; }
-  get chatReviewThreads() { return this.reviewStore.chatThreads; }
-  get chatReviewCommentCount() { return this.reviewStore.chatCommentCount; }
-  reviewThreadStreaming(threadId: string) { return this.reviewStore.threadStreaming(threadId); }
-  get sessionReviewRuns() { return this.reviewStore.sessionRuns; }
-  get activeReviewThread() { return this.reviewStore.activeThread; }
-
   get sessionTitle() {
     return this.session?.sessions.find((item) => item.id === this.session?.sessionId)?.displayTitle || "New chat";
   }
 
   sessionDisplayTitle(title: string) {
-    return this.sidebarStore.sessionDisplayTitle(title);
+    return this.sidebar.sessionDisplayTitle(title);
   }
 
   get isStreaming() {
@@ -263,7 +120,7 @@ export class MainChatStore extends Store<Record<string, never>> {
   }
 
   get canSubmit() {
-    return Boolean(this.session && !this.activeOpenOperationId && (this.draft.trim() || this.attachments.length > 0 || this.pendingReviewThreads.length > 0) && (this.isLocalSlashCommand || this.piState === "ready"));
+    return Boolean(this.session && !this.activeOpenOperationId && (this.draft.trim() || this.composer.attachments.length > 0 || this.reviews.pendingThreads.length > 0) && (this.isLocalSlashCommand || this.piState === "ready"));
   }
 
   get isLocalSlashCommand() {
@@ -272,47 +129,17 @@ export class MainChatStore extends Store<Record<string, never>> {
   }
 
   get projectName() {
-    return this.projectPath ? this.nameFromPath(this.projectPath) : "No workspace";
+    return this.projectPath ? this.sidebar.nameFromPath(this.projectPath) : "No workspace";
   }
 
-  get currentSessions() {
-    return this.projectPath ? this.projectSessions(this.projectPath) : [];
-  }
-
-  projectSessions(workspacePath: string) { return this.sidebarStore.projectSessions(workspacePath); }
-  sessionActivity(workspacePath: string, sessionId: string) { return this.sidebarStore.sessionActivity(workspacePath, sessionId); }
-  updateSessionActivity(workspacePath: string, sessionId: string, streaming: boolean, wasStreaming = false) {
-    const opening = this.activeOpenTarget?.path === workspacePath && this.activeOpenTarget.sessionId === sessionId;
-    this.sidebarStore.updateSessionActivity(workspacePath, sessionId, streaming, wasStreaming, opening);
-  }
-  private markSessionRead(workspacePath: string, sessionId: string) { this.sidebarStore.markSessionRead(workspacePath, sessionId); }
-  sessionLimit(workspacePath: string) { return this.sidebarStore.sessionLimit(workspacePath); }
-  showMoreSessions(workspacePath: string) { this.sidebarStore.showMoreSessions(workspacePath); }
-  get searchedSessions() { return this.sidebarStore.searchedSessions; }
-  nameFromPath(path: string) { return this.sidebarStore.nameFromPath(path); }
-
-  get modelsByProvider() {
-    const groups = new Map<string, { name: string; models: ModelOption[] }>();
-    for (const model of this.session?.models ?? []) {
-      const group = groups.get(model.provider) ?? { name: model.providerName, models: [] };
-      group.models.push(model);
-      groups.set(model.provider, group);
-    }
-    return [...groups.entries()].map(([id, group]) => ({ id, ...group }));
-  }
-
-  get connectedModelsByProvider() {
-    return this.modelsByProvider
-      .map((group) => ({ ...group, models: group.models.filter((model) => model.authenticated) }))
-      .filter((group) => group.models.length > 0);
-  }
+  private markSessionRead(workspacePath: string, sessionId: string) { this.sidebar.markSessionRead(workspacePath, sessionId); }
 
   private async hydrate() {
     try {
       const [state, application, sessionIndex] = await Promise.all([this.client.loadWindowState(), this.client.loadApplicationState(), this.client.listSessions()]);
       if (this.signal.aborted) return;
       this.applyApplicationState(application);
-      this.globalSessions.splice(0, this.globalSessions.length, ...sessionIndex.sessions);
+      this.sidebar.replaceSessions(sessionIndex.sessions);
       const reviewsBySession = new Map<string, typeof sessionIndex.reviewThreads>();
       for (const thread of sessionIndex.reviewThreads) {
         const key = this.reviewSessionKey(thread.workspacePath, thread.sessionId);
@@ -322,11 +149,11 @@ export class MainChatStore extends Store<Record<string, never>> {
       }
       for (const session of sessionIndex.sessions) this.sessionCache.applyReviewThreads(session.workspacePath, session.id, reviewsBySession.get(this.reviewSessionKey(session.workspacePath, session.id)) ?? []);
       this.projectPath = state.projectPath;
-      this.recentProjectPaths.splice(0, this.recentProjectPaths.length, ...state.recentProjectPaths);
+      this.sidebar.recentProjectPaths.splice(0, this.sidebar.recentProjectPaths.length, ...state.recentProjectPaths);
       this.draft = state.draft;
-      this.theme = state.theme;
+      this.settings.theme = state.theme;
       this.thinkingExpanded = state.thinkingExpanded;
-      this.sessionSearch = state.sessionSearch;
+      this.sidebar.search = state.sessionSearch;
       for (const sessionId of Object.keys(this.draftsBySession)) delete this.draftsBySession[sessionId];
       Object.assign(this.draftsBySession, state.draftsBySession);
       this.hydrated = true;
@@ -343,17 +170,17 @@ export class MainChatStore extends Store<Record<string, never>> {
       projectPath: this.projectPath,
       selectedSessionId: this.session?.sessionId,
       selectedSessionFile: this.session?.sessionFile,
-      recentProjectPaths: this.recentProjectPaths.slice(),
+      recentProjectPaths: this.sidebar.recentProjectPaths.slice(),
       draft: this.draft,
-      theme: this.theme,
+      theme: this.settings.theme,
       thinkingExpanded: this.thinkingExpanded,
-      sessionSearch: this.sessionSearch,
+      sessionSearch: this.sidebar.search,
       draftsBySession: { ...this.draftsBySession }
     };
   }
 
   private applyApplicationState(state: ApplicationState) {
-    this.sidebarStore.applyApplicationState(state);
+    this.sidebar.applyApplicationState(state);
   }
 
   private schedulePersist() {
@@ -365,19 +192,19 @@ export class MainChatStore extends Store<Record<string, never>> {
     }, 180);
   }
 
-  private startOperation() {
+  startOperation() {
     const operationId = crypto.randomUUID();
     this.activeOperations.push(operationId);
     this.error = undefined;
     return operationId;
   }
 
-  private finishOperation(operationId: string) {
+  finishOperation(operationId: string) {
     const index = this.activeOperations.indexOf(operationId);
     if (index >= 0) this.activeOperations.splice(index, 1);
   }
 
-  private setError(error: unknown) {
+  setError(error: unknown) {
     this.error = error instanceof Error ? error.message : String(error);
   }
 
@@ -463,10 +290,10 @@ export class MainChatStore extends Store<Record<string, never>> {
     this.selectedSessionId = sessionId;
     this.markSessionRead(workspacePath, sessionId);
     this.draft = this.draftsBySession[sessionId] ?? "";
-    this.clearExtensionUi();
+    this.extensionUi.clear();
     this.commandPane = undefined;
-    this.changeExplorerPath = undefined;
-    this.workspaceBrowserPath = undefined;
+    this.changes.close();
+    this.browse.close();
     this.schedulePersist();
     return true;
   }
@@ -474,7 +301,7 @@ export class MainChatStore extends Store<Record<string, never>> {
   private async inspectPath(path: string, newSession = false, sessionId?: string, sessionFile?: string) {
     const revision = ++this.openRevision;
     const operationId = this.startOperation();
-    this.clearExtensionUi();
+    this.extensionUi.clear();
     this.pendingTrustPath = undefined;
     this.pendingOpen = { inspectOperationId: operationId, path, newSession, sessionId, sessionFile };
     try {
@@ -504,21 +331,20 @@ export class MainChatStore extends Store<Record<string, never>> {
   }
 
   private async openPath(path: string, newSession = false, sessionId?: string, sessionFile?: string) {
-    if (this.artifactRequest) await this.respondToArtifact(undefined, true);
+    if (this.artifactInteractions.request) await this.artifactInteractions.respond(undefined, true);
     const revision = ++this.openRevision;
     const operationId = this.startOperation();
     this.activeOpenOperationId = operationId;
     this.activeOpenTarget = { path, sessionId, newSession };
     this.activeOpenExpectsEmpty = newSession;
-    this.uiRequest = undefined;
-    this.artifactRequest = undefined;
-    this.clearExtensionUi();
+    this.extensionUi.clear();
+    this.artifactInteractions.request = undefined;
     this.commandPane = undefined;
-    this.changeExplorerPath = undefined;
-    this.workspaceBrowserPath = undefined;
+    this.changes.close();
+    this.browse.close();
     try {
       await this.client.openWorkspace({ operationId, path, newSession, sessionId, sessionFile });
-      void this.client.registerProject(path, this.nameFromPath(path)).then((state) => this.applyApplicationState(state)).catch((error) => this.setError(error));
+      void this.client.registerProject(path, this.sidebar.nameFromPath(path)).then((state) => this.applyApplicationState(state)).catch((error) => this.setError(error));
     } catch (error) {
       if (revision === this.openRevision) this.setError(error);
       if (this.activeOpenOperationId === operationId) {
@@ -536,17 +362,12 @@ export class MainChatStore extends Store<Record<string, never>> {
     this.schedulePersist();
   }
 
-  setTheme(theme: "system" | "light" | "dark") {
-    this.theme = theme;
-    this.schedulePersist();
-  }
+  persistViewState() { this.schedulePersist(); }
 
   toggleThinking() {
     this.thinkingExpanded = !this.thinkingExpanded;
     this.schedulePersist();
   }
-
-  setSessionSearch(value: string) { this.sessionSearch = value; this.schedulePersist(); }
 
   async openCommandPane(pane: "changelog" | "tree" | "resources") {
     this.commandPane = pane;
@@ -557,72 +378,35 @@ export class MainChatStore extends Store<Record<string, never>> {
 
   async openSessionChanges(threadId?: string) {
     this.commandPane = undefined;
-    const thread = threadId ? this.reviewThreads.find((item) => item.id === threadId) : this.openReviewThreads.find((item) => item.anchor.view !== "file");
+    const thread = threadId ? this.reviews.threads.find((item) => item.id === threadId) : this.reviews.openThreads.find((item) => item.anchor.view !== "file");
     if (thread?.anchor.view === "file") {
       await this.openWorkspaceBrowser(thread.anchor.path);
-      this.activeReviewThreadId = thread.id;
+      this.reviews.activeThreadId = thread.id;
       return;
     }
-    this.workspaceBrowserPath = undefined;
-    this.activeReviewThreadId = thread?.id;
-    this.changeExplorerPath = thread?.anchor.path ?? this.sessionChanges[0]?.path ?? null;
-    await this.refreshSession();
+    this.browse.close();
+    this.reviews.activeThreadId = thread?.id;
+    await this.changes.open(thread?.anchor.path);
   }
 
   async openWorkspaceBrowser(path?: string) {
     this.commandPane = undefined;
-    this.changesStore.close();
-    this.activeReviewThreadId = undefined;
-    await this.browseStore.open(path);
+    this.changes.close();
+    this.reviews.activeThreadId = undefined;
+    await this.browse.open(path);
   }
 
-  selectWorkspaceFile(path: string) {
-    this.browseStore.select(path);
-  }
 
-  focusWorkspaceReviewThread(threadId: string) {
-    const thread = this.reviewThreads.find((item) => item.id === threadId && item.anchor.view === "file");
-    if (!thread || !this.workspaceFiles.includes(thread.anchor.path)) return;
-    this.activeReviewThreadId = thread.id;
-    this.browseStore.focusPath(thread.anchor.path);
-  }
-
-  closeWorkspaceBrowser() {
-    this.browseStore.close();
-    this.activeReviewThreadId = undefined;
-  }
-
-  createReviewThread(anchor: ReviewAnchor, body: string) { return this.reviewStore.createThread(anchor, body); }
-  replyReviewThread(threadId: string, body: string) { return this.reviewStore.replyThread(threadId, body); }
-  resolveReviewThread(threadId: string, resolved = true) { return this.reviewStore.resolveThread(threadId, resolved); }
-  private loadReviewThreads(workspacePath: string, sessionId: string) { return this.reviewStore.loadThreads(workspacePath, sessionId); }
-
-  selectChangeExplorerFile(path: string) {
-    this.changesStore.select(path);
-  }
-
-  focusReviewThread(threadId: string) {
-    const thread = this.reviewThreads.find((item) => item.id === threadId);
-    if (!thread) return;
-    this.activeReviewThreadId = thread.id;
-    this.changesStore.focusPath(thread.anchor.path);
-  }
-
-  closeChangeExplorer() { this.changesStore.close(); this.activeReviewThreadId = undefined; }
-
-  private sessionContext() {
+  sessionContext() {
     if (!this.projectPath || !this.session) return undefined;
     return { workspacePath: this.projectPath, sessionId: this.session.sessionId };
   }
 
-  private reviewSessionKey(workspacePath: string, sessionId: string) { return `${workspacePath}\u0000${sessionId}`; }
-
-  async refreshChanges() {
-    if (!this.projectPath || this.changesLoading) return;
-    const operationId = this.startOperation(); this.changesLoading = true;
-    try { await this.client.inspectChanges({ operationId, workspacePath: this.projectPath }); }
-    catch (error) { this.changesLoading = false; this.finishOperation(operationId); this.setError(error); }
+  openingSession(workspacePath: string, sessionId: string) {
+    return this.activeOpenTarget?.path === workspacePath && this.activeOpenTarget.sessionId === sessionId;
   }
+
+  private reviewSessionKey(workspacePath: string, sessionId: string) { return `${workspacePath}\u0000${sessionId}`; }
 
   async refreshSession() {
     const context = this.sessionContext();
@@ -651,7 +435,7 @@ export class MainChatStore extends Store<Record<string, never>> {
     const operationId = this.startOperation();
     try {
       await this.client.renameSession({ operationId, workspacePath, sessionId, name: name.trim() });
-      const session = this.globalSessions.find((item) => item.workspacePath === workspacePath && item.id === sessionId);
+      const session = this.sidebar.sessions.find((item) => item.workspacePath === workspacePath && item.id === sessionId);
       if (session) session.title = name.trim();
     }
     catch (error) { this.finishOperation(operationId); this.setError(error); }
@@ -696,137 +480,6 @@ export class MainChatStore extends Store<Record<string, never>> {
     catch (error) { this.setError(error); }
   }
 
-  async addAttachments() {
-    try {
-      const selected = await this.client.chooseAttachments();
-      if (this.signal.aborted) return;
-      const fileMentions = selected
-        .filter((item): item is Extract<Attachment, { kind: "file" }> => item.kind === "file")
-        .map((item) => /[\s"]/.test(item.path) ? `@"${item.path.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"` : `@${item.path}`);
-      if (fileMentions.length > 0) {
-        const separator = this.draft.length > 0 && !/\s$/.test(this.draft) ? " " : "";
-        this.setDraft(`${this.draft}${separator}${fileMentions.join(" ")}`);
-      }
-      const images = selected.filter((item): item is Extract<Attachment, { kind: "image" }> => item.kind === "image");
-      this.attachments.push(...images.filter((item) => !this.attachments.some((current) => current.kind === "image" && current.name === item.name)));
-    } catch (error) {
-      this.setError(error);
-    }
-  }
-
-  async addPastedImages(files: readonly File[]) {
-    try {
-      const available = Math.max(0, 20 - this.attachments.length);
-      const images = files.filter((file) => file.type.startsWith("image/")).slice(0, available);
-      const attachments = await Promise.all(images.map(async (file, index): Promise<Extract<Attachment, { kind: "image" }>> => ({
-        kind: "image",
-        name: file.name || `Pasted image ${index + 1}`,
-        mimeType: file.type,
-        data: await fileToBase64(file)
-      })));
-      this.attachments.push(...attachments);
-    } catch (error) {
-      this.setError(error);
-    }
-  }
-
-  async suggestFiles(prefix: string): Promise<FileSuggestion[]> {
-    if (!this.projectPath) return [];
-    return this.client.suggestFiles(this.projectPath, prefix);
-  }
-
-  removeAttachment(index: number) {
-    this.attachments.splice(index, 1);
-  }
-
-  async submit(deliveryOverride?: "steer") {
-    if (!this.canSubmit) return;
-    const text = this.draft.trim();
-    const command = text.toLocaleLowerCase();
-    if (command === "/tree" || command === "/resources" || command === "/changelog") {
-      this.setDraft("");
-      await this.openCommandPane(command === "/tree" ? "tree" : command === "/changelog" ? "changelog" : "resources");
-      return;
-    }
-    const delivery = deliveryOverride ?? (this.isStreaming ? "follow-up" : "prompt");
-    const attachments = this.attachments.slice();
-    const reviews = this.pendingReviewThreads.map((thread) => thread.id);
-    const context = this.sessionContext();
-    if (!context) return;
-    this.setDraft("");
-    const submissions: Promise<void>[] = [];
-    if (reviews.length > 0) {
-      submissions.push(this.submitReviewComments(reviews, text || undefined));
-    }
-    if (text || attachments.length > 0) {
-      const messageOperationId = this.startOperation();
-      this.attachments.splice(0);
-      this.addPendingUserMessage(messageOperationId, context.workspacePath, context.sessionId, text, attachments);
-      submissions.push(this.client.submit({ operationId: messageOperationId, ...context, text, delivery, attachments }).catch((error) => {
-        this.removePendingUserMessage(messageOperationId);
-        this.setError(error);
-        if (!this.draft.trim()) this.setDraft(text);
-        this.attachments.push(...attachments);
-        this.finishOperation(messageOperationId);
-      }));
-    }
-    await Promise.all(submissions);
-  }
-
-  sendPendingReviewComments() { return this.reviewStore.submitPending(); }
-  private submitReviewComments(threadIds: string[], instruction?: string) { return this.reviewStore.submitThreads(threadIds, instruction); }
-
-  private addPendingUserMessage(operationId: string, workspacePath: string, sessionId: string, text: string, attachments: Attachment[]) {
-    const imageParts: UiPart[] = attachments.flatMap((attachment, index) => attachment.kind === "image" ? [{
-      id: `optimistic-user-${operationId}-attachment-${index}`,
-      kind: "attachment" as const,
-      name: attachment.name,
-      mediaType: attachment.mimeType,
-      attachmentKind: "image" as const,
-      data: attachment.data
-    }] : []);
-    const parts: UiPart[] = [
-      ...(text ? [{ id: `optimistic-user-${operationId}`, kind: "text" as const, role: "user" as const, text, status: "complete" as const }] : []),
-      ...imageParts
-    ];
-    const firstImageData = imageParts[0]?.kind === "attachment" ? imageParts[0].data : undefined;
-    const earlierPendingCount = this.pendingUserMessages.filter((pending) =>
-      pending.workspacePath === workspacePath && pending.sessionId === sessionId && pending.text === text && (
-        Boolean(text) || pending.parts.some((part) => part.kind === "attachment" && part.data === firstImageData)
-      )
-    ).length;
-    this.pendingUserMessages.push({
-      operationId,
-      workspacePath,
-      sessionId,
-      canonicalPartCount: this.sessionCache.find(sessionId, workspacePath)?.uiParts.length ?? 0,
-      expectedOccurrence: this.userMessageOccurrenceCount(workspacePath, sessionId, text, parts) + earlierPendingCount + 1,
-      text,
-      parts
-    });
-  }
-
-  private removePendingUserMessage(operationId: string) {
-    const index = this.pendingUserMessages.findIndex((pending) => pending.operationId === operationId);
-    if (index >= 0) this.pendingUserMessages.splice(index, 1);
-  }
-
-  private userMessageOccurrenceCount(workspacePath: string, sessionId: string, text: string, parts: UiPart[] = []) {
-    const canonical = this.sessionCache.find(sessionId, workspacePath)?.uiParts ?? [];
-    if (text) return canonical.filter((part) => part.kind === "text" && part.role === "user" && part.status === "complete" && part.text === text).length;
-    const image = parts.find((part): part is Extract<UiPart, { kind: "attachment" }> => part.kind === "attachment" && part.attachmentKind === "image");
-    return image?.data ? canonical.filter((part) => part.kind === "attachment" && part.data === image.data).length : 0;
-  }
-
-  reconcilePendingUserMessages(sessionId: string) {
-    for (let index = this.pendingUserMessages.length - 1; index >= 0; index -= 1) {
-      const pending = this.pendingUserMessages[index]!;
-      if (pending.sessionId === sessionId && this.userMessageOccurrenceCount(pending.workspacePath, sessionId, pending.text, pending.parts) >= pending.expectedOccurrence) {
-        this.pendingUserMessages.splice(index, 1);
-      }
-    }
-  }
-
   async abort() {
     const operationId = this.startOperation();
     try {
@@ -838,149 +491,6 @@ export class MainChatStore extends Store<Record<string, never>> {
     }
   }
 
-  async selectModel(value: string) {
-    const separator = value.indexOf("/");
-    if (separator < 1) return;
-    const operationId = this.startOperation();
-    try {
-      const context = this.sessionContext(); if (!context) throw new Error("No active session");
-      await this.client.setModel({ operationId, ...context, provider: value.slice(0, separator), modelId: value.slice(separator + 1) });
-    } catch (error) {
-      this.setError(error);
-      this.finishOperation(operationId);
-    }
-  }
-
-  async selectThinkingLevel(level: ThinkingLevel) {
-    const operationId = this.startOperation();
-    try {
-      const context = this.sessionContext(); if (!context) throw new Error("No active session");
-      await this.client.setThinkingLevel({ operationId, ...context, level });
-    } catch (error) {
-      this.setError(error);
-      this.finishOperation(operationId);
-    }
-  }
-
-  async setPiSetting(update: PiSettingUpdate) {
-    const operationId = this.startOperation();
-    try {
-      const context = this.sessionContext(); if (!context) throw new Error("No active session");
-      await this.client.setPiSetting({ operationId, ...context, update });
-    } catch (error) {
-      this.setError(error);
-      this.finishOperation(operationId);
-    }
-  }
-
-  async authenticate(provider: string, authType: "api_key" | "oauth") {
-    if (this.providerOperation(provider)) return;
-    const operationId = this.startOperation();
-    this.providerOperations[operationId] = { provider, kind: "login" };
-    try {
-      const context = this.sessionContext(); if (!context) throw new Error("No active session");
-      await this.client.login({ operationId, ...context, provider, authType });
-    } catch (error) {
-      delete this.providerOperations[operationId];
-      this.setError(error);
-      this.finishOperation(operationId);
-    }
-  }
-
-  async logout(provider: string) {
-    if (this.providerOperation(provider)) return;
-    const operationId = this.startOperation();
-    this.providerOperations[operationId] = { provider, kind: "logout" };
-    try {
-      const context = this.sessionContext(); if (!context) throw new Error("No active session");
-      await this.client.logout({ operationId, ...context, provider });
-    } catch (error) {
-      delete this.providerOperations[operationId];
-      this.setError(error);
-      this.finishOperation(operationId);
-    }
-  }
-
-  providerOperation(provider: string) {
-    return Object.values(this.providerOperations).find((operation) => operation.provider === provider)?.kind;
-  }
-
-  async respondToUi(value?: string, cancelled = false) {
-    const request = this.uiRequest;
-    if (!request) return;
-    this.uiRequest = undefined;
-    try {
-      const context = this.sessionContext(); if (!context) throw new Error("No active session");
-      await this.client.respondToUi({ operationId: request.operationId, ...context, uiRequestId: request.uiRequestId, value, cancelled });
-    } catch (error) {
-      this.setError(error);
-    }
-  }
-
-  async respondToArtifact(value?: unknown, cancelled = false) {
-    const request = this.artifactRequest;
-    if (!request) return;
-    this.artifactRequest = undefined;
-    try {
-      const context = this.sessionContext(); if (!context) throw new Error("No active session");
-      await this.client.respondToArtifact({ operationId: request.operationId, ...context, artifactRequestId: request.artifactRequestId, value, cancelled });
-    } catch (error) {
-      this.setError(error);
-    }
-  }
-
-  async exportArtifacts() {
-    const context = this.sessionContext();
-    if (!context) throw new Error("No active session");
-    return this.client.exportArtifacts(context.workspacePath, context.sessionId);
-  }
-
-  dismissExtensionNotification(id: string) {
-    const index = this.extensionNotifications.findIndex((item) => item.id === id);
-    if (index >= 0) this.extensionNotifications.splice(index, 1);
-  }
-
-  private clearExtensionUi() {
-    this.extensionTitle = undefined;
-    this.extensionStatuses.splice(0);
-    this.extensionWidgets.splice(0);
-    this.extensionNotifications.splice(0);
-    this.compatibilityDiagnostics.splice(0);
-  }
-
-  private applyExtensionUiState(state: ExtensionUiState) {
-    this.extensionTitle = state.title;
-    this.extensionStatuses.splice(0, this.extensionStatuses.length, ...state.statuses);
-    this.extensionWidgets.splice(0, this.extensionWidgets.length, ...state.widgets);
-  }
-
-  private receiveExtensionUi(event: ExtensionUiEvent) {
-    if (event.kind === "notify") {
-      this.extensionNotifications.push(event);
-      if (this.extensionNotifications.length > 8) this.extensionNotifications.splice(0, this.extensionNotifications.length - 8);
-      return;
-    }
-    if (event.kind === "status") {
-      const index = this.extensionStatuses.findIndex((item) => item.key === event.key);
-      if (event.text === undefined) { if (index >= 0) this.extensionStatuses.splice(index, 1); }
-      else if (index >= 0) this.extensionStatuses.splice(index, 1, { key: event.key, text: event.text });
-      else this.extensionStatuses.push({ key: event.key, text: event.text });
-      return;
-    }
-    if (event.kind === "title") { this.extensionTitle = event.title; return; }
-    if (event.kind === "editor-text") { this.setDraft(event.mode === "insert" ? `${this.draft}${event.text}` : event.text); return; }
-    if (event.kind === "widget") {
-      const index = this.extensionWidgets.findIndex((item) => item.key === event.key);
-      if (!event.lines) { if (index >= 0) this.extensionWidgets.splice(index, 1); }
-      else {
-        const widget = { key: event.key, lines: event.lines, placement: event.placement };
-        if (index >= 0) this.extensionWidgets.splice(index, 1, widget); else this.extensionWidgets.push(widget);
-      }
-      return;
-    }
-    if (!this.compatibilityDiagnostics.some((item) => item.id === event.diagnostic.id)) this.compatibilityDiagnostics.push(event.diagnostic);
-  }
-
   applySessionSnapshot(snapshot: SessionSnapshot, previousSessionId?: string) {
     const restartDraft = this.draftAfterAgentRestart;
     if (previousSessionId) this.draftsBySession[previousSessionId] = this.draft;
@@ -990,13 +500,13 @@ export class MainChatStore extends Store<Record<string, never>> {
     this.draft = restartDraft ?? this.draftsBySession[snapshot.sessionId] ?? (previousSessionId ? "" : this.draft);
     this.draftAfterAgentRestart = undefined;
     this.draftsBySession[snapshot.sessionId] = this.draft;
-    if (previousSessionId !== undefined) this.clearExtensionUi();
-    this.applyExtensionUiState(snapshot.extensionUi);
+    if (previousSessionId !== undefined) this.extensionUi.clear();
+    this.extensionUi.applyState(snapshot.extensionUi);
     this.pendingOpen = undefined;
-    const workspaceName = this.projects.find((project) => project.path === snapshot.workspacePath)?.name ?? this.nameFromPath(snapshot.workspacePath);
-    this.sidebarStore.applyWorkspaceSessions(snapshot.workspacePath, workspaceName, snapshot.sessions);
+    const workspaceName = this.sidebar.projects.find((project) => project.path === snapshot.workspacePath)?.name ?? this.sidebar.nameFromPath(snapshot.workspacePath);
+    this.sidebar.applyWorkspaceSessions(snapshot.workspacePath, workspaceName, snapshot.sessions);
     this.schedulePersist();
-    void this.loadReviewThreads(snapshot.workspacePath, snapshot.sessionId);
+    void this.reviews.loadThreads(snapshot.workspacePath, snapshot.sessionId);
   }
 
   isActiveSession(workspacePath: string, sessionId: string) {
@@ -1028,7 +538,6 @@ export class MainChatStore extends Store<Record<string, never>> {
   }
 
   receive(event: DesktopClientEvent) {
-    this.reviewStore.receive(event);
     if (event.type === "pi-state-changed") {
       if (event.workspacePath && event.workspacePath !== this.projectPath && event.workspacePath !== this.pendingOpen?.path) return;
       this.piState = event.state;
@@ -1036,12 +545,9 @@ export class MainChatStore extends Store<Record<string, never>> {
         this.reopenAfterAgentRestart = Boolean(this.projectPath && this.session);
         if (this.reopenAfterAgentRestart) this.draftAfterAgentRestart = this.draft;
         this.activeOperations.splice(0);
-        for (const operationId of Object.keys(this.providerOperations)) delete this.providerOperations[operationId];
         this.activeOpenOperationId = undefined;
         this.activeOpenTarget = undefined;
         this.activeOpenExpectsEmpty = false;
-        this.uiRequest = undefined;
-        this.artifactRequest = undefined;
       }
       if (event.state === "ready" && this.reopenAfterAgentRestart && this.projectPath && this.session) {
         this.reopenAfterAgentRestart = false;
@@ -1068,18 +574,8 @@ export class MainChatStore extends Store<Record<string, never>> {
       return;
     }
     if (event.type === "review-thread-streaming") return;
-    if (event.type === "artifact-requested") {
-      if (!this.activeOperations.includes(event.operationId) || !this.isActiveSession(event.record.workspacePath, event.record.artifact.sessionId)) return;
-      this.artifactRequest = event;
-      return;
-    }
-    if (event.type === "extension-ui-received") {
-      if (event.sessionId === this.session?.sessionId) this.receiveExtensionUi(event.event);
-      return;
-    }
-    if (event.type === "changes-received" && event.workspacePath === this.projectPath) {
-      this.changedFiles.splice(0, this.changedFiles.length, ...event.files); this.changesLoading = false; this.finishOperation(event.operationId); return;
-    }
+    if (event.type === "artifact-requested" || event.type === "extension-ui-received") return;
+    if (event.type === "changes-received") return;
     if (event.type === "changelog-received") {
       this.finishOperation(event.operationId);
       this.changelogLoading = false;
@@ -1087,19 +583,13 @@ export class MainChatStore extends Store<Record<string, never>> {
       this.changelogMarkdown = event.markdown;
       return;
     }
-    if (event.type === "ui-requested") {
-      if (!this.activeOperations.includes(event.operationId)) return;
-      this.uiRequest = event;
-      return;
-    }
+    if (event.type === "ui-requested") return;
     if (event.type === "operation-completed") {
-      delete this.providerOperations[event.operationId];
       this.finishOperation(event.operationId);
       return;
     }
     if (event.type === "operation-failed") {
-      if (event.operationId) delete this.providerOperations[event.operationId];
-      if (event.operationId) this.removePendingUserMessage(event.operationId);
+      if (event.operationId) this.composer.operationFailed(event.operationId);
       if (event.operationId) this.finishOperation(event.operationId);
       if (event.operationId === this.activeOpenOperationId) {
         this.activeOpenOperationId = undefined;

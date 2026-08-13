@@ -24,8 +24,14 @@ import { ModelCombobox } from "@/components/model-combobox";
 import { SessionTree } from "@/components/session-tree";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
 import type { CompatibilityResource, UiPart } from "../ipc/session-contract";
-import { MainChatStore, type UiRequestState } from "./stores/MainChatStore";
-import type { ReviewRunState } from "./stores/ReviewsStore";
+import type { MainChatStore } from "./stores/MainChatStore";
+import type { ReviewRunState, ReviewsStore } from "./stores/ReviewsStore";
+import type { SidebarStore } from "./stores/SidebarStore";
+import type { SettingsStore } from "./stores/SettingsStore";
+import { RootStore } from "./stores/RootStore";
+import type { ExtensionUiStore, UiRequestState } from "./stores/ExtensionUiStore";
+import type { ArtifactInteractionStore } from "./stores/ArtifactInteractionStore";
+import type { MessageComposerStore } from "./stores/MessageComposerStore";
 
 function Icon({ children, size = 16 }: { children: ReactNode; size?: number }) {
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
@@ -50,14 +56,14 @@ const CheckIcon = () => <Icon size={15}><path d="m5 12 4 4L19 6" /></Icon>;
 const ChangesIcon = () => <Icon size={15}><path d="M4 7h10M4 17h10M17 4v6M14 7l3 3 3-3M17 14v6M14 17l3 3 3-3" /></Icon>;
 const BrowseIcon = () => <Icon size={15}><path d="M4 5.5h6l1.8 2H20v11H4z" /><path d="M4 9h16" /></Icon>;
 
-function CommandPane({ store }: { store: MainChatStore }) {
+function CommandPane({ store, extensionUi }: { store: MainChatStore; extensionUi: ExtensionUiStore }) {
   if (!store.commandPane || !store.session) return null;
   const title = store.commandPane === "tree" ? "Session tree" : store.commandPane === "changelog" ? "Pi changelog" : "Pi resources";
   const resourceGroups = store.commandPane === "resources"
     ? (["extension", "skill", "prompt", "package"] as CompatibilityResource["kind"][]).map((kind) => ({ kind, resources: store.session!.compatibility.resources.filter((item) => item.kind === kind) }))
     : [];
   const diagnostics = store.commandPane === "resources"
-    ? [...new Map([...store.session.compatibility.diagnostics, ...store.compatibilityDiagnostics].map((item) => [item.id, item])).values()]
+    ? [...new Map([...store.session.compatibility.diagnostics, ...extensionUi.compatibilityDiagnostics].map((item) => [item.id, item])).values()]
     : [];
   return (
     <aside className="command-pane secondary-surface" aria-labelledby="command-pane-title">
@@ -192,22 +198,24 @@ const TranscriptList = forwardRef<HTMLDivElement, ComponentProps<"div">>(functio
   return <div ref={ref} className={`transcript-list ${className ?? ""}`} aria-label="Conversation" {...props} />;
 });
 
-export const Transcript = observer(function Transcript({ store, sessionId }: { store: MainChatStore; sessionId: string }) {
+export const Transcript = observer(function Transcript({ store, composer, reviews, artifacts, sessionId }: { store: MainChatStore; composer?: MessageComposerStore; reviews: ReviewsStore; artifacts: ArtifactInteractionStore; sessionId: string }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
-  const reviewRuns = store.sessionReviewRuns ?? [];
-  const latestUserIndex = store.visibleParts.findLastIndex((part) => (part.kind === "text" && part.role === "user") || (part.kind === "attachment" && part.attachmentKind === "image"));
-  const currentTurnParts = store.visibleParts.slice(latestUserIndex + 1);
+  const reviewRuns = reviews.sessionRuns;
+  const parts = composer?.parts ?? store.visibleParts;
+  const visibleParts = store.session?.piSettings?.hideThinkingBlock ? parts.filter((part) => part.kind !== "reasoning") : parts;
+  const latestUserIndex = visibleParts.findLastIndex((part) => (part.kind === "text" && part.role === "user") || (part.kind === "attachment" && part.attachmentKind === "image"));
+  const currentTurnParts = visibleParts.slice(latestUserIndex + 1);
   const workLogIsActive = currentTurnParts.some((part) => part.kind === "reasoning"
     ? part.status === "streaming"
     : part.kind === "tool" && part.state === "running");
   const assistantMessageIsStreaming = currentTurnParts.some((part) => part.kind === "text" && part.role === "assistant" && part.status === "streaming");
   const showAssistantLoading = store.isStreaming && assistantMessageIsStreaming && !workLogIsActive;
   const items: TranscriptItem[] = [
-    ...groupTranscriptParts(store.visibleParts),
+    ...groupTranscriptParts(visibleParts),
     ...reviewRuns.map((run) => ({ kind: "review-run" as const, id: `review-run-${run.operationId}`, run })),
     ...(showAssistantLoading ? [{ kind: "assistant-loading" as const, id: "assistant-loading" }] : [])
   ];
-  const latestUserPartId = store.parts.findLast((part) => (part.kind === "text" && part.role === "user") || (part.kind === "attachment" && part.attachmentKind === "image"))?.id;
+  const latestUserPartId = parts.findLast((part) => (part.kind === "text" && part.role === "user") || (part.kind === "attachment" && part.attachmentKind === "image"))?.id;
   const itemCountRef = useRef(items.length);
   itemCountRef.current = items.length;
 
@@ -227,10 +235,10 @@ export const Transcript = observer(function Transcript({ store, sessionId }: { s
     return () => cancelAnimationFrame(frame);
   }, [latestUserPartId, scrollToLatest]);
 
-  if (store.visibleParts.length === 0 && reviewRuns.length === 0) {
+  if (visibleParts.length === 0 && reviewRuns.length === 0) {
     return (
       <div className="transcript transcript-empty">
-        <Conversation><div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>{showAssistantLoading && <AssistantLoadingIndicator />}<ArtifactsPanel store={store} />{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</Conversation>
+        <Conversation><div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>{showAssistantLoading && <AssistantLoadingIndicator />}<ArtifactsPanel store={store} artifacts={artifacts} />{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</Conversation>
       </div>
     );
   }
@@ -245,21 +253,21 @@ export const Transcript = observer(function Transcript({ store, sessionId }: { s
       followOutput={(isAtBottom) => isAtBottom ? "auto" : false}
       components={{
         List: TranscriptList,
-        Footer: () => <div className="transcript-footer"><ArtifactsPanel store={store} />{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</div>
+        Footer: () => <div className="transcript-footer"><ArtifactsPanel store={store} artifacts={artifacts} />{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</div>
       }}
       itemContent={(_index, item) => <div className="transcript-item">{item.kind === "activity-group" ? <ActivityGroup parts={item.parts} store={store} /> : item.kind === "assistant-loading" ? <AssistantLoadingIndicator /> : item.kind === "review-run" ? <ReviewRunMessage run={item.run} store={store} /> : <TranscriptPart part={item} store={store} />}</div>}
     />
   );
 });
 
-const ArtifactsPanel = observer(function ArtifactsPanel({ store }: { store: MainChatStore }) {
+const ArtifactsPanel = observer(function ArtifactsPanel({ store, artifacts }: { store: MainChatStore; artifacts: ArtifactInteractionStore }) {
   if (store.artifacts.length === 0) return null;
-  return <section className="artifacts-panel" aria-label="Session artifacts"><header><strong>Artifacts</strong><Button variant="ghost" size="sm" onClick={() => { void store.exportArtifacts().then(downloadArtifactMarkdown); }}>Export Markdown</Button></header>{store.artifacts.map((record) => { const request = store.artifactRequest?.record.artifact.id === record.artifact.id ? store.artifactRequest : undefined; return <ArtifactHost key={record.artifact.id} record={record} requested={Boolean(request)} onSubmit={(value) => void store.respondToArtifact(value)} onCancel={() => void store.respondToArtifact(undefined, true)} />; })}</section>;
+  return <section className="artifacts-panel" aria-label="Session artifacts"><header><strong>Artifacts</strong><Button variant="ghost" size="sm" onClick={() => { void artifacts.exportMarkdown().then(downloadArtifactMarkdown); }}>Export Markdown</Button></header>{store.artifacts.map((record) => { const request = artifacts.request?.record.artifact.id === record.artifact.id ? artifacts.request : undefined; return <ArtifactHost key={record.artifact.id} record={record} requested={Boolean(request)} onSubmit={(value) => void artifacts.respond(value)} onCancel={() => void artifacts.respond(undefined, true)} />; })}</section>;
 });
 
-function UiDialog({ request, store }: { request: UiRequestState; store: MainChatStore }) {
+function UiDialog({ request, extensionUi }: { request: UiRequestState; extensionUi: ExtensionUiStore }) {
   const [value, setValue] = useState(request.kind === "confirm" ? "true" : request.initialValue ?? "");
-  const submit = (event: FormEvent) => { event.preventDefault(); void store.respondToUi(value); };
+  const submit = (event: FormEvent) => { event.preventDefault(); void extensionUi.respond(value); };
   return (
     <Confirmation state="requested" role="alertdialog" aria-labelledby="ui-title" aria-describedby="ui-message">
       <ConfirmationRequest><form onSubmit={submit}>
@@ -272,24 +280,25 @@ function UiDialog({ request, store }: { request: UiRequestState; store: MainChat
         ) : request.kind !== "confirm" ? (
           <input className="dialog-field" type={request.kind === "secret" ? "password" : "text"} value={value} onChange={(event) => setValue(event.target.value)} placeholder={request.placeholder} autoFocus />
         ) : null}
-        <ConfirmationActions><ConfirmationAction variant="outline" onClick={() => void store.respondToUi(undefined, true)}>Cancel</ConfirmationAction>{request.kind === "confirm" && <ConfirmationAction variant="outline" onClick={() => void store.respondToUi("false")}>Decline</ConfirmationAction>}<ConfirmationAction type="submit">{request.kind === "confirm" ? "Confirm" : "Continue"}</ConfirmationAction></ConfirmationActions>
+        <ConfirmationActions><ConfirmationAction variant="outline" onClick={() => void extensionUi.respond(undefined, true)}>Cancel</ConfirmationAction>{request.kind === "confirm" && <ConfirmationAction variant="outline" onClick={() => void extensionUi.respond("false")}>Decline</ConfirmationAction>}<ConfirmationAction type="submit">{request.kind === "confirm" ? "Confirm" : "Continue"}</ConfirmationAction></ConfirmationActions>
       </form></ConfirmationRequest>
     </Confirmation>
   );
 }
 
-export const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpenChat, onToggle, settingsOpen }: { store: MainChatStore; onOpenSettings: () => void; onOpenChat: () => void; onToggle: () => void; settingsOpen: boolean }) {
+export const Sidebar = observer(function Sidebar({ store, chat, reviews, onOpenSettings, onOpenChat, onToggle, settingsOpen }: { store: SidebarStore; chat: MainChatStore; reviews: ReviewsStore; onOpenSettings: () => void; onOpenChat: () => void; onToggle: () => void; settingsOpen: boolean }) {
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() => new Set());
   const searchInput = useRef<HTMLInputElement>(null);
-  const searchOpen = searchExpanded || Boolean(store.sessionSearch);
+  const searchOpen = searchExpanded || Boolean(store.search);
   useEffect(() => {
     if (!searchOpen) return;
     const frame = requestAnimationFrame(() => searchInput.current?.focus());
     return () => cancelAnimationFrame(frame);
   }, [searchOpen]);
   const closeSearch = () => {
-    store.setSessionSearch("");
+    store.search = "";
+    chat.persistViewState();
     setSearchExpanded(false);
   };
   const navigateToChat = (action: () => void | Promise<unknown>) => {
@@ -299,7 +308,7 @@ export const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpen
   const renameSession = (event: React.MouseEvent, workspacePath: string, sessionId: string, title: string) => {
     event.preventDefault();
     const name = window.prompt("Session name", title);
-    if (name) void store.renameSession(workspacePath, sessionId, name);
+    if (name) void chat.renameSession(workspacePath, sessionId, name);
   };
   const toggleProject = (path: string) => {
     setCollapsedProjects((current) => {
@@ -320,26 +329,26 @@ export const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpen
       <div className="sidebar-window-tools"><button aria-label="Toggle sidebar" onClick={onToggle}><SidebarIcon /></button><button aria-label="Back" disabled><BackIcon /></button><button aria-label="Forward" disabled><ForwardIcon /></button></div>
       <div className="sidebar-brand"><div className="brand-menu"><span>Cake</span><ChevronIcon /></div><div className="brand-actions"><button className={searchOpen ? "active" : ""} aria-label={searchOpen ? "Close session search" : "Search sessions"} aria-expanded={searchOpen} onClick={() => searchOpen ? closeSearch() : setSearchExpanded(true)}>{searchOpen ? <CloseIcon /> : <SearchIcon />}</button></div></div>
       <div className="sidebar-scroll">
-        <button className="new-chat" onClick={() => navigateToChat(() => store.startOneOffChat())}><ChatIcon /><span>New chat</span></button>
-        <div className={`session-filter global-session-filter ${searchOpen ? "expanded" : ""}`} aria-hidden={!searchOpen}><input ref={searchInput} aria-label="Search sessions" placeholder="Search all sessions" value={store.sessionSearch} disabled={!searchOpen} onChange={(event) => store.setSessionSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") closeSearch(); }} /></div>
-        {store.sessionSearch.trim() && <div className="global-session-results">
+        <button className="new-chat" onClick={() => navigateToChat(() => chat.startOneOffChat())}><ChatIcon /><span>New chat</span></button>
+        <div className={`session-filter global-session-filter ${searchOpen ? "expanded" : ""}`} aria-hidden={!searchOpen}><input ref={searchInput} aria-label="Search sessions" placeholder="Search all sessions" value={store.search} disabled={!searchOpen} onChange={(event) => { store.search = event.target.value; chat.persistViewState(); }} onKeyDown={(event) => { if (event.key === "Escape") closeSearch(); }} /></div>
+        {store.search.trim() && <div className="global-session-results">
           {store.searchedSessions.length === 0 ? <p className="sidebar-empty">No matching sessions.</p> : store.searchedSessions.slice(0, 50).map((session) => {
-            const actionableCommentCount = store.chatReviewCommentCountForSession(session.workspacePath, session.id);
-            return <div key={`${session.workspacePath}:${session.id}`} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && session.workspacePath === store.projectPath ? "active" : ""}`}><button className="session-row global-session-row" aria-current={session.id === store.session?.sessionId && session.workspacePath === store.projectPath ? "page" : undefined} onClick={() => navigateToChat(() => store.openSession(session.workspacePath, session.id))} onContextMenu={(event) => renameSession(event, session.workspacePath, session.id, session.title)}><span title={session.title}>{store.sessionDisplayTitle(session.title)}</span><small>{session.workspaceName}</small>{actionableCommentCount > 0 && <b className="session-review-count">{actionableCommentCount} {actionableCommentCount === 1 ? "comment" : "comments"}</b>}{activityIndicator(session.workspacePath, session.id)}</button></div>;
+            const actionableCommentCount = reviews.chatCommentCountForSession(session.workspacePath, session.id);
+            return <div key={`${session.workspacePath}:${session.id}`} data-session-id={session.id} className={`session-item ${session.id === chat.session?.sessionId && session.workspacePath === chat.projectPath ? "active" : ""}`}><button className="session-row global-session-row" aria-current={session.id === chat.session?.sessionId && session.workspacePath === chat.projectPath ? "page" : undefined} onClick={() => navigateToChat(() => chat.openSession(session.workspacePath, session.id))} onContextMenu={(event) => renameSession(event, session.workspacePath, session.id, session.title)}><span title={session.title}>{store.sessionDisplayTitle(session.title)}</span><small>{session.workspaceName}</small>{actionableCommentCount > 0 && <b className="session-review-count">{actionableCommentCount} {actionableCommentCount === 1 ? "comment" : "comments"}</b>}{activityIndicator(session.workspacePath, session.id)}</button></div>;
           })}
         </div>}
-        <div className="section-heading projects-heading"><span>Projects</span><div><span className="project-options" aria-hidden="true"><MoreIcon /></span><button aria-label="Add project" onClick={() => navigateToChat(() => store.chooseProject())}><PlusIcon /></button></div></div>
+        <div className="section-heading projects-heading"><span>Projects</span><div><span className="project-options" aria-hidden="true"><MoreIcon /></span><button aria-label="Add project" onClick={() => navigateToChat(() => chat.chooseProject())}><PlusIcon /></button></div></div>
         {store.recentProjectPaths.length === 0 ? <p className="sidebar-empty">Add a folder to start a project.</p> : store.recentProjectPaths.map((path) => {
           const collapsed = collapsedProjects.has(path);
           const sessions = store.projectSessions(path);
           const visibleSessions = sessions.slice(0, store.sessionLimit(path));
           return <div className="project-group" key={path}>
-            <div className="project-row" title={path}><button className="project-label" type="button" aria-expanded={!collapsed} aria-label={`${collapsed ? "Expand" : "Collapse"} ${store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}`} onClick={() => toggleProject(path)}><span className={`project-disclosure ${collapsed ? "collapsed" : ""}`}><ChevronIcon /></span><FolderIcon /><span>{store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}</span></button><button className="project-add" aria-label={`New chat in ${store.nameFromPath(path)}`} onClick={() => navigateToChat(() => store.startNewSession(path))}><PlusIcon /></button></div>
-            {!collapsed && !store.sessionSearch.trim() && visibleSessions.map((session) => {
-              const actionableCommentCount = store.chatReviewCommentCountForSession(path, session.id);
-              return <div key={session.id} data-session-id={session.id} className={`session-item ${session.id === store.session?.sessionId && path === store.projectPath ? "active" : ""}`}><button className="session-row" aria-current={session.id === store.session?.sessionId && path === store.projectPath ? "page" : undefined} onClick={() => navigateToChat(() => store.openSession(path, session.id))} onContextMenu={(event) => renameSession(event, path, session.id, session.title)}><span title={session.title}>{store.sessionDisplayTitle(session.title)}</span>{actionableCommentCount > 0 && <b className="session-review-count">{actionableCommentCount} {actionableCommentCount === 1 ? "comment" : "comments"}</b>}{activityIndicator(path, session.id)}</button></div>;
+            <div className="project-row" title={path}><button className="project-label" type="button" aria-expanded={!collapsed} aria-label={`${collapsed ? "Expand" : "Collapse"} ${store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}`} onClick={() => toggleProject(path)}><span className={`project-disclosure ${collapsed ? "collapsed" : ""}`}><ChevronIcon /></span><FolderIcon /><span>{store.projects.find((item) => item.path === path)?.name ?? store.nameFromPath(path)}</span></button><button className="project-add" aria-label={`New chat in ${store.nameFromPath(path)}`} onClick={() => navigateToChat(() => chat.startNewSession(path))}><PlusIcon /></button></div>
+            {!collapsed && !store.search.trim() && visibleSessions.map((session) => {
+              const actionableCommentCount = reviews.chatCommentCountForSession(path, session.id);
+              return <div key={session.id} data-session-id={session.id} className={`session-item ${session.id === chat.session?.sessionId && path === chat.projectPath ? "active" : ""}`}><button className="session-row" aria-current={session.id === chat.session?.sessionId && path === chat.projectPath ? "page" : undefined} onClick={() => navigateToChat(() => chat.openSession(path, session.id))} onContextMenu={(event) => renameSession(event, path, session.id, session.title)}><span title={session.title}>{store.sessionDisplayTitle(session.title)}</span>{actionableCommentCount > 0 && <b className="session-review-count">{actionableCommentCount} {actionableCommentCount === 1 ? "comment" : "comments"}</b>}{activityIndicator(path, session.id)}</button></div>;
             })}
-            {!collapsed && !store.sessionSearch.trim() && sessions.length > visibleSessions.length && <button className="session-more" onClick={() => store.showMoreSessions(path)}>Show more</button>}
+            {!collapsed && !store.search.trim() && sessions.length > visibleSessions.length && <button className="session-more" onClick={() => store.showMoreSessions(path)}>Show more</button>}
           </div>;
         })}
       </div>
@@ -350,7 +359,7 @@ export const Sidebar = observer(function Sidebar({ store, onOpenSettings, onOpen
   );
 });
 
-const ComposerPanel = observer(function ComposerPanel({ store }: { store: MainChatStore }) {
+const ComposerPanel = observer(function ComposerPanel({ store, composer, reviews, settings, extensionUi }: { store: MainChatStore; composer: MessageComposerStore; reviews: ReviewsStore; settings: SettingsStore; extensionUi: ExtensionUiStore }) {
   const selectedModel = store.session?.model;
   const usage = store.session?.usage;
   const context = usage?.context;
@@ -361,13 +370,13 @@ const ComposerPanel = observer(function ComposerPanel({ store }: { store: MainCh
     : "Context usage is unavailable";
   return (
     <div className="composer-dock">
-      {store.extensionWidgets.filter((widget) => widget.placement === "aboveEditor").map((widget) => <div className="legacy-widget" key={widget.key}><strong>{widget.key}</strong><pre>{widget.lines.join("\n")}</pre></div>)}
-      <Composer className="workbench-composer" onSubmit={(event) => { event.preventDefault(); void store.submit(); }}>
-        {store.chatReviewCommentCount > 0 && <div className="review-context-badge"><button type="button" onClick={() => void store.openSessionChanges()}><span>{store.chatReviewCommentCount}</span> {store.chatReviewCommentCount === 1 ? "comment ready to send" : "comments ready to send"}</button></div>}
-        {store.attachments.length > 0 && <div className="attachment-list">{store.attachments.map((attachment, index) => attachment.kind === "image"
-          ? <button className="image-attachment" type="button" aria-label={`Remove ${attachment.name}`} key={`${attachment.kind}-${attachment.name}-${index}`} onClick={() => store.removeAttachment(index)}><img src={`data:${attachment.mimeType};base64,${attachment.data}`} alt="" /><span>{attachment.name}<b aria-hidden="true">×</b></span></button>
-          : <button type="button" key={`${attachment.kind}-${attachment.name}-${index}`} onClick={() => store.removeAttachment(index)}>@ {attachment.name} <span>×</span></button>)}</div>}
-        <SlashCommandCombobox aria-label="Message" commands={store.session?.commands ?? []} suggestFiles={(prefix) => store.suggestFiles(prefix)} placeholder={store.isStreaming ? "Add the next instruction…" : `Ask Cake to work in ${store.projectName}…`} value={store.draft} onValueChange={(value) => store.setDraft(value)} onPaste={(event) => {
+      {extensionUi.widgets.filter((widget) => widget.placement === "aboveEditor").map((widget) => <div className="legacy-widget" key={widget.key}><strong>{widget.key}</strong><pre>{widget.lines.join("\n")}</pre></div>)}
+      <Composer className="workbench-composer" onSubmit={(event) => { event.preventDefault(); void composer.submit(); }}>
+        {reviews.chatCommentCount > 0 && <div className="review-context-badge"><button type="button" onClick={() => void store.openSessionChanges()}><span>{reviews.chatCommentCount}</span> {reviews.chatCommentCount === 1 ? "comment ready to send" : "comments ready to send"}</button></div>}
+        {composer.attachments.length > 0 && <div className="attachment-list">{composer.attachments.map((attachment, index) => attachment.kind === "image"
+          ? <button className="image-attachment" type="button" aria-label={`Remove ${attachment.name}`} key={`${attachment.kind}-${attachment.name}-${index}`} onClick={() => composer.removeAttachment(index)}><img src={`data:${attachment.mimeType};base64,${attachment.data}`} alt="" /><span>{attachment.name}<b aria-hidden="true">×</b></span></button>
+          : <button type="button" key={`${attachment.kind}-${attachment.name}-${index}`} onClick={() => composer.removeAttachment(index)}>@ {attachment.name} <span>×</span></button>)}</div>}
+        <SlashCommandCombobox aria-label="Message" commands={store.session?.commands ?? []} suggestFiles={(prefix) => composer.suggestFiles(prefix)} placeholder={store.isStreaming ? "Add the next instruction…" : `Ask Cake to work in ${store.projectName}…`} value={store.draft} onValueChange={(value) => store.setDraft(value)} onPaste={(event) => {
           const images = [...event.clipboardData.files].filter((file) => file.type.startsWith("image/"));
           if (images.length === 0) {
             for (const item of event.clipboardData.items) {
@@ -378,23 +387,23 @@ const ComposerPanel = observer(function ComposerPanel({ store }: { store: MainCh
           }
           if (images.length === 0) return;
           event.preventDefault();
-          void store.addPastedImages(images);
-        }} onSubmit={(value) => { if (value !== undefined) store.setDraft(value); void store.submit(); }} />
+          void composer.addPastedImages(images);
+        }} onSubmit={(value) => { if (value !== undefined) store.setDraft(value); void composer.submit(); }} />
         <ComposerToolbar className="composer-toolbar">
           <div className="composer-context">
-            <button type="button" className="icon-button" aria-label="Attach files" title="Attach files" onClick={() => void store.addAttachments()}><PaperclipIcon /></button>
-            <ModelCombobox ariaLabel="Model" groups={store.connectedModelsByProvider} value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onSelect={(value) => void store.selectModel(value)} />
-            <select aria-label="Thinking level" value={store.session?.thinkingLevel} onChange={(event) => void store.selectThinkingLevel(event.target.value as NonNullable<typeof store.session>["thinkingLevel"])}>{store.session?.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "No reasoning" : `${level.charAt(0).toUpperCase()}${level.slice(1)} reasoning`}</option>)}</select>
+            <button type="button" className="icon-button" aria-label="Attach files" title="Attach files" onClick={() => void composer.addAttachments()}><PaperclipIcon /></button>
+            <ModelCombobox ariaLabel="Model" groups={settings.connectedModelsByProvider} value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onSelect={(value) => void settings.selectModel(value)} />
+            <select aria-label="Thinking level" value={store.session?.thinkingLevel} onChange={(event) => void settings.selectThinkingLevel(event.target.value as NonNullable<typeof store.session>["thinkingLevel"])}>{store.session?.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "No reasoning" : `${level.charAt(0).toUpperCase()}${level.slice(1)} reasoning`}</option>)}</select>
           </div>
           <div className="composer-actions">
             {usage && <div className="session-usage" aria-label={`${contextLabel}, session cost $${usage.cost.toFixed(3)}`} title={`${contextTitle} · ${usage.tokens.total.toLocaleString()} billed tokens`}><svg className="context-gauge" viewBox="0 0 36 36" aria-hidden="true"><circle className="context-gauge-track" cx="18" cy="18" r="15.5" pathLength="100" /><circle className="context-gauge-value" cx="18" cy="18" r="15.5" pathLength="100" strokeDasharray={`${Math.min(100, contextPercent ?? 0)} 100`} /><text x="18" y="18">{contextPercent === undefined ? "—" : `${contextPercent}%`}</text></svg><span className="session-cost">${usage.cost.toFixed(3)}</span></div>}
-            {store.isStreaming && <><Button variant="ghost" size="sm" type="button" onClick={() => void store.abort()}>Stop</Button><Button variant="outline" size="sm" type="button" disabled={!store.canSubmit} onClick={() => void store.submit("steer")}>Steer</Button></>}
+            {store.isStreaming && <><Button variant="ghost" size="sm" type="button" onClick={() => void store.abort()}>Stop</Button><Button variant="outline" size="sm" type="button" disabled={!store.canSubmit} onClick={() => void composer.submit("steer")}>Steer</Button></>}
             <Button className="send-button" size="sm" type="submit" disabled={!store.canSubmit}>{store.isStreaming ? "Queue" : "Send"}<SendIcon /></Button>
           </div>
         </ComposerToolbar>
       </Composer>
-      {store.extensionWidgets.filter((widget) => widget.placement === "belowEditor").map((widget) => <div className="legacy-widget" key={widget.key}><strong>{widget.key}</strong><pre>{widget.lines.join("\n")}</pre></div>)}
-      {store.extensionStatuses.length > 0 && <div className="extension-statuses" role="status">{store.extensionStatuses.map((status) => <span key={status.key}><strong>{status.key}</strong> {status.text}</span>)}</div>}
+      {extensionUi.widgets.filter((widget) => widget.placement === "belowEditor").map((widget) => <div className="legacy-widget" key={widget.key}><strong>{widget.key}</strong><pre>{widget.lines.join("\n")}</pre></div>)}
+      {extensionUi.statuses.length > 0 && <div className="extension-statuses" role="status">{extensionUi.statuses.map((status) => <span key={status.key}><strong>{status.key}</strong> {status.text}</span>)}</div>}
     </div>
   );
 });
@@ -403,10 +412,10 @@ function SettingsToggle({ label, description, checked, onChange }: { label: stri
   return <div className="settings-field"><span>{label}<small>{description}</small></span><button className="settings-switch" type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)}><i /></button></div>;
 }
 
-export const SettingsPage = observer(function SettingsPage({ store }: { store: MainChatStore }) {
+export const SettingsPage = observer(function SettingsPage({ store, settings }: { store: MainChatStore; settings: SettingsStore }) {
   const selectedModel = store.session?.model;
   const pi = store.session?.piSettings;
-  const authNotice = store.parts.find((part) => part.kind === "notice" && part.id === "auth-status");
+  const authNotice = store.canonicalParts.find((part) => part.kind === "notice" && part.id === "auth-status");
   return (
     <div className="settings-page">
       <div className="settings-intro">
@@ -420,123 +429,131 @@ export const SettingsPage = observer(function SettingsPage({ store }: { store: M
       <section className="settings-section" aria-labelledby="pi-settings-title">
         <header><div><h2 id="pi-settings-title">Current chat</h2><p>Model and reasoning changes apply to this chat and become Pi’s defaults.</p></div><span className={`settings-runtime status-${store.piState}`}><i />{store.piState}</span></header>
         {store.session ? <div className="settings-fields">
-          <div className="settings-field"><span>Model<small>The model Pi uses for its next response.</small></span><ModelCombobox ariaLabel="Settings model" groups={store.connectedModelsByProvider} value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onSelect={(value) => void store.selectModel(value)} variant="settings" /></div>
-          <label><span>Reasoning<small>Controls how much time Pi spends thinking.</small></span><select aria-label="Settings thinking level" value={store.session.thinkingLevel} onChange={(event) => void store.selectThinkingLevel(event.target.value as NonNullable<typeof store.session>["thinkingLevel"])}>{store.session.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "Off" : level.charAt(0).toUpperCase() + level.slice(1)}</option>)}</select></label>
+          <div className="settings-field"><span>Model<small>The model Pi uses for its next response.</small></span><ModelCombobox ariaLabel="Settings model" groups={settings.connectedModelsByProvider} value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onSelect={(value) => void settings.selectModel(value)} variant="settings" /></div>
+          <label><span>Reasoning<small>Controls how much time Pi spends thinking.</small></span><select aria-label="Settings thinking level" value={store.session.thinkingLevel} onChange={(event) => void settings.selectThinkingLevel(event.target.value as NonNullable<typeof store.session>["thinkingLevel"])}>{store.session.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "Off" : level.charAt(0).toUpperCase() + level.slice(1)}</option>)}</select></label>
         </div> : <p className="settings-empty">Open a project or start a one-off chat to choose a model and reasoning level.</p>}
       </section>
 
       <section className="settings-section" aria-labelledby="behavior-title">
         <header><div><h2 id="behavior-title">Agent behavior</h2><p>Context, reasoning display, and queued message delivery.</p></div><span className="settings-source">Pi global</span></header>
         {pi ? <div className="settings-fields">
-          <SettingsToggle label="Auto-compact" description="Compact context automatically when it gets too large." checked={pi.autoCompact} onChange={(value) => void store.setPiSetting({ key: "autoCompact", value })} />
-          <SettingsToggle label="Hide thinking" description="Hide reasoning blocks in assistant responses." checked={pi.hideThinkingBlock} onChange={(value) => void store.setPiSetting({ key: "hideThinkingBlock", value })} />
-          <label><span>Steering mode<small>How steering messages are delivered while Pi is working.</small></span><select aria-label="Steering mode" value={pi.steeringMode} onChange={(event) => void store.setPiSetting({ key: "steeringMode", value: event.target.value as typeof pi.steeringMode })}><option value="one-at-a-time">One at a time</option><option value="all">All at once</option></select></label>
-          <label><span>Follow-up mode<small>How queued follow-ups are delivered after Pi stops.</small></span><select aria-label="Follow-up mode" value={pi.followUpMode} onChange={(event) => void store.setPiSetting({ key: "followUpMode", value: event.target.value as typeof pi.followUpMode })}><option value="one-at-a-time">One at a time</option><option value="all">All at once</option></select></label>
+          <SettingsToggle label="Auto-compact" description="Compact context automatically when it gets too large." checked={pi.autoCompact} onChange={(value) => void settings.setPiSetting({ key: "autoCompact", value })} />
+          <SettingsToggle label="Hide thinking" description="Hide reasoning blocks in assistant responses." checked={pi.hideThinkingBlock} onChange={(value) => void settings.setPiSetting({ key: "hideThinkingBlock", value })} />
+          <label><span>Steering mode<small>How steering messages are delivered while Pi is working.</small></span><select aria-label="Steering mode" value={pi.steeringMode} onChange={(event) => void settings.setPiSetting({ key: "steeringMode", value: event.target.value as typeof pi.steeringMode })}><option value="one-at-a-time">One at a time</option><option value="all">All at once</option></select></label>
+          <label><span>Follow-up mode<small>How queued follow-ups are delivered after Pi stops.</small></span><select aria-label="Follow-up mode" value={pi.followUpMode} onChange={(event) => void settings.setPiSetting({ key: "followUpMode", value: event.target.value as typeof pi.followUpMode })}><option value="one-at-a-time">One at a time</option><option value="all">All at once</option></select></label>
         </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
       </section>
 
       <section className="settings-section" aria-labelledby="content-title">
         <header><div><h2 id="content-title">Content & resources</h2><p>Control images, skills, diagrams, and transcript diagnostics.</p></div></header>
         {pi ? <div className="settings-fields">
-          <SettingsToggle label="Auto-resize images" description="Resize large images for better model compatibility." checked={pi.autoResizeImages} onChange={(value) => void store.setPiSetting({ key: "autoResizeImages", value })} />
-          <SettingsToggle label="Block images" description="Prevent images from being sent to model providers." checked={pi.blockImages} onChange={(value) => void store.setPiSetting({ key: "blockImages", value })} />
-          <SettingsToggle label="Skill commands" description="Register discovered skills as /skill:name commands." checked={pi.enableSkillCommands} onChange={(value) => void store.setPiSetting({ key: "enableSkillCommands", value })} />
-          <label><span>Mermaid diagrams<small>Choose when Pi renders Mermaid code blocks as diagrams.</small></span><select aria-label="Mermaid rendering" value={pi.mermaidRenderingMode} onChange={(event) => void store.setPiSetting({ key: "mermaidRenderingMode", value: event.target.value as typeof pi.mermaidRenderingMode })}><option value="off">Off</option><option value="final">Final responses</option><option value="streaming">While streaming</option></select></label>
-          <SettingsToggle label="Cache miss notices" description="Show notices for significant prompt-cache misses." checked={pi.showCacheMissNotices} onChange={(value) => void store.setPiSetting({ key: "showCacheMissNotices", value })} />
+          <SettingsToggle label="Auto-resize images" description="Resize large images for better model compatibility." checked={pi.autoResizeImages} onChange={(value) => void settings.setPiSetting({ key: "autoResizeImages", value })} />
+          <SettingsToggle label="Block images" description="Prevent images from being sent to model providers." checked={pi.blockImages} onChange={(value) => void settings.setPiSetting({ key: "blockImages", value })} />
+          <SettingsToggle label="Skill commands" description="Register discovered skills as /skill:name commands." checked={pi.enableSkillCommands} onChange={(value) => void settings.setPiSetting({ key: "enableSkillCommands", value })} />
+          <label><span>Mermaid diagrams<small>Choose when Pi renders Mermaid code blocks as diagrams.</small></span><select aria-label="Mermaid rendering" value={pi.mermaidRenderingMode} onChange={(event) => void settings.setPiSetting({ key: "mermaidRenderingMode", value: event.target.value as typeof pi.mermaidRenderingMode })}><option value="off">Off</option><option value="final">Final responses</option><option value="streaming">While streaming</option></select></label>
+          <SettingsToggle label="Cache miss notices" description="Show notices for significant prompt-cache misses." checked={pi.showCacheMissNotices} onChange={(value) => void settings.setPiSetting({ key: "showCacheMissNotices", value })} />
         </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
       </section>
 
       <section className="settings-section" aria-labelledby="network-title">
         <header><div><h2 id="network-title">Network</h2><p>Choose Pi’s provider transport and idle timeout.</p></div></header>
         {pi ? <div className="settings-fields">
-          <label><span>Transport<small>Preferred transport when a provider supports more than one.</small></span><select aria-label="Provider transport" value={pi.transport} onChange={(event) => void store.setPiSetting({ key: "transport", value: event.target.value as typeof pi.transport })}><option value="auto">Automatic</option><option value="sse">SSE</option><option value="websocket">WebSocket</option><option value="websocket-cached">WebSocket cached</option></select></label>
-          <label><span>HTTP idle timeout<small>Maximum pause while Pi waits for HTTP data.</small></span><select aria-label="HTTP idle timeout" value={pi.httpIdleTimeoutMs} onChange={(event) => void store.setPiSetting({ key: "httpIdleTimeoutMs", value: Number(event.target.value) })}><option value={30_000}>30 seconds</option><option value={60_000}>1 minute</option><option value={120_000}>2 minutes</option><option value={300_000}>5 minutes</option><option value={0}>Disabled</option></select></label>
+          <label><span>Transport<small>Preferred transport when a provider supports more than one.</small></span><select aria-label="Provider transport" value={pi.transport} onChange={(event) => void settings.setPiSetting({ key: "transport", value: event.target.value as typeof pi.transport })}><option value="auto">Automatic</option><option value="sse">SSE</option><option value="websocket">WebSocket</option><option value="websocket-cached">WebSocket cached</option></select></label>
+          <label><span>HTTP idle timeout<small>Maximum pause while Pi waits for HTTP data.</small></span><select aria-label="HTTP idle timeout" value={pi.httpIdleTimeoutMs} onChange={(event) => void settings.setPiSetting({ key: "httpIdleTimeoutMs", value: Number(event.target.value) })}><option value={30_000}>30 seconds</option><option value={60_000}>1 minute</option><option value={120_000}>2 minutes</option><option value={300_000}>5 minutes</option><option value={0}>Disabled</option></select></label>
         </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
       </section>
 
       <section className="settings-section" aria-labelledby="safety-title">
         <header><div><h2 id="safety-title">Safety & privacy</h2><p>Trust defaults, warnings, and Pi’s optional update telemetry.</p></div></header>
         {pi ? <div className="settings-fields">
-          <label><span>Default project trust<small>Fallback when no saved trust decision applies.</small></span><select aria-label="Default project trust" value={pi.defaultProjectTrust} onChange={(event) => void store.setPiSetting({ key: "defaultProjectTrust", value: event.target.value as typeof pi.defaultProjectTrust })}><option value="ask">Ask</option><option value="always">Always trust</option><option value="never">Never trust</option></select></label>
-          <SettingsToggle label="Anthropic extra usage warning" description="Warn when subscription authentication may use paid extra usage." checked={pi.anthropicExtraUsageWarning} onChange={(value) => void store.setPiSetting({ key: "anthropicExtraUsageWarning", value })} />
-          <SettingsToggle label="Install telemetry" description="Send Pi’s anonymous version/update ping after detected updates." checked={pi.enableInstallTelemetry} onChange={(value) => void store.setPiSetting({ key: "enableInstallTelemetry", value })} />
+          <label><span>Default project trust<small>Fallback when no saved trust decision applies.</small></span><select aria-label="Default project trust" value={pi.defaultProjectTrust} onChange={(event) => void settings.setPiSetting({ key: "defaultProjectTrust", value: event.target.value as typeof pi.defaultProjectTrust })}><option value="ask">Ask</option><option value="always">Always trust</option><option value="never">Never trust</option></select></label>
+          <SettingsToggle label="Anthropic extra usage warning" description="Warn when subscription authentication may use paid extra usage." checked={pi.anthropicExtraUsageWarning} onChange={(value) => void settings.setPiSetting({ key: "anthropicExtraUsageWarning", value })} />
+          <SettingsToggle label="Install telemetry" description="Send Pi’s anonymous version/update ping after detected updates." checked={pi.enableInstallTelemetry} onChange={(value) => void settings.setPiSetting({ key: "enableInstallTelemetry", value })} />
         </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
       </section>
 
       <section className="settings-section" aria-labelledby="cli-title">
         <header><div><h2 id="cli-title">Pi CLI</h2><p>Preferences shared with Pi’s terminal interface.</p></div></header>
         {pi ? <div className="settings-fields">
-          <label><span>Double-escape action<small>Action Pi takes when Escape is pressed twice in an empty editor.</small></span><select aria-label="Double escape action" value={pi.doubleEscapeAction} onChange={(event) => void store.setPiSetting({ key: "doubleEscapeAction", value: event.target.value as typeof pi.doubleEscapeAction })}><option value="tree">Open tree</option><option value="fork">Fork</option><option value="none">None</option></select></label>
-          <label><span>Tree filter mode<small>Default filter used when Pi opens /tree.</small></span><select aria-label="Tree filter mode" value={pi.treeFilterMode} onChange={(event) => void store.setPiSetting({ key: "treeFilterMode", value: event.target.value as typeof pi.treeFilterMode })}><option value="default">Default</option><option value="no-tools">Hide tools</option><option value="user-only">User messages only</option><option value="labeled-only">Labeled only</option><option value="all">All entries</option></select></label>
-          <SettingsToggle label="Quiet startup" description="Disable Pi CLI’s verbose startup output." checked={pi.quietStartup} onChange={(value) => void store.setPiSetting({ key: "quietStartup", value })} />
-          <SettingsToggle label="Collapse changelog" description="Show a condensed changelog after Pi updates." checked={pi.collapseChangelog} onChange={(value) => void store.setPiSetting({ key: "collapseChangelog", value })} />
+          <label><span>Double-escape action<small>Action Pi takes when Escape is pressed twice in an empty editor.</small></span><select aria-label="Double escape action" value={pi.doubleEscapeAction} onChange={(event) => void settings.setPiSetting({ key: "doubleEscapeAction", value: event.target.value as typeof pi.doubleEscapeAction })}><option value="tree">Open tree</option><option value="fork">Fork</option><option value="none">None</option></select></label>
+          <label><span>Tree filter mode<small>Default filter used when Pi opens /tree.</small></span><select aria-label="Tree filter mode" value={pi.treeFilterMode} onChange={(event) => void settings.setPiSetting({ key: "treeFilterMode", value: event.target.value as typeof pi.treeFilterMode })}><option value="default">Default</option><option value="no-tools">Hide tools</option><option value="user-only">User messages only</option><option value="labeled-only">Labeled only</option><option value="all">All entries</option></select></label>
+          <SettingsToggle label="Quiet startup" description="Disable Pi CLI’s verbose startup output." checked={pi.quietStartup} onChange={(value) => void settings.setPiSetting({ key: "quietStartup", value })} />
+          <SettingsToggle label="Collapse changelog" description="Show a condensed changelog after Pi updates." checked={pi.collapseChangelog} onChange={(value) => void settings.setPiSetting({ key: "collapseChangelog", value })} />
         </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
       </section>
 
       <section className="settings-section" aria-labelledby="providers-title">
         <header><div><h2 id="providers-title">Providers</h2><p>Connect the accounts and API keys that make models available to Pi.</p></div></header>
-        {store.modelsByProvider.length === 0 ? <p className="settings-empty">Provider details will appear after a chat is open.</p> : <div className="provider-list">{store.modelsByProvider.map((provider) => {
+        {settings.modelsByProvider.length === 0 ? <p className="settings-empty">Provider details will appear after a chat is open.</p> : <div className="provider-list">{settings.modelsByProvider.map((provider) => {
           const authenticated = provider.models.some((model) => model.authenticated);
           const authenticatedModel = provider.models.find((model) => model.authenticated);
           const authSource = authenticatedModel?.authSource;
           const externallyManaged = Boolean(authenticated && authSource && authSource !== "stored" && authSource !== "runtime");
           const connectionLabel = authenticatedModel?.authLabel ?? (authSource === "environment" ? "environment" : undefined);
           const authTypes = [...new Set(provider.models.flatMap((model) => model.authTypes))];
-          const operation = store.providerOperation(provider.id);
-          return <article className="provider-row" key={provider.id}><div className="provider-identity"><span className="provider-monogram">{provider.name.slice(0, 1).toUpperCase()}</span><span><strong>{provider.name}</strong><small>{provider.models.length} {provider.models.length === 1 ? "model" : "models"}</small></span></div><span className={authenticated ? "provider-state connected" : "provider-state"}><i />{operation === "login" ? "Connecting…" : operation === "logout" ? "Disconnecting…" : authenticated ? `Connected${connectionLabel ? ` · ${connectionLabel}` : ""}` : "Not connected"}</span><div className="provider-actions">{authenticated ? externallyManaged ? <small className="provider-managed" title="Remove this credential from its environment or configuration source, then restart Cake.">Remove externally, then restart</small> : <Button variant="outline" size="sm" type="button" disabled={Boolean(operation)} onClick={() => void store.logout(provider.id)}>{operation === "logout" ? "Disconnecting…" : "Disconnect"}</Button> : authTypes.map((authType) => <Button key={authType} variant={authType === "oauth" ? "default" : "outline"} size="sm" type="button" disabled={Boolean(operation)} onClick={() => void store.authenticate(provider.id, authType)}>{operation === "login" ? "Connecting…" : authType === "oauth" ? "Connect" : "Add API key"}</Button>)}</div></article>;
+          const operation = settings.providerOperation(provider.id);
+          return <article className="provider-row" key={provider.id}><div className="provider-identity"><span className="provider-monogram">{provider.name.slice(0, 1).toUpperCase()}</span><span><strong>{provider.name}</strong><small>{provider.models.length} {provider.models.length === 1 ? "model" : "models"}</small></span></div><span className={authenticated ? "provider-state connected" : "provider-state"}><i />{operation === "login" ? "Connecting…" : operation === "logout" ? "Disconnecting…" : authenticated ? `Connected${connectionLabel ? ` · ${connectionLabel}` : ""}` : "Not connected"}</span><div className="provider-actions">{authenticated ? externallyManaged ? <small className="provider-managed" title="Remove this credential from its environment or configuration source, then restart Cake.">Remove externally, then restart</small> : <Button variant="outline" size="sm" type="button" disabled={Boolean(operation)} onClick={() => void settings.logout(provider.id)}>{operation === "logout" ? "Disconnecting…" : "Disconnect"}</Button> : authTypes.map((authType) => <Button key={authType} variant={authType === "oauth" ? "default" : "outline"} size="sm" type="button" disabled={Boolean(operation)} onClick={() => void settings.authenticate(provider.id, authType)}>{operation === "login" ? "Connecting…" : authType === "oauth" ? "Connect" : "Add API key"}</Button>)}</div></article>;
         })}</div>}
       </section>
 
       <section className="settings-section" aria-labelledby="appearance-title">
         <header><div><h2 id="appearance-title">Appearance</h2><p>Choose how Cake looks on this device.</p></div></header>
-        <div className="settings-fields"><label><span>Theme<small>Follow your system or use a fixed appearance.</small></span><select aria-label="Color theme" value={store.theme} onChange={(event) => store.setTheme(event.target.value as typeof store.theme)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label></div>
+        <div className="settings-fields"><label><span>Theme<small>Follow your system or use a fixed appearance.</small></span><select aria-label="Color theme" value={settings.theme} onChange={(event) => { settings.setTheme(event.target.value as typeof settings.theme); store.persistViewState(); }}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label></div>
       </section>
     </div>
   );
 });
 
 export const App = observer(function App() {
-  const store = useStore(MainChatStore);
+  const root = useStore(RootStore);
+  const store = root.mainChatStore;
+  const sidebar = root.sidebarStore;
+  const browse = root.browseStore;
+  const changes = root.changesStore;
+  const reviews = root.reviewsStore;
+  const settings = root.settingsStore;
+  const extensionUi = root.extensionUiStore;
+  const artifactInteractions = root.artifactInteractionStore;
   const [page, setPage] = useState<"chat" | "settings">("chat");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   useEffect(() => {
-    document.documentElement.dataset.theme = store.theme;
+    document.documentElement.dataset.theme = settings.theme;
     return () => { delete document.documentElement.dataset.theme; };
-  }, [store.theme]);
+  }, [settings.theme]);
   useEffect(() => {
-    document.title = store.extensionTitle ? `${store.extensionTitle} · Cake` : "Cake";
-  }, [store.extensionTitle]);
+    document.title = extensionUi.title ? `${extensionUi.title} · Cake` : "Cake";
+  }, [extensionUi.title]);
   useEffect(() => {
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (store.workspaceBrowserPath !== undefined) store.closeWorkspaceBrowser();
-      else if (store.changeExplorerPath !== undefined) store.closeChangeExplorer();
+      if (browse.path !== undefined) browse.close();
+      else if (changes.path !== undefined) changes.close();
       else if (store.commandPane) store.closeCommandPane();
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [store]);
+  }, [store, browse, changes]);
 
   if (!store.hydrated) return <main className="loading-screen"><span className="cake-mark">C</span><p>Restoring Cake…</p></main>;
-  if (store.changeExplorerPath !== undefined) return <ChangeExplorer store={store} />;
-  if (store.workspaceBrowserPath !== undefined) return <WorkspaceBrowser store={store} />;
+  if (changes.path !== undefined) return <ChangeExplorer store={changes} reviews={reviews} browse={browse} chat={store} />;
+  if (browse.path !== undefined) return <WorkspaceBrowser store={browse} reviews={reviews} chat={store} />;
 
   return (
     <main className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${store.commandPane ? "right-pane-open" : ""}`}>
-      <Sidebar store={store} settingsOpen={page === "settings"} onToggle={() => setSidebarCollapsed((value) => !value)} onOpenSettings={() => setPage("settings")} onOpenChat={() => setPage("chat")} />
+      <Sidebar store={sidebar} chat={store} reviews={reviews} settingsOpen={page === "settings"} onToggle={() => setSidebarCollapsed((value) => !value)} onOpenSettings={() => setPage("settings")} onOpenChat={() => setPage("chat")} />
       <section className="workspace" data-session-id={store.session?.sessionId}>
         <button className={page === "settings" ? "workspace-settings-icon active" : "workspace-settings-icon"} type="button" aria-label="Open settings" aria-current={page === "settings" ? "page" : undefined} onClick={() => setPage("settings")}><SettingsIcon /></button>
-        <header className="workspace-header"><div><button className="header-sidebar-toggle" aria-label="Toggle sidebar" onClick={() => setSidebarCollapsed((value) => !value)}><SidebarIcon /></button>{page === "settings" && <button className="header-back" aria-label="Back to chat" onClick={() => setPage("chat")}><BackIcon /></button>}<strong>{page === "settings" ? "Settings" : store.extensionTitle ?? (store.session ? store.sessionTitle : "Cake")}</strong>{page === "chat" && store.projectPath && <span>{store.projectPath}</span>}</div>{page === "chat" && store.session && <div className="header-pane-actions"><button className="header-pane-toggle" type="button" aria-label="Browse project files" onClick={() => void store.openWorkspaceBrowser()}><BrowseIcon /><span>Browse</span></button><button className="header-pane-toggle" type="button" aria-label="Open session changes" onClick={() => void store.openSessionChanges()}><ChangesIcon /><span>Changes</span>{store.sessionChanges.length > 0 && <b>{store.sessionChanges.length}</b>}</button></div>}</header>
-        {page === "settings" ? <SettingsPage store={store} /> : !store.session ? (
+        <header className="workspace-header"><div><button className="header-sidebar-toggle" aria-label="Toggle sidebar" onClick={() => setSidebarCollapsed((value) => !value)}><SidebarIcon /></button>{page === "settings" && <button className="header-back" aria-label="Back to chat" onClick={() => setPage("chat")}><BackIcon /></button>}<strong>{page === "settings" ? "Settings" : extensionUi.title ?? (store.session ? store.sessionTitle : "Cake")}</strong>{page === "chat" && store.projectPath && <span>{store.projectPath}</span>}</div>{page === "chat" && store.session && <div className="header-pane-actions"><button className="header-pane-toggle" type="button" aria-label="Browse project files" onClick={() => void store.openWorkspaceBrowser()}><BrowseIcon /><span>Browse</span></button><button className="header-pane-toggle" type="button" aria-label="Open session changes" onClick={() => void store.openSessionChanges()}><ChangesIcon /><span>Changes</span>{changes.changes.length > 0 && <b>{changes.changes.length}</b>}</button></div>}</header>
+        {page === "settings" ? <SettingsPage store={store} settings={settings} /> : !store.session ? (
           <div className="welcome"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build?</h1><p>Open a project for durable workspace chats, or start a one-off chat from your home directory.</p><div><Button size="lg" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.chooseProject()}><FolderIcon /> Open project</Button><Button size="lg" variant="outline" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.startOneOffChat()}><ChatIcon /> One-off chat</Button></div>{store.error && <p className="welcome-error" role="alert">{store.error}</p>}</div>
         ) : (
-          <div className="workbench"><div className="chat-layout"><Transcript sessionId={store.session.sessionId} store={store} /><ComposerPanel store={store} /></div></div>
+          <div className="workbench"><div className="chat-layout"><Transcript sessionId={store.session.sessionId} store={store} composer={root.messageComposerStore} reviews={reviews} artifacts={artifactInteractions} /><ComposerPanel store={store} composer={root.messageComposerStore} reviews={reviews} settings={settings} extensionUi={extensionUi} /></div></div>
         )}
       </section>
-      <CommandPane store={store} />
+      <CommandPane store={store} extensionUi={extensionUi} />
       {store.pendingTrustPath && <div className="dialog-backdrop"><Confirmation state="requested" role="alertdialog" aria-labelledby="trust-title" aria-describedby="trust-description"><ConfirmationRequest><ConfirmationTitle id="trust-title">Trust this workspace?</ConfirmationTitle><ConfirmationDescription id="trust-description">{store.pendingTrustPath} contains project-local executable Pi resources. Trust it only if you know its contents.</ConfirmationDescription><ConfirmationActions><ConfirmationAction variant="outline" onClick={() => void store.resolveProjectTrust(false)}>Cancel</ConfirmationAction><ConfirmationAction onClick={() => void store.resolveProjectTrust(true)}>Trust and open</ConfirmationAction></ConfirmationActions></ConfirmationRequest></Confirmation></div>}
-      {store.uiRequest && <div className="dialog-backdrop"><UiDialog key={store.uiRequest.uiRequestId} request={store.uiRequest} store={store} /></div>}
-      {store.extensionNotifications.length > 0 && <div className="extension-notifications" aria-live="polite">{store.extensionNotifications.map((notification) => <button key={notification.id} className={`notice notice-${notification.tone}`} onClick={() => store.dismissExtensionNotification(notification.id)}><strong>Extension</strong><span>{notification.message}</span></button>)}</div>}
+      {extensionUi.request && <div className="dialog-backdrop"><UiDialog key={extensionUi.request.uiRequestId} request={extensionUi.request} extensionUi={extensionUi} /></div>}
+      {extensionUi.notifications.length > 0 && <div className="extension-notifications" aria-live="polite">{extensionUi.notifications.map((notification) => <button key={notification.id} className={`notice notice-${notification.tone}`} onClick={() => extensionUi.dismissNotification(notification.id)}><strong>Extension</strong><span>{notification.message}</span></button>)}</div>}
       {(store.piState === "failed" || store.piState === "stopped") && store.projectPath && <div className="agent-recovery"><span>Pi runtime stopped.</span><Button size="sm" onClick={() => void store.restartPi()}>Restart and reopen</Button></div>}
     </main>
   );

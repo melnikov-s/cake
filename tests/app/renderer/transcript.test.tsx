@@ -1,6 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { act, forwardRef, useEffect, useImperativeHandle } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -38,6 +39,9 @@ function storeWith(parts: UiPart[], isStreaming = false) {
   return { parts, visibleParts: parts, projectName: "Cake", error: undefined, thinkingExpanded: false, isStreaming, toggleThinking: vi.fn(), forkAt: vi.fn() } as unknown as MainChatStore;
 }
 
+const reviews = { sessionRuns: [] } as any;
+const artifacts = { request: undefined, exportMarkdown: vi.fn(), respond: vi.fn() } as any;
+
 describe("Transcript scrolling", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -66,7 +70,7 @@ describe("Transcript scrolling", () => {
       { id: "assistant-2", kind: "text", role: "assistant", text: "Latest", status: "complete" }
     ];
 
-    act(() => root.render(<Transcript sessionId="session-1" store={storeWith(parts)} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={storeWith(parts)} />));
 
     expect(virtualizedProps.current?.initialTopMostItemIndex).toEqual({ index: 1, align: "end" });
     const followOutput = virtualizedProps.current?.followOutput as (isAtBottom: boolean) => "auto" | false;
@@ -78,9 +82,9 @@ describe("Transcript scrolling", () => {
     const assistant: UiPart = { id: "assistant-1", kind: "text", role: "assistant", text: "First", status: "complete" };
     const user: UiPart = { id: "user-1", kind: "text", role: "user", text: "My message", status: "complete" };
 
-    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([assistant])} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={storeWith([assistant])} />));
     scrollToIndex.mockClear();
-    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([assistant, user])} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={storeWith([assistant, user])} />));
 
     expect(scrollToIndex).toHaveBeenCalledWith({ index: 1, align: "end", behavior: "auto" });
   });
@@ -89,11 +93,11 @@ describe("Transcript scrolling", () => {
     const first: UiPart = { id: "reasoning-1", kind: "reasoning", text: "First thought", status: "streaming" };
     const second: UiPart = { id: "tool-1", kind: "tool", name: "read", input: "file", state: "running" };
 
-    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([first], true)} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={storeWith([first], true)} />));
     const log = container.querySelector<HTMLDivElement>(".activity-group > div")!;
     Object.defineProperty(log, "scrollHeight", { configurable: true, value: 480 });
 
-    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([first, second], true)} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={storeWith([first, second], true)} />));
 
     expect(log.scrollTop).toBe(480);
   });
@@ -101,7 +105,7 @@ describe("Transcript scrolling", () => {
   it("leaves work log expansion under user control as streaming changes", () => {
     const running: UiPart = { id: "tool-1", kind: "tool", name: "read", input: "file", state: "running" };
 
-    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([running], true)} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={storeWith([running], true)} />));
     const log = container.querySelector<HTMLDetailsElement>(".activity-group")!;
     const tool = container.querySelector<HTMLElement>(".tool-call")!;
     const toolToggle = tool.querySelector<HTMLButtonElement>(".tool-summary")!;
@@ -115,7 +119,7 @@ describe("Transcript scrolling", () => {
     expect(tool.classList.contains("tool-open")).toBe(true);
     expect(tool.querySelector(".tool-details")).not.toBeNull();
 
-    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([{ ...running, state: "success" }], false)} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={storeWith([{ ...running, state: "success" }], false)} />));
     expect(log.open).toBe(true);
     expect(toolToggle.getAttribute("aria-expanded")).toBe("true");
     expect(log.querySelector(':scope > summary .work-log-state[aria-label="complete"]')).not.toBeNull();
@@ -124,7 +128,7 @@ describe("Transcript scrolling", () => {
   it("shows empty reasoning as a non-expandable status", () => {
     const empty: UiPart = { id: "reasoning-1", kind: "reasoning", text: "", status: "complete" };
 
-    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([empty])} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={storeWith([empty])} />));
 
     const status = container.querySelector<HTMLElement>(".activity-group-status")!;
     expect(status.textContent).toContain("Reasoning details not exposed");
@@ -136,7 +140,7 @@ describe("Transcript scrolling", () => {
   it("shows an empty in-progress reasoning block as thinking", () => {
     const empty: UiPart = { id: "reasoning-1", kind: "reasoning", text: "", status: "streaming" };
 
-    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([empty], true)} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={storeWith([empty], true)} />));
 
     expect(container.querySelector(".activity-group-status")?.textContent).toContain("Thinking…");
     expect(container.querySelector('.activity-group-status .work-log-running[aria-label="working"]')).not.toBeNull();
@@ -146,7 +150,7 @@ describe("Transcript scrolling", () => {
   it("keeps the completed work log neutral when an individual call failed", () => {
     const failed: UiPart = { id: "tool-1", kind: "tool", name: "bash", input: "exit 1", state: "error" };
 
-    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([failed])} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={storeWith([failed])} />));
 
     const log = container.querySelector<HTMLElement>(".activity-group")!;
     expect(log.querySelector(':scope > summary .work-log-state[aria-label="complete"]')).not.toBeNull();
@@ -160,16 +164,16 @@ describe("Transcript scrolling", () => {
     const tool: UiPart = { id: "tool-1", kind: "tool", name: "read", input: "file", state: "running" };
     const assistant: UiPart = { id: "assistant-1", kind: "text", role: "assistant", text: "Writing the answer", status: "streaming" };
 
-    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([user, reasoning], true)} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={storeWith([user, reasoning], true)} />));
     expect(container.querySelector(".assistant-loading")).toBeNull();
 
-    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([user, { ...reasoning, status: "complete" }, tool], true)} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={storeWith([user, { ...reasoning, status: "complete" }, tool], true)} />));
     expect(container.querySelector(".assistant-loading")).toBeNull();
 
-    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([user, { ...reasoning, status: "complete" }, { ...tool, state: "success" }], true)} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={storeWith([user, { ...reasoning, status: "complete" }, { ...tool, state: "success" }], true)} />));
     expect(container.querySelector(".assistant-loading")).toBeNull();
 
-    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([user, { ...reasoning, status: "complete" }, { ...tool, state: "success" }, assistant], true)} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={storeWith([user, { ...reasoning, status: "complete" }, { ...tool, state: "success" }, assistant], true)} />));
     expect(container.querySelector(".assistant-loading")).not.toBeNull();
   });
 
@@ -177,9 +181,9 @@ describe("Transcript scrolling", () => {
     const first: UiPart = { id: "assistant-1", kind: "text", role: "assistant", text: "First session", status: "complete" };
     const second: UiPart = { id: "assistant-2", kind: "text", role: "assistant", text: "Second session", status: "complete" };
 
-    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([first])} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={storeWith([first])} />));
     scrollToIndex.mockClear();
-    act(() => root.render(<Transcript sessionId="session-2" store={storeWith([second])} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-2" store={storeWith([second])} />));
 
     expect(virtualizedLifecycle.mock.calls).toEqual([["mounted"]]);
     expect(scrollToIndex).toHaveBeenCalledWith({ index: 0, align: "end", behavior: "auto" });
@@ -189,13 +193,13 @@ describe("Transcript scrolling", () => {
     const user: UiPart = { id: "user-1", kind: "text", role: "user", text: "My message", status: "complete" };
     const assistant: UiPart = { id: "assistant-1", kind: "text", role: "assistant", text: "Working", status: "streaming" };
 
-    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([user], true)} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={storeWith([user], true)} />));
     expect(container.querySelector(".assistant-loading")).toBeNull();
 
-    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([user, assistant], true)} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={storeWith([user, assistant], true)} />));
     expect(container.querySelector(".assistant-loading")).not.toBeNull();
 
-    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([{ ...assistant, status: "complete" }], false)} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={storeWith([{ ...assistant, status: "complete" }], false)} />));
     expect(container.querySelector(".assistant-loading")).toBeNull();
   });
 
@@ -208,7 +212,7 @@ describe("Transcript scrolling", () => {
     ];
     const store = storeWith(parts);
 
-    act(() => root.render(<Transcript sessionId="session-1" store={store} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={store} />));
 
     const message = container.querySelector<HTMLElement>(".assistant-message")!;
     const content = message.querySelector<HTMLElement>(".assistant-message-content")!;
@@ -226,7 +230,7 @@ describe("Transcript scrolling", () => {
   it("renders submitted image attachments from Pi's persisted base64 block", () => {
     const image: UiPart = { id: "image-1", kind: "attachment", name: "Image 1", mediaType: "image/png", attachmentKind: "image", data: "aW1hZ2U=" };
 
-    act(() => root.render(<Transcript sessionId="session-1" store={storeWith([image])} />));
+    act(() => root.render(<Transcript reviews={reviews} artifacts={artifacts} sessionId="session-1" store={storeWith([image])} />));
 
     const preview = container.querySelector<HTMLImageElement>(".transcript-image img")!;
     expect(preview.src).toBe("data:image/png;base64,aW1hZ2U=");

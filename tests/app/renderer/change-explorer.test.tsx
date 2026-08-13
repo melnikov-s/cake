@@ -1,6 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,6 +25,33 @@ const changes: SessionChange[] = [
   { id: "file:src/app.ts", toolCallId: "call-1", path: "src/app.ts", additions: 1, deletions: 1, diff: "-1 const old = true;\n+1 const fresh = true;", timestamp: new Date(0).toISOString() },
   { id: "file:PLAN.md", toolCallId: "call-2", path: "PLAN.md", additions: 1, deletions: 0, diff: "+1 # Plan", timestamp: new Date(0).toISOString() }
 ];
+
+function explorerProps(store: MainChatStore) {
+  const legacy = store as unknown as Record<string, any>;
+  return {
+    store: {
+      get changes() { return legacy.sessionChanges; },
+      get selected() { return legacy.selectedSessionChange; },
+      select: legacy.selectChangeExplorerFile,
+      focusPath: legacy.selectChangeExplorerFile,
+      close: legacy.closeChangeExplorer
+    } as any,
+    reviews: {
+      get threads() { return legacy.reviewThreads ?? []; },
+      get activeThreadId() { return legacy.activeReviewThreadId; },
+      set activeThreadId(value) { legacy.activeReviewThreadId = value; legacy.focusReviewThread?.(value); },
+      get activeThread() { return legacy.activeReviewThread; },
+      get pendingCommentCount() { return legacy.pendingReviewCommentCount ?? legacy.pendingReviewThreads?.length ?? 0; },
+      threadStreaming: legacy.reviewThreadStreaming ?? (() => false),
+      createThread: legacy.createReviewThread,
+      replyThread: legacy.replyReviewThread,
+      resolveThread: legacy.resolveReviewThread,
+      submitPending: legacy.sendPendingReviewComments
+    } as any,
+    browse: { readFile: legacy.readWorkspaceFile } as any,
+    chat: { sessionTitle: legacy.sessionTitle } as any
+  };
+}
 
 describe("ChangeExplorer", () => {
   let container: HTMLDivElement;
@@ -55,7 +83,7 @@ describe("ChangeExplorer", () => {
       closeChangeExplorer: vi.fn()
     } as unknown as MainChatStore;
 
-    act(() => root.render(<ChangeExplorer store={store} />));
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
 
     expect(container.querySelector(".change-explorer")).not.toBeNull();
     expect(container.querySelector(".change-explorer-file header")?.textContent).toContain("Refine the plan");
@@ -63,7 +91,7 @@ describe("ChangeExplorer", () => {
     expect(container.querySelector(".change-explorer-tree")?.textContent).toContain("src");
     expect(container.querySelector(".change-explorer-tree")?.textContent).toContain("PLAN.md");
     act(() => container.querySelector<HTMLButtonElement>(".change-explorer-tree li button")!.click());
-    expect(store.selectChangeExplorerFile).toHaveBeenCalledWith("src/app.ts");
+    expect((store as unknown as Record<string, any>).selectChangeExplorerFile).toHaveBeenCalledWith("src/app.ts");
   });
 
   it("toggles between the diff and the full workspace file", async () => {
@@ -82,7 +110,7 @@ describe("ChangeExplorer", () => {
       readWorkspaceFile
     } as unknown as MainChatStore;
 
-    act(() => root.render(<ChangeExplorer store={store} />));
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
     expect(container.querySelector('[aria-label="Full session changes to src/app.ts"]')).not.toBeNull();
 
     await act(async () => container.querySelector<HTMLButtonElement>('.change-explorer-view-toggle button[aria-pressed="false"]')!.click());
@@ -105,7 +133,7 @@ describe("ChangeExplorer", () => {
       reviewThreadStreaming: vi.fn(() => false), createReviewThread, replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn(), readWorkspaceFile: vi.fn(async () => "const fresh = true;\nconst unchanged = true;")
     } as unknown as MainChatStore;
-    act(() => root.render(<ChangeExplorer store={store} />));
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
     await act(async () => container.querySelector<HTMLButtonElement>('.change-explorer-view-toggle button:last-child')!.click());
 
     act(() => container.querySelector<HTMLButtonElement>('.change-explorer-full-file .review-gutter button[aria-label="Comment on line 2"]')!.click());
@@ -131,7 +159,7 @@ describe("ChangeExplorer", () => {
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn()
     } as unknown as MainChatStore;
-    act(() => root.render(<ChangeExplorer store={store} />));
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
     const add = container.querySelector<HTMLButtonElement>('.review-gutter button[aria-label="Comment on line 1"]')!;
     act(() => add.click());
     expect(container.querySelector(".review-composer.inline")).not.toBeNull();
@@ -146,7 +174,7 @@ describe("ChangeExplorer", () => {
     } as unknown as MainChatStore;
     const escaped = vi.fn();
     window.addEventListener("keydown", escaped);
-    act(() => root.render(<ChangeExplorer store={store} />));
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
     act(() => container.querySelector<HTMLButtonElement>('.review-gutter button[aria-label="Comment on line 1"]')!.click());
 
     act(() => container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Review comment"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
@@ -164,7 +192,7 @@ describe("ChangeExplorer", () => {
       reviewThreadStreaming: vi.fn(() => false), createReviewThread, replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn()
     } as unknown as MainChatStore;
-    act(() => root.render(<ChangeExplorer store={store} />));
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
     act(() => container.querySelector<HTMLButtonElement>('.review-gutter button[aria-label="Comment on line 1"]')!.click());
     const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Review comment"]')!;
     act(() => {
@@ -206,7 +234,7 @@ describe("ChangeExplorer", () => {
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread,
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn()
     } as unknown as MainChatStore;
-    act(() => root.render(<ChangeExplorer store={store} />));
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
 
     act(() => container.querySelector<HTMLButtonElement>(".review-thread header button")!.click());
 
@@ -232,7 +260,7 @@ describe("ChangeExplorer", () => {
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => true), replyReviewThread, resolveReviewThread: vi.fn(async () => true),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn(), focusReviewThread: vi.fn()
     } as unknown as MainChatStore;
-    act(() => root.render(<ChangeExplorer store={store} />));
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
 
     const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Reply to review thread"]')!;
     act(() => {
@@ -266,7 +294,7 @@ describe("ChangeExplorer", () => {
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer, sendPendingReviewComments
     } as unknown as MainChatStore;
-    act(() => root.render(<ChangeExplorer store={store} />));
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
 
     act(() => container.querySelector<HTMLButtonElement>(".change-explorer-actions button")!.click());
 
@@ -288,7 +316,7 @@ describe("ChangeExplorer", () => {
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn(), sendPendingReviewComments: vi.fn(async () => undefined), focusReviewThread
     } as unknown as MainChatStore;
-    act(() => root.render(<ChangeExplorer store={store} />));
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
 
     expect(container.querySelector(".review-navigation")).toBeNull();
     expect(container.querySelector(".review-thread-index")?.textContent).toContain("Can you explain this?");
@@ -309,7 +337,7 @@ describe("ChangeExplorer", () => {
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn(), focusReviewThread: vi.fn()
     } as unknown as MainChatStore;
-    act(() => root.render(<ChangeExplorer store={store} />));
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
 
     const rows = [...container.querySelectorAll<HTMLButtonElement>(".review-thread-index li button")];
     expect(rows.map((row) => row.textContent)).toEqual([expect.stringContaining("Active comment"), expect.stringContaining("Finished comment")]);

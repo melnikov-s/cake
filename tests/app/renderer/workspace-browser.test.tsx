@@ -1,6 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,6 +19,15 @@ vi.mock("@streamdown/code", () => ({
 }));
 
 import { WorkspaceBrowser } from "../../../src/renderer/components/workspace-browser";
+
+function browserProps(store: MainChatStore) {
+  const legacy = store as unknown as Record<string, any>;
+  return {
+    store: { files: legacy.workspaceFiles, path: legacy.workspaceBrowserPath, loading: legacy.workspaceFilesLoading, readFile: legacy.readWorkspaceFile, select: legacy.selectWorkspaceFile, focusPath: legacy.focusWorkspaceReviewThread, close: legacy.closeWorkspaceBrowser } as any,
+    reviews: { threads: legacy.reviewThreads ?? [], pendingCommentCount: legacy.pendingReviewCommentCount ?? 0, activeThread: legacy.activeReviewThread, createThread: legacy.createReviewThread, replyThread: legacy.replyReviewThread, resolveThread: legacy.resolveReviewThread, threadStreaming: legacy.reviewThreadStreaming ?? (() => false), submitPending: legacy.sendPendingReviewComments } as any,
+    chat: { projectName: legacy.projectName } as any
+  };
+}
 
 describe("WorkspaceBrowser", () => {
   let container: HTMLDivElement;
@@ -41,7 +51,7 @@ describe("WorkspaceBrowser", () => {
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => true), replyReviewThread: vi.fn(async () => true), resolveReviewThread: vi.fn(async () => true), focusWorkspaceReviewThread: vi.fn(), sendPendingReviewComments: vi.fn()
     } as unknown as MainChatStore;
 
-    await act(async () => root.render(<WorkspaceBrowser store={store} />));
+    await act(async () => root.render(<WorkspaceBrowser {...browserProps(store)} />));
 
     expect(container.querySelector('[aria-label="Project files"]')?.textContent).toContain("PLAN.md");
     expect(container.querySelector('[aria-label="Project files"]')?.textContent).toContain("util.ts");
@@ -59,7 +69,7 @@ describe("WorkspaceBrowser", () => {
       readWorkspaceFile: vi.fn(async () => "const cake = true;"), selectWorkspaceFile: vi.fn(), closeWorkspaceBrowser: vi.fn(),
       reviewThreadStreaming: vi.fn(() => false), createReviewThread, replyReviewThread: vi.fn(async () => true), resolveReviewThread: vi.fn(async () => true), focusWorkspaceReviewThread: vi.fn(), sendPendingReviewComments: vi.fn()
     } as unknown as MainChatStore;
-    await act(async () => root.render(<WorkspaceBrowser store={store} />));
+    await act(async () => root.render(<WorkspaceBrowser {...browserProps(store)} />));
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="Ask about line 1"]')!.click());
     const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Review comment"]')!;
     act(() => {
