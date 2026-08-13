@@ -11,10 +11,10 @@ preload boundary.
 | State | Authority | Owner and lifetime |
 | --- | --- | --- |
 | Loaded resources and load diagnostics | Pi `DefaultResourceLoader` and `DefaultPackageManager` | Project session snapshot; renderer child Models are a read-only projection |
-| Extension status, title, and legacy string widgets | Active Pi extension runtime | Window Store projection, cleared before session/workspace replacement |
-| Notifications and compatibility warnings | Active Pi extension runtime | Window Store, bounded to the active session and never persisted |
+| Extension status, title, and legacy string widgets | Active Pi extension runtime | Focused extension-UI Store projection, cleared before session/workspace replacement |
+| Notifications and compatibility warnings | Active Pi extension runtime | Focused extension-UI Store, bounded to the active session and never persisted |
 | Dialog responses | User | Correlated main-process operation; aborted, timed out, or disposed requests resolve as cancellation |
-| Composer draft | Cake window | Window Store; extension `setEditorText` and `pasteToEditor` enter through the same authoritative draft mutation |
+| Composer draft | Cake window | Chat/composer Store; extension `setEditorText` and `pasteToEditor` enter through the same authoritative draft mutation |
 
 No compatibility catalog or extension UI state is written into Pi JSONL or
 Cake application metadata. Reopening a live runtime reconstructs it from Pi.

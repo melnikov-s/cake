@@ -195,7 +195,7 @@ flowchart TB
         React["React views"]
         RootStore["RootStore"]
         SessionModel["SessionModel tree"]
-        WindowStore["WindowStore"]
+        WorkflowStores["Focused workflow Stores"]
         UiAdapter["Cake UI projection"]
         Components["Cake-owned shadcn and adapted AI Elements components"]
         SceneHost["Resilient scene host"]
@@ -203,8 +203,8 @@ flowchart TB
         Frame["Sandboxed artifact iframe"]
         React <--> RootStore
         RootStore --> SessionModel
-        RootStore --> WindowStore
-        WindowStore --> UiAdapter
+        RootStore --> WorkflowStores
+        WorkflowStores --> UiAdapter
         SessionModel --> UiAdapter
         UiAdapter --> Components
         Components --> React
@@ -379,7 +379,7 @@ Cake uses Models for serializable application-owned domain state and Stores for 
 | Artifact metadata and content pointers | Cake + Pi custom session entries | Cake artifact store plus session reference |
 | Mini-app domain data and workflow topology | Cake | Versioned Cake Models containing application facts and Pi session/result references, never copied Pi transcripts |
 | Live multi-model workflow progress, routing, cancellation, and subscriptions | Cake renderer/main coordination over Pi | Workflow Stores and Cake-owned event projections with explicit lifecycle and concurrency policy |
-| Window selection, panel state, composer draft, scroll | Cake renderer | Window Stores; selected fields snapshotted |
+| Navigation, project/session selection, panel state, composer draft, scroll | Cake renderer | Focused behavioral Stores; selected fields snapshotted |
 | Live streaming and tool progress | Pi event stream | Ephemeral Stores |
 | Extension dialogs and active statuses | Main-process Pi driver/Cake bridge | Ephemeral Stores with cancellation |
 
@@ -422,7 +422,7 @@ Suggested Models:
 independent root for each Electron window, provides it to React, and disposes it
 when that renderer ends. It owns the Pi event subscription and synchronizes
 validated events into a disposable `SessionModel` snapshot while coordinating
-the window-scoped `WindowStore`.
+the window-scoped tree of focused behavioral Stores.
 
 Pi remains authoritative for session persistence and behavior. `SessionModel`
 is the reactive renderer representation of the current Pi session, not a second
@@ -432,30 +432,26 @@ the data. Full snapshots and snapshots assembled from streaming events commit
 atomically through r-state-tree's `applySnapshot`. UI-specific interpretations
 belong in computed getters and presentation adapters.
 
-`WindowStore` owns window workflows such as selection, drafts, search, command
-panes, pending operations, and stale-event filtering. As a UI subsystem gains
-coherent state, lifecycle, and behavior, compose it beneath `WindowStore` with
-`@child` rather than enlarging either root or the session Models.
+Each named product surface owns its cohesive state, lifecycle, async policy,
+and behavior in a focused Store. `RootStore` composes shared Stores and routes
+cross-cutting events; it does not become a generic owner for all window state.
+Nest a Store only when one parent surface truly owns its lifetime. Existing
+concentration of unrelated workflows is a refactoring signal, not precedent for
+putting the next field or method there.
 
 ```text
 RootStore
-├── SessionModel
-│   ├── TranscriptPartModel[]
-│   ├── ModelOptionModel[]
-│   ├── SelectedModelModel
-│   ├── ThinkingLevelModel[]
-│   ├── SessionSummaryModel[]
-│   └── SessionTreeNodeModel[]
-└── WindowStore
-    ├── NavigationStore
-    ├── ProjectSidebarStore
-    ├── ComposerStore
-    ├── ToolExecutionStore
-    ├── ArtifactHostStore
-    ├── MiniAppWorkflowStore
-    ├── ExtensionUiStore
-    ├── DiffStore
-    └── SettingsViewStore
+├── SessionCacheStore
+│   └── SessionModel[]
+├── NavigationStore / SidebarStore
+├── ProjectStore
+├── MainChatStore / SessionViewStore
+├── ChangesStore
+├── ReviewsStore
+├── BrowseStore
+├── ArtifactHostStore
+├── ExtensionUiStore
+└── SettingsStore
 ```
 
 Implementation rules:
@@ -469,7 +465,8 @@ Implementation rules:
 - Do not persist constructor defaults before hydration completes.
 - React providers are lookup scopes, not ownership or disposal scopes.
 - Keep tiny focus, hover, measurement, and isolated input state in React only when it has no workflow meaning.
-- Trusted widgets may use `useStore(WindowStore)` and other explicitly provided Stores directly. Do not add capability façades merely to imitate a conventional plugin SDK.
+- Trusted widgets may use their explicitly provided focused Stores directly. Do not add capability façades merely to imitate a conventional plugin SDK.
+- A root or shell Store is a composition and coordination boundary, not a dumping ground for unrelated state. Window scope describes lifetime, not behavioral ownership.
 - Models are read directly and normally changed through their owning Model or Store methods to preserve invariants. This is an authoring convention enforced by guidance, review, tests, and agent repair—not a claimed runtime security boundary.
 - A widget that introduces coherent workflow state, subscriptions, timers, persistence, or async policy should add or compose the nearest meaningful Store owner rather than hiding application workflow in React effects.
 - A multi-model workflow Store owns its Pi event subscriptions, cancellation, retry/queue/take-latest policy, and late-result guards. It calls semantic workflow ports and never constructs raw IPC envelopes or exposes provider credentials to React.
@@ -846,15 +843,20 @@ Current S2 checkpoint (2026-08-07):
 - The desktop main process owns multiple windows and a workspace-keyed
   `PiWorkspaceDriver` pool with idle retention. Each driver owns independent Pi
   runtimes per open session, while each renderer `RootStore` independently owns
-  its Pi subscription and current `SessionModel` projection. Its `WindowStore`
-  owns selected project/session workflow, per-session drafts, search, transient
-  command pane, pending operations, and stale-event filtering.
+  its Pi subscription and current `SessionModel` projection. Focused renderer
+  Stores own project/session selection, per-session drafts, search, transient
+  command panes, pending operations, and stale-event filtering according to
+  their behavioral surfaces.
 - The session UI supports create/resume/rename/archive/restore, text search,
   Pi-native fork and in-file tree navigation through `/tree`. The chat header's
-  Changes action opens a full-application, Git-backed workspace change explorer.
-  Each refresh compares the working tree with `HEAD`, includes staged, unstaged,
-  and untracked files, preserves rename metadata, and presents one final diff per
-  file in the selectable tree. These panes are transient and are not workspace tabs.
+  Changes action opens a full-application, Git-backed session change explorer.
+  Cake appends durable Git tree checkpoints to the Pi session on first open and
+  after settled work. The explorer compares the session's initial checkpoint with
+  the latest checkpoint on its active Pi branch, including committed and
+  uncommitted changes, deletions, renames, and non-ignored new files. Private Cake
+  Git refs keep checkpoint trees reachable across branch deletion and history
+  rewrites; forks carry checkpoint entries through Pi's native session branching.
+  These panes are transient and are not workspace tabs.
 - Pi runtime failure exposes an explicit restart action. A recreated workspace
   driver securely reopens the selected Pi session from its validated session
   file, resubscribes the window, and preserves its draft. Empty Pi sessions are
@@ -957,7 +959,7 @@ Current S4 checkpoint (2026-08-08):
   has no Node, Electron, parent DOM, navigation, popup, download, or network
   grant. Every artifact retains an exportable Markdown fallback.
 - Renderer `ArtifactModel` children are hydrated Cake-owned projections;
-  `WindowStore` owns pending response workflow. Persisted session references,
+  a focused artifact workflow Store owns pending responses. Persisted session references,
   Pi custom-entry pointers, and Cake session aliases restore tables and diagrams
   after application restart without copying the Pi transcript.
 - Contract, repository, Store, driver, renderer, and security tests are
@@ -1194,7 +1196,7 @@ These are intentionally unresolved. Resolve each before the stage that depends o
 | 2026-08-11 | Use the pinned Pi SDK for every mini-app model call, agent loop, tool execution, and agent transcript while keeping it behind Cake's main-process adapter. | Decided | Custom scenes receive Cake components, Stores, Models, and intent-level workflow methods rather than raw Pi objects; Cake coordinates but does not create a competing model or session runtime. |
 | 2026-08-11 | Treat multi-model mini-app coordination as Cake-owned workflow state over Pi-owned participant sessions. | Decided | Cake owns explicit context routing, roles, checkpoints, presentation, and result promotion; Pi remains authoritative for each participant's history, tools, usage, compaction, and session tree. |
 | 2026-08-11 | Do not make community council/subagent extensions or terminal process conventions the mini-app architecture boundary. | Decided | Cake remains compatible with useful headless extensions but provides bundled, desktop-native Pi workflow execution and tests real packaged execution rather than tool registration alone. |
-| 2026-08-12 | Make Changes a Git-backed workspace snapshot instead of reconstructing session changes from edit-tool results. | Decided | The explorer accurately includes direct review edits, shell mutations, staged and unstaged work, untracked files, deletions, and renames. Tool-result diffs remain transcript history, while the Changes surface intentionally represents the shared working tree rather than attributing files to one Pi session. |
+| 2026-08-12 | Make Changes a Git-backed comparison of durable tree checkpoints stored on the Pi session branch instead of reconstructing changes from edit-tool results or diffing a fixed commit against the current workspace. | Decided | Checkpoints cover direct edits, shell mutations, commits, deletions, renames, and non-ignored new files without depending on current `HEAD`. Pi branch/fork semantics select the relevant checkpoint history, while private Cake refs keep old checkpoint trees reachable. Tool-result diffs remain transcript history. |
 
 ## 19. Instructions for implementation agents
 

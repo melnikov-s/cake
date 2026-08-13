@@ -13,15 +13,17 @@ Pi session for the selected workspace and emits only the schemas in
 | Transcript, tool results, model history, compaction | Pi `SessionManager` | Pi JSONL session; Cake only projects snapshots and deltas |
 | Provider credentials | Pi `ModelRuntime` | Pi auth storage; secret prompt values are never retained in Cake state or logs |
 | Active run, queued delivery, UI requests | Agent utility process | One active session runtime; replaced with take-latest semantics when switching sessions |
-| Transcript projection and composer workflow | Renderer `WindowStore` | Window lifetime; the mounted Store owns the desktop subscription |
+| Transcript projection | Renderer `SessionModel` tree | Window lifetime; `RootStore` applies validated desktop events |
+| Composer workflow | Renderer chat/composer Store | Window lifetime; the focused Store owns drafts, submission policy, and pending composer operations |
 | Project history, trusted paths, composer draft, theme, reasoning visibility | Cake main process | Atomic `window-state.json`, saved only after renderer hydration |
 | Attachment selection | Renderer workflow | Cleared after accepted submission; images are bounded by IPC schemas |
 
-`WindowStore` depends on the intent-level `DesktopClient`, not IPC envelopes.
-It uses a revision for take-latest project opening, correlated operation IDs for
-late-result rejection, its Store lifetime signal after hydration, and a
-Store-owned persistence timer. The root is created with
-`mount(createStore(WindowStore, ...))` and disposed on renderer `pagehide`.
+Renderer workflow Stores depend on the intent-level `DesktopClient`, not IPC
+envelopes. Each focused Store owns the concurrency and lifecycle policy for its
+workflow, including revisions or correlated operation IDs where needed.
+`RootStore` owns the desktop subscription and routes validated events without
+absorbing the workflows they affect. It is created with
+`mount(createStore(RootStore, ...))` and disposed on renderer `pagehide`.
 
 ## Trust and security
 

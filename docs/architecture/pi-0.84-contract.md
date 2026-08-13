@@ -22,7 +22,7 @@ Only `src/agent/pi-runtime.ts` imports the Pi coding-agent package. Agent, main,
 preload, and the renderer's desktop-client boundary communicate with Cake-owned
 types validated in `src/ipc`. The renderer boundary translates those DTOs into
 intent-level `DesktopClient` operations and application events consumed by
-`WindowStore`; the Store does not depend on IPC types.
+focused renderer workflow Stores; those Stores do not depend on IPC types.
 
 Pi's `/changelog` is an interactive-mode command rather than an
 `AgentSession.prompt()` command. Cake handles it locally: the active workspace

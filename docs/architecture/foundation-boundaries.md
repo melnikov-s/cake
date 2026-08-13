@@ -6,7 +6,7 @@ small and should evolve alongside the process-safe schemas in
 
 | Process | Owns | May import | Must not expose |
 | --- | --- | --- | --- |
-| Renderer | React presentation, the preload-to-intent adapter, and window-local `WindowStore` | Cake protocol types only at the adapter boundary; Cake state elsewhere | Node globals or raw Electron IPC |
+| Renderer | React presentation, the preload-to-intent adapter, and a window-local `RootStore` tree of focused behavioral Stores | Cake protocol types only at the adapter boundary; Cake state elsewhere | Node globals or raw Electron IPC |
 | Preload | Validation and the frozen `window.cake` API | Electron IPC, Cake protocol schemas | `ipcRenderer` itself |
 | Main | Window lifecycle, agent-process supervision, and routing | Electron, Cake IPC contracts | Arbitrary project extension execution |
 | Agent utility process | Pi runtime and extensions | Cake IPC contracts and, only through `src/agent/pi-runtime.ts`, Pi | Electron renderer/main privileges |
@@ -19,9 +19,9 @@ observes agent-process state. Pi-specific event shapes are normalized inside
 
 The renderer's `desktop-client.ts` is the transport boundary. It translates the
 generic preload request/event bridge into `DesktopClient` intents and
-application events. `WindowStore` depends only on that intent-level client and
-does not import protocol schemas, construct IPC command discriminants, or
-interpret transport response unions.
+application events. Renderer workflow Stores depend only on that intent-level
+client and do not import protocol schemas, construct IPC command discriminants,
+or interpret transport response unions.
 
 These are directories in one application package, not npm packages. The
 boundaries exist because Electron builds and privileges the processes
@@ -29,15 +29,16 @@ differently; imports and validated IPC enforce them without a workspace layer.
 
 State ownership in this slice:
 
-- `WindowStore` owns ephemeral renderer workflow state, the preload
-  subscription, active operation identity, extension confirmation, and streamed
-  text projection.
+- `RootStore` owns the preload subscription and routes validated events. Focused
+  child Stores own renderer workflows, operation identity, extension UI, and
+  other behavioral surfaces. Sharing a window lifetime is not a reason to put
+  unrelated state in one Store.
 - Main-process lifecycle is currently ordinary Electron code. Introduce a
   main-process Store only when a concrete observable workflow benefits from
   Store state, derived values, effects, or composition.
 - Neither root is persisted yet.
-- Both roots are created with `mount(createStore(...))` and disposed by their
-  owning process lifecycle.
+- The renderer root is created with `mount(createStore(...))` and disposed by
+  its owning process lifecycle.
 
 The exact Pi APIs covered by the S0 contract tests are recorded in
 [`pi-0.84-contract.md`](./pi-0.84-contract.md).

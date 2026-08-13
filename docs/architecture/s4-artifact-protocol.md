@@ -22,7 +22,7 @@ hard failures, so fallback cannot bypass v1 validation or media restrictions.
   a second Cake-owned transcript.
 - Renderer `ArtifactModel` instances are disposable projections of validated
   repository records. Pending response ownership, cancellation, and routing
-  remain in `WindowStore` and `PiWorkspaceDriver`.
+  remain in a focused renderer artifact workflow Store and `PiWorkspaceDriver`.
 - Cake indexes the persisted Pi session reference in window state and records
   artifact session aliases when Pi materializes a new persistent session ID.
   Hydration combines validated Pi pointers with that Cake index, so artifacts

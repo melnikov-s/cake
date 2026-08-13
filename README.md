@@ -45,8 +45,10 @@ Pi directly through its SDK in Electron's main process. It supports project
 trust, provider login, model and thinking controls, Cake-owned transcript parts,
 tool activity, prompt/steer/follow-up/abort, file and image inputs, and
 hydration-gated renderer state through an `r-state-tree` `RootStore`. Pi session
-snapshots are applied one-to-one to a reactive `SessionModel`, while `WindowStore` owns
-window-specific workflows such as selection, drafts, search, and command panes.
+snapshots are applied one-to-one to reactive `SessionModel` instances. Focused
+behavioral Stores own navigation, project/session selection, chat, changes, reviews,
+browsing, and other product surfaces; window lifetime alone does not make one Store
+the owner of every renderer workflow.
 
 Live provider tests are intentionally opt-in: signing in or sending a real
 model request can open external authentication and incur provider cost.
