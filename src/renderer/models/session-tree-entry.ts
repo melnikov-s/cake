@@ -1,7 +1,6 @@
-import { Model, id, observable, state } from "r-state-tree";
-import type { SessionTreeNode } from "../../ipc/session-contract";
+import { Model, id, state } from "r-state-tree";
 
-export class SessionTreeNodeModel extends Model {
+export class SessionTreeEntryModel extends Model {
   @id id = "";
   @state parentId: string | undefined;
   @state type = "";
@@ -10,5 +9,4 @@ export class SessionTreeNodeModel extends Model {
   @state label: string | undefined;
   @state preview = "";
   @state active = false;
-  @state children: SessionTreeNode[] = observable([]);
 }

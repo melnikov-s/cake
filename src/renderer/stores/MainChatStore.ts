@@ -2,7 +2,6 @@ import { Store, observable, untracked } from "r-state-tree";
 import type {
   ApplicationState,
   SessionSnapshot,
-  SessionTreeNode,
   WindowViewState
 } from "../../ipc/session-contract";
 import type { DesktopClientEvent, PiState } from "../desktop-client";
@@ -456,15 +455,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
 
   async navigateTo(entryId: string) {
     const context = this.sessionContext(); if (!context) return;
-    const findNode = (nodes: SessionTreeNode[]): SessionTreeNode | undefined => {
-      for (const node of nodes) {
-        if (node.id === entryId) return node;
-        const child = findNode(node.children);
-        if (child) return child;
-      }
-      return undefined;
-    };
-    const editorText = findNode(this.session?.tree ?? [])?.editorText;
+    const editorText = this.session?.tree.find((entry) => entry.id === entryId)?.editorText;
     this.closeCommandPane();
     const operationId = this.startOperation();
     try {

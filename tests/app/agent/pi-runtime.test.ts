@@ -34,6 +34,18 @@ async function createTemporaryDirectory() {
   return path;
 }
 
+function maximumObjectDepth(value: unknown) {
+  let maximum = 0;
+  const stack: Array<{ value: unknown; depth: number }> = [{ value, depth: 1 }];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    maximum = Math.max(maximum, current.depth);
+    if (typeof current.value !== "object" || current.value === null) continue;
+    for (const child of Object.values(current.value)) stack.push({ value: child, depth: current.depth + 1 });
+  }
+  return maximum;
+}
+
 describe("Pi 0.84.0 foundation contract", () => {
   it("limits review sessions to read-only inspection and main-session handoff", () => {
     expect(reviewActiveToolNames).toEqual(["read", "grep", "find", "ls", "request_main_edit"]);
@@ -338,6 +350,45 @@ describe("S1 Pi runtime", () => {
     runtimes.push(isolated);
     expect(isolated.sessionId).not.toBe(second.sessionId);
     expect((await isolated.snapshot()).parts).toEqual([]);
+  });
+
+  it("keeps long linear Pi sessions shallow enough for Electron's context bridge", async () => {
+    const directory = await createTemporaryDirectory();
+    const agentDir = join(directory, "agent");
+    const sessionDir = join(directory, "sessions");
+    const sessionFile = join(sessionDir, "deep-session.jsonl");
+    const sessionId = crypto.randomUUID();
+    const timestamp = new Date().toISOString();
+    const entries: object[] = [{ type: "session", version: 3, id: sessionId, timestamp, cwd: directory }];
+    for (let index = 0; index < 600; index += 1) {
+      entries.push({
+        type: "message",
+        id: `message-${index}`,
+        parentId: index === 0 ? null : `message-${index - 1}`,
+        timestamp,
+        message: { role: "user", content: `Message ${index}`, timestamp: Date.now() + index }
+      });
+    }
+    await mkdir(sessionDir, { recursive: true });
+    await writeFile(sessionFile, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+
+    const runtime = await createCakeRuntime({
+      cwd: directory,
+      agentDir,
+      sessionDir,
+      sessionFile,
+      trusted: false,
+      requestUi: async () => undefined,
+      onEvent: () => undefined
+    });
+    runtimes.push(runtime);
+
+    const snapshot = await runtime.snapshot();
+    const messageEntries = snapshot.tree.filter((entry) => entry.id.startsWith("message-"));
+    expect(messageEntries).toHaveLength(600);
+    expect(messageEntries.at(-1)).toMatchObject({ id: "message-599", parentId: "message-598" });
+    expect(snapshot.tree.every((entry) => !("children" in entry))).toBe(true);
+    expect(maximumObjectDepth(snapshot)).toBeLessThan(100);
   });
 });
 

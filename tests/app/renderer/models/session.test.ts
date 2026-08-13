@@ -5,7 +5,7 @@ import { MessageModel } from "../../../../src/renderer/models/message";
 import { ModelOptionModel } from "../../../../src/renderer/models/model-option";
 import { SessionModel } from "../../../../src/renderer/models/session";
 import { SessionSummaryModel } from "../../../../src/renderer/models/session-summary";
-import { SessionTreeNodeModel } from "../../../../src/renderer/models/session-tree-node";
+import { SessionTreeEntryModel } from "../../../../src/renderer/models/session-tree-entry";
 import { ReviewThreadModel } from "../../../../src/renderer/models/review-thread";
 
 const snapshot: SessionSnapshot = {
@@ -27,7 +27,7 @@ const snapshot: SessionSnapshot = {
   compatibility: { resources: [{ id: "extension:/fixture.ts", kind: "extension", name: "fixture.ts", path: "/fixture.ts", source: "fixture", scope: "project", origin: "package", commands: ["fixture"], tools: [], enabled: true }], diagnostics: [{ id: "compat:one", severity: "warning", source: "compatibility", method: "custom", message: "Unavailable" }] },
   extensionUi: { statuses: [], widgets: [] },
   sessions: [{ id: "session-1", title: "Session", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 1, archived: false }],
-  tree: [{ id: "entry-1", type: "message", preview: "Hello", active: true, children: [] }]
+  tree: [{ id: "entry-1", type: "message", preview: "Hello", active: true }]
 };
 
 describe("SessionModel", () => {
@@ -59,7 +59,7 @@ describe("SessionModel", () => {
     expect(model.parts[0]).toBeInstanceOf(MessageModel);
     expect(model.models[0]).toBeInstanceOf(ModelOptionModel);
     expect(model.sessions[0]).toBeInstanceOf(SessionSummaryModel);
-    expect(model.tree[0]).toBeInstanceOf(SessionTreeNodeModel);
+    expect(model.tree[0]).toBeInstanceOf(SessionTreeEntryModel);
     model[Symbol.dispose]();
   });
 

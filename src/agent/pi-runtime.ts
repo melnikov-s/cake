@@ -35,7 +35,7 @@ import type {
   SessionSummary,
   ThinkingLevel,
   UiPart,
-  SessionTreeNode
+  SessionTreeEntry
 } from "../ipc/session-contract";
 import type { ReviewMessage, ReviewThreadRecord } from "../ipc/review-contract";
 import { piBuiltinSlashCommands } from "../ipc/session-contract";
@@ -803,22 +803,27 @@ function entryMessageValue(entry: object, key: string) {
   return typeof message === "object" && message !== null ? Reflect.get(message, key) : undefined;
 }
 
-function projectTree(sessionManager: SessionManager): SessionTreeNode[] {
+function projectTree(sessionManager: SessionManager): SessionTreeEntry[] {
   const activeIds = new Set(sessionManager.getBranch().map((entry) => entry.id));
-  const visit = (node: ReturnType<SessionManager["getTree"]>[number]): SessionTreeNode => ({
-    id: node.entry.id,
-    parentId: node.entry.parentId ?? undefined,
-    type: node.entry.type,
-    messageRole: node.entry.type === "message" ? String(entryMessageValue(node.entry, "role") ?? "message") : undefined,
-    editorText: node.entry.type === "message" && entryMessageValue(node.entry, "role") === "user"
-      ? textFromContent(entryMessageValue(node.entry, "content"))
-      : undefined,
-    label: node.label,
-    preview: entryPreview(node.entry),
-    active: activeIds.has(node.entry.id),
-    children: node.children.map(visit)
-  });
-  return sessionManager.getTree().map(visit);
+  const entries: SessionTreeEntry[] = [];
+  const stack = [...sessionManager.getTree()].reverse();
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    entries.push({
+      id: node.entry.id,
+      parentId: node.entry.parentId ?? undefined,
+      type: node.entry.type,
+      messageRole: node.entry.type === "message" ? String(entryMessageValue(node.entry, "role") ?? "message") : undefined,
+      editorText: node.entry.type === "message" && entryMessageValue(node.entry, "role") === "user"
+        ? textFromContent(entryMessageValue(node.entry, "content"))
+        : undefined,
+      label: node.label,
+      preview: entryPreview(node.entry),
+      active: activeIds.has(node.entry.id)
+    });
+    for (let index = node.children.length - 1; index >= 0; index -= 1) stack.push(node.children[index]!);
+  }
+  return entries;
 }
 
 function projectArtifactPointers(sessionManager: SessionManager): ArtifactPointer[] {

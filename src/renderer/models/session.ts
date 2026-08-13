@@ -3,7 +3,7 @@ import type { SessionChange, SessionPreview, SessionSnapshot, ThinkingLevel, UiP
 import { MessageModel } from "./message";
 import { ModelOptionModel } from "./model-option";
 import { SessionSummaryModel } from "./session-summary";
-import { SessionTreeNodeModel } from "./session-tree-node";
+import { SessionTreeEntryModel } from "./session-tree-entry";
 import { CompatibilityResourceModel, ResourceDiagnosticModel } from "./compatibility-resource";
 import { ArtifactModel } from "./artifact";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
@@ -27,7 +27,7 @@ export class SessionModel extends Model {
   @child(CompatibilityResourceModel) resources: CompatibilityResourceModel[] = observable([]);
   @child(ResourceDiagnosticModel) resourceDiagnostics: ResourceDiagnosticModel[] = observable([]);
   @child(SessionSummaryModel) sessions: SessionSummaryModel[] = observable([]);
-  @child(SessionTreeNodeModel) tree: SessionTreeNodeModel[] = observable([]);
+  @child(SessionTreeEntryModel) tree: SessionTreeEntryModel[] = observable([]);
   @state sessionChanges: SessionChange[] = observable([]);
   @child(ArtifactModel) artifacts: ArtifactModel[] = observable([]);
   @child(ReviewThreadModel) reviewThreads: ReviewThreadModel[] = observable([]);
@@ -63,7 +63,7 @@ export class SessionModel extends Model {
       reconcileChildren(this.parts, snapshot.parts, MessageModel);
       reconcileModelOptions(this.models, snapshot.models);
       reconcileChildren(this.sessions, snapshot.sessions, SessionSummaryModel);
-      reconcileChildren(this.tree, snapshot.tree, SessionTreeNodeModel);
+      reconcileChildren(this.tree, snapshot.tree, SessionTreeEntryModel);
       reconcileChildren(this.resources, snapshot.compatibility.resources, CompatibilityResourceModel);
       reconcileChildren(this.resourceDiagnostics, snapshot.compatibility.diagnostics, ResourceDiagnosticModel);
       reconcileArtifactRecords(this.artifacts, snapshot.artifacts ?? []);

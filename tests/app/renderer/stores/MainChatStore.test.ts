@@ -863,7 +863,7 @@ describe("MainChatStore", () => {
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     desktop.emit({ type: "pi-state-changed", state: "ready" });
-    await openSnapshot(store, desktop, { ...snapshot, tree: [{ id: "entry-1", type: "message", preview: "Hello", active: true, children: [] }] });
+    await openSnapshot(store, desktop, { ...snapshot, tree: [{ id: "entry-1", type: "message", preview: "Hello", active: true }] });
     store.setDraft("/tree");
     await root.messageComposerStore.submit();
 
@@ -895,7 +895,7 @@ describe("MainChatStore", () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
-    await openSnapshot(store, desktop, { ...snapshot, tree: [{ id: "user-entry", type: "message", messageRole: "user", editorText: "Original user message\nwith formatting", preview: "Original user message with formatting", active: true, children: [] }] });
+    await openSnapshot(store, desktop, { ...snapshot, tree: [{ id: "user-entry", type: "message", messageRole: "user", editorText: "Original user message\nwith formatting", preview: "Original user message with formatting", active: true }] });
 
     await store.navigateTo("user-entry");
 

@@ -4,11 +4,11 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SessionTreeNode } from "../../../src/ipc/session-contract";
+import type { SessionTreeEntry } from "../../../src/ipc/session-contract";
 import { flattenSessionTree, SessionTree, visibleSessionTree } from "../../../src/renderer/components/session-tree";
 
-function node(id: string, children: SessionTreeNode[] = []): SessionTreeNode {
-  return { id, type: "message", preview: id, active: true, children };
+function node(id: string, parentId?: string): SessionTreeEntry {
+  return { id, parentId, type: "message", preview: id, active: true };
 }
 
 describe("SessionTree", () => {
@@ -28,7 +28,7 @@ describe("SessionTree", () => {
   });
 
   it("keeps a normal single-child conversation flat", () => {
-    const tree = [node("one", [node("two", [node("three")])])];
+    const tree = [node("one"), node("two", "one"), node("three", "two")];
 
     expect(flattenSessionTree(tree).map(({ node: item, depth }) => [item.id, depth])).toEqual([
       ["one", 0], ["two", 0], ["three", 0]
@@ -36,7 +36,7 @@ describe("SessionTree", () => {
   });
 
   it("adds depth only after a real branch point", () => {
-    const tree = [node("root", [node("left", [node("left-next")]), node("right", [node("right-next")])])];
+    const tree = [node("root"), node("left", "root"), node("left-next", "left"), node("right", "root"), node("right-next", "right")];
 
     expect(flattenSessionTree(tree).map(({ node: item, depth }) => [item.id, depth])).toEqual([
       ["root", 0], ["left", 1], ["left-next", 1], ["right", 1], ["right-next", 1]
@@ -44,19 +44,21 @@ describe("SessionTree", () => {
   });
 
   it("shows only non-empty user and assistant messages", () => {
-    const user = { ...node("user"), messageRole: "user", preview: "Hello" };
-    const thinking = { ...node("thinking", [user]), type: "thinking_level_change", preview: "high" };
-    const emptyAssistant = { ...node("empty", [thinking]), messageRole: "assistant", preview: "" };
-    const tool = { ...node("tool", [emptyAssistant]), messageRole: "toolResult", preview: "[read]" };
-    const rootNode = { ...node("model", [tool]), type: "model_change", preview: "provider/model" };
+    const rootNode = { ...node("model"), type: "model_change", preview: "provider/model" };
+    const tool = { ...node("tool", "model"), messageRole: "toolResult", preview: "[read]" };
+    const emptyAssistant = { ...node("empty", "tool"), messageRole: "assistant", preview: "" };
+    const thinking = { ...node("thinking", "empty"), type: "thinking_level_change", preview: "high" };
+    const user = { ...node("user", "thinking"), messageRole: "user", preview: "Hello" };
 
-    expect(visibleSessionTree([rootNode]).map((item) => item.id)).toEqual(["user"]);
+    expect(visibleSessionTree([rootNode, tool, emptyAssistant, thinking, user])).toEqual([
+      expect.objectContaining({ id: "user", parentId: undefined })
+    ]);
   });
 
   it("renders readable roles and omits tool results", () => {
-    const assistant = { ...node("assistant"), messageRole: "assistant", preview: "Hello back" };
-    const tool = { ...node("tool", [assistant]), messageRole: "toolResult", preview: "[read]" };
-    act(() => root.render(<SessionTree nodes={[tool]} onNavigate={vi.fn()} onFork={vi.fn()} />));
+    const tool = { ...node("tool"), messageRole: "toolResult", preview: "[read]" };
+    const assistant = { ...node("assistant", "tool"), messageRole: "assistant", preview: "Hello back" };
+    act(() => root.render(<SessionTree nodes={[tool, assistant]} onNavigate={vi.fn()} onFork={vi.fn()} />));
 
     expect(container.querySelector(".session-tree-role")?.textContent).toBe("assistant");
     expect(container.querySelector('[role="treeitem"]')?.textContent).toContain("Hello back");
@@ -66,9 +68,9 @@ describe("SessionTree", () => {
   it("keeps navigation and fork actions available on flattened rows", () => {
     const onNavigate = vi.fn();
     const onFork = vi.fn();
-    const assistant = { ...node("two"), messageRole: "assistant", preview: "Response" };
-    const user = { ...node("one", [assistant]), messageRole: "user", preview: "Question" };
-    act(() => root.render(<SessionTree nodes={[user]} onNavigate={onNavigate} onFork={onFork} />));
+    const user = { ...node("one"), messageRole: "user", preview: "Question" };
+    const assistant = { ...node("two", "one"), messageRole: "assistant", preview: "Response" };
+    act(() => root.render(<SessionTree nodes={[user, assistant]} onNavigate={onNavigate} onFork={onFork} />));
 
     const rows = container.querySelectorAll('[role="treeitem"]');
     expect(rows).toHaveLength(2);

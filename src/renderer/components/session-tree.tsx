@@ -1,32 +1,57 @@
-import type { SessionTreeNode } from "../../ipc/session-contract";
+import type { SessionTreeEntry } from "../../ipc/session-contract";
 
 interface SessionTreeRow {
-  node: SessionTreeNode;
+  node: SessionTreeEntry;
   depth: number;
 }
 
-export function visibleSessionTree(nodes: SessionTreeNode[]): SessionTreeNode[] {
-  const visit = (node: SessionTreeNode): SessionTreeNode[] => {
-    const children = node.children.flatMap(visit);
-    const visibleMessage = node.type === "message" && (node.messageRole === "user" || node.messageRole === "assistant") && Boolean(node.preview);
-    if (!visibleMessage) return children;
-    return [{ ...node, children }];
-  };
-  return nodes.flatMap(visit);
+function isVisibleMessage(entry: SessionTreeEntry) {
+  return entry.type === "message"
+    && (entry.messageRole === "user" || entry.messageRole === "assistant")
+    && Boolean(entry.preview);
 }
 
-export function flattenSessionTree(nodes: SessionTreeNode[]): SessionTreeRow[] {
+export function visibleSessionTree(entries: SessionTreeEntry[]): SessionTreeEntry[] {
+  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  const visibleIds = new Set(entries.filter(isVisibleMessage).map((entry) => entry.id));
+  return entries.filter(isVisibleMessage).map((entry) => {
+    let parentId = entry.parentId;
+    const visited = new Set<string>();
+    while (parentId && !visibleIds.has(parentId) && !visited.has(parentId)) {
+      visited.add(parentId);
+      parentId = byId.get(parentId)?.parentId;
+    }
+    return parentId === entry.parentId ? entry : { ...entry, parentId };
+  });
+}
+
+export function flattenSessionTree(entries: SessionTreeEntry[]): SessionTreeRow[] {
+  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  const childrenByParent = new Map<string, SessionTreeEntry[]>();
+  const roots: SessionTreeEntry[] = [];
+  for (const entry of entries) {
+    if (!entry.parentId || entry.parentId === entry.id || !byId.has(entry.parentId)) {
+      roots.push(entry);
+      continue;
+    }
+    const children = childrenByParent.get(entry.parentId) ?? [];
+    children.push(entry);
+    childrenByParent.set(entry.parentId, children);
+  }
+
   const rows: SessionTreeRow[] = [];
-  const visit = (node: SessionTreeNode, depth: number) => {
-    rows.push({ node, depth });
-    const childDepth = node.children.length > 1 ? depth + 1 : depth;
-    for (const child of node.children) visit(child, childDepth);
-  };
-  for (const node of nodes) visit(node, 0);
+  const stack = roots.toReversed().map((node) => ({ node, depth: 0 }));
+  while (stack.length > 0) {
+    const row = stack.pop()!;
+    rows.push(row);
+    const children = childrenByParent.get(row.node.id) ?? [];
+    const childDepth = children.length > 1 ? row.depth + 1 : row.depth;
+    for (let index = children.length - 1; index >= 0; index -= 1) stack.push({ node: children[index]!, depth: childDepth });
+  }
   return rows;
 }
 
-export function SessionTree({ nodes, onNavigate, onFork }: { nodes: SessionTreeNode[]; onNavigate(id: string): void; onFork(id: string): void }) {
+export function SessionTree({ nodes, onNavigate, onFork }: { nodes: SessionTreeEntry[]; onNavigate(id: string): void; onFork(id: string): void }) {
   const rows = flattenSessionTree(visibleSessionTree(nodes));
   return <ul className="session-tree" role="tree">{rows.map(({ node, depth }) => <li
     key={node.id}

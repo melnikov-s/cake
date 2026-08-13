@@ -169,17 +169,7 @@ export const globalSessionSummarySchema = sessionSummarySchema.extend({
   workspaceName: z.string().min(1).max(512)
 });
 
-export const sessionTreeNodeSchema: z.ZodType<{
-  id: string;
-  parentId?: string;
-  type: string;
-  messageRole?: string;
-  editorText?: string;
-  label?: string;
-  preview: string;
-  active: boolean;
-  children: Array<z.infer<typeof sessionTreeNodeSchema>>;
-}> = z.lazy(() => z.object({
+export const sessionTreeEntrySchema = z.object({
   id: z.string().min(1).max(256),
   parentId: z.string().max(256).optional(),
   type: z.string().max(128),
@@ -187,9 +177,8 @@ export const sessionTreeNodeSchema: z.ZodType<{
   editorText: boundedText.optional(),
   label: z.string().max(512).optional(),
   preview: z.string().max(2_048),
-  active: z.boolean(),
-  children: z.array(sessionTreeNodeSchema).max(50_000)
-}));
+  active: z.boolean()
+});
 
 export const changedFileSchema = z.object({
   path: z.string().max(4_096),
@@ -319,7 +308,7 @@ export const sessionSnapshotSchema = z.object({
   compatibility: compatibilityCatalogSchema.default({ resources: [], diagnostics: [] }),
   extensionUi: extensionUiStateSchema.default({ statuses: [], widgets: [] }),
   sessions: z.array(sessionSummarySchema).max(10_000).default([]),
-  tree: z.array(sessionTreeNodeSchema).max(50_000).default([]),
+  tree: z.array(sessionTreeEntrySchema).max(50_000).default([]),
   sessionChanges: z.array(sessionChangeSchema).max(20_000).optional()
   ,artifacts: z.array(artifactRecordSchema).max(10_000).optional()
 });
@@ -368,7 +357,7 @@ export type SessionSnapshot = z.infer<typeof sessionSnapshotSchema>;
 export type SessionPreview = z.infer<typeof sessionPreviewSchema>;
 export type SessionSummary = z.infer<typeof sessionSummarySchema>;
 export type GlobalSessionSummary = z.infer<typeof globalSessionSummarySchema>;
-export type SessionTreeNode = z.infer<typeof sessionTreeNodeSchema>;
+export type SessionTreeEntry = z.infer<typeof sessionTreeEntrySchema>;
 export type ChangedFile = z.infer<typeof changedFileSchema>;
 export type SessionChange = z.infer<typeof sessionChangeSchema>;
 export type CompatibilityResource = z.infer<typeof compatibilityResourceSchema>;
