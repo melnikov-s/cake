@@ -90,7 +90,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("rename-session"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), name: z.string().min(1).max(512) }),
   z.object({ type: z.literal("fork-session"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), entryId: z.string().max(256) }),
   z.object({ type: z.literal("navigate-session"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), entryId: z.string().max(256) }),
-  z.object({ type: z.literal("refresh-session"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }),
   z.object({ type: z.literal("inspect-changes"), requestId: z.uuid(), workspacePath: z.string().max(4_096) }),
   z.object({ type: z.literal("get-changelog"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }),
   z.object({ type: z.literal("respond-artifact"), requestId: z.uuid(), artifactRequestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), value: z.unknown().optional(), cancelled: z.boolean() }),

@@ -1,65 +1,118 @@
-import { Store } from "r-state-tree";
-import type { SessionChange } from "../../ipc/session-contract";
-import { diffStats } from "../components/ai-elements/diff-view";
-import type { SessionModel } from "../models/session";
+import { Store, observable } from "r-state-tree";
+import type { ChangedFile } from "../../ipc/session-contract";
+import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 
 export interface ChangesStoreProps {
-  session(): SessionModel | undefined;
-  refreshSession(): Promise<void>;
+  client: DesktopClient;
+  projectPath(): string | undefined;
+  startOperation(): string;
+  finishOperation(operationId: string): void;
+  reportError(error: unknown): void;
 }
 
-/** Owns navigation and derived file state for the session-changes surface. */
+/** Owns the Git-backed workspace-changes surface and its refresh policy. */
 export class ChangesStore extends Store<ChangesStoreProps> {
+  changes: ChangedFile[] = observable([]);
   path: string | null | undefined;
-
-  get changes() {
-    const session = this.props.session();
-    const changesByCall = new Map((session?.sessionChanges ?? []).map((change) => [change.toolCallId, change]));
-    for (const part of session?.uiParts ?? []) {
-      if (part.kind !== "tool" || part.name !== "edit" || part.state !== "success" || !part.filePath || !part.diff) continue;
-      const toolCallId = part.id.startsWith("tool-") ? part.id.slice(5) : part.id;
-      if (changesByCall.has(toolCallId)) continue;
-      const stats = diffStats(part.diff);
-      changesByCall.set(toolCallId, { id: part.id, toolCallId, toolName: part.name, path: part.filePath, ...stats, diff: part.diff, timestamp: new Date(0).toISOString() });
-    }
-    const changesByFile = new Map<string, SessionChange>();
-    for (const change of changesByCall.values()) {
-      const existing = changesByFile.get(change.path);
-      if (!existing) {
-        changesByFile.set(change.path, { ...change, id: `file:${change.path}` });
-        continue;
-      }
-      changesByFile.set(change.path, {
-        ...existing,
-        additions: existing.additions + change.additions,
-        deletions: existing.deletions + change.deletions,
-        diff: `${existing.diff}\n${change.diff}`,
-        timestamp: change.timestamp
-      });
-    }
-    return [...changesByFile.values()];
-  }
+  loading = false;
+  error: string | undefined;
+  private activeOperationId: string | undefined;
+  private refreshPending = false;
+  private preferredPath: string | undefined;
 
   get selected() {
-    return typeof this.path === "string"
-      ? this.changes.find((change) => change.path === this.path) ?? this.changes[0]
-      : this.changes[0];
+    if (typeof this.path !== "string") return this.changes[0];
+    return this.changeForPath(this.path) ?? this.changes[0];
   }
 
   async open(path?: string) {
-    this.path = path ?? this.changes[0]?.path ?? null;
-    await this.props.refreshSession();
+    this.preferredPath = path;
+    this.path = this.changeForPath(path)?.path ?? path ?? this.changes[0]?.path ?? null;
+    await this.refresh();
+  }
+
+  async refresh() {
+    const workspacePath = this.props.projectPath();
+    if (!workspacePath) return;
+    if (this.activeOperationId) {
+      this.refreshPending = true;
+      return;
+    }
+    const operationId = this.props.startOperation();
+    this.activeOperationId = operationId;
+    this.loading = true;
+    this.error = undefined;
+    try {
+      await this.props.client.inspectChanges({ operationId, workspacePath });
+    } catch (error) {
+      if (this.activeOperationId !== operationId) return;
+      this.error = errorMessage(error);
+      this.props.reportError(error);
+      this.finishRefresh(operationId);
+    }
+  }
+
+  receive(event: DesktopClientEvent) {
+    if (event.type === "changes-received") {
+      if (event.operationId !== this.activeOperationId || event.workspacePath !== this.props.projectPath()) return;
+      this.changes.splice(0, this.changes.length, ...event.files);
+      const requested = this.preferredPath;
+      this.preferredPath = undefined;
+      const selected = this.changeForPath(requested ?? this.path ?? undefined);
+      this.path = selected?.path ?? this.changes[0]?.path ?? null;
+      this.error = undefined;
+      this.finishRefresh(event.operationId);
+      return;
+    }
+    if (event.type === "operation-failed" && event.operationId && event.operationId === this.activeOperationId) {
+      this.error = event.message;
+      this.finishRefresh(event.operationId);
+    }
   }
 
   select(path: string) {
-    if (this.changes.some((change) => change.path === path)) this.path = path;
+    const change = this.changeForPath(path);
+    if (change) this.path = change.path;
   }
 
   focusPath(path: string) {
-    this.path = path;
+    this.preferredPath = path;
+    this.path = this.changeForPath(path)?.path ?? path;
+  }
+
+  changeMatchesPath(change: ChangedFile, path: string) {
+    return change.path === path || change.previousPath === path;
   }
 
   close() {
     this.path = undefined;
+    this.preferredPath = undefined;
   }
+
+  reset() {
+    this.close();
+    this.changes.splice(0);
+    this.loading = false;
+    this.error = undefined;
+    this.activeOperationId = undefined;
+    this.refreshPending = false;
+  }
+
+  private changeForPath(path?: string | null) {
+    return typeof path === "string" ? this.changes.find((change) => this.changeMatchesPath(change, path)) : undefined;
+  }
+
+  private finishRefresh(operationId: string) {
+    if (this.activeOperationId !== operationId) return;
+    this.activeOperationId = undefined;
+    this.loading = false;
+    this.props.finishOperation(operationId);
+    if (!this.refreshPending) return;
+    this.refreshPending = false;
+    void this.refresh();
+  }
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }

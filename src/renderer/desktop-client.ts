@@ -84,7 +84,6 @@ export interface DesktopClient {
   renameSession(input: { operationId: string; workspacePath: string; sessionId: string; name: string }): Promise<void>;
   forkSession(input: { operationId: string; workspacePath: string; sessionId: string; entryId: string }): Promise<void>;
   navigateSession(input: { operationId: string; workspacePath: string; sessionId: string; entryId: string }): Promise<void>;
-  refreshSession(input: { operationId: string; workspacePath: string; sessionId: string }): Promise<void>;
   inspectChanges(input: { operationId: string; workspacePath: string }): Promise<void>;
   getChangelog(input: { operationId: string; workspacePath: string; sessionId: string }): Promise<void>;
   respondToUi(input: { operationId: string; workspacePath: string; sessionId: string; uiRequestId: string; value?: string; cancelled: boolean }): Promise<void>;
@@ -232,7 +231,6 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
     renameSession: (input) => accept(bridge, { type: "rename-session", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, name: input.name }),
     forkSession: (input) => accept(bridge, { type: "fork-session", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, entryId: input.entryId }),
     navigateSession: (input) => accept(bridge, { type: "navigate-session", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, entryId: input.entryId }),
-    refreshSession: (input) => accept(bridge, { type: "refresh-session", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId }),
     inspectChanges: (input) => accept(bridge, { type: "inspect-changes", requestId: input.operationId, workspacePath: input.workspacePath }),
     getChangelog: (input) => accept(bridge, { type: "get-changelog", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId }),
     async respondToUi(input) {

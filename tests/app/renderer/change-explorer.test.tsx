@@ -5,7 +5,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SessionChange } from "../../../src/ipc/session-contract";
+import type { ChangedFile } from "../../../src/ipc/session-contract";
 import type { MainChatStore } from "../../../src/renderer/stores/MainChatStore";
 
 vi.mock("@streamdown/code", () => ({
@@ -21,17 +21,20 @@ vi.mock("@streamdown/code", () => ({
 
 import { ChangeExplorer } from "../../../src/renderer/components/change-explorer";
 
-const changes: SessionChange[] = [
-  { id: "file:src/app.ts", toolCallId: "call-1", path: "src/app.ts", additions: 1, deletions: 1, diff: "-1 const old = true;\n+1 const fresh = true;", timestamp: new Date(0).toISOString() },
-  { id: "file:PLAN.md", toolCallId: "call-2", path: "PLAN.md", additions: 1, deletions: 0, diff: "+1 # Plan", timestamp: new Date(0).toISOString() }
+const changes: ChangedFile[] = [
+  { path: "src/app.ts", status: "modified", staged: false, unstaged: true, additions: 1, deletions: 1, diff: "-1 const old = true;\n+1 const fresh = true;" },
+  { path: "PLAN.md", status: "modified", staged: false, unstaged: true, additions: 1, deletions: 0, diff: "+1 # Plan" }
 ];
 
 function explorerProps(store: MainChatStore) {
   const legacy = store as unknown as Record<string, any>;
   return {
     store: {
-      get changes() { return legacy.sessionChanges; },
-      get selected() { return legacy.selectedSessionChange; },
+      get changes() { return legacy.workspaceChanges; },
+      get selected() { return legacy.selectedWorkspaceChange; },
+      error: undefined,
+      loading: false,
+      changeMatchesPath: (change: ChangedFile, path: string) => change.path === path || change.previousPath === path,
       select: legacy.selectChangeExplorerFile,
       focusPath: legacy.selectChangeExplorerFile,
       close: legacy.closeChangeExplorer
@@ -71,8 +74,8 @@ describe("ChangeExplorer", () => {
 
   it("fills the app with a highlighted diff and a selectable file tree", () => {
     const store = {
-      sessionChanges: changes,
-      selectedSessionChange: changes[0],
+      workspaceChanges: changes,
+      selectedWorkspaceChange: changes[0],
       sessionTitle: "Refine the plan",
       reviewThreads: [],
       reviewThreadStreaming: vi.fn(() => false),
@@ -97,8 +100,8 @@ describe("ChangeExplorer", () => {
   it("toggles between the diff and the full workspace file", async () => {
     const readWorkspaceFile = vi.fn(async () => "const fresh = true;\nconst unchanged = true;");
     const store = {
-      sessionChanges: changes,
-      selectedSessionChange: changes[0],
+      workspaceChanges: changes,
+      selectedWorkspaceChange: changes[0],
       sessionTitle: "Review",
       reviewThreads: [],
       reviewThreadStreaming: vi.fn(() => false),
@@ -111,7 +114,7 @@ describe("ChangeExplorer", () => {
     } as unknown as MainChatStore;
 
     act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
-    expect(container.querySelector('[aria-label="Full session changes to src/app.ts"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Workspace changes to src/app.ts"]')).not.toBeNull();
 
     await act(async () => container.querySelector<HTMLButtonElement>('.change-explorer-view-toggle button[aria-pressed="false"]')!.click());
 
@@ -123,13 +126,13 @@ describe("ChangeExplorer", () => {
     expect(container.querySelector(".change-explorer-full-file .context")?.textContent).toContain("const unchanged = true;");
 
     act(() => container.querySelector<HTMLButtonElement>('.change-explorer-view-toggle button:first-child')!.click());
-    expect(container.querySelector('[aria-label="Full session changes to src/app.ts"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Workspace changes to src/app.ts"]')).not.toBeNull();
   });
 
   it("adds a comment from a line in the full file view", async () => {
     const createReviewThread = vi.fn(async () => true);
     const store = {
-      sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review", reviewThreads: [],
+      workspaceChanges: changes, selectedWorkspaceChange: changes[0], sessionTitle: "Review", reviewThreads: [],
       reviewThreadStreaming: vi.fn(() => false), createReviewThread, replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn(), readWorkspaceFile: vi.fn(async () => "const fresh = true;\nconst unchanged = true;")
     } as unknown as MainChatStore;
@@ -155,7 +158,7 @@ describe("ChangeExplorer", () => {
 
   it("opens the same inline comment composer from a gutter line", () => {
     const store = {
-      sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review", reviewThreads: [],
+      workspaceChanges: changes, selectedWorkspaceChange: changes[0], sessionTitle: "Review", reviewThreads: [],
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn()
     } as unknown as MainChatStore;
@@ -168,7 +171,7 @@ describe("ChangeExplorer", () => {
 
   it("uses the first Escape to close a comment composer without escaping the changes view", () => {
     const store = {
-      sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review", reviewThreads: [],
+      workspaceChanges: changes, selectedWorkspaceChange: changes[0], sessionTitle: "Review", reviewThreads: [],
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn()
     } as unknown as MainChatStore;
@@ -188,7 +191,7 @@ describe("ChangeExplorer", () => {
   it("saves comments with Enter and leaves Shift+Enter available for a new line", async () => {
     const createReviewThread = vi.fn(async () => undefined);
     const store = {
-      sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review", reviewThreads: [],
+      workspaceChanges: changes, selectedWorkspaceChange: changes[0], sessionTitle: "Review", reviewThreads: [],
       reviewThreadStreaming: vi.fn(() => false), createReviewThread, replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn()
     } as unknown as MainChatStore;
@@ -230,7 +233,7 @@ describe("ChangeExplorer", () => {
     };
     const resolveReviewThread = vi.fn(async () => undefined);
     const store = {
-      sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review", reviewThreads: [thread],
+      workspaceChanges: changes, selectedWorkspaceChange: changes[0], sessionTitle: "Review", reviewThreads: [thread],
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread,
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn()
     } as unknown as MainChatStore;
@@ -256,7 +259,7 @@ describe("ChangeExplorer", () => {
     };
     const replyReviewThread = vi.fn(async () => true);
     const store = {
-      sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review", reviewThreads: [thread],
+      workspaceChanges: changes, selectedWorkspaceChange: changes[0], sessionTitle: "Review", reviewThreads: [thread],
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => true), replyReviewThread, resolveReviewThread: vi.fn(async () => true),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn(), focusReviewThread: vi.fn()
     } as unknown as MainChatStore;
@@ -289,7 +292,7 @@ describe("ChangeExplorer", () => {
     const sendPendingReviewComments = vi.fn(async () => undefined);
     const closeChangeExplorer = vi.fn();
     const store = {
-      sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review", reviewThreads: [],
+      workspaceChanges: changes, selectedWorkspaceChange: changes[0], sessionTitle: "Review", reviewThreads: [],
       pendingReviewThreads: [{ id: "review-1" }], pendingReviewCommentCount: 2,
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer, sendPendingReviewComments
@@ -312,7 +315,7 @@ describe("ChangeExplorer", () => {
       messages: [{ id: "message-1", role: "user", body: "Can you explain this?", status: "complete" }]
     };
     const store = {
-      sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review", reviewThreads: [thread], pendingReviewThreads: [thread], pendingReviewCommentCount: 1,
+      workspaceChanges: changes, selectedWorkspaceChange: changes[0], sessionTitle: "Review", reviewThreads: [thread], pendingReviewThreads: [thread], pendingReviewCommentCount: 1,
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn(), sendPendingReviewComments: vi.fn(async () => undefined), focusReviewThread
     } as unknown as MainChatStore;
@@ -332,7 +335,7 @@ describe("ChangeExplorer", () => {
       messages: [{ id: `${id}-message`, role: "user", body, status: "complete" }]
     });
     const store = {
-      sessionChanges: changes, selectedSessionChange: changes[0], sessionTitle: "Review",
+      workspaceChanges: changes, selectedWorkspaceChange: changes[0], sessionTitle: "Review",
       reviewThreads: [makeThread("resolved-1", "resolved", "Finished comment"), makeThread("open-1", "open", "Active comment")], pendingReviewThreads: [], pendingReviewCommentCount: 0,
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
       selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn(), focusReviewThread: vi.fn()

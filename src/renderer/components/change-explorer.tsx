@@ -1,7 +1,7 @@
 import { code } from "@streamdown/code";
 import { Fragment, useEffect, useMemo, useState, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { observer } from "r-state-tree/react";
-import type { SessionChange } from "../../ipc/session-contract";
+import type { ChangedFile } from "../../ipc/session-contract";
 import type { ReviewAnchor, ReviewPoint } from "../../ipc/review-contract";
 import { parseDiff } from "./ai-elements/diff-view";
 import { Button } from "./ui/button";
@@ -30,10 +30,10 @@ interface FileTreeNode {
   name: string;
   path: string;
   children: Map<string, FileTreeNode>;
-  change?: SessionChange;
+  change?: ChangedFile;
 }
 
-function fileTree(changes: SessionChange[]) {
+function fileTree(changes: ChangedFile[]) {
   const root: FileTreeNode = { name: "", path: "", children: new Map() };
   for (const change of changes) {
     let parent = root;
@@ -62,7 +62,7 @@ function reviewPoint(lines: ReturnType<typeof parseDiff>, index: number, column?
   return { diffLine: index, oldLine: line.oldNumber, newLine: line.newNumber, column };
 }
 
-function reviewAnchor(change: SessionChange, lines: ReturnType<typeof parseDiff>, startIndex: number, endIndex: number, selectedText: string, startColumn?: number, endColumn?: number): ReviewAnchor {
+function reviewAnchor(change: ChangedFile, lines: ReturnType<typeof parseDiff>, startIndex: number, endIndex: number, selectedText: string, startColumn?: number, endColumn?: number): ReviewAnchor {
   const content = (line: (typeof lines)[number]) => line.kind === "meta" ? line.content : line.content;
   return {
     path: change.path,
@@ -75,7 +75,7 @@ function reviewAnchor(change: SessionChange, lines: ReturnType<typeof parseDiff>
   };
 }
 
-function fullFileReviewAnchor(change: SessionChange, lines: string[], startIndex: number, endIndex: number, selectedText: string, startColumn?: number, endColumn?: number): ReviewAnchor {
+function fullFileReviewAnchor(change: ChangedFile, lines: string[], startIndex: number, endIndex: number, selectedText: string, startColumn?: number, endColumn?: number): ReviewAnchor {
   return {
     path: change.path,
     view: "full",
@@ -173,12 +173,12 @@ function scrollToReviewThread(threadId: string) {
   [...document.querySelectorAll<HTMLElement>("[data-review-thread-id]")].find((element) => element.dataset.reviewThreadId === threadId)?.scrollIntoView({ block: "center" });
 }
 
-const HighlightedDiff = observer(function HighlightedDiff({ change, reviews }: { change: SessionChange; reviews: ReviewsStore }) {
+const HighlightedDiff = observer(function HighlightedDiff({ change, reviews, store }: { change: ChangedFile; reviews: ReviewsStore; store: ChangesStore }) {
   const lines = useMemo(() => parseDiff(change.diff), [change.diff]);
   const source = useMemo(() => lines.map((line) => line.kind === "meta" ? "" : line.content).join("\n"), [lines]);
   const [tokens, setTokens] = useState<HighlightTokens>();
   const [composer, setComposer] = useState<{ anchor: ReviewAnchor; floating: boolean; position?: { left: number; top: number } }>();
-  const threads = reviews.threads.filter((thread) => thread.anchor.view !== "file" && thread.anchor.view !== "full" && thread.anchor.path === change.path);
+  const threads = reviews.threads.filter((thread) => thread.anchor.view !== "file" && thread.anchor.view !== "full" && store.changeMatchesPath(change, thread.anchor.path));
 
   useEffect(() => {
     let active = true;
@@ -212,7 +212,7 @@ const HighlightedDiff = observer(function HighlightedDiff({ change, reviews }: {
     setComposer({ anchor: reviewAnchor(change, lines, startIndex, endIndex, selection.toString(), startCode ? selectionColumn(startCode, startNode, startOffset) : undefined, endCode ? selectionColumn(endCode, endNode, endOffset) : undefined), floating: true, position: { left: Math.min(window.innerWidth - 390, Math.max(16, rect.left)), top: Math.min(window.innerHeight - 250, rect.bottom + 8) } });
   };
 
-  return <div className="change-explorer-diff" role="table" aria-label={`Full session changes to ${change.path}`} onMouseUp={selectText}>{lines.map((line, index) => line.kind === "meta"
+  return <div className="change-explorer-diff" role="table" aria-label={`Workspace changes to ${change.path}`} onMouseUp={selectText}>{lines.map((line, index) => line.kind === "meta"
     ? <div className="change-explorer-line meta" role="row" key={line.key}><span /><span /><code>{line.content}</code></div>
     : <Fragment key={line.key}><div className={`change-explorer-line ${line.kind}`} data-diff-index={index} role="row">
         <span className="review-gutter"><button aria-label={`Comment on line ${line.newNumber ?? line.oldNumber}`} onClick={() => setComposer({ anchor: reviewAnchor(change, lines, index, index, line.content, 0, line.content.length), floating: false })}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5" /></svg></button>{line.oldNumber}</span><span>{line.newNumber}</span><code><b>{line.kind === "add" ? "+" : line.kind === "remove" ? "−" : " "}</b>{(tokens?.[index] ?? []).length > 0
@@ -222,7 +222,7 @@ const HighlightedDiff = observer(function HighlightedDiff({ change, reviews }: {
     {composer?.floating && <ReviewComposer anchor={composer.anchor} floating position={composer.position} onSave={(body) => reviews.createThread(composer.anchor, body)} onCancel={() => { setComposer(undefined); window.getSelection()?.removeAllRanges(); }} />}</div>;
 });
 
-function FullFile({ change, reviews, browse }: { change: SessionChange; reviews: ReviewsStore; browse: BrowseStore }) {
+function FullFile({ change, reviews, browse, store }: { change: ChangedFile; reviews: ReviewsStore; browse: BrowseStore; store: ChangesStore }) {
   const [source, setSource] = useState<string>();
   const [tokens, setTokens] = useState<HighlightTokens>();
   const [error, setError] = useState<string>();
@@ -249,7 +249,7 @@ function FullFile({ change, reviews, browse }: { change: SessionChange; reviews:
   if (error) return <div className="change-explorer-file-state" role="alert"><strong>Unable to show the full file</strong><span>{error}</span></div>;
   if (source === undefined) return <div className="change-explorer-file-state"><span>Loading full file…</span></div>;
   const sourceLines = source.split("\n");
-  const threads = reviews.threads.filter((thread) => thread.anchor.view === "full" && thread.anchor.path === change.path);
+  const threads = reviews.threads.filter((thread) => thread.anchor.view === "full" && store.changeMatchesPath(change, thread.anchor.path));
   const selectText = (event: ReactMouseEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest("button, textarea, .review-thread, .review-composer")) return;
     const selection = window.getSelection();
@@ -315,6 +315,7 @@ export const ChangeExplorer = observer(function ChangeExplorer({ store, reviews,
   const indexedThreads = [...changeThreads].sort((left, right) => Number(left.status === "resolved") - Number(right.status === "resolved"));
   const activeChangeThread = changeThreads.find((thread) => thread.id === reviews.activeThreadId);
   const pendingCount = reviews.pendingCommentCount;
+  const shownView = change?.status === "deleted" ? "diff" : view;
   const focusThread = (threadId: string) => {
     const thread = changeThreads.find((item) => item.id === threadId);
     if (thread) setView(thread.anchor.view === "full" ? "file" : "diff");
@@ -327,11 +328,11 @@ export const ChangeExplorer = observer(function ChangeExplorer({ store, reviews,
     setView(activeChangeThread.anchor.view === "full" ? "file" : "diff");
     scrollToReviewThread(activeChangeThread.id);
   }, [change?.path, activeChangeThread?.id, activeChangeThread?.anchor.view]);
-  if (!change) return <main className="change-explorer-empty"><div><small>{chat.sessionTitle}</small><h1>No session changes</h1><p>This session has no recorded file diffs.</p><Button variant="outline" onClick={() => store.close()}>Return to chat</Button></div></main>;
+  if (!change) return <main className="change-explorer-empty"><div><small>{chat.sessionTitle}</small><h1>{store.error ? "Unable to inspect changes" : store.loading ? "Inspecting workspace changes…" : "No workspace changes"}</h1><p>{store.error ?? (store.loading ? "Cake is reading the current Git working tree." : "The Git working tree is clean.")}</p><Button variant="outline" onClick={() => store.close()}>Return to chat</Button></div></main>;
   return <main className="change-explorer">
     <section className="change-explorer-file">
-      <header><div><small>Session changes · {chat.sessionTitle}</small><h1>{change.path}</h1></div><div className="change-explorer-view-toggle" role="group" aria-label="File view"><button type="button" className={view === "diff" ? "active" : ""} aria-pressed={view === "diff"} onClick={() => setView("diff")}>Diff</button><button type="button" className={view === "file" ? "active" : ""} aria-pressed={view === "file"} onClick={() => setView("file")}>Full file</button></div><span><b>+{change.additions}</b><i>−{change.deletions}</i></span></header>
-      {view === "diff" ? <HighlightedDiff change={change} reviews={reviews} /> : <FullFile change={change} reviews={reviews} browse={browse} />}
+      <header><div><small>Workspace changes · {chat.sessionTitle}</small><h1>{change.previousPath ? `${change.previousPath} → ${change.path}` : change.path}</h1></div><div className="change-explorer-view-toggle" role="group" aria-label="File view"><button type="button" className={shownView === "diff" ? "active" : ""} aria-pressed={shownView === "diff"} onClick={() => setView("diff")}>Diff</button><button type="button" className={shownView === "file" ? "active" : ""} aria-pressed={shownView === "file"} disabled={change.status === "deleted"} onClick={() => setView("file")}>Full file</button></div><span><b>+{change.additions}</b><i>−{change.deletions}</i></span></header>
+      {shownView === "diff" ? <HighlightedDiff change={change} reviews={reviews} store={store} /> : <FullFile change={change} reviews={reviews} browse={browse} store={store} />}
     </section>
     <aside className="change-explorer-tree"><header><div><strong>Changed files</strong><small>{store.changes.length} {store.changes.length === 1 ? "file" : "files"}</small></div><div className="change-explorer-actions">{pendingCount > 0 && <Button size="sm" onClick={() => void reviews.submitPending()}>Send ({pendingCount})</Button>}<Button variant="ghost" size="sm" onClick={() => store.close()}>Done</Button></div></header><div className="change-explorer-sidebar-body"><nav aria-label="Changed files"><ChangeTree nodes={tree.children} selectedPath={change.path} onSelect={(path) => store.select(path)} /></nav><section className="review-thread-index" aria-label="Review threads"><header><strong>Comments</strong><span>{changeThreads.length}</span></header>{changeThreads.length === 0 ? <p>No comments yet.</p> : <ol>{indexedThreads.map((thread) => {
       const state = thread.status === "resolved" ? "Resolved" : reviews.threadStreaming(thread.id) ? "Working" : thread.pending ? "Pending" : "Replied";

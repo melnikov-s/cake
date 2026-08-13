@@ -1,5 +1,5 @@
 import { Model, applySnapshot, batch, child, observable, state, type Snapshot } from "r-state-tree";
-import type { SessionChange, SessionPreview, SessionSnapshot, ThinkingLevel, UiPart } from "../../ipc/session-contract";
+import type { SessionPreview, SessionSnapshot, ThinkingLevel, UiPart } from "../../ipc/session-contract";
 import { MessageModel } from "./message";
 import { ModelOptionModel } from "./model-option";
 import { SessionSummaryModel } from "./session-summary";
@@ -28,7 +28,6 @@ export class SessionModel extends Model {
   @child(ResourceDiagnosticModel) resourceDiagnostics: ResourceDiagnosticModel[] = observable([]);
   @child(SessionSummaryModel) sessions: SessionSummaryModel[] = observable([]);
   @child(SessionTreeEntryModel) tree: SessionTreeEntryModel[] = observable([]);
-  @state sessionChanges: SessionChange[] = observable([]);
   @child(ArtifactModel) artifacts: ArtifactModel[] = observable([]);
   @child(ReviewThreadModel) reviewThreads: ReviewThreadModel[] = observable([]);
 
@@ -57,8 +56,7 @@ export class SessionModel extends Model {
         streaming: snapshot.streaming,
         diagnostics: snapshot.diagnostics,
         commands: snapshot.commands,
-        usage: snapshot.usage,
-        sessionChanges: snapshot.sessionChanges ?? []
+        usage: snapshot.usage
       } as Snapshot<this>);
       reconcileChildren(this.parts, snapshot.parts, MessageModel);
       reconcileModelOptions(this.models, snapshot.models);

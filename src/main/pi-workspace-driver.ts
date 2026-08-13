@@ -1,11 +1,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { createCakeRuntime, loadPiChangelog, runReviewTurn, type CakeRuntime, type ReviewMainEditRequest, type RuntimeUiRequest } from "../agent/pi-runtime";
+import { createCakeRuntime, loadPiChangelog, runReviewTurn, type CakeRuntime, type RuntimeUiRequest } from "../agent/pi-runtime";
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
 import { parseArtifactInput, type ArtifactRecord, type CakeArtifactV1 } from "../ipc/artifact-contract";
 import type { ArtifactRepository } from "./artifact-repository";
 import type { ReviewRepository } from "./review-repository";
+import { collectWorkspaceChanges } from "./git-changes";
 
 type ArtifactRepositoryPort = Pick<ArtifactRepository, "upsert" | "get" | "listSession" | "linkSession">;
 type ReviewRepositoryPort = Pick<ReviewRepository, "claimPending" | "completeRun" | "failRun" | "recoverRunning" | "agentSessionDirectory">;
@@ -15,7 +14,6 @@ type PiCommandType =
   | "rename-session"
   | "fork-session"
   | "navigate-session"
-  | "refresh-session"
   | "inspect-changes"
   | "get-changelog"
   | "prompt"
@@ -51,8 +49,6 @@ export interface PiWorkspaceDriverOptions {
   openExternal?: (url: string) => Promise<void>;
   isTrusted?: () => boolean;
 }
-
-const execFileAsync = promisify(execFile);
 
 export class PiWorkspaceDriver {
   readonly workspacePath: string;
@@ -134,13 +130,6 @@ export class PiWorkspaceDriver {
       void this.run(command.requestId, async () => {
         this.runtimeFor(command.sessionId);
         this.emit({ type: "changelog-snapshot", requestId: command.requestId, workspacePath: this.workspacePath, sessionId: command.sessionId, markdown: loadPiChangelog() });
-      }, command.sessionId);
-      return;
-    }
-    if (command.type === "refresh-session") {
-      void this.run(command.requestId, async () => {
-        const runtime = this.runtimeFor(command.sessionId);
-        this.emit({ type: "session-snapshot", snapshot: await runtime.snapshot() });
       }, command.sessionId);
       return;
     }
@@ -326,31 +315,7 @@ export class PiWorkspaceDriver {
   }
 
   private async inspectChanges(requestId: string) {
-    const { stdout } = await execFileAsync("git", ["status", "--porcelain=v1", "-z"], { cwd: this.workspacePath, maxBuffer: 4_000_000 });
-    const records = stdout.split("\0").filter(Boolean);
-    const files = [];
-    for (let index = 0; index < records.length; index++) {
-      const record = records[index]!;
-      const status = record.slice(0, 2);
-      let path = record.slice(3);
-      if ((status[0] === "R" || status[0] === "C") && records[index + 1]) path = records[++index]!;
-      const staged = status[0] !== " " && status[0] !== "?";
-      let diff: string;
-      try {
-        diff = (await execFileAsync("git", ["diff", "--no-ext-diff", ...(staged ? ["--cached"] : []), "--", path], { cwd: this.workspacePath, maxBuffer: 1_000_000 })).stdout;
-      } catch (error) {
-        diff = typeof error === "object" && error !== null && "stdout" in error ? String(error.stdout) : "";
-      }
-      const lines = diff.split("\n");
-      files.push({
-        path,
-        status,
-        staged,
-        additions: lines.filter((line) => line.startsWith("+") && !line.startsWith("+++")).length,
-        deletions: lines.filter((line) => line.startsWith("-") && !line.startsWith("---")).length,
-        diff: diff.slice(0, 262_144)
-      });
-    }
+    const files = await collectWorkspaceChanges(this.workspacePath);
     this.emit({ type: "changes-snapshot", requestId, workspacePath: this.workspacePath, files });
   }
 
@@ -375,8 +340,7 @@ export class PiWorkspaceDriver {
           signal: controller.signal,
           instruction: command.instruction,
           model: command.model,
-          parent,
-          requestMainEdit: (request) => this.deliverReviewEdit(parentRuntime, request)
+          parent
         });
         if (agent.error) {
           const updated = await this.reviewRepository.failRun(this.workspacePath, command.sessionId, threadId, runId, agent.error, agent);
@@ -398,31 +362,6 @@ export class PiWorkspaceDriver {
     }
     if (failures.length > 0) throw new Error(`Review thread${failures.length === 1 ? "" : "s"} failed: ${failures.join("; ")}`);
   }
-
-  private async deliverReviewEdit(parentRuntime: CakeRuntime, request: ReviewMainEditRequest) {
-    const message = formatReviewEditRequest(request);
-    const snapshot = await parentRuntime.snapshot();
-    let delivery: "prompt" | "follow-up" = snapshot.streaming ? "follow-up" : "prompt";
-    try {
-      await parentRuntime.prompt(message, delivery, []);
-    } catch (error) {
-      if (delivery !== "prompt" || !errorMessage(error).includes("already processing")) throw error;
-      delivery = "follow-up";
-      await parentRuntime.prompt(message, delivery, []);
-    }
-    return { delivery };
-  }
-}
-
-function formatReviewEditRequest(request: ReviewMainEditRequest) {
-  return [
-    `Apply the code-review request from thread ${request.threadId}.`,
-    `File: ${request.path}`,
-    `Requested change:\n${request.requestedChange}`,
-    request.rationale ? `Rationale:\n${request.rationale}` : "",
-    request.acceptanceCriteria.length > 0 ? `Acceptance criteria:\n${request.acceptanceCriteria.map((criterion) => `- ${criterion}`).join("\n")}` : "",
-    "Make the change in the workspace, verify it appropriately, and mention the review thread ID in your result."
-  ].filter(Boolean).join("\n\n");
 }
 
 function errorMessage(error: unknown) {

@@ -851,9 +851,10 @@ Current S2 checkpoint (2026-08-07):
   command pane, pending operations, and stale-event filtering.
 - The session UI supports create/resume/rename/archive/restore, text search,
   Pi-native fork and in-file tree navigation through `/tree`. The chat header's
-  Changes action opens a session-identified, full-application change explorer;
-  edits are combined by file, syntax-highlighted, and selectable from a changed-
-  file tree on the right. These panes are transient and are not workspace tabs.
+  Changes action opens a full-application, Git-backed workspace change explorer.
+  Each refresh compares the working tree with `HEAD`, includes staged, unstaged,
+  and untracked files, preserves rename metadata, and presents one final diff per
+  file in the selectable tree. These panes are transient and are not workspace tabs.
 - Pi runtime failure exposes an explicit restart action. A recreated workspace
   driver securely reopens the selected Pi session from its validated session
   file, resubscribes the window, and preserves its draft. Empty Pi sessions are
@@ -1193,6 +1194,7 @@ These are intentionally unresolved. Resolve each before the stage that depends o
 | 2026-08-11 | Use the pinned Pi SDK for every mini-app model call, agent loop, tool execution, and agent transcript while keeping it behind Cake's main-process adapter. | Decided | Custom scenes receive Cake components, Stores, Models, and intent-level workflow methods rather than raw Pi objects; Cake coordinates but does not create a competing model or session runtime. |
 | 2026-08-11 | Treat multi-model mini-app coordination as Cake-owned workflow state over Pi-owned participant sessions. | Decided | Cake owns explicit context routing, roles, checkpoints, presentation, and result promotion; Pi remains authoritative for each participant's history, tools, usage, compaction, and session tree. |
 | 2026-08-11 | Do not make community council/subagent extensions or terminal process conventions the mini-app architecture boundary. | Decided | Cake remains compatible with useful headless extensions but provides bundled, desktop-native Pi workflow execution and tests real packaged execution rather than tool registration alone. |
+| 2026-08-12 | Make Changes a Git-backed workspace snapshot instead of reconstructing session changes from edit-tool results. | Decided | The explorer accurately includes direct review edits, shell mutations, staged and unstaged work, untracked files, deletions, and renames. Tool-result diffs remain transcript history, while the Changes surface intentionally represents the shared working tree rather than attributing files to one Pi session. |
 
 ## 19. Instructions for implementation agents
 

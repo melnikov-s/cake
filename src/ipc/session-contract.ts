@@ -182,22 +182,13 @@ export const sessionTreeEntrySchema = z.object({
 
 export const changedFileSchema = z.object({
   path: z.string().max(4_096),
-  status: z.string().min(1).max(8),
+  previousPath: z.string().max(4_096).optional(),
+  status: z.enum(["added", "modified", "deleted", "renamed", "copied", "untracked", "conflicted"]),
   staged: z.boolean(),
+  unstaged: z.boolean(),
   additions: z.number().int().nonnegative(),
   deletions: z.number().int().nonnegative(),
   diff: boundedText
-});
-
-export const sessionChangeSchema = z.object({
-  id: z.string().min(1).max(256),
-  toolCallId: z.string().min(1).max(256),
-  toolName: z.string().min(1).max(256).optional(),
-  path: z.string().max(8_192),
-  additions: z.number().int().nonnegative(),
-  deletions: z.number().int().nonnegative(),
-  diff: boundedText,
-  timestamp: z.string().datetime()
 });
 
 export const resourceScopeSchema = z.enum(["user", "project", "temporary"]);
@@ -309,8 +300,7 @@ export const sessionSnapshotSchema = z.object({
   extensionUi: extensionUiStateSchema.default({ statuses: [], widgets: [] }),
   sessions: z.array(sessionSummarySchema).max(10_000).default([]),
   tree: z.array(sessionTreeEntrySchema).max(50_000).default([]),
-  sessionChanges: z.array(sessionChangeSchema).max(20_000).optional()
-  ,artifacts: z.array(artifactRecordSchema).max(10_000).optional()
+  artifacts: z.array(artifactRecordSchema).max(10_000).optional()
 });
 
 export const sessionPreviewSchema = z.object({
@@ -359,7 +349,6 @@ export type SessionSummary = z.infer<typeof sessionSummarySchema>;
 export type GlobalSessionSummary = z.infer<typeof globalSessionSummarySchema>;
 export type SessionTreeEntry = z.infer<typeof sessionTreeEntrySchema>;
 export type ChangedFile = z.infer<typeof changedFileSchema>;
-export type SessionChange = z.infer<typeof sessionChangeSchema>;
 export type CompatibilityResource = z.infer<typeof compatibilityResourceSchema>;
 export type ResourceDiagnostic = z.infer<typeof resourceDiagnosticSchema>;
 export type CompatibilityCatalog = z.infer<typeof compatibilityCatalogSchema>;

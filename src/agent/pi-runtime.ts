@@ -29,7 +29,6 @@ import type {
   ExtensionUiState,
   FileSuggestion,
   ResourceDiagnostic,
-  SessionChange,
   SessionSnapshot,
   SessionPreview,
   SessionSummary,
@@ -145,20 +144,7 @@ export interface ReviewTurnOptions {
   instruction?: string;
   model?: { provider: string; id: string };
   parent?: ReviewParentContext;
-  requestMainEdit?: (request: ReviewMainEditRequest) => Promise<ReviewMainEditDelivery>;
   agentDir?: string;
-}
-
-export interface ReviewMainEditRequest {
-  threadId: string;
-  path: string;
-  requestedChange: string;
-  rationale?: string;
-  acceptanceCriteria: string[];
-}
-
-export interface ReviewMainEditDelivery {
-  delivery: "prompt" | "follow-up";
 }
 
 export interface ReviewParentContext {
@@ -267,45 +253,6 @@ function reviewArtifactExtension(): InlineExtension {
   });
 }
 
-const requestMainEditTool = "request_main_edit";
-/** @internal Exported so the review-session capability boundary has a deterministic contract test. */
-export const reviewActiveToolNames = ["read", "grep", "find", "ls", requestMainEditTool] as const;
-
-function reviewMainEditExtension(thread: ReviewThreadRecord, requestMainEdit?: ReviewTurnOptions["requestMainEdit"]): InlineExtension {
-  return (pi) => {
-    pi.registerTool({
-      name: requestMainEditTool,
-      label: "Request main-session edit",
-      description: "Hand a concrete workspace change to the main Cake session, which is the only session allowed to edit files.",
-      promptSnippet: "Send a concrete code or file change to the main Cake session",
-      promptGuidelines: [
-        "Use request_main_edit whenever the user asks this review thread to change code or files.",
-        "Review sessions are read-only: never claim an edit was applied; report only whether request_main_edit delivered or queued it."
-      ],
-      parameters: Type.Object({
-        requestedChange: Type.String({ minLength: 1, maxLength: 32_768 }),
-        rationale: Type.Optional(Type.String({ maxLength: 16_384 })),
-        acceptanceCriteria: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 8_192 }), { maxItems: 50 }))
-      }),
-      async execute(_toolCallId, params) {
-        if (!requestMainEdit) throw new Error("The main Cake session is unavailable for edit requests");
-        const delivery = await requestMainEdit({
-          threadId: thread.id,
-          path: thread.anchor.path,
-          requestedChange: params.requestedChange,
-          rationale: params.rationale,
-          acceptanceCriteria: params.acceptanceCriteria ?? []
-        });
-        const state = delivery.delivery === "follow-up" ? "queued behind the main session's current work" : "delivered to the main session";
-        return {
-          content: [{ type: "text", text: `The edit request was ${state}. Do not say the edit is applied until the main session reports completion.` }],
-          details: { threadId: thread.id, delivery: delivery.delivery }
-        };
-      }
-    });
-  };
-}
-
 export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewTurnResult> {
   const agentDir = options.agentDir ?? getAgentDir();
   const settingsManager = SettingsManager.create(options.cwd, agentDir, { projectTrusted: options.trusted });
@@ -338,16 +285,12 @@ export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewT
     cwd: options.cwd,
     agentDir,
     settingsManager,
-    extensionFactories: [
-      reviewArtifactExtension(),
-      reviewMainEditExtension(options.thread, options.requestMainEdit),
-      reviewForkExtension(parentMetadata, reviewContextMessage(options.thread, options.instruction), options.model ?? parentMetadata.model)
-    ]
+    extensionFactories: [reviewArtifactExtension(), reviewForkExtension(parentMetadata, reviewContextMessage(options.thread, options.instruction), options.model ?? parentMetadata.model)]
   } : {
     cwd: options.cwd,
     agentDir,
     settingsManager,
-    extensionFactories: [reviewMainEditExtension(options.thread, options.requestMainEdit)],
+    noExtensions: true,
     systemPrompt: reviewSystemPrompt(options.thread, options.instruction)
   });
   await resourceLoader.reload({ resolveProjectTrust: async () => options.trusted });
@@ -365,7 +308,7 @@ export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewT
     options.signal?.addEventListener("abort", abort, { once: true });
     try {
       await session.bindExtensions({ mode: "rpc" });
-      session.setActiveToolsByName([...reviewActiveToolNames]);
+      if (parentMetadata) session.setActiveToolsByName(parentMetadata.activeTools);
       if (options.model) {
         const model = modelRuntime.getModel(options.model.provider, options.model.id);
         if (!model) throw new Error(`Unknown review model ${options.model.provider}/${options.model.id}`);
@@ -400,7 +343,7 @@ function reviewContextMessage(thread: ReviewThreadRecord, instruction?: string) 
 function reviewSystemPrompt(thread: ReviewThreadRecord, instruction?: string) {
   const point = (value: ReviewThreadRecord["anchor"]["start"]) => `diff row ${value.diffLine}${value.oldLine ? `, old line ${value.oldLine}` : ""}${value.newLine ? `, new line ${value.newLine}` : ""}${value.column === undefined ? "" : `, column ${value.column}`}`;
   return [
-    "You are replying inside an inline code-review thread in Cake. This is an auxiliary review turn: do not discuss routing or the main chat. Address the review comment directly and inspect the workspace when useful. This review session is read-only. Answer questions here, but whenever the user requests a code or file change, call request_main_edit so the main session performs it. Never claim that a requested edit has already been applied. Finish with a concise response suitable for the inline thread.",
+    "You are replying inside an inline code-review thread in Cake. This is an auxiliary review turn: do not discuss routing or the main chat. Address the review comment directly. You may inspect and edit the workspace when that is the clearest way to address it. Finish with a concise response suitable for the inline thread.",
     instruction?.trim() ? `Shared instruction from the reviewer:\n${instruction.trim()}` : "",
     `File: ${thread.anchor.path}\nRange: ${point(thread.anchor.start)} through ${point(thread.anchor.end)}`,
     thread.anchor.selectedText ? `Selected code:\n\`\`\`\n${thread.anchor.selectedText}\n\`\`\`` : "",
@@ -592,14 +535,6 @@ function toolResultDiff(_toolName: string, result: unknown) {
   if (typeof details !== "object" || details === null) return undefined;
   const diff = Reflect.get(details, "diff") ?? Reflect.get(details, "patch");
   return typeof diff === "string" ? diff : undefined;
-}
-
-function diffLineStats(diff: string) {
-  const lines = diff.split("\n");
-  return {
-    additions: lines.filter((line) => line.startsWith("+") && !line.startsWith("+++")).length,
-    deletions: lines.filter((line) => line.startsWith("-") && !line.startsWith("---")).length
-  };
 }
 
 function textFromContent(content: unknown): string {
@@ -836,38 +771,6 @@ function projectArtifactPointers(sessionManager: SessionManager): ArtifactPointe
     if (!current || parsed.data.revision > current.revision) pointers.set(parsed.data.artifactId, parsed.data);
   }
   return [...pointers.values()];
-}
-
-export function projectSessionChanges(sessionManager: SessionManager): SessionChange[] {
-  const toolCalls = new Map<string, { name: string; path: string }>();
-  const changes: SessionChange[] = [];
-  for (const entry of sessionManager.getEntries()) {
-    if (entry.type !== "message") continue;
-    const message = Reflect.get(entry, "message");
-    if (typeof message !== "object" || message === null) continue;
-    const role = Reflect.get(message, "role");
-    if (role === "assistant") {
-      const content = Reflect.get(message, "content");
-      if (!Array.isArray(content)) continue;
-      for (const item of content) {
-        if (typeof item !== "object" || item === null || Reflect.get(item, "type") !== "toolCall") continue;
-        const toolCallId = Reflect.get(item, "id");
-        const toolName = Reflect.get(item, "name");
-        const path = typeof toolName === "string" ? toolFilePath(toolName, Reflect.get(item, "arguments")) : undefined;
-        if (typeof toolCallId === "string" && typeof toolName === "string" && path) toolCalls.set(toolCallId, { name: toolName, path });
-      }
-      continue;
-    }
-    if (role !== "toolResult" || Reflect.get(message, "isError") === true) continue;
-    const toolCallId = Reflect.get(message, "toolCallId");
-    if (typeof toolCallId !== "string") continue;
-    const call = toolCalls.get(toolCallId);
-    const details = Reflect.get(message, "details");
-    const diff = call ? toolResultDiff(call.name, { details }) : undefined;
-    if (!call || !diff) continue;
-    changes.push({ id: entry.id, toolCallId, toolName: call.name, path: call.path, ...diffLineStats(diff), diff, timestamp: entry.timestamp });
-  }
-  return changes;
 }
 
 function compatibilityCatalog(
@@ -1110,8 +1013,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       extensionUi: extensionUiState,
       sessions,
       tree: projectTree(session.sessionManager),
-      sessionChanges: projectSessionChanges(session.sessionManager)
-      ,artifacts: await (options.listArtifacts?.(projectArtifactPointers(session.sessionManager)) ?? Promise.resolve([]))
+      artifacts: await (options.listArtifacts?.(projectArtifactPointers(session.sessionManager)) ?? Promise.resolve([]))
     };
   }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { CakeRuntime, CakeRuntimeOptions, ReviewTurnOptions } from "../../../src/agent/pi-runtime";
+import type { CakeRuntime, CakeRuntimeOptions } from "../../../src/agent/pi-runtime";
 import type { DesktopEvent } from "../../../src/ipc/desktop-ipc";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
 import { PiWorkspaceDriver } from "../../../src/main/pi-workspace-driver";
@@ -57,48 +57,6 @@ describe("PiWorkspaceDriver", () => {
     expect(events).toContainEqual(expect.objectContaining({ type: "review-thread-updated", thread: expect.objectContaining({ id: thread.id }) }));
     expect(events.some((event) => event.type === "session-snapshot")).toBe(false);
     expect(runtime.prompt).not.toHaveBeenCalled();
-    driver[Symbol.dispose]();
-  });
-
-  it("delivers review edit handoffs as prompts when idle and Pi follow-ups when busy", async () => {
-    const events: DesktopEvent[] = [];
-    const runtime: CakeRuntime = {
-      sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile,
-      getReviewParentContext: vi.fn(() => ({ sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile, systemPrompt: "Parent prompt", activeTools: ["read", "edit"] })),
-      snapshot: vi.fn()
-        .mockResolvedValueOnce({ ...snapshot, streaming: false })
-        .mockResolvedValueOnce({ ...snapshot, streaming: false })
-        .mockResolvedValueOnce({ ...snapshot, streaming: true }),
-      prompt: vi.fn(async () => undefined), abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
-    };
-    const now = new Date(0).toISOString();
-    const thread = { id: "review-edit", workspacePath: "/project", sessionId: snapshot.sessionId, status: "open" as const, createdAt: now, updatedAt: now, anchor: { path: "src/app.ts", start: { diffLine: 1 }, end: { diffLine: 1 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" }, pendingComments: [{ id: "comment-1", body: "Rename this", createdAt: now }] };
-    const reviewRepository = {
-      recoverRunning: vi.fn(async () => undefined),
-      claimPending: vi.fn(async (_workspacePath: string, _sessionId: string, _threadId: string, runId: string) => ({ ...thread, submission: { status: "running" as const, runId, commentIds: ["comment-1"], startedAt: now } })),
-      agentSessionDirectory: vi.fn(() => "/reviews/review-edit"),
-      completeRun: vi.fn(async () => ({ ...thread, messages: [] })),
-      failRun: vi.fn(async () => undefined)
-    };
-    const deliveries: string[] = [];
-    const runReview = vi.fn(async (options: ReviewTurnOptions) => {
-      deliveries.push((await options.requestMainEdit!({ threadId: thread.id, path: "src/app.ts", requestedChange: "Rename value", rationale: "Clearer", acceptanceCriteria: ["Tests pass"] })).delivery);
-      deliveries.push((await options.requestMainEdit!({ threadId: thread.id, path: "src/app.ts", requestedChange: "Update its test", acceptanceCriteria: [] })).delivery);
-      return { sessionId: "review-session", sessionFile: "/reviews/review-edit/session.jsonl" };
-    });
-    const driver = new PiWorkspaceDriver({ workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime), reviewRepository, runReviewTurn: runReview, isTrusted: () => true });
-    const openId = crypto.randomUUID();
-    driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
-    await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
-
-    const requestId = crypto.randomUUID();
-    driver.dispatch({ type: "submit-review-threads", requestId, workspacePath: "/project", sessionId: snapshot.sessionId, threadIds: [thread.id] });
-    await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId }));
-
-    expect(deliveries).toEqual(["prompt", "follow-up"]);
-    expect(runtime.prompt).toHaveBeenNthCalledWith(1, expect.stringContaining("Apply the code-review request from thread review-edit"), "prompt", []);
-    expect(runtime.prompt).toHaveBeenNthCalledWith(2, expect.stringContaining("Update its test"), "follow-up", []);
-    expect(runtime.prompt).toHaveBeenNthCalledWith(1, expect.stringContaining("Acceptance criteria:\n- Tests pass"), "prompt", []);
     driver[Symbol.dispose]();
   });
 
@@ -205,11 +163,6 @@ describe("PiWorkspaceDriver", () => {
     await options?.openExternal?.("https://auth.example.test/");
     expect(openExternal).toHaveBeenCalledWith("https://auth.example.test/");
     expect(events).toContainEqual({ type: "session-snapshot", requestId: openId, snapshot });
-
-    const refreshId = crypto.randomUUID();
-    driver.dispatch({ type: "refresh-session", requestId: refreshId, workspacePath: "/project", sessionId: snapshot.sessionId });
-    await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: refreshId }));
-    expect(events).toContainEqual({ type: "session-snapshot", snapshot });
 
     const changelogId = crypto.randomUUID();
     driver.dispatch({ type: "get-changelog", requestId: changelogId, workspacePath: "/project", sessionId: snapshot.sessionId });

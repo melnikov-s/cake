@@ -53,8 +53,11 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   @child
   get changesStore(): ChangesStore {
     return createStore(ChangesStore, {
-      session: () => this.mainChatStore.session,
-      refreshSession: () => this.mainChatStore.refreshSession()
+      client: this.client,
+      projectPath: () => this.mainChatStore.projectPath,
+      startOperation: () => this.mainChatStore.startOperation(),
+      finishOperation: (operationId) => this.mainChatStore.finishOperation(operationId),
+      reportError: (error) => this.mainChatStore.setError(error)
     });
   }
 
@@ -146,6 +149,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   }
 
   private receive(event: DesktopClientEvent) {
+    this.changesStore.receive(event);
     this.reviewsStore.receive(event);
     this.settingsStore.receive(event);
     this.extensionUiStore.receive(event);
@@ -161,6 +165,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       this.messageComposerStore.reconcile(event.snapshot.sessionId);
       if (event.operationId || this.mainChatStore.isActiveSession(event.snapshot.workspacePath, event.snapshot.sessionId)) {
         this.mainChatStore.applySessionSnapshot(event.snapshot, event.operationId ? previousSessionId : undefined);
+        void this.changesStore.refresh();
       }
       return;
     }
@@ -195,6 +200,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     if (event.type === "review-thread-updated") {
       this.sessionCache.upsertReviewThread(event.thread);
       this.mainChatStore.receive(event);
+      if (this.changesStore.path !== undefined && event.thread.workspacePath === this.mainChatStore.projectPath) void this.changesStore.refresh();
       return;
     }
     this.mainChatStore.receive(event);

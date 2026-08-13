@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { reaction } from "r-state-tree";
-import type { SessionPreview, SessionSnapshot } from "../../../../src/ipc/session-contract";
+import type { ChangedFile, SessionPreview, SessionSnapshot } from "../../../../src/ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../../../../src/renderer/desktop-client";
 import { mountRootStore } from "../../../../src/renderer/stores/RootStore";
 import type { MainChatStore } from "../../../../src/renderer/stores/MainChatStore";
@@ -60,7 +60,6 @@ function createDesktopClient(restoredPath?: string) {
     renameSession: vi.fn(async () => undefined),
     forkSession: vi.fn(async () => undefined),
     navigateSession: vi.fn(async () => undefined),
-    refreshSession: vi.fn(async () => undefined),
     inspectChanges: vi.fn(async () => undefined),
     getChangelog: vi.fn(async () => undefined),
     respondToUi: vi.fn(async () => undefined),
@@ -80,12 +79,14 @@ function mountTestStore(client: DesktopClient) {
   return { root, store: root.mainChatStore };
 }
 
-async function openSnapshot(store: MainChatStore, desktop: ReturnType<typeof createDesktopClient>, nextSnapshot = snapshot) {
+async function openSnapshot(store: MainChatStore, desktop: ReturnType<typeof createDesktopClient>, nextSnapshot = snapshot, changes: ChangedFile[] = []) {
   await store.chooseProject();
   const inspectId = store.activeOperations.at(-1)!;
   desktop.emit({ type: "workspace-inspected", operationId: inspectId, path: nextSnapshot.workspacePath, trustRequired: false });
   const openId = store.activeOperations.at(-1)!;
   desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot: nextSnapshot });
+  const changesRequest = vi.mocked(desktop.client.inspectChanges).mock.calls.at(-1)?.[0];
+  if (changesRequest) desktop.emit({ type: "changes-received", ...changesRequest, files: changes });
 }
 
 describe("MainChatStore", () => {
@@ -263,55 +264,50 @@ describe("MainChatStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("combines durable session edits with a newly completed live edit", async () => {
+  it("uses the Git workspace snapshot instead of accumulating edit tool patches", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
-    await openSnapshot(store, desktop, {
-      ...snapshot,
-      sessionChanges: [{ id: "edit-result-1", toolCallId: "edit-1", path: "src/one.ts", additions: 1, deletions: 1, diff: "-1 old\n+1 new", timestamp: new Date(0).toISOString() }]
-    });
+    await openSnapshot(store, desktop, snapshot, [
+      { path: "src/one.ts", status: "modified", staged: false, unstaged: true, additions: 1, deletions: 1, diff: "-old\n+new" }
+    ]);
 
     desktop.emit({ type: "part-updated", sessionId: "session-1", part: { id: "tool-edit-2", kind: "tool", name: "edit", input: "", filePath: "src/two.ts", diff: "+2 added", state: "success" } });
 
     expect(root.changesStore.changes).toEqual([
-      expect.objectContaining({ toolCallId: "edit-1", path: "src/one.ts" }),
-      expect.objectContaining({ toolCallId: "edit-2", path: "src/two.ts", additions: 1, deletions: 0 })
+      expect.objectContaining({ path: "src/one.ts", additions: 1, deletions: 1 })
     ]);
     root[Symbol.dispose]();
   });
 
-  it("combines repeated session edits into one change per file", async () => {
+  it("resolves a review anchored to the old side of a Git rename", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
-    await openSnapshot(store, desktop, {
-      ...snapshot,
-      sessionChanges: [
-        { id: "edit-result-1", toolCallId: "edit-1", toolName: "edit", path: "PLAN.md", additions: 2, deletions: 1, diff: "-1 old\n+1 new\n+2 more", timestamp: new Date(0).toISOString() },
-        { id: "edit-result-2", toolCallId: "edit-2", toolName: "edit", path: "PLAN.md", additions: 3, deletions: 2, diff: "-4 before\n-5 before\n+4 after\n+5 after\n+6 added", timestamp: new Date(1).toISOString() }
-      ]
-    });
-
-    expect(root.changesStore.changes).toEqual([
-      expect.objectContaining({ id: "file:PLAN.md", path: "PLAN.md", additions: 5, deletions: 3, diff: expect.stringContaining("+6 added") })
+    await openSnapshot(store, desktop, snapshot, [
+      { path: "docs/plan.md", previousPath: "PLAN.md", status: "renamed", staged: false, unstaged: true, additions: 0, deletions: 0, diff: "similarity index 100%" }
     ]);
-    await store.openSessionChanges();
-    expect(root.changesStore.selected).toMatchObject({ path: "PLAN.md", additions: 5, deletions: 3 });
+
+    await root.changesStore.open("PLAN.md");
+    expect(root.changesStore.selected).toMatchObject({ path: "docs/plan.md", previousPath: "PLAN.md" });
     expect(store.commandPane).toBeUndefined();
     root.changesStore.close();
     expect(root.changesStore.path).toBeUndefined();
     root[Symbol.dispose]();
   });
 
-  it("opens the fullscreen change explorer and refreshes the authoritative session snapshot", async () => {
+  it("opens the fullscreen change explorer and refreshes Git workspace changes", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
-    await flush(); await openSnapshot(store, desktop, { ...snapshot, sessionChanges: [{ id: "edit-result", toolCallId: "edit-1", path: "PLAN.md", additions: 1, deletions: 0, diff: "+1 plan", timestamp: new Date(0).toISOString() }] });
+    await flush();
+    await openSnapshot(store, desktop, snapshot, [
+      { path: "PLAN.md", status: "modified", staged: false, unstaged: true, additions: 1, deletions: 0, diff: "+plan" }
+    ]);
+    vi.mocked(desktop.client.inspectChanges).mockClear();
 
     await store.openSessionChanges();
     expect(root.changesStore.path).toBe("PLAN.md");
-    expect(desktop.client.refreshSession).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", sessionId: "session-1" }));
+    expect(desktop.client.inspectChanges).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project" }));
 
     root.changesStore.close();
     expect(root.changesStore.path).toBeUndefined();
@@ -427,10 +423,9 @@ describe("MainChatStore", () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
-    await openSnapshot(store, desktop, {
-      ...snapshot,
-      sessionChanges: [{ id: "edit-result", toolCallId: "edit-1", path: "src/app.ts", additions: 1, deletions: 0, diff: "+1 value", timestamp: new Date(0).toISOString() }]
-    });
+    await openSnapshot(store, desktop, snapshot, [
+      { path: "src/app.ts", status: "modified", staged: false, unstaged: true, additions: 1, deletions: 0, diff: "+value" }
+    ]);
     const now = new Date(0).toISOString();
     desktop.emit({ type: "review-thread-updated", thread: {
       id: "review-1", workspacePath: "/project", sessionId: "session-1", status: "open", createdAt: now, updatedAt: now,

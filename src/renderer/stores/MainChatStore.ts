@@ -291,7 +291,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
     this.draft = this.draftsBySession[sessionId] ?? "";
     this.extensionUi.clear();
     this.commandPane = undefined;
-    this.changes.close();
+    this.changes.reset();
     this.browse.close();
     this.schedulePersist();
     return true;
@@ -339,7 +339,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
     this.extensionUi.clear();
     this.artifactInteractions.request = undefined;
     this.commandPane = undefined;
-    this.changes.close();
+    this.changes.reset();
     this.browse.close();
     try {
       await this.client.openWorkspace({ operationId, path, newSession, sessionId, sessionFile });
@@ -406,14 +406,6 @@ export class MainChatStore extends Store<MainChatStoreProps> {
   }
 
   private reviewSessionKey(workspacePath: string, sessionId: string) { return `${workspacePath}\u0000${sessionId}`; }
-
-  async refreshSession() {
-    const context = this.sessionContext();
-    if (!context) return;
-    const operationId = this.startOperation();
-    try { await this.client.refreshSession({ operationId, ...context }); }
-    catch (error) { this.finishOperation(operationId); this.setError(error); }
-  }
 
   async refreshChangelog() {
     const context = this.sessionContext();

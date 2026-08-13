@@ -10,7 +10,6 @@ import {
   loadPiChangelog,
   loadWorkspaceSessionPreview,
   piRuntimeVersion,
-  reviewActiveToolNames,
   routeReviewPromptCache,
   runReviewTurn,
   suggestProjectFiles,
@@ -47,13 +46,6 @@ function maximumObjectDepth(value: unknown) {
 }
 
 describe("Pi 0.84.0 foundation contract", () => {
-  it("limits review sessions to read-only inspection and main-session handoff", () => {
-    expect(reviewActiveToolNames).toEqual(["read", "grep", "find", "ls", "request_main_edit"]);
-    expect(reviewActiveToolNames).not.toContain("edit");
-    expect(reviewActiveToolNames).not.toContain("write");
-    expect(reviewActiveToolNames).not.toContain("bash");
-  });
-
   it("routes a forked GPT-5.6 review through the parent cache breakpoint", () => {
     const payload = {
       model: "gpt-5.6-sol",
@@ -323,17 +315,11 @@ describe("S1 Pi runtime", () => {
     expect(reopenedParts.filter((part) => part.kind === "tool")).toEqual([
       expect.objectContaining({ id: "tool-call-edit", name: "edit", filePath: "src/app.ts", diff: "-1 old\n+1 new", state: "success" })
     ]);
-    expect((await second.snapshot()).sessionChanges).toEqual([
-      expect.objectContaining({ id: "edit-result", toolCallId: "call-edit", toolName: "edit", path: "src/app.ts", additions: 1, deletions: 1, diff: "-1 old\n+1 new" })
-    ]);
     expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
     await second.rename("Named session");
     expect((await second.snapshot()).sessions.find((item) => item.id === second.sessionId)?.title).toBe("Named session");
     await second.navigate("assistant-tools");
     expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
-    expect((await second.snapshot()).sessionChanges).toEqual([
-      expect.objectContaining({ toolCallId: "call-edit", path: "src/app.ts" })
-    ]);
     const fork = await second.fork("user-1");
     expect(fork.sessionId).not.toBe(second.sessionId);
     expect(fork.sessionFile).toMatch(/\.jsonl$/);
