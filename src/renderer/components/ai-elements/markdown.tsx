@@ -14,7 +14,8 @@ const components: Components = {
 
 const mermaid = createMermaidPlugin({ config: { securityLevel: "strict" } });
 const plugins = { code, math, mermaid };
-const staticBlocks: NonNullable<StreamdownProps["parseMarkdownIntoBlocksFn"]> = () => [];
+const emptyStaticBlocks: string[] = [];
+const staticBlocks: NonNullable<StreamdownProps["parseMarkdownIntoBlocksFn"]> = () => emptyStaticBlocks;
 
 type MarkdownProps = Omit<StreamdownProps, "children" | "components" | "isAnimating" | "mode" | "parseMarkdownIntoBlocksFn" | "plugins" | "skipHtml"> & {
   children: string;

@@ -37,6 +37,9 @@ describe("Markdown", () => {
 
     expect(secondProps).toMatchObject({ isAnimating: false, mode: "static", skipHtml: true });
     expect(secondProps.parseMarkdownIntoBlocksFn).toBe(firstProps.parseMarkdownIntoBlocksFn);
-    expect(secondProps.parseMarkdownIntoBlocksFn?.("changing content")).toEqual([]);
+    const firstBlocks = secondProps.parseMarkdownIntoBlocksFn?.("first");
+    const secondBlocks = secondProps.parseMarkdownIntoBlocksFn?.("changing content");
+    expect(secondBlocks).toBe(firstBlocks);
+    expect(secondBlocks).toEqual([]);
   });
 });
