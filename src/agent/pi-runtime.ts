@@ -4,9 +4,7 @@ import {
   ModelRuntime,
   SessionManager,
   SettingsManager,
-  convertToLlm,
   createAgentSession,
-  getAgentDir,
   getPackageDir,
   hasTrustRequiringProjectResources,
   type AgentSessionEvent,
@@ -20,7 +18,7 @@ import { Type } from "@earendil-works/pi-ai";
 import { CombinedAutocompleteProvider } from "@earendil-works/pi-tui";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import type {
   Attachment,
@@ -82,19 +80,24 @@ export function loadPiChangelog() {
   }
 }
 
+/** Resolve the Cake source tree that matches the running authoring skill. */
+export function cakePluginAuthoringSkillPath(authoringRoot = process.env.CAKE_AUTHORING_ROOT ?? resolve(import.meta.dirname, "../..")) {
+  return join(authoringRoot, ".agents", "skills", "cake-plugin-authoring");
+}
+
 export function inspectWorkspace(path: string) {
   return { path, trustRequired: hasTrustRequiringProjectResources(path) };
 }
 
-export async function suggestProjectFiles(cwd: string, prefix: string, fdPath?: string): Promise<FileSuggestion[]> {
-  const installedFd = join(getAgentDir(), "bin", process.platform === "win32" ? "fd.exe" : "fd");
-  const provider = new CombinedAutocompleteProvider([], cwd, fdPath ?? (existsSync(installedFd) ? installedFd : "fd"));
-  const text = `@${prefix}`;
+export async function suggestProjectFiles(options: { cwd: string; prefix: string; agentDir: string; fdPath?: string }): Promise<FileSuggestion[]> {
+  const installedFd = join(options.agentDir, "bin", process.platform === "win32" ? "fd.exe" : "fd");
+  const provider = new CombinedAutocompleteProvider([], options.cwd, options.fdPath ?? (existsSync(installedFd) ? installedFd : "fd"));
+  const text = `@${options.prefix}`;
   const suggestions = await provider.getSuggestions([text], 0, text.length, { signal: AbortSignal.timeout(5_000) });
   return (suggestions?.items ?? []).slice(0, 20).map(({ value, label, description }) => ({ value, label, description }));
 }
 
-export async function listWorkspaceSessions(cwd: string, sessionDir?: string): Promise<SessionSummary[]> {
+export async function listWorkspaceSessions(cwd: string, sessionDir: string): Promise<SessionSummary[]> {
   const sessions = await SessionManager.list(cwd, sessionDir);
   const idsByPath = new Map(sessions.map((item) => [item.path, item.id]));
   return sessions.map((item) => ({
@@ -108,7 +111,7 @@ export async function listWorkspaceSessions(cwd: string, sessionDir?: string): P
   }));
 }
 
-export async function loadWorkspaceSessionPreview(cwd: string, sessionId: string, sessionDir?: string): Promise<SessionPreview | undefined> {
+export async function loadWorkspaceSessionPreview(cwd: string, sessionId: string, sessionDir: string): Promise<SessionPreview | undefined> {
   const sessions = await SessionManager.list(cwd, sessionDir);
   const target = sessions.find((session) => session.id === sessionId);
   if (!target) return undefined;
@@ -143,8 +146,8 @@ export type CakeRuntimeEvent =
 export interface CakeRuntimeOptions {
   cwd: string;
   trusted: boolean;
-  agentDir?: string;
-  sessionDir?: string;
+  agentDir: string;
+  sessionDir: string;
   newSession?: boolean;
   sessionId?: string;
   sessionFile?: string;
@@ -154,7 +157,16 @@ export interface CakeRuntimeOptions {
   listArtifacts?(pointers: ArtifactPointer[]): Promise<ArtifactRecord[]>;
   openExternal?(url: string): Promise<void>;
   captureGitCheckpoint?(sessionId: string): Promise<{ tree: string; ref: string }>;
+  globalControl?: {
+    tools: readonly GlobalControlTool[];
+    invoke(input: { name: string; arguments: unknown }, signal: AbortSignal): Promise<unknown>;
+  };
   onEvent(event: CakeRuntimeEvent): void;
+}
+
+export interface GlobalControlTool {
+  name: string;
+  description: string;
 }
 
 export interface ReviewTurnOptions {
@@ -162,11 +174,12 @@ export interface ReviewTurnOptions {
   trusted: boolean;
   thread: ReviewThreadRecord;
   sessionDir: string;
+  parentSessionRoot: string;
   signal?: AbortSignal;
   instruction?: string;
   model?: { provider: string; id: string };
   parent?: ReviewParentContext;
-  agentDir?: string;
+  agentDir: string;
 }
 
 export interface ReviewParentContext {
@@ -190,7 +203,6 @@ interface ReviewParentMetadata {
   cacheKey: string;
   systemPrompt: string;
   activeTools: string[];
-  parentUserOrdinal: number;
   model?: { provider: string; id: string };
 }
 
@@ -201,11 +213,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function reviewParentMetadata(value: unknown): ReviewParentMetadata | undefined {
   if (!isRecord(value) || typeof value.cacheKey !== "string" || typeof value.systemPrompt !== "string") return undefined;
   if (!Array.isArray(value.activeTools) || !value.activeTools.every((tool) => typeof tool === "string")) return undefined;
-  if (!Number.isInteger(value.parentUserOrdinal)) return undefined;
   const model = isRecord(value.model) && typeof value.model.provider === "string" && typeof value.model.id === "string"
     ? { provider: value.model.provider, id: value.model.id }
     : undefined;
-  return { cacheKey: value.cacheKey, systemPrompt: value.systemPrompt, activeTools: value.activeTools, parentUserOrdinal: value.parentUserOrdinal as number, model };
+  return { cacheKey: value.cacheKey, systemPrompt: value.systemPrompt, activeTools: value.activeTools, model };
 }
 
 function storedReviewParent(manager: SessionManager) {
@@ -215,56 +226,19 @@ function storedReviewParent(manager: SessionManager) {
   return undefined;
 }
 
-function explicitPromptCachingModel(model: ReviewParentMetadata["model"]) {
-  if (!model || (model.provider !== "openai" && model.provider !== "openai-codex")) return false;
-  const match = /^gpt-(\d+)\.(\d+)/.exec(model.id);
-  return Boolean(match && (Number(match[1]) > 5 || (Number(match[1]) === 5 && Number(match[2]) >= 6)));
-}
-
-function markCacheBreakpoint(message: Record<string, unknown>) {
-  if (typeof message.content === "string") {
-    message.content = [{ type: "text", text: message.content, prompt_cache_breakpoint: { mode: "explicit" } }];
-    return true;
-  }
-  if (!Array.isArray(message.content)) return false;
-  for (let index = message.content.length - 1; index >= 0; index--) {
-    const block = message.content[index];
-    if (!isRecord(block) || !["input_text", "input_image", "input_file", "text", "image_url", "input_audio", "file", "refusal"].includes(String(block.type))) continue;
-    message.content[index] = { ...block, prompt_cache_breakpoint: { mode: "explicit" } };
-    return true;
-  }
-  return false;
-}
-
 /** @internal Exported for deterministic cache-routing contract tests. */
-export function routeReviewPromptCache(payload: unknown, metadata: ReviewParentMetadata, selectedModel = metadata.model): unknown {
+export function routeReviewPromptCache(payload: unknown, metadata: ReviewParentMetadata): unknown {
   if (!isRecord(payload) || !("prompt_cache_key" in payload)) return payload;
-  const routed: Record<string, unknown> = { ...payload, prompt_cache_key: metadata.cacheKey };
-  if (!explicitPromptCachingModel(selectedModel)) return routed;
-  const messagesKey = Array.isArray(routed.input) ? "input" : Array.isArray(routed.messages) ? "messages" : undefined;
-  if (!messagesKey) return routed;
-  let userOrdinal = -1;
-  let marked = false;
-  const messages = (routed[messagesKey] as unknown[]).map((message) => {
-    if (!isRecord(message) || message.role !== "user") return message;
-    userOrdinal += 1;
-    if (userOrdinal !== metadata.parentUserOrdinal) return message;
-    const copy = { ...message };
-    marked = markCacheBreakpoint(copy);
-    return copy;
-  });
-  if (!marked) return routed;
-  const existingOptions = isRecord(routed.prompt_cache_options) ? routed.prompt_cache_options : {};
-  return { ...routed, [messagesKey]: messages, prompt_cache_options: { ...existingOptions, mode: "explicit" } };
+  return { ...payload, prompt_cache_key: metadata.cacheKey };
 }
 
-function reviewForkExtension(metadata: ReviewParentMetadata, reviewContext: string, selectedModel?: { provider: string; id: string }): InlineExtension {
+function reviewForkExtension(metadata: ReviewParentMetadata, reviewContext: string): InlineExtension {
   return (pi) => {
     pi.on("before_agent_start", () => ({
       systemPrompt: metadata.systemPrompt,
       message: { customType: "cake.review-context", content: reviewContext, display: false }
     }));
-    pi.on("before_provider_request", (event) => routeReviewPromptCache(event.payload, metadata, selectedModel));
+    pi.on("before_provider_request", (event) => routeReviewPromptCache(event.payload, metadata));
   };
 }
 
@@ -276,7 +250,7 @@ function reviewArtifactExtension(): InlineExtension {
 }
 
 export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewTurnResult> {
-  const agentDir = options.agentDir ?? getAgentDir();
+  const agentDir = options.agentDir;
   const settingsManager = SettingsManager.create(options.cwd, agentDir, { projectTrusted: options.trusted });
   const modelRuntime = await ModelRuntime.create({
     authPath: `${agentDir}/auth.json`,
@@ -286,17 +260,17 @@ export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewT
   let sessionManager: SessionManager;
   let parentMetadata: ReviewParentMetadata | undefined;
   if (options.thread.agentSessionFile) {
+    assertSessionPath(options.thread.agentSessionFile, options.sessionDir, "Review session file");
     sessionManager = SessionManager.open(options.thread.agentSessionFile, options.sessionDir, options.cwd);
     parentMetadata = storedReviewParent(sessionManager);
   } else if (options.parent?.sessionFile && options.parent.systemPrompt && options.parent.activeTools) {
+    assertSessionPath(options.parent.sessionFile, options.parentSessionRoot, "Parent session file");
     sessionManager = SessionManager.forkFrom(options.parent.sessionFile, options.cwd, options.sessionDir);
     if (options.parent.leafId) sessionManager.branch(options.parent.leafId);
-    const parentMessages = convertToLlm(sessionManager.buildSessionContext().messages);
     parentMetadata = {
       cacheKey: options.parent.sessionId,
       systemPrompt: options.parent.systemPrompt,
       activeTools: options.parent.activeTools,
-      parentUserOrdinal: parentMessages.filter((message) => message.role === "user").length - 1,
       model: options.parent.model
     };
     sessionManager.appendCustomEntry(reviewParentEntryType, parentMetadata);
@@ -307,7 +281,7 @@ export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewT
     cwd: options.cwd,
     agentDir,
     settingsManager,
-    extensionFactories: [reviewArtifactExtension(), reviewForkExtension(parentMetadata, reviewContextMessage(options.thread, options.instruction), options.model ?? parentMetadata.model)]
+    extensionFactories: [reviewArtifactExtension(), reviewForkExtension(parentMetadata, reviewContextMessage(options.thread, options.instruction))]
   } : {
     cwd: options.cwd,
     agentDir,
@@ -373,9 +347,11 @@ function reviewSystemPrompt(thread: ReviewThreadRecord, instruction?: string) {
   ].filter(Boolean).join("\n\n");
 }
 
-export async function loadReviewSessionMessages(record: ReviewThreadRecord): Promise<ReviewMessage[]> {
+export async function loadReviewSessionMessages(record: ReviewThreadRecord, sessionRoot: string): Promise<ReviewMessage[]> {
   if (!record.agentSessionFile) return [];
-  const manager = SessionManager.open(record.agentSessionFile, undefined, record.workspacePath);
+  assertSessionPath(record.agentSessionFile, sessionRoot, "Review session file");
+  const targetDirectory = resolve(dirname(record.agentSessionFile));
+  const manager = SessionManager.open(record.agentSessionFile, targetDirectory, record.workspacePath);
   const branch = manager.getBranch();
   const parentBoundary = branch.findLastIndex((entry) => entry.type === "custom" && entry.customType === reviewParentEntryType);
   return branch.slice(parentBoundary + 1).flatMap((entry): ReviewMessage[] => {
@@ -503,6 +479,37 @@ export function createCakeArtifactExtension(options: Required<Pick<CakeRuntimeOp
         pi.sendMessage({ customType: "cake.artifact.demo", content: value === undefined ? "Artifact request cancelled." : `Artifact response: ${formatUnknown(validated, 1_000)}`, display: true });
       }
     });
+  };
+}
+
+function controlToolParameters(name: string) {
+  const target = { workspacePath: Type.String(), sessionId: Type.String() };
+  if (name === "get_app_state") return Type.Object({});
+  if (name === "list_sessions") return Type.Object({ workspacePath: Type.Optional(Type.String()), includeArchived: Type.Optional(Type.Boolean()), cursor: Type.Optional(Type.Integer()), limit: Type.Optional(Type.Integer()) });
+  if (name === "read_session") return Type.Object({ ...target, cursor: Type.Optional(Type.Integer()), limit: Type.Optional(Type.Integer()) });
+  if (name === "search_sessions") return Type.Object({ query: Type.String(), workspacePath: Type.Optional(Type.String()), includeArchived: Type.Optional(Type.Boolean()), limit: Type.Optional(Type.Integer()) });
+  if (name === "create_session") return Type.Object({ workspacePath: Type.String() });
+  if (name === "send_session_message") return Type.Object({ ...target, text: Type.String(), delivery: Type.Optional(Type.Union([Type.Literal("prompt"), Type.Literal("follow-up"), Type.Literal("steer")])) });
+  if (name === "rename_session") return Type.Object({ ...target, title: Type.String() });
+  if (name === "set_session_archived") return Type.Object({ ...target, archived: Type.Boolean() });
+  if (name === "set_session_model") return Type.Object({ ...target, provider: Type.String(), modelId: Type.String() });
+  return Type.Object(target);
+}
+
+function createGlobalControlExtension(control: NonNullable<CakeRuntimeOptions["globalControl"]>): InlineExtension {
+  return (pi) => {
+    for (const tool of control.tools) {
+      pi.registerTool({
+        name: tool.name,
+        label: tool.name.replaceAll("_", " "),
+        description: tool.description,
+        parameters: controlToolParameters(tool.name),
+        async execute(_toolCallId, params, signal) {
+          const result = await control.invoke({ name: tool.name, arguments: params }, signal ?? new AbortController().signal);
+          return { content: [{ type: "text", text: formatUnknown(result, 24_000) }], details: result };
+        }
+      });
+    }
   };
 }
 
@@ -913,7 +920,7 @@ function createCakeExtensionUiContext(options: {
 }
 
 export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<CakeRuntime> {
-  const agentDir = options.agentDir ?? getAgentDir();
+  const agentDir = options.agentDir;
   const settingsManager = SettingsManager.create(options.cwd, agentDir, { projectTrusted: options.trusted });
   const modelRuntime = await ModelRuntime.create({
     authPath: `${agentDir}/auth.json`,
@@ -924,15 +931,30 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   const requestArtifact = options.requestArtifact ?? (async () => undefined);
   let getPiCommands: () => SlashCommandInfo[] = () => [];
   const commandCatalogExtension: InlineExtension = (pi) => { getPiCommands = () => pi.getCommands(); };
-  const resourceLoader = new DefaultResourceLoader({ cwd: options.cwd, agentDir, settingsManager, extensionFactories: [createCakeArtifactExtension({ persistArtifact, requestArtifact }), commandCatalogExtension] });
+  const resourceLoader = new DefaultResourceLoader(options.globalControl ? {
+    cwd: options.cwd,
+    agentDir,
+    settingsManager,
+    extensionFactories: [createGlobalControlExtension(options.globalControl), commandCatalogExtension],
+    noExtensions: true,
+    noSkills: true,
+    noPromptTemplates: true,
+    noThemes: true,
+    noContextFiles: true,
+    systemPrompt: "You are Cake's global application assistant. Help the user find, understand, navigate, and control their Cake sessions. Use the provided application tools instead of filesystem or shell tools. Earlier messages are part of the conversation; resolve follow-up references from them. Refresh live application state with tools when it may have changed. Never claim an action succeeded unless its tool result says it did."
+  } : {
+    cwd: options.cwd,
+    agentDir,
+    settingsManager,
+    additionalSkillPaths: [cakePluginAuthoringSkillPath()],
+    extensionFactories: [createCakeArtifactExtension({ persistArtifact, requestArtifact }), commandCatalogExtension]
+  });
   await resourceLoader.reload({ resolveProjectTrust: async () => options.trusted });
   const availableSessions = await SessionManager.list(options.cwd, options.sessionDir);
-  const allowedSessionRoot = resolve(options.sessionDir ?? join(agentDir, "sessions"));
+  const allowedSessionRoot = resolve(options.sessionDir);
   let directSession: SessionManager | undefined;
   if (options.sessionFile) {
-    const targetDirectory = resolve(dirname(options.sessionFile));
-    const pathFromRoot = relative(allowedSessionRoot, targetDirectory);
-    if (isAbsolute(pathFromRoot) || pathFromRoot.startsWith("..")) throw new Error("Session file is outside this workspace's Pi session directory");
+    assertSessionPath(options.sessionFile, allowedSessionRoot, "Session file");
     directSession = SessionManager.open(options.sessionFile, options.sessionDir, options.cwd);
   }
   const requestedSession = options.sessionId
@@ -950,7 +972,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     modelRuntime,
     resourceLoader,
     settingsManager,
-    sessionManager
+    sessionManager,
+    ...(options.globalControl ? { noTools: "all" as const } : {})
   });
   const cakeSessionId = session.sessionManager.getSessionId();
   let disposed = false;
@@ -1322,6 +1345,13 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       void settingsManager.flush();
     }
   };
+}
+
+function assertSessionPath(sessionFile: string, sessionRoot: string, label: string) {
+  const pathFromRoot = relative(resolve(sessionRoot), resolve(dirname(sessionFile)));
+  if (isAbsolute(pathFromRoot) || pathFromRoot === ".." || pathFromRoot.startsWith(`..${sep}`)) {
+    throw new Error(`${label} is outside Cake's Pi session directory`);
+  }
 }
 
 export type FoundationRuntimeEvent =

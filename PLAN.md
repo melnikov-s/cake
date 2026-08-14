@@ -672,7 +672,27 @@ Do not weaken artifact isolation in order to implement trusted workspace widgets
 
 ## 10. Data layout and durability
 
-Use a dedicated Cake application directory for app-owned data. The exact OS-resolved base path is an implementation detail, but keep these conceptual areas separate:
+Cake owns a single configurable home at `~/.cake` (`CAKE_HOME` overrides it).
+The embedded Pi runtime uses `~/.cake/pi` as its agent directory and
+`~/.cake/pi/sessions` as the workspace-session root. Review and global-chat Pi
+sessions use dedicated descendants of `~/.cake/pi`; Cake plugins use
+`~/.cake/plugins`. Standalone Pi remains isolated at `~/.pi/agent`.
+
+On the first isolated launch, Cake copy-migrates only the legacy
+`~/.pi/agent/sessions` tree into `~/.cake/pi/sessions`. The migration never
+modifies its source, never overwrites different destination content, records
+conflicts in a versioned marker beneath `~/.cake/migrations`, and leaves the
+marker absent after failure so the next launch can safely retry. Settings,
+credentials, models, packages, extensions, skills, prompts, and themes are not
+migrated; users authenticate and configure models independently in Cake.
+
+Electron lifecycle-owned state remains beneath `app.getPath("userData")`:
+application/window snapshots, artifact payloads, and review annotations. Tests
+may redirect this with `CAKE_ELECTRON_USER_DATA`. These locations depend on
+Electron's platform path and `app.setPath()` lifecycle, while all Pi runtime
+paths come from Cake's centralized home resolver.
+
+Keep these conceptual areas separate:
 
 ```text
 cake-data/
@@ -1197,6 +1217,8 @@ These are intentionally unresolved. Resolve each before the stage that depends o
 | 2026-08-11 | Treat multi-model mini-app coordination as Cake-owned workflow state over Pi-owned participant sessions. | Decided | Cake owns explicit context routing, roles, checkpoints, presentation, and result promotion; Pi remains authoritative for each participant's history, tools, usage, compaction, and session tree. |
 | 2026-08-11 | Do not make community council/subagent extensions or terminal process conventions the mini-app architecture boundary. | Decided | Cake remains compatible with useful headless extensions but provides bundled, desktop-native Pi workflow execution and tests real packaged execution rather than tool registration alone. |
 | 2026-08-12 | Make Changes a Git-backed comparison of durable tree checkpoints stored on the Pi session branch instead of reconstructing changes from edit-tool results or diffing a fixed commit against the current workspace. | Decided | Checkpoints cover direct edits, shell mutations, commits, deletions, renames, and non-ignored new files without depending on current `HEAD`. Pi branch/fork semantics select the relevant checkpoint history, while private Cake refs keep old checkpoint trees reachable. Tool-result diffs remain transcript history. |
+| 2026-08-13 | Keep one persistent application-level global chat backed by a hidden Pi session. | Decided | Users expect follow-up references to include earlier messages. Pi owns the transcript and compaction under Cake app data; the session stays out of project lists, refreshes live app state through curated control tools, and can be explicitly cleared into a new hidden session. |
+| 2026-08-14 | Isolate every embedded Pi runtime beneath the centralized Cake home (`~/.cake` or `CAKE_HOME`). | Decided | Cake passes explicit agent/session paths, standalone `~/.pi/agent` resources cannot influence Cake, and a copy-only, marker-backed migration imports existing session history without sharing future writes. |
 
 ## 19. Instructions for implementation agents
 

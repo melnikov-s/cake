@@ -294,6 +294,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
     this.changes.reset();
     this.browse.close();
     this.schedulePersist();
+    this.composer.requestFocus();
     return true;
   }
 
@@ -373,7 +374,10 @@ export class MainChatStore extends Store<MainChatStoreProps> {
     if (pane === "changelog") await this.refreshChangelog();
   }
 
-  closeCommandPane() { this.commandPane = undefined; }
+  closeCommandPane() {
+    this.commandPane = undefined;
+    this.composer.requestFocus();
+  }
 
   async openSessionChanges(threadId?: string) {
     this.commandPane = undefined;
@@ -474,7 +478,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
     }
   }
 
-  applySessionSnapshot(snapshot: SessionSnapshot, previousSessionId?: string) {
+  applySessionSnapshot(snapshot: SessionSnapshot, previousSessionId?: string, focusComposer = false) {
     const restartDraft = this.draftAfterAgentRestart;
     if (previousSessionId) this.draftsBySession[previousSessionId] = this.draft;
     this.projectPath = snapshot.workspacePath;
@@ -490,6 +494,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
     this.sidebar.applyWorkspaceSessions(snapshot.workspacePath, workspaceName, snapshot.sessions);
     this.schedulePersist();
     void this.reviews.loadThreads(snapshot.workspacePath, snapshot.sessionId);
+    if (focusComposer) this.composer.requestFocus();
   }
 
   isActiveSession(workspacePath: string, sessionId: string) {

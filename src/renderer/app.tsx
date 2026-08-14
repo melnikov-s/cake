@@ -32,6 +32,7 @@ import { RootStore } from "./stores/RootStore";
 import type { ExtensionUiStore, UiRequestState } from "./stores/ExtensionUiStore";
 import type { ArtifactInteractionStore } from "./stores/ArtifactInteractionStore";
 import type { MessageComposerStore } from "./stores/MessageComposerStore";
+import type { GlobalChatStore } from "./stores/GlobalChatStore";
 
 function Icon({ children, size = 16 }: { children: ReactNode; size?: number }) {
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
@@ -285,7 +286,7 @@ function UiDialog({ request, extensionUi }: { request: UiRequestState; extension
   );
 }
 
-export const Sidebar = observer(function Sidebar({ store, chat, reviews, onOpenSettings, onOpenChat, onToggle, onReloadPi, settingsOpen }: { store: SidebarStore; chat: MainChatStore; reviews: ReviewsStore; onOpenSettings: () => void; onOpenChat: () => void; onToggle: () => void; onReloadPi?: () => void; settingsOpen: boolean }) {
+export const Sidebar = observer(function Sidebar({ store, chat, reviews, onOpenSettings, onOpenChat, onOpenGlobalChat, onToggle, onReloadPi, settingsOpen, globalChatOpen }: { store: SidebarStore; chat: MainChatStore; reviews: ReviewsStore; onOpenSettings: () => void; onOpenChat: () => void; onOpenGlobalChat: () => void; onToggle: () => void; onReloadPi?: () => void; settingsOpen: boolean; globalChatOpen: boolean }) {
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() => new Set());
   const searchInput = useRef<HTMLInputElement>(null);
@@ -328,6 +329,7 @@ export const Sidebar = observer(function Sidebar({ store, chat, reviews, onOpenS
       <div className="sidebar-window-tools"><button aria-label="Toggle sidebar" onClick={onToggle}><SidebarIcon /></button><button aria-label="Back" disabled><BackIcon /></button><button aria-label="Forward" disabled><ForwardIcon /></button></div>
       <div className="sidebar-brand"><details className="brand-menu"><summary><span>Cake</span><ChevronIcon /></summary><div className="brand-dropdown"><button type="button" disabled={!chat.session || !onReloadPi} onClick={(event) => { onReloadPi?.(); event.currentTarget.closest("details")?.removeAttribute("open"); }}>Reload Pi<span>{chat.session?.piSettings?.reloadPending ? "Queued" : "Settings and resources"}</span></button></div></details><div className="brand-actions"><button className={searchOpen ? "active" : ""} aria-label={searchOpen ? "Close session search" : "Search sessions"} aria-expanded={searchOpen} onClick={() => searchOpen ? closeSearch() : setSearchExpanded(true)}>{searchOpen ? <CloseIcon /> : <SearchIcon />}</button></div></div>
       <div className="sidebar-scroll">
+        <button className={`new-chat global-chat-link${globalChatOpen ? " active" : ""}`} aria-current={globalChatOpen ? "page" : undefined} onClick={onOpenGlobalChat}><span className="cake-mini-mark">C</span><span>Global chat</span></button>
         <button className="new-chat" onClick={() => navigateToChat(() => chat.startOneOffChat())}><ChatIcon /><span>New chat</span></button>
         <div className={`session-filter global-session-filter ${searchOpen ? "expanded" : ""}`} aria-hidden={!searchOpen}><input ref={searchInput} aria-label="Search sessions" placeholder="Search all sessions" value={store.search} disabled={!searchOpen} onChange={(event) => { store.search = event.target.value; chat.persistViewState(); }} onKeyDown={(event) => { if (event.key === "Escape") closeSearch(); }} /></div>
         {store.search.trim() && <div className="global-session-results">
@@ -358,6 +360,26 @@ export const Sidebar = observer(function Sidebar({ store, chat, reviews, onOpenS
   );
 });
 
+const GlobalChatPanel = observer(function GlobalChatPanel({ store }: { store: GlobalChatStore }) {
+  const submit = (event: FormEvent) => { event.preventDefault(); void store.submit(); };
+  return <div className="workbench global-chat"><div className="chat-layout">
+    <Conversation>
+      <TranscriptList>
+        {store.parts.length === 0 ? <div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What can I help you find or do?</h1><p>Ask about your tasks, open one, or delegate work to it.</p></div> : store.parts.map((part) => {
+          if (part.kind === "text") return <Message key={part.id} className={part.role === "user" ? "ml-auto w-[min(88%,42rem)]" : "assistant-message mr-auto w-full"}><MessageLabel>{part.role === "user" ? "You" : "Cake"}</MessageLabel><MessageContent className={part.role === "user" ? "user-message" : "assistant-message-content"}><Markdown>{part.text}</Markdown></MessageContent></Message>;
+          if (part.kind === "tool") return <Tool key={part.id} part={part} />;
+          if (part.kind === "reasoning") return <Reasoning key={part.id} open={false} onToggle={() => undefined} streaming={part.status === "streaming"} hasContent={Boolean(part.text.trim())}><Markdown>{part.text}</Markdown></Reasoning>;
+          if (part.kind === "notice") return <div key={part.id} className={`notice notice-${part.tone}`}><strong>{part.title}</strong>{part.detail && <span>{part.detail}</span>}</div>;
+          return null;
+        })}
+        {store.streaming && <AssistantLoadingIndicator />}
+        {store.error && <div className="notice notice-error" role="alert"><strong>Global chat failed</strong><span>{store.error}</span></div>}
+      </TranscriptList>
+    </Conversation>
+    <div className="composer-dock"><form className="global-chat-composer" onSubmit={submit}><textarea aria-label="Message global chat" placeholder="Ask Cake to find or control a task…" value={store.draft} onChange={(event) => store.setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void store.submit(); } }} /><div>{store.streaming && <Button variant="ghost" size="sm" type="button" onClick={() => void store.abort()}>Stop</Button>}<Button className="send-button" size="sm" type="submit" disabled={!store.draft.trim()}>Send<SendIcon /></Button></div></form></div>
+  </div></div>;
+});
+
 const ComposerPanel = observer(function ComposerPanel({ store, composer, reviews, settings, extensionUi }: { store: MainChatStore; composer: MessageComposerStore; reviews: ReviewsStore; settings: SettingsStore; extensionUi: ExtensionUiStore }) {
   const selectedModel = store.session?.model;
   const usage = store.session?.usage;
@@ -375,7 +397,7 @@ const ComposerPanel = observer(function ComposerPanel({ store, composer, reviews
         {composer.attachments.length > 0 && <div className="attachment-list">{composer.attachments.map((attachment, index) => attachment.kind === "image"
           ? <button className="image-attachment" type="button" aria-label={`Remove ${attachment.name}`} key={`${attachment.kind}-${attachment.name}-${index}`} onClick={() => composer.removeAttachment(index)}><img src={`data:${attachment.mimeType};base64,${attachment.data}`} alt="" /><span>{attachment.name}<b aria-hidden="true">×</b></span></button>
           : <button type="button" key={`${attachment.kind}-${attachment.name}-${index}`} onClick={() => composer.removeAttachment(index)}>@ {attachment.name} <span>×</span></button>)}</div>}
-        <SlashCommandCombobox aria-label="Message" commands={store.session?.commands ?? []} suggestFiles={(prefix) => composer.suggestFiles(prefix)} placeholder={store.isStreaming ? "Add the next instruction…" : `Ask Cake to work in ${store.projectName}…`} value={store.draft} onValueChange={(value) => store.setDraft(value)} onPaste={(event) => {
+        <SlashCommandCombobox autoFocus aria-label="Message" commands={store.session?.commands ?? []} focusRequestRevision={composer.focusRequestRevision} suggestFiles={(prefix) => composer.suggestFiles(prefix)} placeholder={store.isStreaming ? "Add the next instruction…" : `Ask Cake to work in ${store.projectName}…`} value={store.draft} onValueChange={(value) => store.setDraft(value)} onPaste={(event) => {
           const images = [...event.clipboardData.files].filter((file) => file.type.startsWith("image/"));
           if (images.length === 0) {
             for (const item of event.clipboardData.items) {
@@ -553,8 +575,16 @@ export const App = observer(function App() {
   const settings = root.settingsStore;
   const extensionUi = root.extensionUiStore;
   const artifactInteractions = root.artifactInteractionStore;
-  const [page, setPage] = useState<"chat" | "settings">("chat");
+  const navigation = root.navigationStore;
+  const page = navigation.page;
+  const globalChat = page === "global" ? root.globalChatStore : undefined;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const returnToChat = useCallback(() => {
+    browse.close();
+    changes.close();
+    navigation.openChat();
+    root.messageComposerStore.requestFocus();
+  }, [browse, changes, navigation, root]);
   useEffect(() => {
     document.documentElement.dataset.theme = settings.theme;
     return () => { delete document.documentElement.dataset.theme; };
@@ -565,25 +595,24 @@ export const App = observer(function App() {
   useEffect(() => {
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (browse.path !== undefined) browse.close();
-      else if (changes.path !== undefined) changes.close();
+      if (browse.path !== undefined || changes.path !== undefined) returnToChat();
       else if (store.commandPane) store.closeCommandPane();
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [store, browse, changes]);
+  }, [store, browse, changes, returnToChat]);
 
   if (!store.hydrated) return <main className="loading-screen"><span className="cake-mark">C</span><p>Restoring Cake…</p></main>;
-  if (changes.path !== undefined) return <ChangeExplorer store={changes} reviews={reviews} browse={browse} chat={store} />;
-  if (browse.path !== undefined) return <WorkspaceBrowser store={browse} reviews={reviews} chat={store} />;
+  if (changes.path !== undefined) return <ChangeExplorer store={changes} reviews={reviews} browse={browse} chat={store} onClose={returnToChat} />;
+  if (browse.path !== undefined) return <WorkspaceBrowser store={browse} reviews={reviews} chat={store} onClose={returnToChat} />;
 
   return (
     <main className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${store.commandPane ? "right-pane-open" : ""}`}>
-      <Sidebar store={sidebar} chat={store} reviews={reviews} settingsOpen={page === "settings"} onToggle={() => setSidebarCollapsed((value) => !value)} onOpenSettings={() => setPage("settings")} onOpenChat={() => setPage("chat")} onReloadPi={() => void settings.reloadPi()} />
+      <Sidebar store={sidebar} chat={store} reviews={reviews} settingsOpen={page === "settings"} globalChatOpen={page === "global"} onToggle={() => setSidebarCollapsed((value) => !value)} onOpenSettings={() => navigation.openSettings()} onOpenChat={returnToChat} onOpenGlobalChat={() => { browse.close(); changes.close(); navigation.openGlobalChat(); }} onReloadPi={() => void settings.reloadPi()} />
       <section className="workspace" data-session-id={store.session?.sessionId}>
-        <button className={page === "settings" ? "workspace-settings-icon active" : "workspace-settings-icon"} type="button" aria-label="Open settings" aria-current={page === "settings" ? "page" : undefined} onClick={() => setPage("settings")}><SettingsIcon /></button>
-        <header className="workspace-header"><div><button className="header-sidebar-toggle" aria-label="Toggle sidebar" onClick={() => setSidebarCollapsed((value) => !value)}><SidebarIcon /></button>{page === "settings" && <button className="header-back" aria-label="Back to chat" onClick={() => setPage("chat")}><BackIcon /></button>}<strong>{page === "settings" ? "Settings" : extensionUi.title ?? (store.session ? store.sessionTitle : "Cake")}</strong>{page === "chat" && store.projectPath && <span>{store.projectPath}</span>}</div>{page === "chat" && store.session && <div className="header-pane-actions"><button className="header-pane-toggle" type="button" aria-label="Browse project files" onClick={() => void store.openWorkspaceBrowser()}><BrowseIcon /><span>Browse</span></button><button className="header-pane-toggle" type="button" aria-label="Open workspace changes" onClick={() => void store.openSessionChanges()}><ChangesIcon /><span>Changes</span>{changes.changes.length > 0 && <b>{changes.changes.length}</b>}</button></div>}</header>
-        {page === "settings" ? <SettingsPage store={store} settings={settings} /> : !store.session ? (
+        <button className={page === "settings" ? "workspace-settings-icon active" : "workspace-settings-icon"} type="button" aria-label="Open settings" aria-current={page === "settings" ? "page" : undefined} onClick={() => navigation.openSettings()}><SettingsIcon /></button>
+        <header className="workspace-header"><div><button className="header-sidebar-toggle" aria-label="Toggle sidebar" onClick={() => setSidebarCollapsed((value) => !value)}><SidebarIcon /></button>{page === "settings" && <button className="header-back" aria-label="Back to chat" onClick={returnToChat}><BackIcon /></button>}<strong>{page === "settings" ? "Settings" : page === "global" ? "Global chat" : extensionUi.title ?? (store.session ? store.sessionTitle : "Cake")}</strong>{page === "chat" && store.projectPath && <span>{store.projectPath}</span>}</div>{globalChat ? <Button variant="ghost" size="sm" onClick={() => { if (window.confirm("Clear global chat history?")) void globalChat.clear(); }}>Clear</Button> : page === "chat" && store.session && <div className="header-pane-actions"><button className="header-pane-toggle" type="button" aria-label="Browse project files" onClick={() => void store.openWorkspaceBrowser()}><BrowseIcon /><span>Browse</span></button><button className="header-pane-toggle" type="button" aria-label="Open workspace changes" onClick={() => void store.openSessionChanges()}><ChangesIcon /><span>Changes</span>{changes.changes.length > 0 && <b>{changes.changes.length}</b>}</button></div>}</header>
+        {page === "settings" ? <SettingsPage store={store} settings={settings} /> : globalChat ? <GlobalChatPanel store={globalChat} /> : !store.session ? (
           <div className="welcome"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build?</h1><p>Open a project for durable workspace chats, or start a one-off chat from your home directory.</p><div><Button size="lg" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.chooseProject()}><FolderIcon /> Open project</Button><Button size="lg" variant="outline" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.startOneOffChat()}><ChatIcon /> One-off chat</Button></div>{store.error && <p className="welcome-error" role="alert">{store.error}</p>}</div>
         ) : (
           <div className="workbench"><div className="chat-layout"><Transcript sessionId={store.session.sessionId} store={store} composer={root.messageComposerStore} artifacts={artifactInteractions} /><ComposerPanel store={store} composer={root.messageComposerStore} reviews={reviews} settings={settings} extensionUi={extensionUi} /></div></div>

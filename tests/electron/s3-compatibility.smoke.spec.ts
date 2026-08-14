@@ -39,7 +39,7 @@ export default function (pi) {
 
   const application = await electron.launch({
     args: [repositoryRoot], cwd: repositoryRoot,
-    env: { ...process.env, CAKE_ELECTRON_SMOKE: "1", CAKE_ELECTRON_USER_DATA: userData }
+    env: { ...process.env, CAKE_ELECTRON_SMOKE: "1", CAKE_ELECTRON_USER_DATA: userData, CAKE_HOME: join(temporaryRoot, "cake-home") }
   });
 
   try {

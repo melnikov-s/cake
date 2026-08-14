@@ -25,7 +25,9 @@ function sidebarProps(store: MainChatStore) {
       sessionDisplayTitle: legacy.sessionDisplayTitle
     } as any,
     chat: store,
-    reviews: { chatCommentCountForSession: legacy.chatReviewCommentCountForSession } as any
+    reviews: { chatCommentCountForSession: legacy.chatReviewCommentCountForSession } as any,
+    onOpenGlobalChat: vi.fn(),
+    globalChatOpen: false
   };
 }
 

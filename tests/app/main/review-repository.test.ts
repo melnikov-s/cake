@@ -12,7 +12,7 @@ describe("ReviewRepository", () => {
   it("persists only review metadata and projects messages from the referenced Pi session", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-reviews-")); directories.push(root);
     const projectedMessages = [{ id: "pi-user", role: "user" as const, body: "Use a clearer name", createdAt: new Date(0).toISOString(), delivered: true, status: "complete" as const }, { id: "pi-assistant", role: "assistant" as const, body: "Renamed it.", createdAt: new Date(1).toISOString(), delivered: true, status: "complete" as const }];
-    const repository = new ReviewRepository(root, async () => projectedMessages);
+    const repository = new ReviewRepository(root, join(root, "pi-sessions"), async () => projectedMessages);
     const anchor = { path: "src/app.ts", start: { diffLine: 2, newLine: 10, column: 3 }, end: { diffLine: 3, newLine: 11, column: 8 }, selectedText: "const value", contextBefore: "before", contextAfter: "after", diff: "@@" };
     const created = await repository.create("/project", "session", anchor, "Use a clearer name");
     expect(created.messages[0]).toMatchObject({ role: "user", delivered: false });
@@ -32,7 +32,7 @@ describe("ReviewRepository", () => {
     expect(replied.messages.at(-1)).toMatchObject({ role: "user", body: "One more thing", delivered: false });
     await repository.resolve("/project", "session", created.id, true);
     expect((await repository.listSession("/project", "session")).filter((thread) => thread.status === "open")).toHaveLength(0);
-    expect((await new ReviewRepository(root, async () => projectedMessages).listSession("/project", "session"))[0]?.status).toBe("resolved");
+    expect((await new ReviewRepository(root, join(root, "pi-sessions"), async () => projectedMessages).listSession("/project", "session"))[0]?.status).toBe("resolved");
   });
 
   it("migrates a legacy Cake transcript into a durable Pi session", async () => {
@@ -48,7 +48,7 @@ describe("ReviewRepository", () => {
       id: "review", workspacePath: "/project", sessionId: "parent", agentSessionId: agent.sessionId, agentSessionFile: agent.sessionFile,
       anchor: { path: "src/app.ts", start: { diffLine: 1 }, end: { diffLine: 1 }, selectedText: "", contextBefore: "", contextAfter: "", diff: "" },
       pendingComments: [], status: "open", createdAt: now, updatedAt: now
-    });
+    }, join(root, "pi"));
 
     expect(projected.map(({ role, body }) => ({ role, body }))).toEqual([
       { role: "user", body: "Why this name?" },
@@ -58,7 +58,7 @@ describe("ReviewRepository", () => {
 
   it("atomically claims pending comments and rejects stale completion", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-review-claims-")); directories.push(root);
-    const repository = new ReviewRepository(root);
+    const repository = new ReviewRepository(root, join(root, "pi-sessions"));
     const anchor = { path: "src/app.ts", start: { diffLine: 1 }, end: { diffLine: 1 }, selectedText: "", contextBefore: "", contextAfter: "", diff: "" };
     const created = await repository.create("/project", "session", anchor, "Explain this");
     const firstRun = crypto.randomUUID();
@@ -83,7 +83,7 @@ describe("ReviewRepository", () => {
 
   it("recovers abandoned running claims as retryable failures", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-review-recovery-")); directories.push(root);
-    const repository = new ReviewRepository(root);
+    const repository = new ReviewRepository(root, join(root, "pi-sessions"));
     const anchor = { path: "src/app.ts", start: { diffLine: 1 }, end: { diffLine: 1 }, selectedText: "", contextBefore: "", contextAfter: "", diff: "" };
     const created = await repository.create("/project", "session", anchor, "Explain this");
     await repository.claimPending("/project", "session", created.id, crypto.randomUUID());
@@ -94,5 +94,26 @@ describe("ReviewRepository", () => {
     expect(recovered?.submission).toMatchObject({ status: "failed", error: expect.stringContaining("Retry") });
     expect(recovered?.pendingComments).toHaveLength(1);
     expect(await repository.claimPending("/project", "session", created.id, crypto.randomUUID())).toBeDefined();
+  });
+
+  it("keeps a failed comment pending without projecting its failed Pi-session copy", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-reviews-")); directories.push(root);
+    const now = new Date(0).toISOString();
+    const projectedMessages = [{ id: "pi-user", role: "user" as const, body: "Are you sure?", createdAt: now, delivered: true, status: "complete" as const }];
+    const repository = new ReviewRepository(root, join(root, "pi-sessions"), async () => projectedMessages);
+    const anchor = { path: "src/app.ts", start: { diffLine: 1 }, end: { diffLine: 1 }, selectedText: "", contextBefore: "", contextAfter: "", diff: "" };
+    const created = await repository.create("/project", "session", anchor, "Are you sure?");
+    const runId = crypto.randomUUID();
+    await repository.claimPending("/project", "session", created.id, runId);
+
+    const failed = await repository.failRun("/project", "session", created.id, runId, "Unsupported parameter: prompt_cache_options");
+
+    expect(failed?.messages).toEqual([expect.objectContaining({ body: "Are you sure?", delivered: false })]);
+    const record = await repository.get("/project", "session", created.id);
+    expect(record).toMatchObject({
+      pendingComments: [expect.objectContaining({ body: "Are you sure?" })],
+      submission: { status: "failed", error: "Unsupported parameter: prompt_cache_options" }
+    });
+    expect(record).not.toHaveProperty("agentSessionFile");
   });
 });

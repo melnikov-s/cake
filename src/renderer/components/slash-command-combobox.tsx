@@ -6,6 +6,7 @@ type SlashCommand = SessionSnapshot["commands"][number];
 
 interface SlashCommandComboboxProps extends Omit<ComponentProps<typeof ComposerInput>, "onChange" | "onKeyDown" | "onSubmit" | "value"> {
   commands: SlashCommand[];
+  focusRequestRevision?: number;
   value: string;
   suggestFiles?(prefix: string): Promise<FileSuggestion[]>;
   onValueChange(value: string): void;
@@ -58,7 +59,7 @@ export function findFileMention(text: string, cursor: number): FileMention | und
   return { start, end: cursor, token, prefix: token.slice(1), key: `${start}:${token}` };
 }
 
-export function SlashCommandCombobox({ commands, value, suggestFiles, onValueChange, onSubmit, ...inputProps }: SlashCommandComboboxProps) {
+export function SlashCommandCombobox({ commands, focusRequestRevision, value, suggestFiles, onValueChange, onSubmit, ...inputProps }: SlashCommandComboboxProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const suggestFilesRef = useRef(suggestFiles);
   const requestRevision = useRef(0);
@@ -84,6 +85,12 @@ export function SlashCommandCombobox({ commands, value, suggestFiles, onValueCha
   useEffect(() => {
     suggestFilesRef.current = suggestFiles;
   }, [suggestFiles]);
+
+  useEffect(() => {
+    if (!focusRequestRevision) return;
+    const frame = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [focusRequestRevision]);
 
   useLayoutEffect(() => {
     if (pendingCursor.current === undefined) return;

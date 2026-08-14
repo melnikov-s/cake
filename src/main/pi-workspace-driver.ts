@@ -43,6 +43,8 @@ interface PendingArtifact {
 
 export interface PiWorkspaceDriverOptions {
   workspacePath: string;
+  agentDir: string;
+  sessionDir: string;
   emit(event: DesktopEvent): void;
   createRuntime?: typeof createCakeRuntime;
   runReviewTurn?: typeof runReviewTurn;
@@ -56,6 +58,8 @@ export interface PiWorkspaceDriverOptions {
 export class PiWorkspaceDriver {
   readonly workspacePath: string;
   private readonly emitEvent: PiWorkspaceDriverOptions["emit"];
+  private readonly agentDir: string;
+  private readonly sessionDir: string;
   private readonly createRuntimeImpl: typeof createCakeRuntime;
   private readonly runReviewTurnImpl: typeof runReviewTurn;
   private readonly artifactRepository: ArtifactRepositoryPort;
@@ -74,6 +78,8 @@ export class PiWorkspaceDriver {
 
   constructor(options: PiWorkspaceDriverOptions) {
     this.workspacePath = options.workspacePath;
+    this.agentDir = options.agentDir;
+    this.sessionDir = options.sessionDir;
     this.emitEvent = options.emit;
     this.createRuntimeImpl = options.createRuntime ?? createCakeRuntime;
     this.runReviewTurnImpl = options.runReviewTurn ?? runReviewTurn;
@@ -288,6 +294,8 @@ export class PiWorkspaceDriver {
     const runtimeRef: { current?: CakeRuntime } = {};
     const runtime = await this.createRuntimeImpl({
       cwd: this.workspacePath,
+      agentDir: this.agentDir,
+      sessionDir: this.sessionDir,
       trusted: this.trusted,
       newSession,
       sessionId,
@@ -360,9 +368,11 @@ export class PiWorkspaceDriver {
         try {
           const agent = await this.runReviewTurnImpl({
             cwd: this.workspacePath,
+            agentDir: this.agentDir,
             trusted: this.trusted,
             thread,
             sessionDir: this.reviewRepository.agentSessionDirectory(this.workspacePath, command.sessionId, threadId),
+            parentSessionRoot: this.sessionDir,
             signal: controller.signal,
             instruction: command.instruction,
             model: command.model,

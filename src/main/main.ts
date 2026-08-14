@@ -13,6 +13,9 @@ import { PiWorkspaceDriver, type PiWorkspaceCommand } from "./pi-workspace-drive
 import { ArtifactRepository } from "./artifact-repository";
 import { ReviewRepository } from "./review-repository";
 import { SerializedFileWriter } from "./serialized-file-writer";
+import { GlobalChatDriver } from "./global-chat-driver";
+import { resolveCakePaths } from "./cake-paths";
+import { migrateLegacyPiSessions } from "./pi-session-migration";
 
 interface PiHost {
   path: string;
@@ -36,8 +39,23 @@ function clearPendingTrustRequests(webContentsId: number) {
 }
 
 if (process.env.CAKE_ELECTRON_USER_DATA) app.setPath("userData", process.env.CAKE_ELECTRON_USER_DATA);
+const cakePaths = resolveCakePaths();
 const artifactRepository = new ArtifactRepository(join(app.getPath("userData"), "artifacts"));
-const reviewRepository = new ReviewRepository(join(app.getPath("userData"), "reviews"), loadReviewSessionMessages, migrateLegacyReviewSession);
+const reviewRepository = new ReviewRepository(
+  join(app.getPath("userData"), "reviews"),
+  cakePaths.piReviewSessions,
+  (record) => loadReviewSessionMessages(record, cakePaths.piReviewSessions),
+  migrateLegacyReviewSession
+);
+let globalChatController: WebContents | undefined;
+const globalChatDriver = new GlobalChatDriver({
+  agentDir: cakePaths.piAgent,
+  sessionDir: cakePaths.piGlobalChatSessions,
+  emit: (event) => {
+    if (event.type === "global-chat-control-request" && globalChatController && !globalChatController.isDestroyed()) sendTo(globalChatController, event);
+    else broadcast(event);
+  }
+});
 
 function sendTo(target: WebContents, event: DesktopEvent) {
   if (!target.isDestroyed()) target.send("cake:event", event);
@@ -96,6 +114,8 @@ function launchPi(path: string) {
   }
   const driver = new PiWorkspaceDriver({
     workspacePath: path,
+    agentDir: cakePaths.piAgent,
+    sessionDir: cakePaths.piSessions,
     emit: broadcast,
     artifactRepository,
     reviewRepository,
@@ -222,6 +242,30 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
   const request = desktopRequestSchema.parse(input);
   const owner = BrowserWindow.fromWebContents(event.sender);
   const slot = windowSlots.get(event.sender.id) ?? 0;
+  if (request.type === "open-global-chat") {
+    globalChatController = event.sender;
+    globalChatDriver.open(request.requestId, request.tools);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  if (request.type === "prompt-global-chat") {
+    globalChatController = event.sender;
+    globalChatDriver.prompt(request.requestId, request.text);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  if (request.type === "abort-global-chat") {
+    globalChatController = event.sender;
+    globalChatDriver.abort(request.requestId);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  if (request.type === "clear-global-chat") {
+    globalChatController = event.sender;
+    globalChatDriver.clear(request.requestId, request.tools);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  if (request.type === "respond-global-chat-control") {
+    globalChatDriver.respond(request.controlRequestId, request.result);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.controlRequestId });
+  }
   if (request.type === "choose-project") {
     if (!owner) return desktopResponseSchema.parse({ type: "project-chosen" });
     const result = await dialog.showOpenDialog(owner, { properties: ["openDirectory"] });
@@ -236,7 +280,7 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
   if (request.type === "choose-attachments") return desktopResponseSchema.parse({ type: "attachments-chosen", attachments: owner ? await chooseAttachments(owner) : [] });
   if (request.type === "suggest-files") {
     if (!allowedProjectPaths.has(request.workspacePath)) throw new Error("Project path was not selected by the user");
-    return desktopResponseSchema.parse({ type: "file-suggestions", suggestions: await suggestProjectFiles(request.workspacePath, request.prefix) });
+    return desktopResponseSchema.parse({ type: "file-suggestions", suggestions: await suggestProjectFiles({ cwd: request.workspacePath, prefix: request.prefix, agentDir: cakePaths.piAgent }) });
   }
   if (request.type === "list-workspace-files") {
     if (!allowedProjectPaths.has(request.workspacePath)) throw new Error("Project path was not selected by the user");
@@ -262,7 +306,7 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
   if (request.type === "list-sessions") {
     const sessions = (await Promise.all(applicationModel.projects.map(async (project) => {
       try {
-        return (await listWorkspaceSessions(project.path)).map((session) => ({ ...session, workspacePath: project.path, workspaceName: project.name }));
+        return (await listWorkspaceSessions(project.path, cakePaths.piSessions)).map((session) => ({ ...session, workspacePath: project.path, workspaceName: project.name }));
       } catch {
         return [];
       }
@@ -340,7 +384,7 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "load-session") {
-    return desktopResponseSchema.parse({ type: "session-loaded", session: await loadWorkspaceSessionPreview(request.workspacePath, request.sessionId) });
+    return desktopResponseSchema.parse({ type: "session-loaded", session: await loadWorkspaceSessionPreview(request.workspacePath, request.sessionId, cakePaths.piSessions) });
   }
   if (request.type === "list-review-threads") {
     return desktopResponseSchema.parse({ type: "review-threads-loaded", threads: await reviewRepository.listSession(request.workspacePath, request.sessionId) });
@@ -385,12 +429,22 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
 });
 
 app.whenReady().then(async () => {
+  try {
+    await migrateLegacyPiSessions(cakePaths, {
+      onDiagnostic: (diagnostic) => console.warn(`[cake:pi-session-migration] ${diagnostic.message}`)
+    });
+  } catch (error) {
+    // Migration is copy-only and resumable. Cake starts from any safely copied
+    // files and retries on the next launch because no completion marker exists.
+    console.error("[cake:pi-session-migration] Cake could not finish copying legacy Pi sessions; startup will continue and retry next launch.", error);
+  }
   await loadApplicationState();
   createWindow();
 });
 
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 app.on("before-quit", () => {
+  globalChatDriver[Symbol.dispose]();
   for (const host of piHosts.values()) host.driver[Symbol.dispose]();
   piHosts.clear();
   if (process.env.CAKE_ELECTRON_SMOKE === "1") setImmediate(() => app.exit(0));

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cake Plugin Authoring"
+  short_description: "Customize Cake with scenes, widgets, and plugins"
+  default_prompt: "Use $cake-plugin-authoring to customize Cake with a plugin, scene, or widget."

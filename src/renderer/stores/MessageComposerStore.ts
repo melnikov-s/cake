@@ -49,6 +49,11 @@ export interface MessageComposerStoreProps {
 export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   attachments: Attachment[] = observable([]);
   pendingUserMessages: PendingUserMessage[] = observable([]);
+  focusRequestRevision = 0;
+
+  requestFocus() {
+    this.focusRequestRevision += 1;
+  }
 
   get parts() {
     const canonical = this.props.canonicalParts();

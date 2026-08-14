@@ -36,6 +36,11 @@ function createDesktopClient(restoredPath?: string) {
     loadApplicationState: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], trustedProjectPaths: [] })),
     listSessions: vi.fn(async () => ({ sessions: [], reviewThreads: [] })),
     loadSession: vi.fn(async () => undefined),
+    openGlobalChat: vi.fn(async () => undefined),
+    promptGlobalChat: vi.fn(async () => undefined),
+    abortGlobalChat: vi.fn(async () => undefined),
+    clearGlobalChat: vi.fn(async () => undefined),
+    respondToGlobalChatControl: vi.fn(async () => undefined),
     listReviewThreads: vi.fn(async () => []),
     createReviewThread: vi.fn(async () => { throw new Error("not mocked"); }),
     replyReviewThread: vi.fn(async () => { throw new Error("not mocked"); }),
@@ -263,10 +268,12 @@ describe("MainChatStore", () => {
     const uiRequestId = crypto.randomUUID();
     store.activeOperations.push(operationId);
     desktop.emit({ type: "ui-requested", operationId, uiRequestId, kind: "confirm", title: "Continue?", message: "Confirm" });
+    const focusRevision = root.messageComposerStore.focusRequestRevision;
     await root.extensionUiStore.respond("true");
 
     expect(root.messageComposerStore.parts.map((part) => part.id)).toEqual(["live"]);
     expect(desktop.client.respondToUi).toHaveBeenCalledWith({ operationId, workspacePath: "/project", sessionId: "session-1", uiRequestId, value: "true", cancelled: false });
+    expect(root.messageComposerStore.focusRequestRevision).toBe(focusRevision + 1);
     root[Symbol.dispose]();
   });
 

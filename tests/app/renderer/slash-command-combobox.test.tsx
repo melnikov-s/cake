@@ -24,7 +24,8 @@ describe("SlashCommandCombobox", () => {
   beforeEach(() => {
     Object.assign(globalThis, {
       IS_REACT_ACT_ENVIRONMENT: true,
-      requestAnimationFrame: (callback: FrameRequestCallback) => { callback(0); return 1; }
+      requestAnimationFrame: (callback: FrameRequestCallback) => { callback(0); return 1; },
+      cancelAnimationFrame: vi.fn()
     });
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -76,6 +77,18 @@ describe("SlashCommandCombobox", () => {
 
     act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(onSubmit).toHaveBeenCalledOnce();
+  });
+
+  it("focuses again when the composer workflow requests it", () => {
+    act(() => root.render(<SlashCommandCombobox aria-label="Message" commands={[]} focusRequestRevision={0} value="" onValueChange={vi.fn()} onSubmit={vi.fn()} />));
+    const input = container.querySelector<HTMLTextAreaElement>('[role="combobox"]')!;
+    const elsewhere = document.createElement("button");
+    container.appendChild(elsewhere);
+    elsewhere.focus();
+
+    act(() => root.render(<SlashCommandCombobox aria-label="Message" commands={[]} focusRequestRevision={1} value="" onValueChange={vi.fn()} onSubmit={vi.fn()} />));
+
+    expect(document.activeElement).toBe(input);
   });
 
   it("renders Pi CLI built-ins with their argument hints", () => {

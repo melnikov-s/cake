@@ -12,6 +12,8 @@ import { ExtensionUiStore } from "./ExtensionUiStore";
 import { ArtifactInteractionStore } from "./ArtifactInteractionStore";
 import { MessageComposerStore } from "./MessageComposerStore";
 import { AppControlBridge } from "../app-control-bridge";
+import { GlobalChatStore } from "./GlobalChatStore";
+import { NavigationStore } from "./NavigationStore";
 
 export class RootStore extends Store<{ client: DesktopClient }> {
   readonly appControl: AppControlBridge;
@@ -99,6 +101,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       sessionContext: () => this.mainChatStore.sessionContext(),
       operationActive: (operationId) => this.mainChatStore.activeOperations.includes(operationId),
       setDraft: (value) => this.mainChatStore.setDraft(typeof value === "function" ? value(this.mainChatStore.draft) : value),
+      requestComposerFocus: () => this.messageComposerStore.requestFocus(),
       reportError: (error) => this.mainChatStore.setError(error)
     });
   }
@@ -148,6 +151,24 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     });
   }
 
+  @child
+  get globalChatStore(): GlobalChatStore {
+    return createStore(GlobalChatStore, {
+      port: {
+        open: (input) => this.client.openGlobalChat(input),
+        prompt: (input) => this.client.promptGlobalChat(input),
+        abort: (operationId) => this.client.abortGlobalChat(operationId),
+        clear: (input) => this.client.clearGlobalChat(input)
+      },
+      tools: () => this.appControl.listTools()
+    });
+  }
+
+  @child
+  get navigationStore(): NavigationStore {
+    return createStore(NavigationStore);
+  }
+
   constructor(props: RootStore["props"]) {
     super(props);
     this.appControl = new AppControlBridge({
@@ -162,8 +183,14 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         if (cached?.sessionFile) return cached.uiParts;
         return (await this.client.loadSession(workspacePath, sessionId))?.parts;
       },
-      openSession: (workspacePath, sessionId) => this.mainChatStore.openSession(workspacePath, sessionId),
-      createSession: (workspacePath) => this.mainChatStore.startNewSession(workspacePath),
+      openSession: async (workspacePath, sessionId) => {
+        await this.mainChatStore.openSession(workspacePath, sessionId);
+        this.navigationStore.openChat();
+      },
+      createSession: async (workspacePath) => {
+        await this.mainChatStore.startNewSession(workspacePath);
+        this.navigationStore.openChat();
+      },
       sendSessionMessage: (workspacePath, sessionId, text, delivery) => this.runControlOperation((operationId) =>
         this.client.submit({ operationId, workspacePath, sessionId, text, delivery, attachments: [] })),
       abortSession: (workspacePath, sessionId) => this.runControlOperation((operationId) =>
@@ -177,6 +204,16 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   }
 
   private receive(event: DesktopClientEvent) {
+    if (event.type === "global-chat-control-requested") {
+      void this.appControl.invoke(event.invocation)
+        .catch((error) => ({ ok: false as const, name: event.invocation.name, error: error instanceof Error ? error.message : String(error) }))
+        .then((result) => this.client.respondToGlobalChatControl(event.controlRequestId, result));
+      return;
+    }
+    if (event.type.startsWith("global-chat-")) {
+      this.globalChatStore.receive(event);
+      return;
+    }
     this.changesStore.receive(event);
     this.reviewsStore.receive(event);
     this.settingsStore.receive(event);
@@ -192,7 +229,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       this.sidebarStore.updateSessionActivity(event.snapshot.workspacePath, event.snapshot.sessionId, event.snapshot.streaming, wasStreaming, opening);
       this.messageComposerStore.reconcile(event.snapshot.sessionId);
       if (event.operationId || this.mainChatStore.isActiveSession(event.snapshot.workspacePath, event.snapshot.sessionId)) {
-        this.mainChatStore.applySessionSnapshot(event.snapshot, event.operationId ? previousSessionId : undefined);
+        this.mainChatStore.applySessionSnapshot(event.snapshot, event.operationId ? previousSessionId : undefined, Boolean(event.operationId));
         void this.changesStore.refresh();
       }
       return;

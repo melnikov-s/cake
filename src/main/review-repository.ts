@@ -19,12 +19,13 @@ export class ReviewRepository {
 
   constructor(
     private readonly root: string,
+    private readonly piSessionRoot: string,
     private readonly loadMessages: ReviewMessageLoader = async () => [],
     private readonly migrateLegacy?: LegacyReviewMigrator
   ) {}
 
   agentSessionDirectory(workspacePath: string, sessionId: string, threadId: string) {
-    return join(this.root, "pi-sessions", digestKey(workspacePath), digestKey(sessionId), digestKey(threadId));
+    return join(this.piSessionRoot, digestKey(workspacePath), digestKey(sessionId), digestKey(threadId));
   }
 
   async listSession(workspacePath: string, sessionId: string): Promise<ReviewThread[]> {
@@ -122,15 +123,11 @@ export class ReviewRepository {
     return completed ? this.project(record) : undefined;
   }
 
-  async failRun(workspacePath: string, sessionId: string, threadId: string, runId: string, error: string, agent?: { sessionId: string; sessionFile: string }): Promise<ReviewThread | undefined> {
+  async failRun(workspacePath: string, sessionId: string, threadId: string, runId: string, error: string): Promise<ReviewThread | undefined> {
     let failed = false;
     const record = await this.update(workspacePath, sessionId, threadId, (thread) => {
       if (thread.submission?.status !== "running" || thread.submission.runId !== runId) return thread;
       const now = new Date().toISOString();
-      if (agent) {
-        thread.agentSessionId = agent.sessionId;
-        thread.agentSessionFile = agent.sessionFile;
-      }
       thread.submission = { status: "failed", runId, commentIds: thread.submission.commentIds, failedAt: now, error };
       thread.updatedAt = now;
       failed = true;

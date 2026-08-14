@@ -19,7 +19,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
   const application = await electron.launch({
     args: [repositoryRoot],
     cwd: repositoryRoot,
-    env: { ...process.env, CAKE_ELECTRON_SMOKE: "1", CAKE_ELECTRON_USER_DATA: userData }
+    env: { ...process.env, CAKE_ELECTRON_SMOKE: "1", CAKE_ELECTRON_USER_DATA: userData, CAKE_HOME: join(temporaryRoot, "cake-home") }
   });
 
   try {

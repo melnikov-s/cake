@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  cakePluginAuthoringSkillPath,
   createCakeRuntime,
   createFoundationRuntime,
   createLiveMessageProjector,
@@ -112,7 +113,7 @@ describe("Pi 0.84.0 foundation contract", () => {
     ]);
   });
 
-  it("routes a forked GPT-5.6 review through the parent cache breakpoint", () => {
+  it("routes a forked review through the parent's supported cache key", () => {
     const payload = {
       model: "gpt-5.6-sol",
       prompt_cache_key: "child-session",
@@ -129,23 +130,20 @@ describe("Pi 0.84.0 foundation contract", () => {
       cacheKey: "parent-session",
       systemPrompt: "Parent prompt",
       activeTools: ["read"],
-      parentUserOrdinal: 1,
       model: { provider: "openai-codex", id: "gpt-5.6-sol" }
-    }) as typeof payload & { prompt_cache_options: { mode: string } };
+    }) as typeof payload;
 
     expect(routed.prompt_cache_key).toBe("parent-session");
-    expect(routed.prompt_cache_options).toEqual({ mode: "explicit" });
-    expect(routed.input[0]).toEqual(payload.input[0]);
-    expect(routed.input[2]).toEqual({ role: "user", content: [{ type: "input_text", text: "Latest parent input", prompt_cache_breakpoint: { mode: "explicit" } }] });
-    expect(routed.input[4]).toEqual(payload.input[4]);
+    expect(routed.input).toEqual(payload.input);
+    expect(routed).not.toHaveProperty("prompt_cache_options");
   });
 
-  it("keeps cache routing model-neutral while avoiding unsupported explicit fields", () => {
+  it("keeps cache routing model-neutral and leaves payloads without a cache key unchanged", () => {
     const payload = { prompt_cache_key: "child-session", input: [{ role: "user", content: "Parent input" }] };
-    const metadata = { cacheKey: "parent-session", systemPrompt: "Parent", activeTools: [], parentUserOrdinal: 0 };
+    const metadata = { cacheKey: "parent-session", systemPrompt: "Parent", activeTools: [] };
 
-    expect(routeReviewPromptCache(payload, metadata, { provider: "openai", id: "gpt-5.5" })).toEqual({ ...payload, prompt_cache_key: "parent-session" });
-    expect(routeReviewPromptCache({ messages: [] }, metadata, { provider: "anthropic", id: "claude" })).toEqual({ messages: [] });
+    expect(routeReviewPromptCache(payload, metadata)).toEqual({ ...payload, prompt_cache_key: "parent-session" });
+    expect(routeReviewPromptCache({ messages: [] }, metadata)).toEqual({ messages: [] });
   });
 
   it("forks a new review session from the parent branch before prompting", async () => {
@@ -169,14 +167,14 @@ describe("Pi 0.84.0 foundation contract", () => {
     };
 
     await expect(runReviewTurn({
-      cwd: directory, trusted: false, thread, sessionDir: reviewDir, agentDir, signal: controller.signal,
+      cwd: directory, trusted: false, thread, sessionDir: reviewDir, parentSessionRoot: parentDir, agentDir, signal: controller.signal,
       parent: { sessionId: "parent-session", sessionFile: parentFile, leafId: "parent-user", systemPrompt: "Parent prompt", activeTools: ["read"] }
     })).rejects.toThrow("cancelled");
 
     const reviewFile = join(reviewDir, (await readdir(reviewDir)).find((name) => name.endsWith(".jsonl"))!);
     const entries = (await readFile(reviewFile, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
     expect(entries).toContainEqual(expect.objectContaining({ type: "message", id: "parent-user", message: expect.objectContaining({ content: "Build the feature" }) }));
-    expect(entries).toContainEqual(expect.objectContaining({ type: "custom", customType: "cake.review-parent/v1", data: expect.objectContaining({ cacheKey: "parent-session", systemPrompt: "Parent prompt", parentUserOrdinal: 0 }) }));
+    expect(entries).toContainEqual(expect.objectContaining({ type: "custom", customType: "cake.review-parent/v1", data: expect.objectContaining({ cacheKey: "parent-session", systemPrompt: "Parent prompt" }) }));
   });
 
   it("gives assistant messages on either side of a tool call distinct live positions", () => {
@@ -211,13 +209,17 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(loadPiChangelog()).toContain("0.84.0");
   });
 
+  it("resolves Cake's bundled authoring skill from the matching source tree", () => {
+    expect(cakePluginAuthoringSkillPath("/cake-authoring")).toBe(join("/cake-authoring", ".agents", "skills", "cake-plugin-authoring"));
+  });
+
   it("uses Pi's fuzzy @ provider for project file suggestions", async () => {
     const directory = await createTemporaryDirectory();
     const fakeFd = join(directory, "fd");
     await writeFile(fakeFd, "#!/bin/sh\nprintf 'src/\\nsrc/app.ts\\ntests/app.test.ts\\n'\n");
     await chmod(fakeFd, 0o755);
 
-    expect(await suggestProjectFiles(directory, "app", fakeFd)).toEqual([
+    expect(await suggestProjectFiles({ cwd: directory, prefix: "app", agentDir: join(directory, "agent"), fdPath: fakeFd })).toEqual([
       { value: "@src/app.ts", label: "app.ts", description: "src/app.ts" },
       { value: "@tests/app.test.ts", label: "app.test.ts", description: "tests/app.test.ts" }
     ]);
@@ -416,6 +418,7 @@ describe("S1 Pi runtime", () => {
     expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
     const fork = await second.fork("user-1");
     expect(fork.sessionId).not.toBe(second.sessionId);
+    expect(fork.sessionFile.startsWith(`${sessionDir}/`)).toBe(true);
     expect(fork.sessionFile).toMatch(/\.jsonl$/);
 
     const isolated = await createCakeRuntime({
@@ -473,6 +476,42 @@ describe("S1 Pi runtime", () => {
 });
 
 describe("S3 Pi ecosystem compatibility", () => {
+  it("isolates standalone Pi resources while retaining Cake's required resources", async () => {
+    const directory = await createTemporaryDirectory();
+    const standaloneHome = join(directory, "standalone-home");
+    const standaloneAgent = join(standaloneHome, ".pi", "agent");
+    const agentDir = join(directory, "cake-home", "pi");
+    await Promise.all([mkdir(join(standaloneAgent, "extensions"), { recursive: true }), mkdir(join(agentDir, "extensions"), { recursive: true })]);
+    await writeFile(join(standaloneAgent, "extensions", "standalone.ts"), `export default function (pi) { pi.registerCommand("standalone-only", { handler() {} }); }\n`);
+    await writeFile(join(agentDir, "extensions", "cake-only.ts"), `export default function (pi) { pi.registerCommand("cake-only", { handler() {} }); }\n`);
+    const previousHome = process.env.HOME;
+    process.env.HOME = standaloneHome;
+    try {
+      const runtime = await createCakeRuntime({
+        cwd: directory,
+        agentDir,
+        sessionDir: join(agentDir, "sessions"),
+        trusted: false,
+        newSession: true,
+        requestUi: async () => undefined,
+        onEvent: () => undefined
+      });
+      runtimes.push(runtime);
+      const snapshot = await runtime.snapshot();
+
+      expect(snapshot.commands).not.toEqual(expect.arrayContaining([expect.objectContaining({ name: "standalone-only" })]));
+      expect(snapshot.commands).toEqual(expect.arrayContaining([expect.objectContaining({ name: "cake-only" })]));
+      expect(snapshot.compatibility.resources).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: "skill", name: "cake-plugin-authoring" }),
+        expect.objectContaining({ kind: "extension", tools: expect.arrayContaining(["ui_present", "ui_request"]) })
+      ]));
+      expect(snapshot.compatibility.resources.some((resource) => resource.path?.startsWith(standaloneAgent))).toBe(false);
+    } finally {
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+    }
+  });
+
   it("discovers packaged resources and projects primitive and degraded extension UI", async () => {
     const directory = await createTemporaryDirectory();
     const agentDir = join(directory, "agent");
@@ -525,7 +564,8 @@ export default function (pi) {
       expect.objectContaining({ name: "quit", source: "builtin" }),
       expect.objectContaining({ name: "cake-compat", source: "extension" }),
       expect.objectContaining({ name: "fixture-prompt", source: "prompt" }),
-      expect.objectContaining({ name: "skill:fixture-skill", source: "skill" })
+      expect.objectContaining({ name: "skill:fixture-skill", source: "skill" }),
+      expect.objectContaining({ name: "skill:cake-plugin-authoring", source: "skill" })
     ]));
     expect(firstSnapshot.commands.slice(0, 22).map((command) => command.name)).toEqual([
       "settings", "model", "scoped-models", "export", "import", "share", "copy", "name", "session", "changelog", "hotkeys",
@@ -534,6 +574,7 @@ export default function (pi) {
     expect(catalog.resources).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "package", name: packageDir }),
       expect.objectContaining({ kind: "skill", name: "fixture-skill" }),
+      expect.objectContaining({ kind: "skill", name: "cake-plugin-authoring" }),
       expect.objectContaining({ kind: "prompt", name: "fixture-prompt" }),
       expect.objectContaining({ kind: "extension", commands: ["cake-compat"], tools: ["mcp_fixture_lookup"] })
     ]));

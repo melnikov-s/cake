@@ -26,6 +26,7 @@ export interface ExtensionUiStoreProps {
   sessionContext(): { workspacePath: string; sessionId: string } | undefined;
   operationActive(operationId: string): boolean;
   setDraft(value: string | ((current: string) => string)): void;
+  requestComposerFocus(): void;
   reportError(error: unknown): void;
 }
 
@@ -42,6 +43,7 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
     const request = this.request;
     if (!request) return;
     this.request = undefined;
+    this.props.requestComposerFocus();
     try {
       const context = this.props.sessionContext();
       if (!context) throw new Error("No active session");
@@ -99,6 +101,7 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
     if (event.kind === "title") { this.title = event.title; return; }
     if (event.kind === "editor-text") {
       this.props.setDraft(event.mode === "insert" ? (current) => `${current}${event.text}` : event.text);
+      this.props.requestComposerFocus();
       return;
     }
     if (event.kind === "widget") {

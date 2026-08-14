@@ -4,6 +4,8 @@ import type { DesktopEvent } from "../../../src/ipc/desktop-ipc";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
 import { PiWorkspaceDriver } from "../../../src/main/pi-workspace-driver";
 
+const piPaths = { agentDir: "/cake/pi", sessionDir: "/cake/pi/sessions" };
+
 const snapshot: SessionSnapshot = {
   workspacePath: "/project",
   sessionId: "session-1",
@@ -36,7 +38,7 @@ describe("PiWorkspaceDriver", () => {
         { tree: "b".repeat(40), ref: "refs/cake/checkpoints/b", capturedAt: new Date(0).toISOString() }
       ])
     };
-    const driver = new PiWorkspaceDriver({ workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime) });
+    const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime) });
     const openId = crypto.randomUUID();
     driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
@@ -62,12 +64,12 @@ describe("PiWorkspaceDriver", () => {
     const reviewRepository = {
       recoverRunning: vi.fn(async () => undefined),
       claimPending: vi.fn(async (_workspacePath: string, _sessionId: string, _threadId: string, runId: string) => ({ ...thread, submission: { status: "running" as const, runId, commentIds: ["message-1"], startedAt: now } })),
-      agentSessionDirectory: vi.fn(() => "/reviews/review-1"),
+      agentSessionDirectory: vi.fn(() => "/cake/pi/review-sessions/review-1"),
       completeRun: vi.fn(async () => projected),
       failRun: vi.fn(async () => projected)
     };
-    const runReview = vi.fn(async () => ({ sessionId: "review-session", sessionFile: "/reviews/review-1/session.jsonl" }));
-    const driver = new PiWorkspaceDriver({ workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime), reviewRepository, runReviewTurn: runReview, isTrusted: () => true });
+    const runReview = vi.fn(async () => ({ sessionId: "review-session", sessionFile: "/cake/pi/review-sessions/review-1/session.jsonl" }));
+    const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime), reviewRepository, runReviewTurn: runReview, isTrusted: () => true });
     const openId = crypto.randomUUID();
     driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
@@ -78,7 +80,8 @@ describe("PiWorkspaceDriver", () => {
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId }));
 
     expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ thread: expect.objectContaining({ id: thread.id, submission: expect.objectContaining({ status: "running" }) }) }));
-    expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ sessionDir: "/reviews/review-1" }));
+    expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ sessionDir: "/cake/pi/review-sessions/review-1" }));
+    expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ agentDir: piPaths.agentDir, parentSessionRoot: piPaths.sessionDir }));
     expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ parent: expect.objectContaining({ sessionId: snapshot.sessionId, leafId: "parent-leaf", systemPrompt: "Parent prompt" }) }));
     expect(reviewRepository.completeRun).toHaveBeenCalledWith("/project", snapshot.sessionId, thread.id, expect.any(String), expect.objectContaining({ sessionId: "review-session" }));
     expect(runtime.recordReviewRun).toHaveBeenNthCalledWith(1, { operationId: requestId, threadIds: [thread.id], commentCount: 1, status: "running" });
@@ -100,7 +103,7 @@ describe("PiWorkspaceDriver", () => {
     const reviewRepository = {
       recoverRunning: vi.fn(async () => undefined),
       claimPending: vi.fn(async (_workspacePath: string, _sessionId: string, _threadId: string, runId: string) => ({ ...thread, submission: { status: "running" as const, runId, commentIds: ["comment-1"], startedAt: now } })),
-      agentSessionDirectory: vi.fn(() => "/reviews/review-1"),
+      agentSessionDirectory: vi.fn(() => "/cake/pi/review-sessions/review-1"),
       completeRun: vi.fn(async () => undefined),
       failRun
     };
@@ -109,7 +112,7 @@ describe("PiWorkspaceDriver", () => {
       reviewSignal = signal;
       return new Promise<never>((_resolve, reject) => signal?.addEventListener("abort", () => reject(new Error("cancelled")), { once: true }));
     });
-    const driver = new PiWorkspaceDriver({ workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime), reviewRepository, runReviewTurn: runReview as never, isTrusted: () => true });
+    const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime), reviewRepository, runReviewTurn: runReview as never, isTrusted: () => true });
     const openId = crypto.randomUUID();
     driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
@@ -141,7 +144,7 @@ describe("PiWorkspaceDriver", () => {
       dispose: vi.fn()
     };
     const createRuntime = vi.fn(async () => runtime);
-    const driver = new PiWorkspaceDriver({ workspacePath: "/project", emit: (event) => events.push(event), createRuntime });
+    const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", emit: (event) => events.push(event), createRuntime });
     const operationId = crypto.randomUUID();
 
     driver.dispatch({ type: "rename-session", requestId: operationId, workspacePath: "/project", sessionId: "session-2", name: "Renamed" });
@@ -171,7 +174,7 @@ describe("PiWorkspaceDriver", () => {
       dispose: vi.fn()
     };
     const createRuntime = vi.fn(async () => runtime);
-    const driver = new PiWorkspaceDriver({ workspacePath: "/project", emit: (event) => events.push(event), createRuntime });
+    const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", emit: (event) => events.push(event), createRuntime });
     const operationId = crypto.randomUUID();
 
     driver.dispatch({ type: "prompt", requestId: operationId, workspacePath: "/project", sessionId: "session-2", text: "Commit the work", delivery: "prompt", attachments: [] });
@@ -194,6 +197,7 @@ describe("PiWorkspaceDriver", () => {
     const parent = runtime("session-1");
     const child = runtime("fork");
     const driver = new PiWorkspaceDriver({
+      ...piPaths,
       workspacePath: "/project",
       emit: (event) => events.push(event),
       createRuntime: vi.fn(async ({ sessionId }) => sessionId === "fork" ? child : parent)
@@ -241,13 +245,13 @@ describe("PiWorkspaceDriver", () => {
       return runtime;
     });
     const openExternal = vi.fn(async () => undefined);
-    const driver = new PiWorkspaceDriver({ workspacePath: "/project", emit: (event) => events.push(event), createRuntime, openExternal, isTrusted: () => true });
+    const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", emit: (event) => events.push(event), createRuntime, openExternal, isTrusted: () => true });
     const openId = crypto.randomUUID();
 
     driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
     await vi.waitFor(() => expect(events.some((event) => event.type === "complete" && event.requestId === openId)).toBe(true));
     expect(createRuntime).toHaveBeenCalledOnce();
-    expect(createRuntime).toHaveBeenCalledWith(expect.objectContaining({ trusted: true }));
+    expect(createRuntime).toHaveBeenCalledWith(expect.objectContaining({ trusted: true, agentDir: piPaths.agentDir, sessionDir: piPaths.sessionDir }));
     await options?.openExternal?.("https://auth.example.test/");
     expect(openExternal).toHaveBeenCalledWith("https://auth.example.test/");
     expect(events).toContainEqual({ type: "session-snapshot", requestId: openId, snapshot });
@@ -302,7 +306,7 @@ describe("PiWorkspaceDriver", () => {
       prompt: vi.fn(async () => { const record = await options!.persistArtifact!(artifact); response = await options!.requestArtifact!(record, new AbortController().signal); }),
       abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), recordReviewRun: vi.fn(), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
     };
-    const driver = new PiWorkspaceDriver({ workspacePath: "/project", artifactRepository: repository, emit: (event) => events.push(event), createRuntime: vi.fn(async (next) => { options = next; return runtime; }), isTrusted: () => true });
+    const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", artifactRepository: repository, emit: (event) => events.push(event), createRuntime: vi.fn(async (next) => { options = next; return runtime; }), isTrusted: () => true });
     const openId = crypto.randomUUID(); driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
     await vi.waitFor(() => expect(events.some((event) => event.type === "complete" && event.requestId === openId)).toBe(true));
     const operationId = crypto.randomUUID(); driver.dispatch({ type: "prompt", requestId: operationId, workspacePath: "/project", sessionId: snapshot.sessionId, text: "request", delivery: "prompt", attachments: [] });
