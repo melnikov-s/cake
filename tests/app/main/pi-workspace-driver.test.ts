@@ -152,6 +152,36 @@ describe("PiWorkspaceDriver", () => {
     driver[Symbol.dispose]();
   });
 
+  it("opens a dormant session before sending it a prompt", async () => {
+    const events: DesktopEvent[] = [];
+    const runtime: CakeRuntime = {
+      sessionId: "session-2",
+      sessionFile: "/sessions/two.jsonl",
+      snapshot: vi.fn(async () => ({ ...snapshot, sessionId: "session-2", sessionFile: "/sessions/two.jsonl" })),
+      prompt: vi.fn(async () => undefined),
+      abort: vi.fn(async () => undefined),
+      setModel: vi.fn(async () => undefined),
+      setThinkingLevel: vi.fn(async () => undefined),
+      setPiSetting: vi.fn(async () => undefined), recordReviewRun: vi.fn(),
+      login: vi.fn(async () => undefined),
+      logout: vi.fn(async () => undefined),
+      rename: vi.fn(async () => undefined),
+      fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      navigate: vi.fn(async () => undefined),
+      dispose: vi.fn()
+    };
+    const createRuntime = vi.fn(async () => runtime);
+    const driver = new PiWorkspaceDriver({ workspacePath: "/project", emit: (event) => events.push(event), createRuntime });
+    const operationId = crypto.randomUUID();
+
+    driver.dispatch({ type: "prompt", requestId: operationId, workspacePath: "/project", sessionId: "session-2", text: "Commit the work", delivery: "prompt", attachments: [] });
+
+    await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: operationId }));
+    expect(createRuntime).toHaveBeenCalledWith(expect.objectContaining({ newSession: false, sessionId: "session-2" }));
+    expect(runtime.prompt).toHaveBeenCalledWith("Commit the work", "prompt", []);
+    driver[Symbol.dispose]();
+  });
+
   it("opens a fork whose Pi session history carries its Git checkpoints", async () => {
     const events: DesktopEvent[] = [];
     const runtime = (sessionId: string): CakeRuntime => ({

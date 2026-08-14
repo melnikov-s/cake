@@ -143,7 +143,7 @@ export class PiWorkspaceDriver {
       return;
     }
     void this.run(command.requestId, async () => {
-      const runtime = command.type === "rename-session"
+      const runtime = command.type === "rename-session" || command.type === "prompt" || command.type === "set-model"
         ? this.runtimes.get(command.sessionId) ?? await this.createRuntime(false, command.sessionId)
         : this.runtimeFor(command.sessionId);
       if (command.type === "abort") await runtime.abort();

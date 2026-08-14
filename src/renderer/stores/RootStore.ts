@@ -11,8 +11,11 @@ import { SettingsStore } from "./SettingsStore";
 import { ExtensionUiStore } from "./ExtensionUiStore";
 import { ArtifactInteractionStore } from "./ArtifactInteractionStore";
 import { MessageComposerStore } from "./MessageComposerStore";
+import { AppControlBridge } from "../app-control-bridge";
 
 export class RootStore extends Store<{ client: DesktopClient }> {
+  readonly appControl: AppControlBridge;
+
   [DesktopClientContext.provide]() {
     return this.props.client;
   }
@@ -147,6 +150,29 @@ export class RootStore extends Store<{ client: DesktopClient }> {
 
   constructor(props: RootStore["props"]) {
     super(props);
+    this.appControl = new AppControlBridge({
+      currentSession: () => this.mainChatStore.projectPath && this.mainChatStore.selectedSessionId
+        ? { workspacePath: this.mainChatStore.projectPath, sessionId: this.mainChatStore.selectedSessionId }
+        : undefined,
+      projects: () => this.sidebarStore.projects,
+      sessions: () => this.sidebarStore.sessions,
+      sessionActivity: (workspacePath, sessionId) => this.sidebarStore.sessionActivity(workspacePath, sessionId),
+      readSession: async (workspacePath, sessionId) => {
+        const cached = this.sessionCache.find(sessionId, workspacePath);
+        if (cached?.sessionFile) return cached.uiParts;
+        return (await this.client.loadSession(workspacePath, sessionId))?.parts;
+      },
+      openSession: (workspacePath, sessionId) => this.mainChatStore.openSession(workspacePath, sessionId),
+      createSession: (workspacePath) => this.mainChatStore.startNewSession(workspacePath),
+      sendSessionMessage: (workspacePath, sessionId, text, delivery) => this.runControlOperation((operationId) =>
+        this.client.submit({ operationId, workspacePath, sessionId, text, delivery, attachments: [] })),
+      abortSession: (workspacePath, sessionId) => this.runControlOperation((operationId) =>
+        this.client.abort({ operationId, workspacePath, sessionId })),
+      renameSession: (workspacePath, sessionId, title) => this.mainChatStore.renameSession(workspacePath, sessionId, title),
+      setSessionArchived: (workspacePath, sessionId, archived) => this.mainChatStore.archiveSession(workspacePath, sessionId, archived),
+      setSessionModel: (workspacePath, sessionId, provider, modelId) => this.runControlOperation((operationId) =>
+        this.client.setModel({ operationId, workspacePath, sessionId, provider, modelId }))
+    });
     this.effect(() => this.client.subscribe((event) => this.receive(event)));
   }
 
@@ -206,6 +232,16 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       return;
     }
     this.mainChatStore.receive(event);
+  }
+
+  private async runControlOperation(action: (operationId: string) => Promise<void>) {
+    const operationId = this.mainChatStore.startOperation();
+    try {
+      await action(operationId);
+    } catch (error) {
+      this.mainChatStore.finishOperation(operationId);
+      throw error;
+    }
   }
 }
 
