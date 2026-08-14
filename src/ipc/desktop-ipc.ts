@@ -86,6 +86,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("set-model"), requestId: z.uuid(), provider: z.string(), modelId: z.string(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }),
   z.object({ type: z.literal("set-thinking"), requestId: z.uuid(), level: thinkingLevelSchema, workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }),
   z.object({ type: z.literal("set-pi-setting"), requestId: z.uuid(), update: piSettingUpdateSchema, workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }),
+  z.object({ type: z.literal("reload-pi"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }),
   z.object({ type: z.literal("login"), requestId: z.uuid(), provider: z.string(), authType: z.enum(["api_key", "oauth"]), workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }),
   z.object({ type: z.literal("logout"), requestId: z.uuid(), provider: z.string(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }),
   z.object({ type: z.literal("rename-session"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), name: z.string().min(1).max(512) }),

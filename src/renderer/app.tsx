@@ -23,7 +23,7 @@ import { WorkspaceBrowser } from "@/components/workspace-browser";
 import { ModelCombobox } from "@/components/model-combobox";
 import { SessionTree } from "@/components/session-tree";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
-import type { CompatibilityResource, UiPart } from "../ipc/session-contract";
+import type { CompatibilityResource, PiSettings, UiPart } from "../ipc/session-contract";
 import type { MainChatStore } from "./stores/MainChatStore";
 import type { ReviewRunState, ReviewsStore } from "./stores/ReviewsStore";
 import type { SidebarStore } from "./stores/SidebarStore";
@@ -286,7 +286,7 @@ function UiDialog({ request, extensionUi }: { request: UiRequestState; extension
   );
 }
 
-export const Sidebar = observer(function Sidebar({ store, chat, reviews, onOpenSettings, onOpenChat, onToggle, settingsOpen }: { store: SidebarStore; chat: MainChatStore; reviews: ReviewsStore; onOpenSettings: () => void; onOpenChat: () => void; onToggle: () => void; settingsOpen: boolean }) {
+export const Sidebar = observer(function Sidebar({ store, chat, reviews, onOpenSettings, onOpenChat, onToggle, onReloadPi, settingsOpen }: { store: SidebarStore; chat: MainChatStore; reviews: ReviewsStore; onOpenSettings: () => void; onOpenChat: () => void; onToggle: () => void; onReloadPi?: () => void; settingsOpen: boolean }) {
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() => new Set());
   const searchInput = useRef<HTMLInputElement>(null);
@@ -327,7 +327,7 @@ export const Sidebar = observer(function Sidebar({ store, chat, reviews, onOpenS
   return (
     <aside className="sidebar">
       <div className="sidebar-window-tools"><button aria-label="Toggle sidebar" onClick={onToggle}><SidebarIcon /></button><button aria-label="Back" disabled><BackIcon /></button><button aria-label="Forward" disabled><ForwardIcon /></button></div>
-      <div className="sidebar-brand"><div className="brand-menu"><span>Cake</span><ChevronIcon /></div><div className="brand-actions"><button className={searchOpen ? "active" : ""} aria-label={searchOpen ? "Close session search" : "Search sessions"} aria-expanded={searchOpen} onClick={() => searchOpen ? closeSearch() : setSearchExpanded(true)}>{searchOpen ? <CloseIcon /> : <SearchIcon />}</button></div></div>
+      <div className="sidebar-brand"><details className="brand-menu"><summary><span>Cake</span><ChevronIcon /></summary><div className="brand-dropdown"><button type="button" disabled={!chat.session || !onReloadPi} onClick={(event) => { onReloadPi?.(); event.currentTarget.closest("details")?.removeAttribute("open"); }}>Reload Pi<span>{chat.session?.piSettings?.reloadPending ? "Queued" : "Settings and resources"}</span></button></div></details><div className="brand-actions"><button className={searchOpen ? "active" : ""} aria-label={searchOpen ? "Close session search" : "Search sessions"} aria-expanded={searchOpen} onClick={() => searchOpen ? closeSearch() : setSearchExpanded(true)}>{searchOpen ? <CloseIcon /> : <SearchIcon />}</button></div></div>
       <div className="sidebar-scroll">
         <button className="new-chat" onClick={() => navigateToChat(() => chat.startOneOffChat())}><ChatIcon /><span>New chat</span></button>
         <div className={`session-filter global-session-filter ${searchOpen ? "expanded" : ""}`} aria-hidden={!searchOpen}><input ref={searchInput} aria-label="Search sessions" placeholder="Search all sessions" value={store.search} disabled={!searchOpen} onChange={(event) => { store.search = event.target.value; chat.persistViewState(); }} onKeyDown={(event) => { if (event.key === "Escape") closeSearch(); }} /></div>
@@ -412,6 +412,37 @@ function SettingsToggle({ label, description, checked, onChange }: { label: stri
   return <div className="settings-field"><span>{label}<small>{description}</small></span><button className="settings-switch" type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)}><i /></button></div>;
 }
 
+function SettingsTextField({ label, description, value, placeholder, onApply }: { label: string; description: string; value: string; placeholder?: string; onApply(value: string): void }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  return <label><span>{label}<small>{description}</small></span><input className="settings-input" value={draft} placeholder={placeholder} onChange={(event) => setDraft(event.target.value)} onBlur={() => { if (draft !== value) onApply(draft); }} /></label>;
+}
+
+function SettingsLinesField({ label, description, value, onApply }: { label: string; description: string; value: string[]; onApply(value: string[]): void }) {
+  const serialized = value.join("\n");
+  const [draft, setDraft] = useState(serialized);
+  useEffect(() => setDraft(serialized), [serialized]);
+  return <label className="settings-multiline"><span>{label}<small>{description}</small></span><textarea value={draft} rows={4} onChange={(event) => setDraft(event.target.value)} onBlur={() => { const next = draft.split("\n").map((item) => item.trim()).filter(Boolean); if (next.join("\n") !== serialized) onApply(next); }} /></label>;
+}
+
+function SettingsPackagesField({ value, onApply }: { value: PiSettings["packages"]; onApply(value: PiSettings["packages"]): void }) {
+  const serialized = JSON.stringify(value, null, 2);
+  const [draft, setDraft] = useState(serialized);
+  const [error, setError] = useState<string>();
+  useEffect(() => { setDraft(serialized); setError(undefined); }, [serialized]);
+  const apply = () => {
+    try {
+      const parsed: unknown = JSON.parse(draft);
+      if (!Array.isArray(parsed)) throw new Error("Packages must be a JSON array");
+      onApply(parsed as PiSettings["packages"]);
+      setError(undefined);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError));
+    }
+  };
+  return <label className="settings-multiline"><span>Packages<small>Pi package sources as JSON. Saving reloads every open Pi session.</small>{error && <small className="settings-validation" role="alert">{error}</small>}</span><span className="settings-editor"><textarea aria-label="Pi packages" value={draft} rows={6} onChange={(event) => setDraft(event.target.value)} /><Button variant="outline" size="sm" type="button" onClick={apply}>Apply</Button></span></label>;
+}
+
 export const SettingsPage = observer(function SettingsPage({ store, settings }: { store: MainChatStore; settings: SettingsStore }) {
   const selectedModel = store.session?.model;
   const pi = store.session?.piSettings;
@@ -438,19 +469,38 @@ export const SettingsPage = observer(function SettingsPage({ store, settings }: 
         <header><div><h2 id="behavior-title">Agent behavior</h2><p>Context, reasoning display, and queued message delivery.</p></div><span className="settings-source">Pi global</span></header>
         {pi ? <div className="settings-fields">
           <SettingsToggle label="Auto-compact" description="Compact context automatically when it gets too large." checked={pi.autoCompact} onChange={(value) => void settings.setPiSetting({ key: "autoCompact", value })} />
+          <SettingsToggle label="Automatic retry" description="Retry transient provider failures automatically." checked={pi.retryEnabled} onChange={(value) => void settings.setPiSetting({ key: "retryEnabled", value })} />
           <SettingsToggle label="Hide thinking" description="Hide reasoning blocks in assistant responses." checked={pi.hideThinkingBlock} onChange={(value) => void settings.setPiSetting({ key: "hideThinkingBlock", value })} />
           <label><span>Steering mode<small>How steering messages are delivered while Pi is working.</small></span><select aria-label="Steering mode" value={pi.steeringMode} onChange={(event) => void settings.setPiSetting({ key: "steeringMode", value: event.target.value as typeof pi.steeringMode })}><option value="one-at-a-time">One at a time</option><option value="all">All at once</option></select></label>
           <label><span>Follow-up mode<small>How queued follow-ups are delivered after Pi stops.</small></span><select aria-label="Follow-up mode" value={pi.followUpMode} onChange={(event) => void settings.setPiSetting({ key: "followUpMode", value: event.target.value as typeof pi.followUpMode })}><option value="one-at-a-time">One at a time</option><option value="all">All at once</option></select></label>
         </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
       </section>
 
+      <section className="settings-section" aria-labelledby="execution-title">
+        <header><div><h2 id="execution-title">Execution</h2><p>Configure the shell and package command used by Pi.</p></div></header>
+        {pi ? <div className="settings-fields">
+          <SettingsTextField label="Shell path" description="Custom shell executable. Leave empty to use Pi’s platform default." value={pi.shellPath} placeholder="/bin/zsh" onApply={(value) => void settings.setPiSetting({ key: "shellPath", value })} />
+          <SettingsTextField label="Shell command prefix" description="Command prepended to every Pi shell invocation." value={pi.shellCommandPrefix} placeholder="Optional" onApply={(value) => void settings.setPiSetting({ key: "shellCommandPrefix", value })} />
+          <SettingsLinesField label="npm command" description="Command and arguments used for package operations, one argument per line." value={pi.npmCommand} onApply={(value) => void settings.setPiSetting({ key: "npmCommand", value })} />
+        </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
+      </section>
+
+      <section className="settings-section" aria-labelledby="resources-title">
+        <header><div><h2 id="resources-title">Resources</h2><p>Configure global Pi packages, extensions, skills, and prompt paths. Changes reload automatically.</p></div><Button variant="outline" size="sm" type="button" disabled={!store.session} onClick={() => void settings.reloadPi()}>{pi?.reloadPending ? "Reload queued" : "Reload Pi"}</Button></header>
+        {pi ? <div className="settings-fields">
+          <SettingsPackagesField value={pi.packages} onApply={(value) => void settings.setPiSetting({ key: "packages", value })} />
+          <SettingsLinesField label="Extension paths" description="One path, glob, inclusion, or exclusion per line." value={pi.extensions} onApply={(value) => void settings.setPiSetting({ key: "extensions", value })} />
+          <SettingsLinesField label="Skill paths" description="One path, glob, inclusion, or exclusion per line." value={pi.skills} onApply={(value) => void settings.setPiSetting({ key: "skills", value })} />
+          <SettingsLinesField label="Prompt paths" description="One path, glob, inclusion, or exclusion per line." value={pi.prompts} onApply={(value) => void settings.setPiSetting({ key: "prompts", value })} />
+        </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
+      </section>
+
       <section className="settings-section" aria-labelledby="content-title">
-        <header><div><h2 id="content-title">Content & resources</h2><p>Control images, skills, diagrams, and transcript diagnostics.</p></div></header>
+        <header><div><h2 id="content-title">Content</h2><p>Control images, skills, and transcript diagnostics.</p></div></header>
         {pi ? <div className="settings-fields">
           <SettingsToggle label="Auto-resize images" description="Resize large images for better model compatibility." checked={pi.autoResizeImages} onChange={(value) => void settings.setPiSetting({ key: "autoResizeImages", value })} />
           <SettingsToggle label="Block images" description="Prevent images from being sent to model providers." checked={pi.blockImages} onChange={(value) => void settings.setPiSetting({ key: "blockImages", value })} />
           <SettingsToggle label="Skill commands" description="Register discovered skills as /skill:name commands." checked={pi.enableSkillCommands} onChange={(value) => void settings.setPiSetting({ key: "enableSkillCommands", value })} />
-          <label><span>Mermaid diagrams<small>Choose when Pi renders Mermaid code blocks as diagrams.</small></span><select aria-label="Mermaid rendering" value={pi.mermaidRenderingMode} onChange={(event) => void settings.setPiSetting({ key: "mermaidRenderingMode", value: event.target.value as typeof pi.mermaidRenderingMode })}><option value="off">Off</option><option value="final">Final responses</option><option value="streaming">While streaming</option></select></label>
           <SettingsToggle label="Cache miss notices" description="Show notices for significant prompt-cache misses." checked={pi.showCacheMissNotices} onChange={(value) => void settings.setPiSetting({ key: "showCacheMissNotices", value })} />
         </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
       </section>
@@ -469,16 +519,6 @@ export const SettingsPage = observer(function SettingsPage({ store, settings }: 
           <label><span>Default project trust<small>Fallback when no saved trust decision applies.</small></span><select aria-label="Default project trust" value={pi.defaultProjectTrust} onChange={(event) => void settings.setPiSetting({ key: "defaultProjectTrust", value: event.target.value as typeof pi.defaultProjectTrust })}><option value="ask">Ask</option><option value="always">Always trust</option><option value="never">Never trust</option></select></label>
           <SettingsToggle label="Anthropic extra usage warning" description="Warn when subscription authentication may use paid extra usage." checked={pi.anthropicExtraUsageWarning} onChange={(value) => void settings.setPiSetting({ key: "anthropicExtraUsageWarning", value })} />
           <SettingsToggle label="Install telemetry" description="Send Pi’s anonymous version/update ping after detected updates." checked={pi.enableInstallTelemetry} onChange={(value) => void settings.setPiSetting({ key: "enableInstallTelemetry", value })} />
-        </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
-      </section>
-
-      <section className="settings-section" aria-labelledby="cli-title">
-        <header><div><h2 id="cli-title">Pi CLI</h2><p>Preferences shared with Pi’s terminal interface.</p></div></header>
-        {pi ? <div className="settings-fields">
-          <label><span>Double-escape action<small>Action Pi takes when Escape is pressed twice in an empty editor.</small></span><select aria-label="Double escape action" value={pi.doubleEscapeAction} onChange={(event) => void settings.setPiSetting({ key: "doubleEscapeAction", value: event.target.value as typeof pi.doubleEscapeAction })}><option value="tree">Open tree</option><option value="fork">Fork</option><option value="none">None</option></select></label>
-          <label><span>Tree filter mode<small>Default filter used when Pi opens /tree.</small></span><select aria-label="Tree filter mode" value={pi.treeFilterMode} onChange={(event) => void settings.setPiSetting({ key: "treeFilterMode", value: event.target.value as typeof pi.treeFilterMode })}><option value="default">Default</option><option value="no-tools">Hide tools</option><option value="user-only">User messages only</option><option value="labeled-only">Labeled only</option><option value="all">All entries</option></select></label>
-          <SettingsToggle label="Quiet startup" description="Disable Pi CLI’s verbose startup output." checked={pi.quietStartup} onChange={(value) => void settings.setPiSetting({ key: "quietStartup", value })} />
-          <SettingsToggle label="Collapse changelog" description="Show a condensed changelog after Pi updates." checked={pi.collapseChangelog} onChange={(value) => void settings.setPiSetting({ key: "collapseChangelog", value })} />
         </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
       </section>
 
@@ -540,7 +580,7 @@ export const App = observer(function App() {
 
   return (
     <main className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${store.commandPane ? "right-pane-open" : ""}`}>
-      <Sidebar store={sidebar} chat={store} reviews={reviews} settingsOpen={page === "settings"} onToggle={() => setSidebarCollapsed((value) => !value)} onOpenSettings={() => setPage("settings")} onOpenChat={() => setPage("chat")} />
+      <Sidebar store={sidebar} chat={store} reviews={reviews} settingsOpen={page === "settings"} onToggle={() => setSidebarCollapsed((value) => !value)} onOpenSettings={() => setPage("settings")} onOpenChat={() => setPage("chat")} onReloadPi={() => void settings.reloadPi()} />
       <section className="workspace" data-session-id={store.session?.sessionId}>
         <button className={page === "settings" ? "workspace-settings-icon active" : "workspace-settings-icon"} type="button" aria-label="Open settings" aria-current={page === "settings" ? "page" : undefined} onClick={() => setPage("settings")}><SettingsIcon /></button>
         <header className="workspace-header"><div><button className="header-sidebar-toggle" aria-label="Toggle sidebar" onClick={() => setSidebarCollapsed((value) => !value)}><SidebarIcon /></button>{page === "settings" && <button className="header-back" aria-label="Back to chat" onClick={() => setPage("chat")}><BackIcon /></button>}<strong>{page === "settings" ? "Settings" : extensionUi.title ?? (store.session ? store.sessionTitle : "Cake")}</strong>{page === "chat" && store.projectPath && <span>{store.projectPath}</span>}</div>{page === "chat" && store.session && <div className="header-pane-actions"><button className="header-pane-toggle" type="button" aria-label="Browse project files" onClick={() => void store.openWorkspaceBrowser()}><BrowseIcon /><span>Browse</span></button><button className="header-pane-toggle" type="button" aria-label="Open workspace changes" onClick={() => void store.openSessionChanges()}><ChangesIcon /><span>Changes</span>{changes.changes.length > 0 && <b>{changes.changes.length}</b>}</button></div>}</header>

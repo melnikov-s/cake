@@ -91,6 +91,23 @@ describe("Sidebar projects", () => {
     expect(container.textContent).toContain("Add project collapsing");
   });
 
+  it("offers Pi reload from the Cake menu", () => {
+    const reload = vi.fn();
+    const store = {
+      sessionSearch: "", recentProjectPaths: [], projects: [], searchedSessions: [], session: { sessionId: "session-1", piSettings: { reloadPending: false } },
+      projectSessions: vi.fn(() => []), sessionLimit: vi.fn(() => 8), nameFromPath: vi.fn(() => "cake"), sessionActivity: vi.fn(), sessionDisplayTitle,
+      chatReviewCommentCountForSession: vi.fn(() => 0), startOneOffChat: vi.fn(), chooseProject: vi.fn(), showMoreSessions: vi.fn()
+    } as unknown as MainChatStore;
+    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} onReloadPi={reload} settingsOpen={false} />));
+
+    const menu = container.querySelector("details.brand-menu")!;
+    act(() => menu.setAttribute("open", ""));
+    act(() => container.querySelector<HTMLButtonElement>(".brand-dropdown button")!.click());
+
+    expect(reload).toHaveBeenCalledOnce();
+    expect(menu.hasAttribute("open")).toBe(false);
+  });
+
   it("shows running and ready-unread indicators for sessions", () => {
     const store = {
       sessionSearch: "",

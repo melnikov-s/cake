@@ -79,6 +79,7 @@ export interface DesktopClient {
   setModel(input: { operationId: string; workspacePath: string; sessionId: string; provider: string; modelId: string }): Promise<void>;
   setThinkingLevel(input: { operationId: string; workspacePath: string; sessionId: string; level: ThinkingLevel }): Promise<void>;
   setPiSetting(input: { operationId: string; workspacePath: string; sessionId: string; update: PiSettingUpdate }): Promise<void>;
+  reloadPi(input: { operationId: string; workspacePath: string; sessionId: string }): Promise<void>;
   login(input: { operationId: string; workspacePath: string; sessionId: string; provider: string; authType: "api_key" | "oauth" }): Promise<void>;
   logout(input: { operationId: string; workspacePath: string; sessionId: string; provider: string }): Promise<void>;
   renameSession(input: { operationId: string; workspacePath: string; sessionId: string; name: string }): Promise<void>;
@@ -226,6 +227,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
     setModel: (input) => accept(bridge, { type: "set-model", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, provider: input.provider, modelId: input.modelId }),
     setThinkingLevel: (input) => accept(bridge, { type: "set-thinking", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, level: input.level }),
     setPiSetting: (input) => accept(bridge, { type: "set-pi-setting", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, update: input.update }),
+    reloadPi: (input) => accept(bridge, { type: "reload-pi", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId }),
     login: (input) => accept(bridge, { type: "login", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, provider: input.provider, authType: input.authType }),
     logout: (input) => accept(bridge, { type: "logout", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, provider: input.provider }),
     renameSession: (input) => accept(bridge, { type: "rename-session", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, name: input.name }),

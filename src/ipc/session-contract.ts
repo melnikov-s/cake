@@ -16,6 +16,20 @@ export const thinkingLevelSchema = z.enum([
   "max"
 ]);
 
+const piResourcePathSchema = z.string().min(1).max(4_096);
+const piResourcePathsSchema = z.array(piResourcePathSchema).max(1_000);
+const piPackageSourceSchema = z.union([
+  piResourcePathSchema,
+  z.object({
+    source: piResourcePathSchema,
+    autoload: z.boolean().optional(),
+    extensions: piResourcePathsSchema.optional(),
+    skills: piResourcePathsSchema.optional(),
+    prompts: piResourcePathsSchema.optional(),
+    themes: piResourcePathsSchema.optional()
+  })
+]);
+
 export const piSettingsSchema = z.object({
   autoCompact: z.boolean(),
   autoResizeImages: z.boolean(),
@@ -34,7 +48,16 @@ export const piSettingsSchema = z.object({
   defaultProjectTrust: z.enum(["ask", "always", "never"]),
   doubleEscapeAction: z.enum(["fork", "tree", "none"]),
   treeFilterMode: z.enum(["default", "no-tools", "user-only", "labeled-only", "all"]),
-  anthropicExtraUsageWarning: z.boolean()
+  anthropicExtraUsageWarning: z.boolean(),
+  retryEnabled: z.boolean(),
+  shellPath: z.string().max(4_096),
+  shellCommandPrefix: z.string().max(16_384),
+  npmCommand: z.array(z.string().max(4_096)).max(100),
+  packages: z.array(piPackageSourceSchema).max(1_000),
+  extensions: piResourcePathsSchema,
+  skills: piResourcePathsSchema,
+  prompts: piResourcePathsSchema,
+  reloadPending: z.boolean()
 });
 
 export const piSettingUpdateSchema = z.discriminatedUnion("key", [
@@ -55,7 +78,15 @@ export const piSettingUpdateSchema = z.discriminatedUnion("key", [
   z.object({ key: z.literal("defaultProjectTrust"), value: z.enum(["ask", "always", "never"]) }),
   z.object({ key: z.literal("doubleEscapeAction"), value: z.enum(["fork", "tree", "none"]) }),
   z.object({ key: z.literal("treeFilterMode"), value: z.enum(["default", "no-tools", "user-only", "labeled-only", "all"]) }),
-  z.object({ key: z.literal("anthropicExtraUsageWarning"), value: z.boolean() })
+  z.object({ key: z.literal("anthropicExtraUsageWarning"), value: z.boolean() }),
+  z.object({ key: z.literal("retryEnabled"), value: z.boolean() }),
+  z.object({ key: z.literal("shellPath"), value: z.string().max(4_096) }),
+  z.object({ key: z.literal("shellCommandPrefix"), value: z.string().max(16_384) }),
+  z.object({ key: z.literal("npmCommand"), value: z.array(z.string().max(4_096)).max(100) }),
+  z.object({ key: z.literal("packages"), value: z.array(piPackageSourceSchema).max(1_000) }),
+  z.object({ key: z.literal("extensions"), value: piResourcePathsSchema }),
+  z.object({ key: z.literal("skills"), value: piResourcePathsSchema }),
+  z.object({ key: z.literal("prompts"), value: piResourcePathsSchema })
 ]);
 
 export const fileSuggestionSchema = z.object({

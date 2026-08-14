@@ -55,6 +55,7 @@ function createDesktopClient(restoredPath?: string) {
     setModel: vi.fn(async () => undefined),
     setThinkingLevel: vi.fn(async () => undefined),
     setPiSetting: vi.fn(async () => undefined),
+    reloadPi: vi.fn(async () => undefined),
     login: vi.fn(async () => undefined),
     logout: vi.fn(async () => undefined),
     renameSession: vi.fn(async () => undefined),
@@ -161,6 +162,11 @@ describe("MainChatStore", () => {
     expect(desktop.client.setPiSetting).toHaveBeenCalledWith({ operationId, workspacePath: "/project", sessionId: "session-1", update: { key: "autoCompact", value: false } });
     desktop.emit({ type: "operation-completed", operationId });
     expect(store.activeOperations).not.toContain(operationId);
+
+    await root.settingsStore.reloadPi();
+    const reloadOperationId = store.activeOperations.at(-1)!;
+    expect(desktop.client.reloadPi).toHaveBeenCalledWith({ operationId: reloadOperationId, workspacePath: "/project", sessionId: "session-1" });
+    desktop.emit({ type: "operation-completed", operationId: reloadOperationId });
     root[Symbol.dispose]();
   });
 

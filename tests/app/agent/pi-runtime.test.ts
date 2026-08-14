@@ -313,6 +313,24 @@ describe("S1 Pi runtime", () => {
     expect(inspectWorkspace(directory)).toEqual({ path: directory, trustRequired: true });
   });
 
+  it("persists Cake runtime settings and reloads Pi resources", async () => {
+    const directory = await createTemporaryDirectory();
+    const agentDir = join(directory, "agent");
+    const onEvent = vi.fn();
+    const runtime = await createCakeRuntime({ cwd: directory, agentDir, sessionDir: join(directory, "sessions"), trusted: false, requestUi: async () => undefined, onEvent });
+    runtimes.push(runtime);
+
+    await runtime.setPiSetting({ key: "retryEnabled", value: false });
+    await runtime.setPiSetting({ key: "shellPath", value: "/bin/zsh" });
+    await runtime.setPiSetting({ key: "npmCommand", value: ["mise", "exec", "node@22", "--", "npm"] });
+    await runtime.setPiSetting({ key: "skills", value: ["skills", "!skills/legacy"] });
+    await runtime.reload?.();
+
+    expect((await runtime.snapshot()).piSettings).toMatchObject({ retryEnabled: false, shellPath: "/bin/zsh", npmCommand: ["mise", "exec", "node@22", "--", "npm"], skills: ["skills", "!skills/legacy"], reloadPending: false });
+    expect(JSON.parse(await readFile(join(agentDir, "settings.json"), "utf8"))).toMatchObject({ retry: { enabled: false }, shellPath: "/bin/zsh", npmCommand: ["mise", "exec", "node@22", "--", "npm"], skills: ["skills", "!skills/legacy"] });
+    expect(onEvent).toHaveBeenCalledWith({ type: "part-removed", sessionId: runtime.sessionId, partId: "pi-reload-status" });
+  });
+
   it("creates and reopens an authoritative persistent Pi session", async () => {
     const directory = await createTemporaryDirectory();
     const agentDir = join(directory, "agent");

@@ -115,8 +115,17 @@
 .sidebar-window-tools button:disabled { opacity: .44; cursor: default; }
 .sidebar-window-tools svg { width: 15px; height: 15px; }
 .sidebar-brand { display: flex; height: 48px; flex: 0 0 48px; align-items: center; justify-content: space-between; gap: 10px; padding: 0 15px; }
-.brand-menu { display: flex; min-width: 0; align-items: center; gap: 2px; padding: 4px 3px; color: inherit; font-size: 17px; font-weight: 650; letter-spacing: -.025em; }
+.brand-menu { position: relative; min-width: 0; color: inherit; font-size: 17px; font-weight: 650; letter-spacing: -.025em; }
+.brand-menu summary { display: flex; align-items: center; gap: 2px; padding: 4px 3px; border-radius: 6px; cursor: pointer; list-style: none; }
+.brand-menu summary::-webkit-details-marker { display: none; }
+.brand-menu summary:hover, .brand-menu[open] summary { background: var(--sidebar-hover); }
 .brand-menu svg { color: var(--muted-foreground); }
+.brand-menu[open] summary svg { transform: rotate(180deg); }
+.brand-dropdown { position: absolute; z-index: 60; top: calc(100% + 5px); left: 0; width: 210px; padding: 5px; border: 1px solid var(--border); border-radius: 9px; background: var(--popover); box-shadow: 0 16px 36px -18px hsl(var(--shadow) / .65); }
+.brand-dropdown button { display: grid; width: 100%; gap: 2px; padding: 8px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--foreground); font-size: 12px; font-weight: 620; text-align: left; }
+.brand-dropdown button:hover:not(:disabled) { background: var(--sidebar-hover); }
+.brand-dropdown button:disabled { opacity: .45; }
+.brand-dropdown button span { color: var(--muted-foreground); font-size: 10px; font-weight: 400; }
 .brand-actions { display: flex; align-items: center; gap: 4px; }
 .brand-actions svg { width: 15px; height: 15px; }
 .cake-mark { display: grid; width: 27px; height: 27px; place-items: center; border-radius: 9px 6px 9px 6px; background: var(--foreground); color: var(--background); font-size: 14px; font-weight: 850; letter-spacing: -.06em; transform: rotate(-2deg); }
@@ -541,6 +550,12 @@ button.reasoning-summary { border: 0; background: transparent; }
 .settings-fields label > span, .settings-field > span { display: grid; gap: 3px; font-size: 13px; font-weight: 630; }
 .settings-fields small { color: var(--muted-foreground); font-size: 11px; font-weight: 400; line-height: 1.4; }
 .settings-fields select { width: 100%; min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--background); color: var(--foreground); font-size: 12px; }
+.settings-input, .settings-fields textarea { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--background); color: var(--foreground); font: 12px/1.45 var(--font-mono); resize: vertical; }
+.settings-input { height: 36px; font-family: var(--font-sans); }
+.settings-fields label.settings-multiline { align-items: start; }
+.settings-editor { display: grid; gap: 8px; }
+.settings-editor button { justify-self: end; }
+.settings-fields .settings-validation { color: var(--destructive); }
 .settings-switch { position: relative; justify-self: end; width: 38px; height: 22px; padding: 2px; border: 1px solid var(--border); border-radius: 999px; background: var(--background); transition: border-color 140ms ease, background 140ms ease; }
 .settings-switch i { display: block; width: 16px; height: 16px; border-radius: 50%; background: var(--muted-foreground); box-shadow: 0 1px 2px oklch(0 0 0 / .18); transition: translate 140ms ease, background 140ms ease; }
 .settings-switch[aria-checked="true"] { border-color: var(--accent); background: color-mix(in oklch, var(--accent) 20%, var(--background)); }

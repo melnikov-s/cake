@@ -39,11 +39,13 @@ describe("desktop client", () => {
     await client.openWorkspace({ operationId, path: "/project" });
     await client.inspectChanges({ operationId, workspacePath: "/project", sessionId: "session" });
     await client.getChangelog({ operationId, workspacePath: "/project", sessionId: "session" });
+    await client.reloadPi({ operationId, workspacePath: "/project", sessionId: "session" });
 
     expect(desktop.request).toHaveBeenCalledWith({ type: "respond-workspace-trust", requestId: operationId, path: "/project", approved: true });
     expect(desktop.request).toHaveBeenCalledWith({ type: "open-workspace", requestId: operationId, path: "/project", newSession: false, sessionId: undefined, sessionFile: undefined });
     expect(desktop.request).toHaveBeenCalledWith({ type: "inspect-changes", requestId: operationId, workspacePath: "/project", sessionId: "session" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "get-changelog", requestId: operationId, workspacePath: "/project", sessionId: "session" });
+    expect(desktop.request).toHaveBeenCalledWith({ type: "reload-pi", requestId: operationId, workspacePath: "/project", sessionId: "session" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "load-session", workspacePath: "/project", sessionId: "session" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "suggest-files", workspacePath: "/project", prefix: "app" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "list-workspace-files", workspacePath: "/project" });

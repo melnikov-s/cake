@@ -510,6 +510,7 @@ export interface CakeRuntime {
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: ThinkingLevel): Promise<void>;
   setPiSetting(update: PiSettingUpdate): Promise<void>;
+  reload?(): Promise<void>;
   login(provider: string, authType: "api_key" | "oauth"): Promise<void>;
   logout(provider: string): Promise<void>;
   rename(name: string): Promise<void>;
@@ -951,6 +952,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   const cakeSessionId = session.sessionManager.getSessionId();
   let disposed = false;
   let checkpointQueue = Promise.resolve<unknown>(undefined);
+  let reloadRequested = 0;
+  let reloadCompleted = 0;
+  let reloadInFlight: Promise<void> | undefined;
   const projectLiveMessage = createLiveMessageProjector();
   const catalog = compatibilityCatalog(resourceLoader, settingsManager, options.cwd, agentDir);
   const extensionUiState: ExtensionUiState = { statuses: [], widgets: [] };
@@ -994,6 +998,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   async function makeSnapshot(): Promise<SessionSnapshot> {
     const sessions = await listWorkspaceSessions(options.cwd, options.sessionDir);
     const stats = session.getSessionStats();
+    const globalSettings = settingsManager.getGlobalSettings();
     return {
       workspacePath: options.cwd,
       sessionId: cakeSessionId,
@@ -1021,7 +1026,16 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         defaultProjectTrust: settingsManager.getDefaultProjectTrust(),
         doubleEscapeAction: settingsManager.getDoubleEscapeAction(),
         treeFilterMode: settingsManager.getTreeFilterMode(),
-        anthropicExtraUsageWarning: settingsManager.getWarnings().anthropicExtraUsage ?? true
+        anthropicExtraUsageWarning: settingsManager.getWarnings().anthropicExtraUsage ?? true,
+        retryEnabled: globalSettings.retry?.enabled ?? true,
+        shellPath: globalSettings.shellPath ?? "",
+        shellCommandPrefix: globalSettings.shellCommandPrefix ?? "",
+        npmCommand: globalSettings.npmCommand ?? [],
+        packages: globalSettings.packages ?? [],
+        extensions: globalSettings.extensions ?? [],
+        skills: globalSettings.skills ?? [],
+        prompts: globalSettings.prompts ?? [],
+        reloadPending: reloadCompleted < reloadRequested || Boolean(reloadInFlight)
       } satisfies PiSettings,
       streaming: session.isStreaming,
       diagnostics: [
@@ -1054,6 +1068,40 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     const snapshot = await makeSnapshot();
     if (disposed) return;
     options.onEvent({ type: "snapshot", requestId, snapshot });
+  }
+
+  async function drainReloads() {
+    if (reloadInFlight) return reloadInFlight;
+    if (reloadCompleted >= reloadRequested || session.isStreaming || session.isCompacting) return;
+    reloadInFlight = (async () => {
+      try {
+        while (!disposed && reloadCompleted < reloadRequested && !session.isStreaming && !session.isCompacting) {
+          const target = reloadRequested;
+          options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "pi-reload-status", kind: "notice", tone: "info", title: "Reloading Pi", detail: "Refreshing settings, extensions, skills, prompts, and tools." } });
+          await session.reload();
+          reloadCompleted = target;
+        }
+        if (!disposed && reloadCompleted >= reloadRequested) options.onEvent({ type: "part-removed", sessionId: cakeSessionId, partId: "pi-reload-status" });
+      } catch (error) {
+        reloadCompleted = reloadRequested;
+        if (!disposed) options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "pi-reload-status", kind: "notice", tone: "error", title: "Pi reload failed", detail: error instanceof Error ? error.message : String(error) } });
+        throw error;
+      } finally {
+        reloadInFlight = undefined;
+        await emitSnapshot();
+      }
+    })();
+    return reloadInFlight;
+  }
+
+  async function requestReload() {
+    reloadRequested += 1;
+    if (session.isStreaming || session.isCompacting) {
+      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "pi-reload-status", kind: "notice", tone: "info", title: "Pi reload queued", detail: "Cake will reload Pi after the current response settles." } });
+      await emitSnapshot();
+      return;
+    }
+    await drainReloads();
   }
 
   function gitCheckpoints() {
@@ -1122,7 +1170,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     }
     if (event.type === "agent_settled") {
       options.onEvent({ type: "streaming", sessionId: cakeSessionId, streaming: false });
-      void captureGitCheckpoint().catch(() => undefined).finally(() => emitSnapshot());
+      void captureGitCheckpoint().catch(() => undefined).then(() => drainReloads()).catch(() => undefined).finally(() => emitSnapshot());
     }
   });
 
@@ -1144,6 +1192,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     snapshot: makeSnapshot,
     async prompt(text, delivery, attachments) {
       if (disposed) throw new Error("The Cake runtime has been disposed");
+      if (!session.isStreaming && reloadCompleted < reloadRequested) await drainReloads();
       const content = promptText(text, attachments);
       const images = imageContent(attachments);
       if (delivery === "steer") await session.steer(content, images);
@@ -1183,9 +1232,18 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       else if (update.key === "doubleEscapeAction") settingsManager.setDoubleEscapeAction(update.value);
       else if (update.key === "treeFilterMode") settingsManager.setTreeFilterMode(update.value);
       else if (update.key === "anthropicExtraUsageWarning") settingsManager.setWarnings({ ...settingsManager.getWarnings(), anthropicExtraUsage: update.value });
+      else if (update.key === "retryEnabled") settingsManager.setRetryEnabled(update.value);
+      else if (update.key === "shellPath") settingsManager.setShellPath(update.value.trim() || undefined);
+      else if (update.key === "shellCommandPrefix") settingsManager.setShellCommandPrefix(update.value.trim() || undefined);
+      else if (update.key === "npmCommand") settingsManager.setNpmCommand(update.value.length > 0 ? update.value : undefined);
+      else if (update.key === "packages") settingsManager.setPackages(update.value);
+      else if (update.key === "extensions") settingsManager.setExtensionPaths(update.value);
+      else if (update.key === "skills") settingsManager.setSkillPaths(update.value);
+      else if (update.key === "prompts") settingsManager.setPromptTemplatePaths(update.value);
       await settingsManager.flush();
       await emitSnapshot();
     },
+    reload: requestReload,
     async login(provider, authType) {
       await modelRuntime.login(provider, authType, {
         async prompt(prompt) {

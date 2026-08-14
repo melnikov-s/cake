@@ -23,6 +23,7 @@ type PiCommandType =
   | "set-model"
   | "set-thinking"
   | "set-pi-setting"
+  | "reload-pi"
   | "login"
   | "logout"
   | "respond-ui"
@@ -152,7 +153,13 @@ export class PiWorkspaceDriver {
       }
       else if (command.type === "set-model") await runtime.setModel(command.provider, command.modelId);
       else if (command.type === "set-thinking") await runtime.setThinkingLevel(command.level);
-      else if (command.type === "set-pi-setting") await runtime.setPiSetting(command.update);
+      else if (command.type === "set-pi-setting") {
+        await runtime.setPiSetting(command.update);
+        if (["packages", "extensions", "skills", "prompts"].includes(command.update.key)) {
+          await Promise.all([...this.runtimes.values()].map((activeRuntime) => this.reloadRuntime(activeRuntime)));
+        }
+      }
+      else if (command.type === "reload-pi") await this.reloadRuntime(runtime);
       else if (command.type === "login") await runtime.login(command.provider, command.authType);
       else if (command.type === "logout") await runtime.logout(command.provider);
       else if (command.type === "rename-session") await runtime.rename(command.name);
@@ -268,6 +275,11 @@ export class PiWorkspaceDriver {
     const runtime = this.runtimes.get(sessionId);
     if (!runtime) throw new Error("That session is not open in this workspace");
     return runtime;
+  }
+
+  private reloadRuntime(runtime: CakeRuntime) {
+    if (!runtime.reload) throw new Error("This Pi runtime does not support reloading");
+    return runtime.reload();
   }
 
   private async createRuntime(newSession: boolean, sessionId?: string, sessionFile?: string) {

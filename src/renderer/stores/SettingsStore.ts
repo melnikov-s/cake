@@ -51,6 +51,10 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     await this.run((operationId, context) => this.props.client.setPiSetting({ operationId, ...context, update }));
   }
 
+  async reloadPi() {
+    await this.run((operationId, context) => this.props.client.reloadPi({ operationId, ...context }));
+  }
+
   async authenticate(provider: string, authType: "api_key" | "oauth") {
     if (this.providerOperation(provider)) return;
     const operationId = this.props.startOperation();
