@@ -6,8 +6,6 @@ installations.
 
 ```text
 ~/.cake/
-├── migrations/
-│   └── pi-sessions-v1.json
 ├── pi/
 │   ├── auth.json
 │   ├── models.json
@@ -32,28 +30,11 @@ project-local resources from the selected workspace. Cake injects its required
 artifact extensions and `cake-plugin-authoring` skill independently. Nothing is
 discovered from standalone `~/.pi/agent`.
 
-## One-time session migration
-
-Before the first window opens or sessions are listed, Cake recursively copies
-`~/.pi/agent/sessions` to `<Cake home>/pi/sessions`.
-
-- The source is never moved, renamed, deleted, or modified.
-- Missing files are copied with exclusive creation; existing files are never
-  overwritten.
-- Identical same-path files are accepted. Different same-path entries keep the
-  Cake destination and produce a diagnostic recorded in the marker.
-- A missing source is a successful no-op.
-- The completed `migrations/pi-sessions-v1.json` marker is written atomically
-  only after the entire traversal succeeds.
-- If copying fails partway through, Cake logs an actionable error, continues
-  startup using the safely copied destination, and retries next launch because
-  the marker is absent. Exclusive copies and content comparison make retry safe.
-- Once marked complete, later standalone Pi sessions are not imported. The two
-  applications never share a session file or concurrent writer.
-
-No settings, authentication, models, packages, extensions, skills, prompts, or
-themes are migrated. Cake intentionally starts with isolated Pi authentication
-and model configuration; the user signs in or configures providers in Cake.
+Existing development sessions were copied once from `~/.pi/agent/sessions` to
+`~/.cake/pi/sessions` during the storage-isolation change. Cake contains no
+runtime migration or fallback to standalone Pi storage. No settings,
+authentication, models, packages, extensions, skills, prompts, or themes were
+copied.
 
 ## Electron user data retained
 

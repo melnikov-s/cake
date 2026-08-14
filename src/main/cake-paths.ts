@@ -8,8 +8,6 @@ export interface CakePaths {
   piReviewSessions: string;
   piGlobalChatSessions: string;
   plugins: string;
-  migrations: string;
-  legacyPiSessions: string;
 }
 
 export interface ResolveCakePathsOptions {
@@ -29,8 +27,6 @@ export function resolveCakePaths(options: ResolveCakePathsOptions = {}): CakePat
     piSessions: join(piAgent, "sessions"),
     piReviewSessions: join(piAgent, "review-sessions"),
     piGlobalChatSessions: join(piAgent, "global-chat", "sessions"),
-    plugins: join(home, "plugins"),
-    migrations: join(home, "migrations"),
-    legacyPiSessions: join(homeDirectory, ".pi", "agent", "sessions")
+    plugins: join(home, "plugins")
   };
 }

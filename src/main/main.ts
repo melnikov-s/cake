@@ -15,7 +15,6 @@ import { ReviewRepository } from "./review-repository";
 import { SerializedFileWriter } from "./serialized-file-writer";
 import { GlobalChatDriver } from "./global-chat-driver";
 import { resolveCakePaths } from "./cake-paths";
-import { migrateLegacyPiSessions } from "./pi-session-migration";
 
 interface PiHost {
   path: string;
@@ -429,15 +428,6 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
 });
 
 app.whenReady().then(async () => {
-  try {
-    await migrateLegacyPiSessions(cakePaths, {
-      onDiagnostic: (diagnostic) => console.warn(`[cake:pi-session-migration] ${diagnostic.message}`)
-    });
-  } catch (error) {
-    // Migration is copy-only and resumable. Cake starts from any safely copied
-    // files and retries on the next launch because no completion marker exists.
-    console.error("[cake:pi-session-migration] Cake could not finish copying legacy Pi sessions; startup will continue and retry next launch.", error);
-  }
   await loadApplicationState();
   createWindow();
 });
