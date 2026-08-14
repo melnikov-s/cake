@@ -104,6 +104,12 @@ describe("Pi 0.84.0 foundation contract", () => {
 
     expect(await second.ensureInitialGitCheckpoint!()).toMatchObject({ tree: initial?.tree });
     expect(second.gitCheckpoints!().map((checkpoint) => checkpoint.tree)).toEqual([initial?.tree, latest?.tree]);
+    const reviewRun = { operationId: "00000000-0000-4000-8000-000000000003", threadIds: ["review-3"], commentCount: 1 };
+    second.recordReviewRun({ ...reviewRun, status: "running" });
+    second.recordReviewRun({ ...reviewRun, status: "complete" });
+    expect((await second.snapshot()).parts.filter((part) => part.kind === "review-run")).toEqual([
+      expect.objectContaining({ ...reviewRun, status: "complete" })
+    ]);
   });
 
   it("routes a forked GPT-5.6 review through the parent cache breakpoint", () => {
@@ -361,13 +367,17 @@ describe("S1 Pi runtime", () => {
     await writeFile(first.sessionFile, [
       { type: "session", version: 3, id: first.sessionId, timestamp, cwd: directory },
       { type: "message", id: "user-1", parentId: null, timestamp, message: { role: "user", content: [{ type: "text", text: "Hello" }, { type: "image", data: "aW1hZ2U=", mimeType: "image/png" }], timestamp: Date.now() } },
-      { type: "message", id: "assistant-tools", parentId: "user-1", timestamp, message: { role: "assistant", content: [{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "README.md" } }], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "toolUse", timestamp: Date.now() } },
+      { type: "custom", id: "review-start", parentId: "user-1", timestamp, customType: "cake.review-run/v1", data: { operationId: "00000000-0000-4000-8000-000000000001", threadIds: ["review-1"], commentCount: 1, status: "running" } },
+      { type: "message", id: "assistant-tools", parentId: "review-start", timestamp, message: { role: "assistant", content: [{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "README.md" } }], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "toolUse", timestamp: Date.now() } },
       { type: "message", id: "tool-result", parentId: "assistant-tools", timestamp, message: { role: "toolResult", toolCallId: "call-1", toolName: "read", content: [{ type: "text", text: "result" }], isError: false, timestamp: Date.now() } },
-      { type: "message", id: "assistant-edit", parentId: "tool-result", timestamp, message: { role: "assistant", content: [{ type: "toolCall", id: "call-edit", name: "edit", arguments: { path: "src/app.ts", edits: [{ oldText: "old", newText: "new" }] } }], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "toolUse", timestamp: Date.now() } },
+      { type: "custom", id: "compacted-review-start", parentId: "tool-result", timestamp, customType: "cake.review-run/v1", data: { operationId: "00000000-0000-4000-8000-000000000002", threadIds: ["review-2"], commentCount: 2, status: "running" } },
+      { type: "custom", id: "compacted-review-complete", parentId: "compacted-review-start", timestamp, customType: "cake.review-run/v1", data: { operationId: "00000000-0000-4000-8000-000000000002", threadIds: ["review-2"], commentCount: 2, status: "complete" } },
+      { type: "message", id: "assistant-edit", parentId: "compacted-review-complete", timestamp, message: { role: "assistant", content: [{ type: "toolCall", id: "call-edit", name: "edit", arguments: { path: "src/app.ts", edits: [{ oldText: "old", newText: "new" }] } }], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "toolUse", timestamp: Date.now() } },
       { type: "message", id: "edit-result", parentId: "assistant-edit", timestamp, message: { role: "toolResult", toolCallId: "call-edit", toolName: "edit", content: [{ type: "text", text: "Applied" }], details: { diff: "-1 old\n+1 new", patch: "@@ -1 +1 @@\n-old\n+new" }, isError: false, timestamp: Date.now() } },
       { type: "compaction", id: "compaction-1", parentId: "edit-result", timestamp, summary: "Earlier work compacted", firstKeptEntryId: "assistant-edit", tokensBefore: 10 },
       { type: "message", id: "assistant-1", parentId: "compaction-1", timestamp, message: { role: "assistant", content: [{ type: "text", text: "Hi" }], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() } },
-      { type: "message", id: "assistant-error", parentId: "assistant-1", timestamp, message: { role: "assistant", content: [], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "error", errorMessage: "Subscription authentication failed", timestamp: Date.now() } }
+      { type: "custom", id: "review-complete", parentId: "assistant-1", timestamp, customType: "cake.review-run/v1", data: { operationId: "00000000-0000-4000-8000-000000000001", threadIds: ["review-1"], commentCount: 1, status: "complete" } },
+      { type: "message", id: "assistant-error", parentId: "review-complete", timestamp, message: { role: "assistant", content: [], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "error", errorMessage: "Subscription authentication failed", timestamp: Date.now() } }
     ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
 
     const preview = await loadWorkspaceSessionPreview(directory, first.sessionId, sessionDir);
@@ -375,6 +385,8 @@ describe("S1 Pi runtime", () => {
     expect(preview?.parts.some((part) => part.kind === "tool" && part.name === "read")).toBe(true);
     expect(preview?.parts).toContainEqual(expect.objectContaining({ kind: "attachment", attachmentKind: "image", mediaType: "image/png", data: "aW1hZ2U=" }));
     expect(preview?.parts).toContainEqual(expect.objectContaining({ kind: "notice", tone: "error", detail: "Subscription authentication failed" }));
+    expect(preview?.parts).toContainEqual(expect.objectContaining({ kind: "review-run", operationId: "00000000-0000-4000-8000-000000000001", status: "complete" }));
+    expect(preview?.parts.findIndex((part) => part.kind === "review-run")).toBeLessThan(preview?.parts.findIndex((part) => part.kind === "tool") ?? -1);
 
     const second = await createCakeRuntime({
       cwd: directory,
@@ -390,6 +402,10 @@ describe("S1 Pi runtime", () => {
     expect(second.sessionFile).toBe(first.sessionFile);
     const reopenedParts = (await second.snapshot()).parts;
     expect(reopenedParts.some((part) => part.kind === "text" && part.text === "Hi")).toBe(true);
+    expect(reopenedParts.filter((part) => part.kind === "review-run")).toEqual([
+      expect.objectContaining({ operationId: "00000000-0000-4000-8000-000000000002", status: "complete" }),
+      expect.objectContaining({ operationId: "00000000-0000-4000-8000-000000000001", status: "complete" })
+    ]);
     expect(reopenedParts.filter((part) => part.kind === "tool")).toEqual([
       expect.objectContaining({ id: "tool-call-edit", name: "edit", filePath: "src/app.ts", diff: "-1 old\n+1 new", state: "success" })
     ]);

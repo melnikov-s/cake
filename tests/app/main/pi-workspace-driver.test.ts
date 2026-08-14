@@ -27,7 +27,7 @@ describe("PiWorkspaceDriver", () => {
     const captureLatestGitCheckpoint = vi.fn(async () => ({ tree: "c".repeat(40), ref: "refs/cake/checkpoints/c", capturedAt: new Date(0).toISOString() }));
     const runtime: CakeRuntime = {
       sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile,
-      snapshot: vi.fn(async () => snapshot), prompt: vi.fn(async () => undefined), abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn(),
+      snapshot: vi.fn(async () => snapshot), prompt: vi.fn(async () => undefined), abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), recordReviewRun: vi.fn(), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn(),
       ensureInitialGitCheckpoint: vi.fn(async () => ({ tree: "a".repeat(40), ref: "refs/cake/checkpoints/a", capturedAt: new Date(0).toISOString() })),
       captureLatestGitCheckpoint,
       waitForGitCheckpoints: vi.fn(async () => undefined),
@@ -54,7 +54,7 @@ describe("PiWorkspaceDriver", () => {
     const runtime: CakeRuntime = {
       sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile,
       getReviewParentContext: vi.fn(() => ({ sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile, leafId: "parent-leaf", systemPrompt: "Parent prompt", activeTools: ["read"], model: { provider: "openai-codex", id: "gpt-5.6-sol" } })),
-      snapshot: vi.fn(async () => snapshot), prompt: vi.fn(async () => undefined), abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
+      snapshot: vi.fn(async () => snapshot), prompt: vi.fn(async () => undefined), abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), recordReviewRun: vi.fn(), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
     };
     const now = new Date(0).toISOString();
     const thread = { id: "review-1", workspacePath: "/project", sessionId: snapshot.sessionId, status: "open" as const, createdAt: now, updatedAt: now, anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" }, pendingComments: [{ id: "message-1", body: "Rename this", createdAt: now }] };
@@ -74,13 +74,15 @@ describe("PiWorkspaceDriver", () => {
     events.splice(0);
 
     const requestId = crypto.randomUUID();
-    driver.dispatch({ type: "submit-review-threads", requestId, workspacePath: "/project", sessionId: snapshot.sessionId, threadIds: [thread.id] });
+    driver.dispatch({ type: "submit-review-threads", requestId, workspacePath: "/project", sessionId: snapshot.sessionId, threadIds: [thread.id], commentCount: 1 });
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId }));
 
     expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ thread: expect.objectContaining({ id: thread.id, submission: expect.objectContaining({ status: "running" }) }) }));
     expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ sessionDir: "/reviews/review-1" }));
     expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ parent: expect.objectContaining({ sessionId: snapshot.sessionId, leafId: "parent-leaf", systemPrompt: "Parent prompt" }) }));
     expect(reviewRepository.completeRun).toHaveBeenCalledWith("/project", snapshot.sessionId, thread.id, expect.any(String), expect.objectContaining({ sessionId: "review-session" }));
+    expect(runtime.recordReviewRun).toHaveBeenNthCalledWith(1, { operationId: requestId, threadIds: [thread.id], commentCount: 1, status: "running" });
+    expect(runtime.recordReviewRun).toHaveBeenNthCalledWith(2, { operationId: requestId, threadIds: [thread.id], commentCount: 1, status: "complete" });
     expect(events).toContainEqual(expect.objectContaining({ type: "review-thread-updated", thread: expect.objectContaining({ id: thread.id }) }));
     expect(events.some((event) => event.type === "session-snapshot")).toBe(false);
     expect(runtime.prompt).not.toHaveBeenCalled();
@@ -90,7 +92,7 @@ describe("PiWorkspaceDriver", () => {
   it("cancels an active review turn when the workspace driver is disposed", async () => {
     const events: DesktopEvent[] = [];
     const runtime: CakeRuntime = {
-      sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile, snapshot: vi.fn(async () => snapshot), prompt: vi.fn(async () => undefined), abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
+      sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile, snapshot: vi.fn(async () => snapshot), prompt: vi.fn(async () => undefined), abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), recordReviewRun: vi.fn(), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
     };
     const now = new Date(0).toISOString();
     const thread = { id: "review-1", workspacePath: "/project", sessionId: snapshot.sessionId, status: "open" as const, createdAt: now, updatedAt: now, anchor: { path: "src/app.ts", start: { diffLine: 1 }, end: { diffLine: 1 }, selectedText: "", contextBefore: "", contextAfter: "", diff: "" }, pendingComments: [{ id: "comment-1", body: "Explain", createdAt: now }] };
@@ -111,7 +113,7 @@ describe("PiWorkspaceDriver", () => {
     const openId = crypto.randomUUID();
     driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
-    driver.dispatch({ type: "submit-review-threads", requestId: crypto.randomUUID(), workspacePath: "/project", sessionId: snapshot.sessionId, threadIds: [thread.id] });
+    driver.dispatch({ type: "submit-review-threads", requestId: crypto.randomUUID(), workspacePath: "/project", sessionId: snapshot.sessionId, threadIds: [thread.id], commentCount: 1 });
     await vi.waitFor(() => expect(runReview).toHaveBeenCalledOnce());
 
     driver[Symbol.dispose]();
@@ -130,7 +132,7 @@ describe("PiWorkspaceDriver", () => {
       abort: vi.fn(async () => undefined),
       setModel: vi.fn(async () => undefined),
       setThinkingLevel: vi.fn(async () => undefined),
-      setPiSetting: vi.fn(async () => undefined),
+      setPiSetting: vi.fn(async () => undefined), recordReviewRun: vi.fn(),
       login: vi.fn(async () => undefined),
       logout: vi.fn(async () => undefined),
       rename: vi.fn(async () => undefined),
@@ -156,7 +158,7 @@ describe("PiWorkspaceDriver", () => {
       sessionId,
       sessionFile: `/sessions/${sessionId}.jsonl`,
       snapshot: vi.fn(async () => ({ ...snapshot, sessionId, sessionFile: `/sessions/${sessionId}.jsonl` })),
-      prompt: vi.fn(async () => undefined), abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined),
+      prompt: vi.fn(async () => undefined), abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), recordReviewRun: vi.fn(), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined),
       fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
     });
     const parent = runtime("session-1");
@@ -196,7 +198,7 @@ describe("PiWorkspaceDriver", () => {
       abort: vi.fn(async () => undefined),
       setModel: vi.fn(async () => undefined),
       setThinkingLevel: vi.fn(async () => undefined),
-      setPiSetting: vi.fn(async () => undefined),
+      setPiSetting: vi.fn(async () => undefined), recordReviewRun: vi.fn(),
       login: vi.fn(async () => undefined),
       logout: vi.fn(async () => undefined),
       rename: vi.fn(async () => undefined),
@@ -268,7 +270,7 @@ describe("PiWorkspaceDriver", () => {
     const runtime: CakeRuntime = {
       sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile, snapshot: vi.fn(async () => snapshot),
       prompt: vi.fn(async () => { const record = await options!.persistArtifact!(artifact); response = await options!.requestArtifact!(record, new AbortController().signal); }),
-      abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
+      abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), recordReviewRun: vi.fn(), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
     };
     const driver = new PiWorkspaceDriver({ workspacePath: "/project", artifactRepository: repository, emit: (event) => events.push(event), createRuntime: vi.fn(async (next) => { options = next; return runtime; }), isTrusted: () => true });
     const openId = crypto.randomUUID(); driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });

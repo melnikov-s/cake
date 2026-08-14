@@ -156,6 +156,14 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
     tone: z.enum(["info", "warning", "error"]),
     title: ipcProjectionString(512),
     detail: boundedText.optional()
+  }),
+  z.object({
+    ...partBase,
+    kind: z.literal("review-run"),
+    operationId: z.uuid(),
+    threadIds: z.array(z.string().min(1).max(256)).min(1).max(100),
+    commentCount: z.number().int().positive().max(1_000_000),
+    status: z.enum(["running", "complete", "error"])
   })
 ]);
 

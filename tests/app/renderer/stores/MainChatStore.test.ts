@@ -432,15 +432,13 @@ describe("MainChatStore", () => {
     expect(store.canSubmit).toBe(true);
     await root.messageComposerStore.submit();
 
-    expect(desktop.client.submitReviewThreads).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", sessionId: "session-1", threadIds: ["review-1"], instruction: undefined }));
+    expect(desktop.client.submitReviewThreads).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", sessionId: "session-1", threadIds: ["review-1"], commentCount: 1, instruction: undefined }));
     expect(desktop.client.submit).not.toHaveBeenCalled();
     expect(root.reviewsStore.pendingThreads).toHaveLength(0);
     expect(root.reviewsStore.chatCommentCount).toBe(0);
     expect(root.reviewsStore.openThreads).toHaveLength(1);
-    expect(root.reviewsStore.sessionRuns).toEqual([expect.objectContaining({ commentCount: 1, status: "running" })]);
     const operationId = vi.mocked(desktop.client.submitReviewThreads).mock.calls[0]![0].operationId;
     desktop.emit({ type: "operation-completed", operationId });
-    expect(root.reviewsStore.sessionRuns).toEqual([expect.objectContaining({ commentCount: 1, status: "complete" })]);
     expect(root.reviewsStore.openThreads).toHaveLength(1);
     expect(root.messageComposerStore.parts).toEqual([]);
     root[Symbol.dispose]();

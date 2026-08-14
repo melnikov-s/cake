@@ -25,7 +25,7 @@ import { SessionTree } from "@/components/session-tree";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
 import type { CompatibilityResource, PiSettings, UiPart } from "../ipc/session-contract";
 import type { MainChatStore } from "./stores/MainChatStore";
-import type { ReviewRunState, ReviewsStore } from "./stores/ReviewsStore";
+import type { ReviewsStore } from "./stores/ReviewsStore";
 import type { SidebarStore } from "./stores/SidebarStore";
 import type { SettingsStore } from "./stores/SettingsStore";
 import { RootStore } from "./stores/RootStore";
@@ -118,10 +118,11 @@ const TranscriptPart = observer(function TranscriptPart({ part, store }: { part:
   if (part.kind === "attachment") return part.attachmentKind === "image" && part.data
     ? <figure className="transcript-image"><img src={`data:${part.mediaType};base64,${part.data}`} alt={part.name} /><figcaption>{part.name}</figcaption></figure>
     : <div className="w-fit rounded-full border border-border px-3 py-1 font-mono text-[0.68rem]">{part.attachmentKind} · {part.name}</div>;
+  if (part.kind === "review-run") return <ReviewRunMessage run={part} store={store} />;
   return <div className={`notice notice-${part.tone}`} role={part.tone === "error" ? "alert" : "status"}><strong>{part.title}</strong>{part.detail && <span>{part.detail}</span>}</div>;
 });
 
-type TranscriptItem = UiPart | { kind: "activity-group"; id: string; parts: UiPart[] } | { kind: "assistant-loading"; id: string } | { kind: "review-run"; id: string; run: ReviewRunState };
+type TranscriptItem = UiPart | { kind: "activity-group"; id: string; parts: UiPart[] } | { kind: "assistant-loading"; id: string };
 
 function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
   const items: TranscriptItem[] = [];
@@ -178,7 +179,7 @@ function AssistantLoadingIndicator() {
   );
 }
 
-function ReviewRunMessage({ run, store }: { run: ReviewRunState; store: MainChatStore }) {
+function ReviewRunMessage({ run, store }: { run: Extract<UiPart, { kind: "review-run" }>; store: MainChatStore }) {
   const count = run.commentCount;
   const label = run.status === "running"
     ? `Replying to ${count} ${count === 1 ? "comment" : "comments"}`
@@ -198,9 +199,8 @@ const TranscriptList = forwardRef<HTMLDivElement, ComponentProps<"div">>(functio
   return <div ref={ref} className={`transcript-list ${className ?? ""}`} aria-label="Conversation" {...props} />;
 });
 
-export const Transcript = observer(function Transcript({ store, composer, reviews, artifacts, sessionId }: { store: MainChatStore; composer?: MessageComposerStore; reviews: ReviewsStore; artifacts: ArtifactInteractionStore; sessionId: string }) {
+export const Transcript = observer(function Transcript({ store, composer, artifacts, sessionId }: { store: MainChatStore; composer?: MessageComposerStore; artifacts: ArtifactInteractionStore; sessionId: string }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
-  const reviewRuns = reviews.sessionRuns;
   const parts = composer?.parts ?? store.visibleParts;
   const visibleParts = store.session?.piSettings?.hideThinkingBlock ? parts.filter((part) => part.kind !== "reasoning") : parts;
   const latestUserIndex = visibleParts.findLastIndex((part) => (part.kind === "text" && part.role === "user") || (part.kind === "attachment" && part.attachmentKind === "image"));
@@ -212,7 +212,6 @@ export const Transcript = observer(function Transcript({ store, composer, review
   const showAssistantLoading = store.isStreaming && assistantMessageIsStreaming && !workLogIsActive;
   const items: TranscriptItem[] = [
     ...groupTranscriptParts(visibleParts),
-    ...reviewRuns.map((run) => ({ kind: "review-run" as const, id: `review-run-${run.operationId}`, run })),
     ...(showAssistantLoading ? [{ kind: "assistant-loading" as const, id: "assistant-loading" }] : [])
   ];
   const latestUserPartId = parts.findLast((part) => (part.kind === "text" && part.role === "user") || (part.kind === "attachment" && part.attachmentKind === "image"))?.id;
@@ -235,7 +234,7 @@ export const Transcript = observer(function Transcript({ store, composer, review
     return () => cancelAnimationFrame(frame);
   }, [latestUserPartId, scrollToLatest]);
 
-  if (visibleParts.length === 0 && reviewRuns.length === 0) {
+  if (visibleParts.length === 0) {
     return (
       <div className="transcript transcript-empty">
         <Conversation><div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>{showAssistantLoading && <AssistantLoadingIndicator />}<ArtifactsPanel store={store} artifacts={artifacts} />{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</Conversation>
@@ -255,7 +254,7 @@ export const Transcript = observer(function Transcript({ store, composer, review
         List: TranscriptList,
         Footer: () => <div className="transcript-footer"><ArtifactsPanel store={store} artifacts={artifacts} />{store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}</div>
       }}
-      itemContent={(_index, item) => <div className="transcript-item">{item.kind === "activity-group" ? <ActivityGroup parts={item.parts} store={store} /> : item.kind === "assistant-loading" ? <AssistantLoadingIndicator /> : item.kind === "review-run" ? <ReviewRunMessage run={item.run} store={store} /> : <TranscriptPart part={item} store={store} />}</div>}
+      itemContent={(_index, item) => <div className="transcript-item">{item.kind === "activity-group" ? <ActivityGroup parts={item.parts} store={store} /> : item.kind === "assistant-loading" ? <AssistantLoadingIndicator /> : item.kind === "review-run" ? <ReviewRunMessage run={item} store={store} /> : <TranscriptPart part={item} store={store} />}</div>}
     />
   );
 });
@@ -587,7 +586,7 @@ export const App = observer(function App() {
         {page === "settings" ? <SettingsPage store={store} settings={settings} /> : !store.session ? (
           <div className="welcome"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build?</h1><p>Open a project for durable workspace chats, or start a one-off chat from your home directory.</p><div><Button size="lg" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.chooseProject()}><FolderIcon /> Open project</Button><Button size="lg" variant="outline" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.startOneOffChat()}><ChatIcon /> One-off chat</Button></div>{store.error && <p className="welcome-error" role="alert">{store.error}</p>}</div>
         ) : (
-          <div className="workbench"><div className="chat-layout"><Transcript sessionId={store.session.sessionId} store={store} composer={root.messageComposerStore} reviews={reviews} artifacts={artifactInteractions} /><ComposerPanel store={store} composer={root.messageComposerStore} reviews={reviews} settings={settings} extensionUi={extensionUi} /></div></div>
+          <div className="workbench"><div className="chat-layout"><Transcript sessionId={store.session.sessionId} store={store} composer={root.messageComposerStore} artifacts={artifactInteractions} /><ComposerPanel store={store} composer={root.messageComposerStore} reviews={reviews} settings={settings} extensionUi={extensionUi} /></div></div>
         )}
       </section>
       <CommandPane store={store} extensionUi={extensionUi} />

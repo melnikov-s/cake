@@ -6,6 +6,7 @@ type PartStatus = Extract<UiPart, { kind: "text" }>["status"];
 type ToolState = Extract<UiPart, { kind: "tool" }>["state"];
 type AttachmentKind = Extract<UiPart, { kind: "attachment" }>["attachmentKind"];
 type NoticeTone = Extract<UiPart, { kind: "notice" }>["tone"];
+type ReviewRunStatus = Extract<UiPart, { kind: "review-run" }>["status"];
 
 export class MessageModel extends Model {
   @id id = "";
@@ -27,6 +28,10 @@ export class MessageModel extends Model {
   @state data: string | undefined;
   @state tone: NoticeTone | undefined;
   @state detail: string | undefined;
+  @state operationId: string | undefined;
+  @state threadIds: string[] | undefined;
+  @state commentCount: number | undefined;
+  @state reviewRunStatus: ReviewRunStatus | undefined;
 
   get value(): UiPart {
     switch (this.kind) {
@@ -42,6 +47,8 @@ export class MessageModel extends Model {
         return { id: this.id, kind: this.kind, name: this.name!, mediaType: this.mediaType!, attachmentKind: this.attachmentKind!, data: this.data };
       case "notice":
         return { id: this.id, kind: this.kind, tone: this.tone!, title: this.title!, detail: this.detail };
+      case "review-run":
+        return { id: this.id, kind: this.kind, operationId: this.operationId!, threadIds: this.threadIds!, commentCount: this.commentCount!, status: this.reviewRunStatus! };
     }
   }
 }

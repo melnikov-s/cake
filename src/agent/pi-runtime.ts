@@ -13,6 +13,7 @@ import {
   type ExtensionUIContext,
   type ExtensionWidgetOptions,
   type InlineExtension,
+  type SessionEntry,
   type SlashCommandInfo
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
@@ -52,6 +53,14 @@ import {
 
 export const piRuntimeVersion = "0.84.0" as const;
 const gitCheckpointEntryType = "cake.git-checkpoint/v1";
+const reviewRunEntryType = "cake.review-run/v1";
+const reviewRunEntrySchema = z.object({
+  operationId: z.uuid(),
+  threadIds: z.array(z.string().min(1).max(256)).min(1).max(100),
+  commentCount: z.number().int().positive().max(1_000_000),
+  status: z.enum(["running", "complete", "error"])
+});
+export type ReviewRunEntry = z.infer<typeof reviewRunEntrySchema>;
 const gitCheckpointSchema = z.object({
   tree: z.string().regex(/^[0-9a-f]{40,64}$/),
   ref: z.string().min(1).max(1_024),
@@ -104,14 +113,11 @@ export async function loadWorkspaceSessionPreview(cwd: string, sessionId: string
   const target = sessions.find((session) => session.id === sessionId);
   if (!target) return undefined;
   const manager = SessionManager.open(target.path, sessionDir, cwd);
-  const messages = manager.getBranch()
-    .filter((entry) => entry.type === "message")
-    .map((entry) => entry.message);
   return {
     workspacePath: cwd,
     sessionId,
     sessionFile: target.path,
-    parts: projectMessages(messages)
+    parts: projectSessionEntries(manager.getBranch())
   };
 }
 
@@ -504,6 +510,7 @@ export interface CakeRuntime {
   readonly sessionId: string;
   readonly sessionFile: string;
   getReviewParentContext?(): ReviewParentContext;
+  recordReviewRun(run: ReviewRunEntry): void;
   snapshot(requestId?: string): Promise<SessionSnapshot>;
   prompt(text: string, delivery: "prompt" | "steer" | "follow-up", attachments: Attachment[]): Promise<void>;
   abort(): Promise<void>;
@@ -663,53 +670,49 @@ export function createLiveMessageProjector() {
   };
 }
 
-function projectMessages(messages: readonly unknown[], entryIds: readonly (string | undefined)[] = []) {
+function reviewRunPart(run: ReviewRunEntry): Extract<UiPart, { kind: "review-run" }> {
+  return { id: `review-run-${run.operationId}`, kind: "review-run", ...run };
+}
+
+function projectSessionEntries(entries: readonly SessionEntry[], branchEntries: readonly SessionEntry[] = entries) {
   const projected: UiPart[] = [];
   const indexes = new Map<string, number>();
-  for (const [messageIndex, message] of messages.entries()) {
-    for (const part of partsFromMessage(message, `message-${messageIndex}`, false, entryIds[messageIndex])) {
-      const existingIndex = indexes.get(part.id);
-      if (existingIndex === undefined) {
-        indexes.set(part.id, projected.length);
-        projected.push(part);
-        continue;
-      }
-      const existing = projected[existingIndex];
-      projected[existingIndex] = existing?.kind === "tool" && part.kind === "tool"
-        ? { ...existing, ...part, input: part.input || existing.input, filePath: part.filePath || existing.filePath }
-        : part;
+  const append = (part: UiPart) => {
+    const existingIndex = indexes.get(part.id);
+    if (existingIndex === undefined) {
+      indexes.set(part.id, projected.length);
+      projected.push(part);
+      return;
     }
+    const existing = projected[existingIndex];
+    projected[existingIndex] = existing?.kind === "tool" && part.kind === "tool"
+      ? { ...existing, ...part, input: part.input || existing.input, filePath: part.filePath || existing.filePath }
+      : part;
+  };
+
+  const visibleRunIds = new Set(entries.flatMap((entry) => {
+    if (entry.type !== "custom" || entry.customType !== reviewRunEntryType) return [];
+    const run = reviewRunEntrySchema.safeParse(entry.data);
+    return run.success ? [run.data.operationId] : [];
+  }));
+  const compactedRuns = new Map<string, ReviewRunEntry>();
+  for (const entry of branchEntries) {
+    if (entry.type !== "custom" || entry.customType !== reviewRunEntryType) continue;
+    const run = reviewRunEntrySchema.safeParse(entry.data);
+    if (run.success && !visibleRunIds.has(run.data.operationId)) compactedRuns.set(run.data.operationId, run.data);
+  }
+  for (const run of compactedRuns.values()) append(reviewRunPart(run));
+
+  for (const entry of entries) {
+    if (entry.type === "message") {
+      for (const part of partsFromMessage(entry.message, `entry-${entry.id}`, false, entry.id)) append(part);
+      continue;
+    }
+    if (entry.type !== "custom" || entry.customType !== reviewRunEntryType) continue;
+    const run = reviewRunEntrySchema.safeParse(entry.data);
+    if (run.success) append(reviewRunPart(run.data));
   }
   return projected;
-}
-
-function messageFingerprint(message: unknown) {
-  if (typeof message !== "object" || message === null) return undefined;
-  try {
-    return JSON.stringify({
-      role: Reflect.get(message, "role"),
-      content: Reflect.get(message, "content"),
-      toolCallId: Reflect.get(message, "toolCallId")
-    });
-  } catch {
-    return undefined;
-  }
-}
-
-function messageEntryIds(messages: readonly unknown[], sessionManager: SessionManager) {
-  const branchMessages = sessionManager.getBranch().flatMap((entry) => entry.type === "message"
-    ? [{ id: entry.id, message: Reflect.get(entry, "message") }]
-    : []);
-  let branchIndex = 0;
-  return messages.map((message) => {
-    const fingerprint = messageFingerprint(message);
-    const matchIndex = branchMessages.findIndex((candidate, index) => index >= branchIndex && (
-      candidate.message === message || (fingerprint !== undefined && messageFingerprint(candidate.message) === fingerprint)
-    ));
-    if (matchIndex < 0) return undefined;
-    branchIndex = matchIndex + 1;
-    return branchMessages[matchIndex]!.id;
-  });
 }
 
 function imageContent(attachments: Attachment[]) {
@@ -1003,7 +1006,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       workspacePath: options.cwd,
       sessionId: cakeSessionId,
       sessionFile: session.sessionFile ?? "",
-      parts: projectMessages(session.messages, messageEntryIds(session.messages, session.sessionManager)),
+      parts: projectSessionEntries(session.sessionManager.buildContextEntries(), session.sessionManager.getBranch()),
       model: session.model ? { provider: session.model.provider, id: session.model.id, name: session.model.name } : undefined,
       models: await modelOptions(),
       thinkingLevel: session.thinkingLevel,
@@ -1188,6 +1191,12 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         activeTools: session.getActiveToolNames(),
         model: session.model ? { provider: session.model.provider, id: session.model.id } : undefined
       };
+    },
+    recordReviewRun(run) {
+      if (disposed) throw new Error("The Cake runtime has been disposed");
+      const parsed = reviewRunEntrySchema.parse(run);
+      session.sessionManager.appendCustomEntry(reviewRunEntryType, parsed);
+      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: reviewRunPart(parsed) });
     },
     snapshot: makeSnapshot,
     async prompt(text, delivery, attachments) {

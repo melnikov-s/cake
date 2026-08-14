@@ -345,46 +345,54 @@ export class PiWorkspaceDriver {
   private async runReviewThreads(command: Extract<PiWorkspaceCommand, { type: "submit-review-threads" }>) {
     const parentRuntime = this.runtimeFor(command.sessionId);
     const parent = parentRuntime.getReviewParentContext?.();
-    await this.reviewRecovery;
-    const failures: string[] = [];
-    for (const threadId of command.threadIds) {
-      const runId = crypto.randomUUID();
-      const thread = await this.reviewRepository.claimPending(this.workspacePath, command.sessionId, threadId, runId);
-      if (!thread) continue;
-      const controller = new AbortController();
-      this.activeReviewRuns.set(runId, controller);
-      this.emit({ type: "review-thread-streaming", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId, streaming: true });
-      try {
-        const agent = await this.runReviewTurnImpl({
-          cwd: this.workspacePath,
-          trusted: this.trusted,
-          thread,
-          sessionDir: this.reviewRepository.agentSessionDirectory(this.workspacePath, command.sessionId, threadId),
-          signal: controller.signal,
-          instruction: command.instruction,
-          model: command.model,
-          parent
-        });
-        if (agent.error) {
-          const updated = await this.reviewRepository.failRun(this.workspacePath, command.sessionId, threadId, runId, agent.error, agent);
+    const transcriptRun = { operationId: command.requestId, threadIds: command.threadIds, commentCount: command.commentCount };
+    parentRuntime.recordReviewRun({ ...transcriptRun, status: "running" });
+    try {
+      await this.reviewRecovery;
+      const failures: string[] = [];
+      for (const threadId of command.threadIds) {
+        const runId = crypto.randomUUID();
+        const thread = await this.reviewRepository.claimPending(this.workspacePath, command.sessionId, threadId, runId);
+        if (!thread) continue;
+        const controller = new AbortController();
+        this.activeReviewRuns.set(runId, controller);
+        this.emit({ type: "review-thread-streaming", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId, streaming: true });
+        try {
+          const agent = await this.runReviewTurnImpl({
+            cwd: this.workspacePath,
+            trusted: this.trusted,
+            thread,
+            sessionDir: this.reviewRepository.agentSessionDirectory(this.workspacePath, command.sessionId, threadId),
+            signal: controller.signal,
+            instruction: command.instruction,
+            model: command.model,
+            parent
+          });
+          if (agent.error) {
+            const updated = await this.reviewRepository.failRun(this.workspacePath, command.sessionId, threadId, runId, agent.error);
+            if (updated) this.emit({ type: "review-thread-updated", thread: updated });
+            failures.push(agent.error);
+          } else {
+            const updated = await this.reviewRepository.completeRun(this.workspacePath, command.sessionId, threadId, runId, agent);
+            if (updated) this.emit({ type: "review-thread-updated", thread: updated });
+          }
+        } catch (error) {
+          const message = errorMessage(error);
+          const updated = await this.reviewRepository.failRun(this.workspacePath, command.sessionId, threadId, runId, message);
           if (updated) this.emit({ type: "review-thread-updated", thread: updated });
-          failures.push(agent.error);
-        } else {
-          const updated = await this.reviewRepository.completeRun(this.workspacePath, command.sessionId, threadId, runId, agent);
-          if (updated) this.emit({ type: "review-thread-updated", thread: updated });
+          failures.push(message);
+        } finally {
+          this.activeReviewRuns.delete(runId);
+          this.emit({ type: "review-thread-streaming", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId, streaming: false });
         }
-      } catch (error) {
-        const message = errorMessage(error);
-        const updated = await this.reviewRepository.failRun(this.workspacePath, command.sessionId, threadId, runId, message);
-        if (updated) this.emit({ type: "review-thread-updated", thread: updated });
-        failures.push(message);
-      } finally {
-        this.activeReviewRuns.delete(runId);
-        this.emit({ type: "review-thread-streaming", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId, streaming: false });
       }
+      await parentRuntime.captureLatestGitCheckpoint?.();
+      if (failures.length > 0) throw new Error(`Review thread${failures.length === 1 ? "" : "s"} failed: ${failures.join("; ")}`);
+      parentRuntime.recordReviewRun({ ...transcriptRun, status: "complete" });
+    } catch (error) {
+      parentRuntime.recordReviewRun({ ...transcriptRun, status: "error" });
+      throw error;
     }
-    await parentRuntime.captureLatestGitCheckpoint?.();
-    if (failures.length > 0) throw new Error(`Review thread${failures.length === 1 ? "" : "s"} failed: ${failures.join("; ")}`);
   }
 }
 

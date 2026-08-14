@@ -3,15 +3,6 @@ import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import type { SessionCacheStore } from "./SessionCacheStore";
 
-export interface ReviewRunState {
-  operationId: string;
-  workspacePath: string;
-  sessionId: string;
-  threadIds: string[];
-  commentCount: number;
-  status: "running" | "complete" | "error";
-}
-
 export interface ReviewsStoreProps {
   client: DesktopClient;
   sessionCache: SessionCacheStore;
@@ -26,7 +17,6 @@ export interface ReviewsStoreProps {
 export class ReviewsStore extends Store<ReviewsStoreProps> {
   streamingThreadIds: string[] = observable([]);
   submissionsByOperation: Record<string, string[]> = observable({});
-  runs: ReviewRunState[] = observable([]);
   activeThreadId: string | undefined;
 
   get threads() {
@@ -73,10 +63,6 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     return context ? this.chatCommentCountForSession(context.workspacePath, context.sessionId) : 0;
   }
   get activeThread() { return this.threads.find((thread) => thread.id === this.activeThreadId) ?? this.openThreads[0]; }
-  get sessionRuns() {
-    const context = this.props.context();
-    return context ? this.runs.filter((run) => run.workspacePath === context.workspacePath && run.sessionId === context.sessionId) : [];
-  }
   threadStreaming(threadId: string) { return this.streamingThreadIds.includes(threadId); }
 
   async createThread(anchor: ReviewAnchor, body: string) {
@@ -130,12 +116,10 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     this.submissionsByOperation[operationId] = threadIds;
     const commentCount = this.threads.filter((thread) => threadIds.includes(thread.id))
       .reduce((count, thread) => count + thread.messages.filter((message) => message.role === "user" && !message.delivered).length, 0);
-    this.runs.push({ operationId, ...context, threadIds: [...threadIds], commentCount: Math.max(commentCount, threadIds.length), status: "running" });
     try {
-      await this.props.client.submitReviewThreads({ operationId, ...context, threadIds, instruction, model: this.props.model() });
+      await this.props.client.submitReviewThreads({ operationId, ...context, threadIds, commentCount: Math.max(commentCount, threadIds.length), instruction, model: this.props.model() });
     } catch (error) {
       delete this.submissionsByOperation[operationId];
-      this.updateRun(operationId, "error");
       this.props.reportError(error);
       this.props.finishOperation(operationId);
     }
@@ -149,20 +133,11 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     } else if (event.type === "operation-completed") {
       const threadIds = this.submissionsByOperation[event.operationId];
       if (!threadIds) return;
-      const failed = threadIds.some((threadId) => this.threads.find((thread) => thread.id === threadId)?.messages.at(-1)?.status === "error");
-      this.updateRun(event.operationId, failed ? "error" : "complete");
       delete this.submissionsByOperation[event.operationId];
     } else if (event.type === "operation-failed" && event.operationId && this.submissionsByOperation[event.operationId]) {
-      this.updateRun(event.operationId, "error");
       delete this.submissionsByOperation[event.operationId];
     } else if (event.type === "pi-state-changed" && (event.state === "failed" || event.state === "stopped")) {
       for (const operationId of Object.keys(this.submissionsByOperation)) delete this.submissionsByOperation[operationId];
     }
-  }
-
-  private updateRun(operationId: string, status: ReviewRunState["status"]) {
-    const index = this.runs.findIndex((run) => run.operationId === operationId);
-    if (index < 0 || this.runs[index]!.status === status) return;
-    this.runs.splice(index, 1, { ...this.runs[index]!, status });
   }
 }

@@ -103,6 +103,21 @@ describe("SessionModel", () => {
     model[Symbol.dispose]();
   });
 
+  it("creates and updates persisted review-run parts", () => {
+    const model = SessionModel.create();
+    model.applySnapshot({
+      ...snapshot,
+      parts: [{ id: "review-run-1", kind: "review-run", operationId: "00000000-0000-4000-8000-000000000001", threadIds: ["review-1"], commentCount: 2, status: "running" }]
+    });
+    const message = model.parts[0];
+
+    model.upsertPart({ id: "review-run-1", kind: "review-run", operationId: "00000000-0000-4000-8000-000000000001", threadIds: ["review-1"], commentCount: 2, status: "complete" });
+
+    expect(model.parts[0]).toBe(message);
+    expect(model.uiParts[0]).toMatchObject({ kind: "review-run", commentCount: 2, status: "complete" });
+    model[Symbol.dispose]();
+  });
+
   it("keeps one review model instance and derives actionable comments from its messages", () => {
     const model = SessionModel.create({ workspacePath: "/project", sessionId: "session-1" });
     const now = new Date(0).toISOString();
