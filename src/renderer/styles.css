@@ -28,7 +28,7 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --background: oklch(0.18 0.009 250);
+  --background: oklch(0.195 0.009 250);
   --foreground: oklch(0.91 0.008 250);
   --card: oklch(0.215 0.011 250);
   --card-foreground: oklch(0.91 0.008 250);
@@ -50,7 +50,7 @@
   :root:not([data-theme="light"]):not([data-theme="dark"]),
   :root[data-theme="system"] {
     color-scheme: dark;
-    --background: oklch(0.18 0.009 250);
+    --background: oklch(0.195 0.009 250);
     --foreground: oklch(0.91 0.008 250);
     --card: oklch(0.215 0.011 250);
     --card-foreground: oklch(0.91 0.008 250);
