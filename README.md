@@ -1,25 +1,15 @@
 # Cake
 
-## Development
-
-Run `pnpm dev` for the normal Electron development loop. Renderer changes use
-Vite hot module replacement; the watch flag rebuilds changes to the main process
-or preload and restarts the Electron process automatically.
-
-Run `pnpm dev:agent` when an automation agent also needs to inspect or navigate
-the Electron renderer. It exposes the development-only Chrome DevTools Protocol
-endpoint at `http://127.0.0.1:9222`; Playwright can attach with
-`chromium.connectOverCDP("http://127.0.0.1:9222")`. Do not expose that port in a
-packaged build.
-
-Cake is a minimal Electron desktop coding agent powered by Pi. The eight
-implementation work items for **Stage S1 — Pi-backed desktop chat** are now in
-place; live-provider acceptance verification remains opt-in before the stage is
-marked complete in [PLAN.md](./PLAN.md).
+Cake is Pi expressed as a desktop GUI. Pi remains the coding-agent and session
+engine; Cake adds a web-native conversation surface, rich artifacts and
+workflows, navigation across projects and sessions, and a Pi-backed global chat
+for reasoning about the application as a whole.
 
 Cake is a single application package organized by Electron process boundaries:
-`src/main`, `src/preload`, `src/renderer`, the Cake-specific `src/agent` utility
-process, and validated contracts in `src/ipc`.
+`src/main`, `src/preload`, `src/renderer`, the Cake-specific Pi adapter in
+`src/agent`, and validated contracts in `src/ipc`. See
+[Cake architecture](./docs/architecture/cake-architecture.md) for its product,
+authority, state, trust, and development model.
 
 ## Development
 
@@ -39,6 +29,16 @@ corepack pnpm lint
 corepack pnpm build
 corepack pnpm test:electron
 ```
+
+Run `pnpm dev` for the normal Electron development loop. Renderer changes use
+Vite hot module replacement; changes to main or preload rebuild and restart the
+Electron process automatically.
+
+Run `pnpm dev:agent` when an automation agent also needs to inspect or navigate
+the Electron renderer. It exposes the development-only Chrome DevTools Protocol
+endpoint at `http://127.0.0.1:9222`; Playwright can attach with
+`chromium.connectOverCDP("http://127.0.0.1:9222")`. Do not expose that port in a
+packaged build.
 
 The app starts a sandboxed renderer, exposes only a typed preload API, and runs
 Pi directly through its SDK in Electron's main process. It supports project

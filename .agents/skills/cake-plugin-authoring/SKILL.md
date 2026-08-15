@@ -18,7 +18,7 @@ Cake must load the skill from the same source tree that it designates as the aut
 
 Before editing a plugin:
 
-1. Read `AGENTS.md` and `PLAN.md` from the authoring source root.
+1. Read `AGENTS.md` and `docs/architecture/cake-architecture.md` from the authoring source root.
 2. Read the current `cake` module exports, plugin types, scene host, Store methods, component examples, persistence hooks, and verification commands. Current source outranks examples and this skill when signatures change.
 3. Identify the editable plugin directory supplied by Cake. Never edit the read-only authoring source to customize an installed build.
 
@@ -94,7 +94,11 @@ Treat activation as a lifecycle replacement: unmount the old plugin tree, run ef
 
 ## Repair and migration
 
-Use Cake's immutable factory-default recovery scene when a plugin cannot load safely. It must retain the normal transcript, composer, provider/model/thinking controls, tool activity, and agent access while loading no user plugins.
+Use Cake's immutable factory-default recovery scene when a plugin cannot load safely. It must load no user plugins and must retain a vanilla global chat, the normal transcript and composer, provider/model/thinking controls, tool activity, exact plugin diagnostics, and safe disable and rollback controls.
+
+Treat global chat as the primary self-healing surface. Cake should open it with explicit recovery context: the failed plugin ID and revision, whether compilation, import, activation, or rendering failed, the exact diagnostics or attributed runtime error, and the available last-known-good build. The user and agent can then inspect and repair the preserved plugin source, run deterministic checks, activate a candidate transactionally, and reload the repaired scene without depending on the broken plugin UI.
+
+Recovery UI, global chat, plugin diagnostics, compiler/activation controls, and last-known-good selection belong to immutable Cake core. They must remain usable when every user plugin is disabled or unimportable. Do not allow a plugin to replace, hide, or intercept this recovery path.
 
 For a broken or outdated plugin, inspect its source, exact diagnostics, persisted snapshots, current Cake source, and last-known-good diff. Make the semantic migration in plugin code or persisted data, rebuild, test, and retry activation. Cake supplies backups, version stamps, validation, health checks, and rollback; the agent supplies migration meaning.
 

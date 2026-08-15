@@ -1,10 +1,9 @@
 # S1 session and state contract
 
-Stage S1 replaces the provider-free foundation probe with a project-aware,
-multi-session Pi runtime. `src/agent/pi-runtime.ts` remains the only ordinary
-application module that imports Pi. It creates, resumes, or opens an explicit
-Pi session for the selected workspace and emits only the schemas in
-`src/ipc/session-contract.ts`.
+Cake's project chat uses a project-aware, multi-session Pi runtime.
+`src/agent/pi-runtime.ts` remains the only ordinary application module that
+imports Pi. It creates, resumes, or opens an explicit Pi session for the
+selected workspace and emits only the schemas in `src/ipc/session-contract.ts`.
 
 ## Authority and lifecycle
 
@@ -12,7 +11,7 @@ Pi session for the selected workspace and emits only the schemas in
 | --- | --- | --- |
 | Transcript, tool results, model history, compaction | Pi `SessionManager` | Pi JSONL session; Cake only projects snapshots and deltas |
 | Provider credentials | Pi `ModelRuntime` | Pi auth storage; secret prompt values are never retained in Cake state or logs |
-| Active run, queued delivery, UI requests | Agent utility process | One active session runtime; replaced with take-latest semantics when switching sessions |
+| Active run, queued delivery, UI requests | Main-process Pi workspace runtime | One active session runtime; replaced with take-latest semantics when switching sessions |
 | Transcript projection | Renderer `SessionModel` tree | Window lifetime; `RootStore` applies validated desktop events |
 | Composer workflow | Renderer chat/composer Store | Window lifetime; the focused Store owns drafts, submission policy, and pending composer operations |
 | Project history, trusted paths, composer draft, theme, reasoning visibility | Cake main process | Atomic `window-state.json`, saved only after renderer hydration |
@@ -29,7 +28,7 @@ absorbing the workflows they affect. It is created with
 
 The main process only accepts project paths selected by the native directory
 dialog or restored from Cake's persisted window state. Before creating Pi
-services, the utility process checks for trust-requiring project resources.
+services, the Pi adapter checks for trust-requiring project resources.
 The renderer must resolve that prompt before `DefaultResourceLoader.reload()`
 is allowed to load project-local executable resources. Approval is persisted by
 exact workspace path and reused for future sessions in that workspace.

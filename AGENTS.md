@@ -1,9 +1,59 @@
 # Cake agent instructions
 
+## What Cake is
+
+Cake is Pi expressed as a desktop GUI. Pi remains the coding-agent engine; Cake
+does not reimplement its agent loop, providers, tools, extensions, skills,
+compaction, or session format. Cake makes Pi's work navigable across projects
+and sessions and uses the web platform for interactions that a terminal cannot
+express well: rich transcripts, diffs, artifacts, forms, diagrams, media, and
+trusted user-authored React plugins.
+
+Cake is also a layer above any one Pi session. It presents the user's collection
+of projects and sessions, lets them move among and compare those sessions, and
+provides application-level workflows such as global chat. Global chat is a
+Pi-backed meta-session for reasoning about and navigating Cake as a whole; it is
+not a replacement transcript authority for project sessions.
+
+The conversation remains primary. Rich surfaces should appear because they help
+the current work, not because Cake is trying to become a general-purpose IDE.
+
+See `docs/architecture/cake-architecture.md` for the process, authority, trust,
+state, and development boundaries behind these principles.
+
 ## Required reading
 
-- Read `PLAN.md` before changing architecture or feature ownership.
+- Read `docs/architecture/cake-architecture.md` before changing architecture or
+  feature ownership.
 - For renderer state work, read the available `r-state-tree` skill and the references it routes to before editing.
+- For plugins, scenes, widgets, or plugin recovery, read the available
+  `cake-plugin-authoring` skill before editing.
+
+## Core ownership rules
+
+- Pi owns agent sessions, transcript history, model/provider state, tool loops,
+  compaction, branching, and the Pi JSONL format.
+- Cake owns the desktop application model, project/session navigation, renderer
+  projections, window and workflow state, artifacts, reviews, plugin metadata,
+  and other GUI-specific persistence. Never create a second Cake-owned copy of
+  a Pi transcript.
+- `src/agent/pi-runtime.ts` is the Pi adapter boundary. Other Cake modules use
+  Cake-owned contracts and intent-level operations rather than raw Pi objects.
+- Electron main owns Pi runtimes, filesystem access, persistence, and native
+  services. Preload exposes one narrow validated bridge. The sandboxed renderer
+  owns React presentation and window-scoped Stores; it has no Node globals or
+  raw Electron IPC.
+- Cross-process data is untrusted until parsed by the shared runtime schemas.
+- Global chat is an application-level Pi session. Keep it separate from project
+  session lists and use curated Cake control intents for application navigation
+  and coordination.
+- Model-presented artifacts are data and remain validated or sandboxed. A user
+  plugin is executable, trusted renderer source only after explicit approval;
+  it still receives no direct Node, Electron, credentials, raw IPC, or raw Pi
+  access.
+- The immutable core shell, global chat, plugin diagnostics, and recovery UI
+  must be able to boot without evaluating user plugin code. A broken plugin must
+  be repairable or disableable without making Cake unusable.
 
 ## Greenfield compatibility policy
 

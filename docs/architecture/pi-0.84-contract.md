@@ -1,7 +1,7 @@
-# Pi 0.84.0 foundation contract
+# Pi 0.84.0 adapter contract
 
-Cake pins `@earendil-works/pi-coding-agent` 0.84.0. The S0 contract test in
-`src/agent/pi-runtime.test.ts` exercises these public APIs directly:
+Cake pins `@earendil-works/pi-coding-agent` 0.84.0. The adapter contract tests
+exercise these public APIs directly:
 
 - `SettingsManager.inMemory()` and `SessionManager.inMemory()`;
 - `DefaultResourceLoader`, inline extension factories, and `reload()`;
@@ -16,7 +16,9 @@ Cake pins `@earendil-works/pi-coding-agent` 0.84.0. The S0 contract test in
 The foundation command is intentionally provider-free and deterministic. It
 proves session lifecycle, extension binding, interactive UI routing, and event
 normalization without requiring user credentials or making a model request.
-Provider-backed assistant streaming remains Stage S1 work.
+Provider-backed assistant streaming uses the same adapter in the real workspace
+session path. Live-provider acceptance remains opt-in because it requires user
+credentials and may incur cost.
 
 Only `src/agent/pi-runtime.ts` imports the Pi coding-agent package. Agent, main,
 preload, and the renderer's desktop-client boundary communicate with Cake-owned
@@ -31,6 +33,6 @@ export, sends the markdown over validated IPC on demand, and renders it in the
 shared command pane. It is never added to the session transcript or sent to a
 model.
 
-The S0 extension UI adapter implements `confirm`. Other primitive methods have
-safe inert defaults where possible, while TUI-only methods fail explicitly.
-Completing the remaining primitive UI adapter belongs to Stage S3.
+The extension UI adapter supports Cake's documented primitive React surfaces.
+TUI-only methods fail with actionable compatibility diagnostics rather than
+reporting false success. See `s3-pi-compatibility.md` for the current contract.
