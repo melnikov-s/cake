@@ -16,6 +16,7 @@ export type LegacyReviewMigrator = (thread: ReviewThread, sessionDir: string) =>
 
 export class ReviewRepository {
   private readonly updates = new Map<string, Promise<unknown>>();
+  private readonly contextUpdates = new Map<string, Promise<unknown>>();
 
   constructor(
     private readonly root: string,
@@ -26,6 +27,10 @@ export class ReviewRepository {
 
   agentSessionDirectory(workspacePath: string, sessionId: string, threadId: string) {
     return join(this.piSessionRoot, digestKey(workspacePath), digestKey(sessionId), digestKey(threadId));
+  }
+
+  reviewContextPath(workspacePath: string, sessionId: string) {
+    return join(this.sessionDirectory(workspacePath, sessionId), "review-threads.md");
   }
 
   async listSession(workspacePath: string, sessionId: string): Promise<ReviewThread[]> {
@@ -80,6 +85,7 @@ export class ReviewRepository {
       pendingComments: [{ id: crypto.randomUUID(), body: body.trim(), createdAt: now }]
     });
     await this.write(record);
+    await this.refreshReviewContext(workspacePath, sessionId);
     return projectReviewThread(record);
   }
 
@@ -92,6 +98,7 @@ export class ReviewRepository {
       thread.updatedAt = now;
       return thread;
     });
+    await this.refreshReviewContext(workspacePath, sessionId);
     return this.project(record);
   }
 
@@ -103,6 +110,7 @@ export class ReviewRepository {
       thread.updatedAt = now;
       return thread;
     });
+    await this.refreshReviewContext(workspacePath, sessionId);
     return this.project(record);
   }
 
@@ -120,7 +128,9 @@ export class ReviewRepository {
       completed = true;
       return thread;
     });
-    return completed ? this.project(record) : undefined;
+    if (!completed) return undefined;
+    await this.refreshReviewContext(workspacePath, sessionId);
+    return this.project(record);
   }
 
   async failRun(workspacePath: string, sessionId: string, threadId: string, runId: string, error: string): Promise<ReviewThread | undefined> {
@@ -133,7 +143,33 @@ export class ReviewRepository {
       failed = true;
       return thread;
     });
-    return failed ? this.project(record) : undefined;
+    if (!failed) return undefined;
+    await this.refreshReviewContext(workspacePath, sessionId);
+    return this.project(record);
+  }
+
+  private async refreshReviewContext(workspacePath: string, sessionId: string) {
+    const key = `${workspacePath}\u0000${sessionId}`;
+    const previous = this.contextUpdates.get(key) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(async () => {
+      const threads = await this.listSession(workspacePath, sessionId);
+      const target = this.reviewContextPath(workspacePath, sessionId);
+      const temporary = `${target}.${process.pid}.${crypto.randomUUID()}.tmp`;
+      const sections = threads.map((thread) => [
+        `## Thread ${thread.id} · ${thread.status}`,
+        thread.anchor.view === "message"
+          ? `Assistant message: ${thread.anchor.messageId ?? "unknown"}${thread.anchor.entryId ? ` · Pi entry ${thread.anchor.entryId}` : ""}`
+          : `Code: ${thread.anchor.path} · diff rows ${thread.anchor.start.diffLine}-${thread.anchor.end.diffLine}`,
+        `> ${thread.anchor.selectedText.replaceAll("\n", "\n> ")}`,
+        ...thread.messages.map((message) => `### ${message.role === "user" ? "User" : "Assistant"}\n\n${message.body}`)
+      ].join("\n\n"));
+      await mkdir(this.sessionDirectory(workspacePath, sessionId), { recursive: true, mode: 0o700 });
+      await writeFile(temporary, `# Review threads\n\nParent session: ${sessionId}\n\nThis is a derived index of inline code reviews and assistant-message discussions.\n\n${sections.join("\n\n---\n\n")}\n`, { encoding: "utf8", mode: 0o600 });
+      await rename(temporary, target);
+    });
+    this.contextUpdates.set(key, next);
+    try { await next; }
+    finally { if (this.contextUpdates.get(key) === next) this.contextUpdates.delete(key); }
   }
 
   private async project(record: ReviewThreadRecord) {

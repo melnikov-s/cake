@@ -8,7 +8,7 @@ describe("resolveCakePaths", () => {
       piAgent: "/Users/fixture/.cake/pi",
       piSessions: "/Users/fixture/.cake/pi/sessions",
       piReviewSessions: "/Users/fixture/.cake/pi/review-sessions",
-      piWidgetRepairSessions: "/Users/fixture/.cake/pi/widget-repair-sessions",
+      piWidgetSessions: "/Users/fixture/.cake/pi/widget-sessions",
       piGlobalChatSessions: "/Users/fixture/.cake/pi/global-chat/sessions",
       plugins: "/Users/fixture/.cake/plugins",
       scenes: "/Users/fixture/.cake/scenes",
@@ -24,7 +24,7 @@ describe("resolveCakePaths", () => {
     expect(paths.home).toBe("/opt/cake-data");
     expect(paths.piAgent).toBe("/opt/cake-data/pi");
     expect(paths.piSessions).toBe("/opt/cake-data/pi/sessions");
-    expect(paths.piWidgetRepairSessions).toBe("/opt/cake-data/pi/widget-repair-sessions");
+    expect(paths.piWidgetSessions).toBe("/opt/cake-data/pi/widget-sessions");
     expect(paths.plugins).toBe("/opt/cake-data/plugins");
     expect(paths.legacyPiSessions).toBe("/Users/fixture/.pi/agent/sessions");
   });

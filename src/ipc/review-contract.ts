@@ -12,13 +12,17 @@ export const reviewPointSchema = z.object({
 
 export const reviewAnchorSchema = z.object({
   path: z.string().min(1).max(8_192),
-  view: z.enum(["diff", "full", "file"]).optional(),
+  view: z.enum(["diff", "full", "file", "message"]).optional(),
   start: reviewPointSchema,
   end: reviewPointSchema,
   selectedText: boundedReviewText,
   contextBefore: boundedReviewText,
   contextAfter: boundedReviewText,
-  diff: boundedReviewText
+  diff: boundedReviewText,
+  messageId: z.string().min(1).max(256).optional(),
+  entryId: z.string().min(1).max(256).optional(),
+  startOffset: z.number().int().nonnegative().optional(),
+  endOffset: z.number().int().nonnegative().optional()
 });
 
 export const reviewMessageSchema = z.object({

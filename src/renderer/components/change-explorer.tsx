@@ -179,7 +179,7 @@ const HighlightedDiff = observer(function HighlightedDiff({ change, reviews, sto
   const source = useMemo(() => lines.map((line) => line.kind === "meta" ? "" : line.content).join("\n"), [lines]);
   const [tokens, setTokens] = useState<HighlightTokens>();
   const [composer, setComposer] = useState<{ anchor: ReviewAnchor; floating: boolean; position?: { left: number; top: number } }>();
-  const threads = reviews.threads.filter((thread) => thread.anchor.view !== "file" && thread.anchor.view !== "full" && store.changeMatchesPath(change, thread.anchor.path));
+  const threads = reviews.threads.filter((thread) => thread.anchor.view !== "file" && thread.anchor.view !== "full" && thread.anchor.view !== "message" && store.changeMatchesPath(change, thread.anchor.path));
 
   useEffect(() => {
     let active = true;
@@ -315,7 +315,7 @@ export const ChangeExplorer = observer(function ChangeExplorer({ store, reviews,
   const [view, setView] = useState<"diff" | "file">("diff");
   const change = store.selected;
   const tree = useMemo(() => fileTree(store.changes), [store.changes]);
-  const changeThreads = reviews.threads.filter((thread) => thread.anchor.view !== "file");
+  const changeThreads = reviews.threads.filter((thread) => thread.anchor.view !== "file" && thread.anchor.view !== "message");
   const indexedThreads = [...changeThreads].sort((left, right) => Number(left.status === "resolved") - Number(right.status === "resolved"));
   const activeChangeThread = changeThreads.find((thread) => thread.id === reviews.activeThreadId);
   const pendingCount = reviews.pendingCommentCount;

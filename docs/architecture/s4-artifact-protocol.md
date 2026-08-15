@@ -72,26 +72,35 @@ Built-in media accepts HTTPS or type-matching data URLs only and sends no
 referrer. Raw Markdown continues to disable raw HTML through the existing
 Cake-owned Markdown component.
 
-## Inline widgets and repair
+## Delegated inline widgets and repair
 
-Assistant messages may contain `cake-html` and `cake-react` fences. Cake keeps
-the surrounding Markdown in the normal streaming transcript and replaces each
-closed fence in place with a widget. Open fences show a receiving state and are
-not compiled until they close.
+The primary agent creates a one-off visual explanation with the non-blocking
+`ui_widget` tool. Its tool input contains a stable message-scoped ID, title,
+self-contained presentation brief, required data, and readable Markdown
+fallback. The primary agent does not author React or HTML. The brief remains in
+the Pi transcript, while the generated implementation does not enter the
+project session's model context.
 
-Electron main compiles widgets through the bounded inline-widget contract.
-HTML may contain CSS and browser JavaScript. React source is bundled as TSX,
-must default-export one component, and may import React only. Both run in an
-`allow-scripts` iframe without same-origin privilege, with a CSP that blocks
-network access, forms, navigation, and Cake, Node, Electron, and filesystem
-access. Runtime errors and frame height cross a token-tagged `postMessage`
-channel; no general bridge is exposed.
+Cake starts a separate hidden, persisted Pi session with tools, extensions,
+skills, context files, and project trust disabled. That agent returns one React
+component from the untrusted brief. Electron main compile-checks it before
+persistence. A failed build is passed once through the same isolated repair
+pipeline with the compiler diagnostic, then checked again. Cake persists the
+validated source as a `widget` artifact and appends only the ordinary artifact
+pointer and fallback to Pi. The tool result contains the artifact ID, allowing
+the renderer to place the widget at the tool-call position.
 
-Each widget shows Source and Repair controls. Repair starts a separate hidden,
-persisted Pi session with tools, extensions, skills, context files, and project
-trust disabled. The current source, nearby message context, and diagnostic are
-untrusted input to a narrowly scoped repair prompt. Cake compiles the returned
-source through the same boundary before rendering it.
+React source is bundled as TSX, must default-export one component, and may
+import React only. It runs in an `allow-scripts` iframe without same-origin
+privilege, with a CSP that blocks network access, forms, navigation, and Cake,
+Node, Electron, and filesystem access. Runtime errors and frame height cross a
+token-tagged `postMessage` channel; no general bridge is exposed.
+
+Each widget shows Source and Repair controls. Repair starts another isolated Pi
+session with the stored source, stored brief, and diagnostic as untrusted data.
+Cake compiles the returned source through the same boundary before rendering
+it. A later user-requested revision can use this same private source-plus-delta
+pipeline without loading the implementation into the primary context.
 
 Custom request widgets use that same compiler and sandbox with one additional
 capability. HTML receives `cakeRequest.submit(value)` and

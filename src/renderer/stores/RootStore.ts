@@ -19,6 +19,7 @@ import { TranscriptViewStore } from "./TranscriptViewStore";
 import { CustomizationStore } from "./CustomizationStore";
 import { PluginCommandStore } from "./PluginCommandStore";
 import { InlineWidgetStore } from "./InlineWidgetStore";
+import { MessageCommentsStore } from "./MessageCommentsStore";
 
 export class RootStore extends Store<{ client: DesktopClient }> {
   readonly appControl: AppControlBridge;
@@ -103,6 +104,17 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       model: () => this.mainChatStore.session?.model,
       startOperation: () => this.mainChatStore.startOperation(),
       finishOperation: (operationId) => this.mainChatStore.finishOperation(operationId),
+      reportError: (error) => this.mainChatStore.setError(error)
+    });
+  }
+
+  @child
+  get messageCommentsStore(): MessageCommentsStore {
+    return createStore(MessageCommentsStore, {
+      client: this.client,
+      sessionCache: this.sessionCache,
+      reviews: () => this.reviewsStore,
+      context: () => this.mainChatStore.sessionContext(),
       reportError: (error) => this.mainChatStore.setError(error)
     });
   }
@@ -271,7 +283,15 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       useFactoryCustomization: () => this.client.useFactoryCustomization(),
       setPluginEnabled: (pluginId, enabled) => this.client.setPluginEnabled(pluginId, enabled)
     });
-    this.effect(() => this.client.subscribe((event) => this.receive(event)));
+    this.effect(() => this.client.subscribe((event) => {
+      try {
+        this.receive(event);
+      } catch (error) {
+        const context = `Desktop event: ${event.type}`;
+        if (event.type.startsWith("global-chat-")) this.globalChatStore.reportError(error, context);
+        else this.mainChatStore.setError(error, context);
+      }
+    }));
     this.effect(() => { void this.customizationStore.hydrate(); });
   }
 

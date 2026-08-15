@@ -28,12 +28,42 @@ export function ArtifactHost({ record, requested = false, onSubmit, onCancel, in
         {artifact.kind === "media" ? <MediaArtifact artifact={artifact} /> : null}
         {artifact.kind === "diff" ? <pre className="artifact-diff">{artifact.payload.diff}</pre> : null}
         {artifact.kind === "html" ? <HtmlArtifact artifact={artifact} /> : null}
+        {artifact.kind === "widget" ? <WidgetArtifact artifact={artifact} workspacePath={record.workspacePath} inlineWidgets={inlineWidgets} /> : null}
         {artifact.kind === "request" ? <RequestArtifact artifact={artifact} workspacePath={record.workspacePath} requested={requested} onSubmit={onSubmit} onCancel={onCancel} inlineWidgets={inlineWidgets} /> : null}
       </div>
       <details className="artifact-fallback"><summary>Readable fallback</summary><Markdown>{artifact.fallback.markdown}</Markdown></details>
     </article>
   );
 }
+
+const WidgetArtifact = observer(function WidgetArtifact({ artifact, workspacePath, inlineWidgets }: { artifact: Extract<CakeArtifactV1, { kind: "widget" }>; workspacePath: string; inlineWidgets?: InlineWidgetStore }) {
+  const id = `${artifact.sessionId}:widget:${artifact.id}:${artifact.revision}`;
+  const state = inlineWidgets?.state(id);
+  const iframe = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(220);
+  const [sourceOpen, setSourceOpen] = useState(false);
+  useEffect(() => {
+    if (inlineWidgets) inlineWidgets.prepare(id, artifact.payload.language, artifact.payload.source);
+  }, [artifact.payload.language, artifact.payload.source, id, inlineWidgets]);
+  useEffect(() => {
+    if (!inlineWidgets) return;
+    const receive = (event: MessageEvent) => {
+      if (event.source !== iframe.current?.contentWindow || !state?.compiled || event.data?.source !== "cake-inline-widget" || event.data.token !== state.compiled.token) return;
+      if (event.data.type === "height" && typeof event.data.value === "number") setHeight(Math.max(120, Math.min(1_200, Math.ceil(event.data.value))));
+      if (event.data.type === "error") inlineWidgets.reportRuntimeError(id, String(event.data.value));
+    };
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [id, inlineWidgets, state?.compiled]);
+  if (!inlineWidgets) return <div className="notice notice-error"><strong>Widget unavailable</strong><span>Cake could not access its widget compiler.</span></div>;
+  const status = state?.status ?? "building";
+  return <section className={`inline-widget inline-widget-${status}`} aria-label={`Delegated ${artifact.payload.language} widget`}>
+    <div className="inline-widget-rail"><span className="inline-widget-notch" aria-hidden="true" /><span>Delegated {artifact.payload.language === "react" ? "React" : "HTML"} widget</span><span className="inline-widget-status">{status === "repairing" ? "Repairing…" : status === "building" ? "Building…" : status === "error" ? "Needs attention" : state?.repairSessionId ? "Repaired" : "Ready"}</span><span className="inline-widget-actions"><button type="button" onClick={() => setSourceOpen((open) => !open)}>{sourceOpen ? "Hide source" : "Source"}</button><button type="button" disabled={status === "repairing" || status === "building"} onClick={() => void inlineWidgets.repair({ id, workspacePath, sessionId: artifact.sessionId, context: artifact.payload.brief })}>Repair</button></span></div>
+    {status === "error" && <div className="inline-widget-diagnostic" role="alert"><strong>Widget could not render</strong><pre>{state?.diagnostic}</pre></div>}
+    {state?.compiled && <iframe ref={iframe} title={artifact.title ?? artifact.id} sandbox="allow-scripts" referrerPolicy="no-referrer" src={state.compiled.url} style={{ height }} />}
+    {sourceOpen && <Markdown className="inline-widget-source">{fencedCode(state?.source ?? artifact.payload.source, artifact.payload.language === "react" ? "tsx" : "html")}</Markdown>}
+  </section>;
+});
 
 function RequestArtifact({ artifact, workspacePath, requested, onSubmit, onCancel, inlineWidgets }: { artifact: Extract<CakeArtifactV1, { kind: "request" }>; workspacePath: string; requested: boolean; onSubmit?: (value: unknown) => void; onCancel?: () => void; inlineWidgets?: InlineWidgetStore }) {
   const parsed = cakeRequestV1Schema.safeParse(artifact.payload.request);

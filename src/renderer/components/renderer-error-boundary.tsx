@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { CopyErrorDetailsButton } from "./copy-error-details-button";
 
 interface RendererErrorBoundaryProps {
   children: ReactNode;
@@ -41,6 +42,7 @@ export class RendererErrorBoundary extends Component<RendererErrorBoundaryProps,
   render() {
     const { error } = this.state;
     if (!error) return this.props.children;
+    const details = errorDetails(error, this.state.componentStack);
 
     return (
       <main className="renderer-crash" role="alert">
@@ -52,7 +54,8 @@ export class RendererErrorBoundary extends Component<RendererErrorBoundaryProps,
           <button type="button" autoFocus onClick={this.props.onReload ?? reloadRenderer}>Reload Cake</button>
           <details open>
             <summary>Error details</summary>
-            <pre>{errorDetails(error, this.state.componentStack)}</pre>
+            <pre>{details}</pre>
+            <CopyErrorDetailsButton details={details} />
           </details>
         </section>
       </main>

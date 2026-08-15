@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const ARTIFACT_PROTOCOL = "cake.artifact/v1" as const;
 export const MAX_ARTIFACT_INPUT_BYTES = 1_048_576;
-const artifactKindSchema = z.enum(["markdown", "table", "diagram", "form", "media", "diff", "html", "request"]);
+const artifactKindSchema = z.enum(["markdown", "table", "diagram", "form", "media", "diff", "html", "widget", "request"]);
 const idSchema = z.string().min(1).max(256).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
 const textSchema = z.string().max(MAX_ARTIFACT_INPUT_BYTES);
 const scalarSchema = z.union([z.string().max(262_144), z.number().finite(), z.boolean(), z.null()]);
@@ -80,6 +80,16 @@ const mediaArtifactSchema = z.object({
 });
 const diffArtifactSchema = z.object({ ...artifactBase, kind: z.literal("diff"), payload: z.object({ diff: textSchema, language: z.string().max(128).optional() }) });
 const htmlArtifactSchema = z.object({ ...artifactBase, kind: z.literal("html"), payload: z.object({ html: textSchema }) });
+const widgetArtifactSchema = z.object({
+  ...artifactBase,
+  kind: z.literal("widget"),
+  payload: z.object({
+    language: z.enum(["html", "react"]),
+    source: textSchema,
+    brief: z.string().min(1).max(262_144),
+    generationSessionId: idSchema
+  })
+});
 const requestArtifactSchema = z.object({ ...artifactBase, kind: z.literal("request"), payload: z.object({ request: z.unknown() }) });
 
 export const cakeArtifactV1Schema = z.discriminatedUnion("kind", [
@@ -90,6 +100,7 @@ export const cakeArtifactV1Schema = z.discriminatedUnion("kind", [
   mediaArtifactSchema,
   diffArtifactSchema,
   htmlArtifactSchema,
+  widgetArtifactSchema,
   requestArtifactSchema
 ]);
 

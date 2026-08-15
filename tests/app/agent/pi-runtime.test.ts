@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   cakePluginAuthoringSkillPath,
   cakeWorkspaceSessionDirectory,
+  createCakeArtifactExtension,
   createCakeRuntime,
   createFoundationRuntime,
   createLiveMessageProjector,
@@ -13,13 +14,13 @@ import {
   loadWorkspaceSessionPreview,
   listWorkspaceSessions,
   piRuntimeVersion,
-  routeReviewPromptCache,
   runReviewTurn,
   suggestProjectFiles,
   type CakeRuntime,
   type FoundationRuntime
 } from "../../../src/agent/pi-runtime";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { CakeArtifactV1 } from "../../../src/ipc/artifact-contract";
 import { sessionSnapshotSchema } from "../../../src/ipc/session-contract";
 
 const temporaryDirectories: string[] = [];
@@ -58,22 +59,57 @@ describe("Pi 0.84.0 foundation contract", () => {
       trusted: false,
       newSession: true,
       requestUi: async () => undefined,
+      generateInlineWidget: async () => ({ language: "react", source: "export default () => null", generationSessionId: "generation-1" }),
       onEvent: () => undefined
     });
     runtimes.push(runtime);
 
     if (!runtime.getReviewParentContext) throw new Error("Expected a project runtime");
-    const { systemPrompt } = runtime.getReviewParentContext();
+    const { systemPrompt, activeTools } = runtime.getReviewParentContext();
 
     expect(systemPrompt).toContain("You are an expert coding assistant operating inside pi");
     expect(systemPrompt).toContain("## Cake desktop environment");
     expect(systemPrompt).toContain("Mermaid diagrams directly in the transcript");
-    expect(systemPrompt).toContain("fenced cake-html block");
+    expect(systemPrompt).toContain("Use ui_widget");
+    expect(systemPrompt).toContain("do not write React or HTML yourself");
     expect(systemPrompt).toContain("PowerPoint presentations, PDFs, spreadsheets");
     expect(systemPrompt).toContain("Use ui_request only when the running turn must block");
     expect(systemPrompt).toContain("cake.request/v1");
-    expect(systemPrompt).toContain("Inline widgets have no network, parent, Cake, Node, Electron, or filesystem access");
+    expect(systemPrompt).toContain("stores the implementation outside this conversation context");
     expect(systemPrompt).toContain("use Markdown links with absolute paths so Cake can open them");
+    expect(activeTools).toContain("ui_widget");
+  });
+
+  it("keeps delegated widget source out of the primary tool result and artifact pointer", async () => {
+    type RegisteredTool = {
+      name: string;
+      execute(toolCallId: string, params: unknown, signal: AbortSignal | undefined, onUpdate: undefined, ctx: { model?: { provider: string; id: string }; sessionManager: { getSessionId(): string } }): Promise<{ content: Array<{ type: string; text: string }>; details: unknown }>;
+    };
+    let widgetTool: RegisteredTool | undefined;
+    const pointers: Array<{ type: string; data: unknown }> = [];
+    const persisted: CakeArtifactV1[] = [];
+    const source = "export default () => <strong>Private source</strong>";
+    const extension = createCakeArtifactExtension({
+      persistArtifact: async (artifact) => {
+        persisted.push(artifact);
+        return { artifact, workspacePath: "/project", digest: "a".repeat(64), createdAt: new Date(0).toISOString(), updatedAt: new Date(0).toISOString() };
+      },
+      requestArtifact: async () => undefined,
+      generateInlineWidget: async () => ({ language: "react", source, generationSessionId: "generation-1" })
+    });
+    (extension as unknown as (pi: unknown) => void)({
+      registerTool(tool: unknown) { const registered = tool as RegisteredTool; if (registered.name === "ui_widget") widgetTool = registered; },
+      registerCommand() {},
+      appendEntry(type: string, data: unknown) { pointers.push({ type, data }); }
+    } as never);
+    if (!widgetTool) throw new Error("Expected ui_widget to be registered");
+
+    const result = await widgetTool.execute("call-1", { widget: { id: "widget-1", title: "Comparison", brief: "Compare these values", data: [1, 2], fallback: { markdown: "Values 1 and 2." } } }, undefined, undefined, { model: { provider: "fixture", id: "model" }, sessionManager: { getSessionId: () => "session-1" } });
+
+    expect(persisted[0]).toMatchObject({ kind: "widget", payload: { source } });
+    expect(JSON.stringify(result)).not.toContain(source);
+    expect(JSON.stringify(pointers)).not.toContain(source);
+    expect(result.details).toEqual({ artifactId: "widget-1" });
   });
 
   it("keeps session listing alive when Pi's first-message title exceeds Cake's IPC limit", async () => {
@@ -142,40 +178,7 @@ describe("Pi 0.84.0 foundation contract", () => {
     ]);
   });
 
-  it("routes a forked review through the parent's supported cache key", () => {
-    const payload = {
-      model: "gpt-5.6-sol",
-      prompt_cache_key: "child-session",
-      input: [
-        { role: "user", content: [{ type: "input_text", text: "Earlier input" }] },
-        { type: "message", role: "assistant", content: [{ type: "output_text", text: "Earlier answer" }] },
-        { role: "user", content: [{ type: "input_text", text: "Latest parent input" }] },
-        { type: "message", role: "assistant", content: [{ type: "output_text", text: "Latest answer" }] },
-        { role: "user", content: [{ type: "input_text", text: "Review comment" }] }
-      ]
-    };
-
-    const routed = routeReviewPromptCache(payload, {
-      cacheKey: "parent-session",
-      systemPrompt: "Parent prompt",
-      activeTools: ["read"],
-      model: { provider: "openai-codex", id: "gpt-5.6-sol" }
-    }) as typeof payload;
-
-    expect(routed.prompt_cache_key).toBe("parent-session");
-    expect(routed.input).toEqual(payload.input);
-    expect(routed).not.toHaveProperty("prompt_cache_options");
-  });
-
-  it("keeps cache routing model-neutral and leaves payloads without a cache key unchanged", () => {
-    const payload = { prompt_cache_key: "child-session", input: [{ role: "user", content: "Parent input" }] };
-    const metadata = { cacheKey: "parent-session", systemPrompt: "Parent", activeTools: [] };
-
-    expect(routeReviewPromptCache(payload, metadata)).toEqual({ ...payload, prompt_cache_key: "parent-session" });
-    expect(routeReviewPromptCache({ messages: [] }, metadata)).toEqual({ messages: [] });
-  });
-
-  it("forks a new review session from the parent branch before prompting", async () => {
+  it("keeps code comments lightweight and refreshes their live parent projection", async () => {
     const directory = await createTemporaryDirectory();
     const parentDir = join(directory, "parents");
     const reviewDir = join(directory, "reviews");
@@ -197,13 +200,44 @@ describe("Pi 0.84.0 foundation contract", () => {
 
     await expect(runReviewTurn({
       cwd: directory, trusted: false, thread, sessionDir: reviewDir, parentSessionRoot: parentDir, agentDir, signal: controller.signal,
-      parent: { sessionId: "parent-session", sessionFile: parentFile, leafId: "parent-user", systemPrompt: "Parent prompt", activeTools: ["read"] }
+      parent: { sessionId: "parent-session", sessionFile: parentFile, leafId: "parent-user" }
     })).rejects.toThrow("cancelled");
 
-    const reviewFile = join(reviewDir, (await readdir(reviewDir)).find((name) => name.endsWith(".jsonl"))!);
-    const entries = (await readFile(reviewFile, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
-    expect(entries).toContainEqual(expect.objectContaining({ type: "message", id: "parent-user", message: expect.objectContaining({ content: "Build the feature" }) }));
-    expect(entries).toContainEqual(expect.objectContaining({ type: "custom", customType: "cake.review-parent/v1", data: expect.objectContaining({ cacheKey: "parent-session", systemPrompt: "Parent prompt" }) }));
+    const projection = await readFile(join(reviewDir, "context", "parent-transcript.md"), "utf8");
+    expect(projection).toContain("Build the feature");
+    expect((await readdir(reviewDir)).filter((name) => name.endsWith(".jsonl"))).toHaveLength(0);
+  });
+
+  it("keeps transcript comments lightweight and refreshes their live parent projection", async () => {
+    const directory = await createTemporaryDirectory();
+    const parentDir = join(directory, "parents");
+    const reviewDir = join(directory, "comments");
+    const agentDir = join(directory, "agent");
+    await mkdir(parentDir, { recursive: true });
+    const timestamp = new Date(0).toISOString();
+    const parentFile = join(parentDir, "parent.jsonl");
+    await writeFile(parentFile, [
+      { type: "session", version: 3, id: "parent-session", timestamp, cwd: directory },
+      { type: "message", id: "parent-user", parentId: null, timestamp, message: { role: "user", content: "Draft a plan", timestamp: 0 } },
+      { type: "message", id: "parent-assistant", parentId: "parent-user", timestamp, message: { role: "assistant", content: [{ type: "text", text: "The original plan" }], timestamp: 0 } }
+    ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    const controller = new AbortController();
+    controller.abort();
+    const thread = {
+      id: "comment-1", workspacePath: directory, sessionId: "parent-session", status: "open" as const, createdAt: timestamp, updatedAt: timestamp,
+      anchor: { path: "session:parent-session/message/assistant", view: "message" as const, messageId: "assistant", entryId: "parent-assistant", startOffset: 4, endOffset: 12, start: { diffLine: 0 }, end: { diffLine: 0 }, selectedText: "original", contextBefore: "The ", contextAfter: " plan", diff: "" },
+      pendingComments: [{ id: "question-1", body: "Why original?", createdAt: timestamp }]
+    };
+
+    await expect(runReviewTurn({
+      cwd: directory, trusted: false, thread, sessionDir: reviewDir, parentSessionRoot: parentDir, agentDir, signal: controller.signal,
+      parent: { sessionId: "parent-session", sessionFile: parentFile, leafId: "parent-assistant", model: { provider: "fixture", id: "model" } }
+    })).rejects.toThrow("cancelled");
+
+    const projection = await readFile(join(reviewDir, "context", "parent-transcript.md"), "utf8");
+    expect(projection).toContain("Draft a plan");
+    expect(projection).toContain("The original plan");
+    expect((await readdir(reviewDir)).filter((name) => name.endsWith(".jsonl"))).toHaveLength(0);
   });
 
   it("gives assistant messages on either side of a tool call distinct live positions", () => {

@@ -25,10 +25,16 @@ installations.
 
 Every production Pi adapter call receives `agentDir` and `sessionDir`
 explicitly. Workspace sessions list, create, continue, open, preview, and fork
-only beneath Pi's encoded per-workspace directories in `pi/sessions`. Review
-and global-chat sessions have narrower roots under `pi/`, and direct
+only beneath Pi's encoded per-workspace directories in `pi/sessions`. Review,
+inline-discussion, and global-chat sessions have narrower roots under `pi/`, and direct
 session-file opens are validated against the relevant Cake root. Pi still owns
 the session engine and JSONL format.
+
+Code-review and transcript-comment anchors and submission metadata share the
+Cake review repository and one sidecar-session pattern. Their agent replies live
+only in Pi review sessions. Live parent transcript projections and the unified
+parent-readable thread index are disposable, rebuildable files beside that
+metadata; they are not transcript authorities.
 
 Window state persists the selected workspace and Pi session ID, never an
 absolute session filename. On reopen, Cake resolves that ID through Pi beneath

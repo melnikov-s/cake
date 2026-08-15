@@ -109,6 +109,28 @@ async function openSnapshot(store: MainChatStore, desktop: ReturnType<typeof cre
 }
 
 describe("MainChatStore", () => {
+  it("turns desktop projection exceptions into copyable error details", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+
+    desktop.emit({
+      type: "session-snapshot-received",
+      snapshot: {
+        ...snapshot,
+        parts: [
+          { id: "duplicate", kind: "text", role: "assistant", text: "First", status: "complete" },
+          { id: "duplicate", kind: "text", role: "assistant", text: "Second", status: "complete" }
+        ]
+      }
+    });
+
+    expect(store.error).toContain("already assigned to another model");
+    expect(store.errorDetails).toContain("r-state-tree");
+    expect(store.errorDetails).toContain("Context:\nDesktop event: session-snapshot-received");
+    root[Symbol.dispose]();
+  });
+
   it("inserts files chosen from the attachment browser as visible path mentions", async () => {
     const desktop = createDesktopClient();
     vi.mocked(desktop.client.chooseAttachments).mockResolvedValue([

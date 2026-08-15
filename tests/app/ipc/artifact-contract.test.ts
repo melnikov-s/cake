@@ -21,4 +21,20 @@ describe("cake.artifact/v1 contract", () => {
     expect(() => validateArtifactResponse(schema, {})).toThrow("required");
     expect(() => validateArtifactResponse(schema, { answer: "" })).toThrow("length");
   });
+
+  it("accepts delegated widget source as Cake-owned artifact payload", () => {
+    const artifact = parseArtifactInput({
+      protocol: "cake.artifact/v1",
+      id: "widget-1",
+      sessionId: "session-1",
+      revision: 1,
+      kind: "widget",
+      title: "Comparison",
+      payload: { language: "react", source: "export default () => <strong>Hello</strong>", brief: "Compare the options", generationSessionId: "generation-1" },
+      fallback: { markdown: "A comparison of the options." },
+      interaction: { mode: "present" }
+    });
+    expect(artifact.kind).toBe("widget");
+    expect(artifact.payload).toMatchObject({ language: "react", generationSessionId: "generation-1" });
+  });
 });

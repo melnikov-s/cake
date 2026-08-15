@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -9,6 +9,21 @@ const directories: string[] = [];
 afterEach(async () => Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true }))));
 
 describe("ReviewRepository", () => {
+  it("exports all review threads as live parent-readable context", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-message-comments-")); directories.push(root);
+    const repository = new ReviewRepository(root, join(root, "pi-sessions"));
+    const anchor = { path: "session:parent/message/assistant-1", view: "message" as const, messageId: "assistant-1", entryId: "entry-1", startOffset: 6, endOffset: 15, start: { diffLine: 0 }, end: { diffLine: 0 }, selectedText: "important", contextBefore: "Alpha ", contextAfter: " detail", diff: "" };
+
+    const created = await repository.create("/project", "parent", anchor, "Why is this important?");
+    let context = await readFile(repository.reviewContextPath("/project", "parent"), "utf8");
+    expect(context).toContain("important");
+    expect(context).toContain("Why is this important?");
+
+    await repository.resolve("/project", "parent", created.id, true);
+    context = await readFile(repository.reviewContextPath("/project", "parent"), "utf8");
+    expect(context).toContain(`${created.id} · resolved`);
+  });
+
   it("persists only review metadata and projects messages from the referenced Pi session", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-reviews-")); directories.push(root);
     const projectedMessages = [{ id: "pi-user", role: "user" as const, body: "Use a clearer name", createdAt: new Date(0).toISOString(), delivered: true, status: "complete" as const }, { id: "pi-assistant", role: "assistant" as const, body: "Renamed it.", createdAt: new Date(1).toISOString(), delivered: true, status: "complete" as const }];
@@ -16,6 +31,7 @@ describe("ReviewRepository", () => {
     const anchor = { path: "src/app.ts", start: { diffLine: 2, newLine: 10, column: 3 }, end: { diffLine: 3, newLine: 11, column: 8 }, selectedText: "const value", contextBefore: "before", contextAfter: "after", diff: "@@" };
     const created = await repository.create("/project", "session", anchor, "Use a clearer name");
     expect(created.messages[0]).toMatchObject({ role: "user", delivered: false });
+    expect(await readFile(repository.reviewContextPath("/project", "session"), "utf8")).toContain("Code: src/app.ts · diff rows 2-3");
     expect((await repository.listSession("/project", "session")).filter((thread) => thread.status === "open")).toHaveLength(1);
 
     const runId = crypto.randomUUID();

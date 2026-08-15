@@ -48,4 +48,23 @@ describe("RendererErrorBoundary", () => {
     act(() => container.querySelector<HTMLButtonElement>("button")!.click());
     expect(onReload).toHaveBeenCalledOnce();
   });
+
+  it("copies the full JavaScript and React error details", async () => {
+    const writeText = vi.fn<(value: string) => Promise<void>>(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+
+    await act(async () => root.render(
+      <RendererErrorBoundary>
+        <CrashedView />
+      </RendererErrorBoundary>
+    ));
+
+    const copy = [...container.querySelectorAll("button")].find((button) => button.textContent === "Copy full error details");
+    await act(async () => copy?.click());
+
+    expect(writeText).toHaveBeenCalledOnce();
+    expect(writeText.mock.calls[0]?.[0]).toContain("Maximum update depth exceeded");
+    expect(writeText.mock.calls[0]?.[0]).toContain("React component stack");
+    expect(copy?.textContent).toBe("Copied full error details");
+  });
 });

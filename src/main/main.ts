@@ -142,6 +142,7 @@ function launchPi(path: string) {
     workspacePath: path,
     agentDir: cakePaths.piAgent,
     sessionDir: cakePaths.piSessions,
+    widgetSessionDir: cakePaths.piWidgetSessions,
     emit: broadcast,
     artifactRepository,
     reviewRepository,
@@ -525,7 +526,7 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
     const repaired = await runInlineWidgetRepair({
       cwd: request.workspacePath,
       agentDir: cakePaths.piAgent,
-      sessionDir: cakePaths.piWidgetRepairSessions,
+      sessionDir: cakePaths.piWidgetSessions,
       language: request.language,
       capability: request.capability,
       source: request.source,

@@ -64,6 +64,26 @@ describe("ArtifactHost", () => {
     act(() => window.dispatchEvent(new MessageEvent("message", { source: frame.contentWindow, data: { source: "cake-inline-widget", token, type: "submit", value: { choice: "yes" } } })));
     expect(submit).toHaveBeenCalledWith({ choice: "yes" });
   });
+
+  it("compiles delegated widget artifacts without placing their source in transcript text", async () => {
+    const token = "00000000-0000-4000-8000-000000000002";
+    const source = "export default () => <strong>Generated</strong>";
+    const client = { compileInlineWidget: vi.fn(async () => ({ token, url: `cake-widget://document/${token}` })), repairInlineWidget: vi.fn() } as unknown as DesktopClient;
+    widgets = mount(createStore(InlineWidgetStore, { client }));
+    const artifact = record({
+      protocol: "cake.artifact/v1", id: "comparison", sessionId: "session", revision: 1, kind: "widget", title: "Comparison",
+      payload: { language: "react", source, brief: "{\"brief\":\"Compare\"}", generationSessionId: "generation-1" },
+      fallback: { markdown: "Comparison fallback." }, interaction: { mode: "present" }
+    });
+
+    await act(async () => { root.render(<ArtifactHost record={artifact} inlineWidgets={widgets} />); await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+    expect(client.compileInlineWidget).toHaveBeenCalledWith("react", source, "display");
+    expect(container.querySelector("iframe")?.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(container.textContent).not.toContain("export default");
+    act(() => (container.querySelector(".inline-widget-actions button") as HTMLButtonElement).click());
+    expect(container.textContent).toContain("export default");
+  });
 });
 
 function setInputValue(input: HTMLInputElement, value: string) {

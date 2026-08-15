@@ -42,13 +42,24 @@ Every durable concept has one authority.
 | Models, providers, authentication, Pi settings and resources | Pi | Offer Cake controls through the Pi adapter |
 | Application-level global-chat transcript | Its dedicated hidden Pi session | Present it as a Cake-wide meta-session and route curated controls |
 | Projects, archived-session flags, window selection and view state | Cake | Persist application and window metadata without copying Pi history |
-| Changes and reviews | Cake workflow services, with Pi references where relevant | Present focused GUI workflows and keep their lifecycle explicit |
+| Changes, reviews, and inline discussions | Cake workflow services, with Pi sidecar-session references where relevant | Persist anchors and workflow metadata without copying Pi transcripts |
 | Rich artifacts | Cake artifact repository plus Pi transcript pointers/fallbacks | Persist and render bounded, versioned artifact data |
 | Blocking structured requests | `cake.request/v1` plus the active Pi tool call | Render trusted forms or sandboxed custom request widgets and return one validated value |
 | Trusted plugin source, builds, diagnostics and plugin persistence | Cake plugin machinery | Compile, activate, recover, repair and roll back user-owned source |
 
 Do not introduce a second transcript database, reconstruct Pi state into a
 competing domain model, or mutate Pi JSONL with ad hoc file operations.
+
+All inline threads—code reviews and assistant-message discussions—run as
+independent lightweight Pi sessions using the same runtime pipeline. Their
+anchors belong to Cake; their replies remain authoritative in the referenced Pi
+sidecar session. Before each reply, Cake regenerates a read-only Markdown
+projection of the parent session's current active branch. The sidecar receives
+only its anchor, nearby context, its own short history, and ordinary file tools;
+assistant-message threads are read-only while code-review threads may edit the
+workspace. Neither kind forks the parent transcript. A single derived Markdown
+thread index is also available to the parent agent through its ordinary project
+tools.
 
 ## Process boundaries
 
@@ -100,9 +111,11 @@ privileges.
 
 - Artifacts cross a versioned, bounded protocol. Markdown and structured kinds
   are validated; raw HTML runs in an isolated frame with restrictive policy.
-- Inline `cake-html` and `cake-react` widgets compile in Electron main and run
-  in script-enabled, opaque-origin frames whose CSP blocks network and
-  application access. Repair runs in a separate tool-less Pi session.
+- Delegated inline widgets begin as compact `ui_widget` presentation briefs.
+  Generation and repair run in separate tool-less Pi sessions; generated source
+  stays in Cake's artifact repository rather than the project-session context.
+  Electron main compiles that source and runs it in a script-enabled,
+  opaque-origin frame whose CSP blocks network and application access.
 - Plugins are ordinary user-owned React source. They become trusted renderer
   code only through an explicit install or edit action. Their module graph is
   constrained to their own files, ordinary React, and the version-matched

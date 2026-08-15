@@ -16,6 +16,7 @@ import type { ArtifactInteractionStore } from "./ArtifactInteractionStore";
 import type { MessageComposerStore } from "./MessageComposerStore";
 import type { TranscriptViewStore } from "./TranscriptViewStore";
 import type { PluginCommandStore } from "./PluginCommandStore";
+import { describeError } from "../error-details";
 
 export interface MainChatStoreProps {
   sidebar(): SidebarStore;
@@ -48,6 +49,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
   changelogMarkdown = "";
   changelogLoading = false;
   error: string | undefined;
+  errorDetails: string | undefined;
   activeOperations: string[] = [];
   private openRevision = 0;
   private reopenAfterAgentRestart = false;
@@ -205,6 +207,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
     const operationId = crypto.randomUUID();
     this.activeOperations.push(operationId);
     this.error = undefined;
+    this.errorDetails = undefined;
     return operationId;
   }
 
@@ -213,8 +216,10 @@ export class MainChatStore extends Store<MainChatStoreProps> {
     if (index >= 0) this.activeOperations.splice(index, 1);
   }
 
-  setError(error: unknown) {
-    this.error = error instanceof Error ? error.message : String(error);
+  setError(error: unknown, context?: string) {
+    const described = describeError(error, context);
+    this.error = described.message;
+    this.errorDetails = described.details;
   }
 
   async chooseProject() {
@@ -518,7 +523,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
         this.activeOpenTarget = undefined;
         this.activeOpenExpectsEmpty = false;
         this.finishOperation(event.operationId);
-        this.error = "Cake refused to mount history in a newly created session";
+        this.setError("Cake refused to mount history in a newly created session");
         return false;
       }
       this.activeOpenOperationId = undefined;
@@ -590,7 +595,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
         this.activeOpenTarget = undefined;
         this.activeOpenExpectsEmpty = false;
       }
-      this.error = event.message;
+      this.setError(event.message);
     }
   }
 }

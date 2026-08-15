@@ -331,6 +331,39 @@ describe("PiWorkspaceDriver", () => {
     expect(runtime.dispose).toHaveBeenCalledOnce();
   });
 
+  it("generates widgets in a separate session and compile-repairs them before returning source", async () => {
+    const events: DesktopEvent[] = [];
+    let options: CakeRuntimeOptions | undefined;
+    const runtime: CakeRuntime = {
+      sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile, snapshot: vi.fn(async () => snapshot), prompt: vi.fn(async () => undefined), abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), recordReviewRun: vi.fn(), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
+    };
+    const runWidgetGeneration = vi.fn(async () => ({ sessionId: "generation-1", sessionFile: "/widgets/generation-1.jsonl", response: "```cake-react\nexport default () => <Broken />\n```" }));
+    const runWidgetRepair = vi.fn(async () => ({ sessionId: "repair-1", sessionFile: "/widgets/repair-1.jsonl", response: "```cake-react\nexport default () => <strong>Fixed</strong>\n```" }));
+    const compileWidget = vi.fn()
+      .mockRejectedValueOnce(new Error("Could not resolve Broken"))
+      .mockResolvedValue({ token: crypto.randomUUID(), document: "<!doctype html>" });
+    const driver = new PiWorkspaceDriver({
+      ...piPaths,
+      workspacePath: "/project",
+      emit: (event) => events.push(event),
+      createRuntime: vi.fn(async (next) => { options = next; return runtime; }),
+      runWidgetGeneration,
+      runWidgetRepair,
+      compileWidget
+    });
+    const openId = crypto.randomUUID();
+    driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
+    await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
+
+    const result = await options!.generateInlineWidget!({ brief: "Show a comparison", data: [1, 2], fallback: "Comparison" });
+
+    expect(result).toEqual({ language: "react", source: "export default () => <strong>Fixed</strong>", generationSessionId: "generation-1" });
+    expect(runWidgetGeneration).toHaveBeenCalledWith(expect.objectContaining({ sessionDir: "/cake/pi/widget-sessions", brief: "Show a comparison" }));
+    expect(runWidgetRepair).toHaveBeenCalledWith(expect.objectContaining({ diagnostic: "Could not resolve Broken", source: "export default () => <Broken />" }));
+    expect(compileWidget).toHaveBeenCalledTimes(2);
+    driver[Symbol.dispose]();
+  });
+
   it("persists, emits, correlates, and terminally settles artifact requests", async () => {
     const events: DesktopEvent[] = [];
     let options: CakeRuntimeOptions | undefined;

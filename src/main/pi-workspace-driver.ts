@@ -1,14 +1,16 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { createCakeRuntime, loadPiChangelog, runReviewTurn, type CakeRuntime, type RuntimeUiRequest } from "../agent/pi-runtime";
+import { resolve } from "node:path";
+import { createCakeRuntime, loadPiChangelog, runInlineWidgetGeneration, runInlineWidgetRepair, runReviewTurn, type CakeRuntime, type InlineWidgetGenerationRequest, type RuntimeUiRequest } from "../agent/pi-runtime";
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
 import { parseArtifactInput, type ArtifactRecord, type CakeArtifactV1 } from "../ipc/artifact-contract";
 import { REVIEW_TEXT_MAX_LENGTH } from "../ipc/review-contract";
 import type { ArtifactRepository } from "./artifact-repository";
 import type { ReviewRepository } from "./review-repository";
 import { captureWorkspaceCheckpoint, collectCheckpointChanges, NotGitRepositoryError } from "./git-changes";
+import { compileInlineWidget, extractRepairedWidget } from "./inline-widget-service";
 
 type ArtifactRepositoryPort = Pick<ArtifactRepository, "upsert" | "get" | "listSession" | "linkSession">;
-type ReviewRepositoryPort = Pick<ReviewRepository, "claimPending" | "completeRun" | "failRun" | "recoverRunning" | "agentSessionDirectory">;
+type ReviewRepositoryPort = Pick<ReviewRepository, "claimPending" | "completeRun" | "failRun" | "recoverRunning" | "agentSessionDirectory"> & Partial<Pick<ReviewRepository, "get" | "reviewContextPath">>;
 
 type PiCommandType =
   | "open-workspace"
@@ -45,9 +47,13 @@ export interface PiWorkspaceDriverOptions {
   workspacePath: string;
   agentDir: string;
   sessionDir: string;
+  widgetSessionDir?: string;
   emit(event: DesktopEvent): void;
   createRuntime?: typeof createCakeRuntime;
   runReviewTurn?: typeof runReviewTurn;
+  runWidgetGeneration?: typeof runInlineWidgetGeneration;
+  runWidgetRepair?: typeof runInlineWidgetRepair;
+  compileWidget?: typeof compileInlineWidget;
   artifactRepository?: ArtifactRepositoryPort;
   reviewRepository?: ReviewRepositoryPort;
   captureCheckpoint?: typeof captureWorkspaceCheckpoint;
@@ -61,8 +67,12 @@ export class PiWorkspaceDriver {
   private readonly emitEvent: PiWorkspaceDriverOptions["emit"];
   private readonly agentDir: string;
   private readonly sessionDir: string;
+  private readonly widgetSessionDir: string;
   private readonly createRuntimeImpl: typeof createCakeRuntime;
   private readonly runReviewTurnImpl: typeof runReviewTurn;
+  private readonly runWidgetGeneration: typeof runInlineWidgetGeneration;
+  private readonly runWidgetRepair: typeof runInlineWidgetRepair;
+  private readonly compileWidget: typeof compileInlineWidget;
   private readonly artifactRepository: ArtifactRepositoryPort;
   private readonly reviewRepository: ReviewRepositoryPort;
   private readonly captureCheckpoint: typeof captureWorkspaceCheckpoint;
@@ -82,9 +92,13 @@ export class PiWorkspaceDriver {
     this.workspacePath = options.workspacePath;
     this.agentDir = options.agentDir;
     this.sessionDir = options.sessionDir;
+    this.widgetSessionDir = options.widgetSessionDir ?? resolve(options.sessionDir, "..", "widget-sessions");
     this.emitEvent = options.emit;
     this.createRuntimeImpl = options.createRuntime ?? createCakeRuntime;
     this.runReviewTurnImpl = options.runReviewTurn ?? runReviewTurn;
+    this.runWidgetGeneration = options.runWidgetGeneration ?? runInlineWidgetGeneration;
+    this.runWidgetRepair = options.runWidgetRepair ?? runInlineWidgetRepair;
+    this.compileWidget = options.compileWidget ?? compileInlineWidget;
     this.openExternal = options.openExternal;
     this.captureCheckpoint = options.captureCheckpoint ?? captureWorkspaceCheckpoint;
     this.isTrusted = options.isTrusted ?? (() => false);
@@ -99,6 +113,7 @@ export class PiWorkspaceDriver {
       ,async linkSession() { return undefined; }
     };
     this.reviewRepository = options.reviewRepository ?? {
+      async get() { return undefined; },
       async claimPending() { return undefined; },
       async completeRun() { throw new Error("Review persistence is unavailable"); },
       async failRun() { throw new Error("Review persistence is unavailable"); },
@@ -310,6 +325,10 @@ export class PiWorkspaceDriver {
       requestUi: (request) => this.requestUi(request),
       persistArtifact: (artifact) => this.persistArtifact(artifact),
       requestArtifact: (record, signal) => this.requestArtifact(record, signal),
+      generateInlineWidget: (input) => this.generateInlineWidget(input),
+      reviewContextPath: this.reviewRepository.reviewContextPath
+        ? (activeSessionId) => this.reviewRepository.reviewContextPath!(this.workspacePath, activeSessionId)
+        : undefined,
       openExternal: this.openExternal,
       captureGitCheckpoint: (activeSessionId) => this.captureCheckpoint(this.workspacePath, activeSessionId),
       listArtifacts: async (pointers) => {
@@ -347,6 +366,38 @@ export class PiWorkspaceDriver {
     return runtime;
   }
 
+  private async generateInlineWidget(input: InlineWidgetGenerationRequest) {
+    const generated = await this.runWidgetGeneration({
+      cwd: this.workspacePath,
+      agentDir: this.agentDir,
+      sessionDir: this.widgetSessionDir,
+      ...input
+    });
+    const language = "react" as const;
+    const generatedSource = extractRepairedWidget(generated.response, language);
+    try {
+      await this.compileWidget(language, generatedSource, "display");
+      return { language, source: generatedSource, generationSessionId: generated.sessionId };
+    } catch (error) {
+      const diagnostic = error instanceof Error ? error.message : String(error);
+      const repaired = await this.runWidgetRepair({
+        cwd: this.workspacePath,
+        agentDir: this.agentDir,
+        sessionDir: this.widgetSessionDir,
+        language,
+        capability: "display",
+        source: generatedSource,
+        context: JSON.stringify({ brief: input.brief, data: input.data, fallback: input.fallback }),
+        diagnostic,
+        model: input.model,
+        signal: input.signal
+      });
+      const source = extractRepairedWidget(repaired.response, language);
+      await this.compileWidget(language, source, "display");
+      return { language, source, generationSessionId: generated.sessionId };
+    }
+  }
+
   private async inspectChanges(requestId: string, sessionId: string) {
     const runtime = this.runtimeFor(sessionId);
     try {
@@ -365,8 +416,19 @@ export class PiWorkspaceDriver {
   private async runReviewThreads(command: Extract<PiWorkspaceCommand, { type: "submit-review-threads" }>) {
     const parentRuntime = this.runtimeFor(command.sessionId);
     const parent = parentRuntime.getReviewParentContext?.();
-    const transcriptRun = { operationId: command.requestId, threadIds: command.threadIds, commentCount: command.commentCount };
-    parentRuntime.recordReviewRun({ ...transcriptRun, status: "running" });
+    const records = this.reviewRepository.get
+      ? await Promise.all(command.threadIds.map((threadId) => this.reviewRepository.get!(this.workspacePath, command.sessionId, threadId)))
+      : undefined;
+    const codeThreadIds = records
+      ? command.threadIds.filter((_threadId, index) => records[index]?.anchor.view !== "message")
+      : command.threadIds;
+    const codeCommentCount = records
+      ? records.reduce((count, thread) => !thread || thread.anchor.view === "message" ? count : count + thread.pendingComments.length, 0)
+      : command.commentCount;
+    const transcriptRun = codeThreadIds.length > 0
+      ? { operationId: command.requestId, threadIds: codeThreadIds, commentCount: codeCommentCount }
+      : undefined;
+    if (transcriptRun) parentRuntime.recordReviewRun({ ...transcriptRun, status: "running" });
     try {
       await this.reviewRecovery;
       const failures: string[] = [];
@@ -408,11 +470,11 @@ export class PiWorkspaceDriver {
           this.emit({ type: "review-thread-streaming", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId, streaming: false });
         }
       }
-      await parentRuntime.captureLatestGitCheckpoint?.();
+      if (transcriptRun) await parentRuntime.captureLatestGitCheckpoint?.();
       if (failures.length > 0) throw new Error(`Review thread${failures.length === 1 ? "" : "s"} failed: ${failures.join("; ")}`);
-      parentRuntime.recordReviewRun({ ...transcriptRun, status: "complete" });
+      if (transcriptRun) parentRuntime.recordReviewRun({ ...transcriptRun, status: "complete" });
     } catch (error) {
-      parentRuntime.recordReviewRun({ ...transcriptRun, status: "error" });
+      if (transcriptRun) parentRuntime.recordReviewRun({ ...transcriptRun, status: "error" });
       throw error;
     }
   }

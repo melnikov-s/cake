@@ -28,25 +28,30 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     return this.props.sessionCache.find(sessionId, workspacePath)?.reviewThreads ?? [];
   }
 
+  codeThreadsForSession(workspacePath: string, sessionId: string) {
+    return this.threadsForSession(workspacePath, sessionId).filter((thread) => thread.anchor.view !== "message");
+  }
+
   private submittedThreadIds() {
     return new Set(Object.values(this.submissionsByOperation).flat());
   }
 
   pendingThreadsForSession(workspacePath: string, sessionId: string) {
     const submitting = this.submittedThreadIds();
-    return this.threadsForSession(workspacePath, sessionId).filter((thread) => thread.pending && !submitting.has(thread.id));
+    return this.codeThreadsForSession(workspacePath, sessionId).filter((thread) => thread.pending && !submitting.has(thread.id));
   }
 
   chatThreadsForSession(workspacePath: string, sessionId: string) {
     const submitting = this.submittedThreadIds();
-    return this.threadsForSession(workspacePath, sessionId).filter((thread) => thread.actionableCommentCount > 0 && !submitting.has(thread.id));
+    return this.codeThreadsForSession(workspacePath, sessionId).filter((thread) => thread.actionableCommentCount > 0 && !submitting.has(thread.id));
   }
 
   chatCommentCountForSession(workspacePath: string, sessionId: string) {
     return this.chatThreadsForSession(workspacePath, sessionId).reduce((count, thread) => count + thread.actionableCommentCount, 0);
   }
 
-  get openThreads() { return this.threads.filter((thread) => thread.status === "open"); }
+  get codeThreads() { return this.threads.filter((thread) => thread.anchor.view !== "message"); }
+  get openThreads() { return this.codeThreads.filter((thread) => thread.status === "open"); }
   get pendingThreads() {
     const context = this.props.context();
     return context ? this.pendingThreadsForSession(context.workspacePath, context.sessionId) : [];

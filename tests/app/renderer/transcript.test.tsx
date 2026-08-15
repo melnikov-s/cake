@@ -32,14 +32,15 @@ vi.mock("@/components/ai-elements/conversation", () => ({
   })
 }));
 
-import { ASSISTANT_FULLSCREEN_MIN_LENGTH, Transcript } from "../../../src/renderer/app";
+import { captureMessageSelection, MESSAGE_COMMENT_SELECTION_DELAY_MS, Transcript } from "../../../src/renderer/app";
+import type { MessageCommentsStore } from "../../../src/renderer/stores/MessageCommentsStore";
 
-function storeWith(parts: UiPart[], isStreaming = false) {
-  return { parts, visibleParts: parts, projectName: "Cake", error: undefined, thinkingExpanded: false, isStreaming, toggleThinking: vi.fn(), forkAt: vi.fn() } as unknown as MainChatStore;
+function storeWith(parts: UiPart[], isStreaming = false, error?: string, errorDetails?: string) {
+  return { parts, visibleParts: parts, projectName: "Cake", error, errorDetails, thinkingExpanded: false, isStreaming, toggleThinking: vi.fn(), forkAt: vi.fn() } as unknown as MainChatStore;
 }
 
 function TestTranscript({ store, sessionId }: { store: MainChatStore; sessionId: string }) {
-  return <Transcript parts={store.visibleParts} sessionId={sessionId} isStreaming={store.isStreaming} behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, onFork: (entryId) => { void store.forkAt(entryId); } }} empty={<div />} error={store.error} />;
+  return <Transcript parts={store.visibleParts} sessionId={sessionId} isStreaming={store.isStreaming} behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, onFork: (entryId) => { void store.forkAt(entryId); } }} empty={<div />} error={store.error} errorDetails={store.errorDetails} />;
 }
 
 describe("Transcript scrolling", () => {
@@ -52,6 +53,9 @@ describe("Transcript scrolling", () => {
       requestAnimationFrame: (callback: FrameRequestCallback) => { callback(0); return 1; },
       cancelAnimationFrame: vi.fn()
     });
+    const rangeRect = { top: 80, right: 220, bottom: 100, left: 120, width: 100, height: 20, x: 120, y: 80, toJSON: () => ({}) } as DOMRect;
+    Object.defineProperty(Range.prototype, "getBoundingClientRect", { configurable: true, value: () => rangeRect });
+    Object.defineProperty(Range.prototype, "getClientRects", { configurable: true, value: () => [rangeRect] });
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -106,6 +110,19 @@ describe("Transcript scrolling", () => {
     const transcriptItems = Array.from(container.querySelectorAll(".transcript-item"));
     expect(transcriptItems[0]?.classList.contains("transcript-item-error-after-user")).toBe(false);
     expect(transcriptItems[1]?.classList.contains("transcript-item-error-after-user")).toBe(true);
+  });
+
+  it("copies preserved stack details from an operation error", async () => {
+    const writeText = vi.fn<(value: string) => Promise<void>>(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const details = "Error: Identity collision\n    at SessionModel.applySnapshot (session.ts:50:7)";
+
+    await act(async () => root.render(<TestTranscript sessionId="session-1" store={storeWith([], false, "Identity collision", details)} />));
+    const copy = container.querySelector<HTMLButtonElement>(".copy-error-details");
+    await act(async () => copy?.click());
+
+    expect(writeText).toHaveBeenCalledWith(details);
+    expect(copy?.textContent).toBe("Copied full error details");
   });
 
   it("scrolls to a newly rendered user message even when it was not following output", () => {
@@ -257,20 +274,113 @@ describe("Transcript scrolling", () => {
     expect(store.forkAt).toHaveBeenCalledWith("assistant-entry");
   });
 
-  it("opens long assistant responses in a fullscreen reader", () => {
-    const longResponse = `# Long response\n\n${"Readable detail. ".repeat(Math.ceil(ASSISTANT_FULLSCREEN_MIN_LENGTH / 17))}`;
+  it("captures a rendered Markdown selection as a stable message anchor", () => {
+    const content = document.createElement("div");
+    content.innerHTML = "<p>Alpha <strong>important</strong> detail.</p>";
+    document.body.appendChild(content);
+    const selectedNode = content.querySelector("strong")!.firstChild!;
+    const range = document.createRange();
+    range.setStart(selectedNode, 0);
+    range.setEnd(selectedNode, "important".length);
+    const browserSelection = window.getSelection()!;
+    browserSelection.removeAllRanges();
+    browserSelection.addRange(range);
+
+    expect(captureMessageSelection(content, "assistant-1", "entry-1")).toMatchObject({
+      messageId: "assistant-1",
+      entryId: "entry-1",
+      selectedText: "important",
+      startOffset: 6,
+      endOffset: 15,
+      contextBefore: "Alpha ",
+      contextAfter: " detail."
+    });
+    content.remove();
+    browserSelection.removeAllRanges();
+  });
+
+  it("waits before offering a chat for selected assistant text", () => {
+    vi.useFakeTimers();
+    const comments = { threadsForMessage: () => [] } as unknown as MessageCommentsStore;
+    act(() => root.render(<Transcript
+      parts={[{ id: "assistant-1", kind: "text", role: "assistant", entryId: "entry-1", text: "Alpha important detail.", status: "complete" }]}
+      sessionId="session-1"
+      isStreaming={false}
+      behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, messageComments: comments }}
+      empty={<div />}
+    />));
+
+    const walker = document.createTreeWalker(container.querySelector<HTMLElement>(".assistant-message-content")!, NodeFilter.SHOW_TEXT);
+    let important: Node | null = walker.nextNode();
+    while (important && !important.textContent?.includes("Alpha important detail")) important = walker.nextNode();
+    expect(important).not.toBeNull();
+    const range = document.createRange();
+    range.setStart(important!, 6);
+    range.setEnd(important!, 15);
+    const browserSelection = window.getSelection()!;
+    browserSelection.removeAllRanges();
+    browserSelection.addRange(range);
+    act(() => container.querySelector<HTMLElement>(".assistant-message-content")!.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })));
+
+    act(() => vi.advanceTimersByTime(MESSAGE_COMMENT_SELECTION_DELAY_MS - 1));
+    expect(document.body.querySelector(".message-selection-action")).toBeNull();
+    act(() => vi.advanceTimersByTime(1));
+    expect(document.body.querySelector<HTMLButtonElement>(".message-selection-action")?.textContent).toBe("Chat about this");
+
+    act(() => document.body.querySelector<HTMLButtonElement>(".message-selection-action")!.click());
+    expect(document.body.querySelector('[role="dialog"][aria-label="Chat about this"]')).not.toBeNull();
+    expect(document.body.querySelector<HTMLTextAreaElement>('[aria-label="Message about selected text"]')).toBe(document.activeElement);
+    browserSelection.removeAllRanges();
+    vi.useRealTimers();
+  });
+
+  it("restores a selection marker and reopens its persisted chat", () => {
+    const now = new Date(0).toISOString();
+    const thread = {
+      id: "thread-1",
+      anchor: { selectedText: "important", startOffset: 6, endOffset: 15 },
+      messages: [
+        { id: "question-1", role: "user", body: "Why this word?", status: "complete" },
+        { id: "answer-1", role: "assistant", body: "Because it carries the point.", status: "complete" }
+      ],
+      status: "open",
+      updatedAt: now
+    };
+    const comments = {
+      threadsForMessage: () => [thread],
+      threadStreaming: () => false,
+      replyThread: vi.fn(),
+      resolveThread: vi.fn()
+    } as unknown as MessageCommentsStore;
+    act(() => root.render(<Transcript
+      parts={[{ id: "assistant-1", kind: "text", role: "assistant", text: "Alpha important detail.", status: "complete" }]}
+      sessionId="session-1"
+      isStreaming={false}
+      behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, messageComments: comments }}
+      empty={<div />}
+    />));
+
+    const marker = container.querySelector<HTMLButtonElement>('[aria-label="Open selection chat 1"]');
+    expect(marker).not.toBeNull();
+    act(() => marker!.click());
+    const chat = document.body.querySelector('[role="dialog"][aria-label="Selection chat"]');
+    expect(chat?.textContent).toContain("Why this word?");
+    expect(chat?.textContent).toContain("Because it carries the point.");
+  });
+
+  it("opens every assistant response in a fullscreen reader regardless of text length or streaming state", () => {
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([
       { id: "short", kind: "text", role: "assistant", text: "Short answer", status: "complete" },
-      { id: "long", kind: "text", role: "assistant", text: longResponse, status: "complete" }
+      { id: "streaming", kind: "text", role: "assistant", text: "Working", status: "streaming" }
     ])} />));
 
     const expandButtons = container.querySelectorAll<HTMLButtonElement>('[aria-label="View response fullscreen"]');
-    expect(expandButtons).toHaveLength(1);
+    expect(expandButtons).toHaveLength(2);
     act(() => expandButtons[0]!.click());
 
     const dialog = document.body.querySelector<HTMLElement>(".assistant-message-fullscreen");
     expect(dialog).not.toBeNull();
-    expect(dialog?.textContent).toContain("Long response");
+    expect(dialog?.textContent).toContain("Short answer");
     expect(document.body.style.overflow).toBe("hidden");
 
     act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));

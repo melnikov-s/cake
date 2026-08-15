@@ -1,0 +1,40 @@
+import { createStore, mount } from "r-state-tree";
+import { describe, expect, it, vi } from "vitest";
+import type { ReviewThread } from "../../../../src/ipc/review-contract";
+import type { DesktopClient } from "../../../../src/renderer/desktop-client";
+import { MessageCommentsStore } from "../../../../src/renderer/stores/MessageCommentsStore";
+import { SessionCacheStore } from "../../../../src/renderer/stores/SessionCacheStore";
+import type { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
+
+describe("MessageCommentsStore", () => {
+  it("creates a transcript anchor and immediately submits its sidecar thread", async () => {
+    const now = new Date(0).toISOString();
+    const createReviewThread = vi.fn(async (input: { anchor: ReviewThread["anchor"] }) => ({
+      id: "thread-1", workspacePath: "/project", sessionId: "session-1", anchor: input.anchor,
+      messages: [{ id: "question-1", role: "user" as const, body: "Why?", createdAt: now, delivered: false, status: "complete" as const }],
+      status: "open" as const, createdAt: now, updatedAt: now
+    }));
+    const submitThreads = vi.fn(async () => undefined);
+    const cache = mount(createStore(SessionCacheStore));
+    const store = mount(createStore(MessageCommentsStore, {
+      client: { createReviewThread } as unknown as DesktopClient,
+      sessionCache: cache,
+      reviews: () => ({ submitThreads, threadStreaming: () => false, resolveThread: vi.fn() }) as unknown as ReviewsStore,
+      context: () => ({ workspacePath: "/project", sessionId: "session-1" }),
+      reportError: vi.fn()
+    }));
+
+    await expect(store.createThread({ messageId: "assistant-1", entryId: "entry-1", selectedText: "important", startOffset: 6, endOffset: 15, contextBefore: "Alpha ", contextAfter: " detail" }, "Why?")).resolves.toBe("thread-1");
+
+    expect(createReviewThread).toHaveBeenCalledWith(expect.objectContaining({
+      workspacePath: "/project",
+      sessionId: "session-1",
+      anchor: expect.objectContaining({ view: "message", messageId: "assistant-1", entryId: "entry-1", startOffset: 6, endOffset: 15 })
+    }));
+    expect(submitThreads).toHaveBeenCalledWith(["thread-1"]);
+    expect(store.threadsForMessage("assistant-1")).toHaveLength(1);
+
+    store[Symbol.dispose]();
+    cache[Symbol.dispose]();
+  });
+});
