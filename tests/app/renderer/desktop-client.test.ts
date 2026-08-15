@@ -42,7 +42,7 @@ describe("desktop client", () => {
     await client.reloadPi({ operationId, workspacePath: "/project", sessionId: "session" });
 
     expect(desktop.request).toHaveBeenCalledWith({ type: "respond-workspace-trust", requestId: operationId, path: "/project", approved: true });
-    expect(desktop.request).toHaveBeenCalledWith({ type: "open-workspace", requestId: operationId, path: "/project", newSession: false, sessionId: undefined, sessionFile: undefined });
+    expect(desktop.request).toHaveBeenCalledWith({ type: "open-workspace", requestId: operationId, path: "/project", newSession: false, sessionId: undefined });
     expect(desktop.request).toHaveBeenCalledWith({ type: "inspect-changes", requestId: operationId, workspacePath: "/project", sessionId: "session" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "get-changelog", requestId: operationId, workspacePath: "/project", sessionId: "session" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "reload-pi", requestId: operationId, workspacePath: "/project", sessionId: "session" });

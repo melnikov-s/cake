@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { desktopEventSchema, desktopRequestSchema, desktopResponseSchema } from "../../../src/ipc/desktop-ipc";
+import { windowViewStateSchema } from "../../../src/ipc/session-contract";
 
 describe("process IPC", () => {
   it("accepts session lifecycle and prompt requests", () => {
@@ -75,5 +76,22 @@ describe("process IPC", () => {
   it("rejects malformed project and UI requests", () => {
     expect(desktopRequestSchema.safeParse({ type: "open-workspace", requestId: "bad", path: "/project" }).success).toBe(false);
     expect(desktopRequestSchema.safeParse({ type: "respond-ui", requestId: crypto.randomUUID(), uiRequestId: "bad", cancelled: false }).success).toBe(false);
+  });
+
+  it("persists session selection without an absolute Pi session filename", () => {
+    expect(windowViewStateSchema.parse({
+      projectPath: "/project",
+      selectedSessionId: "session",
+      selectedSessionFile: "/legacy/pi/session.jsonl"
+    })).toEqual({
+      projectPath: "/project",
+      selectedSessionId: "session",
+      recentProjectPaths: [],
+      draft: "",
+      theme: "system",
+      thinkingExpanded: false,
+      sessionSearch: "",
+      draftsBySession: {}
+    });
   });
 });

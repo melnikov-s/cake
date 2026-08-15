@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   cakePluginAuthoringSkillPath,
+  cakeWorkspaceSessionDirectory,
   createCakeRuntime,
   createFoundationRuntime,
   createLiveMessageProjector,
@@ -51,9 +52,10 @@ describe("Pi 0.84.0 foundation contract", () => {
   it("keeps session listing alive when Pi's first-message title exceeds Cake's IPC limit", async () => {
     const directory = await createTemporaryDirectory();
     const sessionDir = join(directory, "sessions");
+    const workspaceSessionDir = cakeWorkspaceSessionDirectory(directory, sessionDir);
     const timestamp = new Date().toISOString();
-    await mkdir(sessionDir, { recursive: true });
-    await writeFile(join(sessionDir, "long-title.jsonl"), [
+    await mkdir(workspaceSessionDir, { recursive: true });
+    await writeFile(join(workspaceSessionDir, "long-title.jsonl"), [
       { type: "session", version: 3, id: "long-title", timestamp, cwd: directory },
       { type: "message", id: "user-1", parentId: null, timestamp, message: { role: "user", content: [{ type: "text", text: "x".repeat(2_048) }], timestamp: Date.now() } }
     ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
@@ -439,7 +441,8 @@ describe("S1 Pi runtime", () => {
     const directory = await createTemporaryDirectory();
     const agentDir = join(directory, "agent");
     const sessionDir = join(directory, "sessions");
-    const sessionFile = join(sessionDir, "deep-session.jsonl");
+    const workspaceSessionDir = cakeWorkspaceSessionDirectory(directory, sessionDir);
+    const sessionFile = join(workspaceSessionDir, "deep-session.jsonl");
     const sessionId = crypto.randomUUID();
     const timestamp = new Date().toISOString();
     const entries: object[] = [{ type: "session", version: 3, id: sessionId, timestamp, cwd: directory }];
@@ -452,7 +455,7 @@ describe("S1 Pi runtime", () => {
         message: { role: "user", content: `Message ${index}`, timestamp: Date.now() + index }
       });
     }
-    await mkdir(sessionDir, { recursive: true });
+    await mkdir(workspaceSessionDir, { recursive: true });
     await writeFile(sessionFile, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
 
     const runtime = await createCakeRuntime({

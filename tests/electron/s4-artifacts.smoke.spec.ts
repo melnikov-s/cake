@@ -41,7 +41,7 @@ test("presents durable artifacts, sorts a table, resolves a form, and isolates H
     await expect(page.locator('[data-artifact-id="cake-s4-diagram"] iframe')).toBeVisible();
     await expect.poll(async () => {
       const state = JSON.parse(await readFile(join(userData, "window-state.json"), "utf8")) as { selectedSessionId?: string; selectedSessionFile?: string };
-      return Boolean(state.selectedSessionId && state.selectedSessionFile);
+      return Boolean(state.selectedSessionId && !state.selectedSessionFile);
     }).toBe(true);
 
     await application.close(); application = undefined;

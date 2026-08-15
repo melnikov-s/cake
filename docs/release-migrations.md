@@ -1,5 +1,12 @@
 # Agent-facing release migrations
 
+## 2026-08-14 — Session selection persistence
+
+- `WindowViewState.selectedSessionFile` and the renderer `openWorkspace`
+  `sessionFile` input were removed. Persist and reopen workspace sessions by
+  `selectedSessionId`; Electron main resolves the authoritative Pi JSONL file
+  beneath Cake's configured session root.
+
 ## 2026-08-13 — Persistent global chat
 
 - `RootStore.globalChatStore` now owns Cake's application-level global-chat

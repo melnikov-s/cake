@@ -128,7 +128,7 @@ export class PiWorkspaceDriver {
       void this.run(command.requestId, async () => {
         this.trusted ||= this.isTrusted();
         const existing = command.sessionId ? this.runtimes.get(command.sessionId) : undefined;
-        const runtime = existing ?? await this.createRuntime(command.newSession, command.sessionId, command.sessionFile);
+        const runtime = existing ?? await this.createRuntime(command.newSession, command.sessionId);
         this.emit({ type: "session-snapshot", requestId: command.requestId, snapshot: await runtime.snapshot(command.requestId) });
       });
       return;

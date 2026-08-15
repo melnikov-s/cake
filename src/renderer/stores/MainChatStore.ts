@@ -34,7 +34,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
   projectPath: string | undefined;
   selectedSessionId: string | undefined;
   pendingTrustPath: string | undefined;
-  private pendingOpen: { inspectOperationId: string; path: string; newSession: boolean; sessionId?: string; sessionFile?: string } | undefined;
+  private pendingOpen: { inspectOperationId: string; path: string; newSession: boolean; sessionId?: string } | undefined;
   private activeOpenOperationId: string | undefined;
   private activeOpenTarget: { path: string; sessionId?: string; newSession: boolean } | undefined;
   private activeOpenExpectsEmpty = false;
@@ -156,7 +156,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
       for (const sessionId of Object.keys(this.draftsBySession)) delete this.draftsBySession[sessionId];
       Object.assign(this.draftsBySession, state.draftsBySession);
       this.hydrated = true;
-      if (state.projectPath) await this.inspectPath(state.projectPath, false, state.selectedSessionId, state.selectedSessionFile);
+      if (state.projectPath) await this.inspectPath(state.projectPath, false, state.selectedSessionId);
     } catch (error) {
       if (this.signal.aborted) return;
       this.hydrated = true;
@@ -168,7 +168,6 @@ export class MainChatStore extends Store<MainChatStoreProps> {
     return {
       projectPath: this.projectPath,
       selectedSessionId: this.session?.sessionId,
-      selectedSessionFile: this.session?.sessionFile,
       recentProjectPaths: this.sidebar.recentProjectPaths.slice(),
       draft: this.draft,
       theme: this.settings.theme,
@@ -298,12 +297,12 @@ export class MainChatStore extends Store<MainChatStoreProps> {
     return true;
   }
 
-  private async inspectPath(path: string, newSession = false, sessionId?: string, sessionFile?: string) {
+  private async inspectPath(path: string, newSession = false, sessionId?: string) {
     const revision = ++this.openRevision;
     const operationId = this.startOperation();
     this.extensionUi.clear();
     this.pendingTrustPath = undefined;
-    this.pendingOpen = { inspectOperationId: operationId, path, newSession, sessionId, sessionFile };
+    this.pendingOpen = { inspectOperationId: operationId, path, newSession, sessionId };
     try {
       await this.client.inspectWorkspace({ operationId, path });
     } catch (error) {
@@ -327,10 +326,10 @@ export class MainChatStore extends Store<MainChatStoreProps> {
       this.pendingOpen = undefined;
       return;
     }
-    await this.openPath(pending.path, pending.newSession, pending.sessionId, pending.sessionFile);
+    await this.openPath(pending.path, pending.newSession, pending.sessionId);
   }
 
-  private async openPath(path: string, newSession = false, sessionId?: string, sessionFile?: string) {
+  private async openPath(path: string, newSession = false, sessionId?: string) {
     if (this.artifactInteractions.request) await this.artifactInteractions.respond(undefined, true);
     const revision = ++this.openRevision;
     const operationId = this.startOperation();
@@ -343,7 +342,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
     this.changes.reset();
     this.browse.close();
     try {
-      await this.client.openWorkspace({ operationId, path, newSession, sessionId, sessionFile });
+      await this.client.openWorkspace({ operationId, path, newSession, sessionId });
       void this.client.registerProject(path, this.sidebar.nameFromPath(path)).then((state) => this.applyApplicationState(state)).catch((error) => this.setError(error));
     } catch (error) {
       if (revision === this.openRevision) this.setError(error);
@@ -539,7 +538,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
       }
       if (event.state === "ready" && this.reopenAfterAgentRestart && this.projectPath && this.session) {
         this.reopenAfterAgentRestart = false;
-        void this.inspectPath(this.projectPath, false, this.session.sessionId, this.session.sessionFile);
+        void this.inspectPath(this.projectPath, false, this.session.sessionId);
       }
       return;
     }
@@ -549,7 +548,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
       if (!pending || pending.inspectOperationId !== event.operationId) return;
       if (event.trustRequired) this.pendingTrustPath = event.path;
       else {
-        void this.openPath(event.path, pending.newSession, pending.sessionId, pending.sessionFile);
+        void this.openPath(event.path, pending.newSession, pending.sessionId);
       }
       return;
     }

@@ -89,6 +89,13 @@ export function inspectWorkspace(path: string) {
   return { path, trustRequired: hasTrustRequiringProjectResources(path) };
 }
 
+/** Mirror Pi's documented per-workspace directory layout beneath Cake's session root. */
+export function cakeWorkspaceSessionDirectory(cwd: string, sessionRoot: string) {
+  const resolvedCwd = resolve(cwd);
+  const safePath = `--${resolvedCwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
+  return join(resolve(sessionRoot), safePath);
+}
+
 export async function suggestProjectFiles(options: { cwd: string; prefix: string; agentDir: string; fdPath?: string }): Promise<FileSuggestion[]> {
   const installedFd = join(options.agentDir, "bin", process.platform === "win32" ? "fd.exe" : "fd");
   const provider = new CombinedAutocompleteProvider([], options.cwd, options.fdPath ?? (existsSync(installedFd) ? installedFd : "fd"));
@@ -98,7 +105,7 @@ export async function suggestProjectFiles(options: { cwd: string; prefix: string
 }
 
 export async function listWorkspaceSessions(cwd: string, sessionDir: string): Promise<SessionSummary[]> {
-  const sessions = await SessionManager.list(cwd, sessionDir);
+  const sessions = await SessionManager.list(cwd, cakeWorkspaceSessionDirectory(cwd, sessionDir));
   const idsByPath = new Map(sessions.map((item) => [item.path, item.id]));
   return sessions.map((item) => ({
     id: item.id,
@@ -112,10 +119,11 @@ export async function listWorkspaceSessions(cwd: string, sessionDir: string): Pr
 }
 
 export async function loadWorkspaceSessionPreview(cwd: string, sessionId: string, sessionDir: string): Promise<SessionPreview | undefined> {
-  const sessions = await SessionManager.list(cwd, sessionDir);
+  const workspaceSessionDir = cakeWorkspaceSessionDirectory(cwd, sessionDir);
+  const sessions = await SessionManager.list(cwd, workspaceSessionDir);
   const target = sessions.find((session) => session.id === sessionId);
   if (!target) return undefined;
-  const manager = SessionManager.open(target.path, sessionDir, cwd);
+  const manager = SessionManager.open(target.path, workspaceSessionDir, cwd);
   return {
     workspacePath: cwd,
     sessionId,
@@ -950,22 +958,25 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     extensionFactories: [createCakeArtifactExtension({ persistArtifact, requestArtifact }), commandCatalogExtension]
   });
   await resourceLoader.reload({ resolveProjectTrust: async () => options.trusted });
-  const availableSessions = await SessionManager.list(options.cwd, options.sessionDir);
-  const allowedSessionRoot = resolve(options.sessionDir);
+  const sessionDir = options.globalControl
+    ? resolve(options.sessionDir)
+    : cakeWorkspaceSessionDirectory(options.cwd, options.sessionDir);
+  const availableSessions = await SessionManager.list(options.cwd, sessionDir);
+  const allowedSessionRoot = sessionDir;
   let directSession: SessionManager | undefined;
   if (options.sessionFile) {
     assertSessionPath(options.sessionFile, allowedSessionRoot, "Session file");
-    directSession = SessionManager.open(options.sessionFile, options.sessionDir, options.cwd);
+    directSession = SessionManager.open(options.sessionFile, sessionDir, options.cwd);
   }
   const requestedSession = options.sessionId
     ? availableSessions.find((item) => item.id === options.sessionId)
     : undefined;
   if (options.sessionId && !requestedSession && !directSession) throw new Error("That session is no longer available");
   const sessionManager = options.newSession
-    ? SessionManager.create(options.cwd, options.sessionDir)
+    ? SessionManager.create(options.cwd, sessionDir)
     : directSession ?? (requestedSession
-      ? SessionManager.open(requestedSession.path, options.sessionDir, options.cwd)
-      : SessionManager.continueRecent(options.cwd, options.sessionDir));
+      ? SessionManager.open(requestedSession.path, sessionDir, options.cwd)
+      : SessionManager.continueRecent(options.cwd, sessionDir));
   const { session, extensionsResult, modelFallbackMessage } = await createAgentSession({
     cwd: options.cwd,
     agentDir,

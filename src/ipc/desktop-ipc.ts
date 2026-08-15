@@ -89,8 +89,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     requestId: z.uuid(),
     path: z.string().max(4_096),
     newSession: z.boolean().default(false),
-    sessionId: z.string().min(1).max(256).optional(),
-    sessionFile: z.string().max(4_096).optional()
+    sessionId: z.string().min(1).max(256).optional()
   }),
   z.object({ type: z.literal("prompt"), requestId: z.uuid(), text: z.string().max(262_144), delivery: z.enum(["prompt", "steer", "follow-up"]), attachments: z.array(attachmentSchema).max(20), workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }).refine((request) => Boolean(request.text.trim() || request.attachments.length), { message: "A prompt requires text or an attachment" }),
   z.object({ type: z.literal("submit-review-threads"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), threadIds: z.array(z.string().min(1).max(256)).min(1).max(100), commentCount: z.number().int().positive().max(1_000_000), instruction: z.string().max(262_144).optional(), model: z.object({ provider: z.string().max(256), id: z.string().max(512) }).optional() }),
