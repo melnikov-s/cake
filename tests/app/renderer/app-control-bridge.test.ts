@@ -38,7 +38,16 @@ function createBridge() {
     abortSession,
     renameSession,
     setSessionArchived,
-    setSessionModel
+    setSessionModel,
+    customizationState: () => undefined,
+    plugins: () => [],
+    listCustomizationFiles: vi.fn(async () => ({ workingRevision: "a".repeat(64), buildRevision: "a".repeat(64), files: [] })),
+    readCustomizationFile: vi.fn(async () => "source"),
+    writeCustomizationFile: vi.fn(async () => ({ workingRevision: "b".repeat(64), buildRevision: "b".repeat(64), files: [] })),
+    buildCustomization: vi.fn(async () => ({ revision: "a".repeat(64), diagnostics: [], activating: true })),
+    rollbackCustomization: vi.fn(async () => ({ schemaVersion: 1 as const, recoveryRequired: false, diagnostics: [], updatedAt: new Date(0).toISOString() })),
+    useFactoryCustomization: vi.fn(async () => ({ schemaVersion: 1 as const, recoveryRequired: false, diagnostics: [], updatedAt: new Date(0).toISOString() })),
+    setPluginEnabled: vi.fn(async () => [])
   });
   return { bridge, openSession, readSession, createSession, sendSessionMessage, abortSession, renameSession, setSessionArchived, setSessionModel };
 }
@@ -47,6 +56,14 @@ describe("AppControlBridge", () => {
   it("publishes the curated tool catalog", () => {
     expect(appControlToolCatalog.map((tool) => tool.name)).toEqual([
       "get_app_state",
+      "get_customization_state",
+      "list_customization_files",
+      "read_customization_file",
+      "write_customization_file",
+      "build_customization",
+      "rollback_customization",
+      "use_factory_customization",
+      "set_plugin_enabled",
       "get_session_status",
       "open_session",
       "list_sessions",

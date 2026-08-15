@@ -32,7 +32,9 @@ export default defineConfig({
     },
     resolve: {
       alias: {
-        "@": resolve(import.meta.dirname, "src/renderer")
+        "@": resolve(import.meta.dirname, "src/renderer"),
+        "cake": resolve(import.meta.dirname, "src/renderer/cake.ts"),
+        "virtual:cake-global-scene": resolve(import.meta.dirname, "src/renderer/factory-global-scene.tsx")
       }
     },
     plugins: [react(), tailwindcss()],

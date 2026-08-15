@@ -49,6 +49,33 @@ function maximumObjectDepth(value: unknown) {
 }
 
 describe("Pi 0.84.0 foundation contract", () => {
+  it("extends Pi's project system prompt with Cake desktop context", async () => {
+    const directory = await createTemporaryDirectory();
+    const runtime = await createCakeRuntime({
+      cwd: directory,
+      agentDir: join(directory, "agent"),
+      sessionDir: join(directory, "sessions"),
+      trusted: false,
+      newSession: true,
+      requestUi: async () => undefined,
+      onEvent: () => undefined
+    });
+    runtimes.push(runtime);
+
+    if (!runtime.getReviewParentContext) throw new Error("Expected a project runtime");
+    const { systemPrompt } = runtime.getReviewParentContext();
+
+    expect(systemPrompt).toContain("You are an expert coding assistant operating inside pi");
+    expect(systemPrompt).toContain("## Cake desktop environment");
+    expect(systemPrompt).toContain("Mermaid diagrams directly in the transcript");
+    expect(systemPrompt).toContain("fenced cake-html block");
+    expect(systemPrompt).toContain("PowerPoint presentations, PDFs, spreadsheets");
+    expect(systemPrompt).toContain("Use ui_request only when the running turn must block");
+    expect(systemPrompt).toContain("cake.request/v1");
+    expect(systemPrompt).toContain("Inline widgets have no network, parent, Cake, Node, Electron, or filesystem access");
+    expect(systemPrompt).toContain("use Markdown links with absolute paths so Cake can open them");
+  });
+
   it("keeps session listing alive when Pi's first-message title exceeds Cake's IPC limit", async () => {
     const directory = await createTemporaryDirectory();
     const sessionDir = join(directory, "sessions");
@@ -528,7 +555,7 @@ describe("S3 Pi ecosystem compatibility", () => {
       expect(snapshot.commands).toEqual(expect.arrayContaining([expect.objectContaining({ name: "cake-only" })]));
       expect(snapshot.compatibility.resources).toEqual(expect.arrayContaining([
         expect.objectContaining({ kind: "skill", name: "cake-plugin-authoring" }),
-        expect.objectContaining({ kind: "extension", tools: expect.arrayContaining(["ui_present", "ui_request"]) })
+        expect.objectContaining({ kind: "extension", tools: ["ui_request"] })
       ]));
       expect(snapshot.compatibility.resources.some((resource) => resource.path?.startsWith(standaloneAgent))).toBe(false);
     } finally {

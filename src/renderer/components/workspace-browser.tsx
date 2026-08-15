@@ -8,6 +8,7 @@ import type { BrowseStore } from "../stores/BrowseStore";
 import type { ReviewsStore } from "../stores/ReviewsStore";
 import { ReviewComposer, ReviewThreadCard } from "./change-explorer";
 import { Button } from "./ui/button";
+import { PanelResizeHandle } from "./panel-resize-handle";
 
 type HighlightResult = ReturnType<typeof code.highlight>;
 type HighlightTokens = NonNullable<HighlightResult>["tokens"];
@@ -140,13 +141,16 @@ function threadPreview(thread: ReviewThreadModel) {
 }
 
 export const WorkspaceBrowser = observer(function WorkspaceBrowser({ store, reviews, chat, onClose }: { store: BrowseStore; reviews: ReviewsStore; chat: MainChatStore; onClose?: () => void }) {
+  const [sidebarWidth, setSidebarWidth] = useState(300);
+  const [resizingPanel, setResizingPanel] = useState(false);
   const close = onClose ?? (() => store.close());
   const tree = useMemo(() => projectTree(store.files), [store.files]);
   const path = typeof store.path === "string" ? store.path : undefined;
   const threads = reviews.threads.filter((thread) => thread.anchor.view === "file").sort((left, right) => Number(left.status === "resolved") - Number(right.status === "resolved"));
   const pendingCount = reviews.pendingCommentCount;
-  return <main className="change-explorer workspace-browser">
+  return <main className={`change-explorer workspace-browser ${resizingPanel ? "is-resizing" : ""}`} style={{ "--explorer-sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
     <section className="change-explorer-file"><header><div><small>Project browser · {chat.projectName}</small><h1>{path ?? "Select a file"}</h1></div></header>{path ? <SourceFile path={path} store={store} reviews={reviews} /> : <div className="change-explorer-file-state"><strong>{store.loading ? "Loading project…" : "No files to browse"}</strong><span>{store.loading ? "Building the project tree." : "This project does not contain any visible files."}</span></div>}</section>
+    <PanelResizeHandle className="explorer-resize-handle" label="Resize project files panel" value={sidebarWidth} min={240} max={Math.max(240, window.innerWidth - 360)} edge="right" onChange={setSidebarWidth} onResizeStart={() => setResizingPanel(true)} onResizeEnd={() => setResizingPanel(false)} />
     <aside className="change-explorer-tree"><header><div><strong>Project files</strong><small>{store.loading ? "Loading…" : `${store.files.length} files`}</small></div><div className="change-explorer-actions">{pendingCount > 0 && <Button size="sm" onClick={() => void reviews.submitPending()}>Send ({pendingCount})</Button>}<Button variant="ghost" size="sm" onClick={close}>Done</Button></div></header><div className="change-explorer-sidebar-body"><nav aria-label="Project files"><ProjectTree nodes={tree.children} selectedPath={path} onSelect={(file) => store.select(file)} /></nav><section className="review-thread-index" aria-label="Code questions"><header><strong>Questions</strong><span>{threads.length}</span></header>{threads.length === 0 ? <p>Select a line or some code to ask Cake about it.</p> : <ol>{threads.map((thread) => <li key={thread.id}><button className={`${thread.status === "resolved" ? "resolved" : ""} ${reviews.activeThread?.id === thread.id ? "active" : ""}`} onClick={() => { reviews.activeThreadId = thread.id; store.focusPath(thread.anchor.path); }}><i className={thread.status === "resolved" ? "resolved" : thread.pending ? "pending" : "replied"} /><span><strong>{threadPreview(thread)}</strong><small>{thread.anchor.path} · L{thread.anchor.start.newLine ?? thread.anchor.start.oldLine}</small></span><em>{thread.status === "resolved" ? "Resolved" : thread.pending ? "Pending" : "Replied"}</em></button></li>)}</ol>}</section></div></aside>
   </main>;
 });

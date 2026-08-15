@@ -29,6 +29,13 @@ export class RendererErrorBoundary extends Component<RendererErrorBoundaryProps,
 
   componentDidCatch(_error: Error, info: ErrorInfo) {
     this.setState({ componentStack: info.componentStack ?? undefined });
+    if (typeof __CAKE_CUSTOMIZATION_REVISION__ !== "undefined" && __CAKE_CUSTOMIZATION_REVISION__) {
+      void window.cake?.request({
+        type: "customization-runtime-failed",
+        revision: __CAKE_CUSTOMIZATION_REVISION__,
+        message: errorDetails(_error, info.componentStack ?? undefined)
+      });
+    }
   }
 
   render() {

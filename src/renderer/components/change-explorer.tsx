@@ -5,6 +5,7 @@ import type { ChangedFile } from "../../ipc/session-contract";
 import type { ReviewAnchor, ReviewPoint } from "../../ipc/review-contract";
 import { parseDiff } from "./ai-elements/diff-view";
 import { Button } from "./ui/button";
+import { PanelResizeHandle } from "./panel-resize-handle";
 import type { MainChatStore } from "../stores/MainChatStore";
 import type { ChangesStore } from "../stores/ChangesStore";
 import type { ReviewsStore } from "../stores/ReviewsStore";
@@ -308,6 +309,8 @@ function FullFile({ change, reviews, browse, store }: { change: ChangedFile; rev
 }
 
 export const ChangeExplorer = observer(function ChangeExplorer({ store, reviews, browse, chat, onClose }: { store: ChangesStore; reviews: ReviewsStore; browse: BrowseStore; chat: MainChatStore; onClose?: () => void }) {
+  const [sidebarWidth, setSidebarWidth] = useState(300);
+  const [resizingPanel, setResizingPanel] = useState(false);
   const close = onClose ?? (() => store.close());
   const [view, setView] = useState<"diff" | "file">("diff");
   const change = store.selected;
@@ -330,11 +333,12 @@ export const ChangeExplorer = observer(function ChangeExplorer({ store, reviews,
     scrollToReviewThread(activeChangeThread.id);
   }, [change?.path, activeChangeThread?.id, activeChangeThread?.anchor.view]);
   if (!change) return <main className="change-explorer-empty"><div><small>{chat.sessionTitle}</small><h1>{store.error ? "Unable to inspect changes" : store.loading ? "Loading session changes…" : "No session changes"}</h1><p>{store.error ?? (store.loading ? "Cake is comparing the session's Git checkpoints." : "The session's latest checkpoint matches its starting checkpoint.")}</p><Button variant="outline" onClick={close}>Return to chat</Button></div></main>;
-  return <main className="change-explorer">
+  return <main className={`change-explorer ${resizingPanel ? "is-resizing" : ""}`} style={{ "--explorer-sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
     <section className="change-explorer-file">
       <header><div><small>Session changes · {chat.sessionTitle}</small><h1>{change.previousPath ? `${change.previousPath} → ${change.path}` : change.path}</h1></div><div className="change-explorer-view-toggle" role="group" aria-label="File view"><button type="button" className={shownView === "diff" ? "active" : ""} aria-pressed={shownView === "diff"} onClick={() => setView("diff")}>Diff</button><button type="button" className={shownView === "file" ? "active" : ""} aria-pressed={shownView === "file"} disabled={change.status === "deleted"} onClick={() => setView("file")}>Full file</button></div><span><b>+{change.additions}</b><i>−{change.deletions}</i></span></header>
       {shownView === "diff" ? <HighlightedDiff change={change} reviews={reviews} store={store} /> : <FullFile change={change} reviews={reviews} browse={browse} store={store} />}
     </section>
+    <PanelResizeHandle className="explorer-resize-handle" label="Resize changed files panel" value={sidebarWidth} min={240} max={Math.max(240, window.innerWidth - 360)} edge="right" onChange={setSidebarWidth} onResizeStart={() => setResizingPanel(true)} onResizeEnd={() => setResizingPanel(false)} />
     <aside className="change-explorer-tree"><header><div><strong>Changed files</strong><small>{store.changes.length} {store.changes.length === 1 ? "file" : "files"}</small></div><div className="change-explorer-actions">{pendingCount > 0 && <Button size="sm" onClick={() => void reviews.submitPending()}>Send ({pendingCount})</Button>}<Button variant="ghost" size="sm" onClick={close}>Done</Button></div></header><div className="change-explorer-sidebar-body"><nav aria-label="Changed files"><ChangeTree nodes={tree.children} selectedPath={change.path} onSelect={(path) => store.select(path)} /></nav><section className="review-thread-index" aria-label="Review threads"><header><strong>Comments</strong><span>{changeThreads.length}</span></header>{changeThreads.length === 0 ? <p>No comments yet.</p> : <ol>{indexedThreads.map((thread) => {
       const state = thread.status === "resolved" ? "Resolved" : reviews.threadStreaming(thread.id) ? "Working" : thread.pending ? "Pending" : "Replied";
       return <li key={thread.id}><button className={`${thread.status === "resolved" ? "resolved" : ""} ${reviews.activeThread?.id === thread.id ? "active" : ""}`} onClick={() => focusThread(thread.id)}><i className={state.toLowerCase()} /><span><strong>{threadPreview(thread)}</strong><small>{threadLocation(thread)}</small></span><em>{state}</em></button></li>;

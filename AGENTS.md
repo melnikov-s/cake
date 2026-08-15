@@ -61,6 +61,12 @@ state, and development boundaries behind these principles.
 - Remove replaced APIs and implementations outright. Do not add deprecated aliases, compatibility shims, transitional forwarding facades, legacy import paths, migrations, or fallback behavior for code being replaced.
 - Prefer updating every caller, test, and document in the same change over carrying an old interface forward.
 
+## UI composition and reuse
+
+- Before introducing any UI element, first inspect the existing renderer components and compose the closest existing primitive or product component. Start with `src/renderer/components`, especially `components/ui` for primitives and `components/ai-elements` for conversation, Markdown, code, tool, and source surfaces; also inspect `src/renderer/cake.ts` for the components already exposed to plugins.
+- Do not recreate an existing control, source viewer, syntax highlighter, layout primitive, or interaction under a new name. Extend the authoritative component when a shared capability is missing, then update all consumers that need it.
+- Add a new component only when the element has a genuinely distinct responsibility that cannot be expressed by composing or extending the existing component set.
+
 ## Renderer state architecture
 
 - Treat each Store as a stateful behavioral component with one cohesive product or workflow responsibility.

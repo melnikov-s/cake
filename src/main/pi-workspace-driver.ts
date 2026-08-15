@@ -53,6 +53,7 @@ export interface PiWorkspaceDriverOptions {
   captureCheckpoint?: typeof captureWorkspaceCheckpoint;
   openExternal?: (url: string) => Promise<void>;
   isTrusted?: () => boolean;
+  pluginResources?: { skills: string[]; prompts: string[]; extensions: string[] };
 }
 
 export class PiWorkspaceDriver {
@@ -67,6 +68,7 @@ export class PiWorkspaceDriver {
   private readonly captureCheckpoint: typeof captureWorkspaceCheckpoint;
   private readonly openExternal: NonNullable<PiWorkspaceDriverOptions["openExternal"]> | undefined;
   private readonly isTrusted: () => boolean;
+  private readonly pluginResources: { skills: string[]; prompts: string[]; extensions: string[] };
   private readonly runtimes = new Map<string, CakeRuntime>();
   private readonly pendingUi = new Map<string, PendingUi>();
   private readonly pendingArtifacts = new Map<string, PendingArtifact>();
@@ -86,6 +88,7 @@ export class PiWorkspaceDriver {
     this.openExternal = options.openExternal;
     this.captureCheckpoint = options.captureCheckpoint ?? captureWorkspaceCheckpoint;
     this.isTrusted = options.isTrusted ?? (() => false);
+    this.pluginResources = options.pluginResources ?? { skills: [], prompts: [], extensions: [] };
     this.artifactRepository = options.artifactRepository ?? {
       async upsert(workspacePath, artifact) {
         const now = new Date().toISOString();
@@ -250,7 +253,10 @@ export class PiWorkspaceDriver {
   }
 
   private async persistArtifact(artifact: CakeArtifactV1) {
-    const record = await this.artifactRepository.upsert(this.workspacePath, artifact);
+    const persistedArtifact = artifact.kind === "request"
+      ? { ...artifact, revision: ((await this.artifactRepository.get(this.workspacePath, artifact.sessionId, artifact.id))?.artifact.revision ?? 0) + 1 }
+      : artifact;
+    const record = await this.artifactRepository.upsert(this.workspacePath, persistedArtifact);
     const activeSessionId = this.operationContext.getStore()?.sessionId;
     if (activeSessionId && activeSessionId !== artifact.sessionId) await this.artifactRepository.linkSession(record, activeSessionId);
     this.emit({ type: "artifact-updated", record });
@@ -300,6 +306,7 @@ export class PiWorkspaceDriver {
       newSession,
       sessionId,
       sessionFile,
+      pluginResources: this.pluginResources,
       requestUi: (request) => this.requestUi(request),
       persistArtifact: (artifact) => this.persistArtifact(artifact),
       requestArtifact: (record, signal) => this.requestArtifact(record, signal),

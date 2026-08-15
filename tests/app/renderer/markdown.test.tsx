@@ -5,7 +5,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Streamdown } from "streamdown";
-import { Markdown } from "../../../src/renderer/components/ai-elements/markdown";
+import { fencedCode, Markdown } from "../../../src/renderer/components/ai-elements/markdown";
 
 vi.mock("streamdown", () => ({
   Streamdown: vi.fn(({ children }: { children: string }) => <div>{children}</div>)
@@ -41,5 +41,9 @@ describe("Markdown", () => {
     const secondBlocks = secondProps.parseMarkdownIntoBlocksFn?.("changing content");
     expect(secondBlocks).toBe(firstBlocks);
     expect(secondBlocks).toEqual([]);
+  });
+
+  it("creates a safe highlighted fence even when source contains backticks", () => {
+    expect(fencedCode("const sample = ```nested```;", "tsx")).toBe("````tsx\nconst sample = ```nested```;\n````");
   });
 });

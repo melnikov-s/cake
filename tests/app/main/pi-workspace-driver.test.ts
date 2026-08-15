@@ -335,7 +335,8 @@ describe("PiWorkspaceDriver", () => {
     const events: DesktopEvent[] = [];
     let options: CakeRuntimeOptions | undefined;
     let response: unknown = "pending";
-    const artifact = { protocol: "cake.artifact/v1" as const, id: "form-1", sessionId: snapshot.sessionId, revision: 1, kind: "form" as const, payload: { fields: [{ id: "answer", label: "Answer", type: "text" as const, required: true }], submitLabel: "Send" }, fallback: { markdown: "Answer" }, interaction: { mode: "request" as const } };
+    const requestSpec = { protocol: "cake.request/v1" as const, id: "form-1", title: "Answer", responseSchema: { type: "object" as const }, view: { type: "form" as const, fields: [{ id: "answer", label: "Answer", type: "text" as const, required: true }], submitLabel: "Send" }, fallback: { markdown: "Answer" } };
+    const artifact = { protocol: "cake.artifact/v1" as const, id: requestSpec.id, sessionId: snapshot.sessionId, revision: 1, kind: "request" as const, payload: { request: requestSpec }, fallback: requestSpec.fallback, interaction: { mode: "request" as const, responseSchema: requestSpec.responseSchema } };
     const repository = {
       upsert: vi.fn(async (workspacePath: string, next: unknown) => ({ artifact: next as typeof artifact, workspacePath, digest: "a".repeat(64), createdAt: new Date(0).toISOString(), updatedAt: new Date(0).toISOString() })),
       get: vi.fn(async () => undefined),

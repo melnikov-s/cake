@@ -15,6 +15,8 @@ import type {
 } from "../ipc/session-contract";
 import type { ArtifactRecord } from "../ipc/artifact-contract";
 import type { ReviewAnchor, ReviewThread } from "../ipc/review-contract";
+import type { CustomizationState, PluginDiagnostic, PluginStatus } from "../plugin/plugin-contract";
+import type { CompiledInlineWidget, InlineWidgetCapability, InlineWidgetLanguage, RepairedInlineWidget } from "../ipc/inline-widget-contract";
 
 export type PiState = "starting" | "ready" | "stopped" | "failed";
 
@@ -53,15 +55,27 @@ export type DesktopClientEvent =
       options?: Array<{ id: string; label: string }>;
     }
   | { type: "operation-completed"; operationId: string }
-  | { type: "operation-failed"; operationId?: string; message: string };
+  | { type: "operation-failed"; operationId?: string; message: string }
+  | { type: "customization-state-changed"; state: CustomizationState };
 
 export interface DesktopClient {
   chooseProject(): Promise<string | undefined>;
   getHomeDirectory(): Promise<string>;
+  getCustomizationState(): Promise<CustomizationState>;
+  listCustomizationFiles(): Promise<{ workingRevision: string; buildRevision: string; files: string[] }>;
+  readCustomizationFile(path: string): Promise<string>;
+  writeCustomizationFile(path: string, content: string, expectedWorkingRevision: string): Promise<{ workingRevision: string; buildRevision: string; files: string[] }>;
+  buildCustomization(expectedBaseRevision?: string, request?: string, expectedSourceRevision?: string): Promise<{ revision: string; diagnostics: PluginDiagnostic[]; activating: boolean }>;
+  rollbackCustomization(): Promise<CustomizationState>;
+  useFactoryCustomization(): Promise<CustomizationState>;
+  listPlugins(): Promise<PluginStatus[]>;
+  setPluginEnabled(pluginId: string, enabled: boolean): Promise<PluginStatus[]>;
   chooseAttachments(): Promise<Attachment[]>;
   suggestFiles(workspacePath: string, prefix: string): Promise<FileSuggestion[]>;
   listWorkspaceFiles(workspacePath: string): Promise<string[]>;
   readWorkspaceFile(workspacePath: string, path: string): Promise<string>;
+  compileInlineWidget(language: InlineWidgetLanguage, source: string, capability: InlineWidgetCapability): Promise<CompiledInlineWidget>;
+  repairInlineWidget(input: { workspacePath: string; sessionId: string; language: InlineWidgetLanguage; capability: InlineWidgetCapability; source: string; context: string; diagnostic?: string; model?: { provider: string; id: string } }): Promise<RepairedInlineWidget>;
   loadWindowState(): Promise<WindowViewState>;
   saveWindowState(state: WindowViewState): Promise<void>;
   loadApplicationState(): Promise<ApplicationState>;
@@ -129,6 +143,7 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
   if (event.type === "ui-request") return { type: "ui-requested", operationId: event.requestId, uiRequestId: event.uiRequestId, kind: event.kind, title: event.title, message: event.message, placeholder: event.placeholder, initialValue: event.initialValue, multiline: event.multiline, options: event.options };
   if (event.type === "complete") return { type: "operation-completed", operationId: event.requestId };
   if (event.type === "fatal") return { type: "operation-failed", operationId: event.requestId, message: event.message };
+  if (event.type === "customization-state-changed") return event;
   return undefined;
 }
 
@@ -149,6 +164,51 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       if (response.type !== "home-directory") throw new Error("Cake could not resolve the home directory");
       return response.path;
     },
+    async getCustomizationState() {
+      const response = await bridge.request({ type: "get-customization-state" });
+      if (response.type !== "customization-state") throw new Error("Cake received invalid customization state");
+      return response.state;
+    },
+    async listCustomizationFiles() {
+      const response = await bridge.request({ type: "list-customization-files" });
+      if (response.type !== "customization-files") throw new Error("Cake returned invalid customization files");
+      return response;
+    },
+    async readCustomizationFile(path) {
+      const response = await bridge.request({ type: "read-customization-file", path });
+      if (response.type !== "customization-file") throw new Error("Cake returned invalid customization source");
+      return response.content;
+    },
+    async writeCustomizationFile(path, content, expectedWorkingRevision) {
+      const response = await bridge.request({ type: "write-customization-file", path, content, expectedWorkingRevision });
+      if (response.type !== "customization-files") throw new Error("Cake returned invalid customization files");
+      return response;
+    },
+    async buildCustomization(expectedBaseRevision, request, expectedSourceRevision) {
+      const response = await bridge.request({ type: "build-customization", expectedBaseRevision, expectedSourceRevision, request });
+      if (response.type !== "customization-build") throw new Error("Cake received invalid customization build results");
+      return response;
+    },
+    async rollbackCustomization() {
+      const response = await bridge.request({ type: "rollback-customization" });
+      if (response.type !== "customization-state") throw new Error("Cake could not roll back customization");
+      return response.state;
+    },
+    async useFactoryCustomization() {
+      const response = await bridge.request({ type: "use-factory-customization" });
+      if (response.type !== "customization-state") throw new Error("Cake could not switch to the factory scene");
+      return response.state;
+    },
+    async listPlugins() {
+      const response = await bridge.request({ type: "list-plugins" });
+      if (response.type !== "plugins-listed") throw new Error("Cake received an invalid plugin list");
+      return response.plugins;
+    },
+    async setPluginEnabled(pluginId, enabled) {
+      const response = await bridge.request({ type: "set-plugin-enabled", pluginId, enabled });
+      if (response.type !== "plugins-listed") throw new Error("Cake could not update the plugin");
+      return response.plugins;
+    },
     async chooseAttachments() {
       const response = await bridge.request({ type: "choose-attachments" });
       if (response.type !== "attachments-chosen") throw new Error("Cake received an invalid attachment response");
@@ -168,6 +228,16 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       const response = await bridge.request({ type: "read-workspace-file", workspacePath, path });
       if (response.type !== "workspace-file") throw new Error("Cake received invalid workspace file content");
       return response.content;
+    },
+    async compileInlineWidget(language, source, capability) {
+      const response = await bridge.request({ type: "compile-inline-widget", language, source, capability });
+      if (response.type !== "inline-widget-compiled") throw new Error("Cake could not compile the inline widget");
+      return response.widget;
+    },
+    async repairInlineWidget(input) {
+      const response = await bridge.request({ type: "repair-inline-widget", ...input });
+      if (response.type !== "inline-widget-repaired") throw new Error("Cake could not repair the inline widget");
+      return response.widget;
     },
     async loadWindowState() {
       const response = await bridge.request({ type: "load-window-state" });

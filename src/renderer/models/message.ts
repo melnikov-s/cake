@@ -18,6 +18,7 @@ export class MessageModel extends Model {
   @state name: string | undefined;
   @state input: string | undefined;
   @state output: string | undefined;
+  @state artifactId: string | undefined;
   @state filePath: string | undefined;
   @state diff: string | undefined;
   @state state: ToolState | undefined;
@@ -40,7 +41,7 @@ export class MessageModel extends Model {
       case "reasoning":
         return { id: this.id, kind: this.kind, text: this.text!, status: this.status as "streaming" | "complete" };
       case "tool":
-        return { id: this.id, kind: this.kind, name: this.name!, input: this.input!, output: this.output, filePath: this.filePath, diff: this.diff, state: this.state! };
+        return { id: this.id, kind: this.kind, name: this.name!, input: this.input!, output: this.output, artifactId: this.artifactId, filePath: this.filePath, diff: this.diff, state: this.state! };
       case "source":
         return { id: this.id, kind: this.kind, title: this.title!, url: this.url! };
       case "attachment":

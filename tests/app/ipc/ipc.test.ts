@@ -15,6 +15,11 @@ describe("process IPC", () => {
     expect(desktopRequestSchema.parse({ type: "suggest-files", workspacePath: "/project", prefix: "src/app" })).toEqual({ type: "suggest-files", workspacePath: "/project", prefix: "src/app" });
     expect(desktopRequestSchema.parse({ type: "list-workspace-files", workspacePath: "/project" })).toEqual({ type: "list-workspace-files", workspacePath: "/project" });
     expect(desktopRequestSchema.parse({ type: "read-workspace-file", workspacePath: "/project", path: "src/app.ts" })).toEqual({ type: "read-workspace-file", workspacePath: "/project", path: "src/app.ts" });
+    expect(desktopRequestSchema.parse({ type: "compile-inline-widget", language: "react", capability: "request", source: "export default () => <div />" })).toMatchObject({ language: "react", capability: "request" });
+    const widgetToken = "00000000-0000-4000-8000-000000000001";
+    expect(desktopResponseSchema.parse({ type: "inline-widget-compiled", widget: { token: widgetToken, url: `cake-widget://document/${widgetToken}` } })).toMatchObject({ widget: { token: widgetToken } });
+    expect(desktopResponseSchema.safeParse({ type: "inline-widget-compiled", widget: { token: widgetToken, url: "cake-widget://document/00000000-0000-4000-8000-000000000002" } }).success).toBe(false);
+    expect(desktopRequestSchema.parse({ type: "repair-inline-widget", workspacePath: "/project", sessionId: "session", language: "html", capability: "display", source: "<strong>Broken</strong>", context: "Explain the result" })).toMatchObject({ type: "repair-inline-widget", language: "html", capability: "display" });
     expect(desktopRequestSchema.parse({ type: "set-pi-setting", requestId, workspacePath: "/project", sessionId: "session", update: { key: "transport", value: "websocket" } })).toMatchObject({ update: { key: "transport", value: "websocket" } });
     expect(desktopRequestSchema.parse({ type: "set-pi-setting", requestId, workspacePath: "/project", sessionId: "session", update: { key: "skills", value: ["skills", "!skills/legacy"] } })).toMatchObject({ update: { key: "skills" } });
     expect(desktopRequestSchema.parse({ type: "reload-pi", requestId, workspacePath: "/project", sessionId: "session" })).toMatchObject({ type: "reload-pi", requestId });

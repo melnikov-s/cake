@@ -39,3 +39,9 @@ export function Markdown({ children, className, ...props }: MarkdownProps) {
     </Streamdown>
   );
 }
+
+export function fencedCode(source: string, language: string) {
+  const longestFence = Math.max(0, ...Array.from(source.matchAll(/`+/g), (match) => match[0].length));
+  const fence = "`".repeat(Math.max(3, longestFence + 1));
+  return `${fence}${language}\n${source}\n${fence}`;
+}

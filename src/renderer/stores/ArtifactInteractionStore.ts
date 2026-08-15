@@ -1,5 +1,5 @@
 import { Store } from "r-state-tree";
-import type { ArtifactRecord } from "../../ipc/artifact-contract";
+import { validateArtifactResponse, type ArtifactRecord } from "../../ipc/artifact-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 
 export interface ArtifactRequestState {
@@ -19,17 +19,22 @@ export interface ArtifactInteractionStoreProps {
 /** Owns blocking artifact interaction and artifact export behavior. */
 export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProps> {
   request: ArtifactRequestState | undefined;
+  responding = false;
 
   async respond(value?: unknown, cancelled = false) {
     const request = this.request;
-    if (!request) return;
-    this.request = undefined;
+    if (!request || this.responding) return;
     try {
+      if (!cancelled) validateArtifactResponse(request.record.artifact.interaction?.responseSchema, value);
+      this.responding = true;
       const context = this.props.sessionContext();
       if (!context) throw new Error("No active session");
       await this.props.client.respondToArtifact({ operationId: request.operationId, ...context, artifactRequestId: request.artifactRequestId, value, cancelled });
+      if (this.request === request) this.request = undefined;
     } catch (error) {
       this.props.reportError(error);
+    } finally {
+      this.responding = false;
     }
   }
 
@@ -45,6 +50,9 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
       this.request = event;
       return;
     }
-    if (event.type === "pi-state-changed" && (event.state === "failed" || event.state === "stopped")) this.request = undefined;
+    if (event.type === "pi-state-changed" && (event.state === "failed" || event.state === "stopped")) {
+      this.request = undefined;
+      this.responding = false;
+    }
   }
 }

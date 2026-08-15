@@ -103,4 +103,22 @@ describe("GlobalChatDriver", () => {
     await vi.waitFor(() => expect(events.filter((event) => event.type === "global-chat-snapshot")).toHaveLength(2));
     driver[Symbol.dispose]();
   });
+
+  it("waits for an active global-chat turn before refreshing recovery context", async () => {
+    const cakeRuntime = runtime();
+    let options!: CakeRuntimeOptions;
+    const driver = new GlobalChatDriver({
+      agentDir: "/cake/pi", sessionDir: "/cake/pi/global-chat/sessions", emit: () => undefined,
+      recoveryContext: () => "failed revision",
+      createRuntime: vi.fn(async (input) => { options = input; return cakeRuntime; })
+    });
+    driver.open(crypto.randomUUID(), [{ name: "get_customization_state", description: "Read customization" }]);
+    await vi.waitFor(() => expect(options).toBeDefined());
+    options.onEvent({ type: "streaming", sessionId: snapshot.sessionId, streaming: true });
+    driver.refreshRecoveryContext();
+    expect(cakeRuntime.dispose).not.toHaveBeenCalled();
+    options.onEvent({ type: "streaming", sessionId: snapshot.sessionId, streaming: false });
+    expect(cakeRuntime.dispose).toHaveBeenCalledOnce();
+    driver[Symbol.dispose]();
+  });
 });

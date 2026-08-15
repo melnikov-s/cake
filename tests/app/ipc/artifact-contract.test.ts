@@ -8,9 +8,9 @@ function markdown(markdown = "Hello") {
 describe("cake.artifact/v1 contract", () => {
   it("validates a bounded versioned artifact and rejects unsafe or oversized input", () => {
     expect(parseArtifactInput(markdown()).kind).toBe("markdown");
-    expect(parseArtifactInput({ ...markdown(), protocol: "cake.artifact/v2" })).toMatchObject({ protocol: "cake.artifact/v1", kind: "markdown", payload: { markdown: "Hello" } });
-    expect(parseArtifactInput({ ...markdown(), kind: "future-chart", payload: {} })).toMatchObject({ kind: "markdown", fallback: { markdown: "Hello" } });
-    expect(() => parseArtifactInput({ ...markdown(), kind: "html", payload: { html: "<p>x</p>" }, interaction: { mode: "request" } })).toThrow("Only form");
+    expect(() => parseArtifactInput({ ...markdown(), protocol: "cake.artifact/v2" })).toThrow();
+    expect(() => parseArtifactInput({ ...markdown(), kind: "future-chart", payload: {} })).toThrow();
+    expect(() => parseArtifactInput({ ...markdown(), kind: "html", payload: { html: "<p>x</p>" }, interaction: { mode: "request" } })).toThrow("Only request artifacts");
     expect(() => parseArtifactInput({ ...markdown(), kind: "media", payload: { mediaType: "image", src: "file:///etc/passwd" } })).toThrow("Media source");
     expect(() => parseArtifactInput(markdown("x".repeat(MAX_ARTIFACT_INPUT_BYTES)))).toThrow("exceeds");
   });

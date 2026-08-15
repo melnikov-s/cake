@@ -14,6 +14,8 @@ import type { SettingsStore } from "./SettingsStore";
 import type { ExtensionUiStore } from "./ExtensionUiStore";
 import type { ArtifactInteractionStore } from "./ArtifactInteractionStore";
 import type { MessageComposerStore } from "./MessageComposerStore";
+import type { TranscriptViewStore } from "./TranscriptViewStore";
+import type { PluginCommandStore } from "./PluginCommandStore";
 
 export interface MainChatStoreProps {
   sidebar(): SidebarStore;
@@ -24,6 +26,8 @@ export interface MainChatStoreProps {
   extensionUi(): ExtensionUiStore;
   artifacts(): ArtifactInteractionStore;
   composer(): MessageComposerStore;
+  transcriptView(): TranscriptViewStore;
+  pluginCommands(): PluginCommandStore;
 }
 
 /** Owns the active conversation, composer, and session interaction workflow. */
@@ -39,7 +43,6 @@ export class MainChatStore extends Store<MainChatStoreProps> {
   private activeOpenTarget: { path: string; sessionId?: string; newSession: boolean } | undefined;
   private activeOpenExpectsEmpty = false;
   draft = "";
-  thinkingExpanded = false;
   commandPane: "changelog" | "tree" | "resources" | undefined;
   draftsBySession: Record<string, string> = observable({});
   changelogMarkdown = "";
@@ -69,6 +72,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
   private get extensionUi() { return this.props.extensionUi(); }
   private get artifactInteractions() { return this.props.artifacts(); }
   private get composer() { return this.props.composer(); }
+  private get transcriptView() { return this.props.transcriptView(); }
 
   get isBusy() {
     return this.activeOperations.length > 0;
@@ -124,8 +128,10 @@ export class MainChatStore extends Store<MainChatStoreProps> {
 
   get isLocalSlashCommand() {
     const command = this.draft.trim().toLocaleLowerCase();
-    return command === "/tree" || command === "/resources" || command === "/changelog";
+    return command === "/tree" || command === "/resources" || command === "/changelog" || this.props.pluginCommands().matches(this.draft);
   }
+
+  get pluginCommands() { return this.props.pluginCommands().commands; }
 
   get projectName() {
     return this.projectPath ? this.sidebar.nameFromPath(this.projectPath) : "No workspace";
@@ -151,7 +157,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
       this.sidebar.recentProjectPaths.splice(0, this.sidebar.recentProjectPaths.length, ...state.recentProjectPaths);
       this.draft = state.draft;
       this.settings.theme = state.theme;
-      this.thinkingExpanded = state.thinkingExpanded;
+      this.transcriptView.setThinkingExpanded(state.thinkingExpanded);
       this.sidebar.search = state.sessionSearch;
       for (const sessionId of Object.keys(this.draftsBySession)) delete this.draftsBySession[sessionId];
       Object.assign(this.draftsBySession, state.draftsBySession);
@@ -176,7 +182,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
       recentProjectPaths: this.sidebar.recentProjectPaths.slice(),
       draft: this.draft,
       theme: this.settings.theme,
-      thinkingExpanded: this.thinkingExpanded,
+      thinkingExpanded: this.transcriptView.thinkingExpanded,
       sessionSearch: this.sidebar.search,
       draftsBySession: { ...this.draftsBySession }
     };
@@ -368,10 +374,6 @@ export class MainChatStore extends Store<MainChatStoreProps> {
 
   persistViewState() { this.schedulePersist(); }
 
-  toggleThinking() {
-    this.thinkingExpanded = !this.thinkingExpanded;
-    this.schedulePersist();
-  }
 
   async openCommandPane(pane: "changelog" | "tree" | "resources") {
     this.commandPane = pane;

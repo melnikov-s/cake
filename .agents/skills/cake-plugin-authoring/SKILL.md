@@ -19,18 +19,20 @@ Cake must load the skill from the same source tree that it designates as the aut
 Before editing a plugin:
 
 1. Read `AGENTS.md` and `docs/architecture/cake-architecture.md` from the authoring source root.
-2. Read the current `cake` module exports, plugin types, scene host, Store methods, component examples, persistence hooks, and verification commands. Current source outranks examples and this skill when signatures change.
-3. Identify the editable plugin directory supplied by Cake. Never edit the read-only authoring source to customize an installed build.
+2. Read `docs/architecture/cake-plugins.md`, then the current `cake` module exports, plugin types, scene host, Store methods, component examples, persistence hooks, and verification commands. Current source outranks examples and this skill when signatures change.
+3. Identify the editable plugin directory and current global-scene source supplied by Cake. Read their exact revisions before editing. Never edit the read-only authoring source to customize an installed build.
 
 If the running Cake version does not yet implement a convention described here, report the missing host capability instead of fabricating an incompatible local substitute.
 
 ## Plugin boundary
 
-Keep every editable plugin beneath Cake's plugin source directory, conventionally `~/.cake/plugins/<plugin-id>/`. A plugin is the atomic source, build, activation, disable, repair, and rollback unit. Each plugin owns one scene and may own its widgets, commands, styles, assets, and tests.
+Keep every editable plugin beneath Cake's plugin source directory, conventionally `~/.cake/plugins/<plugin-id>/`. A plugin is the atomic source, build, activation, disable, repair, and rollback unit. It contributes reusable components, commands, styles, assets, tests, and optional agent resources. A plugin does not own the application's global layout.
+
+The user-owned global scene is a separate, revisioned React composition surface beneath Cake's scene source directory. It imports and arranges contributions from any number of enabled plugins. When installing, removing, or rearranging a plugin, edit the current global scene semantically; never apply a reverse patch or overwrite it from a plugin template. The immutable factory-default recovery scene is core Cake code and imports no user plugin.
 
 Use a stable, namespaced plugin ID. Do not silently rename it because the ID also namespaces plugin persistence, builds, diagnostics, and rollback history.
 
-Export one typed plugin entry describing the ID, scene component, and optional commands. Widgets are ordinary local React components composed by that scene. Commands validate their inputs, select the scene, and pass explicit initialization data into it.
+Export one typed plugin entry describing its stable ID, named React contributions, and optional commands. Widgets are ordinary local React components. The global scene composes exported contributions. Commands validate their inputs and use the approved Cake command-to-UI intent when they need the global scene to reveal or focus a contribution.
 
 Cake core plugins, boot code, recovery UI, compiler/activation machinery, preload, Electron main-process code, credentials, and privileged adapters are immutable. Plugin code may inspect the shipped renderer source, but it may import Cake functionality only through the `cake` module. Privileged work must pass through Cake's existing Store intents.
 
@@ -65,11 +67,11 @@ Do not expose raw Pi objects, provider credentials, Electron APIs, preload clien
 
 ## React and Cake state
 
-Write plugins as ordinary React component trees. Use React state, reducers, Context, refs, and effects for plugin-owned state and lifecycle. A plugin does not need to define Cake Models or Stores merely because Cake uses them internally.
+Write plugin contributions as ordinary React component trees. Use React state, reducers, Context, refs, and effects for plugin-owned state and lifecycle. A plugin does not need to define Cake Models or Stores merely because Cake uses them internally.
 
-Cake renders plugin scenes beneath its existing Store providers. Import `observer`, `useStore`, and an approved Store class from `cake`. `useStore(StoreType)` provides reactive Cake state and existing Cake intents; wrap every component that reads that state with `observer()` so updates rerender it.
+Cake renders the active global scene beneath its existing Store providers. Import `observer`, `useStore`, and an approved Store class from `cake`. `useStore(StoreType)` provides reactive Cake state and existing Cake intents; wrap every component that reads that state with `observer()` so updates rerender it.
 
-Do not add dynamic child-Store arrays, `getChild()` registries, RootStore subclasses, or SessionStore subclasses for plugin-owned React state. A command should validate its inputs, select the plugin scene, and let that scene initialize and own the workflow. Consider a separate headless Store only when work must genuinely continue while the scene is unmounted, and follow the current Cake architecture rather than inventing a plugin Store framework.
+Do not add dynamic child-Store arrays, `getChild()` registries, RootStore subclasses, or SessionStore subclasses for plugin-owned React state. A contribution should initialize and own its mounted workflow. Consider a separate headless Store only when work must genuinely continue while its contribution is unmounted, and follow the current Cake architecture rather than inventing a plugin Store framework.
 
 Use the persistence hooks exported by `cake` for durable React state. Global scope is namespaced by plugin ID; session scope is namespaced by plugin ID plus Pi session ID. Persistence must support serializable values and React updater semantics without exposing storage paths or transport details.
 
@@ -85,11 +87,11 @@ Treat activation as a lifecycle replacement: unmount the old plugin tree, run ef
 
 ## Authoring workflow
 
-1. Inspect the selected plugin and its current diagnostics, persisted snapshots, and last-known-good revision.
+1. Inspect the selected plugin, the current global-scene revision, diagnostics, persisted snapshots, and last-known-good revision.
 2. Inspect `cake` exports and choose only the Store intents, components, and persistence scope the scene needs.
 3. Edit any source inside the plugin as needed. Update every plugin-local caller and test in the same change; Cake is greenfield and does not require compatibility shims.
-4. Run import-policy validation, the plugin typecheck, focused tests, and the candidate renderer build using commands from the current Cake source.
-5. Activate only after all deterministic checks pass. Verify the scene renders, commands resolve, Cake Store reads react, persisted state hydrates, and replaced effects clean up.
+4. In global chat, call `get_customization_state` and retain its exact `sourceRevision`. Call `list_customization_files`, read only the relevant files, then make each atomic `write_customization_file` call with the latest returned `workingRevision`. After the final write, call `build_customization` with the original `sourceRevision` as `expectedBaseRevision`, the latest `buildRevision` as `expectedSourceRevision`, and a concise provenance `request`. A stale write or build means another editor changed the working tree; reread and merge semantically. In the immutable recovery UI, **Rebuild candidate** builds the current working source. For host development, use the focused verification commands in `docs/architecture/cake-plugins.md`.
+5. Activation proceeds only if deterministic checks pass and the global-scene head still equals the revision you edited. If it changed, semantically merge against the new head and rebuild. Verify the scene renders, commands resolve, Cake Store reads react, persisted state hydrates, and replaced effects clean up.
 6. Record semantic migration notes when compiler success cannot prove behavior.
 
 ## Repair and migration

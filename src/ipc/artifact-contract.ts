@@ -2,20 +2,11 @@ import { z } from "zod";
 
 export const ARTIFACT_PROTOCOL = "cake.artifact/v1" as const;
 export const MAX_ARTIFACT_INPUT_BYTES = 1_048_576;
-const artifactKindSchema = z.enum(["markdown", "table", "diagram", "form", "media", "diff", "html"]);
+const artifactKindSchema = z.enum(["markdown", "table", "diagram", "form", "media", "diff", "html", "request"]);
 const idSchema = z.string().min(1).max(256).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
 const textSchema = z.string().max(MAX_ARTIFACT_INPUT_BYTES);
-const fallbackInputSchema = z.object({
-  protocol: z.string().max(128),
-  id: idSchema,
-  sessionId: idSchema,
-  revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-  kind: z.string().max(128),
-  title: z.string().max(512).optional(),
-  fallback: z.object({ markdown: textSchema })
-});
 const scalarSchema = z.union([z.string().max(262_144), z.number().finite(), z.boolean(), z.null()]);
-const jsonSchemaSchema: z.ZodType<JsonSchema> = z.lazy(() => z.object({
+export const jsonSchemaSchema: z.ZodType<JsonSchema> = z.lazy(() => z.object({
   type: z.enum(["object", "array", "string", "number", "integer", "boolean", "null"]).optional(),
   title: z.string().max(512).optional(),
   description: z.string().max(4_096).optional(),
@@ -89,6 +80,7 @@ const mediaArtifactSchema = z.object({
 });
 const diffArtifactSchema = z.object({ ...artifactBase, kind: z.literal("diff"), payload: z.object({ diff: textSchema, language: z.string().max(128).optional() }) });
 const htmlArtifactSchema = z.object({ ...artifactBase, kind: z.literal("html"), payload: z.object({ html: textSchema }) });
+const requestArtifactSchema = z.object({ ...artifactBase, kind: z.literal("request"), payload: z.object({ request: z.unknown() }) });
 
 export const cakeArtifactV1Schema = z.discriminatedUnion("kind", [
   markdownArtifactSchema,
@@ -97,7 +89,8 @@ export const cakeArtifactV1Schema = z.discriminatedUnion("kind", [
   formArtifactSchema,
   mediaArtifactSchema,
   diffArtifactSchema,
-  htmlArtifactSchema
+  htmlArtifactSchema,
+  requestArtifactSchema
 ]);
 
 export const artifactRecordSchema = z.object({
@@ -125,17 +118,9 @@ export type ArtifactPointer = z.infer<typeof artifactPointerSchema>;
 export function parseArtifactInput(input: unknown): CakeArtifactV1 {
   const bytes = new TextEncoder().encode(JSON.stringify(input)).byteLength;
   if (bytes > MAX_ARTIFACT_INPUT_BYTES) throw new Error(`Artifact input exceeds the ${MAX_ARTIFACT_INPUT_BYTES}-byte limit`);
-  const parsed = cakeArtifactV1Schema.safeParse(input);
-  if (!parsed.success) {
-    const value = typeof input === "object" && input !== null ? input as Record<string, unknown> : undefined;
-    const unknownVersionOrKind = value && (value.protocol !== ARTIFACT_PROTOCOL || !artifactKindSchema.safeParse(value.kind).success);
-    if (!unknownVersionOrKind) throw parsed.error;
-    const fallback = fallbackInputSchema.parse(input);
-    return { protocol: ARTIFACT_PROTOCOL, id: fallback.id, sessionId: fallback.sessionId, revision: fallback.revision, kind: "markdown", title: fallback.title, payload: { markdown: fallback.fallback.markdown }, fallback: fallback.fallback, interaction: { mode: "present" } };
-  }
-  const artifact = parsed.data;
-  if (artifact.interaction?.mode === "request" && artifact.kind !== "form") {
-    throw new Error("Only form artifacts can request a blocking response in cake.artifact/v1");
+  const artifact = cakeArtifactV1Schema.parse(input);
+  if (artifact.interaction?.mode === "request" && artifact.kind !== "request") {
+    throw new Error("Only request artifacts can block for a response in cake.artifact/v1");
   }
   if (artifact.kind === "media" && !isSafeMediaSource(artifact.payload.src, artifact.payload.mediaType)) {
     throw new Error("Media source must be an HTTPS URL or a matching data URL");

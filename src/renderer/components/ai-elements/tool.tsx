@@ -2,13 +2,7 @@
 import { useState } from "react";
 import type { UiPart } from "../../../ipc/session-contract";
 import { DiffView } from "./diff-view";
-import { Markdown } from "./markdown";
-
-function fencedBash(command: string) {
-  const longestFence = Math.max(0, ...Array.from(command.matchAll(/`+/g), (match) => match[0].length));
-  const fence = "`".repeat(Math.max(3, longestFence + 1));
-  return `${fence}bash\n${command}\n${fence}`;
-}
+import { fencedCode, Markdown } from "./markdown";
 
 function parseJson(value: string) {
   try {
@@ -73,7 +67,7 @@ export function Tool({ part }: { part: Extract<UiPart, { kind: "tool" }> }) {
       </button>
       {/* Keep Streamdown mounted: mounting it during a Virtuoso resize can feed its passive update back into measurement. */}
       {hasDetails && <div className="tool-details" hidden={!open}>
-        {diff ? <DiffView diff={diff} filePath={part.filePath} label={part.state === "running" ? "Proposed edit" : "Applied edit"} /> : bash ? <Markdown className="tool-input tool-bash-input mt-3 text-xs">{fencedBash(bash)}</Markdown> : part.input && <pre className="tool-input mt-3 overflow-x-auto whitespace-pre-wrap text-xs text-muted-foreground">{prettyJson(part.input)}</pre>}
+        {diff ? <DiffView diff={diff} filePath={part.filePath} label={part.state === "running" ? "Proposed edit" : "Applied edit"} /> : bash ? <Markdown className="tool-input tool-bash-input mt-3 text-xs">{fencedCode(bash, "bash")}</Markdown> : part.input && <pre className="tool-input mt-3 overflow-x-auto whitespace-pre-wrap text-xs text-muted-foreground">{prettyJson(part.input)}</pre>}
         {!diff && part.output && <pre className="tool-output mt-3 overflow-x-auto whitespace-pre-wrap border-t border-border pt-3 text-xs">{prettyJson(part.output)}</pre>}
       </div>}
     </div>

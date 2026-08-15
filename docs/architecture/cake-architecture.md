@@ -44,6 +44,7 @@ Every durable concept has one authority.
 | Projects, archived-session flags, window selection and view state | Cake | Persist application and window metadata without copying Pi history |
 | Changes and reviews | Cake workflow services, with Pi references where relevant | Present focused GUI workflows and keep their lifecycle explicit |
 | Rich artifacts | Cake artifact repository plus Pi transcript pointers/fallbacks | Persist and render bounded, versioned artifact data |
+| Blocking structured requests | `cake.request/v1` plus the active Pi tool call | Render trusted forms or sandboxed custom request widgets and return one validated value |
 | Trusted plugin source, builds, diagnostics and plugin persistence | Cake plugin machinery | Compile, activate, recover, repair and roll back user-owned source |
 
 Do not introduce a second transcript database, reconstruct Pi state into a
@@ -94,10 +95,14 @@ their actual owner.
 
 ## Rich UI has two trust paths
 
-Model-presented content does not become executable application code.
+Model-presented content does not become executable application code with Cake
+privileges.
 
 - Artifacts cross a versioned, bounded protocol. Markdown and structured kinds
   are validated; raw HTML runs in an isolated frame with restrictive policy.
+- Inline `cake-html` and `cake-react` widgets compile in Electron main and run
+  in script-enabled, opaque-origin frames whose CSP blocks network and
+  application access. Repair runs in a separate tool-less Pi session.
 - Plugins are ordinary user-owned React source. They become trusted renderer
   code only through an explicit install or edit action. Their module graph is
   constrained to their own files, ordinary React, and the version-matched
@@ -108,6 +113,13 @@ Cake Stores, components, DOM, and intents, but they may not acquire Node,
 Electron, credentials, raw IPC, raw Pi objects, or compiler/recovery internals.
 Do not weaken the artifact sandbox to implement plugins, and do not force
 trusted plugins through the artifact protocol.
+
+Plugins contribute named React components and related capabilities; they do not
+own fixed application slots or the global layout. A separate user-owned,
+revisioned global scene composes contributions from any number of plugins. Its
+candidate edits use optimistic revision checks and health-gated activation.
+The factory-default recovery scene remains immutable core and never imports
+user code.
 
 ## Plugin failure and self-healing
 
@@ -148,6 +160,8 @@ recovery on the next boot.
 
 ## Focused references
 
+- `docs/architecture/cake-plugins.md`: executable plugin, global-scene, build,
+  activation, persistence, command, and recovery contract.
 - `docs/architecture/cake-storage.md`: persistent storage ownership.
 - `docs/architecture/pi-0.84-contract.md`: pinned Pi adapter assumptions.
 - `docs/architecture/s1-session-contract.md`: project-session lifecycle and

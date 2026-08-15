@@ -6,7 +6,7 @@ import { homedir } from "node:os";
 import { app, BrowserWindow, dialog, ipcMain, shell, type WebContents } from "electron";
 import { desktopRequestSchema, desktopResponseSchema, type DesktopEvent } from "../ipc/desktop-ipc";
 import { windowViewStateSchema, type Attachment, type WindowViewState } from "../ipc/session-contract";
-import { inspectWorkspace, listWorkspaceSessions, loadReviewSessionMessages, loadWorkspaceSessionPreview, migrateLegacyReviewSession, suggestProjectFiles } from "../agent/pi-runtime";
+import { inspectWorkspace, listWorkspaceSessions, loadReviewSessionMessages, loadWorkspaceSessionPreview, migrateLegacyReviewSession, runInlineWidgetRepair, suggestProjectFiles } from "../agent/pi-runtime";
 import { ApplicationModel } from "./application-model";
 import { shouldAllowNavigation } from "./navigation-policy";
 import { PiWorkspaceDriver, type PiWorkspaceCommand } from "./pi-workspace-driver";
@@ -15,6 +15,14 @@ import { ReviewRepository } from "./review-repository";
 import { SerializedFileWriter } from "./serialized-file-writer";
 import { GlobalChatDriver } from "./global-chat-driver";
 import { resolveCakePaths } from "./cake-paths";
+import { migrateLegacyPiSessions } from "./pi-session-migration";
+import { PluginBuildService } from "./plugin-build-service";
+import { PluginActivationService } from "./plugin-activation-service";
+import { PluginPersistenceRepository } from "./plugin-persistence-repository";
+import { compileInlineWidget, extractRepairedWidget } from "./inline-widget-service";
+import { handleInlineWidgetScheme, publishInlineWidget, registerInlineWidgetScheme } from "./inline-widget-protocol";
+
+registerInlineWidgetScheme();
 
 interface PiHost {
   path: string;
@@ -29,6 +37,8 @@ const windowWorkspaces = new Map<number, string>();
 const piHosts = new Map<string, PiHost>();
 const allowedProjectPaths = new Set<string>();
 const pendingTrustRequests = new Map<string, string>();
+const windowCustomizationRevisions = new Map<number, string>();
+const customizationHealthTimers = new Map<number, ReturnType<typeof setTimeout>>();
 let nextWindowSlot = 0;
 let applicationModel = ApplicationModel.from({});
 const stateFileWriter = new SerializedFileWriter();
@@ -39,6 +49,12 @@ function clearPendingTrustRequests(webContentsId: number) {
 
 if (process.env.CAKE_ELECTRON_USER_DATA) app.setPath("userData", process.env.CAKE_ELECTRON_USER_DATA);
 const cakePaths = resolveCakePaths();
+const applicationRoot = app.getAppPath();
+const authoringRoot = resolve(process.env.CAKE_AUTHORING_ROOT || (app.isPackaged ? join(applicationRoot, "out", "authoring") : join(import.meta.dirname, "../..")));
+process.env.CAKE_AUTHORING_ROOT = authoringRoot;
+const pluginActivation = new PluginActivationService(cakePaths, new PluginBuildService(cakePaths, authoringRoot, applicationRoot));
+const pluginPersistence = new PluginPersistenceRepository(cakePaths.state, () => pluginActivation.snapshot().activeRevision);
+let pluginAgentResources = { skills: [] as string[], prompts: [] as string[], extensions: [] as string[] };
 const artifactRepository = new ArtifactRepository(join(app.getPath("userData"), "artifacts"));
 const reviewRepository = new ReviewRepository(
   join(app.getPath("userData"), "reviews"),
@@ -50,6 +66,11 @@ let globalChatController: WebContents | undefined;
 const globalChatDriver = new GlobalChatDriver({
   agentDir: cakePaths.piAgent,
   sessionDir: cakePaths.piGlobalChatSessions,
+  recoveryContext: () => {
+    const state = pluginActivation.snapshot();
+    if (!state.recoveryRequired && state.diagnostics.length === 0) return undefined;
+    return JSON.stringify({ failedRevision: state.failedRevision, pendingRevision: state.pendingRevision, lastKnownGoodRevision: state.lastKnownGoodRevision, diagnostics: state.diagnostics }, null, 2);
+  },
   emit: (event) => {
     if (event.type === "global-chat-control-request" && globalChatController && !globalChatController.isDestroyed()) sendTo(globalChatController, event);
     else broadcast(event);
@@ -103,6 +124,12 @@ function setPiState(host: PiHost, state: PiHost["state"]) {
   broadcast({ type: "pi-state", state, workspacePath: host.path });
 }
 
+async function refreshPluginAgentResources() {
+  pluginAgentResources = (await pluginActivation.builder.repository.inspect()).agentResources;
+  for (const host of piHosts.values()) { host.driver[Symbol.dispose](); setPiState(host, "stopped"); }
+  piHosts.clear();
+}
+
 function launchPi(path: string) {
   const existing = piHosts.get(path);
   if (existing && existing.state !== "failed" && existing.state !== "stopped") return existing;
@@ -118,6 +145,7 @@ function launchPi(path: string) {
     emit: broadcast,
     artifactRepository,
     reviewRepository,
+    pluginResources: pluginAgentResources,
     isTrusted: () => applicationModel.isProjectTrusted(path),
     openExternal: async (url) => {
       const protocol = new URL(url).protocol;
@@ -171,18 +199,59 @@ function createWindow(slot = nextWindowSlot++) {
     if (!shouldAllowNavigation(window.webContents.getURL(), url, process.env.ELECTRON_RENDERER_URL)) event.preventDefault();
   });
   window.webContents.on("did-finish-load", () => sendTo(window.webContents, { type: "pi-state", state: "ready" }));
+  window.webContents.on("render-process-gone", (_event, details) => {
+    const revision = windowCustomizationRevisions.get(webContentsId);
+    if (!revision) return;
+    const timer = customizationHealthTimers.get(webContentsId); if (timer) clearTimeout(timer);
+    customizationHealthTimers.delete(webContentsId);
+    void pluginActivation.fail(revision, { phase: "runtime", message: `Customization renderer process exited: ${details.reason}.` }).then(() => {
+      globalChatDriver.refreshRecoveryContext();
+      broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
+      if (!window.isDestroyed()) void loadSelectedRenderer(window, { kind: "factory" });
+    });
+  });
   window.on("closed", () => {
     const path = windowWorkspaces.get(webContentsId);
     windows.delete(window.id);
     windowSlots.delete(webContentsId);
     windowWorkspaces.delete(webContentsId);
     clearPendingTrustRequests(webContentsId);
+    windowCustomizationRevisions.delete(webContentsId);
+    const healthTimer = customizationHealthTimers.get(webContentsId); if (healthTimer) clearTimeout(healthTimer);
+    customizationHealthTimers.delete(webContentsId);
     if (path) piHosts.get(path)?.driver.cancelPendingRequests();
     if (path) scheduleIdle(path);
   });
-  if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL);
-  else void window.loadFile(join(import.meta.dirname, "../renderer/index.html"));
+  void loadSelectedRenderer(window, pluginActivation.startupRenderer());
   return window;
+}
+
+async function loadSelectedRenderer(window: BrowserWindow, renderer: ReturnType<PluginActivationService["startupRenderer"]>) {
+  if (renderer.kind === "custom" && renderer.path && renderer.revision) {
+    windowCustomizationRevisions.set(window.webContents.id, renderer.revision);
+    await window.loadFile(renderer.path);
+    const previous = customizationHealthTimers.get(window.webContents.id); if (previous) clearTimeout(previous);
+    customizationHealthTimers.set(window.webContents.id, setTimeout(() => {
+      if (windowCustomizationRevisions.get(window.webContents.id) !== renderer.revision) return;
+      void pluginActivation.fail(renderer.revision, { phase: "render", message: "Customization did not report a healthy render within 10 seconds." }).then(() => {
+        globalChatDriver.refreshRecoveryContext();
+        broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
+        return loadSelectedRenderer(window, { kind: "factory" });
+      });
+    }, 10_000));
+    return;
+  }
+  windowCustomizationRevisions.delete(window.webContents.id);
+  if (process.env.ELECTRON_RENDERER_URL) await window.loadURL(process.env.ELECTRON_RENDERER_URL);
+  else await window.loadFile(join(import.meta.dirname, "../renderer/index.html"));
+}
+
+function reloadAllWith(renderer: ReturnType<PluginActivationService["startupRenderer"]>) {
+  for (const window of windows.values()) void loadSelectedRenderer(window, renderer);
+}
+
+function reloadAllAfterResponse(renderer: ReturnType<PluginActivationService["startupRenderer"]>) {
+  setTimeout(() => reloadAllWith(renderer), 100);
 }
 
 const imageMimeTypes: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp" };
@@ -241,6 +310,71 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
   const request = desktopRequestSchema.parse(input);
   const owner = BrowserWindow.fromWebContents(event.sender);
   const slot = windowSlots.get(event.sender.id) ?? 0;
+  if (request.type === "get-customization-state") return desktopResponseSchema.parse({ type: "customization-state", state: pluginActivation.snapshot() });
+  if (request.type === "list-customization-files") return desktopResponseSchema.parse({ type: "customization-files", ...await pluginActivation.builder.repository.authoringSnapshot() });
+  if (request.type === "read-customization-file") return desktopResponseSchema.parse({ type: "customization-file", path: request.path, content: await pluginActivation.builder.repository.readAuthoringFile(request.path) });
+  if (request.type === "write-customization-file") return desktopResponseSchema.parse({ type: "customization-files", ...await pluginActivation.builder.repository.writeAuthoringFile(request.path, request.content, request.expectedWorkingRevision) });
+  if (request.type === "build-customization") {
+    const candidate = await pluginActivation.prepare(request.expectedBaseRevision, request.request, request.expectedSourceRevision);
+    const activating = candidate.diagnostics.length === 0;
+    const response = desktopResponseSchema.parse({ type: "customization-build", revision: candidate.revision, diagnostics: candidate.diagnostics, activating });
+    broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
+    if (activating) {
+      await refreshPluginAgentResources();
+      reloadAllAfterResponse({ kind: "custom", revision: candidate.revision, path: candidate.indexHtml });
+    } else globalChatDriver.refreshRecoveryContext();
+    return response;
+  }
+  if (request.type === "customization-rendered") {
+    if (windowCustomizationRevisions.get(event.sender.id) !== request.revision) throw new Error("Customization health report does not match this window");
+    const current = pluginActivation.snapshot();
+    const activating = current.pendingRevision === request.revision;
+    if (activating) await pluginActivation.markHealthy(request.revision);
+    else if (current.activeRevision !== request.revision) throw new Error("Customization revision is not active");
+    const healthTimer = customizationHealthTimers.get(event.sender.id); if (healthTimer) clearTimeout(healthTimer);
+    customizationHealthTimers.delete(event.sender.id);
+    if (activating) globalChatDriver.refreshRecoveryContext();
+    broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
+    return desktopResponseSchema.parse({ type: "customization-state", state: pluginActivation.snapshot() });
+  }
+  if (request.type === "customization-runtime-failed") {
+    await pluginActivation.fail(request.revision, { phase: "runtime", message: request.message });
+    globalChatDriver.refreshRecoveryContext();
+    broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
+    reloadAllAfterResponse({ kind: "factory" });
+    return desktopResponseSchema.parse({ type: "customization-state", state: pluginActivation.snapshot() });
+  }
+  if (request.type === "rollback-customization") {
+    const revision = await pluginActivation.rollback();
+    globalChatDriver.refreshRecoveryContext();
+    const renderer = revision ? { kind: "custom" as const, revision, path: pluginActivation.buildPath(revision) } : { kind: "factory" as const };
+    reloadAllAfterResponse(renderer);
+    return desktopResponseSchema.parse({ type: "customization-state", state: pluginActivation.snapshot() });
+  }
+  if (request.type === "use-factory-customization") {
+    await pluginActivation.useFactory();
+    globalChatDriver.refreshRecoveryContext();
+    reloadAllAfterResponse({ kind: "factory" });
+    return desktopResponseSchema.parse({ type: "customization-state", state: pluginActivation.snapshot() });
+  }
+  if (request.type === "list-plugins") return desktopResponseSchema.parse({ type: "plugins-listed", plugins: await pluginActivation.builder.repository.listPluginStatuses() });
+  if (request.type === "set-plugin-enabled") {
+    const plugins = await pluginActivation.builder.repository.setEnabled(request.pluginId, request.enabled);
+    await refreshPluginAgentResources();
+    if (!request.enabled) {
+      await pluginActivation.fail(pluginActivation.snapshot().activeRevision, { phase: "discovery", pluginId: request.pluginId, message: `Plugin ${request.pluginId} was disabled. Rebuild the global scene after removing or replacing its contributions.` });
+      globalChatDriver.refreshRecoveryContext();
+      reloadAllAfterResponse({ kind: "factory" });
+    }
+    return desktopResponseSchema.parse({ type: "plugins-listed", plugins });
+  }
+  if (request.type === "load-plugin-state") {
+    return desktopResponseSchema.parse({ type: "plugin-state", record: await pluginPersistence.read(request.pluginId, request.key, request.scope) });
+  }
+  if (request.type === "save-plugin-state") {
+    const rendererRevision = windowCustomizationRevisions.get(event.sender.id) ?? pluginActivation.snapshot().activeRevision;
+    return desktopResponseSchema.parse({ type: "plugin-state", record: await pluginPersistence.write(request.pluginId, request.key, request.scope, request.value, request.expectedVersion, rendererRevision) });
+  }
   if (request.type === "open-global-chat") {
     globalChatController = event.sender;
     globalChatDriver.open(request.requestId, request.tools);
@@ -305,6 +439,10 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
     const content = await readFile(target, "utf8");
     if (content.length > 2_000_000) throw new Error("File is too large to display");
     return desktopResponseSchema.parse({ type: "workspace-file", content });
+  }
+  if (request.type === "compile-inline-widget") {
+    const compiled = await compileInlineWidget(request.language, request.source, request.capability);
+    return desktopResponseSchema.parse({ type: "inline-widget-compiled", widget: publishInlineWidget(compiled) });
   }
   if (request.type === "load-window-state") return desktopResponseSchema.parse({ type: "window-state-loaded", state: await loadWindowState(slot) });
   if (request.type === "save-window-state") {
@@ -383,6 +521,23 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
   }
   const path = request.type === "open-workspace" || request.type === "inspect-workspace" ? request.path : request.workspacePath;
   if (!allowedProjectPaths.has(path)) throw new Error("Project path was not selected by the user");
+  if (request.type === "repair-inline-widget") {
+    const repaired = await runInlineWidgetRepair({
+      cwd: request.workspacePath,
+      agentDir: cakePaths.piAgent,
+      sessionDir: cakePaths.piWidgetRepairSessions,
+      language: request.language,
+      capability: request.capability,
+      source: request.source,
+      context: request.context,
+      diagnostic: request.diagnostic,
+      model: request.model
+    });
+    return desktopResponseSchema.parse({
+      type: "inline-widget-repaired",
+      widget: { source: extractRepairedWidget(repaired.response, request.language), repairSessionId: repaired.sessionId }
+    });
+  }
   if (request.type === "inspect-workspace") {
     const inspection = inspectWorkspace(path);
     const trustRequired = inspection.trustRequired && !applicationModel.isProjectTrusted(path);
@@ -438,6 +593,16 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
 });
 
 app.whenReady().then(async () => {
+  handleInlineWidgetScheme();
+  try {
+    await migrateLegacyPiSessions(cakePaths, {
+      onDiagnostic: (diagnostic) => console.warn(`[cake:pi-session-migration] ${diagnostic.message}`)
+    });
+  } catch (error) {
+    console.error("[cake:pi-session-migration] Session import did not finish; Cake will retry safely on the next launch.", error);
+  }
+  await pluginActivation.load();
+  await refreshPluginAgentResources();
   await loadApplicationState();
   createWindow();
 });

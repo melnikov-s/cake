@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { GlobalSessionSummary, ProjectRecord, UiPart } from "../ipc/session-contract";
+import { pluginIdSchema, type CustomizationState, type PluginDiagnostic, type PluginStatus } from "../plugin/plugin-contract";
 
 const sessionTargetSchema = z.object({
   workspacePath: z.string().min(1).max(4_096),
@@ -27,6 +28,14 @@ const searchSessionsSchema = z.object({
 
 export const appControlInvocationSchema = z.discriminatedUnion("name", [
   z.object({ name: z.literal("get_app_state"), arguments: z.object({}).strict() }),
+  z.object({ name: z.literal("get_customization_state"), arguments: z.object({}).strict() }),
+  z.object({ name: z.literal("list_customization_files"), arguments: z.object({}).strict() }),
+  z.object({ name: z.literal("read_customization_file"), arguments: z.object({ path: z.string().min(1).max(8_192) }) }),
+  z.object({ name: z.literal("write_customization_file"), arguments: z.object({ path: z.string().min(1).max(8_192), content: z.string().max(2_000_000), expectedWorkingRevision: z.string().regex(/^[a-f0-9]{64}$/) }) }),
+  z.object({ name: z.literal("build_customization"), arguments: z.object({ expectedBaseRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(), expectedSourceRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(), request: z.string().trim().min(1).max(8_192) }) }),
+  z.object({ name: z.literal("rollback_customization"), arguments: z.object({}).strict() }),
+  z.object({ name: z.literal("use_factory_customization"), arguments: z.object({}).strict() }),
+  z.object({ name: z.literal("set_plugin_enabled"), arguments: z.object({ pluginId: pluginIdSchema, enabled: z.boolean() }) }),
   z.object({ name: z.literal("get_session_status"), arguments: sessionTargetSchema }),
   z.object({ name: z.literal("open_session"), arguments: sessionTargetSchema }),
   z.object({ name: z.literal("list_sessions"), arguments: sessionPageSchema }),
@@ -70,6 +79,24 @@ const targetProperties = {
 
 export const appControlToolCatalog = [
   tool("get_app_state", "Read Cake's current selection and a compact summary of projects and recent or active sessions.", {}),
+  tool("get_customization_state", "Read the exact customization source/head revisions, recovery diagnostics, last-known-good revision, and installed plugin status.", {}),
+  tool("list_customization_files", "List editable plugin/global-scene files and return exact optimistic working and build revisions. Call before reading or writing customization source.", {}),
+  tool("read_customization_file", "Read one text source file from the constrained scenes/ or plugins/<plugin-id>/ authoring roots.", {
+    path: { type: "string", description: "Exact logical path returned by list_customization_files." }
+  }, ["path"]),
+  tool("write_customization_file", "Atomically create or replace one text file in scenes/ or plugins/<plugin-id>/, rejecting the write if any customization file changed since the supplied working revision.", {
+    path: { type: "string" }, content: { type: "string" }, expectedWorkingRevision: { type: "string" }
+  }, ["path", "content", "expectedWorkingRevision"]),
+  tool("build_customization", "Typecheck and bundle the edited plugin/global-scene source, then transactionally activate it only if the supplied base revision is still current.", {
+    expectedBaseRevision: { type: "string", description: "Exact source revision previously returned by get_customization_state; omit only before the first build." },
+    expectedSourceRevision: { type: "string", description: "Exact build revision returned after the final write_customization_file call." },
+    request: { type: "string", description: "Concise provenance describing the user's requested customization or repair." }
+  }, ["request"]),
+  tool("rollback_customization", "Roll back a broken or unwanted customization to the retained last-known-good renderer.", {}),
+  tool("use_factory_customization", "Select immutable Cake factory UI without deleting editable plugin source or persistence.", {}),
+  tool("set_plugin_enabled", "Enable or disable one exact plugin. Disabling preserves its source and persistence and requires rebuilding scene references.", {
+    pluginId: { type: "string" }, enabled: { type: "boolean" }
+  }, ["pluginId", "enabled"]),
   tool("get_session_status", "Inspect whether a known session is selected, running, unread, or idle.", targetProperties, ["workspacePath", "sessionId"]),
   tool("open_session", "Open a known Cake session in its project.", targetProperties, ["workspacePath", "sessionId"]),
   tool("list_sessions", "List Cake sessions by recency, optionally limited to one project or including archived sessions.", {
@@ -126,6 +153,15 @@ export interface AppControlHost {
   renameSession(workspacePath: string, sessionId: string, title: string): Promise<void>;
   setSessionArchived(workspacePath: string, sessionId: string, archived: boolean): Promise<void>;
   setSessionModel(workspacePath: string, sessionId: string, provider: string, modelId: string): Promise<void>;
+  customizationState(): CustomizationState | undefined;
+  plugins(): readonly PluginStatus[];
+  listCustomizationFiles(): Promise<{ workingRevision: string; buildRevision: string; files: string[] }>;
+  readCustomizationFile(path: string): Promise<string>;
+  writeCustomizationFile(path: string, content: string, expectedWorkingRevision: string): Promise<{ workingRevision: string; buildRevision: string; files: string[] }>;
+  buildCustomization(expectedBaseRevision: string | undefined, request: string, expectedSourceRevision?: string): Promise<{ revision: string; diagnostics: PluginDiagnostic[]; activating: boolean }>;
+  rollbackCustomization(): Promise<CustomizationState>;
+  useFactoryCustomization(): Promise<CustomizationState>;
+  setPluginEnabled(pluginId: string, enabled: boolean): Promise<readonly PluginStatus[]>;
 }
 
 export interface AppControlSession {
@@ -164,6 +200,12 @@ export interface AppControlSearchMatch {
 
 export type AppControlResult =
   | { ok: true; name: "get_app_state"; state: AppControlState }
+  | { ok: true; name: "get_customization_state"; state?: CustomizationState; plugins: readonly PluginStatus[] }
+  | { ok: true; name: "list_customization_files" | "write_customization_file"; workingRevision: string; buildRevision: string; files: string[] }
+  | { ok: true; name: "read_customization_file"; path: string; content: string }
+  | { ok: true; name: "build_customization"; revision: string; diagnostics: PluginDiagnostic[]; activating: boolean }
+  | { ok: true; name: "rollback_customization" | "use_factory_customization"; state: CustomizationState }
+  | { ok: true; name: "set_plugin_enabled"; plugins: readonly PluginStatus[] }
   | { ok: true; name: "get_session_status"; session: AppControlSession; selected: boolean; status: "running" | "unread" | "idle" }
   | { ok: true; name: "open_session"; opened: SessionTarget }
   | { ok: true; name: "list_sessions"; sessions: AppControlSession[]; total: number; nextCursor?: number }
@@ -205,6 +247,14 @@ export class AppControlBridge {
   async invoke(input: unknown): Promise<AppControlResult> {
     const invocation = appControlInvocationSchema.parse(input);
     if (invocation.name === "get_app_state") return { ok: true, name: invocation.name, state: this.getAppState() };
+    if (invocation.name === "get_customization_state") return { ok: true, name: invocation.name, state: this.host.customizationState(), plugins: this.host.plugins() };
+    if (invocation.name === "list_customization_files") return { ok: true, name: invocation.name, ...await this.host.listCustomizationFiles() };
+    if (invocation.name === "read_customization_file") return { ok: true, name: invocation.name, path: invocation.arguments.path, content: await this.host.readCustomizationFile(invocation.arguments.path) };
+    if (invocation.name === "write_customization_file") return { ok: true, name: invocation.name, ...await this.host.writeCustomizationFile(invocation.arguments.path, invocation.arguments.content, invocation.arguments.expectedWorkingRevision) };
+    if (invocation.name === "build_customization") return { ok: true, name: invocation.name, ...await this.host.buildCustomization(invocation.arguments.expectedBaseRevision, invocation.arguments.request, invocation.arguments.expectedSourceRevision) };
+    if (invocation.name === "rollback_customization") return { ok: true, name: invocation.name, state: await this.host.rollbackCustomization() };
+    if (invocation.name === "use_factory_customization") return { ok: true, name: invocation.name, state: await this.host.useFactoryCustomization() };
+    if (invocation.name === "set_plugin_enabled") return { ok: true, name: invocation.name, plugins: await this.host.setPluginEnabled(invocation.arguments.pluginId, invocation.arguments.enabled) };
     if (invocation.name === "list_sessions") return this.listSessions(invocation.arguments);
     if (invocation.name === "search_sessions") return this.searchSessions(invocation.arguments);
     if (invocation.name === "create_session") return this.createSession(invocation.arguments.workspacePath);

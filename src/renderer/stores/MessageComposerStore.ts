@@ -40,6 +40,8 @@ export interface MessageComposerStoreProps {
   canSubmit(): boolean;
   isStreaming(): boolean;
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
+  matchesPluginCommand(input: string): boolean;
+  runPluginCommand(input: string): Promise<boolean>;
   startOperation(): string;
   finishOperation(operationId: string): void;
   reportError(error: unknown): void;
@@ -110,6 +112,11 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     if (command === "/tree" || command === "/resources" || command === "/changelog") {
       this.props.setDraft("");
       await this.props.openCommandPane(command === "/tree" ? "tree" : command === "/changelog" ? "changelog" : "resources");
+      return;
+    }
+    if (this.props.matchesPluginCommand(text)) {
+      await this.props.runPluginCommand(text);
+      this.props.setDraft("");
       return;
     }
     const workspacePath = this.props.projectPath();

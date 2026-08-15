@@ -13,7 +13,8 @@
     "noUncheckedIndexedAccess": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/renderer/*"]
+      "@/*": ["src/renderer/*"],
+      "cake": ["src/renderer/cake.ts"]
     },
     "resolveJsonModule": true,
     "skipLibCheck": true,

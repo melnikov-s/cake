@@ -15,6 +15,10 @@ import { AppControlBridge } from "../app-control-bridge";
 import { GlobalChatStore } from "./GlobalChatStore";
 import { NavigationStore } from "./NavigationStore";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
+import { TranscriptViewStore } from "./TranscriptViewStore";
+import { CustomizationStore } from "./CustomizationStore";
+import { PluginCommandStore } from "./PluginCommandStore";
+import { InlineWidgetStore } from "./InlineWidgetStore";
 
 export class RootStore extends Store<{ client: DesktopClient }> {
   readonly appControl: AppControlBridge;
@@ -27,6 +31,12 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     return this.sessionCache;
   }
 
+  @child
+  get pluginCommandStore(): PluginCommandStore { return createStore(PluginCommandStore); }
+
+  @child
+  get inlineWidgetStore(): InlineWidgetStore { return createStore(InlineWidgetStore, { client: this.client }); }
+
   get client() {
     const client = DesktopClientContext.consume(this);
     if (!client) throw new Error("DesktopClientContext is not provided");
@@ -34,8 +44,23 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   }
 
   @child
+  get customizationStore(): CustomizationStore {
+    return createStore(CustomizationStore, { client: this.client });
+  }
+
+  @child
   get sessionCache(): SessionCacheStore {
     return createStore(SessionCacheStore);
+  }
+
+  @child
+  get mainTranscriptViewStore(): TranscriptViewStore {
+    return createStore(TranscriptViewStore);
+  }
+
+  @child
+  get globalTranscriptViewStore(): TranscriptViewStore {
+    return createStore(TranscriptViewStore);
   }
 
   @child
@@ -151,6 +176,8 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       canSubmit: () => this.mainChatStore.canSubmit,
       isStreaming: () => this.mainChatStore.isStreaming,
       openCommandPane: (pane) => this.mainChatStore.openCommandPane(pane),
+      matchesPluginCommand: (input) => this.pluginCommandStore.matches(input),
+      runPluginCommand: (input) => this.pluginCommandStore.run(input),
       startOperation: () => this.mainChatStore.startOperation(),
       finishOperation: (operationId) => this.mainChatStore.finishOperation(operationId),
       reportError: (error) => this.mainChatStore.setError(error)
@@ -167,7 +194,9 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       settings: () => this.settingsStore,
       extensionUi: () => this.extensionUiStore,
       artifacts: () => this.artifactInteractionStore,
-      composer: () => this.messageComposerStore
+      composer: () => this.messageComposerStore,
+      transcriptView: () => this.mainTranscriptViewStore,
+      pluginCommands: () => this.pluginCommandStore
     });
   }
 
@@ -231,12 +260,23 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       renameSession: (workspacePath, sessionId, title) => this.mainChatStore.renameSession(workspacePath, sessionId, title),
       setSessionArchived: (workspacePath, sessionId, archived) => this.mainChatStore.archiveSession(workspacePath, sessionId, archived),
       setSessionModel: (workspacePath, sessionId, provider, modelId) => this.runControlOperation((operationId) =>
-        this.client.setModel({ operationId, workspacePath, sessionId, provider, modelId }))
+        this.client.setModel({ operationId, workspacePath, sessionId, provider, modelId })),
+      customizationState: () => this.customizationStore.state,
+      plugins: () => this.customizationStore.plugins,
+      listCustomizationFiles: () => this.client.listCustomizationFiles(),
+      readCustomizationFile: (path) => this.client.readCustomizationFile(path),
+      writeCustomizationFile: (path, content, expectedWorkingRevision) => this.client.writeCustomizationFile(path, content, expectedWorkingRevision),
+      buildCustomization: (expectedBaseRevision, request, expectedSourceRevision) => this.client.buildCustomization(expectedBaseRevision, request, expectedSourceRevision),
+      rollbackCustomization: () => this.client.rollbackCustomization(),
+      useFactoryCustomization: () => this.client.useFactoryCustomization(),
+      setPluginEnabled: (pluginId, enabled) => this.client.setPluginEnabled(pluginId, enabled)
     });
     this.effect(() => this.client.subscribe((event) => this.receive(event)));
+    this.effect(() => { void this.customizationStore.hydrate(); });
   }
 
   private receive(event: DesktopClientEvent) {
+    this.customizationStore.receive(event);
     if (event.type === "global-chat-control-requested") {
       void this.appControl.invoke(event.invocation)
         .catch((error) => ({ ok: false as const, name: event.invocation.name, error: error instanceof Error ? error.message : String(error) }))

@@ -132,6 +132,7 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
     name: ipcProjectionString(256),
     input: boundedText,
     output: boundedText.optional(),
+    artifactId: z.string().min(1).max(256).optional(),
     filePath: z.string().max(8_192).optional(),
     diff: boundedText.optional(),
     state: z.enum(["approval", "running", "success", "error", "denied"])
@@ -275,7 +276,7 @@ export const slashCommandSchema = z.object({
   name: z.string().min(1).max(256),
   description: ipcProjectionString(4_096).optional(),
   argumentHint: ipcProjectionString(512).optional(),
-  source: z.enum(["builtin", "extension", "prompt", "skill"]),
+  source: z.enum(["builtin", "extension", "prompt", "skill", "plugin"]),
   sourceInfo: z.object({
     path: z.string().max(8_192),
     source: ipcProjectionString(2_048),

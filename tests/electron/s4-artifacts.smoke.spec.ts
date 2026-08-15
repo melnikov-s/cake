@@ -19,6 +19,7 @@ test("presents durable artifacts, sorts a table, resolves a form, and isolates H
     application = await launch();
     let page = await application.firstWindow();
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
+
     await page.getByLabel("Message").fill("/cake-artifacts");
     await page.getByRole("button", { name: "Send" }).click();
 

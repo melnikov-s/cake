@@ -10,6 +10,7 @@ export interface GlobalChatDriverOptions {
   agentDir: string;
   sessionDir: string;
   emit(event: DesktopEvent): void;
+  recoveryContext?(): string | undefined;
   createRuntime?: typeof createCakeRuntime;
 }
 
@@ -22,6 +23,7 @@ export class GlobalChatDriver {
   private readonly createRuntime: typeof createCakeRuntime;
   private disposed = false;
   private streaming = false;
+  private recoveryContextRefreshPending = false;
 
   constructor(private readonly options: GlobalChatDriverOptions) {
     this.createRuntime = options.createRuntime ?? createCakeRuntime;
@@ -73,6 +75,15 @@ export class GlobalChatDriver {
     this.pendingControl.get(controlRequestId)?.settle(result);
   }
 
+  refreshRecoveryContext() {
+    if (this.streaming) {
+      this.recoveryContextRefreshPending = true;
+      return;
+    }
+    this.recoveryContextRefreshPending = false;
+    this.disposeRuntime();
+  }
+
   [Symbol.dispose]() {
     if (this.disposed) return;
     this.disposed = true;
@@ -92,6 +103,7 @@ export class GlobalChatDriver {
       requestUi: async () => undefined,
       globalControl: {
         tools: this.tools,
+        recoveryContext: this.options.recoveryContext?.(),
         invoke: (invocation, signal) => this.requestControl(invocation, signal)
       },
       onEvent: (event) => this.receive(event)
@@ -126,6 +138,10 @@ export class GlobalChatDriver {
     else if (event.type === "streaming") {
       this.streaming = event.streaming;
       this.options.emit({ type: "global-chat-streaming", streaming: event.streaming });
+      if (!event.streaming && this.recoveryContextRefreshPending) {
+        this.recoveryContextRefreshPending = false;
+        this.disposeRuntime();
+      }
     }
   }
 
@@ -150,6 +166,7 @@ export class GlobalChatDriver {
     this.runtime?.dispose();
     this.runtime = undefined;
     this.streaming = false;
+    this.recoveryContextRefreshPending = false;
     for (const pending of this.pendingControl.values()) pending.settle({ ok: false, error: "The global chat was reset." });
     this.pendingControl.clear();
   }

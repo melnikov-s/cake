@@ -27,10 +27,21 @@ function createDesktopClient(restoredPath?: string) {
   const client: DesktopClient = {
     chooseProject: vi.fn(async () => "/project"),
     getHomeDirectory: vi.fn(async () => "/home/user"),
+    getCustomizationState: vi.fn(async () => ({ schemaVersion: 1 as const, recoveryRequired: false, diagnostics: [], updatedAt: new Date(0).toISOString() })),
+    listCustomizationFiles: vi.fn(async () => ({ workingRevision: "a".repeat(64), buildRevision: "a".repeat(64), files: [] })),
+    readCustomizationFile: vi.fn(async () => ""),
+    writeCustomizationFile: vi.fn(async () => ({ workingRevision: "a".repeat(64), buildRevision: "a".repeat(64), files: [] })),
+    buildCustomization: vi.fn(async () => ({ revision: "a".repeat(64), diagnostics: [], activating: true })),
+    rollbackCustomization: vi.fn(async () => ({ schemaVersion: 1 as const, recoveryRequired: false, diagnostics: [], updatedAt: new Date(0).toISOString() })),
+    useFactoryCustomization: vi.fn(async () => ({ schemaVersion: 1 as const, recoveryRequired: false, diagnostics: [], updatedAt: new Date(0).toISOString() })),
+    listPlugins: vi.fn(async () => []),
+    setPluginEnabled: vi.fn(async () => []),
     chooseAttachments: vi.fn(async () => []),
     suggestFiles: vi.fn(async () => []),
     listWorkspaceFiles: vi.fn(async () => []),
     readWorkspaceFile: vi.fn(async () => ""),
+    compileInlineWidget: vi.fn(async () => ({ url: "cake-widget://document/00000000-0000-4000-8000-000000000001", token: "00000000-0000-4000-8000-000000000001" })),
+    repairInlineWidget: vi.fn(async (input) => ({ source: input.source, repairSessionId: "repair-session" })),
     loadWindowState: vi.fn(async () => ({ projectPath: restoredPath, recentProjectPaths: restoredPath ? [restoredPath] : [], draft: "saved", theme: "system" as const, thinkingExpanded: false, sessionSearch: "", draftsBySession: {} })),
     saveWindowState: vi.fn(async () => undefined),
     loadApplicationState: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], trustedProjectPaths: [] })),
@@ -276,11 +287,31 @@ describe("MainChatStore", () => {
     const { root, store } = mountTestStore(desktop.client);
     await flush(); await openSnapshot(store, desktop);
     const operationId = crypto.randomUUID(); store.activeOperations.push(operationId);
-    const record = { artifact: { protocol: "cake.artifact/v1" as const, id: "form", sessionId: "session-1", revision: 1, kind: "form" as const, payload: { fields: [{ id: "answer", label: "Answer", type: "text" as const, required: true }], submitLabel: "Send" }, fallback: { markdown: "Answer" }, interaction: { mode: "request" as const } }, workspacePath: "/project", digest: "a".repeat(64), createdAt: new Date(0).toISOString(), updatedAt: new Date(0).toISOString() };
+    const request = { protocol: "cake.request/v1" as const, id: "form", title: "Answer", responseSchema: { type: "object" as const, required: ["answer"], properties: { answer: { type: "string" as const } } }, view: { type: "form" as const, fields: [{ id: "answer", label: "Answer", type: "text" as const, required: true }], submitLabel: "Send" }, fallback: { markdown: "Answer" } };
+    const record = { artifact: { protocol: "cake.artifact/v1" as const, id: request.id, sessionId: "session-1", revision: 1, kind: "request" as const, payload: { request }, fallback: request.fallback, interaction: { mode: "request" as const, responseSchema: request.responseSchema } }, workspacePath: "/project", digest: "a".repeat(64), createdAt: new Date(0).toISOString(), updatedAt: new Date(0).toISOString() };
     desktop.emit({ type: "artifact-requested", operationId, artifactRequestId: crypto.randomUUID(), record });
     expect(root.artifactInteractionStore.request).toBeDefined();
     await store.startNewSession();
     expect(desktop.client.respondToArtifact).toHaveBeenCalledWith(expect.objectContaining({ operationId, cancelled: true }));
+    expect(root.artifactInteractionStore.request).toBeUndefined();
+    root[Symbol.dispose]();
+  });
+
+  it("keeps a blocking request open until its response passes validation", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush(); await openSnapshot(store, desktop);
+    const operationId = crypto.randomUUID(); store.activeOperations.push(operationId);
+    const request = { protocol: "cake.request/v1" as const, id: "validated", title: "Answer", responseSchema: { type: "object" as const, required: ["answer"], properties: { answer: { type: "string" as const, minLength: 1 } } }, view: { type: "form" as const, fields: [{ id: "answer", label: "Answer", type: "text" as const }], submitLabel: "Send" }, fallback: { markdown: "Answer" } };
+    const record = { artifact: { protocol: "cake.artifact/v1" as const, id: request.id, sessionId: "session-1", revision: 1, kind: "request" as const, payload: { request }, fallback: request.fallback, interaction: { mode: "request" as const, responseSchema: request.responseSchema } }, workspacePath: "/project", digest: "a".repeat(64), createdAt: new Date(0).toISOString(), updatedAt: new Date(0).toISOString() };
+    desktop.emit({ type: "artifact-requested", operationId, artifactRequestId: crypto.randomUUID(), record });
+
+    await root.artifactInteractionStore.respond({});
+    expect(desktop.client.respondToArtifact).not.toHaveBeenCalled();
+    expect(root.artifactInteractionStore.request).toBeDefined();
+
+    await root.artifactInteractionStore.respond({ answer: "yes" });
+    expect(desktop.client.respondToArtifact).toHaveBeenCalledWith(expect.objectContaining({ value: { answer: "yes" }, cancelled: false }));
     expect(root.artifactInteractionStore.request).toBeUndefined();
     root[Symbol.dispose]();
   });
@@ -957,6 +988,27 @@ describe("MainChatStore", () => {
     expect(desktop.client.navigateSession).toHaveBeenCalledWith(expect.objectContaining({ entryId: "user-entry" }));
     expect(store.draft).toBe("Original user message\nwith formatting");
     expect(store.commandPane).toBeUndefined();
+    root[Symbol.dispose]();
+  });
+
+  it("compiles inline widgets and validates a repair before replacing the rendered source", async () => {
+    const desktop = createDesktopClient();
+    desktop.client.repairInlineWidget = vi.fn(async () => ({ source: "<strong>Repaired</strong>", repairSessionId: "repair-session" }));
+    const { root } = mountTestStore(desktop.client);
+    const widgets = root.inlineWidgetStore;
+
+    widgets.prepare("widget-1", "html", "<strong>Broken</strong>");
+    await flush();
+    widgets.reportRuntimeError("widget-1", "ReferenceError: missing is not defined");
+    await widgets.repair({ id: "widget-1", workspacePath: "/project", sessionId: "session-1", context: "Show the result" });
+
+    expect(desktop.client.repairInlineWidget).toHaveBeenCalledWith(expect.objectContaining({
+      language: "html",
+      source: "<strong>Broken</strong>",
+      diagnostic: "ReferenceError: missing is not defined"
+    }));
+    expect(desktop.client.compileInlineWidget).toHaveBeenLastCalledWith("html", "<strong>Repaired</strong>", "display");
+    expect(widgets.state("widget-1")).toMatchObject({ status: "ready", source: "<strong>Repaired</strong>", repairSessionId: "repair-session" });
     root[Symbol.dispose]();
   });
 });
