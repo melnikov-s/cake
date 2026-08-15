@@ -28,7 +28,9 @@ the session engine and JSONL format.
 Window state persists the selected workspace and Pi session ID, never an
 absolute session filename. On reopen, Cake resolves that ID through Pi beneath
 the current Cake session root so changing storage roots cannot leave a second,
-stale location authority in renderer persistence.
+stale location authority in renderer persistence. Pi does not write a new
+empty session's JSONL file until conversation content is flushed; if a saved
+selection was never persisted, hydration replaces it with a fresh empty chat.
 
 The Pi resource loader uses `pi/` for global settings, packages, extensions,
 skills, prompts, themes, models, and authentication. It may also load trusted

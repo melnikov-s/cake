@@ -156,7 +156,12 @@ export class MainChatStore extends Store<MainChatStoreProps> {
       for (const sessionId of Object.keys(this.draftsBySession)) delete this.draftsBySession[sessionId];
       Object.assign(this.draftsBySession, state.draftsBySession);
       this.hydrated = true;
-      if (state.projectPath) await this.inspectPath(state.projectPath, false, state.selectedSessionId);
+      if (state.projectPath) {
+        const selectedSession = state.selectedSessionId
+          ? sessionIndex.sessions.find((session) => session.workspacePath === state.projectPath && session.id === state.selectedSessionId)
+          : undefined;
+        await this.inspectPath(state.projectPath, Boolean(state.selectedSessionId && !selectedSession), selectedSession?.id);
+      }
     } catch (error) {
       if (this.signal.aborted) return;
       this.hydrated = true;

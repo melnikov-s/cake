@@ -208,6 +208,32 @@ describe("MainChatStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("replaces a selected empty session that Pi never persisted", async () => {
+    const desktop = createDesktopClient();
+    desktop.client.loadWindowState = vi.fn(async () => ({
+      projectPath: "/project",
+      selectedSessionId: "unpersisted-session",
+      recentProjectPaths: ["/project"],
+      draft: "",
+      theme: "system" as const,
+      thinkingExpanded: false,
+      sessionSearch: "",
+      draftsBySession: { "unpersisted-session": "" }
+    }));
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+
+    const inspectOperationId = store.activeOperations.at(-1)!;
+    desktop.emit({ type: "workspace-inspected", operationId: inspectOperationId, path: "/project", trustRequired: false });
+
+    expect(desktop.client.openWorkspace).toHaveBeenCalledWith(expect.objectContaining({
+      path: "/project",
+      newSession: true,
+      sessionId: undefined
+    }));
+    root[Symbol.dispose]();
+  });
+
   it("gates project resources on trust and applies the authoritative snapshot", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);

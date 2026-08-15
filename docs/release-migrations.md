@@ -6,6 +6,10 @@
   `sessionFile` input were removed. Persist and reopen workspace sessions by
   `selectedSessionId`; Electron main resolves the authoritative Pi JSONL file
   beneath Cake's configured session root.
+- `MainChatStore` now replaces a saved session selection with a fresh empty
+  chat when Pi never flushed that session to JSONL. Custom scenes should not
+  treat a newly assigned session ID as durable until it appears in Cake's Pi
+  session index.
 
 ## 2026-08-13 — Persistent global chat
 

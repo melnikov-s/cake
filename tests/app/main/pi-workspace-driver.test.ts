@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { CakeRuntime, CakeRuntimeOptions } from "../../../src/agent/pi-runtime";
 import type { DesktopEvent } from "../../../src/ipc/desktop-ipc";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
+import { NotGitRepositoryError } from "../../../src/main/git-changes";
 import { PiWorkspaceDriver } from "../../../src/main/pi-workspace-driver";
 
 const piPaths = { agentDir: "/cake/pi", sessionDir: "/cake/pi/sessions" };
@@ -24,6 +25,46 @@ const snapshot: SessionSnapshot = {
 };
 
 describe("PiWorkspaceDriver", () => {
+  it("treats a workspace outside Git as having no session changes", async () => {
+    const events: DesktopEvent[] = [];
+    const runtime: CakeRuntime = {
+      sessionId: snapshot.sessionId,
+      sessionFile: snapshot.sessionFile,
+      snapshot: vi.fn(async () => snapshot),
+      prompt: vi.fn(async () => undefined),
+      abort: vi.fn(async () => undefined),
+      setModel: vi.fn(async () => undefined),
+      setThinkingLevel: vi.fn(async () => undefined),
+      setPiSetting: vi.fn(async () => undefined),
+      recordReviewRun: vi.fn(),
+      login: vi.fn(async () => undefined),
+      logout: vi.fn(async () => undefined),
+      rename: vi.fn(async () => undefined),
+      fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      navigate: vi.fn(async () => undefined),
+      dispose: vi.fn(),
+      ensureInitialGitCheckpoint: vi.fn(async () => { throw new NotGitRepositoryError("/project"); })
+    };
+    const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime) });
+    const openId = crypto.randomUUID();
+    driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
+    await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
+
+    const inspectId = crypto.randomUUID();
+    driver.dispatch({ type: "inspect-changes", requestId: inspectId, workspacePath: "/project", sessionId: snapshot.sessionId });
+
+    await vi.waitFor(() => expect(events).toContainEqual({
+      type: "changes-snapshot",
+      requestId: inspectId,
+      workspacePath: "/project",
+      sessionId: snapshot.sessionId,
+      files: []
+    }));
+    expect(events).toContainEqual({ type: "complete", requestId: inspectId });
+    expect(events.some((event) => event.type === "fatal" && event.requestId === inspectId)).toBe(false);
+    driver[Symbol.dispose]();
+  });
+
   it("reads persisted checkpoints without capturing workspace state during inspection", async () => {
     const events: DesktopEvent[] = [];
     const captureLatestGitCheckpoint = vi.fn(async () => ({ tree: "c".repeat(40), ref: "refs/cake/checkpoints/c", capturedAt: new Date(0).toISOString() }));

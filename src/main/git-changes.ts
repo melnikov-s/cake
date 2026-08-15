@@ -22,6 +22,13 @@ export interface WorkspaceCheckpoint {
   ref: string;
 }
 
+export class NotGitRepositoryError extends Error {
+  constructor(readonly workspacePath: string) {
+    super(`The workspace is not in a Git repository: ${workspacePath}`);
+    this.name = "NotGitRepositoryError";
+  }
+}
+
 /** Captures the complete non-ignored workspace state without mutating Git's real index. */
 export async function captureWorkspaceCheckpoint(workspacePath: string, sessionId: string): Promise<WorkspaceCheckpoint> {
   const { root, prefix } = await resolveRepository(workspacePath);
@@ -69,10 +76,22 @@ export async function collectCheckpointChanges(workspacePath: string, initialTre
 
 async function resolveRepository(workspacePath: string) {
   const canonicalWorkspace = await realpath(resolve(workspacePath));
-  const root = await realpath((await git(canonicalWorkspace, ["rev-parse", "--show-toplevel"], maxStatusBuffer)).trim());
+  let repositoryRoot: string;
+  try {
+    repositoryRoot = (await git(canonicalWorkspace, ["rev-parse", "--show-toplevel"], maxStatusBuffer)).trim();
+  } catch (error) {
+    if (isNotGitRepositoryFailure(error)) throw new NotGitRepositoryError(canonicalWorkspace);
+    throw error;
+  }
+  const root = await realpath(repositoryRoot);
   const prefix = relative(root, canonicalWorkspace);
   if (prefix === ".." || prefix.startsWith(`..${sep}`)) throw new Error("The workspace is outside its Git repository");
   return { root, prefix };
+}
+
+function isNotGitRepositoryFailure(error: unknown) {
+  if (!error || typeof error !== "object" || !("stderr" in error)) return false;
+  return String(error.stderr).toLowerCase().includes("not a git repository");
 }
 
 export function parseNameStatus(output: string): ChangeEntry[] {

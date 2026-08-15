@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { captureWorkspaceCheckpoint, collectCheckpointChanges, parseNameStatus } from "../../../src/main/git-changes";
+import { captureWorkspaceCheckpoint, collectCheckpointChanges, NotGitRepositoryError, parseNameStatus } from "../../../src/main/git-changes";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
@@ -30,6 +30,13 @@ async function commit(cwd: string) {
 }
 
 describe("Git session checkpoints", () => {
+  it("classifies a directory outside Git without exposing Git's command failure", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "cake-non-git-workspace-"));
+    directories.push(workspace);
+
+    await expect(captureWorkspaceCheckpoint(workspace, "session")).rejects.toBeInstanceOf(NotGitRepositoryError);
+  });
+
   it("captures cumulative writes, deletions, and renames without changing the real index", async () => {
     const root = await repository();
     await writeFile(join(root, "old.ts"), "export const old = true;\n");

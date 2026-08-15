@@ -5,7 +5,7 @@ import { parseArtifactInput, type ArtifactRecord, type CakeArtifactV1 } from "..
 import { REVIEW_TEXT_MAX_LENGTH } from "../ipc/review-contract";
 import type { ArtifactRepository } from "./artifact-repository";
 import type { ReviewRepository } from "./review-repository";
-import { captureWorkspaceCheckpoint, collectCheckpointChanges } from "./git-changes";
+import { captureWorkspaceCheckpoint, collectCheckpointChanges, NotGitRepositoryError } from "./git-changes";
 
 type ArtifactRepositoryPort = Pick<ArtifactRepository, "upsert" | "get" | "listSession" | "linkSession">;
 type ReviewRepositoryPort = Pick<ReviewRepository, "claimPending" | "completeRun" | "failRun" | "recoverRunning" | "agentSessionDirectory">;
@@ -342,12 +342,17 @@ export class PiWorkspaceDriver {
 
   private async inspectChanges(requestId: string, sessionId: string) {
     const runtime = this.runtimeFor(sessionId);
-    const initial = await runtime.ensureInitialGitCheckpoint?.();
-    await runtime.waitForGitCheckpoints?.();
-    const latest = runtime.gitCheckpoints?.().at(-1) ?? initial;
-    if (!initial || !latest) throw new Error("Git checkpoints are unavailable for this session");
-    const files = await collectCheckpointChanges(this.workspacePath, initial.tree, latest.tree);
-    this.emit({ type: "changes-snapshot", requestId, workspacePath: this.workspacePath, sessionId, files });
+    try {
+      const initial = await runtime.ensureInitialGitCheckpoint?.();
+      await runtime.waitForGitCheckpoints?.();
+      const latest = runtime.gitCheckpoints?.().at(-1) ?? initial;
+      if (!initial || !latest) throw new Error("Git checkpoints are unavailable for this session");
+      const files = await collectCheckpointChanges(this.workspacePath, initial.tree, latest.tree);
+      this.emit({ type: "changes-snapshot", requestId, workspacePath: this.workspacePath, sessionId, files });
+    } catch (error) {
+      if (!(error instanceof NotGitRepositoryError)) throw error;
+      this.emit({ type: "changes-snapshot", requestId, workspacePath: this.workspacePath, sessionId, files: [] });
+    }
   }
 
   private async runReviewThreads(command: Extract<PiWorkspaceCommand, { type: "submit-review-threads" }>) {
