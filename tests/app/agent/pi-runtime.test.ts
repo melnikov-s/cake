@@ -272,6 +272,28 @@ describe("Pi 0.84.0 foundation contract", () => {
 });
 
 describe("S1 Pi runtime", () => {
+  it("enables Cake application tools in global chat without enabling coding tools", async () => {
+    const directory = await createTemporaryDirectory();
+    const runtime = await createCakeRuntime({
+      cwd: directory,
+      agentDir: join(directory, "agent"),
+      sessionDir: join(directory, "global-chat-sessions"),
+      trusted: false,
+      requestUi: async () => undefined,
+      globalControl: {
+        tools: [
+          { name: "get_app_state", description: "Read Cake application state." },
+          { name: "search_sessions", description: "Search Cake sessions." }
+        ],
+        invoke: async () => ({ ok: true })
+      },
+      onEvent: () => undefined
+    });
+    runtimes.push(runtime);
+
+    expect(runtime.getReviewParentContext?.().activeTools).toEqual(["get_app_state", "search_sessions"]);
+  });
+
   it("opens the OpenAI Codex browser login URL", async () => {
     const directory = await createTemporaryDirectory();
     const openExternal = vi.fn(async () => undefined);

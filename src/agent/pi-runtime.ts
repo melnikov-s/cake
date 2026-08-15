@@ -984,7 +984,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     resourceLoader,
     settingsManager,
     sessionManager,
-    ...(options.globalControl ? { noTools: "all" as const } : {})
+    ...(options.globalControl ? { noTools: "builtin" as const } : {})
   });
   const cakeSessionId = session.sessionManager.getSessionId();
   let disposed = false;
