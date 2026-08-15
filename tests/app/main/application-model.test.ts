@@ -4,7 +4,10 @@ import { ApplicationModel } from "../../../src/main/application-model";
 describe("ApplicationModel", () => {
   it("owns project metadata and Cake-only session archive state", () => {
     const model = ApplicationModel.from({});
+    const projects = model.projects;
+    const trustedProjectPaths = model.trustedProjectPaths;
     const project = model.upsertProject("/work/cake", "cake");
+    const archivedSessionIds = project.archivedSessionIds;
     model.trustProject("/work/cake");
     project.rename("Cake desktop");
     project.setSessionArchived("session-1", true);
@@ -17,6 +20,9 @@ describe("ApplicationModel", () => {
 
     project.setSessionArchived("session-1", false);
     model.removeProject("/work/cake");
+    expect(model.projects).toBe(projects);
+    expect(model.trustedProjectPaths).toBe(trustedProjectPaths);
+    expect(project.archivedSessionIds).toBe(archivedSessionIds);
     expect(model.snapshot().projects).toEqual([]);
     expect(model.isProjectTrusted("/work/cake")).toBe(false);
   });

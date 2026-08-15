@@ -21,4 +21,20 @@ describe("ArtifactRepository", () => {
     expect((await new ArtifactRepository(root).listSession("/project", "session-1"))[0]?.artifact).toMatchObject({ id: "table-1", revision: 2 });
     expect(await repository.exportMarkdown("/project", "session-1")).toContain("| Score |");
   });
+
+  it("serializes revision validation and writes for the same artifact", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-artifacts-")); directories.push(root);
+    const repository = new ArtifactRepository(root);
+    const base = { protocol: "cake.artifact/v1" as const, id: "table-1", sessionId: "session-1", kind: "table" as const, payload: { columns: [{ id: "value", label: "Value", type: "text" as const }], rows: [], selectable: false }, fallback: { markdown: "Empty" }, interaction: { mode: "present" as const } };
+    await repository.upsert("/project", { ...base, revision: 1 });
+
+    const results = await Promise.allSettled([
+      repository.upsert("/project", { ...base, revision: 2, title: "First" }),
+      repository.upsert("/project", { ...base, revision: 2, title: "Second" })
+    ]);
+
+    expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    expect(results.filter(({ status }) => status === "rejected")).toHaveLength(1);
+    expect((await repository.get("/project", "session-1", "table-1"))?.artifact.revision).toBe(2);
+  });
 });

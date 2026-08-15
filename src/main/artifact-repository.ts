@@ -21,31 +21,39 @@ interface StoredArtifactMetadata {
 }
 
 export class ArtifactRepository {
+  private readonly updates = new Map<string, Promise<ArtifactRecord>>();
   constructor(private readonly root: string) {}
 
   async upsert(workspacePath: string, input: unknown): Promise<ArtifactRecord> {
     const artifact = parseArtifactInput(input);
-    const existing = await this.get(workspacePath, artifact.sessionId, artifact.id);
-    if (existing && artifact.revision !== existing.artifact.revision + 1) {
-      throw new Error(`Artifact ${artifact.id} revision must advance from ${existing.artifact.revision} to ${existing.artifact.revision + 1}`);
-    }
-    if (!existing && artifact.revision !== 1) throw new Error(`New artifact ${artifact.id} must start at revision 1`);
+    const key = this.recordPath(workspacePath, artifact.sessionId, artifact.id);
+    const previous = this.updates.get(key) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(async () => {
+      const existing = await this.get(workspacePath, artifact.sessionId, artifact.id);
+      if (existing && artifact.revision !== existing.artifact.revision + 1) {
+        throw new Error(`Artifact ${artifact.id} revision must advance from ${existing.artifact.revision} to ${existing.artifact.revision + 1}`);
+      }
+      if (!existing && artifact.revision !== 1) throw new Error(`New artifact ${artifact.id} must start at revision 1`);
 
-    const serialized = `${JSON.stringify(artifact, null, 2)}\n`;
-    const digest = createHash("sha256").update(serialized).digest("hex");
-    const now = new Date().toISOString();
-    const record = artifactRecordSchema.parse({
-      artifact,
-      workspacePath,
-      digest,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now
+      const serialized = `${JSON.stringify(artifact, null, 2)}\n`;
+      const digest = createHash("sha256").update(serialized).digest("hex");
+      const now = new Date().toISOString();
+      const record = artifactRecordSchema.parse({
+        artifact,
+        workspacePath,
+        digest,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now
+      });
+      await mkdir(this.blobDirectory(), { recursive: true, mode: 0o700 });
+      await mkdir(this.recordDirectory(workspacePath, artifact.sessionId), { recursive: true, mode: 0o700 });
+      await atomicWrite(this.blobPath(digest), serialized);
+      await atomicWrite(key, `${JSON.stringify(toMetadata(record), null, 2)}\n`);
+      return record;
     });
-    await mkdir(this.blobDirectory(), { recursive: true, mode: 0o700 });
-    await mkdir(this.recordDirectory(workspacePath, artifact.sessionId), { recursive: true, mode: 0o700 });
-    await atomicWrite(this.blobPath(digest), serialized);
-    await atomicWrite(this.recordPath(workspacePath, artifact.sessionId, artifact.id), `${JSON.stringify(toMetadata(record), null, 2)}\n`);
-    return record;
+    this.updates.set(key, next);
+    try { return await next; }
+    finally { if (this.updates.get(key) === next) this.updates.delete(key); }
   }
 
   async get(workspacePath: string, sessionId: string, artifactId: string): Promise<ArtifactRecord | undefined> {

@@ -23,10 +23,9 @@ export class ProjectModel extends Model {
   }
 
   setSessionArchived(sessionId: string, archived: boolean) {
-    const current = new Set(this.archivedSessionIds);
-    if (archived) current.add(sessionId);
-    else current.delete(sessionId);
-    this.archivedSessionIds = [...current];
+    const index = this.archivedSessionIds.indexOf(sessionId);
+    if (archived && index === -1) this.archivedSessionIds.push(sessionId);
+    else if (!archived && index !== -1) this.archivedSessionIds.splice(index, 1);
   }
 }
 
@@ -50,23 +49,25 @@ export class ApplicationModel extends Model {
     }
     const now = new Date().toISOString();
     const project = ProjectModel.create({ path, name: defaultName, addedAt: now, lastOpenedAt: now, archivedSessionIds: [] });
-    this.projects = [project, ...this.projects];
+    this.projects.unshift(project);
     return project;
   }
 
   removeProject(path: string) {
-    this.projects = this.projects.filter((project) => project.path !== path);
+    const index = this.projects.findIndex((project) => project.path === path);
+    if (index !== -1) this.projects.splice(index, 1);
     this.revokeProjectTrust(path);
   }
 
   trustProject(path: string) {
     if (this.trustedProjectPaths.includes(path)) return;
     if (this.trustedProjectPaths.length >= 200) throw new Error("Project trust registry is full");
-    this.trustedProjectPaths = [...this.trustedProjectPaths, path];
+    this.trustedProjectPaths.push(path);
   }
 
   revokeProjectTrust(path: string) {
-    this.trustedProjectPaths = this.trustedProjectPaths.filter((trustedPath) => trustedPath !== path);
+    const index = this.trustedProjectPaths.indexOf(path);
+    if (index !== -1) this.trustedProjectPaths.splice(index, 1);
   }
 
   isProjectTrusted(path: string) {
