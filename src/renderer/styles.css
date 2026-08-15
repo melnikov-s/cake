@@ -467,9 +467,6 @@ button.reasoning-summary { border: 0; background: transparent; }
 @keyframes assistant-loading-pulse { 0%, 60%, 100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
 @media (prefers-reduced-motion: reduce) { .assistant-loading > span { animation: none; opacity: .65; } }
 .composer-dock { position: absolute; z-index: 10; right: 0; bottom: 0; left: 0; width: 100%; max-width: 100%; min-width: 0; padding: 20px 24px 15px; background: linear-gradient(to bottom, transparent, var(--background) 28%); pointer-events: none; }
-.global-chat-composer { display: flex; width: min(760px, 100%); margin: 0 auto; align-items: flex-end; gap: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 14px; background: var(--background); box-shadow: 0 8px 30px rgb(0 0 0 / 12%); pointer-events: auto; }
-.global-chat-composer textarea { min-height: 42px; max-height: 180px; flex: 1; resize: vertical; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; }
-.global-chat-composer > div { display: flex; align-items: center; gap: 6px; }
 .legacy-widget { display: grid; width: min(100%, 51.25rem); gap: 4px; margin: 5px auto; padding: 8px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); font: 10px var(--font-mono); pointer-events: auto; }
 .legacy-widget strong { color: var(--muted-foreground); }.legacy-widget pre { max-height: 8rem; margin: 0; overflow: auto; white-space: pre-wrap; }
 .extension-statuses { display: flex; width: min(100%, 51.25rem); gap: 10px; margin: 6px auto 0; overflow-x: auto; color: var(--muted-foreground); font: 10px var(--font-mono); pointer-events: auto; }

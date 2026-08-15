@@ -261,6 +261,16 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
     globalChatDriver.clear(request.requestId, request.tools);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
+  if (request.type === "set-global-chat-model") {
+    globalChatController = event.sender;
+    globalChatDriver.setModel(request.requestId, request.provider, request.modelId);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  if (request.type === "set-global-chat-thinking") {
+    globalChatController = event.sender;
+    globalChatDriver.setThinkingLevel(request.requestId, request.level);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
   if (request.type === "respond-global-chat-control") {
     globalChatDriver.respond(request.controlRequestId, request.result);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.controlRequestId });

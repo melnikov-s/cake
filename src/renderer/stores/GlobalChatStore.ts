@@ -1,6 +1,6 @@
 import { Store, observable, untracked } from "r-state-tree";
-import type { UiPart } from "../../ipc/session-contract";
 import type { DesktopClientEvent } from "../desktop-client";
+import type { SessionCacheStore } from "./SessionCacheStore";
 
 export interface GlobalChatPort {
   open(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string }> }): Promise<void>;
@@ -12,17 +12,16 @@ export interface GlobalChatPort {
 export interface GlobalChatStoreProps {
   port: GlobalChatPort;
   tools(): ReadonlyArray<{ name: string; description: string }>;
+  sessions(): SessionCacheStore;
 }
 
 /** Owns the singleton global-chat surface, its persistent Pi transcript, and turn policy. */
 export class GlobalChatStore extends Store<GlobalChatStoreProps> {
-  readonly parts: UiPart[] = observable([]);
   sessionId: string | undefined;
   draft = "";
-  streaming = false;
   hydrated = false;
   error: string | undefined;
-  private activeOperationId: string | undefined;
+  readonly activeOperations: string[] = observable([]);
   private openPromise: Promise<void> | undefined;
 
   constructor(props: GlobalChatStore["props"]) {
@@ -34,10 +33,13 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
 
   setDraft(value: string) { this.draft = value; }
 
+  get session() { return this.sessionId ? this.props.sessions().find(this.sessionId) : undefined; }
+  get parts() { return this.session?.uiParts ?? []; }
+  get streaming() { return this.session?.streaming ?? false; }
+
   open() {
     if (this.openPromise) return this.openPromise;
-    const operationId = crypto.randomUUID();
-    this.activeOperationId = operationId;
+    const operationId = this.startOperation();
     this.openPromise = this.props.port.open({ operationId, tools: this.toolCatalog() }).catch((error) => {
       if (!this.signal.aborted) this.fail(operationId, error);
     }).finally(() => { this.openPromise = undefined; });
@@ -47,11 +49,9 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   async submit() {
     const text = this.draft.trim();
     if (!text) return;
-    const operationId = crypto.randomUUID();
-    this.activeOperationId = operationId;
-    this.error = undefined;
+    const operationId = this.startOperation();
     this.draft = "";
-    this.parts.push({ id: `global-user-${operationId}`, kind: "text", role: "user", text, status: "complete" });
+    this.session?.upsertPart({ id: `global-user-${operationId}`, kind: "text", role: "user", text, status: "complete" });
     try {
       await this.props.port.prompt({ operationId, text });
     } catch (error) {
@@ -61,48 +61,57 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
 
   async abort() {
     if (!this.streaming) return;
-    const operationId = crypto.randomUUID();
-    this.activeOperationId = operationId;
+    const operationId = this.startOperation();
     try { await this.props.port.abort(operationId); }
     catch (error) { this.fail(operationId, error); }
   }
 
   async clear() {
-    const operationId = crypto.randomUUID();
-    this.activeOperationId = operationId;
-    this.error = undefined;
+    const operationId = this.startOperation();
     try { await this.props.port.clear({ operationId, tools: this.toolCatalog() }); }
     catch (error) { this.fail(operationId, error); }
   }
 
+  startOperation() {
+    const operationId = crypto.randomUUID();
+    this.activeOperations.push(operationId);
+    this.error = undefined;
+    return operationId;
+  }
+
+  finishOperation(operationId: string) {
+    const index = this.activeOperations.indexOf(operationId);
+    if (index >= 0) this.activeOperations.splice(index, 1);
+  }
+
+  reportError(error: unknown) {
+    this.error = error instanceof Error ? error.message : String(error);
+  }
+
   receive(event: DesktopClientEvent) {
     if (event.type === "global-chat-snapshot-received") {
-      this.sessionId = event.sessionId;
-      this.parts.splice(0, this.parts.length, ...event.parts);
-      this.streaming = event.streaming;
+      this.sessionId = event.snapshot.sessionId;
+      this.props.sessions().upsert(event.snapshot);
       this.hydrated = true;
       return;
     }
     if (event.type === "global-chat-part-updated") {
-      const index = this.parts.findIndex((part) => part.id === event.part.id);
-      if (index < 0) this.parts.push(event.part);
-      else this.parts.splice(index, 1, event.part);
+      this.session?.upsertPart(event.part);
       return;
     }
     if (event.type === "global-chat-part-removed") {
-      const index = this.parts.findIndex((part) => part.id === event.partId);
-      if (index >= 0) this.parts.splice(index, 1);
+      this.session?.removePart(event.partId);
       return;
     }
     if (event.type === "global-chat-streaming-changed") {
-      this.streaming = event.streaming;
+      this.session?.setStreaming(event.streaming);
       return;
     }
-    if (event.type === "global-chat-operation-completed" && event.operationId === this.activeOperationId) {
-      this.activeOperationId = undefined;
+    if (event.type === "global-chat-operation-completed" && this.activeOperations.includes(event.operationId)) {
+      this.finishOperation(event.operationId);
       return;
     }
-    if (event.type === "global-chat-operation-failed" && event.operationId === this.activeOperationId) this.fail(event.operationId, event.message);
+    if (event.type === "global-chat-operation-failed" && this.activeOperations.includes(event.operationId)) this.fail(event.operationId, event.message);
   }
 
   private toolCatalog() {
@@ -110,9 +119,9 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   }
 
   private fail(operationId: string, error: unknown) {
-    if (operationId !== this.activeOperationId) return;
-    this.activeOperationId = undefined;
-    this.streaming = false;
+    if (!this.activeOperations.includes(operationId)) return;
+    this.finishOperation(operationId);
+    this.session?.setStreaming(false);
     this.hydrated = true;
     this.error = error instanceof Error ? error.message : String(error);
   }

@@ -51,7 +51,7 @@ describe("GlobalChatDriver", () => {
     const openId = crypto.randomUUID();
 
     driver.open(openId, [{ name: "open_session", description: "Open a session" }]);
-    await vi.waitFor(() => expect(events).toContainEqual(expect.objectContaining({ type: "global-chat-snapshot", requestId: openId, sessionId: "global-1" })));
+    await vi.waitFor(() => expect(events).toContainEqual(expect.objectContaining({ type: "global-chat-snapshot", requestId: openId, snapshot: expect.objectContaining({ sessionId: "global-1" }) })));
     expect(createRuntime).toHaveBeenCalledWith(expect.objectContaining({ newSession: false, agentDir: "/cake/pi", sessionDir: "/cake/pi/global-chat/sessions" }));
 
     const control = runtimeOptions!.globalControl!.invoke({ name: "open_session", arguments: { workspacePath: "/cake", sessionId: "task-7" } }, new AbortController().signal);
@@ -59,6 +59,22 @@ describe("GlobalChatDriver", () => {
     const request = events.find((event): event is Extract<DesktopEvent, { type: "global-chat-control-request" }> => event.type === "global-chat-control-request")!;
     driver.respond(request.controlRequestId, { ok: true });
     await expect(control).resolves.toEqual({ ok: true });
+    driver[Symbol.dispose]();
+  });
+
+  it("applies model and reasoning selections to the persistent runtime", async () => {
+    const events: DesktopEvent[] = [];
+    const cakeRuntime = runtime();
+    const driver = new GlobalChatDriver({ agentDir: "/cake/pi", sessionDir: "/cake/pi/global-chat/sessions", emit: (event) => events.push(event), createRuntime: vi.fn(async () => cakeRuntime) });
+    const modelId = crypto.randomUUID();
+    const thinkingId = crypto.randomUUID();
+
+    driver.setModel(modelId, "openai", "gpt-5");
+    await vi.waitFor(() => expect(cakeRuntime.setModel).toHaveBeenCalledWith("openai", "gpt-5"));
+    driver.setThinkingLevel(thinkingId, "high");
+    await vi.waitFor(() => expect(cakeRuntime.setThinkingLevel).toHaveBeenCalledWith("high"));
+    expect(events).toContainEqual({ type: "global-chat-operation-completed", requestId: modelId });
+    expect(events).toContainEqual({ type: "global-chat-operation-completed", requestId: thinkingId });
     driver[Symbol.dispose]();
   });
 

@@ -55,6 +55,20 @@ export class GlobalChatDriver {
     });
   }
 
+  setModel(requestId: string, provider: string, modelId: string) {
+    void this.run(requestId, async () => {
+      const runtime = await this.ensureRuntime(false);
+      await runtime.setModel(provider, modelId);
+    });
+  }
+
+  setThinkingLevel(requestId: string, level: Parameters<CakeRuntime["setThinkingLevel"]>[0]) {
+    void this.run(requestId, async () => {
+      const runtime = await this.ensureRuntime(false);
+      await runtime.setThinkingLevel(level);
+    });
+  }
+
   respond(controlRequestId: string, result: unknown) {
     this.pendingControl.get(controlRequestId)?.settle(result);
   }
@@ -119,9 +133,7 @@ export class GlobalChatDriver {
     this.options.emit({
       type: "global-chat-snapshot",
       ...(requestId ? { requestId } : {}),
-      sessionId: snapshot.sessionId,
-      parts: snapshot.parts,
-      streaming: snapshot.streaming
+      snapshot
     });
   }
 

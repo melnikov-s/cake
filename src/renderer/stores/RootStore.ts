@@ -14,6 +14,7 @@ import { MessageComposerStore } from "./MessageComposerStore";
 import { AppControlBridge } from "../app-control-bridge";
 import { GlobalChatStore } from "./GlobalChatStore";
 import { NavigationStore } from "./NavigationStore";
+import { ChatConfigurationStore } from "./ChatConfigurationStore";
 
 export class RootStore extends Store<{ client: DesktopClient }> {
   readonly appControl: AppControlBridge;
@@ -85,9 +86,28 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   get settingsStore(): SettingsStore {
     return createStore(SettingsStore, {
       client: this.client,
-      session: () => this.mainChatStore.session,
       sessionContext: () => this.mainChatStore.sessionContext(),
       startOperation: () => this.mainChatStore.startOperation(),
+      finishOperation: (operationId) => this.mainChatStore.finishOperation(operationId),
+      reportError: (error) => this.mainChatStore.setError(error)
+    });
+  }
+
+  @child
+  get mainChatConfigurationStore(): ChatConfigurationStore {
+    return createStore(ChatConfigurationStore, {
+      session: () => this.mainChatStore.session,
+      startOperation: () => this.mainChatStore.startOperation(),
+      setModel: (operationId, provider, modelId) => {
+        const context = this.mainChatStore.sessionContext();
+        if (!context) throw new Error("No active session");
+        return this.client.setModel({ operationId, ...context, provider, modelId });
+      },
+      setThinkingLevel: (operationId, level) => {
+        const context = this.mainChatStore.sessionContext();
+        if (!context) throw new Error("No active session");
+        return this.client.setThinkingLevel({ operationId, ...context, level });
+      },
       finishOperation: (operationId) => this.mainChatStore.finishOperation(operationId),
       reportError: (error) => this.mainChatStore.setError(error)
     });
@@ -160,7 +180,20 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         abort: (operationId) => this.client.abortGlobalChat(operationId),
         clear: (input) => this.client.clearGlobalChat(input)
       },
-      tools: () => this.appControl.listTools()
+      tools: () => this.appControl.listTools(),
+      sessions: () => this.sessionCache
+    });
+  }
+
+  @child
+  get globalChatConfigurationStore(): ChatConfigurationStore {
+    return createStore(ChatConfigurationStore, {
+      session: () => this.globalChatStore.session,
+      startOperation: () => this.globalChatStore.startOperation(),
+      setModel: (operationId, provider, modelId) => this.client.setGlobalChatModel({ operationId, provider, modelId }),
+      setThinkingLevel: (operationId, level) => this.client.setGlobalChatThinkingLevel({ operationId, level }),
+      finishOperation: (operationId) => this.globalChatStore.finishOperation(operationId),
+      reportError: (error) => this.globalChatStore.reportError(error)
     });
   }
 

@@ -33,6 +33,7 @@ import type { ExtensionUiStore, UiRequestState } from "./stores/ExtensionUiStore
 import type { ArtifactInteractionStore } from "./stores/ArtifactInteractionStore";
 import type { MessageComposerStore } from "./stores/MessageComposerStore";
 import type { GlobalChatStore } from "./stores/GlobalChatStore";
+import type { ChatConfigurationStore } from "./stores/ChatConfigurationStore";
 
 function Icon({ children, size = 16 }: { children: ReactNode; size?: number }) {
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
@@ -360,7 +361,24 @@ export const Sidebar = observer(function Sidebar({ store, chat, reviews, onOpenS
   );
 });
 
-const GlobalChatPanel = observer(function GlobalChatPanel({ store }: { store: GlobalChatStore }) {
+const ChatComposer = observer(function ChatComposer({ configuration, onSubmit, input, children, toolbarLeading, toolbarActions }: { configuration: ChatConfigurationStore; onSubmit(event: FormEvent): void; input: ReactNode; children?: ReactNode; toolbarLeading?: ReactNode; toolbarActions: ReactNode }) {
+  const session = configuration.session;
+  const selectedModel = session?.model;
+  return <Composer className="workbench-composer" onSubmit={onSubmit}>
+    {children}
+    {input}
+    <ComposerToolbar className="composer-toolbar">
+      <div className="composer-context">
+        {toolbarLeading}
+        <ModelCombobox ariaLabel="Model" groups={configuration.connectedModelsByProvider} value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onSelect={(value) => void configuration.selectModel(value)} />
+        <select aria-label="Thinking level" value={session?.thinkingLevel ?? "off"} onChange={(event) => void configuration.selectThinkingLevel(event.target.value as NonNullable<typeof session>["thinkingLevel"])}>{session?.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "No reasoning" : `${level.charAt(0).toUpperCase()}${level.slice(1)} reasoning`}</option>)}</select>
+      </div>
+      <div className="composer-actions">{toolbarActions}</div>
+    </ComposerToolbar>
+  </Composer>;
+});
+
+const GlobalChatPanel = observer(function GlobalChatPanel({ store, configuration }: { store: GlobalChatStore; configuration: ChatConfigurationStore }) {
   const submit = (event: FormEvent) => { event.preventDefault(); void store.submit(); };
   return <div className="workbench global-chat"><div className="chat-layout">
     <Conversation>
@@ -376,12 +394,11 @@ const GlobalChatPanel = observer(function GlobalChatPanel({ store }: { store: Gl
         {store.error && <div className="notice notice-error" role="alert"><strong>Global chat failed</strong><span>{store.error}</span></div>}
       </TranscriptList>
     </Conversation>
-    <div className="composer-dock"><form className="global-chat-composer" onSubmit={submit}><textarea aria-label="Message global chat" placeholder="Ask Cake to find or control a task…" value={store.draft} onChange={(event) => store.setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void store.submit(); } }} /><div>{store.streaming && <Button variant="ghost" size="sm" type="button" onClick={() => void store.abort()}>Stop</Button>}<Button className="send-button" size="sm" type="submit" disabled={!store.draft.trim()}>Send<SendIcon /></Button></div></form></div>
+    <div className="composer-dock"><ChatComposer configuration={configuration} onSubmit={submit} input={<SlashCommandCombobox autoFocus aria-label="Message global chat" commands={store.session?.commands ?? []} placeholder="Ask Cake to find or control a task…" value={store.draft} onValueChange={(value) => store.setDraft(value)} onSubmit={(value) => { if (value !== undefined) store.setDraft(value); void store.submit(); }} />} toolbarActions={<>{store.streaming && <Button variant="ghost" size="sm" type="button" onClick={() => void store.abort()}>Stop</Button>}<Button className="send-button" size="sm" type="submit" disabled={!store.draft.trim()}>{store.streaming ? "Queue" : "Send"}<SendIcon /></Button></>} /></div>
   </div></div>;
 });
 
-const ComposerPanel = observer(function ComposerPanel({ store, composer, reviews, settings, extensionUi }: { store: MainChatStore; composer: MessageComposerStore; reviews: ReviewsStore; settings: SettingsStore; extensionUi: ExtensionUiStore }) {
-  const selectedModel = store.session?.model;
+const ComposerPanel = observer(function ComposerPanel({ store, composer, reviews, configuration, extensionUi }: { store: MainChatStore; composer: MessageComposerStore; reviews: ReviewsStore; configuration: ChatConfigurationStore; extensionUi: ExtensionUiStore }) {
   const usage = store.session?.usage;
   const context = usage?.context;
   const contextPercent = context?.percent === null || context?.percent === undefined ? undefined : Math.round(context.percent);
@@ -392,12 +409,7 @@ const ComposerPanel = observer(function ComposerPanel({ store, composer, reviews
   return (
     <div className="composer-dock">
       {extensionUi.widgets.filter((widget) => widget.placement === "aboveEditor").map((widget) => <div className="legacy-widget" key={widget.key}><strong>{widget.key}</strong><pre>{widget.lines.join("\n")}</pre></div>)}
-      <Composer className="workbench-composer" onSubmit={(event) => { event.preventDefault(); void composer.submit(); }}>
-        {reviews.chatCommentCount > 0 && <div className="review-context-badge"><button type="button" onClick={() => void store.openSessionChanges()}><span>{reviews.chatCommentCount}</span> {reviews.chatCommentCount === 1 ? "comment ready to send" : "comments ready to send"}</button></div>}
-        {composer.attachments.length > 0 && <div className="attachment-list">{composer.attachments.map((attachment, index) => attachment.kind === "image"
-          ? <button className="image-attachment" type="button" aria-label={`Remove ${attachment.name}`} key={`${attachment.kind}-${attachment.name}-${index}`} onClick={() => composer.removeAttachment(index)}><img src={`data:${attachment.mimeType};base64,${attachment.data}`} alt="" /><span>{attachment.name}<b aria-hidden="true">×</b></span></button>
-          : <button type="button" key={`${attachment.kind}-${attachment.name}-${index}`} onClick={() => composer.removeAttachment(index)}>@ {attachment.name} <span>×</span></button>)}</div>}
-        <SlashCommandCombobox autoFocus aria-label="Message" commands={store.session?.commands ?? []} focusRequestRevision={composer.focusRequestRevision} suggestFiles={(prefix) => composer.suggestFiles(prefix)} placeholder={store.isStreaming ? "Add the next instruction…" : `Ask Cake to work in ${store.projectName}…`} value={store.draft} onValueChange={(value) => store.setDraft(value)} onPaste={(event) => {
+      <ChatComposer configuration={configuration} onSubmit={(event) => { event.preventDefault(); void composer.submit(); }} input={<SlashCommandCombobox autoFocus aria-label="Message" commands={store.session?.commands ?? []} focusRequestRevision={composer.focusRequestRevision} suggestFiles={(prefix) => composer.suggestFiles(prefix)} placeholder={store.isStreaming ? "Add the next instruction…" : `Ask Cake to work in ${store.projectName}…`} value={store.draft} onValueChange={(value) => store.setDraft(value)} onPaste={(event) => {
           const images = [...event.clipboardData.files].filter((file) => file.type.startsWith("image/"));
           if (images.length === 0) {
             for (const item of event.clipboardData.items) {
@@ -409,20 +421,12 @@ const ComposerPanel = observer(function ComposerPanel({ store, composer, reviews
           if (images.length === 0) return;
           event.preventDefault();
           void composer.addPastedImages(images);
-        }} onSubmit={(value) => { if (value !== undefined) store.setDraft(value); void composer.submit(); }} />
-        <ComposerToolbar className="composer-toolbar">
-          <div className="composer-context">
-            <button type="button" className="icon-button" aria-label="Attach files" title="Attach files" onClick={() => void composer.addAttachments()}><PaperclipIcon /></button>
-            <ModelCombobox ariaLabel="Model" groups={settings.connectedModelsByProvider} value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onSelect={(value) => void settings.selectModel(value)} />
-            <select aria-label="Thinking level" value={store.session?.thinkingLevel} onChange={(event) => void settings.selectThinkingLevel(event.target.value as NonNullable<typeof store.session>["thinkingLevel"])}>{store.session?.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "No reasoning" : `${level.charAt(0).toUpperCase()}${level.slice(1)} reasoning`}</option>)}</select>
-          </div>
-          <div className="composer-actions">
-            {usage && <div className="session-usage" aria-label={`${contextLabel}, session cost $${usage.cost.toFixed(3)}`} title={`${contextTitle} · ${usage.tokens.total.toLocaleString()} billed tokens`}><svg className="context-gauge" viewBox="0 0 36 36" aria-hidden="true"><circle className="context-gauge-track" cx="18" cy="18" r="15.5" pathLength="100" /><circle className="context-gauge-value" cx="18" cy="18" r="15.5" pathLength="100" strokeDasharray={`${Math.min(100, contextPercent ?? 0)} 100`} /><text x="18" y="18">{contextPercent === undefined ? "—" : `${contextPercent}%`}</text></svg><span className="session-cost">${usage.cost.toFixed(3)}</span></div>}
-            {store.isStreaming && <><Button variant="ghost" size="sm" type="button" onClick={() => void store.abort()}>Stop</Button><Button variant="outline" size="sm" type="button" disabled={!store.canSubmit} onClick={() => void composer.submit("steer")}>Steer</Button></>}
-            <Button className="send-button" size="sm" type="submit" disabled={!store.canSubmit}>{store.isStreaming ? "Queue" : "Send"}<SendIcon /></Button>
-          </div>
-        </ComposerToolbar>
-      </Composer>
+        }} onSubmit={(value) => { if (value !== undefined) store.setDraft(value); void composer.submit(); }} />} toolbarLeading={<button type="button" className="icon-button" aria-label="Attach files" title="Attach files" onClick={() => void composer.addAttachments()}><PaperclipIcon /></button>} toolbarActions={<>{usage && <div className="session-usage" aria-label={`${contextLabel}, session cost $${usage.cost.toFixed(3)}`} title={`${contextTitle} · ${usage.tokens.total.toLocaleString()} billed tokens`}><svg className="context-gauge" viewBox="0 0 36 36" aria-hidden="true"><circle className="context-gauge-track" cx="18" cy="18" r="15.5" pathLength="100" /><circle className="context-gauge-value" cx="18" cy="18" r="15.5" pathLength="100" strokeDasharray={`${Math.min(100, contextPercent ?? 0)} 100`} /><text x="18" y="18">{contextPercent === undefined ? "—" : `${contextPercent}%`}</text></svg><span className="session-cost">${usage.cost.toFixed(3)}</span></div>}{store.isStreaming && <><Button variant="ghost" size="sm" type="button" onClick={() => void store.abort()}>Stop</Button><Button variant="outline" size="sm" type="button" disabled={!store.canSubmit} onClick={() => void composer.submit("steer")}>Steer</Button></>}<Button className="send-button" size="sm" type="submit" disabled={!store.canSubmit}>{store.isStreaming ? "Queue" : "Send"}<SendIcon /></Button></>}>
+        {reviews.chatCommentCount > 0 && <div className="review-context-badge"><button type="button" onClick={() => void store.openSessionChanges()}><span>{reviews.chatCommentCount}</span> {reviews.chatCommentCount === 1 ? "comment ready to send" : "comments ready to send"}</button></div>}
+        {composer.attachments.length > 0 && <div className="attachment-list">{composer.attachments.map((attachment, index) => attachment.kind === "image"
+          ? <button className="image-attachment" type="button" aria-label={`Remove ${attachment.name}`} key={`${attachment.kind}-${attachment.name}-${index}`} onClick={() => composer.removeAttachment(index)}><img src={`data:${attachment.mimeType};base64,${attachment.data}`} alt="" /><span>{attachment.name}<b aria-hidden="true">×</b></span></button>
+          : <button type="button" key={`${attachment.kind}-${attachment.name}-${index}`} onClick={() => composer.removeAttachment(index)}>@ {attachment.name} <span>×</span></button>)}</div>}
+      </ChatComposer>
       {extensionUi.widgets.filter((widget) => widget.placement === "belowEditor").map((widget) => <div className="legacy-widget" key={widget.key}><strong>{widget.key}</strong><pre>{widget.lines.join("\n")}</pre></div>)}
       {extensionUi.statuses.length > 0 && <div className="extension-statuses" role="status">{extensionUi.statuses.map((status) => <span key={status.key}><strong>{status.key}</strong> {status.text}</span>)}</div>}
     </div>
@@ -464,7 +468,7 @@ function SettingsPackagesField({ value, onApply }: { value: PiSettings["packages
   return <label className="settings-multiline"><span>Packages<small>Pi package sources as JSON. Saving reloads every open Pi session.</small>{error && <small className="settings-validation" role="alert">{error}</small>}</span><span className="settings-editor"><textarea aria-label="Pi packages" value={draft} rows={6} onChange={(event) => setDraft(event.target.value)} /><Button variant="outline" size="sm" type="button" onClick={apply}>Apply</Button></span></label>;
 }
 
-export const SettingsPage = observer(function SettingsPage({ store, settings }: { store: MainChatStore; settings: SettingsStore }) {
+export const SettingsPage = observer(function SettingsPage({ store, settings, configuration }: { store: MainChatStore; settings: SettingsStore; configuration: ChatConfigurationStore }) {
   const selectedModel = store.session?.model;
   const pi = store.session?.piSettings;
   const authNotice = store.canonicalParts.find((part) => part.kind === "notice" && part.id === "auth-status");
@@ -481,8 +485,8 @@ export const SettingsPage = observer(function SettingsPage({ store, settings }: 
       <section className="settings-section" aria-labelledby="pi-settings-title">
         <header><div><h2 id="pi-settings-title">Current chat</h2><p>Model and reasoning changes apply to this chat and become Pi’s defaults.</p></div><span className={`settings-runtime status-${store.piState}`}><i />{store.piState}</span></header>
         {store.session ? <div className="settings-fields">
-          <div className="settings-field"><span>Model<small>The model Pi uses for its next response.</small></span><ModelCombobox ariaLabel="Settings model" groups={settings.connectedModelsByProvider} value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onSelect={(value) => void settings.selectModel(value)} variant="settings" /></div>
-          <label><span>Reasoning<small>Controls how much time Pi spends thinking.</small></span><select aria-label="Settings thinking level" value={store.session.thinkingLevel} onChange={(event) => void settings.selectThinkingLevel(event.target.value as NonNullable<typeof store.session>["thinkingLevel"])}>{store.session.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "Off" : level.charAt(0).toUpperCase() + level.slice(1)}</option>)}</select></label>
+          <div className="settings-field"><span>Model<small>The model Pi uses for its next response.</small></span><ModelCombobox ariaLabel="Settings model" groups={configuration.connectedModelsByProvider} value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onSelect={(value) => void configuration.selectModel(value)} variant="settings" /></div>
+          <label><span>Reasoning<small>Controls how much time Pi spends thinking.</small></span><select aria-label="Settings thinking level" value={store.session.thinkingLevel} onChange={(event) => void configuration.selectThinkingLevel(event.target.value as NonNullable<typeof store.session>["thinkingLevel"])}>{store.session.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "Off" : level.charAt(0).toUpperCase() + level.slice(1)}</option>)}</select></label>
         </div> : <p className="settings-empty">Open a project or start a one-off chat to choose a model and reasoning level.</p>}
       </section>
 
@@ -545,7 +549,7 @@ export const SettingsPage = observer(function SettingsPage({ store, settings }: 
 
       <section className="settings-section" aria-labelledby="providers-title">
         <header><div><h2 id="providers-title">Providers</h2><p>Connect the accounts and API keys that make models available to Pi.</p></div></header>
-        {settings.modelsByProvider.length === 0 ? <p className="settings-empty">Provider details will appear after a chat is open.</p> : <div className="provider-list">{settings.modelsByProvider.map((provider) => {
+        {configuration.modelsByProvider.length === 0 ? <p className="settings-empty">Provider details will appear after a chat is open.</p> : <div className="provider-list">{configuration.modelsByProvider.map((provider) => {
           const authenticated = provider.models.some((model) => model.authenticated);
           const authenticatedModel = provider.models.find((model) => model.authenticated);
           const authSource = authenticatedModel?.authSource;
@@ -573,6 +577,7 @@ export const App = observer(function App() {
   const changes = root.changesStore;
   const reviews = root.reviewsStore;
   const settings = root.settingsStore;
+  const chatConfiguration = root.mainChatConfigurationStore;
   const extensionUi = root.extensionUiStore;
   const artifactInteractions = root.artifactInteractionStore;
   const navigation = root.navigationStore;
@@ -612,10 +617,10 @@ export const App = observer(function App() {
       <section className="workspace" data-session-id={store.session?.sessionId}>
         <button className={page === "settings" ? "workspace-settings-icon active" : "workspace-settings-icon"} type="button" aria-label="Open settings" aria-current={page === "settings" ? "page" : undefined} onClick={() => navigation.openSettings()}><SettingsIcon /></button>
         <header className="workspace-header"><div><button className="header-sidebar-toggle" aria-label="Toggle sidebar" onClick={() => setSidebarCollapsed((value) => !value)}><SidebarIcon /></button>{page === "settings" && <button className="header-back" aria-label="Back to chat" onClick={returnToChat}><BackIcon /></button>}<strong>{page === "settings" ? "Settings" : page === "global" ? "Global chat" : extensionUi.title ?? (store.session ? store.sessionTitle : "Cake")}</strong>{page === "chat" && store.projectPath && <span>{store.projectPath}</span>}</div>{globalChat ? <Button variant="ghost" size="sm" onClick={() => { if (window.confirm("Clear global chat history?")) void globalChat.clear(); }}>Clear</Button> : page === "chat" && store.session && <div className="header-pane-actions"><button className="header-pane-toggle" type="button" aria-label="Browse project files" onClick={() => void store.openWorkspaceBrowser()}><BrowseIcon /><span>Browse</span></button><button className="header-pane-toggle" type="button" aria-label="Open workspace changes" onClick={() => void store.openSessionChanges()}><ChangesIcon /><span>Changes</span>{changes.changes.length > 0 && <b>{changes.changes.length}</b>}</button></div>}</header>
-        {page === "settings" ? <SettingsPage store={store} settings={settings} /> : globalChat ? <GlobalChatPanel store={globalChat} /> : !store.session ? (
+        {page === "settings" ? <SettingsPage store={store} settings={settings} configuration={chatConfiguration} /> : globalChat ? <GlobalChatPanel store={globalChat} configuration={root.globalChatConfigurationStore} /> : !store.session ? (
           <div className="welcome"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build?</h1><p>Open a project for durable workspace chats, or start a one-off chat from your home directory.</p><div><Button size="lg" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.chooseProject()}><FolderIcon /> Open project</Button><Button size="lg" variant="outline" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.startOneOffChat()}><ChatIcon /> One-off chat</Button></div>{store.error && <p className="welcome-error" role="alert">{store.error}</p>}</div>
         ) : (
-          <div className="workbench"><div className="chat-layout"><Transcript sessionId={store.session.sessionId} store={store} composer={root.messageComposerStore} artifacts={artifactInteractions} /><ComposerPanel store={store} composer={root.messageComposerStore} reviews={reviews} settings={settings} extensionUi={extensionUi} /></div></div>
+          <div className="workbench"><div className="chat-layout"><Transcript sessionId={store.session.sessionId} store={store} composer={root.messageComposerStore} artifacts={artifactInteractions} /><ComposerPanel store={store} composer={root.messageComposerStore} reviews={reviews} configuration={chatConfiguration} extensionUi={extensionUi} /></div></div>
         )}
       </section>
       <CommandPane store={store} extensionUi={extensionUi} />

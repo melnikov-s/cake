@@ -25,7 +25,7 @@ export type DesktopClientEvent =
   | { type: "part-updated"; sessionId: string; part: UiPart }
   | { type: "part-removed"; sessionId: string; partId: string }
   | { type: "streaming-changed"; sessionId: string; streaming: boolean }
-  | { type: "global-chat-snapshot-received"; operationId?: string; sessionId: string; parts: UiPart[]; streaming: boolean }
+  | { type: "global-chat-snapshot-received"; operationId?: string; snapshot: SessionSnapshot }
   | { type: "global-chat-part-updated"; part: UiPart }
   | { type: "global-chat-part-removed"; partId: string }
   | { type: "global-chat-streaming-changed"; streaming: boolean }
@@ -71,6 +71,8 @@ export interface DesktopClient {
   promptGlobalChat(input: { operationId: string; text: string }): Promise<void>;
   abortGlobalChat(operationId: string): Promise<void>;
   clearGlobalChat(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string }> }): Promise<void>;
+  setGlobalChatModel(input: { operationId: string; provider: string; modelId: string }): Promise<void>;
+  setGlobalChatThinkingLevel(input: { operationId: string; level: ThinkingLevel }): Promise<void>;
   respondToGlobalChatControl(controlRequestId: string, result: unknown): Promise<void>;
   listReviewThreads(workspacePath: string, sessionId: string): Promise<ReviewThread[]>;
   createReviewThread(input: { workspacePath: string; sessionId: string; anchor: ReviewAnchor; body: string }): Promise<ReviewThread>;
@@ -111,7 +113,7 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
   if (event.type === "session-snapshot") return { type: "session-snapshot-received", operationId: event.requestId, snapshot: event.snapshot };
   if (event.type === "part-updated" || event.type === "part-removed") return event;
   if (event.type === "session-streaming") return { type: "streaming-changed", sessionId: event.sessionId, streaming: event.streaming };
-  if (event.type === "global-chat-snapshot") return { type: "global-chat-snapshot-received", operationId: event.requestId, sessionId: event.sessionId, parts: event.parts, streaming: event.streaming };
+  if (event.type === "global-chat-snapshot") return { type: "global-chat-snapshot-received", operationId: event.requestId, snapshot: event.snapshot };
   if (event.type === "global-chat-part-updated" || event.type === "global-chat-part-removed") return event;
   if (event.type === "global-chat-streaming") return { type: "global-chat-streaming-changed", streaming: event.streaming };
   if (event.type === "global-chat-operation-completed") return { type: event.type, operationId: event.requestId };
@@ -195,6 +197,8 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
     promptGlobalChat: (input) => accept(bridge, { type: "prompt-global-chat", requestId: input.operationId, text: input.text }),
     abortGlobalChat: (operationId) => accept(bridge, { type: "abort-global-chat", requestId: operationId }),
     clearGlobalChat: (input) => accept(bridge, { type: "clear-global-chat", requestId: input.operationId, tools: [...input.tools] }),
+    setGlobalChatModel: (input) => accept(bridge, { type: "set-global-chat-model", requestId: input.operationId, provider: input.provider, modelId: input.modelId }),
+    setGlobalChatThinkingLevel: (input) => accept(bridge, { type: "set-global-chat-thinking", requestId: input.operationId, level: input.level }),
     async respondToGlobalChatControl(controlRequestId, result) {
       const response = await bridge.request({ type: "respond-global-chat-control", controlRequestId, result });
       if (response.type !== "accepted" || response.requestId !== controlRequestId) throw new Error("Cake received a mismatched global control response");

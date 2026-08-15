@@ -40,6 +40,8 @@ function createDesktopClient(restoredPath?: string) {
     promptGlobalChat: vi.fn(async () => undefined),
     abortGlobalChat: vi.fn(async () => undefined),
     clearGlobalChat: vi.fn(async () => undefined),
+    setGlobalChatModel: vi.fn(async () => undefined),
+    setGlobalChatThinkingLevel: vi.fn(async () => undefined),
     respondToGlobalChatControl: vi.fn(async () => undefined),
     listReviewThreads: vi.fn(async () => []),
     createReviewThread: vi.fn(async () => { throw new Error("not mocked"); }),
@@ -151,9 +153,9 @@ describe("MainChatStore", () => {
       ]
     });
 
-    expect(root.settingsStore.modelsByProvider.map((group) => group.id)).toEqual(["openai", "anthropic"]);
-    expect(root.settingsStore.connectedModelsByProvider).toHaveLength(1);
-    expect(root.settingsStore.connectedModelsByProvider[0]).toMatchObject({ id: "openai", models: [expect.objectContaining({ id: "gpt" })] });
+    expect(root.mainChatConfigurationStore.modelsByProvider.map((group) => group.id)).toEqual(["openai", "anthropic"]);
+    expect(root.mainChatConfigurationStore.connectedModelsByProvider).toHaveLength(1);
+    expect(root.mainChatConfigurationStore.connectedModelsByProvider[0]).toMatchObject({ id: "openai", models: [expect.objectContaining({ id: "gpt" })] });
     root[Symbol.dispose]();
   });
 
