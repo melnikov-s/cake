@@ -33,7 +33,7 @@ vi.mock("@/components/ai-elements/conversation", () => ({
   })
 }));
 
-import { Transcript } from "../../../src/renderer/app";
+import { ASSISTANT_FULLSCREEN_MIN_LENGTH, Transcript } from "../../../src/renderer/app";
 
 function storeWith(parts: UiPart[], isStreaming = false) {
   return { parts, visibleParts: parts, projectName: "Cake", error: undefined, thinkingExpanded: false, isStreaming, toggleThinking: vi.fn(), forkAt: vi.fn() } as unknown as MainChatStore;
@@ -241,6 +241,27 @@ describe("Transcript scrolling", () => {
 
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="Fork response into new chat"]')!.click());
     expect(store.forkAt).toHaveBeenCalledWith("assistant-entry");
+  });
+
+  it("opens long assistant responses in a fullscreen reader", () => {
+    const longResponse = `# Long response\n\n${"Readable detail. ".repeat(Math.ceil(ASSISTANT_FULLSCREEN_MIN_LENGTH / 17))}`;
+    act(() => root.render(<Transcript artifacts={artifacts} sessionId="session-1" store={storeWith([
+      { id: "short", kind: "text", role: "assistant", text: "Short answer", status: "complete" },
+      { id: "long", kind: "text", role: "assistant", text: longResponse, status: "complete" }
+    ])} />));
+
+    const expandButtons = container.querySelectorAll<HTMLButtonElement>('[aria-label="View response fullscreen"]');
+    expect(expandButtons).toHaveLength(1);
+    act(() => expandButtons[0]!.click());
+
+    const dialog = document.body.querySelector<HTMLElement>(".assistant-message-fullscreen");
+    expect(dialog).not.toBeNull();
+    expect(dialog?.textContent).toContain("Long response");
+    expect(document.body.style.overflow).toBe("hidden");
+
+    act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(document.body.querySelector(".assistant-message-fullscreen")).toBeNull();
+    expect(document.body.style.overflow).toBe("");
   });
 
   it("renders submitted image attachments from Pi's persisted base64 block", () => {

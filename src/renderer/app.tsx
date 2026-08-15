@@ -23,6 +23,7 @@ import { WorkspaceBrowser } from "@/components/workspace-browser";
 import { ModelCombobox } from "@/components/model-combobox";
 import { SessionTree } from "@/components/session-tree";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
+import { AssistantMessageFullscreen } from "@/components/assistant-message-fullscreen";
 import type { CompatibilityResource, PiSettings, UiPart } from "../ipc/session-contract";
 import type { MainChatStore } from "./stores/MainChatStore";
 import type { ReviewsStore } from "./stores/ReviewsStore";
@@ -54,6 +55,7 @@ const MoreIcon = () => <Icon><circle cx="5" cy="12" r=".7" fill="currentColor" s
 const SettingsIcon = () => <Icon><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06-2.83 2.83-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21h-4v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06-2.83-2.83.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3v-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06 2.83-2.83.06.06A1.65 1.65 0 0 0 9 4.68h.08a1.65 1.65 0 0 0 1-1.51V3h4v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06 2.83 2.83-.06.06A1.65 1.65 0 0 0 19.32 9v.08a1.65 1.65 0 0 0 1.51 1H21v4h-.09A1.65 1.65 0 0 0 19.4 15z" /></Icon>;
 const CopyIcon = () => <Icon size={15}><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></Icon>;
 const ForkIcon = () => <Icon size={15}><circle cx="6" cy="5" r="2" /><circle cx="18" cy="5" r="2" /><circle cx="12" cy="19" r="2" /><path d="M6 7v2a4 4 0 0 0 4 4h2M18 7v2a4 4 0 0 1-4 4h-2v4" /></Icon>;
+const ExpandIcon = () => <Icon size={15}><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5" /></Icon>;
 const CheckIcon = () => <Icon size={15}><path d="m5 12 4 4L19 6" /></Icon>;
 const ChangesIcon = () => <Icon size={15}><path d="M4 7h10M4 17h10M17 4v6M14 7l3 3 3-3M17 14v6M14 17l3 3 3-3" /></Icon>;
 const BrowseIcon = () => <Icon size={15}><path d="M4 5.5h6l1.8 2H20v11H4z" /><path d="M4 9h16" /></Icon>;
@@ -79,8 +81,13 @@ function CommandPane({ store, extensionUi }: { store: MainChatStore; extensionUi
   );
 }
 
+export const ASSISTANT_FULLSCREEN_MIN_LENGTH = 1_000;
+
 function AssistantTextMessage({ part, store }: { part: Extract<UiPart, { kind: "text" }>; store: MainChatStore }) {
   const [copied, setCopied] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const canFullscreen = part.text.length >= ASSISTANT_FULLSCREEN_MIN_LENGTH;
+  const closeFullscreen = useCallback(() => setFullscreen(false), []);
   useEffect(() => {
     if (!copied) return;
     const timeout = window.setTimeout(() => setCopied(false), 1_500);
@@ -95,11 +102,13 @@ function AssistantTextMessage({ part, store }: { part: Extract<UiPart, { kind: "
   return (
     <Message className="assistant-message mr-auto w-full">
       <MessageLabel>{part.status === "streaming" ? "Cake · working" : "Cake"}</MessageLabel>
+      {canFullscreen && <button className="assistant-message-expand" type="button" aria-label="View response fullscreen" title="View fullscreen" onClick={() => setFullscreen(true)}><ExpandIcon /></button>}
       <MessageContent className="assistant-message-content"><Markdown>{part.text}</Markdown></MessageContent>
       {part.status !== "streaming" && <div className="assistant-message-actions" aria-label="Message actions">
         <button type="button" aria-label={copied ? "Copied response" : "Copy response"} title={copied ? "Copied" : "Copy response"} onClick={() => void copy()}>{copied ? <CheckIcon /> : <CopyIcon />}</button>
         {part.entryId && <button type="button" aria-label="Fork response into new chat" title="Fork into new chat" onClick={() => void store.forkAt(part.entryId!)}><ForkIcon /></button>}
       </div>}
+      {fullscreen && <AssistantMessageFullscreen onClose={closeFullscreen}><Markdown>{part.text}</Markdown></AssistantMessageFullscreen>}
     </Message>
   );
 }
