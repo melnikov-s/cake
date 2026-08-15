@@ -1,7 +1,7 @@
 # S3 Pi ecosystem compatibility contract
 
 Cake continues to load extensions, tools, providers, commands, skills, prompt
-templates, and packages through Pi 0.84.0. `src/agent/pi-runtime.ts` is the only
+templates, and packages through Pi 0.84.0. The focused `src/agent` adapter layer is the only
 application module that reads Pi resource and extension types. It normalizes
 discovery into Cake's bounded `CompatibilityCatalog` before data crosses the
 preload boundary.

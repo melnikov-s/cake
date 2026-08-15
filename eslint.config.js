@@ -13,7 +13,7 @@ export default tseslint.config(
   },
   {
     files: ["src/**/*.{ts,tsx}"],
-    ignores: ["src/agent/pi-runtime.ts"],
+    ignores: ["src/agent/**/*.ts"],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -21,7 +21,7 @@ export default tseslint.config(
           paths: [
             {
               name: "@earendil-works/pi-coding-agent",
-              message: "Only src/agent/pi-runtime.ts may import Pi."
+              message: "Only src/agent adapter modules may import Pi."
             }
           ]
         }

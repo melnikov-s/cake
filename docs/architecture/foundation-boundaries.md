@@ -7,13 +7,13 @@ intentionally small and evolves alongside the process-safe schemas in `src/ipc`.
 | --- | --- | --- | --- |
 | Renderer | React presentation, the preload-to-intent adapter, and a window-local `RootStore` tree of focused behavioral Stores | Cake protocol types only at the adapter boundary; Cake state elsewhere | Node globals or raw Electron IPC |
 | Preload | Validation and the frozen `window.cake` API | Electron IPC, Cake protocol schemas | `ipcRenderer` itself |
-| Main | Window lifecycle, persistence, Pi workspace runtimes, native services, and routing | Electron, Cake IPC contracts, and Pi only through `src/agent/pi-runtime.ts` | Privileged objects or raw Pi objects crossing into preload/renderer |
+| Main | Window lifecycle, persistence, Pi workspace runtimes, native services, and routing | Electron, Cake IPC contracts, and Pi only through focused `src/agent` adapter modules | Privileged objects or raw Pi objects crossing into preload/renderer |
 
 Every message is parsed with the shared Zod schemas at the receiving boundary.
 The protocol carries correlated Pi operations, Pi-extension UI requests and
 responses, normalized session events, and application persistence operations.
 Pi-specific event shapes are normalized inside
-`src/agent/pi-runtime.ts`; they do not leak into the IPC contracts.
+the focused `src/agent` adapter modules; they do not leak into the IPC contracts.
 
 The renderer's `desktop-client.ts` is the transport boundary. It translates the
 generic preload request/event bridge into `DesktopClient` intents and

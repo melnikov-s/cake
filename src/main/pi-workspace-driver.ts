@@ -1,6 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { resolve } from "node:path";
-import { createCakeRuntime, loadPiChangelog, runInlineWidgetGeneration, runInlineWidgetRepair, runReviewTurn, type CakeRuntime, type InlineWidgetGenerationRequest, type RuntimeUiRequest } from "../agent/pi-runtime";
+import { createCakeRuntime, type CakeRuntime, type RuntimeUiRequest } from "../agent/cake-runtime";
+import { loadPiChangelog } from "../agent/session-discovery";
+import { runInlineWidgetGeneration, runInlineWidgetRepair, runReviewTurn, type InlineWidgetGenerationRequest } from "../agent/sidecar-runtime";
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
 import { parseArtifactInput, type ArtifactRecord, type CakeArtifactV1 } from "../ipc/artifact-contract";
 import { REVIEW_TEXT_MAX_LENGTH } from "../ipc/review-contract";

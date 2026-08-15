@@ -1,7 +1,7 @@
 # S1 session and state contract
 
 Cake's project chat uses a project-aware, multi-session Pi runtime.
-`src/agent/pi-runtime.ts` remains the only ordinary application module that
+The focused `src/agent` adapter modules remain the only ordinary application modules that
 imports Pi. It creates, resumes, or opens an explicit Pi session for the
 selected workspace and emits only the schemas in `src/ipc/session-contract.ts`.
 

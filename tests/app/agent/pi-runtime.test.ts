@@ -2,23 +2,20 @@ import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createCakeArtifactExtension } from "../../../src/agent/artifact-extension";
+import { createCakeRuntime, piRuntimeVersion, type CakeRuntime } from "../../../src/agent/cake-runtime";
+import { createFoundationRuntime, type FoundationRuntime } from "../../../src/agent/foundation-runtime";
 import {
   cakePluginAuthoringSkillPath,
   cakeWorkspaceSessionDirectory,
-  createCakeArtifactExtension,
-  createCakeRuntime,
-  createFoundationRuntime,
-  createLiveMessageProjector,
   inspectWorkspace,
   loadPiChangelog,
   loadWorkspaceSessionPreview,
   listWorkspaceSessions,
-  piRuntimeVersion,
-  runReviewTurn,
-  suggestProjectFiles,
-  type CakeRuntime,
-  type FoundationRuntime
-} from "../../../src/agent/pi-runtime";
+  suggestProjectFiles
+} from "../../../src/agent/session-discovery";
+import { createLiveMessageProjector } from "../../../src/agent/session-projection";
+import { runReviewTurn } from "../../../src/agent/sidecar-runtime";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { CakeArtifactV1 } from "../../../src/ipc/artifact-contract";
 import { sessionSnapshotSchema } from "../../../src/ipc/session-contract";

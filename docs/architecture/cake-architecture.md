@@ -85,7 +85,7 @@ interaction state. Renderer workflows call intent-level Cake clients rather
 than constructing transport envelopes or importing privileged implementations.
 
 Every cross-process payload is parsed by shared Zod contracts at the receiving
-boundary. Raw Pi event and object shapes stop at `src/agent/pi-runtime.ts`.
+boundary. Raw Pi event and object shapes stop in the focused `src/agent` adapter modules.
 
 ## Renderer state
 

@@ -37,7 +37,7 @@ state, and development boundaries behind these principles.
   projections, window and workflow state, artifacts, reviews, plugin metadata,
   and other GUI-specific persistence. Never create a second Cake-owned copy of
   a Pi transcript.
-- `src/agent/pi-runtime.ts` is the Pi adapter boundary. Other Cake modules use
+- `src/agent` is the Pi adapter layer. Other Cake modules use
   Cake-owned contracts and intent-level operations rather than raw Pi objects.
 - Electron main owns Pi runtimes, filesystem access, persistence, and native
   services. Preload exposes one narrow validated bridge. The sandboxed renderer

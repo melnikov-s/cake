@@ -20,7 +20,7 @@ Provider-backed assistant streaming uses the same adapter in the real workspace
 session path. Live-provider acceptance remains opt-in because it requires user
 credentials and may incur cost.
 
-Only `src/agent/pi-runtime.ts` imports the Pi coding-agent package. Agent, main,
+Only focused modules in `src/agent` import the Pi coding-agent package. Main,
 preload, and the renderer's desktop-client boundary communicate with Cake-owned
 types validated in `src/ipc`. The renderer boundary translates those DTOs into
 intent-level `DesktopClient` operations and application events consumed by

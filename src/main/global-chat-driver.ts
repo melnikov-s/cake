@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { createCakeRuntime, type CakeRuntime, type CakeRuntimeEvent, type GlobalControlTool } from "../agent/pi-runtime";
+import { createCakeRuntime, type CakeRuntime, type CakeRuntimeEvent, type GlobalControlTool } from "../agent/cake-runtime";
 import type { DesktopEvent } from "../ipc/desktop-ipc";
 
 interface PendingControlRequest {
