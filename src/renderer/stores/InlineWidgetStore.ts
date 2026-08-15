@@ -20,8 +20,10 @@ export interface InlineWidgetRepairInput {
   model?: { provider: string; id: string };
 }
 
+type InlineWidgetClient = Pick<DesktopClient, "compileInlineWidget" | "repairInlineWidget">;
+
 /** Owns compilation and dedicated-agent repair policy for inline transcript widgets. */
-export class InlineWidgetStore extends Store<{ client: DesktopClient }> {
+export class InlineWidgetStore extends Store<{ client: InlineWidgetClient }> {
   readonly states: Record<string, InlineWidgetState> = observable({});
   private readonly revisions = new Map<string, number>();
 

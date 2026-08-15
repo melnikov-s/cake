@@ -264,12 +264,7 @@ export const compatibilityCatalogSchema = z.object({
 
 export const extensionUiStateSchema = z.object({
   title: ipcProjectionString(512).optional(),
-  statuses: ipcProjectionArray(z.object({ key: z.string().max(256), text: ipcProjectionString(2_048) }), 100).default([]),
-  widgets: ipcProjectionArray(z.object({
-    key: z.string().max(256),
-    lines: ipcProjectionArray(ipcProjectionString(4_096), 1_000),
-    placement: z.enum(["aboveEditor", "belowEditor"])
-  }), 100).default([])
+  statuses: ipcProjectionArray(z.object({ key: z.string().max(256), text: ipcProjectionString(2_048) }), 100).default([])
 });
 
 export const slashCommandSchema = z.object({
@@ -319,7 +314,6 @@ export const extensionUiEventSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("status"), key: z.string().max(256), text: ipcProjectionString(2_048).optional() }),
   z.object({ kind: z.literal("title"), title: ipcProjectionString(512) }),
   z.object({ kind: z.literal("editor-text"), text: boundedText, mode: z.enum(["replace", "insert"]) }),
-  z.object({ kind: z.literal("widget"), key: z.string().max(256), lines: ipcProjectionArray(ipcProjectionString(4_096), 1_000).optional(), placement: z.enum(["aboveEditor", "belowEditor"]) }),
   z.object({ kind: z.literal("diagnostic"), diagnostic: resourceDiagnosticSchema })
 ]);
 
@@ -338,7 +332,7 @@ export const sessionSnapshotSchema = z.object({
   commands: ipcProjectionArray(slashCommandSchema, 20_000),
   usage: sessionUsageSchema.optional(),
   compatibility: compatibilityCatalogSchema.default({ resources: [], diagnostics: [] }),
-  extensionUi: extensionUiStateSchema.default({ statuses: [], widgets: [] }),
+  extensionUi: extensionUiStateSchema.default({ statuses: [] }),
   sessions: ipcProjectionArray(sessionSummarySchema, 10_000).default([]),
   tree: ipcProjectionArray(sessionTreeEntrySchema, 50_000).default([]),
   artifacts: ipcProjectionArray(artifactRecordSchema, 10_000).optional()

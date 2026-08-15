@@ -63,6 +63,10 @@ describe("ArtifactHost", () => {
     expect(container.querySelector(".inline-widget-source")?.textContent).toContain("cakeRequest.submit");
     act(() => window.dispatchEvent(new MessageEvent("message", { source: frame.contentWindow, data: { source: "cake-inline-widget", token, type: "submit", value: { choice: "yes" } } })));
     expect(submit).toHaveBeenCalledWith({ choice: "yes" });
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="View Visual choice fullscreen"]')!.click());
+    const fullscreenFrame = document.body.querySelector<HTMLIFrameElement>(".fullscreen-surface-canvas iframe")!;
+    act(() => window.dispatchEvent(new MessageEvent("message", { source: fullscreenFrame.contentWindow, data: { source: "cake-inline-widget", token, type: "submit", value: { choice: "fullscreen" } } })));
+    expect(submit).toHaveBeenLastCalledWith({ choice: "fullscreen" });
   });
 
   it("compiles delegated widget artifacts without placing their source in transcript text", async () => {
@@ -81,8 +85,20 @@ describe("ArtifactHost", () => {
     expect(client.compileInlineWidget).toHaveBeenCalledWith("react", source, "display");
     expect(container.querySelector("iframe")?.getAttribute("sandbox")).toBe("allow-scripts");
     expect(container.textContent).not.toContain("export default");
+    const fullscreenButton = container.querySelector<HTMLButtonElement>('[aria-label="View Comparison fullscreen"]')!;
+    expect(fullscreenButton.closest(".artifact > header")).not.toBeNull();
+    expect(fullscreenButton.querySelector("svg")).not.toBeNull();
+    expect(container.querySelector('.inline-widget-rail [aria-label="View Comparison fullscreen"]')).toBeNull();
     act(() => (container.querySelector(".inline-widget-actions button") as HTMLButtonElement).click());
     expect(container.textContent).toContain("export default");
+    act(() => fullscreenButton.click());
+    const fullscreen = document.body.querySelector<HTMLElement>(".fullscreen-surface-canvas");
+    const fullscreenFrame = fullscreen?.querySelector<HTMLIFrameElement>("iframe");
+    expect(fullscreen?.textContent).toContain("Comparison");
+    expect(fullscreenFrame?.getAttribute("src")).toBe(`cake-widget://document/${token}`);
+    expect(fullscreenFrame?.getAttribute("sandbox")).toBe("allow-scripts");
+    act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(document.body.querySelector(".fullscreen-surface")).toBeNull();
   });
 });
 

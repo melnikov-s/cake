@@ -1,18 +1,21 @@
-import { Store } from "r-state-tree";
+import { Store, observable } from "r-state-tree";
 import type { ModelOption, ThinkingLevel } from "../../ipc/session-contract";
 import type { SessionModel } from "../models/session";
+import type { DesktopClientEvent } from "../desktop-client";
+import { describeError } from "../error-details";
 
 export interface ChatConfigurationStoreProps {
   session(): SessionModel | undefined;
-  startOperation(): string;
+  operations: { start(): string; finish(operationId: string): void };
   setModel(operationId: string, provider: string, modelId: string): Promise<void>;
   setThinkingLevel(operationId: string, level: ThinkingLevel): Promise<void>;
-  finishOperation(operationId: string): void;
-  reportError(error: unknown): void;
 }
 
 /** Reusable model-catalog and reasoning configuration for one Pi chat session. */
 export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
+  readonly activeOperations: string[] = observable([]);
+  error: string | undefined;
+  errorDetails: string | undefined;
   get session() { return this.props.session(); }
 
   get modelsByProvider() {
@@ -41,12 +44,42 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
     await this.run((operationId) => this.props.setThinkingLevel(operationId, level));
   }
 
+  receive(event: DesktopClientEvent) {
+    if (event.type === "pi-state-changed" && (event.state === "failed" || event.state === "stopped")) {
+      for (const operationId of this.activeOperations.slice()) this.finish(operationId);
+      return;
+    }
+    if ((event.type === "operation-completed" || event.type === "operation-failed") && event.operationId && this.activeOperations.includes(event.operationId)) {
+      if (event.type === "operation-failed") this.reportError(event.message);
+      this.finish(event.operationId);
+      return;
+    }
+    if ((event.type === "global-chat-operation-completed" || event.type === "global-chat-operation-failed") && this.activeOperations.includes(event.operationId)) {
+      if (event.type === "global-chat-operation-failed") this.reportError(event.message);
+      this.finish(event.operationId);
+    }
+  }
+
   private async run(command: (operationId: string) => Promise<void>) {
-    const operationId = this.props.startOperation();
+    this.error = undefined; this.errorDetails = undefined;
+    const operationId = this.props.operations.start();
+    this.activeOperations.push(operationId);
     try { await command(operationId); }
     catch (error) {
-      this.props.reportError(error);
-      this.props.finishOperation(operationId);
+      this.reportError(error);
+      this.finish(operationId);
     }
+  }
+
+  private finish(operationId: string) {
+    const index = this.activeOperations.indexOf(operationId);
+    if (index >= 0) this.activeOperations.splice(index, 1);
+    this.props.operations.finish(operationId);
+  }
+
+  private reportError(error: unknown) {
+    const described = describeError(error);
+    this.error = described.message;
+    this.errorDetails = described.details;
   }
 }

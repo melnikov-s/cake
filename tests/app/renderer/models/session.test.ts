@@ -4,7 +4,6 @@ import type { SessionSnapshot } from "../../../../src/ipc/session-contract";
 import { MessageModel } from "../../../../src/renderer/models/message";
 import { ModelOptionModel } from "../../../../src/renderer/models/model-option";
 import { SessionModel } from "../../../../src/renderer/models/session";
-import { SessionSummaryModel } from "../../../../src/renderer/models/session-summary";
 import { SessionTreeEntryModel } from "../../../../src/renderer/models/session-tree-entry";
 import { ReviewThreadModel } from "../../../../src/renderer/models/review-thread";
 
@@ -25,7 +24,7 @@ const snapshot: SessionSnapshot = {
   commands: [{ name: "skill:fixture", description: "Fixture skill", source: "skill", sourceInfo: { path: "/fixture/SKILL.md", source: "fixture", scope: "project", origin: "top-level" } }],
   usage: { tokens: { input: 120, output: 30, cacheRead: 80, cacheWrite: 0, total: 230 }, cost: 0.0042, context: { tokens: 200, contextWindow: 1_000, percent: 20 } },
   compatibility: { resources: [{ id: "extension:/fixture.ts", kind: "extension", name: "fixture.ts", path: "/fixture.ts", source: "fixture", scope: "project", origin: "package", commands: ["fixture"], tools: [], enabled: true }], diagnostics: [{ id: "compat:one", severity: "warning", source: "compatibility", method: "custom", message: "Unavailable" }] },
-  extensionUi: { statuses: [], widgets: [] },
+  extensionUi: { statuses: [] },
   sessions: [{ id: "session-1", title: "Session", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 1, archived: false }],
   tree: [{ id: "entry-1", type: "message", preview: "Hello", active: true }]
 };
@@ -37,7 +36,6 @@ describe("SessionModel", () => {
     const models = model.models;
     const thinkingLevels = model.availableThinkingLevels;
     const diagnostics = model.diagnostics;
-    const sessions = model.sessions;
     const tree = model.tree;
     model.applySnapshot(snapshot);
 
@@ -45,7 +43,6 @@ describe("SessionModel", () => {
     expect(model.models).toBe(models);
     expect(model.availableThinkingLevels).toBe(thinkingLevels);
     expect(model.diagnostics).toBe(diagnostics);
-    expect(model.sessions).toBe(sessions);
     expect(model.tree).toBe(tree);
     expect(model.compatibility).toEqual(snapshot.compatibility);
     expect(model.commands).toEqual(snapshot.commands);
@@ -54,11 +51,9 @@ describe("SessionModel", () => {
     expect(isObservable(model.models)).toBe(true);
     expect(isObservable(model.availableThinkingLevels)).toBe(true);
     expect(isObservable(model.diagnostics)).toBe(true);
-    expect(isObservable(model.sessions)).toBe(true);
     expect(isObservable(model.tree)).toBe(true);
     expect(model.parts[0]).toBeInstanceOf(MessageModel);
     expect(model.models[0]).toBeInstanceOf(ModelOptionModel);
-    expect(model.sessions[0]).toBeInstanceOf(SessionSummaryModel);
     expect(model.tree[0]).toBeInstanceOf(SessionTreeEntryModel);
     model[Symbol.dispose]();
   });
@@ -67,7 +62,7 @@ describe("SessionModel", () => {
     const model = SessionModel.create();
     const updates: unknown[] = [];
     const stop = reaction(
-      () => ({ sessionId: model.sessionId, text: model.parts[0]?.text, title: model.sessions[0]?.title }),
+      () => ({ sessionId: model.sessionId, text: model.parts[0]?.text }),
       (next) => updates.push(next)
     );
 
@@ -75,16 +70,6 @@ describe("SessionModel", () => {
     expect(updates).toHaveLength(1);
     expect(model.uiParts[0]).toMatchObject({ entryId: "assistant-entry-1", text: "Hello", status: "streaming" });
     stop();
-    model[Symbol.dispose]();
-  });
-
-  it("derives a capped display title without changing the stored title", () => {
-    const title = "A title that is deliberately much longer than forty characters";
-    const model = SessionSummaryModel.create({ id: "session-1", title });
-
-    expect(model.displayTitle).toBe("A title that is deliberately much longe…");
-    expect(Array.from(model.displayTitle)).toHaveLength(40);
-    expect(model.title).toBe(title);
     model[Symbol.dispose]();
   });
 

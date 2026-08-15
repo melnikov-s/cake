@@ -12,8 +12,6 @@ export interface CakePaths {
   scenes: string;
   recovery: string;
   state: string;
-  migrations: string;
-  legacyPiSessions: string;
 }
 
 export interface ResolveCakePathsOptions {
@@ -37,8 +35,6 @@ export function resolveCakePaths(options: ResolveCakePathsOptions = {}): CakePat
     plugins: join(home, "plugins"),
     scenes: join(home, "scenes"),
     recovery: join(home, "recovery"),
-    state: join(home, "state"),
-    migrations: join(home, "migrations"),
-    legacyPiSessions: join(homeDirectory, ".pi", "agent", "sessions")
+    state: join(home, "state")
   };
 }

@@ -9,7 +9,6 @@ import {
   hasTrustRequiringProjectResources,
   type AgentSessionEvent,
   type ExtensionUIContext,
-  type ExtensionWidgetOptions,
   type InlineExtension,
   type SessionEntry,
   type SlashCommandInfo
@@ -543,29 +542,6 @@ export async function loadReviewSessionMessages(record: ReviewThreadRecord, sess
       status: message.role === "assistant" && message.errorMessage ? "error" : "complete"
     }];
   });
-}
-
-export async function migrateLegacyReviewSession(thread: { workspacePath: string; messages: ReviewMessage[] }, sessionDir: string) {
-  const manager = SessionManager.create(thread.workspacePath, sessionDir);
-  const emptyUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
-  for (const message of thread.messages) {
-    const timestamp = new Date(message.createdAt).getTime();
-    if (message.role === "user") manager.appendMessage({ role: "user", content: message.body, timestamp });
-    else manager.appendMessage({
-      role: "assistant",
-      content: [{ type: "text", text: message.body }],
-      api: "cake-review-migration",
-      provider: "cake",
-      model: "legacy-review",
-      usage: emptyUsage,
-      stopReason: message.status === "error" ? "error" : "stop",
-      errorMessage: message.status === "error" ? message.body : undefined,
-      timestamp
-    });
-  }
-  const sessionFile = manager.getSessionFile();
-  if (!sessionFile) throw new Error("Cake could not migrate the legacy review conversation into Pi");
-  return { sessionId: manager.getSessionId(), sessionFile };
 }
 
 export function createCakeArtifactExtension(options: Required<Pick<CakeRuntimeOptions, "persistArtifact" | "requestArtifact">> & Pick<CakeRuntimeOptions, "generateInlineWidget">): InlineExtension {
@@ -1130,26 +1106,6 @@ function createCakeExtensionUiContext(options: {
   let editorText = "";
   const degraded = (method: string, detail: string) => options.addDiagnostic(method, `${method} is unavailable in Cake: ${detail}`);
   const dialog = (request: RuntimeUiRequest) => options.request(request);
-  const setWidget = (key: string, content: unknown, widgetOptions?: ExtensionWidgetOptions) => {
-    key = boundedProjectionKey(key);
-    if (typeof content === "function") {
-      degraded("setWidget(component)", "terminal Component factories cannot be translated to React; provide legacy string lines or a Cake widget");
-      return;
-    }
-    const placement = widgetOptions?.placement ?? "aboveEditor";
-    const index = options.state.widgets.findIndex((widget) => widget.key === key);
-    if (content === undefined) {
-      if (index >= 0) options.state.widgets.splice(index, 1);
-      options.emit({ kind: "widget", key, placement });
-      return;
-    }
-    const lines = Array.isArray(content) ? content.map(String).slice(0, 1_000) : [];
-    const widget = { key, lines, placement };
-    if (index >= 0) options.state.widgets.splice(index, 1, widget);
-    else options.state.widgets.push(widget);
-    options.emit({ kind: "widget", ...widget });
-  };
-
   return {
     async select(title, values, opts) {
       const projected = values.slice(0, 100).map((value) => ({ id: boundedProjectionKey(value), label: value, value }));
@@ -1172,7 +1128,7 @@ function createCakeExtensionUiContext(options: {
     setWorkingVisible() { degraded("setWorkingVisible", "Cake owns streaming visibility"); },
     setWorkingIndicator() { degraded("setWorkingIndicator", "terminal animation frames are not web UI"); },
     setHiddenThinkingLabel() { degraded("setHiddenThinkingLabel", "Cake uses its accessible reasoning label"); },
-    setWidget,
+    setWidget() { degraded("setWidget", "terminal widgets cannot run in the Cake renderer; use a Cake artifact"); },
     setFooter() { degraded("setFooter", "terminal footer factories cannot run in the renderer"); },
     setHeader() { degraded("setHeader", "terminal header factories cannot run in the renderer"); },
     setTitle(title) { options.state.title = title; options.emit({ kind: "title", title }); },
@@ -1269,7 +1225,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   let reloadInFlight: Promise<void> | undefined;
   const projectLiveMessage = createLiveMessageProjector();
   const catalog = compatibilityCatalog(resourceLoader, settingsManager, options.cwd, agentDir);
-  const extensionUiState: ExtensionUiState = { statuses: [], widgets: [] };
+  const extensionUiState: ExtensionUiState = { statuses: [] };
   const compatibilityDiagnosticKeys = new Set(catalog.diagnostics.map((item) => `${item.method ?? ""}:${item.message}`));
 
   const requestExtensionValue = async (request: RuntimeUiRequest) => options.requestUi(request);

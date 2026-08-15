@@ -13,9 +13,7 @@ describe("resolveCakePaths", () => {
       plugins: "/Users/fixture/.cake/plugins",
       scenes: "/Users/fixture/.cake/scenes",
       recovery: "/Users/fixture/.cake/recovery",
-      state: "/Users/fixture/.cake/state",
-      migrations: "/Users/fixture/.cake/migrations",
-      legacyPiSessions: "/Users/fixture/.pi/agent/sessions"
+      state: "/Users/fixture/.cake/state"
     });
   });
 
@@ -26,6 +24,5 @@ describe("resolveCakePaths", () => {
     expect(paths.piSessions).toBe("/opt/cake-data/pi/sessions");
     expect(paths.piWidgetSessions).toBe("/opt/cake-data/pi/widget-sessions");
     expect(paths.plugins).toBe("/opt/cake-data/plugins");
-    expect(paths.legacyPiSessions).toBe("/Users/fixture/.pi/agent/sessions");
   });
 });

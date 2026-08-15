@@ -21,7 +21,7 @@ describe("process IPC", () => {
     expect(desktopResponseSchema.safeParse({ type: "inline-widget-compiled", widget: { token: widgetToken, url: "cake-widget://document/00000000-0000-4000-8000-000000000002" } }).success).toBe(false);
     expect(desktopRequestSchema.parse({ type: "repair-inline-widget", workspacePath: "/project", sessionId: "session", language: "html", capability: "display", source: "<strong>Broken</strong>", context: "Explain the result" })).toMatchObject({ type: "repair-inline-widget", language: "html", capability: "display" });
     expect(desktopRequestSchema.parse({ type: "set-pi-setting", requestId, workspacePath: "/project", sessionId: "session", update: { key: "transport", value: "websocket" } })).toMatchObject({ update: { key: "transport", value: "websocket" } });
-    expect(desktopRequestSchema.parse({ type: "set-pi-setting", requestId, workspacePath: "/project", sessionId: "session", update: { key: "skills", value: ["skills", "!skills/legacy"] } })).toMatchObject({ update: { key: "skills" } });
+    expect(desktopRequestSchema.parse({ type: "set-pi-setting", requestId, workspacePath: "/project", sessionId: "session", update: { key: "skills", value: ["skills", "!skills/excluded"] } })).toMatchObject({ update: { key: "skills" } });
     expect(desktopRequestSchema.parse({ type: "reload-pi", requestId, workspacePath: "/project", sessionId: "session" })).toMatchObject({ type: "reload-pi", requestId });
     expect(desktopRequestSchema.parse({ type: "get-changelog", requestId, workspacePath: "/project", sessionId: "session" })).toMatchObject({ type: "get-changelog", requestId });
     expect(desktopRequestSchema.parse({ type: "inspect-changes", requestId, workspacePath: "/project", sessionId: "session" })).toMatchObject({ type: "inspect-changes", sessionId: "session" });
@@ -86,8 +86,7 @@ describe("process IPC", () => {
   it("persists session selection without an absolute Pi session filename", () => {
     expect(windowViewStateSchema.parse({
       projectPath: "/project",
-      selectedSessionId: "session",
-      selectedSessionFile: "/legacy/pi/session.jsonl"
+      selectedSessionId: "session"
     })).toEqual({
       projectPath: "/project",
       selectedSessionId: "session",

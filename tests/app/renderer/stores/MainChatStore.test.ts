@@ -17,7 +17,7 @@ const snapshot: SessionSnapshot = {
   diagnostics: [],
   commands: [],
   compatibility: { resources: [], diagnostics: [] },
-  extensionUi: { statuses: [], widgets: [] },
+  extensionUi: { statuses: [] },
   sessions: [],
   tree: []
 };
@@ -198,13 +198,14 @@ describe("MainChatStore", () => {
     await flush(); await openSnapshot(store, desktop);
 
     await root.settingsStore.setPiSetting({ key: "autoCompact", value: false });
-    const operationId = store.activeOperations.at(-1)!;
+    const operationId = root.settingsStore.activeOperations.at(-1)!;
+    expect(store.isBusy).toBe(false);
     expect(desktop.client.setPiSetting).toHaveBeenCalledWith({ operationId, workspacePath: "/project", sessionId: "session-1", update: { key: "autoCompact", value: false } });
     desktop.emit({ type: "operation-completed", operationId });
-    expect(store.activeOperations).not.toContain(operationId);
+    expect(root.settingsStore.activeOperations).not.toContain(operationId);
 
     await root.settingsStore.reloadPi();
-    const reloadOperationId = store.activeOperations.at(-1)!;
+    const reloadOperationId = root.settingsStore.activeOperations.at(-1)!;
     expect(desktop.client.reloadPi).toHaveBeenCalledWith({ operationId: reloadOperationId, workspacePath: "/project", sessionId: "session-1" });
     desktop.emit({ type: "operation-completed", operationId: reloadOperationId });
     root[Symbol.dispose]();
@@ -216,13 +217,13 @@ describe("MainChatStore", () => {
     await flush(); await openSnapshot(store, desktop);
 
     await root.settingsStore.logout("openai-codex");
-    const operationId = store.activeOperations.at(-1)!;
+    const operationId = root.settingsStore.activeOperations.at(-1)!;
     expect(root.settingsStore.providerOperation("openai-codex")).toBe("logout");
     expect(desktop.client.logout).toHaveBeenCalledWith(expect.objectContaining({ operationId, provider: "openai-codex" }));
 
     desktop.emit({ type: "operation-failed", operationId, message: "Credential store delete failed" });
     expect(root.settingsStore.providerOperation("openai-codex")).toBeUndefined();
-    expect(store.error).toBe("Credential store delete failed");
+    expect(root.settingsStore.error).toBe("Credential store delete failed");
 
     await root.settingsStore.logout("openai-codex");
     expect(desktop.client.logout).toHaveBeenCalledTimes(2);
@@ -308,7 +309,7 @@ describe("MainChatStore", () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush(); await openSnapshot(store, desktop);
-    const operationId = crypto.randomUUID(); store.activeOperations.push(operationId);
+    const operationId = root.sessionOperationCoordinator.start();
     const request = { protocol: "cake.request/v1" as const, id: "form", title: "Answer", responseSchema: { type: "object" as const, required: ["answer"], properties: { answer: { type: "string" as const } } }, view: { type: "form" as const, fields: [{ id: "answer", label: "Answer", type: "text" as const, required: true }], submitLabel: "Send" }, fallback: { markdown: "Answer" } };
     const record = { artifact: { protocol: "cake.artifact/v1" as const, id: request.id, sessionId: "session-1", revision: 1, kind: "request" as const, payload: { request }, fallback: request.fallback, interaction: { mode: "request" as const, responseSchema: request.responseSchema } }, workspacePath: "/project", digest: "a".repeat(64), createdAt: new Date(0).toISOString(), updatedAt: new Date(0).toISOString() };
     desktop.emit({ type: "artifact-requested", operationId, artifactRequestId: crypto.randomUUID(), record });
@@ -323,7 +324,7 @@ describe("MainChatStore", () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush(); await openSnapshot(store, desktop);
-    const operationId = crypto.randomUUID(); store.activeOperations.push(operationId);
+    const operationId = root.sessionOperationCoordinator.start();
     const request = { protocol: "cake.request/v1" as const, id: "validated", title: "Answer", responseSchema: { type: "object" as const, required: ["answer"], properties: { answer: { type: "string" as const, minLength: 1 } } }, view: { type: "form" as const, fields: [{ id: "answer", label: "Answer", type: "text" as const }], submitLabel: "Send" }, fallback: { markdown: "Answer" } };
     const record = { artifact: { protocol: "cake.artifact/v1" as const, id: request.id, sessionId: "session-1", revision: 1, kind: "request" as const, payload: { request }, fallback: request.fallback, interaction: { mode: "request" as const, responseSchema: request.responseSchema } }, workspacePath: "/project", digest: "a".repeat(64), createdAt: new Date(0).toISOString(), updatedAt: new Date(0).toISOString() };
     desktop.emit({ type: "artifact-requested", operationId, artifactRequestId: crypto.randomUUID(), record });
@@ -345,9 +346,8 @@ describe("MainChatStore", () => {
     await openSnapshot(store, desktop);
     desktop.emit({ type: "part-updated", sessionId: "stale", part: { id: "stale", kind: "text", role: "assistant", text: "ignored", status: "complete" } });
     desktop.emit({ type: "part-updated", sessionId: "session-1", part: { id: "live", kind: "text", role: "assistant", text: "hello", status: "streaming" } });
-    const operationId = crypto.randomUUID();
+    const operationId = root.sessionOperationCoordinator.start();
     const uiRequestId = crypto.randomUUID();
-    store.activeOperations.push(operationId);
     desktop.emit({ type: "ui-requested", operationId, uiRequestId, kind: "confirm", title: "Continue?", message: "Confirm" });
     const focusRevision = root.messageComposerStore.focusRequestRevision;
     await root.extensionUiStore.respond("true");
@@ -444,19 +444,16 @@ describe("MainChatStore", () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
-    await openSnapshot(store, desktop, { ...snapshot, extensionUi: { title: "Initial", statuses: [{ key: "one", text: "ready" }], widgets: [] } });
+    await openSnapshot(store, desktop, { ...snapshot, extensionUi: { title: "Initial", statuses: [{ key: "one", text: "ready" }] } });
     desktop.emit({ type: "extension-ui-received", sessionId: "stale", event: { kind: "editor-text", text: "stale", mode: "replace" } });
-    desktop.emit({ type: "extension-ui-received", sessionId: "session-1", event: { kind: "widget", key: "legacy", lines: ["line"], placement: "aboveEditor" } });
     desktop.emit({ type: "extension-ui-received", sessionId: "session-1", event: { kind: "notify", id: "notice-1", message: "Hello", tone: "info" } });
 
     expect(store.draft).not.toBe("stale");
     expect(root.extensionUiStore.title).toBe("Initial");
-    expect(root.extensionUiStore.widgets).toEqual([{ key: "legacy", lines: ["line"], placement: "aboveEditor" }]);
     expect(root.extensionUiStore.notifications).toHaveLength(1);
 
     await store.startNewSession();
     expect(root.extensionUiStore.title).toBeUndefined();
-    expect(root.extensionUiStore.widgets).toEqual([]);
     expect(root.extensionUiStore.notifications).toEqual([]);
     root[Symbol.dispose]();
   });
@@ -963,6 +960,25 @@ describe("MainChatStore", () => {
 
     expect(desktop.client.renameSession).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/other", sessionId: "session-2", name: "New title" }));
     expect(root.sidebarStore.projectSessions("/other")[0]?.title).toBe("New title");
+    root[Symbol.dispose]();
+  });
+
+  it("uses one session catalog for the sidebar and header and rolls back runtime failures", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush(); await openSnapshot(store, desktop, {
+      ...snapshot,
+      sessions: [{ id: "session-1", title: "Session", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 0, archived: false }]
+    });
+
+    await store.renameCurrentSession("Renamed everywhere");
+    const operationId = store.activeOperations.at(-1)!;
+    expect(root.sidebarStore.projectSessions("/project")[0]?.title).toBe("Renamed everywhere");
+    expect(store.sessionTitle).toBe("Renamed everywhere");
+
+    desktop.emit({ type: "operation-failed", operationId, message: "Rename rejected" });
+    expect(root.sidebarStore.projectSessions("/project")[0]?.title).toBe("Session");
+    expect(store.sessionTitle).toBe("Session");
     root[Symbol.dispose]();
   });
 

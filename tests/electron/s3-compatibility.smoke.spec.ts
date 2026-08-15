@@ -5,7 +5,7 @@ import { _electron as electron, expect, test } from "@playwright/test";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("adapts extension dialogs and legacy widgets", async () => {
+test("adapts extension dialogs and reports unsupported widgets", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-s3-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -29,7 +29,7 @@ export default function (pi) {
     ctx.ui.notify("Extension connected", "info");
     ctx.ui.setStatus("fixture", "ready");
     ctx.ui.setTitle("Extension workspace");
-    ctx.ui.setWidget("fixture", ["legacy widget line"], { placement: "aboveEditor" });
+    ctx.ui.setWidget("fixture", ["unsupported widget line"], { placement: "aboveEditor" });
     ctx.ui.setEditorText("draft from extension");
     await ctx.ui.confirm("Desktop extension", "Confirm the compatibility path");
     ctx.ui.setFooter(() => ({ render: () => [], invalidate() {} }));
@@ -53,7 +53,7 @@ export default function (pi) {
     await expect(page.getByText("Desktop extension", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
     await expect(page.locator(".workspace-header strong")).toHaveText("Extension workspace");
-    await expect(page.getByText("legacy widget line", { exact: true })).toBeVisible();
+    await expect(page.getByText(/setWidget is unavailable in Cake/)).toBeVisible();
     await expect(page.getByText("Extension connected", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Message")).toHaveValue("draft from extension");
     await expect(page.getByText("fixture ready", { exact: true })).toBeVisible();

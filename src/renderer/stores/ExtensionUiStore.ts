@@ -1,6 +1,7 @@
 import { Store, observable } from "r-state-tree";
 import type { ExtensionUiEvent, ExtensionUiState, ResourceDiagnostic } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
+import { describeError } from "../error-details";
 
 export interface UiRequestState {
   operationId: string;
@@ -21,13 +22,12 @@ export interface ExtensionNotification {
 }
 
 export interface ExtensionUiStoreProps {
-  client: DesktopClient;
+  client: Pick<DesktopClient, "respondToUi">;
   activeSessionId(): string | undefined;
   sessionContext(): { workspacePath: string; sessionId: string } | undefined;
   operationActive(operationId: string): boolean;
   setDraft(value: string | ((current: string) => string)): void;
   requestComposerFocus(): void;
-  reportError(error: unknown): void;
 }
 
 /** Owns extension-provided dialogs and transient renderer presentation. */
@@ -35,13 +35,15 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
   request: UiRequestState | undefined;
   title: string | undefined;
   statuses: ExtensionUiState["statuses"] = observable([]);
-  widgets: ExtensionUiState["widgets"] = observable([]);
   notifications: ExtensionNotification[] = observable([]);
   compatibilityDiagnostics: ResourceDiagnostic[] = observable([]);
+  error: string | undefined;
+  errorDetails: string | undefined;
 
   async respond(value?: string, cancelled = false) {
     const request = this.request;
     if (!request) return;
+    this.error = undefined; this.errorDetails = undefined;
     this.request = undefined;
     this.props.requestComposerFocus();
     try {
@@ -49,7 +51,9 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
       if (!context) throw new Error("No active session");
       await this.props.client.respondToUi({ operationId: request.operationId, ...context, uiRequestId: request.uiRequestId, value, cancelled });
     } catch (error) {
-      this.props.reportError(error);
+      const described = describeError(error);
+      this.error = described.message;
+      this.errorDetails = described.details;
     }
   }
 
@@ -62,7 +66,6 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
     this.request = undefined;
     this.title = undefined;
     this.statuses.splice(0);
-    this.widgets.splice(0);
     this.notifications.splice(0);
     this.compatibilityDiagnostics.splice(0);
   }
@@ -70,7 +73,6 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
   applyState(state: ExtensionUiState) {
     this.title = state.title;
     this.statuses.splice(0, this.statuses.length, ...state.statuses);
-    this.widgets.splice(0, this.widgets.length, ...state.widgets);
   }
 
   receive(event: DesktopClientEvent) {
@@ -102,15 +104,6 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
     if (event.kind === "editor-text") {
       this.props.setDraft(event.mode === "insert" ? (current) => `${current}${event.text}` : event.text);
       this.props.requestComposerFocus();
-      return;
-    }
-    if (event.kind === "widget") {
-      const index = this.widgets.findIndex((item) => item.key === event.key);
-      if (!event.lines) { if (index >= 0) this.widgets.splice(index, 1); }
-      else {
-        const widget = { key: event.key, lines: event.lines, placement: event.placement };
-        if (index >= 0) this.widgets.splice(index, 1, widget); else this.widgets.push(widget);
-      }
       return;
     }
     if (!this.compatibilityDiagnostics.some((item) => item.id === event.diagnostic.id)) this.compatibilityDiagnostics.push(event.diagnostic);

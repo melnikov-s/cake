@@ -3,7 +3,6 @@ import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   projectReviewThread,
-  reviewThreadSchema,
   reviewThreadRecordSchema,
   type ReviewAnchor,
   type ReviewMessage,
@@ -12,8 +11,6 @@ import {
 } from "../ipc/review-contract";
 
 export type ReviewMessageLoader = (record: ReviewThreadRecord) => Promise<ReviewMessage[]>;
-export type LegacyReviewMigrator = (thread: ReviewThread, sessionDir: string) => Promise<{ sessionId: string; sessionFile: string }>;
-
 export class ReviewRepository {
   private readonly updates = new Map<string, Promise<unknown>>();
   private readonly contextUpdates = new Map<string, Promise<unknown>>();
@@ -21,8 +18,7 @@ export class ReviewRepository {
   constructor(
     private readonly root: string,
     private readonly piSessionRoot: string,
-    private readonly loadMessages: ReviewMessageLoader = async () => [],
-    private readonly migrateLegacy?: LegacyReviewMigrator
+    private readonly loadMessages: ReviewMessageLoader = async () => []
   ) {}
 
   agentSessionDirectory(workspacePath: string, sessionId: string, threadId: string) {
@@ -211,28 +207,7 @@ export class ReviewRepository {
   }
 
   private async readRecord(value: unknown): Promise<ReviewThreadRecord> {
-    const current = reviewThreadRecordSchema.safeParse(value);
-    if (current.success) return current.data;
-    const legacy = reviewThreadSchema.parse(value);
-    const delivered = legacy.messages.filter((message) => message.delivered);
-    const agent = delivered.length > 0 && this.migrateLegacy
-      ? await this.migrateLegacy({ ...legacy, messages: delivered }, this.agentSessionDirectory(legacy.workspacePath, legacy.sessionId, legacy.id))
-      : undefined;
-    const record = reviewThreadRecordSchema.parse({
-      id: legacy.id,
-      workspacePath: legacy.workspacePath,
-      sessionId: legacy.sessionId,
-      agentSessionId: agent?.sessionId,
-      agentSessionFile: agent?.sessionFile,
-      anchor: legacy.anchor,
-      pendingComments: legacy.messages.filter((message) => message.role === "user" && !message.delivered).map(({ id, body, createdAt }) => ({ id, body, createdAt })),
-      status: legacy.status,
-      createdAt: legacy.createdAt,
-      updatedAt: legacy.updatedAt,
-      resolvedAt: legacy.resolvedAt
-    });
-    await this.write(record);
-    return record;
+    return reviewThreadRecordSchema.parse(value);
   }
 
   private async write(record: ReviewThreadRecord) {

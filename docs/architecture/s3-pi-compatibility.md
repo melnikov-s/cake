@@ -11,7 +11,7 @@ preload boundary.
 | State | Authority | Owner and lifetime |
 | --- | --- | --- |
 | Loaded resources and load diagnostics | Pi `DefaultResourceLoader` and `DefaultPackageManager` | Project session snapshot; renderer child Models are a read-only projection |
-| Extension status, title, and legacy string widgets | Active Pi extension runtime | Focused extension-UI Store projection, cleared before session/workspace replacement |
+| Extension status and title | Active Pi extension runtime | Focused extension-UI Store projection, cleared before session/workspace replacement |
 | Notifications and compatibility warnings | Active Pi extension runtime | Focused extension-UI Store, bounded to the active session and never persisted |
 | Dialog responses | User | Correlated main-process operation; aborted, timed out, or disposed requests resolve as cancellation |
 | Composer draft | Cake window | Chat/composer Store; extension `setEditorText` and `pasteToEditor` enter through the same authoritative draft mutation |
@@ -22,14 +22,13 @@ Cake application metadata. Reopening a live runtime reconstructs it from Pi.
 ## Supported primitive UI
 
 Cake adapts `select`, `confirm`, `input`, multiline `editor`, `notify`,
-`setStatus`, `setTitle`, `setEditorText`, `pasteToEditor`, and legacy
-`setWidget(key, string[])`. Dialog abort signals and timeouts are enforced in
-the workspace driver. Widgets remain inert text; React widgets belong to S5.
+`setStatus`, `setTitle`, `setEditorText`, and `pasteToEditor`. Dialog abort
+signals and timeouts are enforced in the workspace driver.
 
 ## Explicit degradation
 
 Terminal Component factories and terminal-owned behavior cannot be translated
-safely or truthfully. Calls such as `custom`, component widgets, custom header,
+safely or truthfully. Calls such as `custom`, `setWidget`, custom header,
 footer, editor and autocomplete providers, raw terminal input, Pi TUI themes,
 and terminal working-indicator customization create a deduplicated, visible
 compatibility diagnostic. Methods with result contracts return cancellation or

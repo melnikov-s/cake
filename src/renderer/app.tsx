@@ -25,7 +25,7 @@ import { SessionTree } from "@/components/session-tree";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
 import { PanelResizeHandle } from "@/components/panel-resize-handle";
 import { CopyErrorDetailsButton } from "@/components/copy-error-details-button";
-import { AssistantMessageFullscreen } from "@/components/assistant-message-fullscreen";
+import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
 import { MessageCommentDraftPopover, MessageCommentThreadPopover, MessageSelectionAction, type MessageCommentAnchorRect } from "@/components/message-comment-popover";
 import type { CompatibilityResource, PiSettings, UiPart } from "../ipc/session-contract";
 import type { MainChatStore } from "./stores/MainChatStore";
@@ -62,7 +62,6 @@ const MoreIcon = () => <Icon><circle cx="5" cy="12" r=".7" fill="currentColor" s
 const SettingsIcon = () => <Icon><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06-2.83 2.83-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21h-4v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06-2.83-2.83.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3v-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06 2.83-2.83.06.06A1.65 1.65 0 0 0 9 4.68h.08a1.65 1.65 0 0 0 1-1.51V3h4v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06 2.83 2.83-.06.06A1.65 1.65 0 0 0 19.32 9v.08a1.65 1.65 0 0 0 1.51 1H21v4h-.09A1.65 1.65 0 0 0 19.4 15z" /></Icon>;
 const CopyIcon = () => <Icon size={15}><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></Icon>;
 const ForkIcon = () => <Icon size={15}><circle cx="6" cy="5" r="2" /><circle cx="18" cy="5" r="2" /><circle cx="12" cy="19" r="2" /><path d="M6 7v2a4 4 0 0 0 4 4h2M18 7v2a4 4 0 0 1-4 4h-2v4" /></Icon>;
-const ExpandIcon = () => <Icon size={15}><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5" /></Icon>;
 const CheckIcon = () => <Icon size={15}><path d="m5 12 4 4L19 6" /></Icon>;
 const ChangesIcon = () => <Icon size={15}><path d="M4 7h10M4 17h10M17 4v6M14 7l3 3 3-3M17 14v6M14 17l3 3 3-3" /></Icon>;
 const BrowseIcon = () => <Icon size={15}><path d="M4 5.5h6l1.8 2H20v11H4z" /><path d="M4 9h16" /></Icon>;
@@ -248,7 +247,7 @@ const AssistantTextMessage = observer(function AssistantTextMessage({ part, beha
   return (
     <Message ref={messageRef} className="assistant-message mr-auto w-full">
       <MessageLabel>{part.status === "streaming" ? "Cake · working" : "Cake"}</MessageLabel>
-      <button className="assistant-message-expand" type="button" aria-label="View response fullscreen" title="View fullscreen" onClick={() => setFullscreen(true)}><ExpandIcon /></button>
+      <FullscreenButton className="assistant-message-expand" label="View response fullscreen" onClick={() => setFullscreen(true)} />
       <MessageContent ref={contentRef} className="assistant-message-content" onMouseUp={scheduleSelectionAction}>{content()}</MessageContent>
       {commentThreads.map((thread, index) => markerPositions[thread.id] && <button key={thread.id} className={`message-comment-marker ${thread.status}`} style={markerPositions[thread.id]} type="button" aria-label={`Open selection chat ${index + 1}`} title={thread.anchor.selectedText} onClick={(event) => setOpenThread({ id: thread.id, anchor: event.currentTarget })}><ChatIcon /><b>{thread.messages.length}</b></button>)}
       {selectionAction && <MessageSelectionAction rect={selectionAction.rect} onChat={(anchor) => { setDraft({ selection: selectionAction.selection, anchor }); setSelectionAction(undefined); }} />}
@@ -262,7 +261,7 @@ const AssistantTextMessage = observer(function AssistantTextMessage({ part, beha
         <button type="button" aria-label={copied ? "Copied response" : "Copy response"} title={copied ? "Copied" : "Copy response"} onClick={() => void copy()}>{copied ? <CheckIcon /> : <CopyIcon />}</button>
         {part.entryId && behavior.onFork && <button type="button" aria-label="Fork response into new chat" title="Fork into new chat" onClick={() => behavior.onFork!(part.entryId!)}><ForkIcon /></button>}
       </div>}
-      {fullscreen && <AssistantMessageFullscreen onClose={closeFullscreen}>{content()}</AssistantMessageFullscreen>}
+      {fullscreen && <FullscreenSurface eyebrow="Full response" title="Cake" onClose={closeFullscreen}>{content()}</FullscreenSurface>}
     </Message>
   );
 });
@@ -575,7 +574,7 @@ const ChatComposer = observer(function ChatComposer({ configuration, onSubmit, i
 const GlobalChatPanel = observer(function GlobalChatPanel({ store, configuration, transcriptView }: { store: GlobalChatStore; configuration: ChatConfigurationStore; transcriptView: TranscriptViewStore }) {
   const submit = (event: FormEvent) => { event.preventDefault(); void store.submit(); };
   return <div className="workbench global-chat"><div className="chat-layout">
-    <Transcript parts={store.parts} sessionId={store.sessionId ?? "global-chat"} isStreaming={store.streaming} hideThinking={store.session?.piSettings?.hideThinkingBlock} behavior={{ thinkingExpanded: transcriptView.thinkingExpanded, onToggleThinking: () => transcriptView.toggleThinking() }} empty={<div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What can I help you find or do?</h1><p>Ask about your tasks, open one, or delegate work to it.</p></div>} error={store.error} errorDetails={store.errorDetails} errorTitle="Global chat failed" />
+    <Transcript parts={store.parts} sessionId={store.sessionId ?? "global-chat"} isStreaming={store.streaming} hideThinking={store.session?.piSettings?.hideThinkingBlock} behavior={{ thinkingExpanded: transcriptView.thinkingExpanded, onToggleThinking: () => transcriptView.toggleThinking() }} empty={<div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What can I help you find or do?</h1><p>Ask about your tasks, open one, or delegate work to it.</p></div>} error={configuration.error ?? store.error} errorDetails={configuration.error ? configuration.errorDetails : store.errorDetails} errorTitle="Global chat failed" />
     <div className="composer-dock"><ChatComposer configuration={configuration} onSubmit={submit} input={<SlashCommandCombobox autoFocus aria-label="Message global chat" commands={store.session?.commands ?? []} placeholder="Ask Cake to find or control a task…" value={store.draft} onValueChange={(value) => store.setDraft(value)} onSubmit={(value) => { if (value !== undefined) store.setDraft(value); void store.submit(); }} />} toolbarActions={<>{store.streaming && <Button variant="ghost" size="sm" type="button" onClick={() => void store.abort()}>Stop</Button>}<Button className="send-button" size="sm" type="submit" disabled={!store.draft.trim()}>{store.streaming ? "Queue" : "Send"}<SendIcon /></Button></>} /></div>
   </div></div>;
 });
@@ -590,7 +589,6 @@ const ComposerPanel = observer(function ComposerPanel({ store, composer, reviews
     : "Context usage is unavailable";
   return (
     <div className="composer-dock">
-      {extensionUi.widgets.filter((widget) => widget.placement === "aboveEditor").map((widget) => <div className="legacy-widget" key={widget.key}><strong>{widget.key}</strong><pre>{widget.lines.join("\n")}</pre></div>)}
       <ChatComposer configuration={configuration} onSubmit={(event) => { event.preventDefault(); void composer.submit(); }} input={<SlashCommandCombobox autoFocus aria-label="Message" commands={[...(store.session?.commands ?? []), ...store.pluginCommands]} focusRequestRevision={composer.focusRequestRevision} suggestFiles={(prefix) => composer.suggestFiles(prefix)} placeholder={store.isStreaming ? "Add the next instruction…" : `Ask Cake to work in ${store.projectName}…`} value={store.draft} onValueChange={(value) => store.setDraft(value)} onPaste={(event) => {
           const images = [...event.clipboardData.files].filter((file) => file.type.startsWith("image/"));
           if (images.length === 0) {
@@ -609,7 +607,6 @@ const ComposerPanel = observer(function ComposerPanel({ store, composer, reviews
           ? <button className="image-attachment" type="button" aria-label={`Remove ${attachment.name}`} key={`${attachment.kind}-${attachment.name}-${index}`} onClick={() => composer.removeAttachment(index)}><img src={`data:${attachment.mimeType};base64,${attachment.data}`} alt="" /><span>{attachment.name}<b aria-hidden="true">×</b></span></button>
           : <button type="button" key={`${attachment.kind}-${attachment.name}-${index}`} onClick={() => composer.removeAttachment(index)}>@ {attachment.name} <span>×</span></button>)}</div>}
       </ChatComposer>
-      {extensionUi.widgets.filter((widget) => widget.placement === "belowEditor").map((widget) => <div className="legacy-widget" key={widget.key}><strong>{widget.key}</strong><pre>{widget.lines.join("\n")}</pre></div>)}
       {extensionUi.statuses.length > 0 && <div className="extension-statuses" role="status">{extensionUi.statuses.map((status) => <span key={status.key}><strong>{status.key}</strong> {status.text}</span>)}</div>}
     </div>
   );
@@ -654,6 +651,7 @@ export const SettingsPage = observer(function SettingsPage({ store, settings, co
   const selectedModel = store.session?.model;
   const pi = store.session?.piSettings;
   const authNotice = store.canonicalParts.find((part) => part.kind === "notice" && part.id === "auth-status");
+  const error = settings.error ?? configuration.error ?? store.error;
   return (
     <div className="settings-page">
       <div className="settings-intro">
@@ -661,7 +659,7 @@ export const SettingsPage = observer(function SettingsPage({ store, settings, co
         <h1>Settings</h1>
         <p>Configure the same Pi runtime used by the CLI. These preferences are saved by Pi and follow you across projects.</p>
       </div>
-      {store.error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{store.error}</span></div>}
+      {error && <div className="notice notice-error" role="alert"><strong>Operation failed</strong><span>{error}</span></div>}
       {authNotice?.kind === "notice" && <div className={`notice notice-${authNotice.tone}`} role="status"><strong>{authNotice.title}</strong><span>{authNotice.detail}</span></div>}
 
       <section className="settings-section" aria-labelledby="pi-settings-title">
@@ -758,6 +756,7 @@ export const App = observer(function App() {
   const browse = root.browseStore;
   const changes = root.changesStore;
   const reviews = root.reviewsStore;
+  const composer = root.messageComposerStore;
   const settings = root.settingsStore;
   const chatConfiguration = root.mainChatConfigurationStore;
   const extensionUi = root.extensionUiStore;
@@ -765,6 +764,13 @@ export const App = observer(function App() {
   const navigation = root.navigationStore;
   const page = navigation.page;
   const globalChat = page === "global" ? root.globalChatStore : undefined;
+  const chatError = store.error ?? composer.error ?? reviews.error ?? chatConfiguration.error ?? extensionUi.error ?? artifactInteractions.error;
+  const chatErrorDetails = store.error ? store.errorDetails
+    : composer.error ? composer.errorDetails
+    : reviews.error ? reviews.errorDetails
+    : chatConfiguration.error ? chatConfiguration.errorDetails
+    : extensionUi.error ? extensionUi.errorDetails
+    : artifactInteractions.errorDetails;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(292);
   const [commandPaneWidth, setCommandPaneWidth] = useState(420);
@@ -808,7 +814,7 @@ export const App = observer(function App() {
         {page === "settings" ? <SettingsPage store={store} settings={settings} configuration={chatConfiguration} /> : globalChat ? <GlobalChatPanel store={globalChat} configuration={root.globalChatConfigurationStore} transcriptView={root.globalTranscriptViewStore} /> : !store.session ? (
           <div className="welcome"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build?</h1><p>Open a project for durable workspace chats, or start a one-off chat from your home directory.</p><div><Button size="lg" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.chooseProject()}><FolderIcon /> Open project</Button><Button size="lg" variant="outline" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.startOneOffChat()}><ChatIcon /> One-off chat</Button></div>{store.error && <ErrorNotice title="Operation failed" message={store.error} details={store.errorDetails} />}</div>
         ) : (
-          <div className="workbench"><div className="chat-layout"><Transcript sessionId={store.session.sessionId} parts={root.messageComposerStore.parts} isStreaming={store.isStreaming} hideThinking={store.session.piSettings?.hideThinkingBlock} behavior={{ thinkingExpanded: root.mainTranscriptViewStore.thinkingExpanded, onToggleThinking: () => { root.mainTranscriptViewStore.toggleThinking(); store.persistViewState(); }, onFork: (entryId) => { void store.forkAt(entryId); }, onOpenReviewRun: (threadId) => { void store.openSessionChanges(threadId); }, messageComments: root.messageCommentsStore, inlineWidgets: { store: root.inlineWidgetStore, workspacePath: store.session.workspacePath, sessionId: store.session.sessionId, model: store.session.model }, artifacts: { records: store.artifacts, interaction: artifactInteractions } }} empty={<div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>} footer={<ArtifactsPanel store={store} artifacts={artifactInteractions} inlineWidgets={root.inlineWidgetStore} />} error={store.error} errorDetails={store.errorDetails} /><ComposerPanel store={store} composer={root.messageComposerStore} reviews={reviews} configuration={chatConfiguration} extensionUi={extensionUi} /></div></div>
+          <div className="workbench"><div className="chat-layout"><Transcript sessionId={store.session.sessionId} parts={composer.parts} isStreaming={store.isStreaming} hideThinking={store.session.piSettings?.hideThinkingBlock} behavior={{ thinkingExpanded: root.mainTranscriptViewStore.thinkingExpanded, onToggleThinking: () => { root.mainTranscriptViewStore.toggleThinking(); store.persistViewState(); }, onFork: (entryId) => { void store.forkAt(entryId); }, onOpenReviewRun: (threadId) => { void store.openSessionChanges(threadId); }, messageComments: root.messageCommentsStore, inlineWidgets: { store: root.inlineWidgetStore, workspacePath: store.session.workspacePath, sessionId: store.session.sessionId, model: store.session.model }, artifacts: { records: store.artifacts, interaction: artifactInteractions } }} empty={<div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>} footer={<ArtifactsPanel store={store} artifacts={artifactInteractions} inlineWidgets={root.inlineWidgetStore} />} error={chatError} errorDetails={chatErrorDetails} /><ComposerPanel store={store} composer={composer} reviews={reviews} configuration={chatConfiguration} extensionUi={extensionUi} /></div></div>
         )}
       </section>
       <CommandPane store={store} extensionUi={extensionUi} />

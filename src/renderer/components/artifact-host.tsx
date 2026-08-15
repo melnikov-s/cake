@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import mermaid from "mermaid";
 import { fencedCode, Markdown } from "@/components/ai-elements/markdown";
 import { Button } from "@/components/ui/button";
+import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
 import { observer } from "r-state-tree/react";
 import type { ArtifactRecord, CakeArtifactV1 } from "../../ipc/artifact-contract";
 import { cakeRequestV1Schema, type CakeRequestView } from "../../ipc/request-contract";
@@ -15,11 +16,19 @@ interface ArtifactHostProps {
   inlineWidgets?: InlineWidgetStore;
 }
 
-export function ArtifactHost({ record, requested = false, onSubmit, onCancel, inlineWidgets }: ArtifactHostProps) {
+export const ArtifactHost = observer(function ArtifactHost({ record, requested = false, onSubmit, onCancel, inlineWidgets }: ArtifactHostProps) {
   const artifact = record.artifact;
+  const [fullscreen, setFullscreen] = useState(false);
+  const parsedRequest = artifact.kind === "request" ? cakeRequestV1Schema.safeParse(artifact.payload.request) : undefined;
+  const widget = artifact.kind === "widget"
+    ? { id: `${artifact.sessionId}:widget:${artifact.id}:${artifact.revision}`, title: artifact.title ?? "Widget" }
+    : parsedRequest?.success && parsedRequest.data.view.type === "widget"
+      ? { id: `${artifact.sessionId}:request:${artifact.id}:${artifact.revision}`, title: parsedRequest.data.title }
+      : undefined;
+  const widgetReady = Boolean(widget && inlineWidgets?.state(widget.id)?.compiled);
   return (
     <article className="artifact" data-artifact-id={artifact.id} data-artifact-kind={artifact.kind}>
-      <header><div><strong>{artifact.title ?? artifact.id}</strong><span>{artifact.kind} · r{artifact.revision}</span></div></header>
+      <header><div><strong>{artifact.title ?? artifact.id}</strong><span>{artifact.kind} · r{artifact.revision}</span></div>{widget && <FullscreenButton className="artifact-fullscreen-button" disabled={!widgetReady} label={`View ${widget.title} fullscreen`} onClick={() => setFullscreen(true)} />}</header>
       <div className="artifact-body">
         {artifact.kind === "markdown" ? <Markdown>{artifact.payload.markdown}</Markdown> : null}
         {artifact.kind === "table" ? <TableArtifact artifact={artifact} /> : null}
@@ -28,18 +37,19 @@ export function ArtifactHost({ record, requested = false, onSubmit, onCancel, in
         {artifact.kind === "media" ? <MediaArtifact artifact={artifact} /> : null}
         {artifact.kind === "diff" ? <pre className="artifact-diff">{artifact.payload.diff}</pre> : null}
         {artifact.kind === "html" ? <HtmlArtifact artifact={artifact} /> : null}
-        {artifact.kind === "widget" ? <WidgetArtifact artifact={artifact} workspacePath={record.workspacePath} inlineWidgets={inlineWidgets} /> : null}
-        {artifact.kind === "request" ? <RequestArtifact artifact={artifact} workspacePath={record.workspacePath} requested={requested} onSubmit={onSubmit} onCancel={onCancel} inlineWidgets={inlineWidgets} /> : null}
+        {artifact.kind === "widget" ? <WidgetArtifact artifact={artifact} workspacePath={record.workspacePath} inlineWidgets={inlineWidgets} fullscreen={fullscreen} onCloseFullscreen={() => setFullscreen(false)} /> : null}
+        {artifact.kind === "request" ? <RequestArtifact artifact={artifact} workspacePath={record.workspacePath} requested={requested} onSubmit={onSubmit} onCancel={onCancel} inlineWidgets={inlineWidgets} fullscreen={fullscreen} onCloseFullscreen={() => setFullscreen(false)} /> : null}
       </div>
       <details className="artifact-fallback"><summary>Readable fallback</summary><Markdown>{artifact.fallback.markdown}</Markdown></details>
     </article>
   );
-}
+});
 
-const WidgetArtifact = observer(function WidgetArtifact({ artifact, workspacePath, inlineWidgets }: { artifact: Extract<CakeArtifactV1, { kind: "widget" }>; workspacePath: string; inlineWidgets?: InlineWidgetStore }) {
+const WidgetArtifact = observer(function WidgetArtifact({ artifact, workspacePath, inlineWidgets, fullscreen, onCloseFullscreen }: { artifact: Extract<CakeArtifactV1, { kind: "widget" }>; workspacePath: string; inlineWidgets?: InlineWidgetStore; fullscreen: boolean; onCloseFullscreen(): void }) {
   const id = `${artifact.sessionId}:widget:${artifact.id}:${artifact.revision}`;
   const state = inlineWidgets?.state(id);
   const iframe = useRef<HTMLIFrameElement>(null);
+  const fullscreenIframe = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(220);
   const [sourceOpen, setSourceOpen] = useState(false);
   useEffect(() => {
@@ -48,7 +58,7 @@ const WidgetArtifact = observer(function WidgetArtifact({ artifact, workspacePat
   useEffect(() => {
     if (!inlineWidgets) return;
     const receive = (event: MessageEvent) => {
-      if (event.source !== iframe.current?.contentWindow || !state?.compiled || event.data?.source !== "cake-inline-widget" || event.data.token !== state.compiled.token) return;
+      if ((event.source !== iframe.current?.contentWindow && event.source !== fullscreenIframe.current?.contentWindow) || !state?.compiled || event.data?.source !== "cake-inline-widget" || event.data.token !== state.compiled.token) return;
       if (event.data.type === "height" && typeof event.data.value === "number") setHeight(Math.max(120, Math.min(1_200, Math.ceil(event.data.value))));
       if (event.data.type === "error") inlineWidgets.reportRuntimeError(id, String(event.data.value));
     };
@@ -62,16 +72,17 @@ const WidgetArtifact = observer(function WidgetArtifact({ artifact, workspacePat
     {status === "error" && <div className="inline-widget-diagnostic" role="alert"><strong>Widget could not render</strong><pre>{state?.diagnostic}</pre></div>}
     {state?.compiled && <iframe ref={iframe} title={artifact.title ?? artifact.id} sandbox="allow-scripts" referrerPolicy="no-referrer" src={state.compiled.url} style={{ height }} />}
     {sourceOpen && <Markdown className="inline-widget-source">{fencedCode(state?.source ?? artifact.payload.source, artifact.payload.language === "react" ? "tsx" : "html")}</Markdown>}
+    {fullscreen && state?.compiled && <FullscreenSurface mode="canvas" eyebrow={`${artifact.payload.language === "react" ? "React" : "HTML"} widget`} title={artifact.title ?? "Widget"} onClose={onCloseFullscreen}><iframe ref={fullscreenIframe} title={`${artifact.title ?? artifact.id} fullscreen`} sandbox="allow-scripts" referrerPolicy="no-referrer" src={state.compiled.url} /></FullscreenSurface>}
   </section>;
 });
 
-function RequestArtifact({ artifact, workspacePath, requested, onSubmit, onCancel, inlineWidgets }: { artifact: Extract<CakeArtifactV1, { kind: "request" }>; workspacePath: string; requested: boolean; onSubmit?: (value: unknown) => void; onCancel?: () => void; inlineWidgets?: InlineWidgetStore }) {
+function RequestArtifact({ artifact, workspacePath, requested, onSubmit, onCancel, inlineWidgets, fullscreen, onCloseFullscreen }: { artifact: Extract<CakeArtifactV1, { kind: "request" }>; workspacePath: string; requested: boolean; onSubmit?: (value: unknown) => void; onCancel?: () => void; inlineWidgets?: InlineWidgetStore; fullscreen: boolean; onCloseFullscreen(): void }) {
   const parsed = cakeRequestV1Schema.safeParse(artifact.payload.request);
   if (!parsed.success) return <div className="notice notice-error"><strong>Request could not render</strong><span>{parsed.error.message}</span></div>;
   const request = parsed.data;
   if (request.view.type === "form") return <RequestForm view={request.view} requested={requested} onSubmit={onSubmit} onCancel={onCancel} />;
   if (!inlineWidgets) return <div className="notice notice-error"><strong>Request widget unavailable</strong><span>Cake could not access its widget compiler.</span></div>;
-  return <RequestWidget artifact={artifact} workspacePath={workspacePath} view={request.view} requested={requested} fallback={request.fallback.markdown} onSubmit={onSubmit} onCancel={onCancel} store={inlineWidgets} />;
+  return <RequestWidget artifact={artifact} workspacePath={workspacePath} view={request.view} title={request.title} requested={requested} fallback={request.fallback.markdown} onSubmit={onSubmit} onCancel={onCancel} store={inlineWidgets} fullscreen={fullscreen} onCloseFullscreen={onCloseFullscreen} />;
 }
 
 function RequestForm({ view, requested, onSubmit, onCancel }: { view: Extract<CakeRequestView, { type: "form" }>; requested: boolean; onSubmit?: (value: unknown) => void; onCancel?: () => void }) {
@@ -80,16 +91,17 @@ function RequestForm({ view, requested, onSubmit, onCancel }: { view: Extract<Ca
   return <form className="artifact-form" onSubmit={submit}>{view.fields.map((field) => <label key={field.id}><span>{field.label}{field.required ? " *" : ""}</span>{field.type === "textarea" ? <textarea required={field.required} placeholder={field.placeholder} value={String(values[field.id] ?? "")} onChange={(event) => setValues({ ...values, [field.id]: event.target.value })} /> : field.type === "select" ? <select required={field.required} value={String(values[field.id] ?? "")} onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}><option value="">Select…</option>{field.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : field.type === "checkbox" ? <input type="checkbox" checked={Boolean(values[field.id])} onChange={(event) => setValues({ ...values, [field.id]: event.target.checked })} /> : <input type={field.type} required={field.required} placeholder={field.placeholder} value={String(values[field.id] ?? "")} onChange={(event) => setValues({ ...values, [field.id]: field.type === "number" ? event.target.valueAsNumber : event.target.value })} />}</label>)}{requested && <div className="artifact-actions"><Button type="button" variant="outline" onClick={onCancel}>Cancel</Button><Button type="submit">{view.submitLabel}</Button></div>}</form>;
 }
 
-const RequestWidget = observer(function RequestWidget({ artifact, workspacePath, view, requested, fallback, onSubmit, onCancel, store }: { artifact: Extract<CakeArtifactV1, { kind: "request" }>; workspacePath: string; view: Extract<CakeRequestView, { type: "widget" }>; requested: boolean; fallback: string; onSubmit?: (value: unknown) => void; onCancel?: () => void; store: InlineWidgetStore }) {
+const RequestWidget = observer(function RequestWidget({ artifact, workspacePath, view, title, requested, fallback, onSubmit, onCancel, store, fullscreen, onCloseFullscreen }: { artifact: Extract<CakeArtifactV1, { kind: "request" }>; workspacePath: string; view: Extract<CakeRequestView, { type: "widget" }>; title: string; requested: boolean; fallback: string; onSubmit?: (value: unknown) => void; onCancel?: () => void; store: InlineWidgetStore; fullscreen: boolean; onCloseFullscreen(): void }) {
   const id = `${artifact.sessionId}:request:${artifact.id}:${artifact.revision}`;
   const state = store.state(id);
   const iframe = useRef<HTMLIFrameElement>(null);
+  const fullscreenIframe = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(220);
   const [sourceOpen, setSourceOpen] = useState(false);
   useEffect(() => store.prepare(id, view.language, view.source, "request"), [id, store, view.language, view.source]);
   useEffect(() => {
     const receive = (event: MessageEvent) => {
-      if (event.source !== iframe.current?.contentWindow || !state?.compiled || event.data?.source !== "cake-inline-widget" || event.data.token !== state.compiled.token) return;
+      if ((event.source !== iframe.current?.contentWindow && event.source !== fullscreenIframe.current?.contentWindow) || !state?.compiled || event.data?.source !== "cake-inline-widget" || event.data.token !== state.compiled.token) return;
       if (event.data.type === "height" && typeof event.data.value === "number") setHeight(Math.max(120, Math.min(1_200, Math.ceil(event.data.value))));
       if (event.data.type === "error") store.reportRuntimeError(id, String(event.data.value));
       if (requested && event.data.type === "submit") onSubmit?.(event.data.value);
@@ -104,6 +116,7 @@ const RequestWidget = observer(function RequestWidget({ artifact, workspacePath,
     {status === "error" && <div className="inline-widget-diagnostic" role="alert"><strong>Request widget could not render</strong><pre>{state?.diagnostic}</pre></div>}
     {state?.compiled && <iframe ref={iframe} title={artifact.title ?? artifact.id} sandbox="allow-scripts" referrerPolicy="no-referrer" src={state.compiled.url} style={{ height }} />}
     {sourceOpen && <Markdown className="inline-widget-source">{fencedCode(state?.source ?? view.source, view.language === "react" ? "tsx" : "html")}</Markdown>}
+    {fullscreen && state?.compiled && <FullscreenSurface mode="canvas" eyebrow={`${view.language === "react" ? "React" : "HTML"} request`} title={title} onClose={onCloseFullscreen}><iframe ref={fullscreenIframe} title={`${title} fullscreen`} sandbox="allow-scripts" referrerPolicy="no-referrer" src={state.compiled.url} /></FullscreenSurface>}
   </section>;
 });
 

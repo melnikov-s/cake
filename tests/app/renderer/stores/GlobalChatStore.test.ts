@@ -18,7 +18,7 @@ const snapshot: SessionSnapshot = {
   diagnostics: [],
   commands: [],
   compatibility: { resources: [], diagnostics: [] },
-  extensionUi: { statuses: [], widgets: [] },
+  extensionUi: { statuses: [] },
   sessions: [],
   tree: []
 };
@@ -42,11 +42,12 @@ function createTestStore() {
   };
   const configuration = mount(createStore(ChatConfigurationStore, {
     session: () => store.session,
-    startOperation: () => store.startOperation(),
+    operations: {
+      start: () => store.startOperation(),
+      finish: (operationId: string) => store.finishOperation(operationId)
+    },
     setModel: (operationId, provider, modelId) => configurationPort.setModel({ operationId, provider, modelId }),
-    setThinkingLevel: (operationId, level) => configurationPort.setThinkingLevel({ operationId, level }),
-    finishOperation: (operationId) => store.finishOperation(operationId),
-    reportError: (error) => store.reportError(error)
+    setThinkingLevel: (operationId, level) => configurationPort.setThinkingLevel({ operationId, level })
   }));
   return { store, port, sessions, configuration, configurationPort };
 }

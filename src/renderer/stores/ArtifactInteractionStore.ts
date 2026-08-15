@@ -1,6 +1,7 @@
 import { Store } from "r-state-tree";
 import { validateArtifactResponse, type ArtifactRecord } from "../../ipc/artifact-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
+import { describeError } from "../error-details";
 
 export interface ArtifactRequestState {
   operationId: string;
@@ -9,21 +10,23 @@ export interface ArtifactRequestState {
 }
 
 export interface ArtifactInteractionStoreProps {
-  client: DesktopClient;
+  client: Pick<DesktopClient, "respondToArtifact" | "exportArtifacts">;
   sessionContext(): { workspacePath: string; sessionId: string } | undefined;
   isActiveSession(workspacePath: string, sessionId: string): boolean;
   operationActive(operationId: string): boolean;
-  reportError(error: unknown): void;
 }
 
 /** Owns blocking artifact interaction and artifact export behavior. */
 export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProps> {
   request: ArtifactRequestState | undefined;
   responding = false;
+  error: string | undefined;
+  errorDetails: string | undefined;
 
   async respond(value?: unknown, cancelled = false) {
     const request = this.request;
     if (!request || this.responding) return;
+    this.error = undefined; this.errorDetails = undefined;
     try {
       if (!cancelled) validateArtifactResponse(request.record.artifact.interaction?.responseSchema, value);
       this.responding = true;
@@ -32,7 +35,9 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
       await this.props.client.respondToArtifact({ operationId: request.operationId, ...context, artifactRequestId: request.artifactRequestId, value, cancelled });
       if (this.request === request) this.request = undefined;
     } catch (error) {
-      this.props.reportError(error);
+      const described = describeError(error);
+      this.error = described.message;
+      this.errorDetails = described.details;
     } finally {
       this.responding = false;
     }

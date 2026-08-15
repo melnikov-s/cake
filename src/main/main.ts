@@ -6,7 +6,7 @@ import { homedir } from "node:os";
 import { app, BrowserWindow, dialog, ipcMain, shell, type WebContents } from "electron";
 import { desktopRequestSchema, desktopResponseSchema, type DesktopEvent } from "../ipc/desktop-ipc";
 import { windowViewStateSchema, type Attachment, type WindowViewState } from "../ipc/session-contract";
-import { inspectWorkspace, listWorkspaceSessions, loadReviewSessionMessages, loadWorkspaceSessionPreview, migrateLegacyReviewSession, runInlineWidgetRepair, suggestProjectFiles } from "../agent/pi-runtime";
+import { inspectWorkspace, listWorkspaceSessions, loadReviewSessionMessages, loadWorkspaceSessionPreview, runInlineWidgetRepair, suggestProjectFiles } from "../agent/pi-runtime";
 import { ApplicationModel } from "./application-model";
 import { shouldAllowNavigation } from "./navigation-policy";
 import { PiWorkspaceDriver, type PiWorkspaceCommand } from "./pi-workspace-driver";
@@ -15,7 +15,6 @@ import { ReviewRepository } from "./review-repository";
 import { SerializedFileWriter } from "./serialized-file-writer";
 import { GlobalChatDriver } from "./global-chat-driver";
 import { resolveCakePaths } from "./cake-paths";
-import { migrateLegacyPiSessions } from "./pi-session-migration";
 import { PluginBuildService } from "./plugin-build-service";
 import { PluginActivationService } from "./plugin-activation-service";
 import { PluginPersistenceRepository } from "./plugin-persistence-repository";
@@ -59,8 +58,7 @@ const artifactRepository = new ArtifactRepository(join(app.getPath("userData"), 
 const reviewRepository = new ReviewRepository(
   join(app.getPath("userData"), "reviews"),
   cakePaths.piReviewSessions,
-  (record) => loadReviewSessionMessages(record, cakePaths.piReviewSessions),
-  migrateLegacyReviewSession
+  (record) => loadReviewSessionMessages(record, cakePaths.piReviewSessions)
 );
 let globalChatController: WebContents | undefined;
 const globalChatDriver = new GlobalChatDriver({
@@ -595,13 +593,6 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
 
 app.whenReady().then(async () => {
   handleInlineWidgetScheme();
-  try {
-    await migrateLegacyPiSessions(cakePaths, {
-      onDiagnostic: (diagnostic) => console.warn(`[cake:pi-session-migration] ${diagnostic.message}`)
-    });
-  } catch (error) {
-    console.error("[cake:pi-session-migration] Session import did not finish; Cake will retry safely on the next launch.", error);
-  }
   await pluginActivation.load();
   await refreshPluginAgentResources();
   await loadApplicationState();

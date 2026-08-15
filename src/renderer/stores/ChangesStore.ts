@@ -1,14 +1,13 @@
 import { Store, observable } from "r-state-tree";
 import type { ChangedFile } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
+import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
 
 export interface ChangesStoreProps {
-  client: DesktopClient;
+  client: Pick<DesktopClient, "inspectChanges">;
   projectPath(): string | undefined;
   sessionId(): string | undefined;
-  startOperation(): string;
-  finishOperation(operationId: string): void;
-  reportError(error: unknown): void;
+  operations: SessionOperationCoordinator;
 }
 
 /** Owns the Git-backed workspace-changes surface and its refresh policy. */
@@ -40,7 +39,7 @@ export class ChangesStore extends Store<ChangesStoreProps> {
       this.refreshPending = true;
       return;
     }
-    const operationId = this.props.startOperation();
+    const operationId = this.props.operations.start();
     this.activeOperationId = operationId;
     this.loading = true;
     this.error = undefined;
@@ -49,12 +48,15 @@ export class ChangesStore extends Store<ChangesStoreProps> {
     } catch (error) {
       if (this.activeOperationId !== operationId) return;
       this.error = errorMessage(error);
-      this.props.reportError(error);
       this.finishRefresh(operationId);
     }
   }
 
   receive(event: DesktopClientEvent) {
+    if (event.type === "pi-state-changed" && (event.state === "failed" || event.state === "stopped")) {
+      if (this.activeOperationId) this.finishRefresh(this.activeOperationId);
+      return;
+    }
     if (event.type === "changes-received") {
       if (event.operationId !== this.activeOperationId || event.workspacePath !== this.props.projectPath() || event.sessionId !== this.props.sessionId()) return;
       const wasOpen = this.path !== undefined;
@@ -111,7 +113,7 @@ export class ChangesStore extends Store<ChangesStoreProps> {
     if (this.activeOperationId !== operationId) return;
     this.activeOperationId = undefined;
     this.loading = false;
-    this.props.finishOperation(operationId);
+    this.props.operations.finish(operationId);
     if (!this.refreshPending) return;
     this.refreshPending = false;
     void this.refresh();

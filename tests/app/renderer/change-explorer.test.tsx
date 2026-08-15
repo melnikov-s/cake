@@ -27,32 +27,32 @@ const changes: ChangedFile[] = [
 ];
 
 function explorerProps(store: MainChatStore) {
-  const legacy = store as unknown as Record<string, any>;
+  const fixture = store as unknown as Record<string, any>;
   return {
     store: {
-      get changes() { return legacy.workspaceChanges; },
-      get selected() { return legacy.selectedWorkspaceChange; },
+      get changes() { return fixture.workspaceChanges; },
+      get selected() { return fixture.selectedWorkspaceChange; },
       error: undefined,
       loading: false,
       changeMatchesPath: (change: ChangedFile, path: string) => change.path === path || change.previousPath === path,
-      select: legacy.selectChangeExplorerFile,
-      focusPath: legacy.selectChangeExplorerFile,
-      close: legacy.closeChangeExplorer
+      select: fixture.selectChangeExplorerFile,
+      focusPath: fixture.selectChangeExplorerFile,
+      close: fixture.closeChangeExplorer
     } as any,
     reviews: {
-      get threads() { return legacy.reviewThreads ?? []; },
-      get activeThreadId() { return legacy.activeReviewThreadId; },
-      set activeThreadId(value) { legacy.activeReviewThreadId = value; legacy.focusReviewThread?.(value); },
-      get activeThread() { return legacy.activeReviewThread; },
-      get pendingCommentCount() { return legacy.pendingReviewCommentCount ?? legacy.pendingReviewThreads?.length ?? 0; },
-      threadStreaming: legacy.reviewThreadStreaming ?? (() => false),
-      createThread: legacy.createReviewThread,
-      replyThread: legacy.replyReviewThread,
-      resolveThread: legacy.resolveReviewThread,
-      submitPending: legacy.sendPendingReviewComments
+      get threads() { return fixture.reviewThreads ?? []; },
+      get activeThreadId() { return fixture.activeReviewThreadId; },
+      set activeThreadId(value) { fixture.activeReviewThreadId = value; fixture.focusReviewThread?.(value); },
+      get activeThread() { return fixture.activeReviewThread; },
+      get pendingCommentCount() { return fixture.pendingReviewCommentCount ?? fixture.pendingReviewThreads?.length ?? 0; },
+      threadStreaming: fixture.reviewThreadStreaming ?? (() => false),
+      createThread: fixture.createReviewThread,
+      replyThread: fixture.replyReviewThread,
+      resolveThread: fixture.resolveReviewThread,
+      submitPending: fixture.sendPendingReviewComments
     } as any,
-    browse: { readFile: legacy.readWorkspaceFile } as any,
-    chat: { sessionTitle: legacy.sessionTitle } as any
+    browse: { readFile: fixture.readWorkspaceFile } as any,
+    chat: { sessionTitle: fixture.sessionTitle } as any
   };
 }
 

@@ -1,19 +1,22 @@
 import { Store, observable } from "r-state-tree";
-import type { ApplicationState, GlobalSessionSummary, ProjectRecord, SessionSnapshot } from "../../ipc/session-contract";
+import type { ApplicationState, ProjectRecord } from "../../ipc/session-contract";
 import { displaySessionTitle } from "../models/session-title";
+import type { SessionCatalogStore } from "./SessionCatalogStore";
 
 export interface SidebarStoreProps {
   activeSession(): { workspacePath: string; sessionId: string } | undefined;
+  catalog: SessionCatalogStore;
 }
 
-/** Owns the project/session catalog, search, pagination, and activity badges. */
+/** Owns project navigation, session search/pagination, and activity badges. */
 export class SidebarStore extends Store<SidebarStoreProps> {
   recentProjectPaths: string[] = observable([]);
   projects: ProjectRecord[] = observable([]);
-  sessions: GlobalSessionSummary[] = observable([]);
   activityBySession: Record<string, "running" | "unread"> = observable({});
   search = "";
   limitsByProject: Record<string, number> = observable({});
+
+  get sessions() { return this.props.catalog.sessions; }
 
   projectSessions(workspacePath: string) {
     return this.sessions.filter((item) => item.workspacePath === workspacePath);
@@ -66,24 +69,11 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   applyApplicationState(state: ApplicationState) {
     this.projects.splice(0, this.projects.length, ...state.projects);
     const names = new Map(state.projects.map((project) => [project.path, project.name]));
-    const renamedSessions = this.sessions.map((session) => ({ ...session, workspaceName: names.get(session.workspacePath) ?? session.workspaceName }));
-    this.sessions.splice(0, this.sessions.length, ...renamedSessions);
+    this.props.catalog.updateWorkspaceNames(names);
     const registeredPaths = new Set(state.projects.map((project) => project.path));
     const paths = this.recentProjectPaths.filter((path) => registeredPaths.has(path));
     for (const project of state.projects) if (!paths.includes(project.path)) paths.push(project.path);
     this.recentProjectPaths.splice(0, this.recentProjectPaths.length, ...paths);
-  }
-
-  replaceSessions(sessions: GlobalSessionSummary[]) {
-    this.sessions.splice(0, this.sessions.length, ...sessions);
-  }
-
-  applyWorkspaceSessions(workspacePath: string, workspaceName: string, sessions: SessionSnapshot["sessions"]) {
-    const otherSessions = this.sessions.filter((session) => session.workspacePath !== workspacePath);
-    const workspaceSessions = sessions.map((session) => ({ ...session, workspacePath, workspaceName }));
-    this.sessions.splice(0, this.sessions.length, ...otherSessions, ...workspaceSessions);
-    this.sessions.sort((left, right) => right.modified.localeCompare(left.modified));
-    if (!this.recentProjectPaths.includes(workspacePath)) this.recentProjectPaths.push(workspacePath);
   }
 
   private sessionKey(workspacePath: string, sessionId: string) {

@@ -2,8 +2,17 @@ import { Store, observable } from "r-state-tree";
 import type { CustomizationState, PluginStatus } from "../../plugin/plugin-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 
+type CustomizationClient = Pick<DesktopClient,
+  | "buildCustomization"
+  | "getCustomizationState"
+  | "listPlugins"
+  | "rollbackCustomization"
+  | "setPluginEnabled"
+  | "useFactoryCustomization"
+>;
+
 /** Owns customization diagnostics, candidate builds, rollback, and recovery. */
-export class CustomizationStore extends Store<{ client: DesktopClient }> {
+export class CustomizationStore extends Store<{ client: CustomizationClient }> {
   state?: CustomizationState;
   busy = false;
   error?: string;

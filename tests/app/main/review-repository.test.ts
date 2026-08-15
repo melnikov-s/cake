@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ReviewRepository } from "../../../src/main/review-repository";
-import { loadReviewSessionMessages, migrateLegacyReviewSession } from "../../../src/agent/pi-runtime";
 
 const directories: string[] = [];
 afterEach(async () => Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true }))));
@@ -49,27 +48,6 @@ describe("ReviewRepository", () => {
     await repository.resolve("/project", "session", created.id, true);
     expect((await repository.listSession("/project", "session")).filter((thread) => thread.status === "open")).toHaveLength(0);
     expect((await new ReviewRepository(root, join(root, "pi-sessions"), async () => projectedMessages).listSession("/project", "session"))[0]?.status).toBe("resolved");
-  });
-
-  it("migrates a legacy Cake transcript into a durable Pi session", async () => {
-    const root = await mkdtemp(join(tmpdir(), "cake-review-migration-")); directories.push(root);
-    const now = new Date(0).toISOString();
-    const messages = [
-      { id: "legacy-user", role: "user" as const, body: "Why this name?", createdAt: now, delivered: true, status: "complete" as const },
-      { id: "legacy-assistant", role: "assistant" as const, body: "It describes the value.", createdAt: now, delivered: true, status: "complete" as const }
-    ];
-
-    const agent = await migrateLegacyReviewSession({ workspacePath: "/project", messages }, join(root, "pi"));
-    const projected = await loadReviewSessionMessages({
-      id: "review", workspacePath: "/project", sessionId: "parent", agentSessionId: agent.sessionId, agentSessionFile: agent.sessionFile,
-      anchor: { path: "src/app.ts", start: { diffLine: 1 }, end: { diffLine: 1 }, selectedText: "", contextBefore: "", contextAfter: "", diff: "" },
-      pendingComments: [], status: "open", createdAt: now, updatedAt: now
-    }, join(root, "pi"));
-
-    expect(projected.map(({ role, body }) => ({ role, body }))).toEqual([
-      { role: "user", body: "Why this name?" },
-      { role: "assistant", body: "It describes the value." }
-    ]);
   });
 
   it("atomically claims pending comments and rejects stale completion", async () => {

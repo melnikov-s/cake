@@ -378,13 +378,13 @@ describe("Transcript scrolling", () => {
     expect(expandButtons).toHaveLength(2);
     act(() => expandButtons[0]!.click());
 
-    const dialog = document.body.querySelector<HTMLElement>(".assistant-message-fullscreen");
+    const dialog = document.body.querySelector<HTMLElement>(".fullscreen-surface");
     expect(dialog).not.toBeNull();
     expect(dialog?.textContent).toContain("Short answer");
     expect(document.body.style.overflow).toBe("hidden");
 
     act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
-    expect(document.body.querySelector(".assistant-message-fullscreen")).toBeNull();
+    expect(document.body.querySelector(".fullscreen-surface")).toBeNull();
     expect(document.body.style.overflow).toBe("");
   });
 

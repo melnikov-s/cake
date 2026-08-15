@@ -2,7 +2,6 @@ import { Model, applySnapshot, batch, child, observable, state, type Snapshot } 
 import type { SessionPreview, SessionSnapshot, ThinkingLevel, UiPart } from "../../ipc/session-contract";
 import { MessageModel } from "./message";
 import { ModelOptionModel } from "./model-option";
-import { SessionSummaryModel } from "./session-summary";
 import { SessionTreeEntryModel } from "./session-tree-entry";
 import { CompatibilityResourceModel, ResourceDiagnosticModel } from "./compatibility-resource";
 import { ArtifactModel } from "./artifact";
@@ -26,7 +25,6 @@ export class SessionModel extends Model {
   @state usage: SessionSnapshot["usage"] = undefined;
   @child(CompatibilityResourceModel) resources: CompatibilityResourceModel[] = observable([]);
   @child(ResourceDiagnosticModel) resourceDiagnostics: ResourceDiagnosticModel[] = observable([]);
-  @child(SessionSummaryModel) sessions: SessionSummaryModel[] = observable([]);
   @child(SessionTreeEntryModel) tree: SessionTreeEntryModel[] = observable([]);
   @child(ArtifactModel) artifacts: ArtifactModel[] = observable([]);
   @child(ReviewThreadModel) reviewThreads: ReviewThreadModel[] = observable([]);
@@ -60,7 +58,6 @@ export class SessionModel extends Model {
       } as Snapshot<this>);
       reconcileChildren(this.parts, snapshot.parts, MessageModel);
       reconcileModelOptions(this.models, snapshot.models);
-      reconcileChildren(this.sessions, snapshot.sessions, SessionSummaryModel);
       reconcileChildren(this.tree, snapshot.tree, SessionTreeEntryModel);
       reconcileChildren(this.resources, snapshot.compatibility.resources, CompatibilityResourceModel);
       reconcileChildren(this.resourceDiagnostics, snapshot.compatibility.diagnostics, ResourceDiagnosticModel);

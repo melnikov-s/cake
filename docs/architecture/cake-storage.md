@@ -6,8 +6,6 @@ installations.
 
 ```text
 ~/.cake/
-├── migrations/
-│   └── pi-sessions-v1.json
 ├── plugins/
 ├── scenes/
 ├── recovery/
@@ -49,24 +47,10 @@ project-local resources from the selected workspace. Cake injects its required
 artifact extensions and `cake-plugin-authoring` skill independently. Nothing is
 discovered from standalone `~/.pi/agent`.
 
-## One-time standalone-session import
-
-Before Cake lists or continues sessions, it recursively copies
-`~/.pi/agent/sessions` into `<Cake home>/pi/sessions`. This is a one-time,
-copy-only migration: source entries are never modified, destination entries
-are never overwritten, and conflicts retain Cake's content and are recorded in
-the versioned completion marker. Missing sources are successful no-ops.
-
-The completion marker is written atomically only after a successful traversal.
-A partial failure leaves it absent, so startup can continue with any safely
-copied files and retry idempotently next time. Symlinks and other non-file
-entries are not followed. Settings, authentication, models, packages,
-extensions, skills, prompts, and themes are never copied.
-
 ## Electron user data retained
 
 Application and window snapshots, artifact payloads, and review annotations
 remain under Electron's `app.getPath("userData")`. Their location can be changed
 by `app.setPath()` (the test override is `CAKE_ELECTRON_USER_DATA`) and is tied
-to Electron's platform lifecycle. Embedded-Pi session content formerly nested
-there for reviews and global chat now lives under the Cake Pi roots above.
+to Electron's platform lifecycle. Review and global-chat Pi sessions live under
+the Cake Pi roots above.

@@ -21,11 +21,11 @@ vi.mock("@streamdown/code", () => ({
 import { WorkspaceBrowser } from "../../../src/renderer/components/workspace-browser";
 
 function browserProps(store: MainChatStore) {
-  const legacy = store as unknown as Record<string, any>;
+  const fixture = store as unknown as Record<string, any>;
   return {
-    store: { files: legacy.workspaceFiles, path: legacy.workspaceBrowserPath, loading: legacy.workspaceFilesLoading, readFile: legacy.readWorkspaceFile, select: legacy.selectWorkspaceFile, focusPath: legacy.focusWorkspaceReviewThread, close: legacy.closeWorkspaceBrowser } as any,
-    reviews: { threads: legacy.reviewThreads ?? [], pendingCommentCount: legacy.pendingReviewCommentCount ?? 0, activeThread: legacy.activeReviewThread, createThread: legacy.createReviewThread, replyThread: legacy.replyReviewThread, resolveThread: legacy.resolveReviewThread, threadStreaming: legacy.reviewThreadStreaming ?? (() => false), submitPending: legacy.sendPendingReviewComments } as any,
-    chat: { projectName: legacy.projectName } as any
+    store: { files: fixture.workspaceFiles, path: fixture.workspaceBrowserPath, loading: fixture.workspaceFilesLoading, readFile: fixture.readWorkspaceFile, select: fixture.selectWorkspaceFile, focusPath: fixture.focusWorkspaceReviewThread, close: fixture.closeWorkspaceBrowser } as any,
+    reviews: { threads: fixture.reviewThreads ?? [], pendingCommentCount: fixture.pendingReviewCommentCount ?? 0, activeThread: fixture.activeReviewThread, createThread: fixture.createReviewThread, replyThread: fixture.replyReviewThread, resolveThread: fixture.resolveReviewThread, threadStreaming: fixture.reviewThreadStreaming ?? (() => false), submitPending: fixture.sendPendingReviewComments } as any,
+    chat: { projectName: fixture.projectName } as any
   };
 }
 

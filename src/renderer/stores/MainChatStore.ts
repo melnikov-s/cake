@@ -4,10 +4,9 @@ import type {
   SessionSnapshot,
   WindowViewState
 } from "../../ipc/session-contract";
-import type { DesktopClientEvent, PiState } from "../desktop-client";
+import type { DesktopClient, DesktopClientEvent, PiState } from "../desktop-client";
 import type { BrowseStore } from "./BrowseStore";
 import type { ChangesStore } from "./ChangesStore";
-import { DesktopClientContext, SessionCacheContext } from "./StoreContext";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { SidebarStore } from "./SidebarStore";
 import type { SettingsStore } from "./SettingsStore";
@@ -16,9 +15,37 @@ import type { ArtifactInteractionStore } from "./ArtifactInteractionStore";
 import type { MessageComposerStore } from "./MessageComposerStore";
 import type { TranscriptViewStore } from "./TranscriptViewStore";
 import type { PluginCommandStore } from "./PluginCommandStore";
+import type { SessionCatalogStore } from "./SessionCatalogStore";
+import type { SessionCacheStore } from "./SessionCacheStore";
+import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
 import { describeError } from "../error-details";
 
 export interface MainChatStoreProps {
+  client: Pick<DesktopClient,
+    | "abort"
+    | "archiveSession"
+    | "chooseProject"
+    | "createWindow"
+    | "forkSession"
+    | "getChangelog"
+    | "getHomeDirectory"
+    | "inspectWorkspace"
+    | "listSessions"
+    | "loadApplicationState"
+    | "loadSession"
+    | "loadWindowState"
+    | "navigateSession"
+    | "openWorkspace"
+    | "registerProject"
+    | "removeProject"
+    | "renameProject"
+    | "renameSession"
+    | "respondToWorkspaceTrust"
+    | "restartPi"
+    | "saveWindowState"
+  >;
+  sessionCache: SessionCacheStore;
+  operations: SessionOperationCoordinator;
   sidebar(): SidebarStore;
   browse(): BrowseStore;
   changes(): ChangesStore;
@@ -29,6 +56,7 @@ export interface MainChatStoreProps {
   composer(): MessageComposerStore;
   transcriptView(): TranscriptViewStore;
   pluginCommands(): PluginCommandStore;
+  catalog: SessionCatalogStore;
 }
 
 /** Owns the active conversation, composer, and session interaction workflow. */
@@ -51,6 +79,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
   error: string | undefined;
   errorDetails: string | undefined;
   activeOperations: string[] = [];
+  private pendingRenames: Record<string, { workspacePath: string; sessionId: string; previousTitle: string }> = observable({});
   private openRevision = 0;
   private reopenAfterAgentRestart = false;
   private draftAfterAgentRestart: string | undefined;
@@ -81,15 +110,11 @@ export class MainChatStore extends Store<MainChatStoreProps> {
   }
 
   get client() {
-    const client = DesktopClientContext.consume(this);
-    if (!client) throw new Error("DesktopClientContext is not provided");
-    return client;
+    return this.props.client;
   }
 
   get sessionCache() {
-    const sessions = SessionCacheContext.consume(this);
-    if (!sessions) throw new Error("SessionCacheContext is not provided");
-    return sessions;
+    return this.props.sessionCache;
   }
 
   get session() {
@@ -113,7 +138,9 @@ export class MainChatStore extends Store<MainChatStoreProps> {
   }
 
   get sessionTitle() {
-    return this.session?.sessions.find((item) => item.id === this.session?.sessionId)?.displayTitle || "New chat";
+    const context = this.sessionContext();
+    const title = context ? this.props.catalog.find(context.workspacePath, context.sessionId)?.title : undefined;
+    return title ? this.sessionDisplayTitle(title) : "New chat";
   }
 
   sessionDisplayTitle(title: string) {
@@ -146,7 +173,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
       const [state, application, sessionIndex] = await Promise.all([this.client.loadWindowState(), this.client.loadApplicationState(), this.client.listSessions()]);
       if (this.signal.aborted) return;
       this.applyApplicationState(application);
-      this.sidebar.replaceSessions(sessionIndex.sessions);
+      this.props.catalog.replace(sessionIndex.sessions);
       const reviewsBySession = new Map<string, typeof sessionIndex.reviewThreads>();
       for (const thread of sessionIndex.reviewThreads) {
         const key = this.reviewSessionKey(thread.workspacePath, thread.sessionId);
@@ -204,7 +231,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
   }
 
   startOperation() {
-    const operationId = crypto.randomUUID();
+    const operationId = this.props.operations.start();
     this.activeOperations.push(operationId);
     this.error = undefined;
     this.errorDetails = undefined;
@@ -214,6 +241,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
   finishOperation(operationId: string) {
     const index = this.activeOperations.indexOf(operationId);
     if (index >= 0) this.activeOperations.splice(index, 1);
+    this.props.operations.finish(operationId);
   }
 
   setError(error: unknown, context?: string) {
@@ -440,9 +468,15 @@ export class MainChatStore extends Store<MainChatStoreProps> {
     if (!name.trim()) return;
     const operationId = this.startOperation();
     try {
-      await this.client.renameSession({ operationId, workspacePath, sessionId, name: name.trim() });
-      const session = this.sidebar.sessions.find((item) => item.workspacePath === workspacePath && item.id === sessionId);
-      if (session) session.title = name.trim();
+      const title = name.trim();
+      const previousTitle = this.props.catalog.rename(workspacePath, sessionId, title);
+      if (previousTitle !== undefined) this.pendingRenames[operationId] = { workspacePath, sessionId, previousTitle };
+      try {
+        await this.client.renameSession({ operationId, workspacePath, sessionId, name: title });
+      } catch (error) {
+        this.rollbackRename(operationId);
+        throw error;
+      }
     }
     catch (error) { this.finishOperation(operationId); this.setError(error); }
   }
@@ -502,7 +536,8 @@ export class MainChatStore extends Store<MainChatStoreProps> {
     this.extensionUi.applyState(snapshot.extensionUi);
     this.pendingOpen = undefined;
     const workspaceName = this.sidebar.projects.find((project) => project.path === snapshot.workspacePath)?.name ?? this.sidebar.nameFromPath(snapshot.workspacePath);
-    this.sidebar.applyWorkspaceSessions(snapshot.workspacePath, workspaceName, snapshot.sessions);
+    this.props.catalog.applyWorkspace(snapshot.workspacePath, workspaceName, snapshot.sessions);
+    if (!this.sidebar.recentProjectPaths.includes(snapshot.workspacePath)) this.sidebar.recentProjectPaths.push(snapshot.workspacePath);
     this.schedulePersist();
     void this.reviews.loadThreads(snapshot.workspacePath, snapshot.sessionId);
     if (focusComposer) this.composer.requestFocus();
@@ -544,6 +579,8 @@ export class MainChatStore extends Store<MainChatStoreProps> {
         this.reopenAfterAgentRestart = Boolean(this.projectPath && this.session);
         if (this.reopenAfterAgentRestart) this.draftAfterAgentRestart = this.draft;
         this.activeOperations.splice(0);
+        this.props.operations.reset();
+        for (const operationId of Object.keys(this.pendingRenames)) this.rollbackRename(operationId);
         this.activeOpenOperationId = undefined;
         this.activeOpenTarget = undefined;
         this.activeOpenExpectsEmpty = false;
@@ -584,12 +621,16 @@ export class MainChatStore extends Store<MainChatStoreProps> {
     }
     if (event.type === "ui-requested") return;
     if (event.type === "operation-completed") {
-      this.finishOperation(event.operationId);
+      if (this.activeOperations.includes(event.operationId)) {
+        delete this.pendingRenames[event.operationId];
+        this.finishOperation(event.operationId);
+      }
       return;
     }
     if (event.type === "operation-failed") {
-      if (event.operationId) this.composer.operationFailed(event.operationId);
-      if (event.operationId) this.finishOperation(event.operationId);
+      if (!event.operationId || !this.activeOperations.includes(event.operationId)) return;
+      this.rollbackRename(event.operationId);
+      this.finishOperation(event.operationId);
       if (event.operationId === this.activeOpenOperationId) {
         this.activeOpenOperationId = undefined;
         this.activeOpenTarget = undefined;
@@ -597,5 +638,12 @@ export class MainChatStore extends Store<MainChatStoreProps> {
       }
       this.setError(event.message);
     }
+  }
+
+  private rollbackRename(operationId: string) {
+    const pending = this.pendingRenames[operationId];
+    if (!pending) return;
+    this.props.catalog.rename(pending.workspacePath, pending.sessionId, pending.previousTitle);
+    delete this.pendingRenames[operationId];
   }
 }

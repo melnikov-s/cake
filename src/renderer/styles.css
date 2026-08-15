@@ -365,6 +365,8 @@
 .artifact > header > div { display: flex; min-width: 0; align-items: baseline; gap: 9px; }
 .artifact > header strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .artifact > header span { color: var(--muted-foreground); font: 10px var(--font-mono); }
+.artifact-fullscreen-button { width: 28px; height: 28px; flex: 0 0 auto; margin-left: auto; padding: 0; opacity: 0; pointer-events: none; transform: translateY(-2px); transition: opacity 120ms ease, transform 120ms ease; }
+.artifact:hover .artifact-fullscreen-button, .artifact:focus-within .artifact-fullscreen-button { opacity: 1; pointer-events: auto; transform: translateY(0); }
 .artifact-body { min-width: 0; overflow: hidden; }
 .artifact-fallback { color: var(--muted-foreground); font-size: 11px; }
 .artifact-fallback summary { cursor: pointer; }
@@ -416,19 +418,22 @@
 .message-comment-messages { display: grid; min-height: 80px; max-height: 250px; gap: 1px; overflow-y: auto; border: 1px solid color-mix(in oklab, var(--border) 75%, transparent); border-radius: 8px; }.message-comment-message { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 8px; padding: 8px; background: var(--background); }.message-comment-message.assistant { background: color-mix(in oklab, var(--accent) 5%, var(--background)); }.message-comment-message strong { color: var(--muted-foreground); font: 700 9px/1.6 var(--font-mono); text-transform: uppercase; }.message-comment-message .markdown-content { font-size: 12px; line-height: 1.55; }.message-comment-message.error .markdown-content { color: var(--destructive); }
 .message-comment-working { display: flex; align-items: center; gap: 7px; color: var(--muted-foreground); font-size: 11px; }.message-comment-reply { display: flex; align-items: flex-end; gap: 7px; }.message-comment-reply textarea { min-height: 56px; }.message-comment-thread-actions { display: flex; justify-content: flex-end; }.message-comment-thread-actions button { border: 0; background: transparent; color: var(--muted-foreground); cursor: pointer; font: 650 10px var(--font-sans); }.message-comment-thread-actions button:hover { color: var(--foreground); }
 @keyframes message-comment-arrive { from { opacity: 0; } to { opacity: 1; } }
-@media (hover: none) { .assistant-message-actions, .assistant-message-expand { opacity: 1; pointer-events: auto; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .assistant-message-actions, .assistant-message-expand { transition: none; }.message-selection-action, .message-comment-popover { animation: none; } }
-.assistant-message-fullscreen { position: fixed; z-index: 50; inset: 0; display: flex; flex-direction: column; overflow: hidden; background: color-mix(in oklab, var(--background) 96%, transparent); backdrop-filter: blur(8px); }
-.assistant-message-fullscreen > header { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 20px; min-height: 72px; padding: 12px clamp(18px, 4vw, 56px); border-bottom: 1px solid color-mix(in oklab, var(--border) 78%, transparent); background: color-mix(in oklab, var(--background) 90%, transparent); }
-.assistant-message-fullscreen > header div { display: grid; gap: 1px; }
-.assistant-message-fullscreen > header span { color: var(--muted-foreground); font: 650 9px/1.4 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; }
-.assistant-message-fullscreen > header h2 { margin: 0; font: 680 17px/1.35 var(--font-display); letter-spacing: -.015em; }
-.assistant-message-fullscreen > header button { display: grid; width: 36px; height: 36px; padding: 0; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--muted-foreground); }
-.assistant-message-fullscreen > header button:hover { background: var(--muted); color: var(--foreground); }
-.assistant-message-fullscreen > header button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-.assistant-message-fullscreen > main { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: clamp(28px, 5vw, 72px) clamp(20px, 6vw, 96px) 18vh; }
-.assistant-message-fullscreen-content { width: min(100%, 67.6rem); margin-inline: auto; color: var(--foreground); font-size: clamp(.96rem, .92rem + .14vw, 1.05rem); line-height: 1.8; }
-@media (max-width: 640px) { .assistant-message-fullscreen > header { min-height: 60px; }.assistant-message-fullscreen > main { padding-top: 24px; }.assistant-message-fullscreen-content { line-height: 1.7; } }
+@media (hover: none) { .assistant-message-actions, .assistant-message-expand, .artifact-fullscreen-button { opacity: 1; pointer-events: auto; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .assistant-message-actions, .assistant-message-expand, .artifact-fullscreen-button { transition: none; }.message-selection-action, .message-comment-popover { animation: none; } }
+.fullscreen-surface { position: fixed; z-index: 50; inset: 0; display: flex; flex-direction: column; overflow: hidden; background: color-mix(in oklab, var(--background) 96%, transparent); backdrop-filter: blur(8px); }
+.fullscreen-surface > header { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 20px; min-height: 72px; padding: 12px clamp(18px, 4vw, 56px) 12px 103px; border-bottom: 1px solid color-mix(in oklab, var(--border) 78%, transparent); background: color-mix(in oklab, var(--background) 90%, transparent); -webkit-app-region: drag; }
+.fullscreen-surface > header div { display: grid; gap: 1px; }
+.fullscreen-surface > header span { color: var(--muted-foreground); font: 650 9px/1.4 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; }
+.fullscreen-surface > header h2 { margin: 0; font: 680 17px/1.35 var(--font-display); letter-spacing: -.015em; }
+.fullscreen-surface > header button { display: grid; width: 36px; height: 36px; padding: 0; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--muted-foreground); -webkit-app-region: no-drag; }
+.fullscreen-surface > header button:hover { background: var(--muted); color: var(--foreground); }
+.fullscreen-surface > header button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.fullscreen-surface > main { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: clamp(28px, 5vw, 72px) clamp(20px, 6vw, 96px) 18vh; }
+.fullscreen-surface-content { width: min(100%, 67.6rem); margin-inline: auto; color: var(--foreground); font-size: clamp(.96rem, .92rem + .14vw, 1.05rem); line-height: 1.8; }
+.fullscreen-surface-canvas > main { overflow: hidden; padding: 16px; }
+.fullscreen-surface-canvas .fullscreen-surface-content { width: 100%; height: 100%; }
+.fullscreen-surface-canvas iframe { display: block; width: 100%; height: 100%; border: 1px solid var(--border); border-radius: 10px; background: Canvas; }
+@media (max-width: 640px) { .fullscreen-surface > header { min-height: 60px; }.fullscreen-surface-reader > main { padding-top: 24px; }.fullscreen-surface-content { line-height: 1.7; }.fullscreen-surface-canvas > main { padding: 8px; } }
 
 .inline-widget { --widget-accent: #7596bb; margin: 1rem 0; overflow: hidden; border: 1px solid color-mix(in srgb, var(--border) 82%, var(--widget-accent)); border-radius: .8rem; background: color-mix(in srgb, var(--card) 94%, var(--widget-accent)); }
 .inline-widget-error { --widget-accent: #cf745f; }
@@ -529,8 +534,6 @@ button.reasoning-summary { border: 0; background: transparent; }
 @keyframes assistant-loading-pulse { 0%, 60%, 100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
 @media (prefers-reduced-motion: reduce) { .assistant-loading > span { animation: none; opacity: .65; } }
 .composer-dock { position: absolute; z-index: 10; right: 0; bottom: 0; left: 0; width: 100%; max-width: 100%; min-width: 0; padding: 20px 24px 15px; background: linear-gradient(to bottom, transparent, var(--background) 28%); pointer-events: none; }
-.legacy-widget { display: grid; width: min(100%, 51.25rem); gap: 4px; margin: 5px auto; padding: 8px 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); font: 10px var(--font-mono); pointer-events: auto; }
-.legacy-widget strong { color: var(--muted-foreground); }.legacy-widget pre { max-height: 8rem; margin: 0; overflow: auto; white-space: pre-wrap; }
 .extension-statuses { display: flex; width: min(100%, 51.25rem); gap: 10px; margin: 6px auto 0; overflow-x: auto; color: var(--muted-foreground); font: 10px var(--font-mono); pointer-events: auto; }
 .extension-statuses span { white-space: nowrap; }.extension-statuses strong { color: var(--foreground); }
 .workbench-composer { width: min(100%, 51.25rem) !important; max-width: 51.25rem !important; min-width: 0; margin: 0 auto; border-color: color-mix(in oklab, var(--border) 90%, transparent) !important; background: var(--composer) !important; box-shadow: 0 24px 80px -30px hsl(var(--shadow) / .55), 0 2px 10px hsl(var(--shadow) / .08) !important; pointer-events: auto; }

@@ -1,8 +1,10 @@
 import { Store, observable } from "r-state-tree";
 import type { Attachment, FileSuggestion, UiPart } from "../../ipc/session-contract";
-import type { DesktopClient } from "../desktop-client";
+import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import type { SessionCacheStore } from "./SessionCacheStore";
 import type { ReviewsStore } from "./ReviewsStore";
+import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
+import { describeError } from "../error-details";
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -29,7 +31,7 @@ interface PendingUserMessage {
 }
 
 export interface MessageComposerStoreProps {
-  client: DesktopClient;
+  client: Pick<DesktopClient, "chooseAttachments" | "suggestFiles" | "submit">;
   sessionCache: SessionCacheStore;
   reviews(): ReviewsStore;
   projectPath(): string | undefined;
@@ -42,9 +44,7 @@ export interface MessageComposerStoreProps {
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
   matchesPluginCommand(input: string): boolean;
   runPluginCommand(input: string): Promise<boolean>;
-  startOperation(): string;
-  finishOperation(operationId: string): void;
-  reportError(error: unknown): void;
+  operations: SessionOperationCoordinator;
 }
 
 /** Owns attachments, optimistic immediate prompts, and prompt delivery. */
@@ -52,6 +52,15 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   attachments: Attachment[] = observable([]);
   pendingUserMessages: PendingUserMessage[] = observable([]);
   focusRequestRevision = 0;
+  readonly activeOperations: string[] = observable([]);
+  error: string | undefined;
+  errorDetails: string | undefined;
+
+  private reportError(error: unknown) {
+    const described = describeError(error);
+    this.error = described.message;
+    this.errorDetails = described.details;
+  }
 
   requestFocus() {
     this.focusRequestRevision += 1;
@@ -76,6 +85,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   }
 
   async addAttachments() {
+    this.error = undefined; this.errorDetails = undefined;
     try {
       const selected = await this.props.client.chooseAttachments();
       if (this.signal.aborted) return;
@@ -85,17 +95,18 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       if (fileMentions.length > 0) this.props.setDraft(`${draft}${draft.length > 0 && !/\s$/.test(draft) ? " " : ""}${fileMentions.join(" ")}`);
       const images = selected.filter((item): item is Extract<Attachment, { kind: "image" }> => item.kind === "image");
       this.attachments.push(...images.filter((item) => !this.attachments.some((current) => current.kind === "image" && current.name === item.name)));
-    } catch (error) { this.props.reportError(error); }
+    } catch (error) { this.reportError(error); }
   }
 
   async addPastedImages(files: readonly File[]) {
+    this.error = undefined; this.errorDetails = undefined;
     try {
       const images = files.filter((file) => file.type.startsWith("image/")).slice(0, Math.max(0, 20 - this.attachments.length));
       const attachments = await Promise.all(images.map(async (file, index): Promise<Extract<Attachment, { kind: "image" }>> => ({
         kind: "image", name: file.name || `Pasted image ${index + 1}`, mimeType: file.type, data: await fileToBase64(file)
       })));
       this.attachments.push(...attachments);
-    } catch (error) { this.props.reportError(error); }
+    } catch (error) { this.reportError(error); }
   }
 
   suggestFiles(prefix: string): Promise<FileSuggestion[]> {
@@ -107,6 +118,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
 
   async submit(deliveryOverride?: "steer") {
     if (!this.props.canSubmit()) return;
+    this.error = undefined; this.errorDetails = undefined;
     const text = this.props.draft().trim();
     const command = text.toLocaleLowerCase();
     if (command === "/tree" || command === "/resources" || command === "/changelog") {
@@ -129,15 +141,16 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     const submissions: Promise<void>[] = [];
     if (threadIds.length > 0) submissions.push(this.props.reviews().submitThreads(threadIds, text || undefined));
     if (text || attachments.length > 0) {
-      const operationId = this.props.startOperation();
+      const operationId = this.props.operations.start();
+      this.activeOperations.push(operationId);
       this.attachments.splice(0);
       if (delivery === "prompt") this.addPendingUserMessage(operationId, workspacePath, sessionId, text, attachments);
       submissions.push(this.props.client.submit({ operationId, workspacePath, sessionId, text, delivery, attachments }).catch((error) => {
         this.removePendingUserMessage(operationId);
-        this.props.reportError(error);
+        this.reportError(error);
         if (!this.props.draft().trim()) this.props.setDraft(text);
         this.attachments.push(...attachments);
-        this.props.finishOperation(operationId);
+        this.finishOperation(operationId);
       }));
     }
     await Promise.all(submissions);
@@ -150,7 +163,26 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     }
   }
 
-  operationFailed(operationId: string) { this.removePendingUserMessage(operationId); }
+  receive(event: DesktopClientEvent) {
+    if (event.type === "pi-state-changed" && (event.state === "failed" || event.state === "stopped")) {
+      for (const operationId of this.activeOperations.slice()) this.finishOperation(operationId);
+      this.pendingUserMessages.splice(0);
+      return;
+    }
+    if ((event.type === "operation-completed" || event.type === "operation-failed") && event.operationId && this.activeOperations.includes(event.operationId)) {
+      if (event.type === "operation-failed") {
+        this.removePendingUserMessage(event.operationId);
+        this.reportError(event.message);
+      }
+      this.finishOperation(event.operationId);
+    }
+  }
+
+  private finishOperation(operationId: string) {
+    const index = this.activeOperations.indexOf(operationId);
+    if (index >= 0) this.activeOperations.splice(index, 1);
+    this.props.operations.finish(operationId);
+  }
 
   private addPendingUserMessage(operationId: string, workspacePath: string, sessionId: string, text: string, attachments: Attachment[]) {
     const imageParts: UiPart[] = attachments.flatMap((attachment, index) => attachment.kind === "image" ? [{ id: `optimistic-user-${operationId}-attachment-${index}`, kind: "attachment" as const, name: attachment.name, mediaType: attachment.mimeType, attachmentKind: "image" as const, data: attachment.data }] : []);

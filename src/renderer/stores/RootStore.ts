@@ -1,6 +1,5 @@
 import { Store, child, createStore, mount } from "r-state-tree";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
-import { DesktopClientContext, SessionCacheContext } from "./StoreContext";
 import { SessionCacheStore } from "./SessionCacheStore";
 import { MainChatStore } from "./MainChatStore";
 import { SidebarStore } from "./SidebarStore";
@@ -20,17 +19,12 @@ import { CustomizationStore } from "./CustomizationStore";
 import { PluginCommandStore } from "./PluginCommandStore";
 import { InlineWidgetStore } from "./InlineWidgetStore";
 import { MessageCommentsStore } from "./MessageCommentsStore";
+import { SessionCatalogStore } from "./SessionCatalogStore";
+import { SessionOperationCoordinator } from "./SessionOperationCoordinator";
+import { AppControlOperationStore } from "./AppControlOperationStore";
 
 export class RootStore extends Store<{ client: DesktopClient }> {
   readonly appControl: AppControlBridge;
-
-  [DesktopClientContext.provide]() {
-    return this.props.client;
-  }
-
-  [SessionCacheContext.provide]() {
-    return this.sessionCache;
-  }
 
   @child
   get pluginCommandStore(): PluginCommandStore { return createStore(PluginCommandStore); }
@@ -39,9 +33,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   get inlineWidgetStore(): InlineWidgetStore { return createStore(InlineWidgetStore, { client: this.client }); }
 
   get client() {
-    const client = DesktopClientContext.consume(this);
-    if (!client) throw new Error("DesktopClientContext is not provided");
-    return client;
+    return this.props.client;
   }
 
   @child
@@ -52,6 +44,21 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   @child
   get sessionCache(): SessionCacheStore {
     return createStore(SessionCacheStore);
+  }
+
+  @child
+  get sessionCatalogStore(): SessionCatalogStore {
+    return createStore(SessionCatalogStore);
+  }
+
+  @child
+  get sessionOperationCoordinator(): SessionOperationCoordinator {
+    return createStore(SessionOperationCoordinator);
+  }
+
+  @child
+  get appControlOperationStore(): AppControlOperationStore {
+    return createStore(AppControlOperationStore, { operations: this.sessionOperationCoordinator });
   }
 
   @child
@@ -67,6 +74,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   @child
   get sidebarStore(): SidebarStore {
     return createStore(SidebarStore, {
+      catalog: this.sessionCatalogStore,
       activeSession: () => this.mainChatStore.projectPath && this.mainChatStore.selectedSessionId
         ? { workspacePath: this.mainChatStore.projectPath, sessionId: this.mainChatStore.selectedSessionId }
         : undefined
@@ -77,9 +85,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   get browseStore(): BrowseStore {
     return createStore(BrowseStore, {
       client: this.client,
-      projectPath: () => this.mainChatStore.projectPath,
-      sessionId: () => this.mainChatStore.session?.sessionId,
-      reportError: (error) => this.mainChatStore.setError(error)
+      projectPath: () => this.mainChatStore.projectPath
     });
   }
 
@@ -89,9 +95,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       client: this.client,
       projectPath: () => this.mainChatStore.projectPath,
       sessionId: () => this.mainChatStore.session?.sessionId,
-      startOperation: () => this.mainChatStore.startOperation(),
-      finishOperation: (operationId) => this.mainChatStore.finishOperation(operationId),
-      reportError: (error) => this.mainChatStore.setError(error)
+      operations: this.sessionOperationCoordinator
     });
   }
 
@@ -100,11 +104,9 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     return createStore(ReviewsStore, {
       client: this.client,
       sessionCache: this.sessionCache,
+      operations: this.sessionOperationCoordinator,
       context: () => this.mainChatStore.sessionContext(),
-      model: () => this.mainChatStore.session?.model,
-      startOperation: () => this.mainChatStore.startOperation(),
-      finishOperation: (operationId) => this.mainChatStore.finishOperation(operationId),
-      reportError: (error) => this.mainChatStore.setError(error)
+      model: () => this.mainChatStore.session?.model
     });
   }
 
@@ -114,8 +116,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       client: this.client,
       sessionCache: this.sessionCache,
       reviews: () => this.reviewsStore,
-      context: () => this.mainChatStore.sessionContext(),
-      reportError: (error) => this.mainChatStore.setError(error)
+      context: () => this.mainChatStore.sessionContext()
     });
   }
 
@@ -124,9 +125,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     return createStore(SettingsStore, {
       client: this.client,
       sessionContext: () => this.mainChatStore.sessionContext(),
-      startOperation: () => this.mainChatStore.startOperation(),
-      finishOperation: (operationId) => this.mainChatStore.finishOperation(operationId),
-      reportError: (error) => this.mainChatStore.setError(error)
+      operations: this.sessionOperationCoordinator
     });
   }
 
@@ -134,7 +133,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   get mainChatConfigurationStore(): ChatConfigurationStore {
     return createStore(ChatConfigurationStore, {
       session: () => this.mainChatStore.session,
-      startOperation: () => this.mainChatStore.startOperation(),
+      operations: this.sessionOperationCoordinator,
       setModel: (operationId, provider, modelId) => {
         const context = this.mainChatStore.sessionContext();
         if (!context) throw new Error("No active session");
@@ -144,9 +143,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         const context = this.mainChatStore.sessionContext();
         if (!context) throw new Error("No active session");
         return this.client.setThinkingLevel({ operationId, ...context, level });
-      },
-      finishOperation: (operationId) => this.mainChatStore.finishOperation(operationId),
-      reportError: (error) => this.mainChatStore.setError(error)
+      }
     });
   }
 
@@ -156,10 +153,9 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       client: this.client,
       activeSessionId: () => this.mainChatStore.session?.sessionId,
       sessionContext: () => this.mainChatStore.sessionContext(),
-      operationActive: (operationId) => this.mainChatStore.activeOperations.includes(operationId),
+      operationActive: (operationId) => this.sessionOperationCoordinator.includes(operationId),
       setDraft: (value) => this.mainChatStore.setDraft(typeof value === "function" ? value(this.mainChatStore.draft) : value),
-      requestComposerFocus: () => this.messageComposerStore.requestFocus(),
-      reportError: (error) => this.mainChatStore.setError(error)
+      requestComposerFocus: () => this.messageComposerStore.requestFocus()
     });
   }
 
@@ -169,8 +165,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       client: this.client,
       sessionContext: () => this.mainChatStore.sessionContext(),
       isActiveSession: (workspacePath, sessionId) => this.mainChatStore.isActiveSession(workspacePath, sessionId),
-      operationActive: (operationId) => this.mainChatStore.activeOperations.includes(operationId),
-      reportError: (error) => this.mainChatStore.setError(error)
+      operationActive: (operationId) => this.sessionOperationCoordinator.includes(operationId)
     });
   }
 
@@ -190,15 +185,16 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       openCommandPane: (pane) => this.mainChatStore.openCommandPane(pane),
       matchesPluginCommand: (input) => this.pluginCommandStore.matches(input),
       runPluginCommand: (input) => this.pluginCommandStore.run(input),
-      startOperation: () => this.mainChatStore.startOperation(),
-      finishOperation: (operationId) => this.mainChatStore.finishOperation(operationId),
-      reportError: (error) => this.mainChatStore.setError(error)
+      operations: this.sessionOperationCoordinator
     });
   }
 
   @child
   get mainChatStore(): MainChatStore {
     return createStore(MainChatStore, {
+      client: this.client,
+      sessionCache: this.sessionCache,
+      operations: this.sessionOperationCoordinator,
       sidebar: () => this.sidebarStore,
       browse: () => this.browseStore,
       changes: () => this.changesStore,
@@ -208,7 +204,8 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       artifacts: () => this.artifactInteractionStore,
       composer: () => this.messageComposerStore,
       transcriptView: () => this.mainTranscriptViewStore,
-      pluginCommands: () => this.pluginCommandStore
+      pluginCommands: () => this.pluginCommandStore,
+      catalog: this.sessionCatalogStore
     });
   }
 
@@ -230,11 +227,12 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   get globalChatConfigurationStore(): ChatConfigurationStore {
     return createStore(ChatConfigurationStore, {
       session: () => this.globalChatStore.session,
-      startOperation: () => this.globalChatStore.startOperation(),
+      operations: {
+        start: () => this.globalChatStore.startOperation(),
+        finish: (operationId) => this.globalChatStore.finishOperation(operationId)
+      },
       setModel: (operationId, provider, modelId) => this.client.setGlobalChatModel({ operationId, provider, modelId }),
-      setThinkingLevel: (operationId, level) => this.client.setGlobalChatThinkingLevel({ operationId, level }),
-      finishOperation: (operationId) => this.globalChatStore.finishOperation(operationId),
-      reportError: (error) => this.globalChatStore.reportError(error)
+      setThinkingLevel: (operationId, level) => this.client.setGlobalChatThinkingLevel({ operationId, level })
     });
   }
 
@@ -250,7 +248,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         ? { workspacePath: this.mainChatStore.projectPath, sessionId: this.mainChatStore.selectedSessionId }
         : undefined,
       projects: () => this.sidebarStore.projects,
-      sessions: () => this.sidebarStore.sessions,
+      sessions: () => this.sessionCatalogStore.sessions,
       sessionActivity: (workspacePath, sessionId) => this.sidebarStore.sessionActivity(workspacePath, sessionId),
       readSession: async (workspacePath, sessionId) => {
         const cached = this.sessionCache.find(sessionId, workspacePath);
@@ -265,13 +263,13 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         await this.mainChatStore.startNewSession(workspacePath);
         this.navigationStore.openChat();
       },
-      sendSessionMessage: (workspacePath, sessionId, text, delivery) => this.runControlOperation((operationId) =>
+      sendSessionMessage: (workspacePath, sessionId, text, delivery) => this.appControlOperationStore.run((operationId) =>
         this.client.submit({ operationId, workspacePath, sessionId, text, delivery, attachments: [] })),
-      abortSession: (workspacePath, sessionId) => this.runControlOperation((operationId) =>
+      abortSession: (workspacePath, sessionId) => this.appControlOperationStore.run((operationId) =>
         this.client.abort({ operationId, workspacePath, sessionId })),
       renameSession: (workspacePath, sessionId, title) => this.mainChatStore.renameSession(workspacePath, sessionId, title),
       setSessionArchived: (workspacePath, sessionId, archived) => this.mainChatStore.archiveSession(workspacePath, sessionId, archived),
-      setSessionModel: (workspacePath, sessionId, provider, modelId) => this.runControlOperation((operationId) =>
+      setSessionModel: (workspacePath, sessionId, provider, modelId) => this.appControlOperationStore.run((operationId) =>
         this.client.setModel({ operationId, workspacePath, sessionId, provider, modelId })),
       customizationState: () => this.customizationStore.state,
       plugins: () => this.customizationStore.plugins,
@@ -304,9 +302,13 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       return;
     }
     if (event.type.startsWith("global-chat-")) {
+      this.globalChatConfigurationStore.receive(event);
       this.globalChatStore.receive(event);
       return;
     }
+    this.mainChatConfigurationStore.receive(event);
+    this.messageComposerStore.receive(event);
+    this.appControlOperationStore.receive(event);
     this.changesStore.receive(event);
     this.reviewsStore.receive(event);
     this.settingsStore.receive(event);
@@ -364,15 +366,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     this.mainChatStore.receive(event);
   }
 
-  private async runControlOperation(action: (operationId: string) => Promise<void>) {
-    const operationId = this.mainChatStore.startOperation();
-    try {
-      await action(operationId);
-    } catch (error) {
-      this.mainChatStore.finishOperation(operationId);
-      throw error;
-    }
-  }
 }
 
 export function mountRootStore(client: DesktopClient) {

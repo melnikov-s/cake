@@ -3,13 +3,13 @@ import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { DesktopClient } from "../desktop-client";
 import type { SessionCacheStore } from "./SessionCacheStore";
 import type { ReviewsStore } from "./ReviewsStore";
+import { describeError } from "../error-details";
 
 export interface MessageCommentsStoreProps {
-  client: DesktopClient;
+  client: Pick<DesktopClient, "createReviewThread" | "replyReviewThread">;
   sessionCache: SessionCacheStore;
   reviews(): ReviewsStore;
   context(): { workspacePath: string; sessionId: string } | undefined;
-  reportError(error: unknown): void;
 }
 
 export interface MessageSelectionAnchor {
@@ -24,6 +24,14 @@ export interface MessageSelectionAnchor {
 
 /** Owns assistant-message annotation creation, replies, and thread visibility. */
 export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
+  error: string | undefined;
+  errorDetails: string | undefined;
+
+  private reportError(error: unknown) {
+    const described = describeError(error);
+    this.error = described.message;
+    this.errorDetails = described.details;
+  }
   get threads() {
     const context = this.props.context();
     if (!context) return [];
@@ -63,7 +71,7 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
       await this.props.reviews().submitThreads([thread.id]);
       return thread.id;
     } catch (error) {
-      if (!this.signal.aborted) this.props.reportError(error);
+      if (!this.signal.aborted) this.reportError(error);
       return undefined;
     }
   }
@@ -78,7 +86,7 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
       await this.props.reviews().submitThreads([thread.id]);
       return true;
     } catch (error) {
-      if (!this.signal.aborted) this.props.reportError(error);
+      if (!this.signal.aborted) this.reportError(error);
       return false;
     }
   }

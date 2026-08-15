@@ -416,11 +416,11 @@ describe("S1 Pi runtime", () => {
     await runtime.setPiSetting({ key: "retryEnabled", value: false });
     await runtime.setPiSetting({ key: "shellPath", value: "/bin/zsh" });
     await runtime.setPiSetting({ key: "npmCommand", value: ["mise", "exec", "node@22", "--", "npm"] });
-    await runtime.setPiSetting({ key: "skills", value: ["skills", "!skills/legacy"] });
+    await runtime.setPiSetting({ key: "skills", value: ["skills", "!skills/excluded"] });
     await runtime.reload?.();
 
-    expect((await runtime.snapshot()).piSettings).toMatchObject({ retryEnabled: false, shellPath: "/bin/zsh", npmCommand: ["mise", "exec", "node@22", "--", "npm"], skills: ["skills", "!skills/legacy"], reloadPending: false });
-    expect(JSON.parse(await readFile(join(agentDir, "settings.json"), "utf8"))).toMatchObject({ retry: { enabled: false }, shellPath: "/bin/zsh", npmCommand: ["mise", "exec", "node@22", "--", "npm"], skills: ["skills", "!skills/legacy"] });
+    expect((await runtime.snapshot()).piSettings).toMatchObject({ retryEnabled: false, shellPath: "/bin/zsh", npmCommand: ["mise", "exec", "node@22", "--", "npm"], skills: ["skills", "!skills/excluded"], reloadPending: false });
+    expect(JSON.parse(await readFile(join(agentDir, "settings.json"), "utf8"))).toMatchObject({ retry: { enabled: false }, shellPath: "/bin/zsh", npmCommand: ["mise", "exec", "node@22", "--", "npm"], skills: ["skills", "!skills/excluded"] });
     expect(onEvent).toHaveBeenCalledWith({ type: "part-removed", sessionId: runtime.sessionId, partId: "pi-reload-status" });
   });
 
@@ -669,11 +669,12 @@ export default function (pi) {
     await runtime.prompt("/cake-compat", "prompt", []);
     const snapshot = await runtime.snapshot();
     expect(requests).toEqual(["select", "text", "editor"]);
-    expect(snapshot.extensionUi).toMatchObject({ title: "Fixture title", statuses: [{ key: "fixture", text: "Ready" }], widgets: [{ key: "fixture-widget", lines: ["line one", "line two"], placement: "belowEditor" }] });
+    expect(snapshot.extensionUi).toMatchObject({ title: "Fixture title", statuses: [{ key: "fixture", text: "Ready" }] });
     expect(events.some((event) => event.type === "extension-ui" && event.event?.kind === "notify")).toBe(true);
     expect(snapshot.compatibility.diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({ source: "compatibility", method: "setFooter" }),
-      expect.objectContaining({ source: "compatibility", method: "custom" })
+      expect.objectContaining({ source: "compatibility", method: "custom" }),
+      expect.objectContaining({ source: "compatibility", method: "setWidget" })
     ]));
   });
 

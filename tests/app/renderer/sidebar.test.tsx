@@ -9,23 +9,23 @@ import { Sidebar } from "../../../src/renderer/app";
 import type { MainChatStore } from "../../../src/renderer/stores/MainChatStore";
 
 function sidebarProps(store: MainChatStore) {
-  const legacy = store as unknown as Record<string, any>;
+  const fixture = store as unknown as Record<string, any>;
   return {
     store: {
-      get search() { return legacy.sessionSearch; },
-      set search(value) { legacy.sessionSearch = value; },
-      recentProjectPaths: legacy.recentProjectPaths,
-      projects: legacy.projects,
-      searchedSessions: legacy.searchedSessions,
-      projectSessions: legacy.projectSessions,
-      sessionLimit: legacy.sessionLimit,
-      showMoreSessions: legacy.showMoreSessions,
-      nameFromPath: legacy.nameFromPath,
-      sessionActivity: legacy.sessionActivity,
-      sessionDisplayTitle: legacy.sessionDisplayTitle
+      get search() { return fixture.sessionSearch; },
+      set search(value) { fixture.sessionSearch = value; },
+      recentProjectPaths: fixture.recentProjectPaths,
+      projects: fixture.projects,
+      searchedSessions: fixture.searchedSessions,
+      projectSessions: fixture.projectSessions,
+      sessionLimit: fixture.sessionLimit,
+      showMoreSessions: fixture.showMoreSessions,
+      nameFromPath: fixture.nameFromPath,
+      sessionActivity: fixture.sessionActivity,
+      sessionDisplayTitle: fixture.sessionDisplayTitle
     } as any,
     chat: store,
-    reviews: { chatCommentCountForSession: legacy.chatReviewCommentCountForSession } as any,
+    reviews: { chatCommentCountForSession: fixture.chatReviewCommentCountForSession } as any,
     onOpenGlobalChat: vi.fn(),
     globalChatOpen: false
   };
