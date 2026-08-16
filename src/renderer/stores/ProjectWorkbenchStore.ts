@@ -17,7 +17,6 @@ import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
 import type { WindowPersistenceCoordinator } from "./WindowPersistenceCoordinator";
 import { describeError } from "../error-details";
-import { displaySessionTitle } from "../models/session-title";
 
 export interface ProjectWorkbenchStoreProps {
   client: Pick<DesktopClient,
@@ -120,11 +119,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   get sessionTitle() {
     const context = this.sessionContext();
     const title = context ? this.props.catalog.find(context.workspacePath, context.sessionId)?.title : undefined;
-    return title ? this.sessionDisplayTitle(title) : "New chat";
-  }
-
-  sessionDisplayTitle(title: string) {
-    return displaySessionTitle(title);
+    return title ?? "New chat";
   }
 
   get isLocalSlashCommand() {

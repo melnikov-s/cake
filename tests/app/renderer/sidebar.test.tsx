@@ -16,7 +16,7 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       sessionLimit: fixture.sessionLimit,
       showMoreSessions: fixture.showMoreSessions,
       sessionActivity: fixture.sessionActivity,
-      sessionDisplayTitle: fixture.sessionDisplayTitle
+      sessionActivityTime: fixture.sessionActivityTime ?? (() => "")
     } as any,
     projects: {
       recentProjectPaths: fixture.recentProjectPaths,
@@ -141,6 +141,23 @@ describe("Sidebar projects", () => {
 
     expect(container.querySelector('[data-session-id="running"] [aria-label="Running"]')).not.toBeNull();
     expect(container.querySelector('[data-session-id="ready"] [aria-label="Ready, unread"]')).not.toBeNull();
+  });
+
+  it("leaves long titles intact for CSS ellipsis and shows relative activity", () => {
+    const title = "A session title that is deliberately much longer than the old forty character display limit";
+    const modified = new Date("2026-08-16T12:00:00.000Z").toISOString();
+    const store = {
+      recentProjectPaths: ["/work/cake"], projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [{ id: "session-1", title, modified }], sessionLimit: () => 8,
+      sessionActivity: vi.fn(), sessionActivityTime: vi.fn(() => "20 min ago"), chatReviewCommentCountForSession: vi.fn(() => 0),
+      nameFromPath: () => "cake", startOneOffChat: vi.fn(), chooseProject: vi.fn(), showMoreSessions: vi.fn(), renameSession: vi.fn()
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
+
+    expect(container.querySelector(".session-title")?.textContent).toBe(title);
+    expect(container.querySelector(".session-time")?.textContent).toBe("20 min ago");
+    expect(container.querySelector(".session-time")?.getAttribute("datetime")).toBe(modified);
   });
 
   it("uses the canonical actionable-comment selector for session badges", () => {

@@ -11,13 +11,14 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
 
   replace(sessions: GlobalSessionSummary[]) {
     this.sessions.splice(0, this.sessions.length, ...sessions);
+    this.sortByActivity();
   }
 
   applyWorkspace(workspacePath: string, workspaceName: string, sessions: SessionSnapshot["sessions"]) {
     const otherSessions = this.sessions.filter((session) => session.workspacePath !== workspacePath);
     const workspaceSessions = sessions.map((session) => ({ ...session, workspacePath, workspaceName }));
     this.sessions.splice(0, this.sessions.length, ...otherSessions, ...workspaceSessions);
-    this.sessions.sort((left, right) => right.modified.localeCompare(left.modified));
+    this.sortByActivity();
   }
 
   rename(workspacePath: string, sessionId: string, title: string) {
@@ -35,5 +36,9 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
       const workspaceName = names.get(session.workspacePath) ?? session.workspaceName;
       if (workspaceName !== session.workspaceName) this.sessions.splice(index, 1, { ...session, workspaceName });
     }
+  }
+
+  private sortByActivity() {
+    this.sessions.sort((left, right) => right.modified.localeCompare(left.modified));
   }
 }
