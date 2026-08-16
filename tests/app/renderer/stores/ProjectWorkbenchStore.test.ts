@@ -208,7 +208,7 @@ describe("ProjectWorkbenchStore", () => {
       }
     });
 
-    expect(store.error).toContain("already assigned to another model");
+    expect(store.error).toContain("duplicate ids detected after snapshot was loaded");
     expect(store.errorDetails).toContain("r-state-tree");
     expect(store.errorDetails).toContain("Context:\nDesktop event: session-snapshot-received");
     root[Symbol.dispose]();

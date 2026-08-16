@@ -1,4 +1,4 @@
-import { Store, child, createStore, observable } from "r-state-tree";
+import { Store, applySnapshot, child, createStore, observable } from "r-state-tree";
 import type { SessionPreview, SessionSnapshot } from "../../ipc/session-contract";
 import type { ReviewThread } from "../../ipc/review-contract";
 import type { DesktopClient } from "../desktop-client";
@@ -6,6 +6,7 @@ import type { SessionOperationCoordinator } from "./SessionOperationCoordinator"
 import type { ReviewsStore } from "./ReviewsStore";
 import type { PluginCommandStore } from "./PluginCommandStore";
 import { ProjectSessionStore, sessionTargetKey, type SessionTarget } from "./ProjectSessionStore";
+import { toSessionModelSnapshot, toSessionPreviewSnapshot } from "../models/session-snapshot";
 
 export interface SessionRegistryStoreProps {
   client: DesktopClient;
@@ -62,13 +63,13 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
 
   upsert(snapshot: SessionSnapshot) {
     const session = this.ensure(snapshot.sessionId, snapshot.workspacePath);
-    session.model.applySnapshot(snapshot);
+    applySnapshot(session.model, toSessionModelSnapshot(snapshot));
     return session.model;
   }
 
   hydratePreview(preview: SessionPreview) {
     const session = this.ensure(preview.sessionId, preview.workspacePath);
-    session.model.applyPreview(preview);
+    applySnapshot(session.model, toSessionPreviewSnapshot(preview));
     return session.model;
   }
 

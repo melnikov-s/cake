@@ -1,9 +1,10 @@
-import { isObservable, reaction, toSnapshot } from "r-state-tree";
+import { applySnapshot, isObservable, reaction, toSnapshot } from "r-state-tree";
 import { describe, expect, it } from "vitest";
 import type { SessionSnapshot } from "../../../../src/ipc/session-contract";
 import { MessageModel } from "../../../../src/renderer/models/message";
 import { ModelOptionModel } from "../../../../src/renderer/models/model-option";
 import { SessionModel } from "../../../../src/renderer/models/session";
+import { toSessionModelSnapshot } from "../../../../src/renderer/models/session-snapshot";
 import { SessionTreeEntryModel } from "../../../../src/renderer/models/session-tree-entry";
 import { ReviewThreadModel } from "../../../../src/renderer/models/review-thread";
 
@@ -30,20 +31,14 @@ const snapshot: SessionSnapshot = {
 };
 
 describe("SessionModel", () => {
-  it("uses observable arrays and proper child models", () => {
+  it("hydrates observable arrays and proper child models", () => {
     const model = SessionModel.create();
-    const parts = model.parts;
-    const models = model.models;
     const thinkingLevels = model.availableThinkingLevels;
     const diagnostics = model.diagnostics;
-    const tree = model.tree;
-    model.applySnapshot(snapshot);
+    applySnapshot(model, toSessionModelSnapshot(snapshot));
 
-    expect(model.parts).toBe(parts);
-    expect(model.models).toBe(models);
     expect(model.availableThinkingLevels).toBe(thinkingLevels);
     expect(model.diagnostics).toBe(diagnostics);
-    expect(model.tree).toBe(tree);
     expect(model.compatibility).toEqual(snapshot.compatibility);
     expect(model.commands).toEqual(snapshot.commands);
     expect(model.usage).toEqual(snapshot.usage);
@@ -66,7 +61,7 @@ describe("SessionModel", () => {
       (next) => updates.push(next)
     );
 
-    model.applySnapshot(snapshot);
+    applySnapshot(model, toSessionModelSnapshot(snapshot));
     expect(updates).toHaveLength(1);
     expect(model.uiParts[0]).toMatchObject({ entryId: "assistant-entry-1", text: "Hello", status: "streaming" });
     stop();
@@ -75,7 +70,7 @@ describe("SessionModel", () => {
 
   it("creates and updates message children without replacing the parts array", () => {
     const model = SessionModel.create();
-    model.applySnapshot(snapshot);
+    applySnapshot(model, toSessionModelSnapshot(snapshot));
     const parts = model.parts;
     const message = model.parts[0];
 
@@ -90,16 +85,47 @@ describe("SessionModel", () => {
 
   it("creates and updates persisted review-run parts", () => {
     const model = SessionModel.create();
-    model.applySnapshot({
+    applySnapshot(model, toSessionModelSnapshot({
       ...snapshot,
       parts: [{ id: "review-run-1", kind: "review-run", operationId: "00000000-0000-4000-8000-000000000001", threadIds: ["review-1"], commentCount: 2, status: "running" }]
-    });
+    }));
     const message = model.parts[0];
 
     model.upsertPart({ id: "review-run-1", kind: "review-run", operationId: "00000000-0000-4000-8000-000000000001", threadIds: ["review-1"], commentCount: 2, status: "complete" });
 
     expect(model.parts[0]).toBe(message);
     expect(model.uiParts[0]).toMatchObject({ kind: "review-run", commentCount: 2, status: "complete" });
+    model[Symbol.dispose]();
+  });
+
+  it("reconciles identified children through native snapshot hydration", () => {
+    const model = SessionModel.create();
+    applySnapshot(model, toSessionModelSnapshot(snapshot));
+    const message = model.parts[0];
+    const openAiModel = model.models[0];
+    const gatewayModel = model.models[1];
+    const treeEntry = model.tree[0];
+    const resource = model.resources[0];
+    const diagnostic = model.resourceDiagnostics[0];
+
+    applySnapshot(model, toSessionModelSnapshot({
+      ...snapshot,
+      parts: [{ id: "message-1", kind: "text", role: "assistant", entryId: "assistant-entry-1", text: "Updated", status: "streaming" }],
+      models: [snapshot.models[1]!, { ...snapshot.models[0]!, name: "Updated model" }],
+      tree: [{ ...snapshot.tree[0]!, preview: "Updated" }],
+      compatibility: {
+        resources: [{ ...snapshot.compatibility.resources[0]!, name: "Updated resource" }],
+        diagnostics: [{ ...snapshot.compatibility.diagnostics[0]!, message: "Updated diagnostic" }]
+      }
+    }));
+
+    expect(model.parts[0]).toBe(message);
+    expect(model.parts[0]?.text).toBe("Updated");
+    expect(model.models).toEqual([gatewayModel, openAiModel]);
+    expect(model.models[1]?.name).toBe("Updated model");
+    expect(model.tree[0]).toBe(treeEntry);
+    expect(model.resources[0]).toBe(resource);
+    expect(model.resourceDiagnostics[0]).toBe(diagnostic);
     model[Symbol.dispose]();
   });
 

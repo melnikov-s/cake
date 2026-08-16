@@ -1,8 +1,8 @@
-import { Model, observable, state } from "r-state-tree";
+import { Model, id, observable, state } from "r-state-tree";
 import type { CompatibilityResource, ResourceDiagnostic } from "../../ipc/session-contract";
 
 export class CompatibilityResourceModel extends Model {
-  @state id = "";
+  @id id = "";
   @state kind: CompatibilityResource["kind"] = "extension";
   @state name = "";
   @state description: string | undefined;
@@ -20,7 +20,7 @@ export class CompatibilityResourceModel extends Model {
 }
 
 export class ResourceDiagnosticModel extends Model {
-  @state id = "";
+  @id id = "";
   @state severity: ResourceDiagnostic["severity"] = "info";
   @state source: ResourceDiagnostic["source"] = "runtime";
   @state message = "";
