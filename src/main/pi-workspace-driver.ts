@@ -457,6 +457,7 @@ export class PiWorkspaceDriver {
             signal: controller.signal,
             instruction: command.instruction,
             model: command.model,
+            thinkingLevel: command.thinkingLevel,
             parent
           });
           if (agent.error) {

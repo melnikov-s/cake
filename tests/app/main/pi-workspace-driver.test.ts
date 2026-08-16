@@ -117,12 +117,13 @@ describe("PiWorkspaceDriver", () => {
     events.splice(0);
 
     const requestId = crypto.randomUUID();
-    driver.dispatch({ type: "submit-review-threads", requestId, workspacePath: "/project", sessionId: snapshot.sessionId, threadIds: [thread.id], commentCount: 1 });
+    driver.dispatch({ type: "submit-review-threads", requestId, workspacePath: "/project", sessionId: snapshot.sessionId, threadIds: [thread.id], commentCount: 1, thinkingLevel: "high" });
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId }));
 
     expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ thread: expect.objectContaining({ id: thread.id, submission: expect.objectContaining({ status: "running" }) }) }));
     expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ sessionDir: "/cake/pi/review-sessions/review-1" }));
     expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ agentDir: piPaths.agentDir, parentSessionRoot: piPaths.sessionDir }));
+    expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ thinkingLevel: "high" }));
     expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ parent: expect.objectContaining({ sessionId: snapshot.sessionId, leafId: "parent-leaf", systemPrompt: "Parent prompt" }) }));
     expect(reviewRepository.completeRun).toHaveBeenCalledWith("/project", snapshot.sessionId, thread.id, expect.any(String), expect.objectContaining({ sessionId: "review-session" }));
     expect(runtime.recordReviewRun).toHaveBeenNthCalledWith(1, { operationId: requestId, threadIds: [thread.id], commentCount: 1, status: "running" });

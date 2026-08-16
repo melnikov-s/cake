@@ -33,6 +33,7 @@ vi.mock("@/components/ai-elements/conversation", () => ({
 
 import { captureMessageSelection, MESSAGE_COMMENT_SELECTION_DELAY_MS, Transcript } from "../../../src/renderer/app";
 import type { MessageCommentsStore } from "../../../src/renderer/stores/MessageCommentsStore";
+import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
 
 interface TranscriptHarness {
   visibleParts: UiPart[];
@@ -375,11 +376,21 @@ describe("Transcript scrolling", () => {
       replyThread: vi.fn(),
       resolveThread: vi.fn()
     } as unknown as MessageCommentsStore;
+    const configuration = {
+      session: {
+        model: { provider: "openai", id: "gpt" },
+        thinkingLevel: "medium",
+        availableThinkingLevels: ["off", "medium"]
+      },
+      connectedModelsByProvider: [{ id: "openai", name: "OpenAI", models: [{ provider: "openai", id: "gpt", name: "GPT", authenticated: true }] }],
+      selectModel: vi.fn(),
+      selectThinkingLevel: vi.fn()
+    } as unknown as ChatConfigurationStore;
     act(() => root.render(<Transcript
       parts={[{ id: "assistant-1", kind: "text", role: "assistant", text: "Alpha important detail.", status: "complete" }]}
       sessionId="session-1"
       isStreaming={false}
-      behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, messageComments: comments }}
+      behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, messageComments: comments, chatConfiguration: configuration }}
       empty={<div />}
     />));
 
@@ -389,6 +400,18 @@ describe("Transcript scrolling", () => {
     const chat = document.body.querySelector('[role="dialog"][aria-label="Selection chat"]');
     expect(chat?.textContent).toContain("Why this word?");
     expect(chat?.textContent).toContain("Because it carries the point.");
+    expect(chat?.querySelector(".message-comment-composer")).not.toBeNull();
+    expect(chat?.querySelector<HTMLInputElement>('[aria-label="Model"]')?.value).toBe("GPT");
+    expect(chat?.querySelector<HTMLSelectElement>('[aria-label="Thinking level"]')?.value).toBe("medium");
+
+    const titlebar = chat!.querySelector<HTMLElement>(".message-comment-titlebar")!;
+    Object.defineProperty(chat, "getBoundingClientRect", { configurable: true, value: () => ({ left: 100, top: 100, right: 620, bottom: 500, width: 520, height: 400, x: 100, y: 100, toJSON: () => ({}) }) });
+    titlebar.setPointerCapture = vi.fn();
+    act(() => titlebar.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 120, clientY: 120 })));
+    act(() => document.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 170, clientY: 190 })));
+    act(() => document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })));
+    expect((chat as HTMLElement).style.left).toBe("150px");
+    expect((chat as HTMLElement).style.top).toBe("170px");
   });
 
   it("opens every assistant response in a fullscreen reader regardless of text length or streaming state", () => {

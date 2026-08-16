@@ -5,6 +5,7 @@ import { REVIEW_TEXT_MAX_LENGTH, type ReviewMessage, type ReviewThreadRecord } f
 import { runIsolatedSession } from "./isolated-session-runner";
 import { assertSessionPath } from "./session-path";
 import { AtomicFileWriter } from "../main/atomic-file-writer";
+import type { ThinkingLevel } from "../ipc/session-contract";
 
 const atomicFileWriter = new AtomicFileWriter();
 
@@ -19,6 +20,7 @@ export interface ReviewTurnOptions {
   signal?: AbortSignal;
   instruction?: string;
   model?: { provider: string; id: string };
+  thinkingLevel?: ThinkingLevel;
   parent?: ReviewParentContext;
   agentDir: string;
 }
@@ -90,6 +92,7 @@ export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewT
     prompt: options.thread.pendingComments.map((comment) => comment.body).join("\n\n"),
     signal: options.signal,
     model: options.model,
+    thinkingLevel: options.thinkingLevel,
     modelPurpose: "review",
     cancellationMessage: "The review run was cancelled",
     bindExtensions: true,

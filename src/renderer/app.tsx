@@ -8,7 +8,6 @@ import {
   ConfirmationRequest,
   ConfirmationTitle
 } from "@/components/ai-elements/confirmation";
-import { Composer, ComposerToolbar } from "@/components/ai-elements/composer";
 import { Conversation, VirtualizedConversation, type VirtualizedConversationHandle } from "@/components/ai-elements/conversation";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
@@ -28,6 +27,7 @@ import { CopyErrorDetailsButton } from "@/components/copy-error-details-button";
 import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
 import { PluginSettings } from "@/components/plugin-settings";
 import { MessageCommentDraftPopover, MessageCommentThreadPopover, MessageSelectionAction, type MessageCommentAnchorRect } from "@/components/message-comment-popover";
+import { ChatComposer } from "@/components/chat-composer";
 import { piSettingsSchema, thinkingLevelSchema, type CompatibilityResource, type PiSettings, type UiPart } from "../ipc/session-contract";
 import type { ProjectWorkbenchStore } from "./stores/ProjectWorkbenchStore";
 import type { ProjectSessionStore } from "./stores/ProjectSessionStore";
@@ -261,12 +261,12 @@ const AssistantTextMessage = observer(function AssistantTextMessage({ part, beha
       <MessageContent ref={contentRef} className="assistant-message-content" onMouseUp={scheduleSelectionAction}>{content()}</MessageContent>
       {commentThreads.map((thread, index) => markerPositions[thread.id] && <button key={thread.id} className={`message-comment-marker ${thread.status}`} style={markerPositions[thread.id]} type="button" aria-label={`Open selection chat ${index + 1}`} title={thread.anchor.selectedText} onClick={(event) => setOpenThread({ id: thread.id, anchor: event.currentTarget })}><ChatIcon /><b>{thread.messages.length}</b></button>)}
       {selectionAction && <MessageSelectionAction rect={selectionAction.rect} onChat={(anchor) => { setDraft({ selection: selectionAction.selection, anchor }); setSelectionAction(undefined); }} />}
-      {draft && behavior.messageComments && <MessageCommentDraftPopover anchor={draft.anchor} selection={draft.selection} store={behavior.messageComments} onClose={() => setDraft(undefined)} onCreated={(threadId) => {
+      {draft && behavior.messageComments && <MessageCommentDraftPopover anchor={draft.anchor} selection={draft.selection} store={behavior.messageComments} configuration={behavior.chatConfiguration} onClose={() => setDraft(undefined)} onCreated={(threadId) => {
         setOpenThread({ id: threadId, anchor: draft.anchor });
         setDraft(undefined);
         window.getSelection()?.removeAllRanges();
       }} />}
-      {activeThread && behavior.messageComments && <MessageCommentThreadPopover anchor={openThread!.anchor} thread={activeThread} store={behavior.messageComments} onClose={() => setOpenThread(undefined)} />}
+      {activeThread && behavior.messageComments && <MessageCommentThreadPopover anchor={openThread!.anchor} thread={activeThread} store={behavior.messageComments} configuration={behavior.chatConfiguration} onClose={() => setOpenThread(undefined)} />}
       {part.status !== "streaming" && <div className="assistant-message-actions" aria-label="Message actions">
         <button type="button" aria-label={copied ? "Copied response" : "Copy response"} title={copied ? "Copied" : "Copy response"} onClick={() => void copy()}>{copied ? <CheckIcon /> : <CopyIcon />}</button>
         {part.entryId && behavior.onFork && <button type="button" aria-label="Fork response into new chat" title="Fork into new chat" onClick={() => behavior.onFork!(part.entryId!)}><ForkIcon /></button>}
@@ -284,6 +284,7 @@ interface TranscriptBehavior {
   inlineWidgets?: { store: InlineWidgetStore; workspacePath: string; sessionId: string; model?: { provider: string; id: string } };
   artifacts?: { records: ArtifactRecord[]; interaction: ArtifactInteractionStore };
   messageComments?: MessageCommentsStore;
+  chatConfiguration?: ChatConfigurationStore;
 }
 
 const TranscriptPart = observer(function TranscriptPart({ part, behavior, awaitingResponse = false }: { part: UiPart; behavior: TranscriptBehavior; awaitingResponse?: boolean }) {
@@ -575,23 +576,6 @@ export const Sidebar = observer(function Sidebar({ store, projects, chat, review
   );
 });
 
-const ChatComposer = observer(function ChatComposer({ configuration, onSubmit, input, children, toolbarLeading, toolbarActions }: { configuration: ChatConfigurationStore; onSubmit(event: FormEvent): void; input: ReactNode; children?: ReactNode; toolbarLeading?: ReactNode; toolbarActions: ReactNode }) {
-  const session = configuration.session;
-  const selectedModel = session?.model;
-  return <Composer className="workbench-composer" onSubmit={onSubmit}>
-    {children}
-    {input}
-    <ComposerToolbar className="composer-toolbar">
-      <div className="composer-context">
-        {toolbarLeading}
-        <ModelCombobox ariaLabel="Model" groups={configuration.connectedModelsByProvider} value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onSelect={(value) => void configuration.selectModel(value)} />
-        <select aria-label="Thinking level" value={session?.thinkingLevel ?? "off"} onChange={(event) => void configuration.selectThinkingLevel(thinkingLevelSchema.parse(event.target.value))}>{session?.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "No reasoning" : `${level.charAt(0).toUpperCase()}${level.slice(1)} reasoning`}</option>)}</select>
-      </div>
-      <div className="composer-actions">{toolbarActions}</div>
-    </ComposerToolbar>
-  </Composer>;
-});
-
 const GlobalChatPanel = observer(function GlobalChatPanel({ store, configuration, transcriptView }: { store: GlobalChatStore; configuration: ChatConfigurationStore; transcriptView: TranscriptViewStore }) {
   const submit = (event: FormEvent) => { event.preventDefault(); void store.submit(); };
   return <div className="workbench global-chat"><div className="chat-layout">
@@ -844,7 +828,7 @@ export const App = observer(function App() {
         {surface === "settings" ? <SettingsPage store={store} settings={settings} configuration={chatConfiguration} customization={root.customizationStore} onViewStateChange={() => persistence.schedule()} /> : globalChat ? <GlobalChatPanel store={globalChat} configuration={root.globalChatConfigurationStore} transcriptView={root.globalTranscriptViewStore} /> : !session ? (
           <div className="welcome"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build?</h1><p>Open a project for durable workspace chats, or start a one-off chat from your home directory.</p><div><Button size="lg" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void root.chooseProject()}><FolderIcon /> Open project</Button><Button size="lg" variant="outline" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void root.startOneOffChat()}><ChatIcon /> One-off chat</Button></div>{chatError && <ErrorNotice title="Operation failed" message={chatError} details={chatErrorDetails} />}</div>
         ) : (
-          <StoreProvider key={`${session.workspacePath}\u0000${session.sessionId}`} store={session}><div className="workbench"><div className="chat-layout"><Transcript sessionId={session.sessionId} parts={composer!.parts} isStreaming={session.isStreaming} isSubmitting={composer!.activeOperations.length > 0} hideThinking={session.model.piSettings?.hideThinkingBlock} behavior={{ thinkingExpanded: session.transcriptViewStore.thinkingExpanded, onToggleThinking: () => { session.transcriptViewStore.toggleThinking(); persistence.schedule(); }, onFork: (entryId) => { void store.forkAt(entryId); }, onOpenReviewRun: (threadId) => { void store.openSessionChanges(threadId); }, messageComments: session.messageCommentsStore, inlineWidgets: { store: root.inlineWidgetStore, workspacePath: session.workspacePath, sessionId: session.sessionId, model: session.model.model }, artifacts: { records: session.model.artifacts.map((artifact) => artifact.value), interaction: session.artifactInteractionStore } }} empty={<div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>} footer={<ArtifactsPanel session={session} inlineWidgets={root.inlineWidgetStore} />} error={chatError} errorDetails={chatErrorDetails} /><ComposerPanel workbench={store} session={session} reviews={reviews} extensionUi={extensionUi} /></div></div></StoreProvider>
+          <StoreProvider key={`${session.workspacePath}\u0000${session.sessionId}`} store={session}><div className="workbench"><div className="chat-layout"><Transcript sessionId={session.sessionId} parts={composer!.parts} isStreaming={session.isStreaming} isSubmitting={composer!.activeOperations.length > 0} hideThinking={session.model.piSettings?.hideThinkingBlock} behavior={{ thinkingExpanded: session.transcriptViewStore.thinkingExpanded, onToggleThinking: () => { session.transcriptViewStore.toggleThinking(); persistence.schedule(); }, onFork: (entryId) => { void store.forkAt(entryId); }, onOpenReviewRun: (threadId) => { void store.openSessionChanges(threadId); }, messageComments: session.messageCommentsStore, chatConfiguration: session.configurationStore, inlineWidgets: { store: root.inlineWidgetStore, workspacePath: session.workspacePath, sessionId: session.sessionId, model: session.model.model }, artifacts: { records: session.model.artifacts.map((artifact) => artifact.value), interaction: session.artifactInteractionStore } }} empty={<div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>} footer={<ArtifactsPanel session={session} inlineWidgets={root.inlineWidgetStore} />} error={chatError} errorDetails={chatErrorDetails} /><ComposerPanel workbench={store} session={session} reviews={reviews} extensionUi={extensionUi} /></div></div></StoreProvider>
         )}
       </section>
       <CommandPane store={store} extensionUi={extensionUi} />

@@ -118,7 +118,8 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       sessionRegistry: this.sessionRegistry,
       operations: this.sessionOperationCoordinator,
       context: () => this.projectWorkbenchStore.sessionContext(),
-      model: () => this.projectWorkbenchStore.session?.model
+      model: () => this.projectWorkbenchStore.session?.model,
+      thinkingLevel: () => this.projectWorkbenchStore.session?.thinkingLevel
     });
   }
 

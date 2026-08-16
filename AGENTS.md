@@ -65,6 +65,7 @@ state, and development boundaries behind these principles.
 
 - Before introducing any UI element, first inspect the existing renderer components and compose the closest existing primitive or product component. Start with `src/renderer/components`, especially `components/ui` for primitives and `components/ai-elements` for conversation, Markdown, code, tool, and source surfaces; also inspect `src/renderer/cake.ts` for the components already exposed to plugins.
 - Do not recreate an existing control, source viewer, syntax highlighter, layout primitive, or interaction under a new name. Extend the authoritative component when a shared capability is missing, then update all consumers that need it.
+- Every chat surface must compose the authoritative transcript and composer components, including model/provider and thinking controls where applicable. Never build a parallel chat input, message renderer, or chat-specific control set for an inline, modal, plugin, recovery, or secondary chat surface.
 - Add a new component only when the element has a genuinely distinct responsibility that cannot be expressed by composing or extending the existing component set.
 
 ## Renderer state architecture

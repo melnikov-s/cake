@@ -4,12 +4,14 @@ import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
 import { describeError } from "../error-details";
+import type { ThinkingLevel } from "../../ipc/session-contract";
 
 export interface ReviewsStoreProps {
   client: Pick<DesktopClient, "createReviewThread" | "replyReviewThread" | "resolveReviewThread" | "listReviewThreads" | "submitReviewThreads">;
   sessionRegistry: SessionRegistryStore;
   context(): { workspacePath: string; sessionId: string } | undefined;
   model(): { provider: string; id: string } | undefined;
+  thinkingLevel(): ThinkingLevel | undefined;
   operations: SessionOperationCoordinator;
 }
 
@@ -135,7 +137,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     const commentCount = this.threads.filter((thread) => threadIds.includes(thread.id))
       .reduce((count, thread) => count + thread.messages.filter((message) => message.role === "user" && !message.delivered).length, 0);
     try {
-      await this.props.client.submitReviewThreads({ operationId, ...context, threadIds, commentCount: Math.max(commentCount, threadIds.length), instruction, model: this.props.model() });
+      await this.props.client.submitReviewThreads({ operationId, ...context, threadIds, commentCount: Math.max(commentCount, threadIds.length), instruction, model: this.props.model(), thinkingLevel: this.props.thinkingLevel() });
     } catch (error) {
       delete this.submissionsByOperation[operationId];
       this.reportError(error);

@@ -5,6 +5,7 @@ import {
   createAgentSession,
   type SessionManager
 } from "@earendil-works/pi-coding-agent";
+import type { ThinkingLevel } from "../ipc/session-contract";
 
 export interface IsolatedSessionOptions {
   cwd: string;
@@ -15,6 +16,7 @@ export interface IsolatedSessionOptions {
   prompt: string;
   signal?: AbortSignal;
   model?: { provider: string; id: string };
+  thinkingLevel?: ThinkingLevel;
   modelPurpose: string;
   cancellationMessage: string;
   tools?: string[];
@@ -88,6 +90,7 @@ export async function runIsolatedSession(options: IsolatedSessionOptions): Promi
         if (!model) throw new Error(`Unknown ${options.modelPurpose} model ${options.model.provider}/${options.model.id}`);
         await session.setModel(model);
       }
+      if (options.thinkingLevel) session.setThinkingLevel(options.thinkingLevel);
 
       let response = "";
       let failure = "";

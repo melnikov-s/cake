@@ -94,7 +94,7 @@ export interface DesktopClient {
   createReviewThread(input: { workspacePath: string; sessionId: string; anchor: ReviewAnchor; body: string }): Promise<ReviewThread>;
   replyReviewThread(input: { workspacePath: string; sessionId: string; threadId: string; body: string }): Promise<ReviewThread>;
   resolveReviewThread(input: { workspacePath: string; sessionId: string; threadId: string; resolved: boolean }): Promise<ReviewThread>;
-  submitReviewThreads(input: { operationId: string; workspacePath: string; sessionId: string; threadIds: string[]; commentCount: number; instruction?: string; model?: { provider: string; id: string } }): Promise<void>;
+  submitReviewThreads(input: { operationId: string; workspacePath: string; sessionId: string; threadIds: string[]; commentCount: number; instruction?: string; model?: { provider: string; id: string }; thinkingLevel?: ThinkingLevel }): Promise<void>;
   registerProject(path: string, name: string): Promise<ApplicationState>;
   renameProject(path: string, name: string): Promise<ApplicationState>;
   removeProject(path: string): Promise<ApplicationState>;
@@ -329,7 +329,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
     respondToWorkspaceTrust: (input) => accept(bridge, { type: "respond-workspace-trust", requestId: input.operationId, path: input.path, approved: input.approved }),
     openWorkspace: (input) => accept(bridge, { type: "open-workspace", requestId: input.operationId, path: input.path, newSession: input.newSession ?? false, sessionId: input.sessionId }),
     submit: (input) => accept(bridge, { type: "prompt", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, text: input.text, delivery: input.delivery, attachments: input.attachments }),
-    submitReviewThreads: (input) => accept(bridge, { type: "submit-review-threads", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, threadIds: input.threadIds, commentCount: input.commentCount, instruction: input.instruction, model: input.model }),
+    submitReviewThreads: (input) => accept(bridge, { type: "submit-review-threads", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, threadIds: input.threadIds, commentCount: input.commentCount, instruction: input.instruction, model: input.model, thinkingLevel: input.thinkingLevel }),
     abort: (input) => accept(bridge, { type: "abort", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId }),
     setModel: (input) => accept(bridge, { type: "set-model", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, provider: input.provider, modelId: input.modelId }),
     setThinkingLevel: (input) => accept(bridge, { type: "set-thinking", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, level: input.level }),

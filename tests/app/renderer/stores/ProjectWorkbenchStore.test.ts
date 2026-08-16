@@ -539,7 +539,7 @@ describe("ProjectWorkbenchStore", () => {
     expect(store.activeSession!.canSubmit).toBe(true);
     await root.projectWorkbenchStore.activeSession!.composerStore.submit();
 
-    expect(desktop.client.submitReviewThreads).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", sessionId: "session-1", threadIds: ["review-1"], commentCount: 1, instruction: undefined }));
+    expect(desktop.client.submitReviewThreads).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", sessionId: "session-1", threadIds: ["review-1"], commentCount: 1, instruction: undefined, thinkingLevel: "off" }));
     expect(desktop.client.submit).not.toHaveBeenCalled();
     expect(root.reviewsStore.pendingThreads).toHaveLength(0);
     expect(root.reviewsStore.chatCommentCount).toBe(0);
