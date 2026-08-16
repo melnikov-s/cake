@@ -6,6 +6,7 @@ import { registerPluginDefinition } from "./plugin-runtime";
 
 export { observer, useOptionalStore, useStore } from "r-state-tree/react";
 export { Button, type ButtonProps } from "./components/ui/button";
+export { LoadingState, type LoadingStateVariant } from "./components/ui/loading-state";
 export { Popover, PopoverContent, PopoverTrigger, type PopoverContentProps, type PopoverProps } from "./components/ui/popover";
 export { cn } from "./lib/utils";
 export { RootStore } from "./stores/RootStore";

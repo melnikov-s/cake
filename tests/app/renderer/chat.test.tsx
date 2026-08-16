@@ -55,7 +55,7 @@ describe("Chat", () => {
     act(() => root.render(<Chat store={store!} />));
 
     expect(container.textContent).toContain("Can you check this?");
-    expect(container.querySelector('[aria-label="Cake is working"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Churning in progress"]')).not.toBeNull();
     expect(container.querySelector<HTMLInputElement>('[aria-label="Model"]')?.value).toBe("GPT");
     expect(container.querySelector<HTMLSelectElement>('[aria-label="Thinking level"]')?.value).toBe("medium");
 

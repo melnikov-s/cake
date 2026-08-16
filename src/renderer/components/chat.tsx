@@ -4,6 +4,7 @@ import { Conversation } from "@/components/ai-elements/conversation";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
 import { Button } from "@/components/ui/button";
+import { LoadingState } from "@/components/ui/loading-state";
 import { ChatComposer } from "@/components/chat-composer";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
 import type { UiPart } from "../../ipc/session-contract";
@@ -16,35 +17,35 @@ function Icon({ children }: { children: ReactNode }) {
 const PaperclipIcon = () => <Icon><path d="m20.5 11.5-8.9 8.9a6 6 0 0 1-8.5-8.5l9.6-9.6a4 4 0 0 1 5.7 5.7l-9.6 9.6a2 2 0 1 1-2.8-2.8l8.9-8.9" /></Icon>;
 const SendIcon = () => <Icon><path d="m5 12 7-7 7 7M12 19V5" /></Icon>;
 
+export function chatWorkIsActive(parts: UiPart[], streaming: boolean, submitting: boolean) {
+  if (streaming) return true;
+  if (!submitting) return false;
+  const latestUserIndex = parts.findLastIndex((part) => (part.kind === "text" && part.role === "user") || (part.kind === "attachment" && part.attachmentKind === "image"));
+  return latestUserIndex < 0 || latestUserIndex === parts.length - 1;
+}
+
 export const ChatTextMessage = forwardRef<HTMLElement, {
   part: Extract<UiPart, { kind: "text" }>;
-  awaitingResponse?: boolean;
   contentRef?: RefObject<HTMLDivElement | null>;
   onMouseUp?: ComponentProps<"div">["onMouseUp"];
   children?: ReactNode;
-}>(function ChatTextMessage({ part, awaitingResponse = false, contentRef, onMouseUp, children }, ref) {
+}>(function ChatTextMessage({ part, contentRef, onMouseUp, children }, ref) {
   const assistant = part.role === "assistant";
   return <Message ref={ref} className={assistant ? "assistant-message mr-auto w-full" : "ml-auto w-[min(88%,42rem)]"}>
     <MessageLabel>{assistant ? part.status === "streaming" ? "Cake · working" : "Cake" : "You"}</MessageLabel>
-    <MessageContent ref={contentRef} className={`${assistant ? "assistant-message-content" : "user-message"}${awaitingResponse ? " user-message-awaiting-response" : ""}`} onMouseUp={onMouseUp}>
+    <MessageContent ref={contentRef} className={assistant ? "assistant-message-content" : "user-message"} onMouseUp={onMouseUp}>
       <Markdown>{part.text}</Markdown>
-      {awaitingResponse && <span className="user-message-loading" role="status" aria-label="Waiting for Cake" />}
     </MessageContent>
     {children}
   </Message>;
 });
 
-export function ChatLoadingIndicator() {
-  return <div className="assistant-loading" role="status" aria-label="Cake is working"><span aria-hidden="true" /><span aria-hidden="true" /><span aria-hidden="true" /></div>;
-}
-
 const DefaultChatTranscript = observer(function DefaultChatTranscript({ store, empty }: { store: ChatStore; empty?: ReactNode }) {
   const textParts = store.parts.filter((part): part is Extract<UiPart, { kind: "text" }> => part.kind === "text");
-  const latest = textParts.at(-1);
-  const showLoading = store.streaming && latest?.role !== "assistant";
+  const showLoading = chatWorkIsActive(store.parts, store.streaming, store.submitting);
   return <div className="transcript chat-basic-transcript"><Conversation>
     {textParts.length === 0 ? empty : textParts.map((part) => <ChatTextMessage key={part.id} part={part} />)}
-    {showLoading && <ChatLoadingIndicator />}
+    {showLoading && <LoadingState />}
     {store.error?.message && <div className="notice notice-error" role="alert"><strong>{store.error.title ?? "Operation failed"}</strong><span>{store.error.message}</span></div>}
   </Conversation></div>;
 });

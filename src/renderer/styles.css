@@ -338,9 +338,6 @@
 .change-explorer-tree > header button { -webkit-app-region: no-drag; }
 .change-explorer-actions { display: flex; align-items: center; gap: 5px; }
 .review-run-message > button { display: flex; width: min(100%, 34rem); align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in oklab, var(--card) 92%, var(--accent)); color: var(--foreground); text-align: left; cursor: pointer; }.review-run-message > button:hover { border-color: color-mix(in oklab, var(--accent) 45%, var(--border)); }.review-run-message > button > strong { font-size: 12px; }.review-run-message > button > span:last-child { margin-left: auto; color: var(--accent); font: 10px var(--font-mono); }.review-run-message > button.error > strong { color: var(--destructive); }
-.review-run-spinner { width: 13px; height: 13px; flex: 0 0 auto; border: 2px solid color-mix(in oklab, var(--accent) 25%, transparent); border-top-color: var(--accent); border-radius: 50%; animation: review-run-spin .8s linear infinite; }
-@keyframes review-run-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .review-run-spinner { animation: none; border-color: var(--accent); } }
 .change-explorer-sidebar-body { display: grid; min-height: 0; grid-template-rows: minmax(110px, 42%) minmax(0, 58%); }
 .change-explorer-turn-body { display: grid; min-height: 0; grid-template-rows: minmax(150px, 52%) minmax(120px, 48%); }
 .change-turn-index { min-height: 0; overflow: auto; padding: 0 10px 12px; }
@@ -431,11 +428,6 @@
 .chat-empty h1 { font-size: clamp(26px, 3.2vw, 42px); }
 .chat-empty h1 em { color: var(--foreground); font-style: normal; text-decoration: underline; text-decoration-color: color-mix(in oklab, var(--accent) 65%, transparent); text-decoration-thickness: 2px; text-underline-offset: 6px; }
 .user-message { border-color: transparent !important; background: var(--foreground) !important; color: var(--background) !important; }
-.user-message-awaiting-response { display: flex; align-items: center; gap: 12px; }
-.user-message-awaiting-response .markdown-content { min-width: 0; flex: 1 1 auto; }
-.user-message-loading { width: 14px; height: 14px; flex: 0 0 14px; border: 2px solid color-mix(in oklab, var(--background) 35%, transparent); border-top-color: var(--background); border-radius: 50%; animation: user-message-loading-spin .8s linear infinite; }
-@keyframes user-message-loading-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .user-message-loading { animation: none; border-color: color-mix(in oklab, var(--background) 45%, transparent); border-top-color: var(--background); } }
 .assistant-message { position: relative; }
 .assistant-message-expand { position: absolute; top: -7px; right: 0; display: grid; width: 28px; height: 26px; padding: 0; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted-foreground); opacity: 0; pointer-events: none; transform: translateY(-2px); transition: opacity 120ms ease, transform 120ms ease; }
 .assistant-message-expand:hover { background: var(--muted); color: var(--foreground); }
@@ -564,12 +556,14 @@ button.reasoning-summary { border: 0; background: transparent; }
 .diff-remove { background: color-mix(in oklab, oklch(0.68 0.17 28) 13%, transparent); }.diff-remove > code b { color: oklch(0.58 0.18 28); }
 .diff-meta { margin: 4px 0; background: color-mix(in oklab, var(--accent) 9%, var(--muted)); color: var(--muted-foreground); }
 .diff-meta > code { grid-column: 2 / -1; padding-block: 2px; }
-.assistant-loading { display: flex; width: fit-content; align-items: center; gap: 5px; padding: 8px 2px; color: var(--accent); }
-.assistant-loading > span { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: assistant-loading-pulse 1.2s ease-in-out infinite; }
-.assistant-loading > span:nth-child(2) { animation-delay: .15s; }
-.assistant-loading > span:nth-child(3) { animation-delay: .3s; }
-@keyframes assistant-loading-pulse { 0%, 60%, 100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
-@media (prefers-reduced-motion: reduce) { .assistant-loading > span { animation: none; opacity: .65; } }
+.loading-state { padding: 8px 2px; }
+@keyframes pixel-on { 0%, 100% { opacity: .15; transform: scale(1); } 45% { opacity: 1; transform: scale(1.12); } }
+@keyframes shimmer-text { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .loading-state-cell, .loading-state-label { animation: none !important; }
+  .loading-state-cell { opacity: .15 !important; transform: none; }
+  .loading-state-label { background-image: none !important; color: var(--muted-foreground); }
+}
 .composer-dock { position: absolute; z-index: 10; right: 0; bottom: 0; left: 0; width: 100%; max-width: 100%; min-width: 0; padding: 20px 24px 15px; background: linear-gradient(to bottom, transparent, var(--background) 28%); pointer-events: none; }
 .extension-statuses { display: flex; width: min(100%, 51.25rem); gap: 10px; margin: 6px auto 0; overflow-x: auto; color: var(--muted-foreground); font: 10px var(--font-mono); pointer-events: auto; }
 .extension-statuses span { white-space: nowrap; }.extension-statuses strong { color: var(--foreground); }

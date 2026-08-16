@@ -17,6 +17,7 @@ import { Source } from "@/components/ai-elements/source";
 import { Tool } from "@/components/ai-elements/tool";
 import { diffStats } from "@/components/ai-elements/diff-view";
 import { Button } from "@/components/ui/button";
+import { LoadingState } from "@/components/ui/loading-state";
 import { ArtifactHost, downloadArtifactMarkdown } from "@/components/artifact-host";
 import { ChangeExplorer } from "@/components/change-explorer";
 import { WorkspaceBrowser } from "@/components/workspace-browser";
@@ -27,7 +28,7 @@ import { CopyErrorDetailsButton } from "@/components/copy-error-details-button";
 import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
 import { PluginSettings } from "@/components/plugin-settings";
 import { MessageCommentDraftPopover, MessageCommentThreadPopover, MessageSelectionAction, type MessageCommentAnchorRect } from "@/components/message-comment-popover";
-import { Chat, ChatLoadingIndicator, ChatTextMessage } from "@/components/chat";
+import { Chat, ChatTextMessage, chatWorkIsActive } from "@/components/chat";
 import { piSettingsSchema, thinkingLevelSchema, type CompatibilityResource, type PiSettings, type UiPart } from "../ipc/session-contract";
 import type { ProjectWorkbenchStore } from "./stores/ProjectWorkbenchStore";
 import type { ProjectSessionStore } from "./stores/ProjectSessionStore";
@@ -90,7 +91,7 @@ function CommandPane({ store, extensionUi }: { store: ProjectWorkbenchStore; ext
         {store.commandPane === "tree"
           ? store.session.tree.length > 0 ? <SessionTree nodes={store.session.tree} onNavigate={(id) => void store.navigateTo(id)} onFork={(id) => void store.forkAt(id)} /> : <p>This session has no branches yet.</p>
           : store.commandPane === "changelog"
-            ? store.changelogLoading ? <p>Loading changelog…</p> : <Markdown className="pi-changelog">{store.changelogMarkdown || "No changelog entries found."}</Markdown>
+            ? store.changelogLoading ? <LoadingState label="Loading changelog" /> : <Markdown className="pi-changelog">{store.changelogMarkdown || "No changelog entries found."}</Markdown>
             : <div className="resource-catalog">{diagnostics.length > 0 && <section className="resource-diagnostics"><h3>Diagnostics</h3>{diagnostics.map((item) => <div key={item.id} className={`notice notice-${item.severity}`}><strong>{item.method ?? item.source}</strong><span>{item.message}{item.path ? `\n${item.path}` : ""}</span></div>)}</section>}{resourceGroups.map((group) => <section key={group.kind}><h3>{group.kind[0]!.toUpperCase() + group.kind.slice(1)}s <span>{group.resources.length}</span></h3>{group.resources.length === 0 ? <p>None discovered.</p> : group.resources.map((resource) => <article key={resource.id}><div><strong>{resource.name}</strong><small>{resource.scope} · {resource.origin}</small></div>{resource.description && <p>{resource.description}</p>}{resource.commands.length > 0 && <p><b>Commands</b> {resource.commands.map((command) => `/${command}`).join(", ")}</p>}{resource.tools.length > 0 && <p><b>Tools</b> {resource.tools.join(", ")}</p>}<code title={resource.path}>{resource.source}</code></article>)}</section>)}</div>}
     </aside>
   );
@@ -289,10 +290,10 @@ interface TranscriptBehavior {
   messageComments?: MessageCommentsStore;
 }
 
-const TranscriptPart = observer(function TranscriptPart({ part, behavior, awaitingResponse = false }: { part: UiPart; behavior: TranscriptBehavior; awaitingResponse?: boolean }) {
+const TranscriptPart = observer(function TranscriptPart({ part, behavior }: { part: UiPart; behavior: TranscriptBehavior }) {
   if (part.kind === "text") {
     if (part.role === "assistant") return <AssistantTextMessage part={part} behavior={behavior} />;
-    return <ChatTextMessage part={part} awaitingResponse={awaitingResponse} />;
+    return <ChatTextMessage part={part} />;
   }
   if (part.kind === "reasoning") return <Reasoning open={behavior.thinkingExpanded} onToggle={behavior.onToggleThinking} streaming={part.status === "streaming"} hasContent={Boolean(part.text.trim())}><Markdown>{part.text}</Markdown></Reasoning>;
   if (part.kind === "tool") {
@@ -311,11 +312,7 @@ const TranscriptPart = observer(function TranscriptPart({ part, behavior, awaiti
   return <div className={`notice notice-${part.tone}`} role={part.tone === "error" ? "alert" : "status"}><strong>{part.title}</strong>{part.detail && <span>{part.detail}</span>}</div>;
 });
 
-type TranscriptItem = UiPart | { kind: "activity-group"; id: string; parts: UiPart[] } | { kind: "assistant-loading"; id: string };
-
-function isUserInputPart(part: UiPart) {
-  return (part.kind === "text" && part.role === "user") || (part.kind === "attachment" && part.attachmentKind === "image");
-}
+type TranscriptItem = UiPart | { kind: "activity-group"; id: string; parts: UiPart[] } | { kind: "loading-state"; id: string };
 
 function errorNoticeFollowsUser(items: TranscriptItem[], index: number) {
   const item = items[index];
@@ -371,10 +368,6 @@ function ActivityGroup({ parts, behavior, isStreaming }: { parts: UiPart[]; beha
   );
 }
 
-function AssistantLoadingIndicator() {
-  return <ChatLoadingIndicator />;
-}
-
 function ReviewRunMessage({ run, onOpen }: { run: Extract<UiPart, { kind: "review-run" }>; onOpen?(threadId?: string): void }) {
   const count = run.commentCount;
   const label = run.status === "running"
@@ -385,8 +378,8 @@ function ReviewRunMessage({ run, onOpen }: { run: Extract<UiPart, { kind: "revie
   return <Message className="review-run-message mr-auto w-full">
     <MessageLabel>{run.status === "running" ? "Cake · working" : "Cake"}</MessageLabel>
     <button type="button" className={run.status} disabled={!onOpen} onClick={() => onOpen?.(run.threadIds[0])}>
-      {run.status === "running" && <span className="review-run-spinner" aria-hidden="true" />}
-      <strong>{label}</strong><span>View in Changes</span>
+      {run.status === "running" && <LoadingState label={label} variant="Dots" />}
+      {run.status !== "running" && <strong>{label}</strong>}<span>View in Changes</span>
     </button>
   </Message>;
 }
@@ -402,22 +395,10 @@ function ErrorNotice({ title, message, details = message }: { title: string; mes
 export const Transcript = observer(function Transcript({ parts, sessionId, isStreaming, isSubmitting = false, hideThinking = false, behavior, empty, footer, error, errorDetails, errorTitle = "Operation failed" }: { parts: UiPart[]; sessionId: string; isStreaming: boolean; isSubmitting?: boolean; hideThinking?: boolean; behavior: TranscriptBehavior; empty: ReactNode; footer?: ReactNode; error?: string; errorDetails?: string; errorTitle?: string }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const visibleParts = hideThinking ? parts.filter((part) => part.kind !== "reasoning") : parts;
-  const latestUserIndex = visibleParts.findLastIndex(isUserInputPart);
-  const currentTurnParts = visibleParts.slice(latestUserIndex + 1);
-  let currentUserTurnStart = latestUserIndex;
-  while (currentUserTurnStart > 0 && isUserInputPart(visibleParts[currentUserTurnStart - 1]!)) currentUserTurnStart -= 1;
-  const awaitingFirstResponse = (isSubmitting || isStreaming) && latestUserIndex >= 0 && currentTurnParts.length === 0;
-  const awaitingResponsePartId = awaitingFirstResponse
-    ? visibleParts.slice(currentUserTurnStart, latestUserIndex + 1).findLast((part) => part.kind === "text" && part.role === "user")?.id
-    : undefined;
-  const workLogIsActive = currentTurnParts.some((part) => part.kind === "reasoning"
-    ? part.status === "streaming"
-    : part.kind === "tool" && part.state === "running");
-  const assistantMessageIsStreaming = currentTurnParts.some((part) => part.kind === "text" && part.role === "assistant" && part.status === "streaming");
-  const showAssistantLoading = isStreaming && assistantMessageIsStreaming && !workLogIsActive;
+  const showAssistantLoading = chatWorkIsActive(parts, isStreaming, isSubmitting);
   const items: TranscriptItem[] = [
     ...groupTranscriptParts(visibleParts),
-    ...(showAssistantLoading ? [{ kind: "assistant-loading" as const, id: "assistant-loading" }] : [])
+    ...(showAssistantLoading ? [{ kind: "loading-state" as const, id: "loading-state" }] : [])
   ];
   const latestUserPartId = parts.findLast((part) => (part.kind === "text" && part.role === "user") || (part.kind === "attachment" && part.attachmentKind === "image"))?.id;
   const itemCountRef = useRef(items.length);
@@ -442,7 +423,7 @@ export const Transcript = observer(function Transcript({ parts, sessionId, isStr
   if (visibleParts.length === 0) {
     return (
       <div className="transcript transcript-empty">
-        <Conversation>{empty}{showAssistantLoading && <AssistantLoadingIndicator />}{footer}{error && <ErrorNotice title={errorTitle} message={error} details={errorDetails} />}</Conversation>
+        <Conversation>{empty}{showAssistantLoading && <LoadingState />}{footer}{error && <ErrorNotice title={errorTitle} message={error} details={errorDetails} />}</Conversation>
       </div>
     );
   }
@@ -459,7 +440,7 @@ export const Transcript = observer(function Transcript({ parts, sessionId, isStr
         List: TranscriptList,
         Footer: () => <div className="transcript-footer">{footer}{error && <ErrorNotice title={errorTitle} message={error} details={errorDetails} />}</div>
       }}
-      itemContent={(index, item) => <div className={`transcript-item${errorNoticeFollowsUser(items, index) ? " transcript-item-error-after-user" : ""}`}>{item.kind === "activity-group" ? <ActivityGroup parts={item.parts} behavior={behavior} isStreaming={isStreaming} /> : item.kind === "assistant-loading" ? <AssistantLoadingIndicator /> : item.kind === "review-run" ? <ReviewRunMessage run={item} onOpen={behavior.onOpenReviewRun} /> : <TranscriptPart part={item} behavior={behavior} awaitingResponse={item.id === awaitingResponsePartId} />}</div>}
+      itemContent={(index, item) => <div className={`transcript-item${errorNoticeFollowsUser(items, index) ? " transcript-item-error-after-user" : ""}`}>{item.kind === "activity-group" ? <ActivityGroup parts={item.parts} behavior={behavior} isStreaming={isStreaming} /> : item.kind === "loading-state" ? <LoadingState /> : item.kind === "review-run" ? <ReviewRunMessage run={item} onOpen={behavior.onOpenReviewRun} /> : <TranscriptPart part={item} behavior={behavior} />}</div>}
     />
   );
 });
@@ -746,7 +727,7 @@ export const App = observer(function App() {
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [store, browse, changes, returnToWorkbench]);
 
-  if (!persistence.hydrated) return <main className="loading-screen"><span className="cake-mark">C</span><p>Restoring Cake…</p></main>;
+  if (!persistence.hydrated) return <main className="loading-screen"><span className="cake-mark">C</span><LoadingState label="Restoring Cake" /></main>;
   if (changes.path !== undefined) return <ChangeExplorer store={changes} reviews={reviews} browse={browse} chat={store} onClose={returnToWorkbench} />;
   if (browse.path !== undefined) return <WorkspaceBrowser store={browse} reviews={reviews} chat={store} onClose={returnToWorkbench} />;
 
@@ -761,7 +742,7 @@ export const App = observer(function App() {
       <section className="workspace" data-session-id={shell.selection.kind === "cake-chat" ? shell.selection.sessionId : shell.selection.kind === "project-session" ? shell.selection.sessionId : undefined}>
         <button className={surface === "settings" ? "workspace-settings-icon active" : "workspace-settings-icon"} type="button" aria-label="Open settings" aria-current={surface === "settings" ? "page" : undefined} onClick={() => root.showSettings()}><SettingsIcon /></button>
         <header className="workspace-header"><div><button className="header-sidebar-toggle" aria-label="Toggle sidebar" onClick={() => setSidebarCollapsed((value) => !value)}><SidebarIcon /></button>{surface === "settings" && <button className="header-back" aria-label="Back to chat" onClick={returnToWorkbench}><BackIcon /></button>}<strong>{surface === "settings" ? "Settings" : surface === "global-chat" ? "Cake Chat" : extensionUi.title ?? (session ? store.sessionTitle : "Cake")}</strong>{surface === "workbench" && store.projectPath && <span>{store.projectPath}</span>}</div><div className="workspace-header-actions" ref={setSessionHeaderHost} /></header>
-        {surface === "settings" ? <SettingsPage store={store} settings={settings} configuration={chatConfiguration} customization={root.customizationStore} onViewStateChange={() => persistence.schedule()} /> : globalChat ? cakeChatSession ? <div className="workbench global-chat"><Chat store={cakeChatSession.chatStore} transcript={<Transcript parts={cakeChatSession.chatStore.parts} sessionId={cakeChatSession.chatStore.id} isStreaming={cakeChatSession.chatStore.streaming} isSubmitting={cakeChatSession.chatStore.submitting} hideThinking={cakeChatSession.chatStore.hideThinking} behavior={{ thinkingExpanded: cakeChatSession.chatStore.thinkingExpanded, onToggleThinking: () => cakeChatSession.chatStore.toggleThinking() }} empty={<div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What can I help you find or do?</h1><p>Ask about your tasks, open one, or delegate work to it.</p></div>} error={cakeChatSession.chatStore.error?.message} errorDetails={cakeChatSession.chatStore.error?.details} errorTitle={cakeChatSession.chatStore.error?.title} />} /></div> : <div className="loading-screen"><span className="cake-mark">C</span><p>Opening Cake Chat…</p></div> : !session ? (
+        {surface === "settings" ? <SettingsPage store={store} settings={settings} configuration={chatConfiguration} customization={root.customizationStore} onViewStateChange={() => persistence.schedule()} /> : globalChat ? cakeChatSession ? <div className="workbench global-chat"><Chat store={cakeChatSession.chatStore} transcript={<Transcript parts={cakeChatSession.chatStore.parts} sessionId={cakeChatSession.chatStore.id} isStreaming={cakeChatSession.chatStore.streaming} isSubmitting={cakeChatSession.chatStore.submitting} hideThinking={cakeChatSession.chatStore.hideThinking} behavior={{ thinkingExpanded: cakeChatSession.chatStore.thinkingExpanded, onToggleThinking: () => cakeChatSession.chatStore.toggleThinking() }} empty={<div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What can I help you find or do?</h1><p>Ask about your tasks, open one, or delegate work to it.</p></div>} error={cakeChatSession.chatStore.error?.message} errorDetails={cakeChatSession.chatStore.error?.details} errorTitle={cakeChatSession.chatStore.error?.title} />} /></div> : <div className="loading-screen"><span className="cake-mark">C</span><LoadingState label="Opening Cake Chat" /></div> : !session ? (
           <div className="welcome"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build?</h1><p>Open a project for durable workspace chats, or start a one-off chat from your home directory.</p><div><Button size="lg" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void root.chooseProject()}><FolderIcon /> Open project</Button><Button size="lg" variant="outline" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void root.startOneOffChat()}><ChatIcon /> One-off chat</Button></div>{chatError && <ErrorNotice title="Operation failed" message={chatError} details={chatErrorDetails} />}</div>
         ) : (
           <StoreProvider key={`${session.workspacePath}\u0000${session.sessionId}`} store={session}>

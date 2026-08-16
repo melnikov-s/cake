@@ -5,6 +5,7 @@ import Scene from "virtual:cake-scene";
 import "virtual:cake-plugins";
 import { RendererErrorBoundary } from "./components/renderer-error-boundary";
 import { CustomizationRecovery } from "./components/customization-recovery";
+import { LoadingState } from "./components/ui/loading-state";
 import { createDesktopClient } from "./desktop-client";
 import { mountRootStore } from "./stores/RootStore";
 import "katex/dist/katex.min.css";
@@ -37,7 +38,7 @@ if (!window.cake) {
     <RendererErrorBoundary>
       <StrictMode>
         <StoreProvider store={rootStore}>
-          <Suspense fallback={<main className="loading-screen"><span className="cake-mark">C</span><p>Hydrating customization…</p></main>}>
+          <Suspense fallback={<main className="loading-screen"><span className="cake-mark">C</span><LoadingState label="Hydrating customization" /></main>}>
             <Scene />
             <CustomizationHealth />
           </Suspense>

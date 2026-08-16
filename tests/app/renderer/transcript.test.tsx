@@ -151,14 +151,10 @@ describe("Transcript scrolling", () => {
     const reasoning: UiPart = { id: "reasoning-1", kind: "reasoning", text: "Working it out", status: "streaming" };
 
     act(() => root.render(<Transcript parts={[user]} sessionId="session-1" isStreaming={false} isSubmitting behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined }} empty={<div />} />));
-    const userMessage = container.querySelector<HTMLElement>(".user-message")!;
-    expect(userMessage.classList.contains("user-message-awaiting-response")).toBe(true);
-    expect(userMessage.querySelector('[role="status"][aria-label="Waiting for Cake"]')).not.toBeNull();
+    expect(container.querySelector('[role="status"][aria-label="Churning in progress"]')).not.toBeNull();
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user, reasoning], true)} />));
-    const respondedUserMessage = container.querySelector<HTMLElement>(".user-message")!;
-    expect(respondedUserMessage.classList.contains("user-message-awaiting-response")).toBe(false);
-    expect(respondedUserMessage.querySelector(".user-message-loading")).toBeNull();
+    expect(container.querySelector(".loading-state")).not.toBeNull();
     expect(container.querySelector(".activity-group")).not.toBeNull();
   });
 
@@ -217,7 +213,7 @@ describe("Transcript scrolling", () => {
 
     expect(container.querySelector(".activity-group-status")?.textContent).toContain("Thinking…");
     expect(container.querySelector('.activity-group-status .work-log-running[aria-label="working"]')).not.toBeNull();
-    expect(container.querySelector(".assistant-loading")).toBeNull();
+    expect(container.querySelector(".loading-state")).not.toBeNull();
   });
 
   it("keeps the completed work log neutral when an individual call failed", () => {
@@ -231,23 +227,24 @@ describe("Transcript scrolling", () => {
     expect(log.querySelector('.tool-call .tool-error[aria-label="error"]')).not.toBeNull();
   });
 
-  it("does not show assistant loading dots while the work log is active", () => {
+  it("keeps the elapsed loading state visible throughout reasoning, tools, and assistant output", () => {
     const user: UiPart = { id: "user-1", kind: "text", role: "user", text: "My message", status: "complete" };
     const reasoning: UiPart = { id: "reasoning-1", kind: "reasoning", text: "Working it out", status: "streaming" };
     const tool: UiPart = { id: "tool-1", kind: "tool", name: "read", input: "file", state: "running" };
     const assistant: UiPart = { id: "assistant-1", kind: "text", role: "assistant", text: "Writing the answer", status: "streaming" };
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user, reasoning], true)} />));
-    expect(container.querySelector(".assistant-loading")).toBeNull();
+    const loadingState = container.querySelector(".loading-state");
+    expect(loadingState).not.toBeNull();
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user, { ...reasoning, status: "complete" }, tool], true)} />));
-    expect(container.querySelector(".assistant-loading")).toBeNull();
+    expect(container.querySelector(".loading-state")).toBe(loadingState);
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user, { ...reasoning, status: "complete" }, { ...tool, state: "success" }], true)} />));
-    expect(container.querySelector(".assistant-loading")).toBeNull();
+    expect(container.querySelector(".loading-state")).toBe(loadingState);
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user, { ...reasoning, status: "complete" }, { ...tool, state: "success" }, assistant], true)} />));
-    expect(container.querySelector(".assistant-loading")).not.toBeNull();
+    expect(container.querySelector(".loading-state")).toBe(loadingState);
   });
 
   it("updates a selected session without remounting the virtualized transcript", () => {
@@ -262,18 +259,18 @@ describe("Transcript scrolling", () => {
     expect(scrollToIndex).toHaveBeenCalledWith({ index: 0, align: "end", behavior: "auto" });
   });
 
-  it("shows assistant loading dots only while assistant text is streaming", () => {
+  it("shows loading for the whole conversation turn and removes it at end-turn", () => {
     const user: UiPart = { id: "user-1", kind: "text", role: "user", text: "My message", status: "complete" };
     const assistant: UiPart = { id: "assistant-1", kind: "text", role: "assistant", text: "Working", status: "streaming" };
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user], true)} />));
-    expect(container.querySelector(".assistant-loading")).toBeNull();
+    expect(container.querySelector(".loading-state")).not.toBeNull();
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user, assistant], true)} />));
-    expect(container.querySelector(".assistant-loading")).not.toBeNull();
+    expect(container.querySelector(".loading-state")).not.toBeNull();
 
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([{ ...assistant, status: "complete" }], false)} />));
-    expect(container.querySelector(".assistant-loading")).toBeNull();
+    act(() => root.render(<Transcript parts={[user, { ...assistant, status: "complete" }]} sessionId="session-1" isStreaming={false} isSubmitting behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined }} empty={<div />} />));
+    expect(container.querySelector(".loading-state")).toBeNull();
   });
 
   it("offers copy and fork actions on completed assistant messages only", async () => {
