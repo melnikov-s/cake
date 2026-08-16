@@ -69,4 +69,36 @@ describe("Chat", () => {
     expect(submit).toHaveBeenCalledWith("Please continue", "send");
     expect(store.draft).toBe("");
   });
+
+  it("attaches clipboard images pasted into the composer", async () => {
+    const addPastedImages = vi.fn(async () => undefined);
+    store = mount(createStore(ChatStore, {
+      id: () => "image-paste-chat",
+      parts: () => [],
+      streaming: () => false,
+      submitting: () => false,
+      configuration: () => undefined,
+      commands: () => [],
+      placeholder: () => "Message Cake",
+      inputLabel: () => "Message",
+      canSubmit: () => false,
+      submit: async () => false,
+      addPastedImages
+    }));
+
+    act(() => root.render(<Chat store={store!} />));
+
+    const image = new File(["image bytes"], "clipboard.png", { type: "image/png" });
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, "clipboardData", {
+      value: { files: [], items: [{ type: "image/png", getAsFile: () => image }] }
+    });
+
+    await act(async () => {
+      container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!.dispatchEvent(paste);
+    });
+
+    expect(paste.defaultPrevented).toBe(true);
+    expect(addPastedImages).toHaveBeenCalledWith([image]);
+  });
 });

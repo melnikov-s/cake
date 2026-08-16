@@ -78,6 +78,20 @@ describe("GlobalChatDriver", () => {
     driver[Symbol.dispose]();
   });
 
+  it("forwards image attachments to the persistent runtime", async () => {
+    const events: DesktopEvent[] = [];
+    const cakeRuntime = runtime();
+    const driver = new GlobalChatDriver({ agentDir: "/cake/pi", sessionDir: "/cake/pi/global-chat/sessions", emit: (event) => events.push(event), createRuntime: vi.fn(async () => cakeRuntime) });
+    const requestId = crypto.randomUUID();
+    const attachments = [{ kind: "image" as const, name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" }];
+
+    driver.prompt(requestId, "", attachments);
+
+    await vi.waitFor(() => expect(cakeRuntime.prompt).toHaveBeenCalledWith("", "prompt", attachments));
+    expect(events).toContainEqual({ type: "global-chat-operation-completed", requestId });
+    driver[Symbol.dispose]();
+  });
+
   it("creates a new persistent Pi session when cleared", async () => {
     const events: DesktopEvent[] = [];
     const createRuntime = vi.fn(async () => runtime());

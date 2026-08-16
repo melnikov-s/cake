@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { createCakeRuntime, type CakeRuntime, type CakeRuntimeEvent, type GlobalControlTool } from "../agent/cake-runtime";
 import type { DesktopEvent } from "../ipc/desktop-ipc";
 import type { JsonValue } from "../ipc/json-contract";
+import type { Attachment } from "../ipc/session-contract";
 
 interface PendingControlRequest {
   settle(result: JsonValue): void;
@@ -38,10 +39,10 @@ export class GlobalChatDriver {
     });
   }
 
-  prompt(requestId: string, text: string) {
+  prompt(requestId: string, text: string, attachments: Attachment[]) {
     void this.run(requestId, async () => {
       const runtime = await this.ensureRuntime(false);
-      await runtime.prompt(text, this.streaming ? "follow-up" : "prompt", []);
+      await runtime.prompt(text, this.streaming ? "follow-up" : "prompt", attachments);
     });
   }
 

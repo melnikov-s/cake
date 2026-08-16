@@ -403,7 +403,7 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
   }
   if (request.type === "prompt-global-chat") {
     globalChatController = event.sender;
-    globalChatDriver.prompt(request.requestId, request.text);
+    globalChatDriver.prompt(request.requestId, request.text, request.attachments);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "abort-global-chat") {

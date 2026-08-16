@@ -92,4 +92,24 @@ describe("GlobalChatStore", () => {
     store[Symbol.dispose]();
     sessions[Symbol.dispose]();
   });
+
+  it("uses the shared chat store to submit pasted image attachments", async () => {
+    const { store, port, sessions } = createTestStore();
+    await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
+    store.receive({ type: "global-chat-snapshot-received", snapshot });
+    store.attachments.push({ kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" });
+
+    expect(store.chatStore.canPasteImages).toBe(true);
+    expect(store.chatStore.canSubmit).toBe(true);
+    await store.chatStore.submit();
+
+    expect(port.prompt).toHaveBeenCalledWith(expect.objectContaining({
+      text: "",
+      attachments: [{ kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" }]
+    }));
+    expect(store.attachments).toEqual([]);
+    expect(store.parts).toContainEqual(expect.objectContaining({ kind: "attachment", name: "clipboard.png", data: "aW1hZ2U=" }));
+    store[Symbol.dispose]();
+    sessions[Symbol.dispose]();
+  });
 });

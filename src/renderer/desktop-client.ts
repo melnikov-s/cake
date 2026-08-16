@@ -84,7 +84,7 @@ export interface DesktopClient {
   listSessions(): Promise<{ sessions: GlobalSessionSummary[]; reviewThreads: ReviewThread[] }>;
   loadSession(workspacePath: string, sessionId: string): Promise<SessionPreview | undefined>;
   openGlobalChat(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: JsonObject }> }): Promise<void>;
-  promptGlobalChat(input: { operationId: string; text: string }): Promise<void>;
+  promptGlobalChat(input: { operationId: string; text: string; attachments: Attachment[] }): Promise<void>;
   abortGlobalChat(operationId: string): Promise<void>;
   clearGlobalChat(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: JsonObject }> }): Promise<void>;
   setGlobalChatModel(input: { operationId: string; provider: string; modelId: string }): Promise<void>;
@@ -271,7 +271,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       return response.session;
     },
     openGlobalChat: (input) => accept(bridge, { type: "open-global-chat", requestId: input.operationId, tools: [...input.tools] }),
-    promptGlobalChat: (input) => accept(bridge, { type: "prompt-global-chat", requestId: input.operationId, text: input.text }),
+    promptGlobalChat: (input) => accept(bridge, { type: "prompt-global-chat", requestId: input.operationId, text: input.text, attachments: input.attachments }),
     abortGlobalChat: (operationId) => accept(bridge, { type: "abort-global-chat", requestId: operationId }),
     clearGlobalChat: (input) => accept(bridge, { type: "clear-global-chat", requestId: input.operationId, tools: [...input.tools] }),
     setGlobalChatModel: (input) => accept(bridge, { type: "set-global-chat-model", requestId: input.operationId, provider: input.provider, modelId: input.modelId }),

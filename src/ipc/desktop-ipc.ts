@@ -88,7 +88,8 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("list-sessions") }),
   z.object({ type: z.literal("load-session"), workspacePath: z.string().max(4_096), sessionId: z.string().min(1).max(256) }),
   z.object({ type: z.literal("open-global-chat"), requestId: z.uuid(), tools: z.array(z.object({ name: z.string().min(1).max(256), description: z.string().min(1).max(2_048), parameters: jsonObjectSchema })).min(1).max(50) }),
-  z.object({ type: z.literal("prompt-global-chat"), requestId: z.uuid(), text: z.string().trim().min(1).max(262_144) }),
+  z.object({ type: z.literal("prompt-global-chat"), requestId: z.uuid(), text: z.string().max(262_144), attachments: z.array(attachmentSchema).max(20) })
+    .refine((request) => Boolean(request.text.trim() || request.attachments.length), { message: "A global-chat prompt requires text or an attachment" }),
   z.object({ type: z.literal("abort-global-chat"), requestId: z.uuid() }),
   z.object({ type: z.literal("clear-global-chat"), requestId: z.uuid(), tools: z.array(z.object({ name: z.string().min(1).max(256), description: z.string().min(1).max(2_048), parameters: jsonObjectSchema })).min(1).max(50) }),
   z.object({ type: z.literal("set-global-chat-model"), requestId: z.uuid(), provider: z.string().min(1).max(256), modelId: z.string().min(1).max(512) }),

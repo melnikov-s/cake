@@ -5,11 +5,12 @@ import { describeError } from "../error-details";
 import type { JsonObject } from "../../ipc/json-contract";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { ChatStore } from "./ChatStore";
-import type { ThinkingLevel } from "../../ipc/session-contract";
+import type { Attachment, ThinkingLevel, UiPart } from "../../ipc/session-contract";
+import { pastedImageAttachments } from "../pasted-image-attachments";
 
 export interface GlobalChatPort {
   open(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: JsonObject }> }): Promise<void>;
-  prompt(input: { operationId: string; text: string }): Promise<void>;
+  prompt(input: { operationId: string; text: string; attachments: Attachment[] }): Promise<void>;
   abort(operationId: string): Promise<void>;
   clear(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: JsonObject }> }): Promise<void>;
 }
@@ -28,6 +29,7 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   hydrated = false;
   error: string | undefined;
   errorDetails: string | undefined;
+  attachments: Attachment[] = observable([]);
   private readonly operations: Array<{ id: string; owner: string }> = observable([]);
   private openPromise: Promise<void> | undefined;
 
@@ -56,14 +58,36 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
 
   async submit(text: string) {
     text = text.trim();
-    if (!text) return;
+    const attachments = this.attachments.slice();
+    if (!text && attachments.length === 0) return;
     const operationId = this.start();
-    this.session?.upsertPart({ id: `global-user-${operationId}`, kind: "text", role: "user", text, status: "complete" });
+    const optimisticParts: UiPart[] = [
+      ...(text ? [{ id: `global-user-${operationId}`, kind: "text" as const, role: "user" as const, text, status: "complete" as const }] : []),
+      ...attachments.flatMap((attachment, index) => attachment.kind === "image" ? [{ id: `global-user-${operationId}-attachment-${index}`, kind: "attachment" as const, name: attachment.name, mediaType: attachment.mimeType, attachmentKind: "image" as const, data: attachment.data }] : [])
+    ];
+    for (const part of optimisticParts) this.session?.upsertPart(part);
+    this.attachments.splice(0);
     try {
-      await this.props.port.prompt({ operationId, text });
+      await this.props.port.prompt({ operationId, text, attachments });
     } catch (error) {
+      this.attachments.push(...attachments);
       this.fail(operationId, error);
     }
+  }
+
+  async addPastedImages(files: readonly File[]) {
+    this.error = undefined;
+    this.errorDetails = undefined;
+    try {
+      const attachments = await pastedImageAttachments(files, 20 - this.attachments.length);
+      if (!this.signal.aborted) this.attachments.push(...attachments);
+    } catch (error) {
+      this.reportError(error);
+    }
+  }
+
+  removeAttachment(index: number) {
+    this.attachments.splice(index, 1);
   }
 
   @child
@@ -88,9 +112,12 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       commands: () => this.session?.commands ?? [],
       placeholder: () => "Ask Cake to find or control a task…",
       inputLabel: () => "Message global chat",
-      canSubmit: (draft) => Boolean(draft.trim()),
+      canSubmit: (draft) => Boolean(draft.trim() || this.attachments.length > 0),
       submit: async (draft) => { await this.submit(draft); },
       abort: () => this.abort(),
+      attachments: () => this.attachments,
+      addPastedImages: (files) => this.addPastedImages(files),
+      removeAttachment: (index) => this.removeAttachment(index),
       hideThinking: () => Boolean(this.session?.piSettings?.hideThinkingBlock),
       error: () => ({ message: this.configurationStore.error ?? this.error, details: this.configurationStore.errorDetails ?? this.errorDetails, title: "Global chat failed" })
     });
