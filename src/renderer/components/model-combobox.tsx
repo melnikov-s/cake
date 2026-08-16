@@ -114,7 +114,7 @@ export function ModelCombobox({ ariaLabel, groups, value, onSelect, variant = "c
       autoComplete="off"
       spellCheck={false}
       readOnly={!open}
-      value={open ? query : selectedModel?.name ?? ""}
+      value={open ? query : selectedModel?.name ?? value}
       placeholder={open ? "Search models…" : "Choose model"}
       onClick={() => { if (!open) openMenu(); }}
       onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); }}

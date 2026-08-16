@@ -40,6 +40,7 @@ Every durable concept has one authority.
 | --- | --- | --- |
 | Project-session transcripts, tool history, branching, compaction | Pi session files and `SessionManager` | Render validated snapshots and events in the GUI |
 | Models, providers, authentication, Pi settings and resources | Pi | Offer Cake controls through the Pi adapter |
+| Utility-model selection | Cake application preferences, referencing a Pi provider/model | Run only explicitly configured, bounded background completions through Pi's model runtime |
 | Application-level Cake Chat transcripts | Their dedicated Pi sessions | Present them as Cake-wide meta-sessions and route curated controls |
 | Projects, archived-session flags, window selection and view state | Cake | Persist application and window metadata without copying Pi history |
 | Changes, reviews, and inline discussions | Cake workflow services, with Pi sidecar-session references where relevant | Persist anchors and workflow metadata without copying Pi transcripts |
@@ -86,6 +87,31 @@ than constructing transport envelopes or importing privileged implementations.
 
 Every cross-process payload is parsed by shared Zod contracts at the receiving
 boundary. Raw Pi event and object shapes stop in the focused `src/agent` adapter modules.
+
+## Utility model
+
+Cake may run bounded, non-authoritative background transformations through one
+user-configured **utility model**. The preference stores the exact Pi provider,
+model identifier, and reasoning level selected by the user. Cake never chooses,
+recommends, or silently substitutes a utility model, and it never falls back to
+the active conversation model. With no configured utility model, optional
+utility work does not run.
+
+Utility work uses Pi's `ModelRuntime` as an auxiliary completion rather than
+creating a second provider abstraction, agent runtime, or durable transcript.
+Each feature supplies explicit bounded input, output, timeout, cancellation,
+and validation policy. Utility results remain advisory metadata until the owning
+feature validates and commits them.
+
+Automatic project-session naming is the first utility workflow. After a
+completed assistant turn, an unnamed session may send its original first user
+and first assistant messages, with bounded lengths, to the configured utility
+model. A successful short title is appended through Pi's normal session-name
+API. The completion is discarded if the session is manually named while it is
+running. Failures are silent and leave Pi's first-message session-list title as
+the display fallback. Configuring a utility model later makes an unnamed
+session eligible after its next completed interaction; already named sessions
+are never regenerated automatically.
 
 ## Renderer state
 

@@ -26,4 +26,15 @@ describe("ApplicationModel", () => {
     expect(model.snapshot().projects).toEqual([]);
     expect(model.isProjectTrusted("/work/cake")).toBe(false);
   });
+
+  it("persists an explicitly configured utility model without inventing a default", () => {
+    const model = ApplicationModel.from({});
+    expect(model.snapshot().utilityModel).toBeUndefined();
+
+    model.setUtilityModel({ provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "low" });
+    expect(model.snapshot().utilityModel).toEqual({ provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "low" });
+
+    model.setUtilityModel(undefined);
+    expect(model.snapshot().utilityModel).toBeUndefined();
+  });
 });

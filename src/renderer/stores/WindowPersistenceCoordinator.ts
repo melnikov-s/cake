@@ -83,6 +83,7 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
       if (this.signal.aborted) return;
       this.props.sessions.replace(sessionIndex.sessions);
       this.props.projects.applyApplicationState(application);
+      this.props.settings().applyApplicationState(application);
       this.props.projects.restoreRecentPaths(state.recentProjectPaths);
       this.props.settings().theme = state.theme;
       this.restoredDraft = state.draft;

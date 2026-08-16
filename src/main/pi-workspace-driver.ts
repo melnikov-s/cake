@@ -4,7 +4,7 @@ import { createCakeRuntime, type CakeRuntime, type RuntimeUiRequest } from "../a
 import { loadPiChangelog } from "../agent/session-discovery";
 import { runInlineWidgetGeneration, runInlineWidgetRepair, runReviewTurn, type InlineWidgetGenerationRequest } from "../agent/sidecar-runtime";
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
-import type { ChangeTurn } from "../ipc/session-contract";
+import type { ChangeTurn, UtilityModel } from "../ipc/session-contract";
 import type { JsonValue } from "../ipc/json-contract";
 import { parseArtifactInput, type ArtifactRecord, type CakeArtifactV1 } from "../ipc/artifact-contract";
 import { REVIEW_TEXT_MAX_LENGTH } from "../ipc/review-contract";
@@ -70,6 +70,7 @@ export interface PiWorkspaceDriverOptions {
   summarizeCheckpointChanges?: typeof summarizeCheckpointChanges;
   openExternal?: (url: string) => Promise<void>;
   isTrusted?: () => boolean;
+  utilityModel?: () => UtilityModel | undefined;
   pluginResources?: { skills: string[]; prompts: string[]; extensions: string[] };
 }
 
@@ -92,6 +93,7 @@ export class PiWorkspaceDriver {
   private readonly summarizeCheckpointChanges: typeof summarizeCheckpointChanges;
   private readonly openExternal: NonNullable<PiWorkspaceDriverOptions["openExternal"]> | undefined;
   private readonly isTrusted: () => boolean;
+  private readonly utilityModel: () => UtilityModel | undefined;
   private readonly pluginResources: { skills: string[]; prompts: string[]; extensions: string[] };
   private readonly runtimes = new Map<string, CakeRuntime>();
   private readonly pendingUi = new Map<string, PendingUi>();
@@ -119,6 +121,7 @@ export class PiWorkspaceDriver {
     this.collectCheckpointChanges = options.collectCheckpointChanges ?? collectCheckpointChanges;
     this.summarizeCheckpointChanges = options.summarizeCheckpointChanges ?? summarizeCheckpointChanges;
     this.isTrusted = options.isTrusted ?? (() => false);
+    this.utilityModel = options.utilityModel ?? (() => undefined);
     this.pluginResources = options.pluginResources ?? { skills: [], prompts: [], extensions: [] };
     this.artifactRepository = options.artifactRepository ?? {
       async upsert(workspacePath, artifact) {
@@ -346,6 +349,7 @@ export class PiWorkspaceDriver {
       reviewContextPath: this.reviewRepository.reviewContextPath
         ? (activeSessionId) => this.reviewRepository.reviewContextPath!(this.workspacePath, activeSessionId)
         : undefined,
+      utilityModel: this.utilityModel,
       openExternal: this.openExternal,
       captureGitCheckpoint: (activeSessionId) => this.captureCheckpoint(this.workspacePath, activeSessionId),
       listArtifacts: async (pointers) => {

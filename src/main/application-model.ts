@@ -1,5 +1,5 @@
 import { Model, child, id, state, toSnapshot } from "r-state-tree";
-import { applicationStateSchema, type ApplicationState, type ProjectRecord } from "../ipc/session-contract";
+import { applicationStateSchema, utilityModelSchema, type ApplicationState, type ProjectRecord, type UtilityModel } from "../ipc/session-contract";
 
 export class ProjectModel extends Model {
   @id
@@ -36,6 +36,8 @@ export class ApplicationModel extends Model {
   projects: ProjectModel[] = [];
   @state
   trustedProjectPaths: string[] = [];
+  @state
+  utilityModel: UtilityModel | undefined;
 
   static from(untrustedInput: unknown) {
     return ApplicationModel.create(applicationStateSchema.parse(untrustedInput));
@@ -68,6 +70,10 @@ export class ApplicationModel extends Model {
   revokeProjectTrust(path: string) {
     const index = this.trustedProjectPaths.indexOf(path);
     if (index !== -1) this.trustedProjectPaths.splice(index, 1);
+  }
+
+  setUtilityModel(model: UtilityModel | undefined) {
+    this.utilityModel = model ? utilityModelSchema.parse(model) : undefined;
   }
 
   isProjectTrusted(path: string) {

@@ -1,11 +1,11 @@
 import { Store, observable } from "r-state-tree";
-import type { PiSettingUpdate } from "../../ipc/session-contract";
+import type { ApplicationState, PiSettingUpdate, ThinkingLevel, UtilityModel } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
 import { describeError } from "../error-details";
 
 export interface SettingsStoreProps {
-  client: Pick<DesktopClient, "setPiSetting" | "reloadPi" | "login" | "logout">;
+  client: Pick<DesktopClient, "setPiSetting" | "reloadPi" | "login" | "logout" | "setUtilityModel">;
   sessionContext(): { workspacePath: string; sessionId: string } | undefined;
   operations: SessionOperationCoordinator;
 }
@@ -14,8 +14,13 @@ export interface SettingsStoreProps {
 export class SettingsStore extends Store<SettingsStoreProps> {
   theme: "system" | "light" | "dark" = "system";
   providerOperations: Record<string, { provider: string; kind: "login" | "logout" }> = observable({});
+  utilityModel: UtilityModel | undefined;
+  utilityModelSaving = false;
   error: string | undefined;
   errorDetails: string | undefined;
+  private utilitySaveRevision = 0;
+  private utilitySaveQueue: Promise<unknown> = Promise.resolve();
+  private persistedUtilityModel: UtilityModel | undefined;
   get activeOperations() { return this.props.operations.active("settings"); }
 
   private reportError(error: unknown) {
@@ -26,6 +31,30 @@ export class SettingsStore extends Store<SettingsStoreProps> {
 
   setTheme(theme: "system" | "light" | "dark") {
     this.theme = theme;
+  }
+
+  applyApplicationState(state: ApplicationState) {
+    this.persistedUtilityModel = state.utilityModel;
+    this.utilityModel = state.utilityModel;
+  }
+
+  selectUtilityModel(value: string) {
+    const separator = value.indexOf("/");
+    if (separator < 1) return Promise.resolve();
+    return this.saveUtilityModel({
+      provider: value.slice(0, separator),
+      modelId: value.slice(separator + 1),
+      thinkingLevel: this.utilityModel?.thinkingLevel ?? "off"
+    });
+  }
+
+  selectUtilityThinkingLevel(thinkingLevel: ThinkingLevel) {
+    if (!this.utilityModel) return Promise.resolve();
+    return this.saveUtilityModel({ ...this.utilityModel, thinkingLevel });
+  }
+
+  clearUtilityModel() {
+    return this.saveUtilityModel(undefined);
   }
 
   async setPiSetting(update: PiSettingUpdate) {
@@ -86,6 +115,32 @@ export class SettingsStore extends Store<SettingsStoreProps> {
         this.finish(operationId);
       }
     }
+  }
+
+  private saveUtilityModel(model: UtilityModel | undefined) {
+    const revision = ++this.utilitySaveRevision;
+    this.utilityModel = model;
+    this.utilityModelSaving = true;
+    this.error = undefined;
+    this.errorDetails = undefined;
+    const save = this.utilitySaveQueue
+      .catch(() => undefined)
+      .then(() => this.props.client.setUtilityModel(model))
+      .then((state) => {
+        this.persistedUtilityModel = state.utilityModel;
+        if (revision === this.utilitySaveRevision) this.utilityModel = state.utilityModel;
+      })
+      .catch((error) => {
+        if (revision === this.utilitySaveRevision) {
+          this.utilityModel = this.persistedUtilityModel;
+          this.reportError(error);
+        }
+      })
+      .finally(() => {
+        if (revision === this.utilitySaveRevision) this.utilityModelSaving = false;
+      });
+    this.utilitySaveQueue = save;
+    return save;
   }
 
   private requireContext() {

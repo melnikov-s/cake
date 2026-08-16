@@ -164,6 +164,7 @@ function launchPi(path: string) {
     reviewRepository,
     pluginResources: pluginAgentResources,
     isTrusted: () => applicationModel.isProjectTrusted(path),
+    utilityModel: () => applicationModel.utilityModel,
     openExternal: async (url) => {
       const protocol = new URL(url).protocol;
       if (protocol !== "https:" && protocol !== "http:") throw new Error("Authentication URL must use HTTP or HTTPS");
@@ -541,6 +542,11 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
     return desktopResponseSchema.parse({ type: "window-state-saved" });
   }
   if (request.type === "load-application-state") return desktopResponseSchema.parse({ type: "application-state-loaded", state: applicationModel.snapshot() });
+  if (request.type === "set-utility-model") {
+    applicationModel.setUtilityModel(request.model);
+    await persistApplicationState();
+    return desktopResponseSchema.parse({ type: "application-state-updated", state: applicationModel.snapshot() });
+  }
   if (request.type === "list-sessions") {
     const sessions = (await Promise.all(applicationModel.projects.map(async (project) => {
       try {

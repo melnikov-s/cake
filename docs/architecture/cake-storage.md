@@ -51,5 +51,7 @@ discovered from standalone `~/.pi/agent`.
 Application and window snapshots, artifact payloads, and review annotations
 remain under Electron's `app.getPath("userData")`. Their location can be changed
 by `app.setPath()` (the test override is `CAKE_ELECTRON_USER_DATA`) and is tied
-to Electron's platform lifecycle. Review and Cake Chat Pi sessions live under
-the Cake Pi roots above.
+to Electron's platform lifecycle. The application snapshot may store the user's
+exact utility-model provider, model identifier, and reasoning level; credentials
+remain in Pi's credential store, and no utility transcript is persisted. Review
+and Cake Chat Pi sessions live under the Cake Pi roots above.

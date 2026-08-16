@@ -16,6 +16,12 @@ export const thinkingLevelSchema = z.enum([
   "max"
 ]);
 
+export const utilityModelSchema = z.object({
+  provider: z.string().min(1).max(256),
+  modelId: z.string().min(1).max(512),
+  thinkingLevel: thinkingLevelSchema
+});
+
 const piResourcePathSchema = z.string().min(1).max(4_096);
 const piResourcePathsSchema = z.array(piResourcePathSchema).max(1_000);
 const piPackageSourceSchema = z.union([
@@ -367,7 +373,8 @@ export const projectRecordSchema = z.object({
 export const applicationStateSchema = z.object({
   schemaVersion: z.literal(1).default(1),
   projects: z.array(projectRecordSchema).max(200).default([]),
-  trustedProjectPaths: z.array(z.string().max(4_096)).max(200).default([])
+  trustedProjectPaths: z.array(z.string().max(4_096)).max(200).default([]),
+  utilityModel: utilityModelSchema.optional()
 });
 
 export const windowConversationSelectionSchema = z.discriminatedUnion("kind", [
@@ -391,6 +398,7 @@ export type Attachment = z.infer<typeof attachmentSchema>;
 export type UiPart = z.infer<typeof uiPartSchema>;
 export type ModelOption = z.infer<typeof modelOptionSchema>;
 export type ThinkingLevel = z.infer<typeof thinkingLevelSchema>;
+export type UtilityModel = z.infer<typeof utilityModelSchema>;
 export type PiSettings = z.infer<typeof piSettingsSchema>;
 export type PiSettingUpdate = z.infer<typeof piSettingUpdateSchema>;
 export type SessionSnapshot = z.infer<typeof sessionSnapshotSchema>;

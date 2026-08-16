@@ -21,7 +21,8 @@ import type {
   ResourceDiagnostic,
   SessionSnapshot,
   ThinkingLevel,
-  UiPart
+  UiPart,
+  UtilityModel
 } from "../ipc/session-contract";
 import { piBuiltinSlashCommands, slashCommandSchema } from "../ipc/session-contract";
 import { jsonValueSchema, type JsonObject, type JsonValue } from "../ipc/json-contract";
@@ -33,6 +34,7 @@ import type { InlineWidgetGenerationRequest, InlineWidgetGenerationResult, Revie
 import { assertSessionPath } from "./session-path";
 import { applyPiSetting } from "./settings-translation";
 import { cakePluginAuthoringSkillPath, cakeWorkspaceSessionDirectory, listWorkspaceSessions } from "./session-discovery";
+import { generateSessionTitle } from "./utility-model";
 import {
   boundedProjectionKey,
   createLiveMessageProjector,
@@ -119,6 +121,8 @@ export interface CakeRuntimeOptions {
   openExternal?(url: string): Promise<void>;
   captureGitCheckpoint?(sessionId: string): Promise<{ tree: string; ref: string }>;
   reviewContextPath?(sessionId: string): string;
+  utilityModel?(): UtilityModel | undefined;
+  generateSessionTitle?: typeof generateSessionTitle;
   globalControl?: {
     tools: readonly GlobalControlTool[];
     recoveryContext?: string;
@@ -271,6 +275,9 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
   let reloadRequested = 0;
   let reloadCompleted = 0;
   let reloadInFlight: Promise<void> | undefined;
+  let sessionNamingInFlight = false;
+  const sessionNamingController = new AbortController();
+  const generateTitle = options.generateSessionTitle ?? generateSessionTitle;
   const projectLiveMessage = createLiveMessageProjector();
   const catalog = compatibilityCatalog(resourceLoader, settingsManager, options.cwd, agentDir);
   const extensionUiState: ExtensionUiState = { statuses: [] };
@@ -420,6 +427,40 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     await drainReloads();
   }
 
+  async function nameSessionFromFirstExchange() {
+    if (disposed || sessionNamingInFlight || session.sessionManager.getSessionName()) return;
+    const utilityModel = options.utilityModel?.();
+    if (!utilityModel) return;
+    const messages = session.sessionManager.getBranch().flatMap((entry) => entry.type === "message" ? [entry.message] : []);
+    const userText = messages
+      .filter((message) => message.role === "user")
+      .map((message) => textFromContent(message.content).trim())
+      .find(Boolean);
+    const assistantText = messages
+      .filter((message) => message.role === "assistant")
+      .map((message) => textFromContent(message.content).trim())
+      .find(Boolean);
+    if (!userText || !assistantText) return;
+
+    sessionNamingInFlight = true;
+    try {
+      const title = await generateTitle({
+        modelRuntime,
+        utilityModel,
+        firstUserMessage: userText,
+        firstAssistantMessage: assistantText,
+        signal: AbortSignal.any([sessionNamingController.signal, AbortSignal.timeout(15_000)])
+      });
+      if (disposed || !title || session.sessionManager.getSessionName()) return;
+      session.setSessionName(title);
+      await emitSnapshot();
+    } catch {
+      // Utility work is opportunistic. The first-message title remains the fallback.
+    } finally {
+      sessionNamingInFlight = false;
+    }
+  }
+
   function gitCheckpoints() {
     const checkpoints: GitCheckpoint[] = [];
     for (const entry of session.sessionManager.getBranch()) {
@@ -514,6 +555,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     }
     if (event.type === "agent_settled") {
       options.onEvent({ type: "streaming", sessionId: cakeSessionId, streaming: false });
+      void nameSessionFromFirstExchange();
       void captureGitCheckpoint().catch(() => undefined).then(() => drainReloads()).catch(() => undefined).finally(() => emitSnapshot());
     }
   });
@@ -631,6 +673,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     dispose() {
       if (disposed) return;
       disposed = true;
+      sessionNamingController.abort();
       unsubscribe();
       session.dispose();
       void settingsManager.flush();

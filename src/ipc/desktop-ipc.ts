@@ -18,6 +18,7 @@ import {
   sessionPreviewSchema,
   sessionSnapshotSchema,
   thinkingLevelSchema,
+  utilityModelSchema,
   uiPartSchema,
   windowViewStateSchema
 } from "./session-contract";
@@ -94,6 +95,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("load-window-state") }),
   z.object({ type: z.literal("save-window-state"), state: windowViewStateSchema }),
   z.object({ type: z.literal("load-application-state") }),
+  z.object({ type: z.literal("set-utility-model"), model: utilityModelSchema.optional() }),
   z.object({ type: z.literal("list-sessions") }),
   z.object({ type: z.literal("load-session"), workspacePath: z.string().max(4_096), sessionId: z.string().min(1).max(256) }),
   z.object({ type: z.literal("open-global-chat"), requestId: z.uuid(), tools: z.array(z.object({ name: z.string().min(1).max(256), description: z.string().min(1).max(2_048), parameters: jsonObjectSchema })).min(1).max(50), newSession: z.boolean().default(false), sessionId: z.string().min(1).max(256).optional(), initialPrompt: z.string().min(1).max(262_144).optional() }),

@@ -55,6 +55,7 @@ function createDesktopClient(restoredPath?: string) {
     loadWindowState: vi.fn(async () => ({ projectPath: restoredPath, recentProjectPaths: restoredPath ? [restoredPath] : [], draft: "saved", theme: "system" as const, thinkingExpanded: false, draftsBySession: {} })),
     saveWindowState: vi.fn(async () => undefined),
     loadApplicationState: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], trustedProjectPaths: [] })),
+    setUtilityModel: vi.fn(async (model) => ({ schemaVersion: 1 as const, projects: [], trustedProjectPaths: [], utilityModel: model })),
     listSessions: vi.fn(async () => ({ sessions: [], reviewThreads: [] })),
     loadSession: vi.fn(async () => undefined),
     openGlobalChat: vi.fn(async () => undefined),
@@ -301,6 +302,25 @@ describe("ProjectWorkbenchStore", () => {
     expect(root.projectWorkbenchStore.activeSession!.configurationStore.modelsByProvider.map((group) => group.id)).toEqual(["openai", "anthropic"]);
     expect(root.projectWorkbenchStore.activeSession!.configurationStore.connectedModelsByProvider).toHaveLength(1);
     expect(root.projectWorkbenchStore.activeSession!.configurationStore.connectedModelsByProvider[0]).toMatchObject({ id: "openai", models: [expect.objectContaining({ id: "gpt" })] });
+    root[Symbol.dispose]();
+  });
+
+  it("persists only the utility model explicitly selected by the user", async () => {
+    const desktop = createDesktopClient();
+    const { root } = mountTestStore(desktop.client);
+    await flush();
+
+    expect(root.settingsStore.utilityModel).toBeUndefined();
+    await root.settingsStore.selectUtilityModel("openai/gpt-5-mini");
+    expect(desktop.client.setUtilityModel).toHaveBeenLastCalledWith({ provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "off" });
+    expect(root.settingsStore.utilityModel).toEqual({ provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "off" });
+
+    await root.settingsStore.selectUtilityThinkingLevel("low");
+    expect(desktop.client.setUtilityModel).toHaveBeenLastCalledWith({ provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "low" });
+
+    await root.settingsStore.clearUtilityModel();
+    expect(desktop.client.setUtilityModel).toHaveBeenLastCalledWith(undefined);
+    expect(root.settingsStore.utilityModel).toBeUndefined();
     root[Symbol.dispose]();
   });
 

@@ -13,6 +13,8 @@ describe("process IPC", () => {
     expect(desktopRequestSchema.parse({ type: "prompt-global-chat", requestId, sessionId: "cake-chat", text: "", attachments: [{ kind: "image", name: "paste.png", mimeType: "image/png", data: "aW1hZ2U=" }] })).toMatchObject({ text: "", attachments: [{ kind: "image" }] });
     expect(() => desktopRequestSchema.parse({ type: "prompt-global-chat", requestId, sessionId: "cake-chat", text: "", attachments: [] })).toThrow();
     expect(desktopRequestSchema.parse({ type: "list-sessions" })).toEqual({ type: "list-sessions" });
+    expect(desktopRequestSchema.parse({ type: "set-utility-model", model: { provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "low" } })).toMatchObject({ type: "set-utility-model", model: { provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "low" } });
+    expect(desktopRequestSchema.parse({ type: "set-utility-model" })).toEqual({ type: "set-utility-model" });
     expect(desktopRequestSchema.parse({ type: "load-session", workspacePath: "/project", sessionId: "session" })).toEqual({ type: "load-session", workspacePath: "/project", sessionId: "session" });
     expect(desktopRequestSchema.parse({ type: "suggest-files", workspacePath: "/project", prefix: "src/app" })).toEqual({ type: "suggest-files", workspacePath: "/project", prefix: "src/app" });
     expect(desktopRequestSchema.parse({ type: "list-workspace-files", workspacePath: "/project" })).toEqual({ type: "list-workspace-files", workspacePath: "/project" });

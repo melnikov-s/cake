@@ -11,6 +11,7 @@ import type {
   SessionPreview,
   PiSettingUpdate,
   ThinkingLevel,
+  UtilityModel,
   ExtensionUiEvent,
   UiPart,
   WindowViewState
@@ -87,6 +88,7 @@ export interface DesktopClient {
   loadWindowState(): Promise<WindowViewState>;
   saveWindowState(state: WindowViewState): Promise<void>;
   loadApplicationState(): Promise<ApplicationState>;
+  setUtilityModel(model: UtilityModel | undefined): Promise<ApplicationState>;
   listSessions(): Promise<{ sessions: GlobalSessionSummary[]; reviewThreads: ReviewThread[] }>;
   loadSession(workspacePath: string, sessionId: string): Promise<SessionPreview | undefined>;
   openGlobalChat(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: JsonObject }>; newSession?: boolean; sessionId?: string; initialPrompt?: string }): Promise<void>;
@@ -283,6 +285,11 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
     async loadApplicationState() {
       const response = await bridge.request({ type: "load-application-state" });
       if (response.type !== "application-state-loaded") throw new Error("Cake received invalid application state");
+      return response.state;
+    },
+    async setUtilityModel(model) {
+      const response = await bridge.request({ type: "set-utility-model", model });
+      if (response.type !== "application-state-updated") throw new Error("Cake could not update the utility model");
       return response.state;
     },
     async listSessions() {

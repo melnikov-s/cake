@@ -650,6 +650,8 @@ button.reasoning-summary { border: 0; background: transparent; }
 .settings-fields > :only-child { border-radius: 11px; }
 .settings-fields label > span, .settings-field > span { display: grid; gap: 3px; font-size: 13px; font-weight: 630; }
 .settings-fields small { color: var(--muted-foreground); font-size: 11px; font-weight: 400; line-height: 1.4; }
+.settings-fields .settings-inline-action { display: flex; grid-template-columns: none; align-items: center; gap: 8px; }
+.settings-fields .settings-inline-action .model-combobox { min-width: 0; flex: 1 1 auto; }
 .settings-fields select { width: 100%; min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--background); color: var(--foreground); font-size: 12px; }
 .settings-input, .settings-fields textarea { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--background); color: var(--foreground); font: 12px/1.45 var(--font-mono); resize: vertical; }
 .settings-input { height: 36px; font-family: var(--font-sans); }
