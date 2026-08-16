@@ -6,6 +6,7 @@ import { registerPluginDefinition } from "./plugin-runtime";
 
 export { observer, useOptionalStore, useStore } from "r-state-tree/react";
 export { Button, type ButtonProps } from "./components/ui/button";
+export { Popover, PopoverContent, PopoverTrigger, type PopoverContentProps, type PopoverProps } from "./components/ui/popover";
 export { cn } from "./lib/utils";
 export { RootStore } from "./stores/RootStore";
 export { App as DefaultScene } from "./app";
@@ -47,3 +48,4 @@ export function definePlugin<const Plugin extends CakePluginDefinition>(plugin: 
 export { Slot, useCommand, useContributionReveal } from "./plugin-runtime";
 export { usePluginBackend } from "./plugin-backend";
 export { usePluginGlobalState, usePluginSessionState, type SerializablePluginValue } from "./plugin-persistence";
+export { usePluginSession, type CakePluginSession } from "./plugin-session";

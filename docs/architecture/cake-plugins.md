@@ -59,11 +59,12 @@ know which plugins are installed. The entry calls `definePlugin` and declares
 slot contributions, reusable components, and optional commands:
 
 ```tsx
-import { Button, definePlugin, usePluginBackend } from "cake";
+import { Button, definePlugin, usePluginBackend, usePluginSession } from "cake";
 
 function BranchButton() {
   const backend = usePluginBackend("acme.calendar");
-  return <Button onClick={() => void backend.call("currentBranch", null)}>Branch</Button>;
+  const session = usePluginSession();
+  return <Button onClick={() => void backend.call("currentBranch", { workspacePath: session.workspacePath })}>Branch</Button>;
 }
 
 export default definePlugin({
@@ -90,7 +91,12 @@ Canonical slots are stable semantic outlets rather than coordinates:
 - `global.sidebar.header`
 - `global.sidebar.footer`
 - `project-session.header.actions`
-- `project-session.content.top-right`
+- `project-session.left.top`
+- `project-session.left.middle`
+- `project-session.left.bottom`
+- `project-session.right.top`
+- `project-session.right.middle`
+- `project-session.right.bottom`
 - `project-session.transcript.after`
 - `project-session.composer.before`
 - `project-session.composer.actions`
@@ -100,18 +106,28 @@ The namespace is the ownership boundary. `global.*` outlets belong to
 application chrome and remain visible across Cake Chat, project sessions, and
 settings. `project-session.*` outlets exist only inside a selected project
 session. `project-session.header.actions` is specifically the toolbar/menu row.
-“Top right of the session” or “top right of the conversation” means
-`project-session.content.top-right`, which is inside the session canvas below
-that toolbar. Global plugins use the global sidebar outlets instead.
+The six left/right rail outlets are persistent normal-flow panels: each side
+has top, middle, and bottom placement, reserves space beside the conversation,
+and stacks rather than overlaps when multiple plugins contribute. “Top right
+of the session” means `project-session.right.top`. Global plugins use the
+global sidebar outlets instead.
 
 Header outlets are compact action rows with a fixed height. Contributions may
 render a button, badge, or other compact trigger there. Expanded content must
 open as a popover, dialog, or overlay anchored to that trigger; it must not grow
 the header row or displace Cake-owned controls.
 
-The content-top-right outlet is an overlay anchored to the session canvas. Its
-contributions must remain responsive within the host width and must not create
-a second toolbar row.
+Rail contributions fill the host-controlled rail width. Empty rails collapse;
+on narrow session canvases the occupied rails stack around the conversation.
+Plugins must remain responsive within the provided width and must not use
+absolute or fixed positioning for structural panel layout.
+
+Intentional overlap is explicit. The public `Popover`, `PopoverTrigger`, and
+`PopoverContent` components render a compact trigger in normal flow and portal
+the open surface into Cake's overlay layer with viewport collision handling,
+outside-click dismissal, Escape handling, and focus restoration. Use a Popover
+for temporary anchored UI; do not turn a persistent rail contribution into an
+overlay with plugin-owned positioning.
 
 Contributions are ordered by numeric `order`, plugin ID, then contribution ID.
 Each contribution has its own error boundary. Settings reports a contributed
@@ -185,6 +201,15 @@ The version-matched `cake` module exports `DefaultScene`, `Slot`,
 `definePlugin`, `usePluginBackend`, commands, persistence hooks, React Store
 adapters, approved Stores and components, and styling utilities. Workflow
 Stores remain internal. Components reading Cake state must use `observer`.
+
+`usePluginSession()` exposes the selected project session's `workspacePath`,
+Pi `sessionId`, and an `openChanges()` host intent. Use the workspace path as an
+explicit input to backend Git/filesystem methods; never guess a repository from
+the backend process working directory. `openChanges()` opens Cake's native
+Changes surface for that same selected session and rejects if the contribution
+became stale after a session switch. The hook is valid only in
+`project-session.*` contributions or custom-scene branches that render while a
+project session is selected.
 
 Mounted commands registered with `useCommand(pluginId, name, command)` are
 removed on unmount. Headless commands come from `definePlugin`. Internal names

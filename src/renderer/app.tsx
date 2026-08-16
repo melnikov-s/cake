@@ -47,6 +47,14 @@ import type { MessageCommentsStore, MessageSelectionAnchor } from "./stores/Mess
 import type { ArtifactRecord } from "../ipc/artifact-contract";
 import { Slot } from "./plugin-runtime";
 
+function ProjectSessionPluginRail({ side }: { side: "left" | "right" }) {
+  return <aside className={`project-session-plugin-rail project-session-plugin-rail-${side}`} aria-label={`${side === "left" ? "Left" : "Right"} session plugins`}>
+    <div className="plugin-slot project-session-rail-slot project-session-rail-slot-top"><Slot name={`project-session.${side}.top`} /></div>
+    <div className="plugin-slot project-session-rail-slot project-session-rail-slot-middle"><Slot name={`project-session.${side}.middle`} /></div>
+    <div className="plugin-slot project-session-rail-slot project-session-rail-slot-bottom"><Slot name={`project-session.${side}.bottom`} /></div>
+  </aside>;
+}
+
 function Icon({ children, size = 16 }: { children: ReactNode; size?: number }) {
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
 }
@@ -762,8 +770,9 @@ export const App = observer(function App() {
                 <div className="plugin-slot plugin-slot-project-session-header"><Slot name="project-session.header.actions" /></div>
               </>, sessionHeaderHost)}
             <div className="workbench project-session-workbench">
-              <div className="plugin-slot plugin-slot-project-session-content-top-right"><Slot name="project-session.content.top-right" /></div>
+              <ProjectSessionPluginRail side="left" />
               <Chat store={session.chatStore} transcript={<Transcript sessionId={session.chatStore.id} parts={session.chatStore.parts} isStreaming={session.chatStore.streaming} isSubmitting={session.chatStore.submitting} hideThinking={session.chatStore.hideThinking} behavior={{ thinkingExpanded: session.chatStore.thinkingExpanded, onToggleThinking: () => session.chatStore.toggleThinking(), onFork: (entryId) => { void store.forkAt(entryId); }, onOpenReviewRun: (threadId) => { void store.openSessionChanges(threadId); }, messageComments: session.messageCommentsStore, inlineWidgets: { store: root.inlineWidgetStore, workspacePath: session.workspacePath, sessionId: session.sessionId, model: session.model.model }, artifacts: { records: session.model.artifacts.map((artifact) => artifact.value), interaction: session.artifactInteractionStore } }} empty={<div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>} footer={<><ArtifactsPanel session={session} inlineWidgets={root.inlineWidgetStore} /><Slot name="project-session.transcript.after" /></>} error={chatError} errorDetails={chatErrorDetails} />} composerContent={<>{reviews.chatCommentCount > 0 && <div className="review-context-badge"><button type="button" onClick={() => void store.openSessionChanges()}><span>{reviews.chatCommentCount}</span> {reviews.chatCommentCount === 1 ? "comment ready to send" : "comments ready to send"}</button></div>}<Slot name="project-session.composer.before" /></>} pluginActions={<Slot name="project-session.composer.actions" />} status={<>{extensionUi.statuses.length > 0 && <div className="extension-statuses" role="status">{extensionUi.statuses.map((status) => <span key={status.key}><strong>{status.key}</strong> {status.text}</span>)}</div>}<Slot name="project-session.status" /></>} />
+              <ProjectSessionPluginRail side="right" />
             </div>
           </StoreProvider>
         )}

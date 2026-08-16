@@ -41,6 +41,17 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     await opening;
   }
 
+  async openSessionChanges(workspacePath: string, sessionId: string) {
+    const selection = this.appShellStore.selection;
+    if (selection.kind !== "project-session"
+      || selection.workspacePath !== workspacePath
+      || selection.sessionId !== sessionId
+      || !this.projectWorkbenchStore.isActiveSession(workspacePath, sessionId)) {
+      throw new Error("The project session is no longer selected");
+    }
+    await this.projectWorkbenchStore.openSessionChanges();
+  }
+
   async createSession(workspacePath: string) {
     this.showEmptyWorkbench();
     await this.projectWorkbenchStore.startNewSession(workspacePath);

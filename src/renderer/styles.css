@@ -194,19 +194,38 @@
   .app-shell, .project-disclosure { transition: none; }
 }
 
-.workspace { position: relative; display: grid; min-width: 0; min-height: 0; contain: inline-size; overflow: hidden; grid-template-rows: 52px minmax(0, 1fr); }
+.workspace { position: relative; display: grid; min-width: 0; min-height: 0; contain: inline-size; container-type: inline-size; overflow: hidden; grid-template-rows: 52px minmax(0, 1fr); }
 .workspace-header { display: flex; width: 100%; max-width: 100%; min-width: 0; contain: inline-size; align-items: center; justify-content: space-between; overflow: hidden; padding: 0 20px; border-bottom: 1px solid color-mix(in oklab, var(--border) 65%, transparent); -webkit-app-region: drag; }
 .workspace-header > div:first-child { display: flex; width: 0; min-width: 0; flex: 1 1 0%; align-items: baseline; gap: 12px; overflow: hidden; }
 .header-pane-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; }
 .workspace-header-actions { display: flex; min-width: 0; flex: 0 1 auto; align-items: center; gap: 6px; -webkit-app-region: no-drag; }
 .plugin-slot-project-session-header { position: relative; display: flex; min-width: 0; height: 30px; max-height: 30px; align-items: center; gap: 4px; overflow: visible; }
-.project-session-workbench { position: relative; }
-.plugin-slot-project-session-content-top-right { position: absolute; z-index: 12; top: 16px; right: 16px; display: flex; max-width: calc(100% - 32px); align-items: flex-start; justify-content: flex-end; pointer-events: none; }
-.plugin-slot-project-session-content-top-right > * { pointer-events: auto; }
+.project-session-workbench { display: grid; overflow: hidden; grid-template-columns: auto minmax(0, 1fr) auto; }
+.project-session-plugin-rail { display: grid; width: clamp(15rem, 24vw, 27rem); min-width: 0; min-height: 0; gap: 12px; overflow: hidden; padding: 16px; grid-template-rows: auto minmax(0, 1fr) auto; background: color-mix(in oklab, var(--sidebar) 38%, var(--background)); }
+.project-session-plugin-rail-left { border-right: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
+.project-session-plugin-rail-right { border-left: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
+.project-session-plugin-rail:not(:has(.project-session-rail-slot:not(:empty))) { display: none; }
+.project-session-rail-slot { display: grid; min-width: 0; gap: 12px; align-content: start; }
+.project-session-rail-slot:empty { display: none; }
+.project-session-rail-slot-middle { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.project-session-rail-slot > * { width: 100%; min-width: 0; max-width: 100%; }
+@container (max-width: 58rem) {
+  .project-session-workbench { overflow: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(32rem, 1fr); }
+  .project-session-plugin-rail { display: flex; width: auto; max-height: min(38vh, 26rem); align-items: flex-start; flex-wrap: wrap; overflow: auto; border: 0; padding: 12px 16px; }
+  .project-session-plugin-rail-left { border-bottom: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
+  .project-session-plugin-rail-right { border-top: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
+  .project-session-plugin-rail-left { grid-row: 1; }
+  .project-session-plugin-rail-right { grid-row: 2; }
+  .project-session-workbench > .chat-layout { grid-row: 3; }
+  .project-session-rail-slot:not(:empty) { min-height: 0; flex: 1 1 min(18rem, 100%); overflow: auto; }
+}
 .plugin-slot-sidebar-header:empty, .plugin-slot-sidebar-footer:empty { display: none; }
 .plugin-slot-sidebar-header { display: flex; min-width: 0; flex-wrap: wrap; gap: 6px; padding: 0 12px 8px; }
 .plugin-slot-sidebar-footer { display: flex; min-width: 0; flex: 1; align-items: center; gap: 6px; }
 .plugin-slot-error { display: inline-flex; min-width: 0; align-items: center; padding: 3px 6px; border: 1px solid color-mix(in oklab, var(--destructive) 50%, var(--border)); border-radius: 6px; color: var(--destructive); font-size: 10px; }
+.cake-popover-content { position: fixed; z-index: 80; width: max-content; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: auto; padding: 12px; border: 1px solid color-mix(in oklab, var(--accent) 28%, var(--border)); border-radius: 12px; background: color-mix(in oklab, var(--card) 97%, var(--accent)); box-shadow: 0 22px 60px -22px hsl(var(--shadow) / .65), 0 4px 16px -10px hsl(var(--shadow) / .4); color: var(--foreground); animation: cake-popover-arrive 120ms ease-out; }
+@keyframes cake-popover-arrive { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .cake-popover-content { animation: none; } }
 .workspace-header strong { display: block; min-width: 0; max-width: 100%; overflow: hidden; font-size: 13px; font-weight: 630; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-header span { overflow: hidden; color: var(--muted-foreground); font: 10px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .workspace-header > button { flex: 0 0 auto; -webkit-app-region: no-drag; }

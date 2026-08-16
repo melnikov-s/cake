@@ -16,7 +16,7 @@ const sessions: GlobalSessionSummary[] = [
   { id: "running", title: "Background work", created: "2026-08-03T00:00:00.000Z", modified: "2026-08-11T00:00:00.000Z", messageCount: 2, archived: false, workspacePath: "/cake", workspaceName: "Cake" }
 ];
 
-function createBridge(customization: Partial<Pick<AppControlHost, "currentSession" | "customizationState" | "plugins">> = {}) {
+function createBridge(customization: Partial<Pick<AppControlHost, "currentSession" | "customizationState" | "plugins" | "setPluginEnabled" | "setActiveScene">> = {}) {
   const openSession = vi.fn(async () => undefined);
   const createSession = vi.fn(async () => undefined);
   const sendSessionMessage = vi.fn(async () => undefined);
@@ -53,8 +53,8 @@ function createBridge(customization: Partial<Pick<AppControlHost, "currentSessio
     activateCustomization: vi.fn(async () => ({ revision: "a".repeat(64), activating: true as const })),
     rollbackCustomization: vi.fn(async () => ({ schemaVersion: 1 as const, recoveryRequired: false, diagnostics: [], updatedAt: new Date(0).toISOString() })),
     useFactoryCustomization: vi.fn(async () => ({ schemaVersion: 1 as const, recoveryRequired: false, diagnostics: [], updatedAt: new Date(0).toISOString() })),
-    setPluginEnabled: vi.fn(async () => []),
-    setActiveScene: vi.fn(async () => [])
+    setPluginEnabled: customization.setPluginEnabled ?? vi.fn(async () => []),
+    setActiveScene: customization.setActiveScene ?? vi.fn(async () => [])
   });
   return { bridge, openSession, readSession, createSession, sendSessionMessage, abortSession, renameSession, setSessionArchived, setSessionModel };
 }
@@ -189,6 +189,29 @@ describe("AppControlBridge", () => {
     if (!result.ok || result.name !== "get_customization_state") throw new Error("Expected customization state");
     expect(result.state).not.toBe(state);
     expect(result.plugins).not.toBe(plugins);
+  });
+
+  it("returns strict JSON after changing plugin enablement", async () => {
+    const plugin: PluginStatus = {
+      id: "user.environment",
+      name: "Environment",
+      enabled: false,
+      renderer: "renderer.tsx",
+      backend: undefined,
+      scene: undefined,
+      activeScene: false,
+      diagnostics: []
+    };
+    const { bridge } = createBridge({ setPluginEnabled: vi.fn(async () => [plugin]) });
+
+    const result = await bridge.invoke({ name: "set_plugin_enabled", arguments: { pluginId: plugin.id, enabled: false } });
+
+    expect(jsonValueSchema.safeParse(result).success).toBe(true);
+    expect(result).toEqual({
+      ok: true,
+      name: "set_plugin_enabled",
+      plugins: [{ id: plugin.id, name: plugin.name, enabled: false, renderer: "renderer.tsx", activeScene: false, diagnostics: [] }]
+    });
   });
 
   it("opens only a session from the live Cake catalog", async () => {

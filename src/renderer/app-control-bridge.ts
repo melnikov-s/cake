@@ -242,10 +242,10 @@ export class AppControlBridge {
     if (invocation.name === "write_plugin_file") return { ok: true, name: invocation.name, ...await this.host.writePluginFile(invocation.arguments.pluginId, invocation.arguments.path, invocation.arguments.content, invocation.arguments.expectedWorkingRevision) };
     if (invocation.name === "validate_customization") return { ok: true, name: invocation.name, ...await this.host.validateCustomization(invocation.arguments.expectedBaseRevision, invocation.arguments.request, invocation.arguments.expectedSourceRevision) };
     if (invocation.name === "activate_customization") return { ok: true, name: invocation.name, ...await this.host.activateCustomization(invocation.arguments.revision, invocation.arguments.expectedSourceRevision, invocation.arguments.request) };
-    if (invocation.name === "rollback_customization") return { ok: true, name: invocation.name, state: await this.host.rollbackCustomization() };
-    if (invocation.name === "use_factory_customization") return { ok: true, name: invocation.name, state: await this.host.useFactoryCustomization() };
-    if (invocation.name === "set_plugin_enabled") return { ok: true, name: invocation.name, plugins: await this.host.setPluginEnabled(invocation.arguments.pluginId, invocation.arguments.enabled) };
-    if (invocation.name === "set_active_scene") return { ok: true, name: invocation.name, plugins: await this.host.setActiveScene(invocation.arguments.pluginId) };
+    if (invocation.name === "rollback_customization") return { ok: true, name: invocation.name, state: toStrictJson(customizationStateSchema.parse(await this.host.rollbackCustomization())) };
+    if (invocation.name === "use_factory_customization") return { ok: true, name: invocation.name, state: toStrictJson(customizationStateSchema.parse(await this.host.useFactoryCustomization())) };
+    if (invocation.name === "set_plugin_enabled") return { ok: true, name: invocation.name, plugins: toStrictJson(pluginStatusesSchema.parse(await this.host.setPluginEnabled(invocation.arguments.pluginId, invocation.arguments.enabled))) };
+    if (invocation.name === "set_active_scene") return { ok: true, name: invocation.name, plugins: toStrictJson(pluginStatusesSchema.parse(await this.host.setActiveScene(invocation.arguments.pluginId))) };
     if (invocation.name === "list_sessions") return this.listSessions(invocation.arguments);
     if (invocation.name === "search_sessions") return this.searchSessions(invocation.arguments);
     if (invocation.name === "create_session") return this.createSession(invocation.arguments.workspacePath);

@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { reaction } from "r-state-tree";
+import { StoreProvider } from "r-state-tree/react";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { jsonValueSchema } from "../../../../src/ipc/json-contract";
 import type { ChangedFile, SessionPreview, SessionSnapshot } from "../../../../src/ipc/session-contract";
+import { type CakePluginSession, usePluginSession } from "../../../../src/renderer/cake";
 import type { DesktopClient, DesktopClientEvent } from "../../../../src/renderer/desktop-client";
 import { mountRootStore } from "../../../../src/renderer/stores/RootStore";
 import type { ProjectWorkbenchStore } from "../../../../src/renderer/stores/ProjectWorkbenchStore";
@@ -169,6 +173,29 @@ describe("ProjectWorkbenchStore", () => {
     expect(root.appShellStore.surface).toBe("workbench");
     expect(root.appShellStore.selection).toEqual({ kind: "project-session", workspacePath: "/project", sessionId: "session-1" });
     expect(store.activeSession?.sessionId).toBe("session-1");
+    root[Symbol.dispose]();
+  });
+
+  it("gives project-session plugins the selected workspace and native Changes intent", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+    vi.mocked(desktop.client.inspectChanges).mockClear();
+    let pluginSession: CakePluginSession | undefined;
+    function Probe() {
+      pluginSession = usePluginSession();
+      return createElement("span", null, pluginSession.workspacePath);
+    }
+
+    const markup = renderToStaticMarkup(createElement(StoreProvider, { store: root }, createElement(Probe)));
+
+    expect(markup).toContain("/project");
+    expect(pluginSession).toMatchObject({ workspacePath: "/project", sessionId: "session-1" });
+    await pluginSession!.openChanges();
+    expect(desktop.client.inspectChanges).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", sessionId: "session-1" }));
+    root.showGlobalChat();
+    await expect(pluginSession!.openChanges()).rejects.toThrow("no longer selected");
     root[Symbol.dispose]();
   });
 

@@ -30,11 +30,11 @@ describe("plugin command runtime", () => {
     const Later = () => createElement("span", null, "later");
     const Earlier = () => createElement("span", null, "earlier");
     definePlugin({ id: "test.slots", contributions: { Later, Earlier }, slots: {
-      "project-session.content.top-right": [
+      "project-session.right.top": [
         { id: "later", component: Later, order: 20 },
         { id: "earlier", component: Earlier, order: 10 }
       ]
     } });
-    expect(renderToStaticMarkup(createElement(Slot, { name: "project-session.content.top-right" }))).toBe("<span>earlier</span><span>later</span>");
+    expect(renderToStaticMarkup(createElement(Slot, { name: "project-session.right.top" }))).toBe("<span>earlier</span><span>later</span>");
   });
 });

@@ -47,12 +47,14 @@ the Cake reveal intent to focus mounted UI.
 Slot namespaces express ownership. Use `global.*` only for application chrome
 that should remain across Cake Chat, project sessions, and settings. Use
 `project-session.*` for UI belonging to an individual project session.
-`project-session.header.actions` is specifically the toolbar/menu row, while
-“top right of the session” or “top right of the conversation” means
-`project-session.content.top-right` inside the session canvas below the
-toolbar. Header slots are fixed-height action rows, so put only a compact
-trigger there and show expanded content in an anchored popover, dialog, or
-overlay that does not grow the host row.
+`project-session.header.actions` is specifically the toolbar/menu row. Persistent
+session panels belong in the normal-flow `project-session.left.*` and
+`project-session.right.*` rails, each of which has `top`, `middle`, and `bottom`
+outlets. “Top right of the session” means `project-session.right.top`. Rail
+content reserves space and must not position itself over the conversation.
+Header slots are fixed-height action rows, so put only a compact trigger there.
+Use Cake's `Popover` with `PopoverTrigger` and `PopoverContent` when a temporary
+surface should intentionally overlap the application.
 
 A plugin-owned `scene` is an optional complete application replacement. At most
 one enabled plugin scene is selected with `activeScene`. With none selected,
@@ -74,6 +76,14 @@ The `cake` module is version-matched, explicit, and not a compatibility promise.
 It exposes `DefaultScene`, `Slot`, plugin and command helpers, persistence hooks,
 React Store adapters, approved Stores/components, and styling utilities. Do not
 reach into Cake source through relative paths or add duplicate React runtimes.
+
+For a `project-session.*` contribution, call `usePluginSession()` to obtain the
+selected session's `workspacePath`, Pi `sessionId`, and `openChanges()` host
+intent. Pass `workspacePath` explicitly to backend Git or filesystem methods;
+the backend process working directory is not the selected repository. Use
+`openChanges()` to open Cake's native Changes surface instead of simulating a
+click or importing an internal Store. The intent rejects if that session is no
+longer selected.
 
 Write contributions as ordinary React. Use React state and lifecycle for
 plugin-owned UI state. Components reading Cake Stores use `observer` and
