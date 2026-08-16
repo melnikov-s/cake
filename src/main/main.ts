@@ -275,6 +275,32 @@ function reloadAllAfterResponse(renderer: ReturnType<PluginActivationService["st
   setTimeout(() => reloadAllWith(renderer), 100);
 }
 
+async function rebuildAfterPluginConfigurationChange(request: string) {
+  await pluginBackends.stop();
+  const candidate = await pluginActivation.validate(undefined, request);
+  if (candidate.diagnostics.length > 0) {
+    await pluginActivation.recoverFromRejected(candidate.revision);
+    globalChatDriver.refreshRecoveryContext();
+    broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
+    reloadAllAfterResponse({ kind: "factory" });
+    return;
+  }
+
+  const activation = await pluginActivation.activateValidated(candidate.revision, candidate.sourceRevision, request);
+  try {
+    await pluginBackends.activate(candidate.revision);
+  } catch (error) {
+    await pluginActivation.fail(candidate.revision, { phase: "backend", message: error instanceof Error ? error.message : String(error) });
+    globalChatDriver.refreshRecoveryContext();
+    broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
+    reloadAllAfterResponse({ kind: "factory" });
+    return;
+  }
+
+  broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
+  reloadAllAfterResponse({ kind: "custom", revision: candidate.revision, path: activation.indexHtml });
+}
+
 const imageMimeTypes = new Map([
   [".png", "image/png"],
   [".jpg", "image/jpeg"],
@@ -412,12 +438,7 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
   if (request.type === "set-plugin-enabled") {
     const plugins = await pluginActivation.builder.repository.setEnabled(request.pluginId, request.enabled);
     await refreshPluginAgentResources();
-    if (!request.enabled) {
-      await pluginBackends.stop();
-      await pluginActivation.fail(pluginActivation.snapshot().activeRevision, { phase: "discovery", pluginId: request.pluginId, message: `Plugin ${request.pluginId} was disabled. Rebuild the customization to activate the remaining plugins.` });
-      globalChatDriver.refreshRecoveryContext();
-      reloadAllAfterResponse({ kind: "factory" });
-    }
+    await rebuildAfterPluginConfigurationChange(`${request.enabled ? "Enable" : "Disable"} plugin ${request.pluginId}`);
     return desktopResponseSchema.parse({ type: "plugins-listed", plugins });
   }
   if (request.type === "delete-plugin") {

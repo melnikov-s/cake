@@ -221,7 +221,8 @@ The immutable core shell must be able to start without importing user plugins.
 On a plugin activation or runtime failure, Cake opens a vanilla recovery surface
 with Cake Chat, the ordinary transcript and composer, model controls, tool
 activity, exact diagnostics, the failed plugin identity and revision, and safe
-disable/rollback actions. A new Cake Chat session receives the recovery context so the user
+disable-or-repair actions for an enabled failed plugin. Intentionally disabled
+plugins do not enter recovery. A new Cake Chat session receives the recovery context so the user
 and agent can inspect the plugin, edit it with explicit authority, run its
 checks, activate a candidate transactionally, and reload the repaired scene.
 

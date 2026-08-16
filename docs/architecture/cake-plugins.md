@@ -243,8 +243,9 @@ through plugin-scoped optimistic controls. A normal widget request creates only
 a renderer plugin; it does not add or select a scene. Validation diagnostics are
 intermediate feedback. Activation happens only once the requested implementation
 is complete and valid. The factory recovery surface exposes the
-same state plus disable, rollback, rebuild, and factory controls without loading
-plugin code.
+failed enabled plugin with two actions: disable it for now or open Cake Chat to
+repair it. Intentionally disabled plugins rebuild the remaining customization
+without entering recovery.
 
 Visual health remains an authoring requirement. Scenes and contributions must
 reflow without collisions from 320 CSS pixels through wide desktop sizes and

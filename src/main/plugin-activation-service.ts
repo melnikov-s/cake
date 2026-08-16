@@ -147,6 +147,12 @@ export class PluginActivationService {
     if (revision) await this.record("failed", revision, [diagnostic]);
   }
 
+  async recoverFromRejected(revision: string) {
+    this.startupCandidateRevision = undefined;
+    this.state = { ...this.state, validatedRevision: undefined, pendingRevision: undefined, failedRevision: revision, recoveryRequired: true, updatedAt: new Date().toISOString() };
+    await this.persist();
+  }
+
   async rollback() {
     const revision = this.state.failedRevision && this.state.failedRevision !== this.state.activeRevision
       ? this.state.lastKnownGoodRevision

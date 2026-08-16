@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("builds, activates, persists, recovers, and rolls back a plugin renderer", async () => {
+test("builds, activates, persists, recovers, and disables a failed plugin renderer", async () => {
   test.setTimeout(90_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-plugin-smoke-"));
   const cakeHome = join(temporaryRoot, "cake-home");
@@ -54,12 +54,14 @@ test("builds, activates, persists, recovers, and rolls back a plugin renderer", 
     const filesBeforeCrash = await request({ type: "list-plugin-files" }) as { workingRevision: string };
     const broken = await request({ type: "write-plugin-file", pluginId: "smoke.example", path: "scene.tsx", content: `export default function Broken() { throw new Error("PLUGIN_RUNTIME_CRASH"); }\n`, expectedWorkingRevision: filesBeforeCrash.workingRevision }) as { buildRevision: string };
     await validateAndActivate({ expectedBaseRevision: activeV2.state.sourceRevision, expectedSourceRevision: broken.buildRevision, request: "Exercise runtime recovery" });
-    await expect(page.locator("[aria-label='Customization recovery']")).toContainText("Cake opened the default interface", { timeout: 20_000 });
-    await expect(page.locator("[aria-label='Customization recovery']")).toContainText("Smoke Example didn’t load");
-    await expect(page.locator("[aria-label='Customization recovery']")).toContainText("PLUGIN_RUNTIME_CRASH");
-    await page.getByRole("button", { name: "Roll back" }).click();
-    await expect.poll(() => page.evaluate(async () => (await (window as unknown as { cake: { request(input: unknown): Promise<{ state?: { recoveryRequired?: boolean; activeRevision?: string } }> } }).cake.request({ type: "get-customization-state" })).state)).toMatchObject({ recoveryRequired: false, activeRevision: expect.any(String) });
-    await expect(page.locator("#plugin-marker")).toContainText("PLUGIN_V2", { timeout: 20_000 });
+    const recovery = page.locator("[aria-label='Customization recovery']");
+    await expect(recovery).toContainText("Smoke Example failed to load", { timeout: 20_000 });
+    await expect(recovery.getByRole("button")).toHaveText(["Disable for now", "Repair"]);
+    await recovery.getByRole("button", { name: "Disable for now" }).click();
+    await expect.poll(() => page.evaluate(async () => (await (window as unknown as { cake: { request(input: unknown): Promise<{ state?: { recoveryRequired?: boolean; activeRevision?: string } }> } }).cake.request({ type: "get-customization-state" })).state), { timeout: 20_000 }).toMatchObject({ recoveryRequired: false, activeRevision: expect.any(String) });
+    await expect(recovery).toHaveCount(0);
+    await expect(page.locator("#plugin-marker")).toHaveCount(0);
+    await expect.poll(async () => request({ type: "list-plugins" })).toMatchObject({ plugins: [expect.objectContaining({ id: "smoke.example", enabled: false })] });
   } finally {
     await application.close();
   }
