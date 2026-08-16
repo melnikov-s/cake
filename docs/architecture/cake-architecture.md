@@ -185,29 +185,37 @@ privileges.
   stays in Cake's artifact repository rather than the project-session context.
   Electron main compiles that source and runs it in a script-enabled,
   opaque-origin frame whose CSP blocks network and application access.
-- Plugins are ordinary user-owned React source. They become trusted renderer
-  code only through an explicit install or edit action. Their module graph is
-  constrained to their own files, ordinary React, and the version-matched
-  `cake` module, as defined by the `cake-plugin-authoring` skill.
+- Plugins are trusted user-owned software with an optional React renderer and
+  optional unrestricted Node backend. Renderer source becomes trusted UI code
+  only through an explicit install or edit action. Its module graph is limited
+  to its own files, React, and the version-matched `cake` module.
 
-Trusted does not mean privileged beyond the renderer: plugins may use approved
-Cake Stores, components, DOM, and intents, but they may not acquire Node,
-Electron, credentials, raw IPC, raw Pi objects, or compiler/recovery internals.
-Do not weaken the artifact sandbox to implement plugins, and do not force
-trusted plugins through the artifact protocol.
+Renderer code cannot acquire Node, Electron, raw IPC, raw Pi objects, or
+compiler/recovery internals. A plugin backend runs in a dedicated Electron
+utility process with normal Node authority, including filesystem, subprocess,
+Git, credential, and network access. The renderer reaches it only through a
+validated, bounded call/event protocol. This separation preserves renderer and
+main-process reliability; it is not a permissions sandbox. Do not weaken the
+artifact sandbox to implement plugins, and do not force trusted plugins through
+the artifact protocol.
 
-Plugins contribute named React components and related capabilities; they do not
-own fixed application slots or the global layout. A separate user-owned,
-revisioned global scene composes contributions from any number of plugins. Its
-candidate edits use optimistic revision checks and health-gated activation.
+Enabled plugin renderers load automatically and contribute to canonical,
+semantic slots. A plugin may optionally provide the one selected application
+scene: it may render the stock `DefaultScene`, mount the canonical slots in a
+different layout, or provide an entirely custom React tree. With no selected
+plugin scene, Cake uses its core default directly; there is no standalone
+user-owned global scene file. Slot identity stays stable across scenes so
+plugins written for the stock scene remain composable. Candidate edits use
+optimistic revision checks, non-activating validation, and health-gated explicit
+activation.
 The factory-default recovery scene remains immutable core and never imports
-user code.
+user code or starts plugin backends.
 
 ## Plugin failure and self-healing
 
-User-authored code can fail to compile, throw while rendering, or become
-incompatible with a newer Cake build. Plugin failure must never prevent access
-to the agent needed to fix it.
+User-authored code can fail to compile, throw while rendering, crash its backend,
+or become incompatible with a newer Cake build. Plugin failure must never
+prevent access to the agent needed to fix it.
 
 The immutable core shell must be able to start without importing user plugins.
 On a plugin activation or runtime failure, Cake opens a vanilla recovery surface
@@ -242,7 +250,7 @@ recovery on the next boot.
 
 ## Focused references
 
-- `docs/architecture/cake-plugins.md`: executable plugin, global-scene, build,
+- `docs/architecture/cake-plugins.md`: executable plugin, scene, build,
   activation, persistence, command, and recovery contract.
 - `docs/architecture/cake-storage.md`: persistent storage ownership.
 - `docs/architecture/pi-0.84-contract.md`: pinned Pi adapter assumptions.

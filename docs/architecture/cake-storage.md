@@ -7,7 +7,6 @@ installations.
 ```text
 ~/.cake/
 ├── plugins/
-├── scenes/
 ├── recovery/
 ├── state/
 ├── pi/

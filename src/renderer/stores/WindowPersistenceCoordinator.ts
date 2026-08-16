@@ -3,6 +3,8 @@ import type { WindowViewState } from "../../ipc/session-contract";
 import type { DesktopClient } from "../desktop-client";
 import { describeError } from "../error-details";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
+import type { AppShellStore } from "./AppShellStore";
+import type { GlobalChatStore } from "./GlobalChatStore";
 import type { ProjectSessionStore } from "./ProjectSessionStore";
 import type { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
@@ -18,6 +20,8 @@ export interface WindowPersistenceCoordinatorProps {
   sidebar(): SidebarStore;
   settings(): SettingsStore;
   workbench(): ProjectWorkbenchStore;
+  shell(): AppShellStore;
+  globalChat(): GlobalChatStore;
 }
 
 /** Hydrates and persists state that spans multiple renderer workflow owners. */
@@ -99,8 +103,19 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
         if (summary) this.props.registry.ensure(sessionId, summary.workspacePath).chatStore.setDraft(draft);
       }
 
+      const activeConversation = state.activeConversation;
+      if (activeConversation) this.props.shell().restoreConversation(activeConversation);
+      const projectState = activeConversation?.kind === "project-session"
+        ? { ...state, projectPath: activeConversation.workspacePath, selectedSessionId: activeConversation.sessionId }
+        : state;
+
       this.hydrated = true;
-      await this.props.workbench().restoreSelection(state, sessionIndex.sessions);
+      const projectRestore = this.props.workbench().restoreSelection(projectState, sessionIndex.sessions);
+      if (activeConversation?.kind === "cake-chat") {
+        await Promise.all([projectRestore, this.props.globalChat().openSession(activeConversation.sessionId)]);
+      } else {
+        await projectRestore;
+      }
     } catch (error) {
       if (this.signal.aborted) return;
       this.hydrated = true;
@@ -114,6 +129,7 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
     return {
       projectPath: workbench.projectPath,
       selectedSessionId: activeSession?.sessionId,
+      activeConversation: this.props.shell().activeConversation,
       recentProjectPaths: this.props.projects.recentProjectPaths.slice(),
       draft: activeSession?.chatStore.draft ?? "",
       theme: this.props.settings().theme,

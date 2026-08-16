@@ -11,21 +11,27 @@ test("builds, activates, persists, recovers, and rolls back a plugin renderer", 
   const cakeHome = join(temporaryRoot, "cake-home");
   const userData = join(temporaryRoot, "user-data");
   const plugin = join(cakeHome, "plugins", "smoke.example");
-  const scenes = join(cakeHome, "scenes");
-  await Promise.all([mkdir(plugin, { recursive: true }), mkdir(scenes, { recursive: true }), mkdir(userData, { recursive: true })]);
-  await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 1, id: "smoke.example", name: "Smoke Example", entry: "index.tsx" }));
-  const writePlugin = (label: string) => writeFile(join(plugin, "index.tsx"), `import { definePlugin } from "cake"; export default definePlugin({ id: "smoke.example", contributions: { Badge: () => <b>${label}</b> } });\n`);
+  await Promise.all([mkdir(plugin, { recursive: true }), mkdir(userData, { recursive: true })]);
+  await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 2, id: "smoke.example", name: "Smoke Example", renderer: "index.tsx", backend: "backend.ts", scene: "scene.tsx", activeScene: true }));
+  await writeFile(join(plugin, "backend.ts"), `import { execFile } from "node:child_process"; import { readFile } from "node:fs/promises"; import { promisify } from "node:util"; import { definePluginBackend } from "cake/backend"; const run = promisify(execFile); export default definePluginBackend({ methods: { async capabilities() { await readFile(new URL(import.meta.url)); const { stdout } = await run("git", ["--version"]); return { marker: "BACKEND_OK", git: stdout.trim() }; } } });\n`);
+  const writePlugin = (label: string) => writeFile(join(plugin, "index.tsx"), `import { useState } from "react"; import { definePlugin, usePluginBackend } from "cake"; function Badge() { const backend = usePluginBackend("smoke.example"); const [result, setResult] = useState(""); return <button id="plugin-marker" onClick={() => void backend.call("capabilities").then((value) => setResult(JSON.stringify(value)))}>${label} {result}</button>; } export default definePlugin({ id: "smoke.example", contributions: { Badge }, slots: { "global.sidebar.header": [{ id: "badge", component: Badge }] } });\n`);
   await writePlugin("PLUGIN_V1");
-  await writeFile(join(scenes, "global.tsx"), `import type { ReactNode } from "react"; import plugin from "plugin:smoke.example"; const Badge = plugin.contributions.Badge; export default function Scene({ children }: { children: ReactNode }) { return <><div id="plugin-marker"><Badge /></div>{children}</>; }\n`);
+  await writeFile(join(plugin, "scene.tsx"), `import { DefaultScene } from "cake"; export default function Scene() { return <DefaultScene />; }\n`);
 
   const application = await electron.launch({ args: [repositoryRoot], cwd: repositoryRoot, env: { ...process.env, CAKE_ELECTRON_SMOKE: "1", CAKE_ELECTRON_USER_DATA: userData, CAKE_HOME: cakeHome } });
   try {
     const page = await application.firstWindow();
     await page.waitForLoadState("domcontentloaded");
     const request = (input: unknown) => page.evaluate(async (payload) => (window as unknown as { cake: { request(value: unknown): Promise<unknown> } }).cake.request(payload), input);
-    const build = (input: Record<string, unknown> = {}) => request({ type: "build-customization", ...input });
-    await build();
+    const validateAndActivate = async (input: Record<string, unknown> = {}) => {
+      const validation = await request({ type: "validate-customization", ...input }) as { revision: string; sourceRevision: string; valid: boolean; diagnostics: unknown[] };
+      if (!validation.valid) throw new Error(`Validation failed: ${JSON.stringify(validation.diagnostics)}`);
+      await request({ type: "activate-customization", revision: validation.revision, expectedSourceRevision: validation.sourceRevision, request: input.request ?? "Smoke test activation" });
+    };
+    await validateAndActivate();
     await expect(page.locator("#plugin-marker")).toContainText("PLUGIN_V1", { timeout: 20_000 });
+    await page.locator("#plugin-marker").click();
+    await expect(page.locator("#plugin-marker")).toContainText("BACKEND_OK", { timeout: 20_000 });
     await expect.poll(() => page.evaluate(async () => (await (window as unknown as { cake: { request(input: unknown): Promise<{ state?: { pendingRevision?: string; activeRevision?: string } }> } }).cake.request({ type: "get-customization-state" })).state)).toMatchObject({ pendingRevision: undefined, activeRevision: expect.any(String) });
 
     await page.evaluate(async () => {
@@ -36,18 +42,18 @@ test("builds, activates, persists, recovers, and rolls back a plugin renderer", 
     });
 
     const sourceV1 = await request({ type: "get-customization-state" }) as { state: { sourceRevision: string } };
-    const filesV1 = await request({ type: "list-customization-files" }) as { workingRevision: string; files: string[] };
+    const filesV1 = await request({ type: "list-plugin-files" }) as { workingRevision: string; files: string[] };
     expect(filesV1.files).toContain("plugins/smoke.example/index.tsx");
-    expect(await request({ type: "read-customization-file", path: "plugins/smoke.example/index.tsx" })).toMatchObject({ content: expect.stringContaining("PLUGIN_V1") });
-    const sourceV2 = `import { definePlugin } from "cake"; export default definePlugin({ id: "smoke.example", contributions: { Badge: () => <b>PLUGIN_V2</b> } });\n`;
-    const filesV2 = await request({ type: "write-customization-file", path: "plugins/smoke.example/index.tsx", content: sourceV2, expectedWorkingRevision: filesV1.workingRevision }) as { buildRevision: string };
-    await build({ expectedBaseRevision: sourceV1.state.sourceRevision, expectedSourceRevision: filesV2.buildRevision, request: "Upgrade smoke plugin to V2" });
+    expect(await request({ type: "read-plugin-file", pluginId: "smoke.example", path: "index.tsx" })).toMatchObject({ content: expect.stringContaining("PLUGIN_V1") });
+    const sourceV2 = `import { definePlugin } from "cake"; const Badge = () => <b id="plugin-marker">PLUGIN_V2</b>; export default definePlugin({ id: "smoke.example", contributions: { Badge }, slots: { "global.sidebar.header": [{ id: "badge", component: Badge }] } });\n`;
+    const filesV2 = await request({ type: "write-plugin-file", pluginId: "smoke.example", path: "index.tsx", content: sourceV2, expectedWorkingRevision: filesV1.workingRevision }) as { buildRevision: string };
+    await validateAndActivate({ expectedBaseRevision: sourceV1.state.sourceRevision, expectedSourceRevision: filesV2.buildRevision, request: "Upgrade smoke plugin to V2" });
     await expect(page.locator("#plugin-marker")).toContainText("PLUGIN_V2", { timeout: 20_000 });
     await expect.poll(() => page.evaluate(async () => (await (window as unknown as { cake: { request(input: unknown): Promise<{ state?: { pendingRevision?: string; activeRevision?: string } }> } }).cake.request({ type: "get-customization-state" })).state)).toMatchObject({ pendingRevision: undefined, activeRevision: expect.any(String) });
     const activeV2 = await request({ type: "get-customization-state" }) as { state: { sourceRevision: string } };
-    const filesBeforeCrash = await request({ type: "list-customization-files" }) as { workingRevision: string };
-    const broken = await request({ type: "write-customization-file", path: "scenes/global.tsx", content: `import type { ReactNode } from "react"; export default function Broken(_props: { children: ReactNode }) { throw new Error("PLUGIN_RUNTIME_CRASH"); }\n`, expectedWorkingRevision: filesBeforeCrash.workingRevision }) as { buildRevision: string };
-    await build({ expectedBaseRevision: activeV2.state.sourceRevision, expectedSourceRevision: broken.buildRevision, request: "Exercise runtime recovery" });
+    const filesBeforeCrash = await request({ type: "list-plugin-files" }) as { workingRevision: string };
+    const broken = await request({ type: "write-plugin-file", pluginId: "smoke.example", path: "scene.tsx", content: `export default function Broken() { throw new Error("PLUGIN_RUNTIME_CRASH"); }\n`, expectedWorkingRevision: filesBeforeCrash.workingRevision }) as { buildRevision: string };
+    await validateAndActivate({ expectedBaseRevision: activeV2.state.sourceRevision, expectedSourceRevision: broken.buildRevision, request: "Exercise runtime recovery" });
     await expect(page.locator("[aria-label='Customization recovery']")).toContainText("Cake opened the default interface", { timeout: 20_000 });
     await expect(page.locator("[aria-label='Customization recovery']")).toContainText("Smoke Example didn’t load");
     await expect(page.locator("[aria-label='Customization recovery']")).toContainText("PLUGIN_RUNTIME_CRASH");

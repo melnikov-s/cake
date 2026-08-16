@@ -11,7 +11,6 @@ describe("resolveCakePaths", () => {
       piWidgetSessions: "/Users/fixture/.cake/pi/widget-sessions",
       piGlobalChatSessions: "/Users/fixture/.cake/pi/global-chat/sessions",
       plugins: "/Users/fixture/.cake/plugins",
-      scenes: "/Users/fixture/.cake/scenes",
       recovery: "/Users/fixture/.cake/recovery",
       state: "/Users/fixture/.cake/state"
     });

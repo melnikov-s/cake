@@ -198,6 +198,15 @@
 .workspace-header { display: flex; width: 100%; max-width: 100%; min-width: 0; contain: inline-size; align-items: center; justify-content: space-between; overflow: hidden; padding: 0 20px; border-bottom: 1px solid color-mix(in oklab, var(--border) 65%, transparent); -webkit-app-region: drag; }
 .workspace-header > div:first-child { display: flex; width: 0; min-width: 0; flex: 1 1 0%; align-items: baseline; gap: 12px; overflow: hidden; }
 .header-pane-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; }
+.workspace-header-actions { display: flex; min-width: 0; flex: 0 1 auto; align-items: center; gap: 6px; -webkit-app-region: no-drag; }
+.plugin-slot-project-session-header { position: relative; display: flex; min-width: 0; height: 30px; max-height: 30px; align-items: center; gap: 4px; overflow: visible; }
+.project-session-workbench { position: relative; }
+.plugin-slot-project-session-content-top-right { position: absolute; z-index: 12; top: 16px; right: 16px; display: flex; max-width: calc(100% - 32px); align-items: flex-start; justify-content: flex-end; pointer-events: none; }
+.plugin-slot-project-session-content-top-right > * { pointer-events: auto; }
+.plugin-slot-sidebar-header:empty, .plugin-slot-sidebar-footer:empty { display: none; }
+.plugin-slot-sidebar-header { display: flex; min-width: 0; flex-wrap: wrap; gap: 6px; padding: 0 12px 8px; }
+.plugin-slot-sidebar-footer { display: flex; min-width: 0; flex: 1; align-items: center; gap: 6px; }
+.plugin-slot-error { display: inline-flex; min-width: 0; align-items: center; padding: 3px 6px; border: 1px solid color-mix(in oklab, var(--destructive) 50%, var(--border)); border-radius: 6px; color: var(--destructive); font-size: 10px; }
 .workspace-header strong { display: block; min-width: 0; max-width: 100%; overflow: hidden; font-size: 13px; font-weight: 630; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-header span { overflow: hidden; color: var(--muted-foreground); font: 10px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .workspace-header > button { flex: 0 0 auto; -webkit-app-region: no-drag; }

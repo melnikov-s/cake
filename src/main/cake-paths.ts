@@ -9,7 +9,6 @@ export interface CakePaths {
   piWidgetSessions: string;
   piGlobalChatSessions: string;
   plugins: string;
-  scenes: string;
   recovery: string;
   state: string;
 }
@@ -33,7 +32,6 @@ export function resolveCakePaths(options: ResolveCakePathsOptions = {}): CakePat
     piWidgetSessions: join(piAgent, "widget-sessions"),
     piGlobalChatSessions: join(piAgent, "global-chat", "sessions"),
     plugins: join(home, "plugins"),
-    scenes: join(home, "scenes"),
     recovery: join(home, "recovery"),
     state: join(home, "state")
   };

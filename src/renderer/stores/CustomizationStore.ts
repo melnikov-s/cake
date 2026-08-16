@@ -3,11 +3,13 @@ import type { CustomizationState, PluginStatus } from "../../plugin/plugin-contr
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 
 type CustomizationClient = Pick<DesktopClient,
-  | "buildCustomization"
+  | "validateCustomization"
+  | "activateCustomization"
   | "getCustomizationState"
   | "listPlugins"
   | "rollbackCustomization"
   | "setPluginEnabled"
+  | "setActiveScene"
   | "deletePlugin"
   | "useFactoryCustomization"
 >;
@@ -35,8 +37,9 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
     if (this.busy) return;
     this.busy = true; this.error = undefined;
     try {
-      const result = await this.props.client.buildCustomization(this.state?.sourceRevision, "Rebuild customization from the recovery interface");
+      const result = await this.props.client.validateCustomization(this.state?.sourceRevision, "Rebuild customization from the recovery interface");
       if (result.diagnostics.length) this.error = "The customization candidate did not pass its checks.";
+      else await this.props.client.activateCustomization(result.revision, result.sourceRevision, "Activate customization from the recovery interface");
     } catch (error) { this.error = error instanceof Error ? error.message : String(error); }
     finally { this.busy = false; }
   }
@@ -59,6 +62,14 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
     if (this.busy) return;
     this.busy = true; this.error = undefined;
     try { const plugins = await this.props.client.setPluginEnabled(pluginId, enabled); this.plugins.splice(0, this.plugins.length, ...plugins); }
+    catch (error) { this.error = error instanceof Error ? error.message : String(error); }
+    finally { this.busy = false; }
+  }
+
+  async setActiveScene(pluginId?: string) {
+    if (this.busy) return;
+    this.busy = true; this.error = undefined;
+    try { const plugins = await this.props.client.setActiveScene(pluginId); this.plugins.splice(0, this.plugins.length, ...plugins); }
     catch (error) { this.error = error instanceof Error ? error.message : String(error); }
     finally { this.busy = false; }
   }

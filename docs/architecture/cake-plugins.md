@@ -1,9 +1,17 @@
 # Cake plugins and customization
 
-Cake plugins are trusted, user-owned React source. Cake core owns discovery,
-typechecking, the candidate renderer build, health-gated activation, persistence,
-and immutable recovery. There is no `eval`, Jiti loader, standalone plugin
-bundle, or second React runtime.
+Cake plugins are trusted, user-owned software. A plugin may have a React
+renderer, an unrestricted Node backend, an optional whole-application scene, or
+any combination. Cake owns discovery,
+typechecking and bundling, process lifecycle, health-gated activation,
+persistence, and immutable recovery.
+
+The renderer and backend are deliberately separate. Renderer code runs in
+Cake's sandboxed renderer and composes the UI. Backend code runs in its own
+Electron utility process with normal Node capabilities: filesystem reads and
+writes, Git and other subprocesses, and network access. This is process
+isolation for application reliability, not a permission sandbox. Installing or
+enabling a plugin is therefore equivalent to trusting local executable code.
 
 ## Source layout and manifest
 
@@ -12,49 +20,60 @@ The default root is `~/.cake` or the absolute `CAKE_HOME` override:
 ```text
 plugins/<plugin-id>/
   cake-plugin.json
-  index.tsx
+  renderer.tsx                  # optional; any relative path is valid
+  backend.ts                    # optional; any relative path is valid
+  scene.tsx                     # optional whole-application replacement
   skills/<skill>/SKILL.md       # optional embedded-Pi resource
   prompts/*                     # optional embedded-Pi resources
   pi-extensions/*               # optional embedded-Pi resources
   styles/*                      # optional renderer source
   assets/*                      # optional renderer source
-scenes/global.tsx
 recovery/
-  builds/<sha256>/              # complete immutable renderer candidates
+  builds/<sha256>/              # renderer plus compiled plugin backends
   sources/<sha256>/             # exact regular source files for repair
   history/*.json                # request/base/result/diagnostic provenance
   customization-state.json      # activation journal
 state/plugin-state/             # versioned namespaced JSON persistence
 ```
 
-`cake-plugin.json` is strict version 1 metadata. `name` is the human-readable
-label shown in Cake; the directory name and `id` must match. IDs are stable,
-namespaced, lowercase identifiers such as `acme.calendar` and are not used as
-the primary UI label.
+`cake-plugin.json` is strict version 2 metadata. The directory name and `id`
+must match. At least one of `renderer`, `backend`, and `scene` is required.
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "acme.calendar",
   "name": "Acme Calendar",
-  "entry": "index.tsx",
+  "renderer": "renderer.tsx",
+  "backend": "backend.ts",
+  "scene": "scene.tsx",
+  "activeScene": false,
   "enabled": true
 }
 ```
 
-The entry exports one typed definition. Headless commands register when that
-entry is imported:
+## Renderer plugins and slots
+
+Every enabled renderer entry is imported automatically. A scene never needs to
+know which plugins are installed. The entry calls `definePlugin` and declares
+slot contributions, reusable components, and optional commands:
 
 ```tsx
-import { definePlugin } from "cake";
+import { Button, definePlugin, usePluginBackend } from "cake";
 
-function Calendar() {
-  return <section>Calendar</section>;
+function BranchButton() {
+  const backend = usePluginBackend("acme.calendar");
+  return <Button onClick={() => void backend.call("currentBranch", null)}>Branch</Button>;
 }
 
 export default definePlugin({
   id: "acme.calendar",
-  contributions: { Calendar },
+  contributions: { BranchButton },
+  slots: {
+    "project-session.header.actions": [
+      { id: "branch", component: BranchButton, order: 20 }
+    ]
+  },
   commands: {
     open: {
       description: "Open the calendar",
@@ -66,124 +85,154 @@ export default definePlugin({
 });
 ```
 
-The single user-owned global scene composes enabled plugins with generated
-`plugin:<id>` imports. It must keep `children` mounted; those children contain
-the normal Cake application and the render-health reporter.
+Canonical slots are stable semantic outlets rather than coordinates:
+
+- `global.sidebar.header`
+- `global.sidebar.footer`
+- `project-session.header.actions`
+- `project-session.content.top-right`
+- `project-session.transcript.after`
+- `project-session.composer.before`
+- `project-session.composer.actions`
+- `project-session.status`
+
+The namespace is the ownership boundary. `global.*` outlets belong to
+application chrome and remain visible across Cake Chat, project sessions, and
+settings. `project-session.*` outlets exist only inside a selected project
+session. `project-session.header.actions` is specifically the toolbar/menu row.
+“Top right of the session” or “top right of the conversation” means
+`project-session.content.top-right`, which is inside the session canvas below
+that toolbar. Global plugins use the global sidebar outlets instead.
+
+Header outlets are compact action rows with a fixed height. Contributions may
+render a button, badge, or other compact trigger there. Expanded content must
+open as a popover, dialog, or overlay anchored to that trigger; it must not grow
+the header row or displace Cake-owned controls.
+
+The content-top-right outlet is an overlay anchored to the session canvas. Its
+contributions must remain responsive within the host width and must not create
+a second toolbar row.
+
+Contributions are ordered by numeric `order`, plugin ID, then contribution ID.
+Each contribution has its own error boundary. Settings reports a contributed
+slot that is absent from a custom scene or mounted more than once.
+
+Renderer source may import only `cake`, React and its JSX runtimes, React DOM,
+Zod, and relative files inside that plugin. It has no Node or Electron globals.
+That constraint protects Cake's renderer boundary; it does not limit the
+plugin's backend.
+
+## Replaceable scenes
+
+Scene replacement is an optional plugin capability, not a standalone global
+file. At most one enabled plugin has `activeScene: true`. Cake renders that
+plugin's scene default export under the immutable providers and health boundary.
+When no plugin scene is active, Cake renders its core `DefaultScene` directly.
+
+The stock scene is:
 
 ```tsx
-import type { ReactNode } from "react";
-import calendar from "plugin:acme.calendar";
+import { DefaultScene } from "cake";
 
-const Calendar = calendar.contributions.Calendar;
-
-export default function GlobalScene({ children }: { children: ReactNode }) {
-  return <><aside><Calendar /></aside>{children}</>;
+export default function Scene() {
+  return <DefaultScene />;
 }
 ```
 
-Both plugin files and scene files may import only `cake`, `react` and its JSX
-runtimes, `react-dom`, `zod`, or relative files that remain inside their own
-root. The resolver rejects other bare modules, absolute paths, `..` escapes,
-and symlink escapes. Only scene source may import `plugin:<id>`. Plugin code has
-no Electron, Node, raw IPC, raw Pi, compiler, activation, credential, or
-recovery access.
+`DefaultScene` mounts every canonical slot. A custom scene may render
+`DefaultScene`, build an entirely different React tree, and/or place outlets
+with `<Slot name="project-session.header.actions" />`. Keeping the same slot names lets
+ordinary plugins continue working in a fully custom scene. Immutable recovery
+is outside the replaceable scene and never evaluates user code.
 
-## Public renderer API
+## Unrestricted backends
 
-The version-matched `cake` module exports `definePlugin`, `useCommand`,
-`useContributionReveal`, `observer`, `useStore`, `useOptionalStore`, approved
-application intents through `RootStore`, `Button`, `cn`, and global/session
-persistence hooks. Workflow Stores remain internal rather than becoming a
-traversable public API. Plugin UI state normally belongs in React. A component
-reading a Cake Store must be wrapped in `observer`.
+A backend exports `definePluginBackend(...)` from `cake/backend`:
+
+```ts
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { definePluginBackend } from "cake/backend";
+
+const exec = promisify(execFile);
+
+export default definePluginBackend({
+  methods: {
+    async currentBranch(input, { signal }) {
+      const cwd = String((input as { cwd?: string } | null)?.cwd ?? process.cwd());
+      const { stdout } = await exec("git", ["branch", "--show-current"], { cwd, signal });
+      return stdout.trim();
+    }
+  }
+});
+```
+
+Backends may import Node built-ins, packages resolvable from their source tree,
+and arbitrary relative files. They can spawn programs, change repositories,
+read credentials available to Cake, and make network requests. Cake does not
+declare separate Git, filesystem, or network permissions.
+
+Each enabled backend gets a dedicated utility process. Calls and events cross a
+validated JSON protocol with bounded payloads. `usePluginBackend(pluginId)`
+returns `call(method, input, { signal? })` and `subscribe(name, listener)`.
+Cancellation aborts the backend method's signal. A backend crash is attributed
+to its plugin and selects immutable recovery; it cannot crash the Electron main
+process directly.
+
+## Public renderer API and state
+
+The version-matched `cake` module exports `DefaultScene`, `Slot`,
+`definePlugin`, `usePluginBackend`, commands, persistence hooks, React Store
+adapters, approved Stores and components, and styling utilities. Workflow
+Stores remain internal. Components reading Cake state must use `observer`.
 
 Mounted commands registered with `useCommand(pluginId, name, command)` are
 removed on unmount. Headless commands come from `definePlugin`. Internal names
-are always `<plugin-id>.<command>`; `/open` is offered only when exactly one
-plugin owns that alias. Async commands receive an `AbortSignal` and are aborted
-when the renderer is replaced. `context.reveal()` pairs with
-`useContributionReveal()` without imposing fixed layout slots.
+are `<plugin-id>.<command>`; a short alias is offered only when unique. Async
+commands receive an `AbortSignal`.
 
-`usePluginGlobalState(pluginId, key, schema, initialValue)` and
-`usePluginSessionState(pluginId, key, schema, initialValue)` validate persisted
-JSON through the supplied Zod schema and suspend the contribution
-until the stored JSON value is loaded, so dependent effects do not run against
-a temporary default. Writes use React updater semantics and optimistic storage
-versions. Global records are keyed by plugin and key; session records also use
-the Pi session ID. Old or unreachable records are retained for rollback and
-semantic repair.
+`usePluginGlobalState` and `usePluginSessionState` validate persisted JSON with
+the supplied Zod schema. Global records are keyed by plugin and key; session
+records also use the Pi session ID. Unreachable records remain available for
+rollback and semantic repair.
 
-## How bundles are built
+## Build, activation, and recovery
 
-Plugin source is never emitted as an independent package. A rebuild computes
-separate SHA-256 identities for the customization source and the complete Cake
-renderer graph, snapshots the user sources, typechecks them against the
-authoring source shipped with this exact Cake version, then invokes Vite on
-Cake's complete renderer entry. The immutable build revision combines both
-identities, so Cake automatically rebuilds an otherwise healthy active scene
-after the host renderer changes instead of loading stale bundled core code.
-Runtime aliases force React, React DOM, Zod, and `cake` to resolve from the
-running Cake installation. The result is:
+A validation hashes and snapshots every enabled plugin, typechecks
+renderer source against the exact shipped Cake API, builds one renderer graph,
+and separately bundles each backend for Node. It does not reload Cake or start a
+backend. The build revision also includes Cake core, so host changes invalidate
+old candidates.
 
-```text
-~/.cake/recovery/builds/<revision>/index.html
-```
+A validated, unchanged revision must then be explicitly activated. It is pending
+until its backends start and its renderer imports
+and renders. Only then does Cake record it as active and last-known-good. A
+source conflict, diagnostic, backend startup failure, missing health report,
+render error, backend crash, or renderer crash selects the immutable factory
+UI. Broken source, diagnostics, persistence, and previous builds are retained.
 
-In the running app, use **Build and retry** in the immutable customization
-recovery panel. The same operation is available to Cake Chat through
-`build_customization`. Cake Chat has no general filesystem or shell access;
-it uses the curated `list_customization_files`, `read_customization_file`, and
-`write_customization_file` controls. Every write supplies the latest
-`workingRevision`. The final build supplies the original active/source head as
-`expectedBaseRevision` and the final write's `buildRevision` as
-`expectedSourceRevision`, plus a provenance request. A changed working tree or
-head is rejected instead of overwriting concurrent edits.
+Cake Chat first reads the version-matched authoring reference, then edits plugins
+through plugin-scoped optimistic controls. A normal widget request creates only
+a renderer plugin; it does not add or select a scene. Validation diagnostics are
+intermediate feedback. Activation happens only once the requested implementation
+is complete and valid. The factory recovery surface exposes the
+same state plus disable, rollback, rebuild, and factory controls without loading
+plugin code.
 
-During a user-requested create or edit, a failed typecheck or bundle is
-intermediate authoring feedback. Cake Chat inspects the diagnostics, repairs
-the source, and repeats the write/build cycle without asking the user to approve
-each attempt. It yields only after activation begins or it encounters a genuine
-blocker. The recovery panel and an offer to repair are for a customization that
-had previously activated and later became incompatible or failed to load; once
-repair is requested, its build iteration is autonomous as well.
+Visual health remains an authoring requirement. Scenes and contributions must
+reflow without collisions from 320 CSS pixels through wide desktop sizes and
+with long content. Use normal-flow wrapping flex/grid, `min-width: 0` where
+needed, and avoid fixed positioning for structural content.
 
-Visual health is part of authoring even though compilation cannot prove it.
-Custom scenes and contributions must remain collision-free from 320 CSS pixels
-through wide desktop sizes and when labels or values expand. Structural content
-uses wrapping, normal-flow flex or grid layout, reserves explicit space for
-icons and decorations, and keeps shrinkable children at `min-width: 0`.
-Absolute or fixed positioning is not used for structural text, controls,
-navigation, or Cake-owned children. The authoring agent applies these checks
-before considering a customization complete.
-
-`pnpm build` at the Cake repository root builds the immutable desktop app and
-then writes `out/authoring`, the read-only version-matched source/skill snapshot
-used by packaged Cake. It does not activate files in the developer's real
-`~/.cake` directory. Focused host verification is:
+Focused host verification:
 
 ```sh
-pnpm exec vitest run tests/app/main/plugin-build-service.test.ts
+pnpm typecheck
+pnpm exec vitest run tests/app/main/plugin-build-service.test.ts tests/app/renderer/plugin-runtime.test.ts
+pnpm build
 pnpm exec playwright test tests/electron/plugin-customization.smoke.spec.ts
 ```
 
-## Activation and recovery
-
-A successful bundle is still only a pending candidate. Cake loads its
-`index.html`, waits up to ten seconds for the exact revision to import and
-render, then atomically records it as active and last-known-good. Source changes
-during a build, an optimistic-head conflict, type/bundle failure, an interrupted
-pending activation, a missing health report, an error boundary report, or an
-Electron renderer-process crash selects immutable factory UI and records an
-attributed diagnostic.
-
-Factory UI contains the ordinary Cake application, Cake Chat, model/thinking
-controls, diagnostics, plugin enable/disable, rebuild, rollback, and factory
-selection. It evaluates no user scene or plugin code. Cake Chat is recreated
-with exact recovery context and has curated controls to inspect state, build an
-exact candidate, disable a plugin, roll back, or use factory UI. Broken source,
-builds, snapshots, provenance, and persistence are preserved.
-
-Enabled plugin skills, prompts, and Pi extensions are discovered only from the
-Cake plugin root and passed explicitly to embedded Pi. Changes restart Cake's
-workspace Pi hosts. Standalone Pi resources are not discovered because every
-Cake runtime uses the isolated `<CAKE_HOME>/pi` agent and session roots.
+Enabled plugin skills, prompts, and Pi extensions are still discovered only
+from the Cake plugin root and passed explicitly to embedded Pi. They are
+separate from the unrestricted Node backend.

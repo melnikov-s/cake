@@ -59,13 +59,14 @@ function Usage({ store }: { store: ChatStore }) {
   return <div className="session-usage" aria-label={`${contextLabel}, session cost $${usage.cost.toFixed(3)}`} title={`${contextTitle} · ${usage.tokens.total.toLocaleString()} billed tokens`}><svg className="context-gauge" viewBox="0 0 36 36" aria-hidden="true"><circle className="context-gauge-track" cx="18" cy="18" r="15.5" pathLength="100" /><circle className="context-gauge-value" cx="18" cy="18" r="15.5" pathLength="100" strokeDasharray={`${Math.min(100, percent ?? 0)} 100`} /><text x="18" y="18">{percent === undefined ? "—" : `${percent}%`}</text></svg><span className="session-cost">${usage.cost.toFixed(3)}</span></div>;
 }
 
-export const Chat = observer(function Chat({ store, transcript, empty, footer, status, composerContent, className = "", embedded = false, composerOnly = false, onSubmitted }: {
+export const Chat = observer(function Chat({ store, transcript, empty, footer, status, composerContent, pluginActions, className = "", embedded = false, composerOnly = false, onSubmitted }: {
   store: ChatStore;
   transcript?: ReactNode;
   empty?: ReactNode;
   footer?: ReactNode;
   status?: ReactNode;
   composerContent?: ReactNode;
+  pluginActions?: ReactNode;
   className?: string;
   embedded?: boolean;
   composerOnly?: boolean;
@@ -88,6 +89,7 @@ export const Chat = observer(function Chat({ store, transcript, empty, footer, s
       void store.addPastedImages(images);
     }} onSubmit={(value) => void submit(value)} />} toolbarLeading={store.canAttach && <button type="button" className="icon-button" aria-label="Attach files" title="Attach files" onClick={() => void store.addAttachments()}><PaperclipIcon /></button>} toolbarActions={<>
       <Usage store={store} />
+      {pluginActions}
       {store.streaming && store.canAbort && <Button variant="ghost" size="sm" type="button" onClick={() => void store.abort()}>Stop</Button>}
       {store.streaming && store.allowSteer && <Button variant="outline" size="sm" type="button" disabled={!store.canSubmit} onClick={() => void submit(undefined, "steer")}>Steer</Button>}
       <Button className="send-button" size="sm" type="submit" disabled={!store.canSubmit}>{store.submitting ? "Sending…" : store.streaming ? "Queue" : "Send"}<SendIcon /></Button>

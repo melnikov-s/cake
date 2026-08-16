@@ -19,6 +19,7 @@ import { resolveCakePaths } from "./cake-paths";
 import { PluginBuildService } from "./plugin-build-service";
 import { PluginActivationService } from "./plugin-activation-service";
 import { PluginPersistenceRepository } from "./plugin-persistence-repository";
+import { PluginBackendManager } from "./plugin-backend-manager";
 import { compileInlineWidget, extractRepairedWidget } from "./inline-widget-service";
 import { handleInlineWidgetScheme, publishInlineWidget, registerInlineWidgetScheme } from "./inline-widget-protocol";
 
@@ -54,6 +55,20 @@ const applicationRoot = app.getAppPath();
 const authoringRoot = resolve(process.env.CAKE_AUTHORING_ROOT || (app.isPackaged ? join(applicationRoot, "out", "authoring") : join(import.meta.dirname, "../..")));
 process.env.CAKE_AUTHORING_ROOT = authoringRoot;
 const pluginActivation = new PluginActivationService(cakePaths, new PluginBuildService(cakePaths, authoringRoot, applicationRoot));
+const pluginBackends = new PluginBackendManager(
+  pluginActivation.builder,
+  join(import.meta.dirname, "plugin-backend-host.js"),
+  broadcast,
+  (pluginId, message) => {
+    const revision = pluginActivation.snapshot().activeRevision;
+    void pluginActivation.fail(revision, { phase: "backend", pluginId, message }).then(async () => {
+      await pluginBackends.stop();
+      globalChatDriver.refreshRecoveryContext();
+      broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
+      reloadAllAfterResponse({ kind: "factory" });
+    });
+  }
+);
 const pluginPersistence = new PluginPersistenceRepository(cakePaths.state, () => pluginActivation.snapshot().activeRevision);
 interface PluginAgentResources { skills: string[]; prompts: string[]; extensions: string[] }
 let pluginAgentResources: PluginAgentResources = { skills: [], prompts: [], extensions: [] };
@@ -323,18 +338,32 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
   const owner = BrowserWindow.fromWebContents(event.sender);
   const slot = windowSlots.get(event.sender.id) ?? 0;
   if (request.type === "get-customization-state") return desktopResponseSchema.parse({ type: "customization-state", state: pluginActivation.snapshot() });
-  if (request.type === "list-customization-files") return desktopResponseSchema.parse({ type: "customization-files", ...await pluginActivation.builder.repository.authoringSnapshot() });
-  if (request.type === "read-customization-file") return desktopResponseSchema.parse({ type: "customization-file", path: request.path, content: await pluginActivation.builder.repository.readAuthoringFile(request.path) });
-  if (request.type === "write-customization-file") return desktopResponseSchema.parse({ type: "customization-files", ...await pluginActivation.builder.repository.writeAuthoringFile(request.path, request.content, request.expectedWorkingRevision) });
-  if (request.type === "build-customization") {
-    const candidate = await pluginActivation.prepare(request.expectedBaseRevision, request.request, request.expectedSourceRevision);
-    const activating = candidate.diagnostics.length === 0;
-    const response = desktopResponseSchema.parse({ type: "customization-build", revision: candidate.revision, diagnostics: candidate.diagnostics, activating });
+  if (request.type === "get-plugin-authoring-reference") return desktopResponseSchema.parse({ type: "plugin-authoring-reference", reference: await pluginActivation.builder.authoringReference() });
+  if (request.type === "list-plugin-files") return desktopResponseSchema.parse({ type: "plugin-files", ...await pluginActivation.builder.repository.authoringSnapshot() });
+  if (request.type === "create-plugin") return desktopResponseSchema.parse({ type: "plugin-files", ...await pluginActivation.builder.repository.createPlugin({ id: request.pluginId, name: request.name, renderer: request.renderer, backend: request.backend, scene: request.scene }, request.expectedWorkingRevision) });
+  if (request.type === "read-plugin-file") return desktopResponseSchema.parse({ type: "plugin-file", pluginId: request.pluginId, path: request.path, content: await pluginActivation.builder.repository.readPluginFile(request.pluginId, request.path) });
+  if (request.type === "write-plugin-file") return desktopResponseSchema.parse({ type: "plugin-files", ...await pluginActivation.builder.repository.writePluginFile(request.pluginId, request.path, request.content, request.expectedWorkingRevision) });
+  if (request.type === "validate-customization") {
+    const candidate = await pluginActivation.validate(request.expectedBaseRevision, request.request, request.expectedSourceRevision);
+    const response = desktopResponseSchema.parse({ type: "customization-validation", revision: candidate.revision, sourceRevision: candidate.sourceRevision, diagnostics: candidate.diagnostics, valid: candidate.diagnostics.length === 0 });
     broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
-    if (activating) {
-      await refreshPluginAgentResources();
-      reloadAllAfterResponse({ kind: "custom", revision: candidate.revision, path: candidate.indexHtml });
-    } else globalChatDriver.refreshRecoveryContext();
+    if (candidate.diagnostics.length) globalChatDriver.refreshRecoveryContext();
+    return response;
+  }
+  if (request.type === "activate-customization") {
+    const candidate = await pluginActivation.activateValidated(request.revision, request.expectedSourceRevision, request.request);
+    try { await pluginBackends.activate(candidate.revision); }
+    catch (error) {
+      const diagnostic = { phase: "backend" as const, message: error instanceof Error ? error.message : String(error) };
+      await pluginActivation.fail(candidate.revision, diagnostic);
+      broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
+      globalChatDriver.refreshRecoveryContext();
+      throw error;
+    }
+    const response = desktopResponseSchema.parse({ type: "customization-activation", revision: candidate.revision, activating: true });
+    broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
+    await refreshPluginAgentResources();
+    reloadAllAfterResponse({ kind: "custom", revision: candidate.revision, path: candidate.indexHtml });
     return response;
   }
   if (request.type === "customization-rendered") {
@@ -350,6 +379,7 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
     return desktopResponseSchema.parse({ type: "customization-state", state: pluginActivation.snapshot() });
   }
   if (request.type === "customization-runtime-failed") {
+    await pluginBackends.stop();
     await pluginActivation.fail(request.revision, { phase: "runtime", message: request.message });
     globalChatDriver.refreshRecoveryContext();
     broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
@@ -358,6 +388,13 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
   }
   if (request.type === "rollback-customization") {
     const revision = await pluginActivation.rollback();
+    try { await pluginBackends.activate(revision); }
+    catch (error) {
+      await pluginActivation.fail(revision, { phase: "backend", message: error instanceof Error ? error.message : String(error) });
+      globalChatDriver.refreshRecoveryContext();
+      reloadAllAfterResponse({ kind: "factory" });
+      return desktopResponseSchema.parse({ type: "customization-state", state: pluginActivation.snapshot() });
+    }
     globalChatDriver.refreshRecoveryContext();
     const renderer = revision ? { kind: "custom" as const, revision, path: pluginActivation.buildPath(revision) } : { kind: "factory" as const };
     reloadAllAfterResponse(renderer);
@@ -365,16 +402,19 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
   }
   if (request.type === "use-factory-customization") {
     await pluginActivation.useFactory();
+    await pluginBackends.stop();
     globalChatDriver.refreshRecoveryContext();
     reloadAllAfterResponse({ kind: "factory" });
     return desktopResponseSchema.parse({ type: "customization-state", state: pluginActivation.snapshot() });
   }
   if (request.type === "list-plugins") return desktopResponseSchema.parse({ type: "plugins-listed", plugins: await pluginActivation.builder.repository.listPluginStatuses() });
+  if (request.type === "set-active-scene") return desktopResponseSchema.parse({ type: "plugins-listed", plugins: await pluginActivation.builder.repository.setActiveScene(request.pluginId) });
   if (request.type === "set-plugin-enabled") {
     const plugins = await pluginActivation.builder.repository.setEnabled(request.pluginId, request.enabled);
     await refreshPluginAgentResources();
     if (!request.enabled) {
-      await pluginActivation.fail(pluginActivation.snapshot().activeRevision, { phase: "discovery", pluginId: request.pluginId, message: `Plugin ${request.pluginId} was disabled. Rebuild the global scene after removing or replacing its contributions.` });
+      await pluginBackends.stop();
+      await pluginActivation.fail(pluginActivation.snapshot().activeRevision, { phase: "discovery", pluginId: request.pluginId, message: `Plugin ${request.pluginId} was disabled. Rebuild the customization to activate the remaining plugins.` });
       globalChatDriver.refreshRecoveryContext();
       reloadAllAfterResponse({ kind: "factory" });
     }
@@ -384,7 +424,8 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
     const { wasEnabled, plugins } = await pluginActivation.builder.repository.deletePlugin(request.pluginId);
     await refreshPluginAgentResources();
     if (wasEnabled) {
-      await pluginActivation.fail(pluginActivation.snapshot().activeRevision, { phase: "discovery", pluginId: request.pluginId, message: `Plugin ${request.pluginId} was deleted. Rebuild the global scene after removing or replacing its contributions.` });
+      await pluginBackends.stop();
+      await pluginActivation.fail(pluginActivation.snapshot().activeRevision, { phase: "discovery", pluginId: request.pluginId, message: `Plugin ${request.pluginId} was deleted. Rebuild the customization to activate the remaining plugins.` });
       globalChatDriver.refreshRecoveryContext();
       reloadAllAfterResponse({ kind: "factory" });
     }
@@ -396,6 +437,18 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
   if (request.type === "save-plugin-state") {
     const rendererRevision = windowCustomizationRevisions.get(event.sender.id) ?? pluginActivation.snapshot().activeRevision;
     return desktopResponseSchema.parse({ type: "plugin-state", record: await pluginPersistence.write(request.pluginId, request.key, request.scope, request.value, request.expectedVersion, rendererRevision) });
+  }
+  if (request.type === "call-plugin-backend") {
+    try {
+      const value = await pluginBackends.call(request.pluginId, request.callId, request.method, request.input);
+      return desktopResponseSchema.parse({ type: "plugin-backend-result", callId: request.callId, ok: true, value });
+    } catch (error) {
+      return desktopResponseSchema.parse({ type: "plugin-backend-result", callId: request.callId, ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  if (request.type === "cancel-plugin-backend-call") {
+    pluginBackends.cancel(request.pluginId, request.callId);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.callId });
   }
   if (request.type === "open-global-chat") {
     globalChatController = event.sender;
@@ -612,6 +665,11 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
 app.whenReady().then(async () => {
   handleInlineWidgetScheme();
   await pluginActivation.load();
+  const startupRenderer = pluginActivation.startupRenderer();
+  if (startupRenderer.kind === "custom") {
+    try { await pluginBackends.activate(startupRenderer.revision); }
+    catch (error) { await pluginActivation.fail(startupRenderer.revision, { phase: "backend", message: error instanceof Error ? error.message : String(error) }); }
+  }
   await refreshPluginAgentResources();
   await loadApplicationState();
   createWindow();
@@ -620,6 +678,7 @@ app.whenReady().then(async () => {
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 app.on("before-quit", () => {
   globalChatDriver[Symbol.dispose]();
+  pluginBackends[Symbol.dispose]();
   for (const host of piHosts.values()) host.driver[Symbol.dispose]();
   piHosts.clear();
   if (process.env.CAKE_ELECTRON_SMOKE === "1") setImmediate(() => app.exit(0));

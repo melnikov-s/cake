@@ -1,6 +1,8 @@
 /** @vitest-environment jsdom */
 import { describe, expect, it, vi } from "vitest";
-import { definePlugin } from "../../../src/renderer/cake";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { definePlugin, Slot } from "../../../src/renderer/cake";
 import { dispatchPluginCommand, pluginCommandSnapshot } from "../../../src/renderer/plugin-runtime";
 
 describe("plugin command runtime", () => {
@@ -15,12 +17,24 @@ describe("plugin command runtime", () => {
     expect(second).toHaveBeenCalledWith("tomorrow", expect.objectContaining({ signal: expect.any(AbortSignal), reveal: expect.any(Function) }));
   });
 
-  it("bridges command reveal requests to the global scene", async () => {
+  it("bridges command reveal requests to the active scene", async () => {
     const listener = vi.fn(); window.addEventListener("cake:reveal-contribution", listener);
     definePlugin({ id: "test.reveal", contributions: {}, commands: { show: { description: "Show", run: (_args, context) => context.reveal("test.reveal.panel", { tab: 2 }) } } });
     await dispatchPluginCommand("/show");
     expect(listener).toHaveBeenCalledOnce();
     expect((listener.mock.calls[0]![0] as CustomEvent).detail).toEqual({ contributionId: "test.reveal.panel", input: { tab: 2 } });
     window.removeEventListener("cake:reveal-contribution", listener);
+  });
+
+  it("renders automatically registered slot contributions in deterministic order", () => {
+    const Later = () => createElement("span", null, "later");
+    const Earlier = () => createElement("span", null, "earlier");
+    definePlugin({ id: "test.slots", contributions: { Later, Earlier }, slots: {
+      "project-session.content.top-right": [
+        { id: "later", component: Later, order: 20 },
+        { id: "earlier", component: Earlier, order: 10 }
+      ]
+    } });
+    expect(renderToStaticMarkup(createElement(Slot, { name: "project-session.content.top-right" }))).toBe("<span>earlier</span><span>later</span>");
   });
 });

@@ -44,13 +44,17 @@ function createBridge(customization: Partial<Pick<AppControlHost, "currentSessio
     setSessionModel,
     customizationState: customization.customizationState ?? (() => undefined),
     plugins: customization.plugins ?? (() => []),
-    listCustomizationFiles: vi.fn(async () => ({ workingRevision: "a".repeat(64), buildRevision: "a".repeat(64), files: [] })),
-    readCustomizationFile: vi.fn(async () => "source"),
-    writeCustomizationFile: vi.fn(async () => ({ workingRevision: "b".repeat(64), buildRevision: "b".repeat(64), files: [] })),
-    buildCustomization: vi.fn(async () => ({ revision: "a".repeat(64), diagnostics: [], activating: true })),
+    getPluginAuthoringReference: vi.fn(async () => "reference"),
+    listPluginFiles: vi.fn(async () => ({ workingRevision: "a".repeat(64), buildRevision: "a".repeat(64), files: [] })),
+    createPlugin: vi.fn(async () => ({ workingRevision: "b".repeat(64), buildRevision: "b".repeat(64), files: [] })),
+    readPluginFile: vi.fn(async () => "source"),
+    writePluginFile: vi.fn(async () => ({ workingRevision: "b".repeat(64), buildRevision: "b".repeat(64), files: [] })),
+    validateCustomization: vi.fn(async () => ({ revision: "a".repeat(64), sourceRevision: "a".repeat(64), diagnostics: [], valid: true })),
+    activateCustomization: vi.fn(async () => ({ revision: "a".repeat(64), activating: true as const })),
     rollbackCustomization: vi.fn(async () => ({ schemaVersion: 1 as const, recoveryRequired: false, diagnostics: [], updatedAt: new Date(0).toISOString() })),
     useFactoryCustomization: vi.fn(async () => ({ schemaVersion: 1 as const, recoveryRequired: false, diagnostics: [], updatedAt: new Date(0).toISOString() })),
-    setPluginEnabled: vi.fn(async () => [])
+    setPluginEnabled: vi.fn(async () => []),
+    setActiveScene: vi.fn(async () => [])
   });
   return { bridge, openSession, readSession, createSession, sendSessionMessage, abortSession, renameSession, setSessionArchived, setSessionModel };
 }
@@ -60,13 +64,17 @@ describe("AppControlBridge", () => {
     expect(appControlToolCatalog.map((tool) => tool.name)).toEqual([
       "get_app_state",
       "get_customization_state",
-      "list_customization_files",
-      "read_customization_file",
-      "write_customization_file",
-      "build_customization",
+      "get_plugin_authoring_reference",
+      "list_plugin_files",
+      "create_plugin",
+      "read_plugin_file",
+      "write_plugin_file",
+      "validate_customization",
+      "activate_customization",
       "rollback_customization",
       "use_factory_customization",
       "set_plugin_enabled",
+      "set_active_scene",
       "get_session_status",
       "open_session",
       "list_sessions",
@@ -170,7 +178,7 @@ describe("AppControlBridge", () => {
       updatedAt: new Date(0).toISOString()
     });
     const plugins = observable<PluginStatus[]>([
-      { id: "example.widget", name: "Example Widget", enabled: true, entry: "index.tsx", diagnostics: [] }
+      { id: "example.widget", name: "Example Widget", enabled: true, renderer: "index.tsx", activeScene: false, diagnostics: [] }
     ]);
     const { bridge } = createBridge({ customizationState: () => state, plugins: () => plugins });
 

@@ -63,14 +63,18 @@ export interface DesktopClient {
   chooseProject(): Promise<string | undefined>;
   getHomeDirectory(): Promise<string>;
   getCustomizationState(): Promise<CustomizationState>;
-  listCustomizationFiles(): Promise<{ workingRevision: string; buildRevision: string; files: string[] }>;
-  readCustomizationFile(path: string): Promise<string>;
-  writeCustomizationFile(path: string, content: string, expectedWorkingRevision: string): Promise<{ workingRevision: string; buildRevision: string; files: string[] }>;
-  buildCustomization(expectedBaseRevision?: string, request?: string, expectedSourceRevision?: string): Promise<{ revision: string; diagnostics: PluginDiagnostic[]; activating: boolean }>;
+  getPluginAuthoringReference(): Promise<string>;
+  listPluginFiles(): Promise<{ workingRevision: string; buildRevision: string; files: string[] }>;
+  createPlugin(input: { pluginId: string; name: string; renderer: boolean; backend: boolean; scene: boolean; expectedWorkingRevision: string }): Promise<{ workingRevision: string; buildRevision: string; files: string[] }>;
+  readPluginFile(pluginId: string, path: string): Promise<string>;
+  writePluginFile(pluginId: string, path: string, content: string, expectedWorkingRevision: string): Promise<{ workingRevision: string; buildRevision: string; files: string[] }>;
+  validateCustomization(expectedBaseRevision?: string, request?: string, expectedSourceRevision?: string): Promise<{ revision: string; sourceRevision: string; diagnostics: PluginDiagnostic[]; valid: boolean }>;
+  activateCustomization(revision: string, expectedSourceRevision: string, request?: string): Promise<{ revision: string; activating: true }>;
   rollbackCustomization(): Promise<CustomizationState>;
   useFactoryCustomization(): Promise<CustomizationState>;
   listPlugins(): Promise<PluginStatus[]>;
   setPluginEnabled(pluginId: string, enabled: boolean): Promise<PluginStatus[]>;
+  setActiveScene(pluginId?: string): Promise<PluginStatus[]>;
   deletePlugin(pluginId: string): Promise<PluginStatus[]>;
   chooseAttachments(): Promise<Attachment[]>;
   suggestFiles(workspacePath: string, prefix: string): Promise<FileSuggestion[]>;
@@ -170,24 +174,39 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       if (response.type !== "customization-state") throw new Error("Cake received invalid customization state");
       return response.state;
     },
-    async listCustomizationFiles() {
-      const response = await bridge.request({ type: "list-customization-files" });
-      if (response.type !== "customization-files") throw new Error("Cake returned invalid customization files");
+    async getPluginAuthoringReference() {
+      const response = await bridge.request({ type: "get-plugin-authoring-reference" });
+      if (response.type !== "plugin-authoring-reference") throw new Error("Cake returned an invalid plugin authoring reference");
+      return response.reference;
+    },
+    async listPluginFiles() {
+      const response = await bridge.request({ type: "list-plugin-files" });
+      if (response.type !== "plugin-files") throw new Error("Cake returned invalid plugin files");
       return response;
     },
-    async readCustomizationFile(path) {
-      const response = await bridge.request({ type: "read-customization-file", path });
-      if (response.type !== "customization-file") throw new Error("Cake returned invalid customization source");
+    async createPlugin(input) {
+      const response = await bridge.request({ type: "create-plugin", ...input });
+      if (response.type !== "plugin-files") throw new Error("Cake could not create the plugin");
+      return response;
+    },
+    async readPluginFile(pluginId, path) {
+      const response = await bridge.request({ type: "read-plugin-file", pluginId, path });
+      if (response.type !== "plugin-file") throw new Error("Cake returned invalid plugin source");
       return response.content;
     },
-    async writeCustomizationFile(path, content, expectedWorkingRevision) {
-      const response = await bridge.request({ type: "write-customization-file", path, content, expectedWorkingRevision });
-      if (response.type !== "customization-files") throw new Error("Cake returned invalid customization files");
+    async writePluginFile(pluginId, path, content, expectedWorkingRevision) {
+      const response = await bridge.request({ type: "write-plugin-file", pluginId, path, content, expectedWorkingRevision });
+      if (response.type !== "plugin-files") throw new Error("Cake returned invalid plugin files");
       return response;
     },
-    async buildCustomization(expectedBaseRevision, request, expectedSourceRevision) {
-      const response = await bridge.request({ type: "build-customization", expectedBaseRevision, expectedSourceRevision, request });
-      if (response.type !== "customization-build") throw new Error("Cake received invalid customization build results");
+    async validateCustomization(expectedBaseRevision, request, expectedSourceRevision) {
+      const response = await bridge.request({ type: "validate-customization", expectedBaseRevision, expectedSourceRevision, request });
+      if (response.type !== "customization-validation") throw new Error("Cake received invalid customization validation results");
+      return response;
+    },
+    async activateCustomization(revision, expectedSourceRevision, request) {
+      const response = await bridge.request({ type: "activate-customization", revision, expectedSourceRevision, request });
+      if (response.type !== "customization-activation") throw new Error("Cake could not activate the customization");
       return response;
     },
     async rollbackCustomization() {
@@ -208,6 +227,11 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
     async setPluginEnabled(pluginId, enabled) {
       const response = await bridge.request({ type: "set-plugin-enabled", pluginId, enabled });
       if (response.type !== "plugins-listed") throw new Error("Cake could not update the plugin");
+      return response.plugins;
+    },
+    async setActiveScene(pluginId) {
+      const response = await bridge.request({ type: "set-active-scene", pluginId });
+      if (response.type !== "plugins-listed") throw new Error("Cake could not select the scene");
       return response.plugins;
     },
     async deletePlugin(pluginId) {

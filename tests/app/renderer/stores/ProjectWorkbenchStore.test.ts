@@ -29,14 +29,18 @@ function createDesktopClient(restoredPath?: string) {
     chooseProject: vi.fn(async () => "/project"),
     getHomeDirectory: vi.fn(async () => "/home/user"),
     getCustomizationState: vi.fn(async () => ({ schemaVersion: 1 as const, recoveryRequired: false, diagnostics: [], updatedAt: new Date(0).toISOString() })),
-    listCustomizationFiles: vi.fn(async () => ({ workingRevision: "a".repeat(64), buildRevision: "a".repeat(64), files: [] })),
-    readCustomizationFile: vi.fn(async () => ""),
-    writeCustomizationFile: vi.fn(async () => ({ workingRevision: "a".repeat(64), buildRevision: "a".repeat(64), files: [] })),
-    buildCustomization: vi.fn(async () => ({ revision: "a".repeat(64), diagnostics: [], activating: true })),
+    getPluginAuthoringReference: vi.fn(async () => "reference"),
+    listPluginFiles: vi.fn(async () => ({ workingRevision: "a".repeat(64), buildRevision: "a".repeat(64), files: [] })),
+    createPlugin: vi.fn(async () => ({ workingRevision: "a".repeat(64), buildRevision: "a".repeat(64), files: [] })),
+    readPluginFile: vi.fn(async () => ""),
+    writePluginFile: vi.fn(async () => ({ workingRevision: "a".repeat(64), buildRevision: "a".repeat(64), files: [] })),
+    validateCustomization: vi.fn(async () => ({ revision: "a".repeat(64), sourceRevision: "a".repeat(64), diagnostics: [], valid: true })),
+    activateCustomization: vi.fn(async () => ({ revision: "a".repeat(64), activating: true as const })),
     rollbackCustomization: vi.fn(async () => ({ schemaVersion: 1 as const, recoveryRequired: false, diagnostics: [], updatedAt: new Date(0).toISOString() })),
     useFactoryCustomization: vi.fn(async () => ({ schemaVersion: 1 as const, recoveryRequired: false, diagnostics: [], updatedAt: new Date(0).toISOString() })),
     listPlugins: vi.fn(async () => []),
     setPluginEnabled: vi.fn(async () => []),
+    setActiveScene: vi.fn(async () => []),
     deletePlugin: vi.fn(async () => []),
     chooseAttachments: vi.fn(async () => []),
     suggestFiles: vi.fn(async () => []),
@@ -325,6 +329,31 @@ describe("ProjectWorkbenchStore", () => {
     const openId = store.activeOperations.at(-1)!;
     desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot });
     expect(store.activeSession!.chatStore.draft).toBe("saved");
+    root[Symbol.dispose]();
+  });
+
+  it("restores Cake Chat as the active conversation after a window reload", async () => {
+    const desktop = createDesktopClient();
+    desktop.client.loadWindowState = vi.fn(async () => ({
+      projectPath: "/project",
+      selectedSessionId: "session-1",
+      activeConversation: { kind: "cake-chat" as const, sessionId: "cake-chat-1" },
+      recentProjectPaths: ["/project"],
+      draft: "",
+      theme: "system" as const,
+      thinkingExpanded: false,
+      draftsBySession: {}
+    }));
+    desktop.client.listSessions = vi.fn(async () => ({
+      sessions: [{ id: "session-1", title: "Project work", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 1, archived: false, workspacePath: "/project", workspaceName: "Project" }],
+      reviewThreads: []
+    }));
+    const { root } = mountTestStore(desktop.client);
+    await flush();
+
+    expect(root.appShellStore.selection).toEqual({ kind: "cake-chat", sessionId: "cake-chat-1" });
+    expect(desktop.client.openGlobalChat).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "cake-chat-1" }));
+    expect(desktop.client.inspectWorkspace).toHaveBeenCalledWith(expect.objectContaining({ path: "/project" }));
     root[Symbol.dispose]();
   });
 

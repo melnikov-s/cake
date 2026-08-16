@@ -36,17 +36,21 @@ const searchSessionsSchema = z.object({
 
 const emptyArgumentsSchema = z.object({}).strict();
 const pluginStatusesSchema = z.array(pluginStatusSchema).max(1_000);
-const customizationPathSchema = z.object({ path: z.string().min(1).max(8_192).describe("Exact logical path returned by list_customization_files.") });
+const pluginFileSchema = z.object({ pluginId: pluginIdSchema, path: z.string().min(1).max(8_192).describe("Path relative to the plugin directory.") });
 const appControlArgumentSchemas = {
   get_app_state: emptyArgumentsSchema,
   get_customization_state: emptyArgumentsSchema,
-  list_customization_files: emptyArgumentsSchema,
-  read_customization_file: customizationPathSchema,
-  write_customization_file: z.object({ path: z.string().min(1).max(8_192), content: z.string().max(2_000_000), expectedWorkingRevision: z.string().regex(/^[a-f0-9]{64}$/) }),
-  build_customization: z.object({ expectedBaseRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(), expectedSourceRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(), request: z.string().trim().min(1).max(8_192) }),
+  get_plugin_authoring_reference: emptyArgumentsSchema,
+  list_plugin_files: emptyArgumentsSchema,
+  create_plugin: z.object({ pluginId: pluginIdSchema, name: z.string().trim().min(1).max(128), renderer: z.boolean().default(true), backend: z.boolean().default(false), scene: z.boolean().default(false), expectedWorkingRevision: z.string().regex(/^[a-f0-9]{64}$/) }),
+  read_plugin_file: pluginFileSchema,
+  write_plugin_file: pluginFileSchema.extend({ content: z.string().max(2_000_000), expectedWorkingRevision: z.string().regex(/^[a-f0-9]{64}$/) }),
+  validate_customization: z.object({ expectedBaseRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(), expectedSourceRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(), request: z.string().trim().min(1).max(8_192) }),
+  activate_customization: z.object({ revision: z.string().regex(/^[a-f0-9]{64}$/), expectedSourceRevision: z.string().regex(/^[a-f0-9]{64}$/), request: z.string().trim().min(1).max(8_192) }),
   rollback_customization: emptyArgumentsSchema,
   use_factory_customization: emptyArgumentsSchema,
   set_plugin_enabled: z.object({ pluginId: pluginIdSchema, enabled: z.boolean() }),
+  set_active_scene: z.object({ pluginId: pluginIdSchema.optional() }),
   get_session_status: sessionTargetSchema,
   open_session: sessionTargetSchema,
   list_sessions: sessionPageSchema,
@@ -65,9 +69,10 @@ function invocation<Name extends keyof typeof appControlArgumentSchemas>(name: N
 }
 
 export const appControlInvocationSchema = z.discriminatedUnion("name", [
-  invocation("get_app_state"), invocation("get_customization_state"), invocation("list_customization_files"),
-  invocation("read_customization_file"), invocation("write_customization_file"), invocation("build_customization"),
-  invocation("rollback_customization"), invocation("use_factory_customization"), invocation("set_plugin_enabled"),
+  invocation("get_app_state"), invocation("get_customization_state"), invocation("get_plugin_authoring_reference"),
+  invocation("list_plugin_files"), invocation("create_plugin"), invocation("read_plugin_file"), invocation("write_plugin_file"),
+  invocation("validate_customization"), invocation("activate_customization"), invocation("rollback_customization"),
+  invocation("use_factory_customization"), invocation("set_plugin_enabled"), invocation("set_active_scene"),
   invocation("get_session_status"), invocation("open_session"), invocation("list_sessions"), invocation("read_session"),
   invocation("search_sessions"), invocation("create_session"), invocation("send_session_message"), invocation("abort_session"),
   invocation("rename_session"), invocation("set_session_archived"), invocation("set_session_model")
@@ -78,13 +83,17 @@ export type AppControlInvocation = z.infer<typeof appControlInvocationSchema>;
 export const appControlToolCatalog = [
   tool("get_app_state", "Read Cake's current selection and a compact summary of projects and recent or active sessions.", appControlArgumentSchemas.get_app_state),
   tool("get_customization_state", "Read the exact customization source/head revisions, recovery diagnostics, last-known-good revision, and installed plugin status.", appControlArgumentSchemas.get_customization_state),
-  tool("list_customization_files", "List editable plugin/global-scene files and return exact optimistic working and build revisions. Call before reading or writing customization source.", appControlArgumentSchemas.list_customization_files),
-  tool("read_customization_file", "Read one text source file from the constrained scenes/ or plugins/<plugin-id>/ authoring roots.", appControlArgumentSchemas.read_customization_file),
-  tool("write_customization_file", "Atomically create or replace one text file in scenes/ or plugins/<plugin-id>/, rejecting the write if any customization file changed since the supplied working revision.", appControlArgumentSchemas.write_customization_file),
-  tool("build_customization", "Typecheck and bundle edited plugin/global-scene source, then transactionally activate it only if the supplied base revision is still current. Diagnostics during an active create, edit, or repair request are intermediate authoring results: inspect them, fix the source, and rebuild without asking the user for permission.", appControlArgumentSchemas.build_customization),
+  tool("get_plugin_authoring_reference", "Read Cake's exact, version-matched plugin API and authoring guide. Always call this before creating or changing a plugin; do not probe the compiler to discover APIs.", appControlArgumentSchemas.get_plugin_authoring_reference),
+  tool("list_plugin_files", "List plugin-owned source files and return exact optimistic working and build revisions. Call before creating or writing plugin source.", appControlArgumentSchemas.list_plugin_files),
+  tool("create_plugin", "Create a manifest and safe starter modules for one plugin. For normal widgets use renderer=true and scene=false. Set scene=true only when the user explicitly asks to replace Cake's entire scene.", appControlArgumentSchemas.create_plugin),
+  tool("read_plugin_file", "Read one text file from an exact plugin directory.", appControlArgumentSchemas.read_plugin_file),
+  tool("write_plugin_file", "Atomically create or replace one plugin-owned text file, rejecting the write if plugin source changed since the supplied revision. Never create a scene module for ordinary widget work.", appControlArgumentSchemas.write_plugin_file),
+  tool("validate_customization", "Typecheck and bundle current plugin source without activating or reloading it. Fix all diagnostics, then validate again. Validation is safe for iteration and must not be used as API reflection; read the authoring reference instead.", appControlArgumentSchemas.validate_customization),
+  tool("activate_customization", "Activate one already validated, unchanged revision. Call only after the requested implementation is complete and validation succeeded; this reloads Cake and may start trusted plugin backends.", appControlArgumentSchemas.activate_customization),
   tool("rollback_customization", "Roll back a broken or unwanted customization to the retained last-known-good renderer.", appControlArgumentSchemas.rollback_customization),
   tool("use_factory_customization", "Select immutable Cake factory UI without deleting editable plugin source or persistence.", appControlArgumentSchemas.use_factory_customization),
   tool("set_plugin_enabled", "Enable or disable one exact plugin. Disabling preserves its source and persistence and requires rebuilding scene references.", appControlArgumentSchemas.set_plugin_enabled),
+  tool("set_active_scene", "Choose an enabled plugin's optional scene as the whole-app scene, or omit pluginId to use Cake's default scene. Ordinary widgets do not need this.", appControlArgumentSchemas.set_active_scene),
   tool("get_session_status", "Inspect whether a known session is selected, running, unread, or idle.", appControlArgumentSchemas.get_session_status),
   tool("open_session", "Open a known Cake session in its project.", appControlArgumentSchemas.open_session),
   tool("list_sessions", "List Cake sessions by recency, optionally limited to one project or including archived sessions.", appControlArgumentSchemas.list_sessions),
@@ -113,13 +122,17 @@ export interface AppControlHost {
   setSessionModel(workspacePath: string, sessionId: string, provider: string, modelId: string): Promise<void>;
   customizationState(): CustomizationState | undefined;
   plugins(): readonly PluginStatus[];
-  listCustomizationFiles(): Promise<{ workingRevision: string; buildRevision: string; files: string[] }>;
-  readCustomizationFile(path: string): Promise<string>;
-  writeCustomizationFile(path: string, content: string, expectedWorkingRevision: string): Promise<{ workingRevision: string; buildRevision: string; files: string[] }>;
-  buildCustomization(expectedBaseRevision: string | undefined, request: string, expectedSourceRevision?: string): Promise<{ revision: string; diagnostics: PluginDiagnostic[]; activating: boolean }>;
+  getPluginAuthoringReference(): Promise<string>;
+  listPluginFiles(): Promise<{ workingRevision: string; buildRevision: string; files: string[] }>;
+  createPlugin(input: { pluginId: string; name: string; renderer: boolean; backend: boolean; scene: boolean; expectedWorkingRevision: string }): Promise<{ workingRevision: string; buildRevision: string; files: string[] }>;
+  readPluginFile(pluginId: string, path: string): Promise<string>;
+  writePluginFile(pluginId: string, path: string, content: string, expectedWorkingRevision: string): Promise<{ workingRevision: string; buildRevision: string; files: string[] }>;
+  validateCustomization(expectedBaseRevision: string | undefined, request: string, expectedSourceRevision?: string): Promise<{ revision: string; sourceRevision: string; diagnostics: PluginDiagnostic[]; valid: boolean }>;
+  activateCustomization(revision: string, expectedSourceRevision: string, request: string): Promise<{ revision: string; activating: true }>;
   rollbackCustomization(): Promise<CustomizationState>;
   useFactoryCustomization(): Promise<CustomizationState>;
   setPluginEnabled(pluginId: string, enabled: boolean): Promise<readonly PluginStatus[]>;
+  setActiveScene(pluginId?: string): Promise<readonly PluginStatus[]>;
 }
 
 export interface AppControlSession {
@@ -159,11 +172,13 @@ export interface AppControlSearchMatch {
 export type AppControlResult =
   | { ok: true; name: "get_app_state"; state: AppControlState }
   | { ok: true; name: "get_customization_state"; state?: CustomizationState; plugins: readonly PluginStatus[] }
-  | { ok: true; name: "list_customization_files" | "write_customization_file"; workingRevision: string; buildRevision: string; files: string[] }
-  | { ok: true; name: "read_customization_file"; path: string; content: string }
-  | { ok: true; name: "build_customization"; revision: string; diagnostics: PluginDiagnostic[]; activating: boolean }
+  | { ok: true; name: "get_plugin_authoring_reference"; reference: string }
+  | { ok: true; name: "list_plugin_files" | "create_plugin" | "write_plugin_file"; workingRevision: string; buildRevision: string; files: string[] }
+  | { ok: true; name: "read_plugin_file"; pluginId: string; path: string; content: string }
+  | { ok: true; name: "validate_customization"; revision: string; sourceRevision: string; diagnostics: PluginDiagnostic[]; valid: boolean }
+  | { ok: true; name: "activate_customization"; revision: string; activating: true }
   | { ok: true; name: "rollback_customization" | "use_factory_customization"; state: CustomizationState }
-  | { ok: true; name: "set_plugin_enabled"; plugins: readonly PluginStatus[] }
+  | { ok: true; name: "set_plugin_enabled" | "set_active_scene"; plugins: readonly PluginStatus[] }
   | { ok: true; name: "get_session_status"; session: AppControlSession; selected: boolean; status: "running" | "unread" | "idle" }
   | { ok: true; name: "open_session"; opened: SessionTarget }
   | { ok: true; name: "list_sessions"; sessions: AppControlSession[]; total: number; nextCursor?: number }
@@ -220,13 +235,17 @@ export class AppControlBridge {
       } as const;
       return state === undefined ? result : { ...result, state: toStrictJson(customizationStateSchema.parse(state)) };
     }
-    if (invocation.name === "list_customization_files") return { ok: true, name: invocation.name, ...await this.host.listCustomizationFiles() };
-    if (invocation.name === "read_customization_file") return { ok: true, name: invocation.name, path: invocation.arguments.path, content: await this.host.readCustomizationFile(invocation.arguments.path) };
-    if (invocation.name === "write_customization_file") return { ok: true, name: invocation.name, ...await this.host.writeCustomizationFile(invocation.arguments.path, invocation.arguments.content, invocation.arguments.expectedWorkingRevision) };
-    if (invocation.name === "build_customization") return { ok: true, name: invocation.name, ...await this.host.buildCustomization(invocation.arguments.expectedBaseRevision, invocation.arguments.request, invocation.arguments.expectedSourceRevision) };
+    if (invocation.name === "get_plugin_authoring_reference") return { ok: true, name: invocation.name, reference: await this.host.getPluginAuthoringReference() };
+    if (invocation.name === "list_plugin_files") return { ok: true, name: invocation.name, ...await this.host.listPluginFiles() };
+    if (invocation.name === "create_plugin") return { ok: true, name: invocation.name, ...await this.host.createPlugin(invocation.arguments) };
+    if (invocation.name === "read_plugin_file") return { ok: true, name: invocation.name, pluginId: invocation.arguments.pluginId, path: invocation.arguments.path, content: await this.host.readPluginFile(invocation.arguments.pluginId, invocation.arguments.path) };
+    if (invocation.name === "write_plugin_file") return { ok: true, name: invocation.name, ...await this.host.writePluginFile(invocation.arguments.pluginId, invocation.arguments.path, invocation.arguments.content, invocation.arguments.expectedWorkingRevision) };
+    if (invocation.name === "validate_customization") return { ok: true, name: invocation.name, ...await this.host.validateCustomization(invocation.arguments.expectedBaseRevision, invocation.arguments.request, invocation.arguments.expectedSourceRevision) };
+    if (invocation.name === "activate_customization") return { ok: true, name: invocation.name, ...await this.host.activateCustomization(invocation.arguments.revision, invocation.arguments.expectedSourceRevision, invocation.arguments.request) };
     if (invocation.name === "rollback_customization") return { ok: true, name: invocation.name, state: await this.host.rollbackCustomization() };
     if (invocation.name === "use_factory_customization") return { ok: true, name: invocation.name, state: await this.host.useFactoryCustomization() };
     if (invocation.name === "set_plugin_enabled") return { ok: true, name: invocation.name, plugins: await this.host.setPluginEnabled(invocation.arguments.pluginId, invocation.arguments.enabled) };
+    if (invocation.name === "set_active_scene") return { ok: true, name: invocation.name, plugins: await this.host.setActiveScene(invocation.arguments.pluginId) };
     if (invocation.name === "list_sessions") return this.listSessions(invocation.arguments);
     if (invocation.name === "search_sessions") return this.searchSessions(invocation.arguments);
     if (invocation.name === "create_session") return this.createSession(invocation.arguments.workspacePath);

@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { build as buildBackend } from "esbuild";
 import ts from "typescript";
 import { z } from "zod";
 import { build, type Plugin as VitePlugin } from "vite";
@@ -17,6 +18,7 @@ export interface CandidateBuild {
   directory: string;
   indexHtml: string;
   diagnostics: PluginDiagnostic[];
+  backends: Array<{ pluginId: string; path: string }>;
 }
 
 const authoringSnapshotSchema = z.object({ schemaVersion: z.number(), cakeVersion: z.string() });
@@ -25,7 +27,8 @@ const rendererBuildMetadataSchema = z.object({
   schemaVersion: z.literal(1),
   coreRevision: z.string().regex(/^[a-f0-9]{64}$/),
   sourceRevision: z.string().regex(/^[a-f0-9]{64}$/),
-  buildRevision: z.string().regex(/^[a-f0-9]{64}$/)
+  buildRevision: z.string().regex(/^[a-f0-9]{64}$/),
+  backends: z.array(z.object({ pluginId: z.string(), file: z.string() })).default([])
 });
 
 interface PluginCompilerPaths {
@@ -47,7 +50,8 @@ async function typescriptFiles(root: string): Promise<string[]> {
 }
 
 function policyPlugin(source: CustomizationSource, sourceRoot: string, runtimeRoot = sourceRoot): VitePlugin {
-  const pluginById = new Map(source.plugins.map((plugin) => [`plugin:${plugin.manifest.id}`, plugin]));
+  const catalogId = "\0virtual:cake-plugins";
+  const pluginById = new Map(source.plugins.filter((plugin) => plugin.rendererEntry).map((plugin) => [`plugin:${plugin.manifest.id}`, plugin]));
   const belongsTo = (root: string, importer: string) => {
     const child = relative(root, importer);
     return child === "" || (child !== ".." && !child.startsWith(`..${sep}`) && !isAbsolute(child));
@@ -55,10 +59,6 @@ function policyPlugin(source: CustomizationSource, sourceRoot: string, runtimeRo
   const owner = (importer: string) => {
     const plugin = source.plugins.find((candidate) => belongsTo(candidate.root, importer));
     if (plugin) return { kind: "plugin" as const, root: plugin.root };
-    const sceneRoot = dirname(source.scene);
-    if (belongsTo(sceneRoot, importer)) {
-      return { kind: "scene" as const, root: sceneRoot };
-    }
     return undefined;
   };
   const sharedRuntimePaths = new Set(["react/index.js", "react/jsx-runtime.js", "react/jsx-dev-runtime.js", "react-dom/index.js", "zod/index.js"].map((path) => resolve(runtimeRoot, "node_modules", path)));
@@ -67,9 +67,11 @@ function policyPlugin(source: CustomizationSource, sourceRoot: string, runtimeRo
     name: "cake-plugin-import-policy",
     enforce: "pre",
     async resolveId(specifier, importer) {
+      if (specifier === "virtual:cake-plugins") return catalogId;
+      if (specifier === catalogId) return catalogId;
       if (pluginById.has(specifier)) {
-        if (!importer || owner(importer)?.kind !== "scene") throw new Error(`${importer ?? "unknown"}: plugin definitions may only be imported by the global scene`);
-        return pluginById.get(specifier)!.entry;
+        if (importer !== catalogId) throw new Error(`${importer ?? "unknown"}: plugin definitions may only be imported by Cake's automatic catalog`);
+        return pluginById.get(specifier)!.rendererEntry;
       }
       if (!importer) return null;
       const sourceOwner = owner(importer);
@@ -81,6 +83,10 @@ function policyPlugin(source: CustomizationSource, sourceRoot: string, runtimeRo
       if (!resolved || resolved.external) throw new Error(`${importer}: could not resolve plugin import ${JSON.stringify(specifier)}`);
       await validatePluginImport({ pluginRoot: sourceOwner.root, importer, specifier, resolvedPath: resolved.id.split("?", 1)[0] });
       return resolved;
+    },
+    load(id) {
+      if (id !== catalogId) return null;
+      return [...pluginById.keys()].map((specifier) => `import ${JSON.stringify(specifier)};`).join("\n");
     }
   };
 }
@@ -133,10 +139,11 @@ export class PluginBuildService {
   }
 
   private async typecheck(source: CustomizationSource): Promise<PluginDiagnostic[]> {
-    const rootNames = [source.scene, resolve(this.sourceRoot, "src/renderer/env.d.ts")];
+    const rootNames = [source.scene ?? resolve(this.sourceRoot, "src/renderer/factory-scene.tsx"), resolve(this.sourceRoot, "src/renderer/env.d.ts")];
     for (const plugin of source.plugins) rootNames.push(...await typescriptFiles(plugin.root));
     const paths: PluginCompilerPaths = {
       cake: [resolve(this.sourceRoot, "src/renderer/cake.ts")],
+      "cake/backend": [resolve(this.sourceRoot, "src/plugin/backend-api.ts")],
       "@/*": [resolve(this.sourceRoot, "src/renderer/*")],
       react: [resolve(this.runtimeRoot, "node_modules/@types/react/index.d.ts")],
       "react/jsx-runtime": [resolve(this.runtimeRoot, "node_modules/@types/react/jsx-runtime.d.ts")],
@@ -144,7 +151,7 @@ export class PluginBuildService {
       "react-dom": [resolve(this.runtimeRoot, "node_modules/@types/react-dom/index.d.ts")],
       zod: [resolve(this.runtimeRoot, "node_modules/zod/index.d.ts")]
     };
-    for (const plugin of source.plugins) paths[`plugin:${plugin.manifest.id}`] = [plugin.entry];
+    for (const plugin of source.plugins) if (plugin.rendererEntry) paths[`plugin:${plugin.manifest.id}`] = [plugin.rendererEntry];
     const program = ts.createProgram({
       rootNames,
       options: {
@@ -170,15 +177,15 @@ export class PluginBuildService {
         ]);
         if (snapshot.schemaVersion !== 1 || snapshot.cakeVersion !== runtimePackage.version) throw new Error(`Authoring snapshot ${snapshot.cakeVersion} does not match Cake ${runtimePackage.version}`);
       } catch (error) {
-        return { revision, sourceRevision: source.revision, directory: "", indexHtml: "", diagnostics: [{ phase: "bundle", message: `Cake's packaged authoring snapshot is unavailable or mismatched: ${error instanceof Error ? error.message : String(error)}` }] };
+        return { revision, sourceRevision: source.revision, directory: "", indexHtml: "", diagnostics: [{ phase: "bundle", message: `Cake's packaged authoring snapshot is unavailable or mismatched: ${error instanceof Error ? error.message : String(error)}` }], backends: [] };
       }
     }
     try { await this.repository.snapshotSource(source); }
     catch (error) {
-      return { revision, sourceRevision: source.revision, directory: "", indexHtml: "", diagnostics: [{ phase: "bundle", message: error instanceof Error ? error.message : String(error) }] };
+      return { revision, sourceRevision: source.revision, directory: "", indexHtml: "", diagnostics: [{ phase: "bundle", message: error instanceof Error ? error.message : String(error) }], backends: [] };
     }
     const diagnostics = [...source.diagnostics, ...await this.typecheck(source)];
-    if (diagnostics.length) return { revision, sourceRevision: source.revision, directory: "", indexHtml: "", diagnostics };
+    if (diagnostics.length) return { revision, sourceRevision: source.revision, directory: "", indexHtml: "", diagnostics, backends: [] };
     const directory = join(this.paths.recovery, "builds", revision);
     await mkdir(directory, { recursive: true });
     try {
@@ -188,7 +195,7 @@ export class PluginBuildService {
         base: "./",
         define: { __CAKE_CUSTOMIZATION_REVISION__: JSON.stringify(revision) },
         resolve: { alias: [
-          { find: "virtual:cake-global-scene", replacement: source.scene },
+          { find: "virtual:cake-scene", replacement: source.scene ?? resolve(this.sourceRoot, "src/renderer/factory-scene.tsx") },
           { find: "cake", replacement: resolve(this.sourceRoot, "src/renderer/cake.ts") },
           { find: "@", replacement: resolve(this.sourceRoot, "src/renderer") },
           { find: "react/jsx-runtime", replacement: resolve(this.runtimeRoot, "node_modules/react/jsx-runtime.js") },
@@ -200,16 +207,52 @@ export class PluginBuildService {
         plugins: [policyPlugin(source, this.sourceRoot, this.runtimeRoot), react(), tailwindcss()],
         build: { outDir: directory, emptyOutDir: true, rollupOptions: { input: resolve(this.sourceRoot, "src/renderer/index.html") } }
       });
+      const backends: Array<{ pluginId: string; path: string }> = [];
+      for (const plugin of source.plugins) {
+        if (!plugin.backendEntry) continue;
+        const path = join(directory, "backends", `${plugin.manifest.id}.mjs`);
+        await buildBackend({
+          entryPoints: [plugin.backendEntry],
+          outfile: path,
+          bundle: true,
+          format: "esm",
+          platform: "node",
+          target: "node22",
+          sourcemap: true,
+          alias: { "cake/backend": resolve(this.sourceRoot, "src/plugin/backend-api.ts") }
+        });
+        backends.push({ pluginId: plugin.manifest.id, path });
+      }
       const current = await this.repository.inspect();
       if (current.revision !== source.revision) {
         await rm(directory, { recursive: true, force: true });
-        return { revision, sourceRevision: current.revision, directory: "", indexHtml: "", diagnostics: [{ phase: "bundle", message: `Customization source changed during build: started at ${source.revision}, finished at ${current.revision}` }] };
+        return { revision, sourceRevision: current.revision, directory: "", indexHtml: "", diagnostics: [{ phase: "bundle", message: `Customization source changed during build: started at ${source.revision}, finished at ${current.revision}` }], backends: [] };
       }
-      await writeFile(join(directory, "cake-build.json"), `${JSON.stringify(rendererBuildMetadataSchema.parse({ schemaVersion: 1, coreRevision, sourceRevision: source.revision, buildRevision: revision }), null, 2)}\n`);
-      return { revision, sourceRevision: source.revision, directory, indexHtml: join(directory, "index.html"), diagnostics: [] };
+      await writeFile(join(directory, "cake-build.json"), `${JSON.stringify(rendererBuildMetadataSchema.parse({ schemaVersion: 1, coreRevision, sourceRevision: source.revision, buildRevision: revision, backends: backends.map((backend) => ({ pluginId: backend.pluginId, file: relative(directory, backend.path) })) }), null, 2)}\n`);
+      return { revision, sourceRevision: source.revision, directory, indexHtml: join(directory, "index.html"), diagnostics: [], backends };
     } catch (error) {
       await rm(directory, { recursive: true, force: true });
-      return { revision, sourceRevision: source.revision, directory: "", indexHtml: "", diagnostics: [{ phase: "bundle", message: error instanceof Error ? error.stack ?? error.message : String(error) }] };
+      return { revision, sourceRevision: source.revision, directory: "", indexHtml: "", diagnostics: [{ phase: "bundle", message: error instanceof Error ? error.stack ?? error.message : String(error) }], backends: [] };
     }
+  }
+
+  async backendEntries(revision: string) {
+    const directory = join(this.paths.recovery, "builds", revision);
+    const metadata = rendererBuildMetadataSchema.parse(JSON.parse(await readFile(join(directory, "cake-build.json"), "utf8")));
+    return metadata.backends.map((backend) => ({ pluginId: backend.pluginId, path: resolve(directory, backend.file) }));
+  }
+
+  async authoringReference() {
+    const files = [
+      "docs/architecture/cake-plugins.md",
+      "src/renderer/cake.ts",
+      "src/plugin/backend-api.ts",
+      "src/plugin/plugin-contract.ts",
+      "src/plugin/slot-contract.ts"
+    ];
+    const sections = await Promise.all(files.map(async (path) => `# ${path}\n\n${await readFile(resolve(this.sourceRoot, path), "utf8")}`));
+    const reference = sections.join("\n\n---\n\n");
+    if (reference.length > 1_000_000) throw new Error("Cake's plugin authoring reference exceeds 1 MB");
+    return reference;
   }
 }

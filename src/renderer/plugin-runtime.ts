@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import { Component, Fragment, createElement, useEffect, useSyncExternalStore, type ErrorInfo, type ReactNode } from "react";
 import { z } from "zod";
+import { cakeSlotNames, type CakeSlotName } from "../plugin/slot-contract";
 import type { CakeCommandContext, CakePluginCommand, CakePluginDefinition } from "./cake";
 import type { JsonValue } from "../ipc/json-contract";
 
@@ -7,8 +8,11 @@ interface RegisteredCommand extends CakePluginCommand { pluginId: string; name: 
 const commands = new Map<string, RegisteredCommand>();
 const listeners = new Set<() => void>();
 const running = new Set<AbortController>();
+const definitions = new Map<string, CakePluginDefinition>();
+const mountedSlots = new Map<CakeSlotName, number>();
+let revision = 0;
 const identity = (pluginId: string, name: string) => `${pluginId}.${name}`;
-const emit = () => { for (const listener of listeners) listener(); };
+const emit = () => { revision += 1; for (const listener of listeners) listener(); };
 
 function add(pluginId: string, name: string, command: CakePluginCommand, token: symbol) {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) throw new Error(`Invalid command name ${JSON.stringify(name)} in ${pluginId}`);
@@ -17,8 +21,53 @@ function add(pluginId: string, name: string, command: CakePluginCommand, token: 
 }
 
 export function registerPluginDefinition(plugin: CakePluginDefinition) {
+  const previous = definitions.get(plugin.id);
+  if (previous) for (const name of Object.keys(previous.commands ?? {})) commands.delete(identity(plugin.id, name));
+  definitions.set(plugin.id, plugin);
   const token = Symbol(plugin.id);
   for (const [name, command] of Object.entries(plugin.commands ?? {})) add(plugin.id, name, command, token);
+  emit();
+}
+
+interface SlotBoundaryProps { pluginId: string; contributionId: string; children?: ReactNode }
+interface SlotBoundaryState { error?: Error }
+
+class SlotBoundary extends Component<SlotBoundaryProps, SlotBoundaryState> {
+  state: SlotBoundaryState = {};
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error(`Cake plugin slot ${this.props.pluginId}/${this.props.contributionId} failed`, error, info);
+  }
+  render() {
+    if (this.state.error) return createElement("span", { className: "plugin-slot-error", role: "status", title: this.state.error.message }, `${this.props.pluginId} failed`);
+    return this.props.children;
+  }
+}
+
+function slotSnapshot(name: CakeSlotName) {
+  return [...definitions.values()].flatMap((plugin) => (plugin.slots?.[name] ?? []).map((contribution) => ({
+    ...contribution,
+    pluginId: plugin.id,
+    key: `${plugin.id}:${contribution.id}`
+  }))).sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.pluginId.localeCompare(right.pluginId) || left.id.localeCompare(right.id));
+}
+
+export function Slot({ name }: { name: CakeSlotName }) {
+  useSyncExternalStore(subscribePluginRuntime, () => revision, () => revision);
+  useEffect(() => {
+    mountedSlots.set(name, (mountedSlots.get(name) ?? 0) + 1);
+    emit();
+    return () => {
+      const next = (mountedSlots.get(name) ?? 1) - 1;
+      if (next === 0) mountedSlots.delete(name); else mountedSlots.set(name, next);
+      emit();
+    };
+  }, [name]);
+  return createElement(Fragment, null, ...slotSnapshot(name).map((item) => createElement(
+    SlotBoundary,
+    { key: item.key, pluginId: item.pluginId, contributionId: item.id },
+    createElement(item.component)
+  )));
 }
 
 export function useCommand(pluginId: string, name: string, command: CakePluginCommand) {
@@ -42,6 +91,20 @@ export function useContributionReveal(contributionId: string, reveal: (input: Js
 }
 
 export function subscribePluginCommands(listener: () => void) { listeners.add(listener); return () => listeners.delete(listener); }
+export function subscribePluginRuntime(listener: () => void) { listeners.add(listener); return () => listeners.delete(listener); }
+
+export function usePluginSlotDiagnostics() {
+  useSyncExternalStore(subscribePluginRuntime, () => revision, () => revision);
+  const contributed = new Set<CakeSlotName>();
+  for (const plugin of definitions.values()) {
+    for (const name of cakeSlotNames) if (plugin.slots?.[name]?.length) contributed.add(name);
+  }
+  return [...contributed].sort().flatMap((name) => {
+    const outletCount = mountedSlots.get(name) ?? 0;
+    if (outletCount === 1) return [];
+    return [{ name, outletCount }];
+  });
+}
 
 export function pluginCommandSnapshot() {
   const counts = new Map<string, number>();

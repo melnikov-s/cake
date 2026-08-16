@@ -2,7 +2,7 @@ import { z } from "zod";
 import { artifactRecordSchema } from "./artifact-contract";
 import { reviewAnchorSchema, reviewThreadSchema } from "./review-contract";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
-import { customizationStateSchema, pluginDiagnosticSchema, pluginIdSchema, pluginPersistenceKeySchema, pluginPersistenceRecordSchema, pluginPersistenceScopeSchema, pluginStatusSchema } from "../plugin/plugin-contract";
+import { customizationStateSchema, pluginBackendEventSchema, pluginDiagnosticSchema, pluginIdSchema, pluginPersistenceKeySchema, pluginPersistenceRecordSchema, pluginPersistenceScopeSchema, pluginStatusSchema } from "../plugin/plugin-contract";
 import { compiledInlineWidgetSchema, inlineWidgetCapabilitySchema, inlineWidgetLanguageSchema, inlineWidgetSourceSchema, repairedInlineWidgetSchema } from "./inline-widget-contract";
 import { jsonObjectSchema, jsonValueSchema } from "./json-contract";
 import {
@@ -56,6 +56,7 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("complete"), requestId: z.uuid() }),
   z.object({ type: z.literal("fatal"), requestId: z.uuid().optional(), message: ipcProjectionString(2_048) })
+  ,pluginBackendEventSchema.extend({ type: z.literal("plugin-backend-event") })
   ,z.object({ type: z.literal("customization-state-changed"), state: customizationStateSchema })
 ]);
 
@@ -63,17 +64,23 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("choose-project") }),
   z.object({ type: z.literal("get-home-directory") }),
   z.object({ type: z.literal("get-customization-state") }),
-  z.object({ type: z.literal("build-customization"), expectedBaseRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(), expectedSourceRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(), request: ipcProjectionString(8_192).optional() }),
-  z.object({ type: z.literal("list-customization-files") }),
-  z.object({ type: z.literal("read-customization-file"), path: z.string().min(1).max(8_192) }),
-  z.object({ type: z.literal("write-customization-file"), path: z.string().min(1).max(8_192), content: z.string().max(2_000_000), expectedWorkingRevision: z.string().regex(/^[a-f0-9]{64}$/) }),
+  z.object({ type: z.literal("get-plugin-authoring-reference") }),
+  z.object({ type: z.literal("list-plugin-files") }),
+  z.object({ type: z.literal("create-plugin"), pluginId: pluginIdSchema, name: z.string().trim().min(1).max(128), renderer: z.boolean().default(true), backend: z.boolean().default(false), scene: z.boolean().default(false), expectedWorkingRevision: z.string().regex(/^[a-f0-9]{64}$/) }),
+  z.object({ type: z.literal("read-plugin-file"), pluginId: pluginIdSchema, path: z.string().min(1).max(8_192) }),
+  z.object({ type: z.literal("write-plugin-file"), pluginId: pluginIdSchema, path: z.string().min(1).max(8_192), content: z.string().max(2_000_000), expectedWorkingRevision: z.string().regex(/^[a-f0-9]{64}$/) }),
+  z.object({ type: z.literal("validate-customization"), expectedBaseRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(), expectedSourceRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(), request: ipcProjectionString(8_192).optional() }),
+  z.object({ type: z.literal("activate-customization"), revision: z.string().regex(/^[a-f0-9]{64}$/), expectedSourceRevision: z.string().regex(/^[a-f0-9]{64}$/), request: ipcProjectionString(8_192).optional() }),
   z.object({ type: z.literal("customization-rendered"), revision: z.string().regex(/^[a-f0-9]{64}$/) }),
   z.object({ type: z.literal("customization-runtime-failed"), revision: z.string().regex(/^[a-f0-9]{64}$/).optional(), message: ipcProjectionString(32_768) }),
   z.object({ type: z.literal("rollback-customization") }),
   z.object({ type: z.literal("use-factory-customization") }),
   z.object({ type: z.literal("list-plugins") }),
   z.object({ type: z.literal("set-plugin-enabled"), pluginId: pluginIdSchema, enabled: z.boolean() }),
+  z.object({ type: z.literal("set-active-scene"), pluginId: pluginIdSchema.optional() }),
   z.object({ type: z.literal("delete-plugin"), pluginId: pluginIdSchema }),
+  z.object({ type: z.literal("call-plugin-backend"), pluginId: pluginIdSchema, callId: z.uuid(), method: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/).max(256), input: jsonValueSchema }),
+  z.object({ type: z.literal("cancel-plugin-backend-call"), pluginId: pluginIdSchema, callId: z.uuid() }),
   z.object({ type: z.literal("load-plugin-state"), pluginId: pluginIdSchema, key: pluginPersistenceKeySchema, scope: pluginPersistenceScopeSchema }),
   z.object({ type: z.literal("save-plugin-state"), pluginId: pluginIdSchema, key: pluginPersistenceKeySchema, scope: pluginPersistenceScopeSchema, value: z.json(), expectedVersion: z.number().int().nonnegative().optional() }),
   z.object({ type: z.literal("choose-attachments") }),
@@ -142,11 +149,14 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("project-chosen"), path: z.string().max(4_096).optional() }),
   z.object({ type: z.literal("home-directory"), path: z.string().max(4_096) }),
   z.object({ type: z.literal("customization-state"), state: customizationStateSchema }),
-  z.object({ type: z.literal("customization-build"), revision: z.string().regex(/^[a-f0-9]{64}$/), diagnostics: z.array(pluginDiagnosticSchema).max(1_000), activating: z.boolean() }),
-  z.object({ type: z.literal("customization-files"), workingRevision: z.string().regex(/^[a-f0-9]{64}$/), buildRevision: z.string().regex(/^[a-f0-9]{64}$/), files: z.array(z.string().min(1).max(8_192)).max(100_000) }),
-  z.object({ type: z.literal("customization-file"), path: z.string().min(1).max(8_192), content: z.string().max(2_000_000) }),
+  z.object({ type: z.literal("plugin-authoring-reference"), reference: z.string().max(1_000_000) }),
+  z.object({ type: z.literal("plugin-files"), workingRevision: z.string().regex(/^[a-f0-9]{64}$/), buildRevision: z.string().regex(/^[a-f0-9]{64}$/), files: z.array(z.string().min(1).max(8_192)).max(100_000) }),
+  z.object({ type: z.literal("plugin-file"), pluginId: pluginIdSchema, path: z.string().min(1).max(8_192), content: z.string().max(2_000_000) }),
+  z.object({ type: z.literal("customization-validation"), revision: z.string().regex(/^[a-f0-9]{64}$/), sourceRevision: z.string().regex(/^[a-f0-9]{64}$/), diagnostics: z.array(pluginDiagnosticSchema).max(1_000), valid: z.boolean() }),
+  z.object({ type: z.literal("customization-activation"), revision: z.string().regex(/^[a-f0-9]{64}$/), activating: z.literal(true) }),
   z.object({ type: z.literal("plugin-state"), record: pluginPersistenceRecordSchema.optional() }),
   z.object({ type: z.literal("plugins-listed"), plugins: z.array(pluginStatusSchema).max(1_000) }),
+  z.object({ type: z.literal("plugin-backend-result"), callId: z.uuid(), ok: z.boolean(), value: jsonValueSchema.optional(), error: ipcProjectionString(32_768).optional() }),
   z.object({ type: z.literal("attachments-chosen"), attachments: z.array(attachmentSchema).max(20) }),
   z.object({ type: z.literal("file-suggestions"), suggestions: z.array(fileSuggestionSchema).max(20) }),
   z.object({ type: z.literal("workspace-files"), files: z.array(z.string().min(1).max(8_192)).max(50_000) }),

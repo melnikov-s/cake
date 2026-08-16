@@ -13,10 +13,9 @@ describe("PluginBuildService", () => {
     const root = await mkdtemp(join(tmpdir(), "cake-plugin-build-")); roots.push(root);
     const paths = resolveCakePaths({ env: { CAKE_HOME: join(root, "cake") }, homeDirectory: join(root, "home") });
     const plugin = join(paths.plugins, "example.calendar");
-    await mkdir(plugin, { recursive: true }); await mkdir(paths.scenes, { recursive: true });
-    await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 1, id: "example.calendar", name: "Example Calendar", entry: "index.tsx" }));
-    await writeFile(join(plugin, "index.tsx"), `import { definePlugin } from "cake";\nexport default definePlugin({ id: "example.calendar", contributions: { Badge: () => <i>PLUGIN_BUILD_MARKER</i> } });\n`);
-    await writeFile(join(paths.scenes, "global.tsx"), `import type { ReactNode } from "react";\nimport calendar from "plugin:example.calendar";\nconst Badge = calendar.contributions.Badge;\nexport default function Scene({ children }: { children: ReactNode }) { return <><Badge />{children}</>; }\n`);
+    await mkdir(plugin, { recursive: true });
+    await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 2, id: "example.calendar", name: "Example Calendar", renderer: "index.tsx" }));
+    await writeFile(join(plugin, "index.tsx"), `import { definePlugin } from "cake";\nconst Badge = () => <i>PLUGIN_BUILD_MARKER</i>;\nexport default definePlugin({ id: "example.calendar", contributions: { Badge }, slots: { "global.sidebar.header": [{ id: "badge", component: Badge }] } });\n`);
     const candidate = await new PluginBuildService(paths, resolve(import.meta.dirname, "../../..")).buildCandidate();
     expect(candidate.diagnostics).toEqual([]);
     expect(candidate.revision).not.toBe(candidate.sourceRevision);
@@ -35,20 +34,37 @@ describe("PluginBuildService", () => {
     const paths = resolveCakePaths({ env: { CAKE_HOME: join(root, "cake") }, homeDirectory: join(root, "home") });
     const plugin = join(paths.plugins, "example.broken");
     await mkdir(plugin, { recursive: true });
-    await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 1, id: "example.broken", name: "Example Broken", entry: "index.tsx" }));
+    await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 2, id: "example.broken", name: "Example Broken", renderer: "index.tsx" }));
     await writeFile(join(plugin, "index.tsx"), `const wrong: number = "no"; export default wrong;\n`);
     const candidate = await new PluginBuildService(paths, resolve(import.meta.dirname, "../../..")).buildCandidate();
     expect(candidate.directory).toBe("");
     expect(candidate.diagnostics.some((item) => item.phase === "typecheck" && item.message.includes("index.tsx:1"))).toBe(true);
   });
 
-  it("applies the constrained import policy to global-scene source", async () => {
+  it("bundles an unrestricted Node backend separately from the renderer", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-plugin-build-")); roots.push(root);
     const paths = resolveCakePaths({ env: { CAKE_HOME: join(root, "cake") }, homeDirectory: join(root, "home") });
-    await mkdir(paths.scenes, { recursive: true });
-    await writeFile(join(paths.scenes, "global.tsx"), `import type { ReactNode } from "react";\nimport "node:fs";\nexport default function Scene({ children }: { children: ReactNode }) { return children; }\n`);
+    const plugin = join(paths.plugins, "example.backend");
+    await mkdir(plugin, { recursive: true });
+    await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 2, id: "example.backend", name: "Example Backend", backend: "backend.ts" }));
+    await writeFile(join(plugin, "backend.ts"), `import { readFile } from "node:fs/promises";\nimport { definePluginBackend } from "cake/backend";\nexport default definePluginBackend({ methods: { async inspect() { await readFile(new URL(import.meta.url)); return { marker: "UNRESTRICTED_BACKEND" }; } } });\n`);
+    const service = new PluginBuildService(paths, resolve(import.meta.dirname, "../../.."));
+    const candidate = await service.buildCandidate();
+    expect(candidate.diagnostics).toEqual([]);
+    expect(candidate.backends).toEqual([{ pluginId: "example.backend", path: expect.stringMatching(/example\.backend\.mjs$/) }]);
+    expect(await readFile(candidate.backends[0]!.path, "utf8")).toContain("UNRESTRICTED_BACKEND");
+    expect(await service.backendEntries(candidate.revision)).toEqual(candidate.backends);
+  }, 20_000);
+
+  it("applies the constrained import policy to a plugin-owned scene", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-plugin-build-")); roots.push(root);
+    const paths = resolveCakePaths({ env: { CAKE_HOME: join(root, "cake") }, homeDirectory: join(root, "home") });
+    const plugin = join(paths.plugins, "example.scene");
+    await mkdir(plugin, { recursive: true });
+    await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 2, id: "example.scene", name: "Example Scene", scene: "scene.tsx", activeScene: true }));
+    await writeFile(join(plugin, "scene.tsx"), `import "node:fs";\nexport default function Scene() { return null; }\n`);
     const candidate = await new PluginBuildService(paths, resolve(import.meta.dirname, "../../..")).buildCandidate();
     expect(candidate.directory).toBe("");
-    expect(candidate.diagnostics.some((item) => item.phase === "bundle" && item.message.includes("bare module is not on Cake's allowlist"))).toBe(true);
+    expect(candidate.diagnostics.some((item) => item.message.includes("node:fs"))).toBe(true);
   });
 });

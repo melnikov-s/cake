@@ -367,7 +367,8 @@ describe("S1 Pi runtime", () => {
     const context = runtime.getReviewParentContext?.();
     expect(context?.activeTools).toEqual(["get_app_state", "search_sessions"]);
     expect(context?.systemPrompt).toContain("that request authorizes the complete authoring loop");
-    expect(context?.systemPrompt).toContain("fix the source and rebuild autonomously");
+    expect(context?.systemPrompt).toContain("fix the source and validate again autonomously");
+    expect(context?.systemPrompt).toContain("Validation never changes the running UI");
     expect(context?.systemPrompt).toContain("Do not stop to report ordinary authoring diagnostics");
     expect(context?.systemPrompt).toContain("collision-free layout as an authoring acceptance criterion");
     expect(context?.systemPrompt).toContain("from 320 CSS pixels through wide desktop sizes");

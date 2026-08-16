@@ -359,9 +359,15 @@ export const applicationStateSchema = z.object({
   trustedProjectPaths: z.array(z.string().max(4_096)).max(200).default([])
 });
 
+export const windowConversationSelectionSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("project-session"), workspacePath: z.string().min(1).max(4_096), sessionId: z.string().min(1).max(256) }),
+  z.object({ kind: z.literal("cake-chat"), sessionId: z.string().min(1).max(256) })
+]);
+
 export const windowViewStateSchema = z.object({
   projectPath: z.string().max(4_096).optional(),
   selectedSessionId: z.string().max(256).optional(),
+  activeConversation: windowConversationSelectionSchema.optional(),
   recentProjectPaths: z.array(z.string().max(4_096)).max(50).default([]),
   draft: z.string().max(262_144).default(""),
   theme: z.enum(["system", "light", "dark"]).default("system"),
@@ -389,4 +395,5 @@ export type ExtensionUiState = z.infer<typeof extensionUiStateSchema>;
 export type ExtensionUiEvent = z.infer<typeof extensionUiEventSchema>;
 export type ProjectRecord = z.infer<typeof projectRecordSchema>;
 export type ApplicationState = z.infer<typeof applicationStateSchema>;
+export type WindowConversationSelection = z.infer<typeof windowConversationSelectionSchema>;
 export type WindowViewState = z.infer<typeof windowViewStateSchema>;

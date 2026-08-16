@@ -8,7 +8,10 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: resolve(import.meta.dirname, "src/main/main.ts"),
+        input: {
+          main: resolve(import.meta.dirname, "src/main/main.ts"),
+          "plugin-backend-host": resolve(import.meta.dirname, "src/main/plugin-backend-host.ts")
+        },
         output: { entryFileNames: "[name].js" }
       }
     }
@@ -34,7 +37,8 @@ export default defineConfig({
       alias: {
         "@": resolve(import.meta.dirname, "src/renderer"),
         "cake": resolve(import.meta.dirname, "src/renderer/cake.ts"),
-        "virtual:cake-global-scene": resolve(import.meta.dirname, "src/renderer/factory-global-scene.tsx")
+        "virtual:cake-scene": resolve(import.meta.dirname, "src/renderer/factory-scene.tsx"),
+        "virtual:cake-plugins": resolve(import.meta.dirname, "src/renderer/empty-plugin-catalog.ts")
       }
     },
     plugins: [react(), tailwindcss()],

@@ -65,6 +65,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   showGlobalChat(sessionId = this.globalChatStore.sessionId) {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.appShellStore.selectCakeChat(sessionId);
+    this.windowPersistence.schedule();
   }
   async openCakeChat(sessionId?: string) {
     this.showGlobalChat(sessionId);
@@ -193,7 +194,9 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       registry: this.sessionRegistry,
       sidebar: () => this.sidebarStore,
       settings: () => this.settingsStore,
-      workbench: () => this.projectWorkbenchStore
+      workbench: () => this.projectWorkbenchStore,
+      shell: () => this.appShellStore,
+      globalChat: () => this.globalChatStore
     });
   }
 
@@ -248,13 +251,17 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         this.client.setModel({ operationId, workspacePath, sessionId, provider, modelId })),
       customizationState: () => this.customizationStore.state,
       plugins: () => this.customizationStore.plugins,
-      listCustomizationFiles: () => this.client.listCustomizationFiles(),
-      readCustomizationFile: (path) => this.client.readCustomizationFile(path),
-      writeCustomizationFile: (path, content, expectedWorkingRevision) => this.client.writeCustomizationFile(path, content, expectedWorkingRevision),
-      buildCustomization: (expectedBaseRevision, request, expectedSourceRevision) => this.client.buildCustomization(expectedBaseRevision, request, expectedSourceRevision),
+      getPluginAuthoringReference: () => this.client.getPluginAuthoringReference(),
+      listPluginFiles: () => this.client.listPluginFiles(),
+      createPlugin: (input) => this.client.createPlugin(input),
+      readPluginFile: (pluginId, path) => this.client.readPluginFile(pluginId, path),
+      writePluginFile: (pluginId, path, content, expectedWorkingRevision) => this.client.writePluginFile(pluginId, path, content, expectedWorkingRevision),
+      validateCustomization: (expectedBaseRevision, request, expectedSourceRevision) => this.client.validateCustomization(expectedBaseRevision, request, expectedSourceRevision),
+      activateCustomization: (revision, expectedSourceRevision, request) => this.client.activateCustomization(revision, expectedSourceRevision, request),
       rollbackCustomization: () => this.client.rollbackCustomization(),
       useFactoryCustomization: () => this.client.useFactoryCustomization(),
-      setPluginEnabled: (pluginId, enabled) => this.client.setPluginEnabled(pluginId, enabled)
+      setPluginEnabled: (pluginId, enabled) => this.client.setPluginEnabled(pluginId, enabled),
+      setActiveScene: (pluginId) => this.client.setActiveScene(pluginId)
     });
     this.effect(() => this.client.subscribe((event) => {
       try {
@@ -291,6 +298,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         const requestedSessionId = this.appShellStore.selection.sessionId;
         if (!requestedSessionId || requestedSessionId === event.snapshot.sessionId) {
           this.appShellStore.selectCakeChat(event.snapshot.sessionId);
+          this.windowPersistence.schedule();
         }
       }
       return;

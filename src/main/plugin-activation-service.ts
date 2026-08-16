@@ -72,7 +72,7 @@ export class PluginActivationService {
     return { kind: "custom", revision: this.state.activeRevision, path: this.buildPath(this.state.activeRevision) };
   }
 
-  async prepare(expectedBaseRevision?: string, request = "Rebuild Cake customization", expectedSourceRevision?: string): Promise<CandidateBuild> {
+  async validate(expectedBaseRevision?: string, request = "Validate Cake customization", expectedSourceRevision?: string): Promise<CandidateBuild> {
     if (this.preparing) throw new Error("A customization candidate is already being built");
     if (this.state.pendingRevision) throw new Error(`Customization ${this.state.pendingRevision} is still awaiting its render health check`);
     this.preparing = true;
@@ -89,18 +89,35 @@ export class PluginActivationService {
       this.baseRevision = this.state.sourceRevision;
       const candidate = await this.builder.buildCandidate();
       if (candidate.diagnostics.length) {
-        this.state = { ...this.state, sourceRevision: candidate.sourceRevision, diagnostics: candidate.diagnostics, updatedAt: new Date().toISOString() };
+        this.state = { ...this.state, validatedRevision: undefined, diagnostics: candidate.diagnostics, updatedAt: new Date().toISOString() };
         await this.persist();
         await this.record("rejected", candidate.revision, candidate.diagnostics);
         return candidate;
       }
-      this.state = { ...this.state, sourceRevision: candidate.sourceRevision, pendingRevision: candidate.revision, recoveryRequired: true, diagnostics: [], updatedAt: new Date().toISOString() };
+      this.state = { ...this.state, sourceRevision: candidate.sourceRevision, validatedRevision: candidate.revision, diagnostics: [], updatedAt: new Date().toISOString() };
       await this.persist();
-      await this.record("candidate", candidate.revision, []);
+      await this.record("validated", candidate.revision, []);
       return candidate;
     } finally {
       this.preparing = false;
     }
+  }
+
+  async activateValidated(revision: string, expectedSourceRevision: string, request = "Activate Cake customization") {
+    if (this.state.pendingRevision) throw new Error(`Customization ${this.state.pendingRevision} is still awaiting its render health check`);
+    if (this.state.validatedRevision !== revision) throw new Error(`Customization ${revision} is not the validated candidate`);
+    const current = await this.builder.repository.inspect();
+    if (current.revision !== expectedSourceRevision || this.state.sourceRevision !== expectedSourceRevision) {
+      throw new Error(`Customization source changed after validation: expected ${expectedSourceRevision}, found ${current.revision}`);
+    }
+    if (!await this.builder.isBuildCurrent(revision)) throw new Error(`Customization candidate ${revision} is missing or stale`);
+    this.attemptId = crypto.randomUUID();
+    this.request = request;
+    this.baseRevision = this.state.activeRevision;
+    this.state = { ...this.state, validatedRevision: undefined, pendingRevision: revision, recoveryRequired: true, diagnostics: [], updatedAt: new Date().toISOString() };
+    await this.persist();
+    await this.record("candidate", revision, []);
+    return { revision, indexHtml: this.buildPath(revision) };
   }
 
   async markHealthy(revision: string) {
@@ -111,6 +128,7 @@ export class PluginActivationService {
       activeRevision: revision,
       rollbackRevision: refreshedForCurrentRenderer ? undefined : this.state.lastKnownGoodRevision,
       lastKnownGoodRevision: revision,
+      validatedRevision: undefined,
       pendingRevision: undefined,
       failedRevision: undefined,
       recoveryRequired: false,
@@ -124,7 +142,7 @@ export class PluginActivationService {
 
   async fail(revision: string | undefined, diagnostic: PluginDiagnostic) {
     this.startupCandidateRevision = undefined;
-    this.state = { ...this.state, pendingRevision: undefined, failedRevision: revision, recoveryRequired: true, diagnostics: [...this.state.diagnostics, diagnostic], updatedAt: new Date().toISOString() };
+    this.state = { ...this.state, validatedRevision: undefined, pendingRevision: undefined, failedRevision: revision, recoveryRequired: true, diagnostics: [...this.state.diagnostics, diagnostic], updatedAt: new Date().toISOString() };
     await this.persist();
     if (revision) await this.record("failed", revision, [diagnostic]);
   }
@@ -138,6 +156,7 @@ export class PluginActivationService {
       activeRevision: revision,
       lastKnownGoodRevision: revision,
       rollbackRevision: undefined,
+      validatedRevision: undefined,
       pendingRevision: undefined,
       failedRevision: undefined,
       recoveryRequired: false,
@@ -150,7 +169,7 @@ export class PluginActivationService {
   }
 
   async useFactory() {
-    this.state = { ...this.state, activeRevision: undefined, pendingRevision: undefined, failedRevision: undefined, recoveryRequired: false, diagnostics: [], updatedAt: new Date().toISOString() };
+    this.state = { ...this.state, activeRevision: undefined, validatedRevision: undefined, pendingRevision: undefined, failedRevision: undefined, recoveryRequired: false, diagnostics: [], updatedAt: new Date().toISOString() };
     await this.persist();
     const revision = this.state.sourceRevision;
     if (revision) await this.record("factory", revision, []);
@@ -160,7 +179,7 @@ export class PluginActivationService {
     await this.writer.write(this.statePath, `${JSON.stringify(customizationStateSchema.parse(this.state), null, 2)}\n`);
   }
 
-  private async record(result: "rejected" | "candidate" | "activated" | "failed" | "rolled-back" | "factory", revision: string, diagnostics: PluginDiagnostic[]) {
+  private async record(result: "rejected" | "validated" | "candidate" | "activated" | "failed" | "rolled-back" | "factory", revision: string, diagnostics: PluginDiagnostic[]) {
     const record = customizationProvenanceSchema.parse({
       schemaVersion: 1,
       attemptId: this.attemptId ?? crypto.randomUUID(),

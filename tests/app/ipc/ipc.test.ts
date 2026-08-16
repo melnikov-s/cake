@@ -99,4 +99,12 @@ describe("process IPC", () => {
       draftsBySession: {}
     });
   });
+
+  it("persists the active Cake Chat separately from the background project", () => {
+    expect(windowViewStateSchema.parse({
+      projectPath: "/project",
+      selectedSessionId: "project-session",
+      activeConversation: { kind: "cake-chat", sessionId: "cake-chat-session" }
+    }).activeConversation).toEqual({ kind: "cake-chat", sessionId: "cake-chat-session" });
+  });
 });

@@ -1,8 +1,8 @@
 import { StrictMode, Suspense, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { StoreProvider } from "r-state-tree/react";
-import { App } from "./app";
-import GlobalScene from "virtual:cake-global-scene";
+import Scene from "virtual:cake-scene";
+import "virtual:cake-plugins";
 import { RendererErrorBoundary } from "./components/renderer-error-boundary";
 import { CustomizationRecovery } from "./components/customization-recovery";
 import { createDesktopClient } from "./desktop-client";
@@ -38,7 +38,8 @@ if (!window.cake) {
       <StrictMode>
         <StoreProvider store={rootStore}>
           <Suspense fallback={<main className="loading-screen"><span className="cake-mark">C</span><p>Hydrating customization…</p></main>}>
-            <GlobalScene><App /><CustomizationHealth /></GlobalScene>
+            <Scene />
+            <CustomizationHealth />
           </Suspense>
           <CustomizationRecovery />
         </StoreProvider>
