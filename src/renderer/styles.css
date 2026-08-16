@@ -394,6 +394,12 @@
 .transcript-item { min-width: 0; padding-bottom: 20px; }
 .transcript-item-error-after-user { padding-top: 12px; }
 .transcript-footer { width: min(100%, 51rem); min-height: 210px; margin-inline: auto; padding: 0 24px 24px; }
+.compaction-message details { overflow: hidden; border: 1px solid color-mix(in oklab, var(--accent) 24%, var(--border)); border-radius: 12px; background: color-mix(in oklab, var(--card) 82%, var(--accent)); }
+.compaction-message summary { display: flex; align-items: baseline; gap: 10px; padding: 11px 14px; cursor: pointer; }
+.compaction-message summary::marker { color: var(--accent); }
+.compaction-message summary strong { font-size: 12px; }
+.compaction-message summary span { color: var(--muted-foreground); font: 10px var(--font-mono); }
+.compaction-message details > div { max-height: 28rem; overflow: auto; padding: 0 14px 14px; border-top: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
 .artifacts-panel { display: grid; gap: 12px; margin: 8px 0 24px; }
 .artifacts-index { color: var(--muted-foreground); font: 11px var(--font-mono); }
 .artifacts-index summary { width: fit-content; cursor: pointer; }

@@ -6,6 +6,7 @@ type PartStatus = Extract<UiPart, { kind: "text" }>["status"];
 type ToolState = Extract<UiPart, { kind: "tool" }>["state"];
 type AttachmentKind = Extract<UiPart, { kind: "attachment" }>["attachmentKind"];
 type NoticeTone = Extract<UiPart, { kind: "notice" }>["tone"];
+type DeliveryState = Extract<UiPart, { kind: "text" }>["deliveryState"];
 
 export class MessageModel extends Model {
   @id id = "";
@@ -14,6 +15,7 @@ export class MessageModel extends Model {
   @state entryId: string | undefined;
   @state text: string | undefined;
   @state status: PartStatus | undefined;
+  @state deliveryState: DeliveryState | undefined;
   @state name: string | undefined;
   @state input: string | undefined;
   @state output: string | undefined;
@@ -31,11 +33,14 @@ export class MessageModel extends Model {
   @state operationId: string | undefined;
   @state threadIds: string[] | undefined;
   @state commentCount: number | undefined;
+  @state summary: string | undefined;
+  @state tokensBefore: number | undefined;
+  @state firstKeptEntryId: string | undefined;
 
   get value(): UiPart {
     switch (this.kind) {
       case "text":
-        return { id: this.id, kind: this.kind, role: this.role!, entryId: this.entryId, text: this.text!, status: this.status! };
+        return { id: this.id, kind: this.kind, role: this.role!, entryId: this.entryId, text: this.text!, status: this.status!, deliveryState: this.deliveryState };
       case "reasoning":
         return uiPartSchema.parse({ id: this.id, kind: this.kind, text: this.text!, status: this.status });
       case "tool":
@@ -48,6 +53,8 @@ export class MessageModel extends Model {
         return { id: this.id, kind: this.kind, tone: this.tone!, title: this.title!, detail: this.detail };
       case "review-run":
         return uiPartSchema.parse({ id: this.id, kind: this.kind, operationId: this.operationId!, threadIds: this.threadIds!, commentCount: this.commentCount!, status: this.status });
+      case "compaction":
+        return { id: this.id, kind: this.kind, summary: this.summary!, tokensBefore: this.tokensBefore!, firstKeptEntryId: this.firstKeptEntryId };
     }
   }
 }

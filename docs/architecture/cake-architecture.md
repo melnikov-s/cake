@@ -51,6 +51,14 @@ Every durable concept has one authority.
 Do not introduce a second transcript database, reconstruct Pi state into a
 competing domain model, or mutate Pi JSONL with ad hoc file operations.
 
+Cake's visible transcript projects the complete active branch returned by Pi's
+`SessionManager.getBranch()`. The compacted entries returned by
+`buildContextEntries()` are model input, not display history, and must never
+replace the complete transcript projection. Compaction entries remain visible
+as durable timeline events. Steering and follow-up queues are transient Pi
+runtime state: Cake overlays `queue_update` projections while messages wait and
+removes them when Pi consumes the corresponding user message into the branch.
+
 All inline threads—code reviews and assistant-message discussions—run as
 independent lightweight Pi sessions using the same runtime pipeline. Their
 anchors belong to Cake; their replies remain authoritative in the referenced Pi

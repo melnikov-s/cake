@@ -124,7 +124,8 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
     role: z.enum(["user", "assistant"]),
     entryId: z.string().min(1).max(256).optional(),
     text: boundedText,
-    status: z.enum(["streaming", "complete", "error"])
+    status: z.enum(["streaming", "complete", "error"]),
+    deliveryState: z.enum(["sending", "queued", "steering"]).optional()
   }),
   z.object({
     ...partBase,
@@ -171,6 +172,13 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
     threadIds: z.array(z.string().min(1).max(256)).min(1).max(100),
     commentCount: z.number().int().positive().max(1_000_000),
     status: z.enum(["running", "complete", "error"])
+  }),
+  z.object({
+    ...partBase,
+    kind: z.literal("compaction"),
+    summary: boundedText,
+    tokensBefore: z.number().int().nonnegative(),
+    firstKeptEntryId: z.string().min(1).max(256).optional()
   })
 ]);
 

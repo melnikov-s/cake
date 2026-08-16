@@ -153,10 +153,14 @@ function partsFromMessage(message: unknown, baseId: string, streaming = false, e
 export function createLiveMessageProjector() {
   let activeStreamId: string | undefined;
   let streamIndex = 0;
+  let userIndex = 0;
 
   const nextStreamId = () => `stream-${++streamIndex}`;
 
   return (event: AgentSessionEvent): UiPart[] => {
+    if (event.type === "message_start" && event.message.role === "user") {
+      return partsFromMessage(event.message, `live-user-${++userIndex}`);
+    }
     if (event.type === "message_start" && event.message.role === "assistant") {
       activeStreamId = nextStreamId();
       return [];
@@ -177,6 +181,20 @@ export function createLiveMessageProjector() {
 
 export function reviewRunPart(run: ReviewRunEntry): Extract<UiPart, { kind: "review-run" }> {
   return { id: `review-run-${run.operationId}`, kind: "review-run", ...run };
+}
+
+export function projectQueuedMessages(steering: readonly string[], followUp: readonly string[]): UiPart[] {
+  const project = (deliveryState: "steering" | "queued", messages: readonly string[]) => {
+    const occurrences = new Map<string, number>();
+    return messages.flatMap((text): UiPart[] => {
+      if (!text) return [];
+      const occurrence = (occurrences.get(text) ?? 0) + 1;
+      occurrences.set(text, occurrence);
+      const digest = createHash("sha256").update(`${deliveryState}\0${text}`).digest("hex").slice(0, 24);
+      return [{ id: `queued-${deliveryState}-${digest}-${occurrence}`, kind: "text", role: "user", text, status: "complete", deliveryState }];
+    });
+  };
+  return [...project("steering", steering), ...project("queued", followUp)];
 }
 
 export function projectSessionEntries(entries: readonly SessionEntry[], branchEntries: readonly SessionEntry[] = entries) {
@@ -211,6 +229,10 @@ export function projectSessionEntries(entries: readonly SessionEntry[], branchEn
   for (const entry of entries) {
     if (entry.type === "message") {
       for (const part of partsFromMessage(entry.message, `entry-${entry.id}`, false, entry.id)) append(part);
+      continue;
+    }
+    if (entry.type === "compaction") {
+      append({ id: `entry-${entry.id}-compaction`, kind: "compaction", summary: entry.summary, tokensBefore: entry.tokensBefore, firstKeptEntryId: entry.firstKeptEntryId });
       continue;
     }
     if (entry.type !== "custom" || entry.customType !== reviewRunEntryType) continue;

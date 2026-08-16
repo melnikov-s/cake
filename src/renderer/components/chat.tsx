@@ -31,8 +31,9 @@ export const ChatTextMessage = forwardRef<HTMLElement, {
   children?: ReactNode;
 }>(function ChatTextMessage({ part, contentRef, onMouseUp, children }, ref) {
   const assistant = part.role === "assistant";
+  const userLabel = part.deliveryState === "queued" ? "You · queued" : part.deliveryState === "steering" ? "You · steering next" : part.deliveryState === "sending" ? "You · sending" : "You";
   return <Message ref={ref} className={assistant ? "assistant-message mr-auto w-full" : "ml-auto w-[min(88%,42rem)]"}>
-    <MessageLabel>{assistant ? part.status === "streaming" ? "Cake · working" : "Cake" : "You"}</MessageLabel>
+    <MessageLabel>{assistant ? part.status === "streaming" ? "Cake · working" : "Cake" : userLabel}</MessageLabel>
     <MessageContent ref={contentRef} className={assistant ? "assistant-message-content" : "user-message"} onMouseUp={onMouseUp}>
       <Markdown>{part.text}</Markdown>
     </MessageContent>

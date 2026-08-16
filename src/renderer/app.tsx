@@ -12,6 +12,7 @@ import {
 import { Conversation, VirtualizedConversation, type VirtualizedConversationHandle } from "@/components/ai-elements/conversation";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { Message, MessageLabel } from "@/components/ai-elements/message";
+import { CompactionMessage } from "@/components/compaction-message";
 import { Reasoning } from "@/components/ai-elements/reasoning";
 import { Source } from "@/components/ai-elements/source";
 import { Tool } from "@/components/ai-elements/tool";
@@ -305,6 +306,7 @@ const TranscriptPart = observer(function TranscriptPart({ part, behavior }: { pa
     ? <figure className="transcript-image"><img src={`data:${part.mediaType};base64,${part.data}`} alt={part.name} /><figcaption>{part.name}</figcaption></figure>
     : <div className="w-fit rounded-full border border-border px-3 py-1 font-mono text-[0.68rem]">{part.attachmentKind} · {part.name}</div>;
   if (part.kind === "review-run") return <ReviewRunMessage run={part} onOpen={behavior.onOpenReviewRun} />;
+  if (part.kind === "compaction") return <CompactionMessage part={part} />;
   return <div className={`notice notice-${part.tone}`} role={part.tone === "error" ? "alert" : "status"}><strong>{part.title}</strong>{part.detail && <span>{part.detail}</span>}</div>;
 });
 

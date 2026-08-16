@@ -98,6 +98,23 @@ describe("SessionModel", () => {
     model[Symbol.dispose]();
   });
 
+  it("hydrates queued delivery and compaction transcript parts", () => {
+    const model = SessionModel.create();
+    applySnapshot(model, toSessionModelSnapshot({
+      ...snapshot,
+      parts: [
+        { id: "queued-1", kind: "text", role: "user", text: "Next", status: "complete", deliveryState: "queued" },
+        { id: "compaction-1", kind: "compaction", summary: "Earlier work", tokensBefore: 12_000, firstKeptEntryId: "entry-2" }
+      ]
+    }));
+
+    expect(model.uiParts).toEqual([
+      expect.objectContaining({ kind: "text", deliveryState: "queued" }),
+      expect.objectContaining({ kind: "compaction", summary: "Earlier work", tokensBefore: 12_000 })
+    ]);
+    model[Symbol.dispose]();
+  });
+
   it("reconciles identified children through native snapshot hydration", () => {
     const model = SessionModel.create();
     applySnapshot(model, toSessionModelSnapshot(snapshot));

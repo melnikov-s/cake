@@ -42,6 +42,7 @@ import {
   formatUnknown,
   imageContent,
   projectArtifactPointers,
+  projectQueuedMessages,
   projectSessionEntries,
   projectTree,
   promptText,
@@ -322,11 +323,13 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     const sessions = await listWorkspaceSessions(options.cwd, options.sessionDir, Boolean(options.globalControl));
     const stats = session.getSessionStats();
     const globalSettings = settingsManager.getGlobalSettings();
+    const branchParts = projectSessionEntries(session.sessionManager.getBranch());
+    const queuedParts = projectQueuedMessages(session.getSteeringMessages(), session.getFollowUpMessages());
     return {
       workspacePath: options.cwd,
       sessionId: cakeSessionId,
       sessionFile: session.sessionFile ?? "",
-      parts: projectSessionEntries(session.sessionManager.buildContextEntries(), session.sessionManager.getBranch()),
+      parts: [...branchParts, ...queuedParts],
       model: session.model ? { provider: session.model.provider, id: session.model.id, name: session.model.name } : undefined,
       models: await modelOptions(),
       thinkingLevel: session.thinkingLevel,
@@ -524,6 +527,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
   }
 
   const activeToolCalls = new Map<string, { input: string; artifactId?: string; filePath?: string }>();
+  let queuedPartIds = new Set(projectQueuedMessages(session.getSteeringMessages(), session.getFollowUpMessages()).map((part) => part.id));
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     if (disposed) return;
     if (event.type === "agent_start") {
@@ -552,6 +556,25 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     }
     if (event.type === "compaction_start") {
       options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "active-compaction", kind: "notice", tone: "info", title: "Compacting context", detail: event.reason } });
+    }
+    if (event.type === "compaction_end") {
+      if (event.aborted) {
+        options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "active-compaction", kind: "notice", tone: "warning", title: "Compaction cancelled", detail: event.errorMessage } });
+      } else if (event.errorMessage) {
+        options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "active-compaction", kind: "notice", tone: "error", title: "Compaction failed", detail: event.errorMessage } });
+      } else {
+        options.onEvent({ type: "part-removed", sessionId: cakeSessionId, partId: "active-compaction" });
+        void emitSnapshot();
+      }
+    }
+    if (event.type === "queue_update") {
+      const queuedParts = projectQueuedMessages(event.steering, event.followUp);
+      const nextIds = new Set(queuedParts.map((part) => part.id));
+      for (const partId of queuedPartIds) {
+        if (!nextIds.has(partId)) options.onEvent({ type: "part-removed", sessionId: cakeSessionId, partId });
+      }
+      for (const part of queuedParts) options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
+      queuedPartIds = nextIds;
     }
     if (event.type === "agent_settled") {
       options.onEvent({ type: "streaming", sessionId: cakeSessionId, streaming: false });

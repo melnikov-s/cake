@@ -14,7 +14,7 @@ import {
   listWorkspaceSessions,
   suggestProjectFiles
 } from "../../../src/agent/session-discovery";
-import { createLiveMessageProjector } from "../../../src/agent/session-projection";
+import { createLiveMessageProjector, projectQueuedMessages } from "../../../src/agent/session-projection";
 import { runReviewTurn } from "../../../src/agent/sidecar-runtime";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { CakeArtifactV1 } from "../../../src/ipc/artifact-contract";
@@ -269,6 +269,22 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(afterTool[0]).toMatchObject({ id: "stream-2-text-0", text: "Here is the result." });
   });
 
+  it("projects a consumed user message as soon as Pi starts it", () => {
+    const project = createLiveMessageProjector();
+    const parts = project({ type: "message_start", message: { role: "user", content: [{ type: "text", text: "Queued work" }], timestamp: 0 } } as AgentSessionEvent);
+
+    expect(parts).toEqual([expect.objectContaining({ id: "live-user-1-text", kind: "text", role: "user", text: "Queued work", status: "complete" })]);
+  });
+
+  it("projects Pi queue state with stable delivery labels and duplicate identities", () => {
+    expect(projectQueuedMessages(["Change direction", "Change direction"], ["Do this next"])).toEqual([
+      expect.objectContaining({ id: expect.stringMatching(/^queued-steering-.*-1$/), text: "Change direction", deliveryState: "steering" }),
+      expect.objectContaining({ id: expect.stringMatching(/^queued-steering-.*-2$/), text: "Change direction", deliveryState: "steering" }),
+      expect.objectContaining({ id: expect.stringMatching(/^queued-queued-.*-1$/), text: "Do this next", deliveryState: "queued" })
+    ]);
+    expect(projectQueuedMessages([], [""])).toEqual([]);
+  });
+
   it("projects bash tool calls as commands instead of JSON arguments", () => {
     const project = createLiveMessageProjector();
     const message = { role: "assistant", content: [{ type: "toolCall", id: "bash-1", name: "bash", arguments: { command: "sleep 5" } }] };
@@ -493,6 +509,7 @@ describe("S1 Pi runtime", () => {
     expect(preview?.parts.some((part) => part.kind === "tool" && part.name === "read")).toBe(true);
     expect(preview?.parts).toContainEqual(expect.objectContaining({ kind: "attachment", attachmentKind: "image", mediaType: "image/png", data: "aW1hZ2U=" }));
     expect(preview?.parts).toContainEqual(expect.objectContaining({ kind: "notice", tone: "error", detail: "Subscription authentication failed" }));
+    expect(preview?.parts).toContainEqual(expect.objectContaining({ kind: "compaction", summary: "Earlier work compacted", tokensBefore: 10 }));
     expect(preview?.parts).toContainEqual(expect.objectContaining({ kind: "review-run", operationId: "00000000-0000-4000-8000-000000000001", status: "complete" }));
     expect(preview?.parts.findIndex((part) => part.kind === "review-run")).toBeLessThan(preview?.parts.findIndex((part) => part.kind === "tool") ?? -1);
 
@@ -511,12 +528,15 @@ describe("S1 Pi runtime", () => {
     const reopenedParts = (await second.snapshot()).parts;
     expect(reopenedParts.some((part) => part.kind === "text" && part.text === "Hi")).toBe(true);
     expect(reopenedParts.filter((part) => part.kind === "review-run")).toEqual([
-      expect.objectContaining({ operationId: "00000000-0000-4000-8000-000000000002", status: "complete" }),
-      expect.objectContaining({ operationId: "00000000-0000-4000-8000-000000000001", status: "complete" })
+      expect.objectContaining({ operationId: "00000000-0000-4000-8000-000000000001", status: "complete" }),
+      expect.objectContaining({ operationId: "00000000-0000-4000-8000-000000000002", status: "complete" })
     ]);
     expect(reopenedParts.filter((part) => part.kind === "tool")).toEqual([
+      expect.objectContaining({ id: "tool-call-1", name: "read", state: "success" }),
       expect.objectContaining({ id: "tool-call-edit", name: "edit", filePath: "src/app.ts", diff: "-1 old\n+1 new", state: "success" })
     ]);
+    expect(reopenedParts).toContainEqual(expect.objectContaining({ kind: "text", role: "user", text: "Hello" }));
+    expect(reopenedParts).toContainEqual(expect.objectContaining({ kind: "compaction", summary: "Earlier work compacted" }));
     expect((await second.snapshot()).tree[0]).toMatchObject({ id: "user-1", active: true });
     await second.rename("Named session");
     expect((await second.snapshot()).sessions.find((item) => item.id === second.sessionId)?.title).toBe("Named session");

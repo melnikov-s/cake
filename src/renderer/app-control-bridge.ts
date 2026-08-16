@@ -383,6 +383,7 @@ export class AppControlBridge {
     if (part.kind === "source") return { ...base, text: clip(`${part.title}\n${part.url}`) };
     if (part.kind === "attachment") return { ...base, text: clip(`Attachment: ${part.name} (${part.mediaType})`) };
     if (part.kind === "notice") return { ...base, text: clip([part.title, part.detail].filter(Boolean).join("\n")) };
+    if (part.kind === "compaction") return { ...base, text: clip(`Context compacted after ${part.tokensBefore} tokens\n${part.summary}`) };
     return { ...base, text: clip(`Review run: ${part.commentCount} comments (${part.status})`) };
   }
 }
