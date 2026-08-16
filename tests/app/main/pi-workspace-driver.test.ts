@@ -45,19 +45,21 @@ describe("PiWorkspaceDriver", () => {
       dispose: vi.fn(),
       ensureInitialGitCheckpoint: vi.fn(async () => { throw new NotGitRepositoryError("/project"); })
     };
-    const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime) });
+    const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime), collectWorkingChanges: async () => { throw new NotGitRepositoryError("/project"); } });
     const openId = crypto.randomUUID();
     driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
 
     const inspectId = crypto.randomUUID();
-    driver.dispatch({ type: "inspect-changes", requestId: inspectId, workspacePath: "/project", sessionId: snapshot.sessionId });
+    driver.dispatch({ type: "inspect-changes", requestId: inspectId, workspacePath: "/project", sessionId: snapshot.sessionId, source: "working-tree" });
 
     await vi.waitFor(() => expect(events).toContainEqual({
       type: "changes-snapshot",
       requestId: inspectId,
       workspacePath: "/project",
       sessionId: snapshot.sessionId,
+      source: "working-tree",
+      turns: [],
       files: []
     }));
     expect(events).toContainEqual({ type: "complete", requestId: inspectId });
@@ -77,14 +79,15 @@ describe("PiWorkspaceDriver", () => {
       gitCheckpoints: vi.fn(() => [
         { tree: "a".repeat(40), ref: "refs/cake/checkpoints/a", capturedAt: new Date(0).toISOString() },
         { tree: "b".repeat(40), ref: "refs/cake/checkpoints/b", capturedAt: new Date(0).toISOString() }
-      ])
+      ]),
+      gitChangeTurns: vi.fn(() => [{ id: "turn-1", label: "Update the app", capturedAt: new Date(0).toISOString(), beforeTree: "a".repeat(40), afterTree: "b".repeat(40) }])
     };
-    const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime) });
+    const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime), summarizeCheckpointChanges: async () => { throw new Error("Missing checkpoint tree"); } });
     const openId = crypto.randomUUID();
     driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
     const inspectId = crypto.randomUUID();
-    driver.dispatch({ type: "inspect-changes", requestId: inspectId, workspacePath: "/project", sessionId: snapshot.sessionId });
+    driver.dispatch({ type: "inspect-changes", requestId: inspectId, workspacePath: "/project", sessionId: snapshot.sessionId, source: "conversation-turn" });
     await vi.waitFor(() => expect(events).toContainEqual(expect.objectContaining({ type: "fatal", requestId: inspectId })));
 
     expect(captureLatestGitCheckpoint).not.toHaveBeenCalled();

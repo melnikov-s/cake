@@ -4,12 +4,13 @@ import { createCakeRuntime, type CakeRuntime, type RuntimeUiRequest } from "../a
 import { loadPiChangelog } from "../agent/session-discovery";
 import { runInlineWidgetGeneration, runInlineWidgetRepair, runReviewTurn, type InlineWidgetGenerationRequest } from "../agent/sidecar-runtime";
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
+import type { ChangeTurn } from "../ipc/session-contract";
 import type { JsonValue } from "../ipc/json-contract";
 import { parseArtifactInput, type ArtifactRecord, type CakeArtifactV1 } from "../ipc/artifact-contract";
 import { REVIEW_TEXT_MAX_LENGTH } from "../ipc/review-contract";
 import type { ArtifactRepository } from "./artifact-repository";
 import type { ReviewRepository } from "./review-repository";
-import { captureWorkspaceCheckpoint, collectCheckpointChanges, NotGitRepositoryError } from "./git-changes";
+import { captureWorkspaceCheckpoint, collectCheckpointChanges, collectWorkingTreeChanges, NotGitRepositoryError, summarizeCheckpointChanges } from "./git-changes";
 import { compileInlineWidget, extractRepairedWidget } from "./inline-widget-service";
 
 type ArtifactRepositoryPort = Pick<ArtifactRepository, "upsert" | "get" | "listSession" | "linkSession">;
@@ -64,6 +65,9 @@ export interface PiWorkspaceDriverOptions {
   artifactRepository?: ArtifactRepositoryPort;
   reviewRepository?: ReviewRepositoryPort;
   captureCheckpoint?: typeof captureWorkspaceCheckpoint;
+  collectWorkingChanges?: typeof collectWorkingTreeChanges;
+  collectCheckpointChanges?: typeof collectCheckpointChanges;
+  summarizeCheckpointChanges?: typeof summarizeCheckpointChanges;
   openExternal?: (url: string) => Promise<void>;
   isTrusted?: () => boolean;
   pluginResources?: { skills: string[]; prompts: string[]; extensions: string[] };
@@ -83,6 +87,9 @@ export class PiWorkspaceDriver {
   private readonly artifactRepository: ArtifactRepositoryPort;
   private readonly reviewRepository: ReviewRepositoryPort;
   private readonly captureCheckpoint: typeof captureWorkspaceCheckpoint;
+  private readonly collectWorkingChanges: typeof collectWorkingTreeChanges;
+  private readonly collectCheckpointChanges: typeof collectCheckpointChanges;
+  private readonly summarizeCheckpointChanges: typeof summarizeCheckpointChanges;
   private readonly openExternal: NonNullable<PiWorkspaceDriverOptions["openExternal"]> | undefined;
   private readonly isTrusted: () => boolean;
   private readonly pluginResources: { skills: string[]; prompts: string[]; extensions: string[] };
@@ -108,6 +115,9 @@ export class PiWorkspaceDriver {
     this.compileWidget = options.compileWidget ?? compileInlineWidget;
     this.openExternal = options.openExternal;
     this.captureCheckpoint = options.captureCheckpoint ?? captureWorkspaceCheckpoint;
+    this.collectWorkingChanges = options.collectWorkingChanges ?? collectWorkingTreeChanges;
+    this.collectCheckpointChanges = options.collectCheckpointChanges ?? collectCheckpointChanges;
+    this.summarizeCheckpointChanges = options.summarizeCheckpointChanges ?? summarizeCheckpointChanges;
     this.isTrusted = options.isTrusted ?? (() => false);
     this.pluginResources = options.pluginResources ?? { skills: [], prompts: [], extensions: [] };
     this.artifactRepository = options.artifactRepository ?? {
@@ -159,7 +169,7 @@ export class PiWorkspaceDriver {
       return;
     }
     if (command.type === "inspect-changes") {
-      void this.run(command.requestId, () => this.inspectChanges(command.requestId, command.sessionId), command.sessionId);
+      void this.run(command.requestId, () => this.inspectChanges(command), command.sessionId);
       return;
     }
     if (command.type === "get-changelog") {
@@ -405,18 +415,43 @@ export class PiWorkspaceDriver {
     }
   }
 
-  private async inspectChanges(requestId: string, sessionId: string) {
-    const runtime = this.runtimeFor(sessionId);
+  private async inspectChanges(command: Extract<PiWorkspaceCommand, { type: "inspect-changes" }>) {
+    const runtime = this.runtimeFor(command.sessionId);
     try {
+      if (command.source === "working-tree") {
+        const files = await this.collectWorkingChanges(this.workspacePath);
+        this.emit({ type: "changes-snapshot", requestId: command.requestId, workspacePath: this.workspacePath, sessionId: command.sessionId, source: command.source, turns: [], files });
+        return;
+      }
       const initial = await runtime.ensureInitialGitCheckpoint?.();
       await runtime.waitForGitCheckpoints?.();
-      const latest = runtime.gitCheckpoints?.().at(-1) ?? initial;
-      if (!initial || !latest) throw new Error("Git checkpoints are unavailable for this session");
-      const files = await collectCheckpointChanges(this.workspacePath, initial.tree, latest.tree);
-      this.emit({ type: "changes-snapshot", requestId, workspacePath: this.workspacePath, sessionId, files });
+      if (!initial) throw new Error("Git checkpoints are unavailable for this session");
+      const projections = await Promise.all((runtime.gitChangeTurns?.() ?? []).map(async (turn) => {
+        const totals = await this.summarizeCheckpointChanges(this.workspacePath, turn.beforeTree, turn.afterTree);
+        const summary: ChangeTurn = {
+          id: turn.id,
+          label: turn.label,
+          capturedAt: turn.capturedAt,
+          ...totals
+        };
+        return { summary, turn };
+      }));
+      projections.reverse();
+      const selected = projections.find(({ summary }) => summary.id === command.turnId) ?? projections[0];
+      const files = selected ? await this.collectCheckpointChanges(this.workspacePath, selected.turn.beforeTree, selected.turn.afterTree) : [];
+      this.emit({
+        type: "changes-snapshot",
+        requestId: command.requestId,
+        workspacePath: this.workspacePath,
+        sessionId: command.sessionId,
+        source: command.source,
+        selectedTurnId: selected?.summary.id,
+        turns: projections.map(({ summary }) => summary),
+        files
+      });
     } catch (error) {
       if (!(error instanceof NotGitRepositoryError)) throw error;
-      this.emit({ type: "changes-snapshot", requestId, workspacePath: this.workspacePath, sessionId, files: [] });
+      this.emit({ type: "changes-snapshot", requestId: command.requestId, workspacePath: this.workspacePath, sessionId: command.sessionId, source: command.source, turns: [], files: [] });
     }
   }
 

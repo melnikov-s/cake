@@ -1,5 +1,5 @@
 import { Store, observable } from "r-state-tree";
-import type { ChangedFile } from "../../ipc/session-contract";
+import type { ChangedFile, ChangeSource, ChangeTurn } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
 
@@ -13,6 +13,10 @@ export interface ChangesStoreProps {
 /** Owns the Git-backed workspace-changes surface and its refresh policy. */
 export class ChangesStore extends Store<ChangesStoreProps> {
   changes: ChangedFile[] = observable([]);
+  turns: ChangeTurn[] = observable([]);
+  source: ChangeSource = "working-tree";
+  selectedTurnId: string | undefined;
+  workingTreeCount = 0;
   path: string | null | undefined;
   loading = false;
   error: string | undefined;
@@ -44,7 +48,7 @@ export class ChangesStore extends Store<ChangesStoreProps> {
     this.loading = true;
     this.error = undefined;
     try {
-      await this.props.client.inspectChanges({ operationId, workspacePath, sessionId });
+      await this.props.client.inspectChanges({ operationId, workspacePath, sessionId, source: this.source, turnId: this.source === "conversation-turn" ? this.selectedTurnId : undefined });
     } catch (error) {
       if (this.activeOperationId !== operationId) return;
       this.error = errorMessage(error);
@@ -59,8 +63,15 @@ export class ChangesStore extends Store<ChangesStoreProps> {
     }
     if (event.type === "changes-received") {
       if (event.operationId !== this.activeOperationId || event.workspacePath !== this.props.projectPath() || event.sessionId !== this.props.sessionId()) return;
+      if (event.source !== this.source || (event.source === "conversation-turn" && this.selectedTurnId !== undefined && event.selectedTurnId !== this.selectedTurnId)) {
+        this.finishRefresh(event.operationId);
+        return;
+      }
       const wasOpen = this.path !== undefined;
       this.changes.splice(0, this.changes.length, ...event.files);
+      if (event.source === "working-tree") this.workingTreeCount = event.files.length;
+      this.turns.splice(0, this.turns.length, ...event.turns);
+      this.selectedTurnId = event.selectedTurnId;
       const requested = this.preferredPath;
       this.preferredPath = undefined;
       if (wasOpen) {
@@ -82,6 +93,27 @@ export class ChangesStore extends Store<ChangesStoreProps> {
     if (change) this.path = change.path;
   }
 
+  async selectSource(source: ChangeSource) {
+    if (source === this.source) return;
+    this.source = source;
+    this.selectedTurnId = source === "conversation-turn" ? this.turns[0]?.id : undefined;
+    this.path = null;
+    this.changes.splice(0);
+    await this.refresh();
+  }
+
+  async selectTurn(turnId: string) {
+    if (this.source !== "conversation-turn" || turnId === this.selectedTurnId) return;
+    this.selectedTurnId = turnId;
+    this.path = null;
+    this.changes.splice(0);
+    await this.refresh();
+  }
+
+  get selectedTurn() {
+    return this.turns.find((turn) => turn.id === this.selectedTurnId);
+  }
+
   focusPath(path: string) {
     this.preferredPath = path;
     this.path = this.changeForPath(path)?.path ?? path;
@@ -99,6 +131,10 @@ export class ChangesStore extends Store<ChangesStoreProps> {
   reset() {
     this.close();
     this.changes.splice(0);
+    this.turns.splice(0);
+    this.source = "working-tree";
+    this.selectedTurnId = undefined;
+    this.workingTreeCount = 0;
     this.loading = false;
     this.error = undefined;
     this.activeOperationId = undefined;

@@ -114,7 +114,7 @@ async function openSnapshot(store: ProjectWorkbenchStore, desktop: ReturnType<ty
   const openId = store.activeOperations.at(-1)!;
   desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot: nextSnapshot });
   const changesRequest = vi.mocked(desktop.client.inspectChanges).mock.calls.at(-1)?.[0];
-  if (changesRequest) desktop.emit({ type: "changes-received", ...changesRequest, files: changes });
+  if (changesRequest) desktop.emit({ type: "changes-received", ...changesRequest, turns: [], files: changes });
 }
 
 describe("ProjectWorkbenchStore", () => {
@@ -525,6 +525,37 @@ describe("ProjectWorkbenchStore", () => {
 
     expect(store.changesStore.changes).toHaveLength(1);
     expect(store.changesStore.path).toBeUndefined();
+    root[Symbol.dispose]();
+  });
+
+  it("switches between the working tree and individual conversation turns", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop, snapshot, [
+      { path: "working.ts", status: "modified", additions: 1, deletions: 0, diff: "+working" }
+    ]);
+
+    await store.changesStore.selectSource("conversation-turn");
+    const firstRequest = vi.mocked(desktop.client.inspectChanges).mock.calls.at(-1)![0];
+    expect(firstRequest).toMatchObject({ source: "conversation-turn", turnId: undefined });
+    const turns = [
+      { id: "turn-2", label: "Update the explorer", capturedAt: "2026-08-16T12:00:00.000Z", fileCount: 1, additions: 2, deletions: 1 },
+      { id: "turn-1", label: "Create the explorer", capturedAt: "2026-08-16T11:00:00.000Z", fileCount: 1, additions: 4, deletions: 0 }
+    ];
+    desktop.emit({ type: "changes-received", operationId: firstRequest.operationId, workspacePath: firstRequest.workspacePath, sessionId: firstRequest.sessionId, source: firstRequest.source, selectedTurnId: "turn-2", turns, files: [{ path: "latest.ts", status: "modified", additions: 2, deletions: 1, diff: "-old\n+new" }] });
+
+    expect(store.changesStore.selectedTurn?.label).toBe("Update the explorer");
+    expect(store.changesStore.selected?.path).toBe("latest.ts");
+    expect(store.changesStore.workingTreeCount).toBe(1);
+
+    await store.changesStore.selectTurn("turn-1");
+    const secondRequest = vi.mocked(desktop.client.inspectChanges).mock.calls.at(-1)![0];
+    expect(secondRequest).toMatchObject({ source: "conversation-turn", turnId: "turn-1" });
+    desktop.emit({ type: "changes-received", operationId: secondRequest.operationId, workspacePath: secondRequest.workspacePath, sessionId: secondRequest.sessionId, source: secondRequest.source, selectedTurnId: "turn-1", turns, files: [{ path: "initial.ts", status: "added", additions: 4, deletions: 0, diff: "+initial" }] });
+
+    expect(store.changesStore.selectedTurn?.label).toBe("Create the explorer");
+    expect(store.changesStore.selected?.path).toBe("initial.ts");
     root[Symbol.dispose]();
   });
 

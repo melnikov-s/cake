@@ -41,24 +41,25 @@ function scrollToReviewThread(threadId: string) {
   [...document.querySelectorAll<HTMLElement>("[data-review-thread-id]")].find((element) => element.dataset.reviewThreadId === threadId)?.scrollIntoView({ block: "center" });
 }
 
-const HighlightedDiff = observer(function HighlightedDiff({ change, reviews, store }: { change: ChangedFile; reviews: ReviewsStore; store: ChangesStore }) {
+const HighlightedDiff = observer(function HighlightedDiff({ change, reviews, store, reviewable = true }: { change: ChangedFile; reviews: ReviewsStore; store: ChangesStore; reviewable?: boolean }) {
   const lines = useMemo(() => parseDiff(change.diff), [change.diff]);
   const source = useMemo(() => lines.map((line) => line.kind === "meta" ? "" : line.content).join("\n"), [lines]);
   const tokens = useHighlightedSource(change.path, source);
   const [composer, setComposer] = useState<{ anchor: ReviewAnchor; floating: boolean; position?: { left: number; top: number } }>();
-  const threads = reviews.threads.filter((thread) => thread.anchor.view !== "file" && thread.anchor.view !== "full" && thread.anchor.view !== "message" && store.changeMatchesPath(change, thread.anchor.path));
+  const threads = reviewable ? reviews.threads.filter((thread) => thread.anchor.view !== "file" && thread.anchor.view !== "full" && thread.anchor.view !== "message" && store.changeMatchesPath(change, thread.anchor.path)) : [];
 
   const selectText = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!reviewable) return;
     if (event.target instanceof Element && event.target.closest("button, textarea, .review-thread, .review-composer")) return;
     const selected = extractSourceSelection(event.currentTarget, ".change-explorer-line[data-diff-index]", "data-diff-index");
     if (!selected) return;
     setComposer({ anchor: reviewAnchor(change, lines, selected.startIndex, selected.endIndex, selected.selectedText, selected.startColumn, selected.endColumn), floating: true, position: selected.position });
   };
 
-  return <div className="change-explorer-diff" role="table" aria-label={`Session changes to ${change.path}`} onMouseUp={selectText}>{lines.map((line, index) => line.kind === "meta"
+  return <div className="change-explorer-diff" role="table" aria-label={`Changes to ${change.path}`} onMouseUp={selectText}>{lines.map((line, index) => line.kind === "meta"
     ? <div className="change-explorer-line meta" role="row" key={line.key}><span /><span /><code>{line.content}</code></div>
     : <Fragment key={line.key}><div className={`change-explorer-line ${line.kind}`} data-diff-index={index} role="row">
-        <span className="review-gutter"><button aria-label={`Comment on line ${line.newNumber ?? line.oldNumber}`} onClick={() => setComposer({ anchor: reviewAnchor(change, lines, index, index, line.content, 0, line.content.length), floating: false })}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5" /></svg></button>{line.oldNumber}</span><span>{line.newNumber}</span><code><b data-review-prefix>{line.kind === "add" ? "+" : line.kind === "remove" ? "−" : " "}</b>{(tokens?.[index] ?? []).length > 0
+        <span className={reviewable ? "review-gutter" : undefined}>{reviewable && <button aria-label={`Comment on line ${line.newNumber ?? line.oldNumber}`} onClick={() => setComposer({ anchor: reviewAnchor(change, lines, index, index, line.content, 0, line.content.length), floating: false })}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5" /></svg></button>}{line.oldNumber}</span><span>{line.newNumber}</span><code><b data-review-prefix>{line.kind === "add" ? "+" : line.kind === "remove" ? "−" : " "}</b>{(tokens?.[index] ?? []).length > 0
           ? tokens![index]!.map((token, tokenIndex) => <i className="syntax-token" style={token.htmlStyle} key={`${tokenIndex}-${token.content}`}>{token.content}</i>)
           : line.content || " "}</code>
       </div>{composer && !composer.floating && composer.anchor.end.diffLine === index && <ReviewComposer anchor={composer.anchor} onSave={(body) => reviews.createThread(composer.anchor, body)} onCancel={() => setComposer(undefined)} />}{threads.filter((thread) => thread.anchor.end.diffLine === index).map((thread) => <ReviewThreadCard key={`${thread.id}:${thread.status}`} thread={thread} store={reviews} />)}</Fragment>)}
@@ -106,7 +107,8 @@ export const ChangeExplorer = observer(function ChangeExplorer({ store, reviews,
   const indexedThreads = [...changeThreads].sort((left, right) => Number(left.status === "resolved") - Number(right.status === "resolved"));
   const activeChangeThread = changeThreads.find((thread) => thread.id === reviews.activeThreadId);
   const pendingCount = reviews.pendingCommentCount;
-  const shownView = change?.status === "deleted" ? "diff" : view;
+  const historical = store.source === "conversation-turn";
+  const shownView = historical || change?.status === "deleted" ? "diff" : view;
   const focusThread = (threadId: string) => {
     const thread = changeThreads.find((item) => item.id === threadId);
     if (thread) setView(thread.anchor.view === "full" ? "file" : "diff");
@@ -115,16 +117,20 @@ export const ChangeExplorer = observer(function ChangeExplorer({ store, reviews,
     requestAnimationFrame(() => scrollToReviewThread(threadId));
   };
   useEffect(() => {
-    if (!activeChangeThread) return;
+    if (!activeChangeThread || historical) return;
     setView(activeChangeThread.anchor.view === "full" ? "file" : "diff");
     scrollToReviewThread(activeChangeThread.id);
-  }, [change?.path, activeChangeThread?.id, activeChangeThread?.anchor.view]);
-  if (!change) return <main className="change-explorer-empty"><div><small>{chat.sessionTitle}</small><h1>{store.error ? "Unable to inspect changes" : store.loading ? "Loading session changes…" : "No session changes"}</h1><p>{store.error ?? (store.loading ? "Cake is comparing the session's Git checkpoints." : "The session's latest checkpoint matches its starting checkpoint.")}</p><Button variant="outline" onClick={close}>Return to chat</Button></div></main>;
+  }, [change?.path, activeChangeThread?.id, activeChangeThread?.anchor.view, historical]);
+  const context = historical
+    ? store.selectedTurn ? `Conversation turn · ${new Date(store.selectedTurn.capturedAt).toLocaleString()} · ${chat.sessionTitle}` : `Conversation turns · ${chat.sessionTitle}`
+    : `Working tree · staged, unstaged, and untracked · ${chat.sessionTitle}`;
+  const emptyTitle = store.error ? "Unable to inspect changes" : store.loading ? "Loading changes…" : historical ? "No recorded turn changes" : "Working tree is clean";
+  const emptyDetail = store.error ?? (store.loading ? (historical ? "Comparing the workspace before and after this turn." : "Reading the current Git working tree.") : historical ? "This conversation has no turns with recorded workspace changes." : "There are no staged, unstaged, or untracked files.");
   return <SourceExplorerLayout resizeLabel="Resize changed files panel" file={<>
-      <header><div><small>Session changes · {chat.sessionTitle}</small><h1>{change.previousPath ? `${change.previousPath} → ${change.path}` : change.path}</h1></div><div className="change-explorer-view-toggle" role="group" aria-label="File view"><button type="button" className={shownView === "diff" ? "active" : ""} aria-pressed={shownView === "diff"} onClick={() => setView("diff")}>Diff</button><button type="button" className={shownView === "file" ? "active" : ""} aria-pressed={shownView === "file"} disabled={change.status === "deleted"} onClick={() => setView("file")}>Full file</button></div><span><b>+{change.additions}</b><i>−{change.deletions}</i></span></header>
-      {shownView === "diff" ? <HighlightedDiff change={change} reviews={reviews} store={store} /> : <FullFile change={change} reviews={reviews} browse={browse} store={store} />}
-    </>} sidebar={<><header><div><strong>Changed files</strong><small>{store.changes.length} {store.changes.length === 1 ? "file" : "files"}</small></div><div className="change-explorer-actions">{pendingCount > 0 && <Button size="sm" onClick={() => void reviews.submitPending()}>Send ({pendingCount})</Button>}<Button variant="ghost" size="sm" onClick={close}>Done</Button></div></header><div className="change-explorer-sidebar-body"><nav aria-label="Changed files"><SourceTree nodes={tree.children} selectedPath={change.path} onSelect={(path) => store.select(path)} fileMeta={(item) => <small>+{item.additions} −{item.deletions}</small>} /></nav><section className="review-thread-index" aria-label="Review threads"><header><strong>Comments</strong><span>{changeThreads.length}</span></header>{changeThreads.length === 0 ? <p>No comments yet.</p> : <ol>{indexedThreads.map((thread) => {
+      <header><div><small>{context}</small><h1>{change ? (change.previousPath ? `${change.previousPath} → ${change.path}` : change.path) : historical && store.selectedTurn ? store.selectedTurn.label : emptyTitle}</h1></div><label className="change-explorer-source"><span>Show</span><select aria-label="Change source" value={store.source} onChange={(event) => void store.selectSource(event.target.value === "conversation-turn" ? "conversation-turn" : "working-tree")}><option value="working-tree">Working tree</option><option value="conversation-turn">By conversation turn</option></select></label>{change && !historical && <div className="change-explorer-view-toggle" role="group" aria-label="File view"><button type="button" className={shownView === "diff" ? "active" : ""} aria-pressed={shownView === "diff"} onClick={() => setView("diff")}>Diff</button><button type="button" className={shownView === "file" ? "active" : ""} aria-pressed={shownView === "file"} disabled={change.status === "deleted"} onClick={() => setView("file")}>Full file</button></div>}{change && <span><b>+{change.additions}</b><i>−{change.deletions}</i></span>}</header>
+      {change ? (shownView === "diff" ? <HighlightedDiff change={change} reviews={reviews} store={store} reviewable={!historical} /> : <FullFile change={change} reviews={reviews} browse={browse} store={store} />) : <div className="change-explorer-file-state"><strong>{emptyTitle}</strong><span>{emptyDetail}</span></div>}
+    </>} sidebar={<><header><div><strong>{historical ? "Turn changes" : "Changed files"}</strong><small>{historical ? `${store.turns.length} ${store.turns.length === 1 ? "turn" : "turns"}` : `${store.changes.length} ${store.changes.length === 1 ? "file" : "files"}`}</small></div><div className="change-explorer-actions">{!historical && pendingCount > 0 && <Button size="sm" onClick={() => void reviews.submitPending()}>Send ({pendingCount})</Button>}<Button variant="ghost" size="sm" onClick={close}>Done</Button></div></header>{historical ? <div className="change-explorer-turn-body"><section className="change-turn-index" aria-label="Conversation turns"><header><strong>Conversation turns</strong><span>{store.turns.length}</span></header>{store.turns.length === 0 ? <p>No recorded changes.</p> : <ol>{store.turns.map((turn) => <li key={turn.id}><button className={turn.id === store.selectedTurnId ? "active" : ""} onClick={() => void store.selectTurn(turn.id)}><span><strong>{turn.label}</strong><small>{new Date(turn.capturedAt).toLocaleString()}</small></span><em>{turn.fileCount} {turn.fileCount === 1 ? "file" : "files"}<small>+{turn.additions} −{turn.deletions}</small></em></button></li>)}</ol>}</section><nav aria-label="Files changed in selected turn"><header><strong>Files in this turn</strong><span>{store.changes.length}</span></header><SourceTree nodes={tree.children} selectedPath={change?.path} onSelect={(path) => store.select(path)} fileMeta={(item) => <small>+{item.additions} −{item.deletions}</small>} /></nav></div> : <div className="change-explorer-sidebar-body"><nav aria-label="Changed files"><SourceTree nodes={tree.children} selectedPath={change?.path} onSelect={(path) => store.select(path)} fileMeta={(item) => <small>+{item.additions} −{item.deletions}</small>} /></nav><section className="review-thread-index" aria-label="Review threads"><header><strong>Comments</strong><span>{changeThreads.length}</span></header>{changeThreads.length === 0 ? <p>No comments yet.</p> : <ol>{indexedThreads.map((thread) => {
       const state = thread.status === "resolved" ? "Resolved" : reviews.threadStreaming(thread.id) ? "Working" : thread.pending ? "Pending" : "Replied";
       return <li key={thread.id}><button className={`${thread.status === "resolved" ? "resolved" : ""} ${reviews.activeThread?.id === thread.id ? "active" : ""}`} onClick={() => focusThread(thread.id)}><i className={state.toLowerCase()} /><span><strong>{reviewThreadPreview(thread, "Review thread")}</strong><small>{threadLocation(thread)}</small></span><em>{state}</em></button></li>;
-    })}</ol>}</section></div></>} />;
+    })}</ol>}</section></div>}</>} />;
 });

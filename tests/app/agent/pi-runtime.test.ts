@@ -168,7 +168,8 @@ describe("Pi 0.84.0 foundation contract", () => {
     await writeFile(sessionFile, [
       { type: "session", version: 3, id: sessionId, timestamp, cwd: directory },
       { type: "custom", id: "checkpoint-1", parentId: null, timestamp, customType: "cake.git-checkpoint/v1", data: initial },
-      { type: "custom", id: "checkpoint-2", parentId: "checkpoint-1", timestamp, customType: "cake.git-checkpoint/v1", data: latest },
+      { type: "message", id: "user-1", parentId: "checkpoint-1", timestamp, message: { role: "user", content: [{ type: "text", text: "Update the app shell" }], timestamp: Date.now() } },
+      { type: "custom", id: "checkpoint-2", parentId: "user-1", timestamp, customType: "cake.git-checkpoint/v1", data: latest },
       { type: "message", id: "assistant-1", parentId: "checkpoint-2", timestamp, message: { role: "assistant", content: [{ type: "text", text: "done" }], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() } }
     ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
 
@@ -182,6 +183,7 @@ describe("Pi 0.84.0 foundation contract", () => {
 
     expect(await second.ensureInitialGitCheckpoint!()).toMatchObject({ tree: initial?.tree });
     expect(second.gitCheckpoints!().map((checkpoint) => checkpoint.tree)).toEqual([initial?.tree, latest?.tree]);
+    expect(second.gitChangeTurns!()).toEqual([expect.objectContaining({ id: "checkpoint-2", label: "Update the app shell", beforeTree: initial?.tree, afterTree: latest?.tree })]);
     const reviewRun = { operationId: "00000000-0000-4000-8000-000000000003", threadIds: ["review-3"], commentCount: 1 };
     second.recordReviewRun({ ...reviewRun, status: "running" });
     second.recordReviewRun({ ...reviewRun, status: "complete" });

@@ -39,14 +39,14 @@ describe("desktop client", () => {
     expect(await client.deletePlugin("example.calendar")).toEqual([]);
     await client.respondToWorkspaceTrust({ operationId, path: "/project", approved: true });
     await client.openWorkspace({ operationId, path: "/project" });
-    await client.inspectChanges({ operationId, workspacePath: "/project", sessionId: "session" });
+    await client.inspectChanges({ operationId, workspacePath: "/project", sessionId: "session", source: "working-tree" });
     await client.getChangelog({ operationId, workspacePath: "/project", sessionId: "session" });
     await client.reloadPi({ operationId, workspacePath: "/project", sessionId: "session" });
     await client.promptGlobalChat({ operationId, sessionId: "cake-chat", text: "", attachments: [{ kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" }] });
 
     expect(desktop.request).toHaveBeenCalledWith({ type: "respond-workspace-trust", requestId: operationId, path: "/project", approved: true });
     expect(desktop.request).toHaveBeenCalledWith({ type: "open-workspace", requestId: operationId, path: "/project", newSession: false, sessionId: undefined });
-    expect(desktop.request).toHaveBeenCalledWith({ type: "inspect-changes", requestId: operationId, workspacePath: "/project", sessionId: "session" });
+    expect(desktop.request).toHaveBeenCalledWith({ type: "inspect-changes", requestId: operationId, workspacePath: "/project", sessionId: "session", source: "working-tree", turnId: undefined });
     expect(desktop.request).toHaveBeenCalledWith({ type: "get-changelog", requestId: operationId, workspacePath: "/project", sessionId: "session" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "reload-pi", requestId: operationId, workspacePath: "/project", sessionId: "session" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "prompt-global-chat", requestId: operationId, sessionId: "cake-chat", text: "", attachments: [{ kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" }] });
@@ -65,10 +65,10 @@ describe("desktop client", () => {
 
     desktop.emit({ type: "workspace-inspected", requestId, path: "/project", trustRequired: true });
     desktop.emit({ type: "changelog-snapshot", requestId, workspacePath: "/project", sessionId: "session", markdown: "# Changelog" });
-    desktop.emit({ type: "changes-snapshot", requestId, workspacePath: "/project", sessionId: "session", files: [] });
+    desktop.emit({ type: "changes-snapshot", requestId, workspacePath: "/project", sessionId: "session", source: "working-tree", turns: [], files: [] });
 
     expect(listener).toHaveBeenCalledWith({ type: "workspace-inspected", operationId: requestId, path: "/project", trustRequired: true });
     expect(listener).toHaveBeenCalledWith({ type: "changelog-received", operationId: requestId, workspacePath: "/project", sessionId: "session", markdown: "# Changelog" });
-    expect(listener).toHaveBeenCalledWith({ type: "changes-received", operationId: requestId, workspacePath: "/project", sessionId: "session", files: [] });
+    expect(listener).toHaveBeenCalledWith({ type: "changes-received", operationId: requestId, workspacePath: "/project", sessionId: "session", source: "working-tree", selectedTurnId: undefined, turns: [], files: [] });
   });
 });

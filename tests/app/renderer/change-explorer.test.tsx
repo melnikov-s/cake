@@ -53,10 +53,16 @@ function explorerProps(store: ProjectWorkbenchStore) {
     store: {
       get changes() { return fixture.workspaceChanges; },
       get selected() { return fixture.selectedWorkspaceChange; },
+      get source() { return fixture.changeSource ?? "working-tree"; },
+      get turns() { return fixture.changeTurns ?? []; },
+      get selectedTurnId() { return fixture.selectedChangeTurnId; },
+      get selectedTurn() { return (fixture.changeTurns ?? []).find((turn: { id: string }) => turn.id === fixture.selectedChangeTurnId); },
       error: undefined,
       loading: false,
       changeMatchesPath: (change: ChangedFile, path: string) => change.path === path || change.previousPath === path,
       select: fixture.selectChangeExplorerFile,
+      selectSource: fixture.selectChangeSource ?? vi.fn(),
+      selectTurn: fixture.selectChangeTurn ?? vi.fn(),
       focusPath: fixture.selectChangeExplorerFile,
       close: fixture.closeChangeExplorer
     } as any,
@@ -119,6 +125,37 @@ describe("ChangeExplorer", () => {
     expect((store as unknown as Record<string, any>).selectChangeExplorerFile).toHaveBeenCalledWith("src/app.ts");
   });
 
+  it("shows historical changes by conversation turn without review controls", () => {
+    const selectTurn = vi.fn();
+    const store = {
+      workspaceChanges: changes,
+      selectedWorkspaceChange: changes[0],
+      changeSource: "conversation-turn",
+      selectedChangeTurnId: "turn-2",
+      changeTurns: [
+        { id: "turn-2", label: "Add the Changes source selector", capturedAt: "2026-08-16T12:00:00.000Z", fileCount: 2, additions: 42, deletions: 7 },
+        { id: "turn-1", label: "Set up the explorer", capturedAt: "2026-08-16T11:00:00.000Z", fileCount: 1, additions: 10, deletions: 0 }
+      ],
+      sessionTitle: "Refine the plan",
+      reviewThreads: [],
+      reviewThreadStreaming: vi.fn(() => false),
+      selectChangeExplorerFile: vi.fn(),
+      selectChangeSource: vi.fn(),
+      selectChangeTurn: selectTurn,
+      closeChangeExplorer: vi.fn()
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
+
+    expect(container.querySelector<HTMLSelectElement>('select[aria-label="Change source"]')?.value).toBe("conversation-turn");
+    expect(container.querySelector(".change-turn-index")?.textContent).toContain("Add the Changes source selector");
+    expect(container.querySelector(".change-explorer-view-toggle")).toBeNull();
+    expect(container.querySelector(".review-gutter button")).toBeNull();
+    const buttons = container.querySelectorAll<HTMLButtonElement>(".change-turn-index li button");
+    act(() => buttons[1]!.click());
+    expect(selectTurn).toHaveBeenCalledWith("turn-1");
+  });
+
   it("toggles between the diff and the full workspace file", async () => {
     const readWorkspaceFile = vi.fn(async () => "const fresh = true;\nconst unchanged = true;");
     const store = {
@@ -136,7 +173,7 @@ describe("ChangeExplorer", () => {
     } as unknown as ProjectWorkbenchStore;
 
     act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
-    expect(container.querySelector('[aria-label="Session changes to src/app.ts"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Changes to src/app.ts"]')).not.toBeNull();
 
     await act(async () => container.querySelector<HTMLButtonElement>('.change-explorer-view-toggle button[aria-pressed="false"]')!.click());
 
@@ -148,7 +185,7 @@ describe("ChangeExplorer", () => {
     expect(container.querySelector(".change-explorer-full-file .context")?.textContent).toContain("const unchanged = true;");
 
     act(() => container.querySelector<HTMLButtonElement>('.change-explorer-view-toggle button:first-child')!.click());
-    expect(container.querySelector('[aria-label="Session changes to src/app.ts"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Changes to src/app.ts"]')).not.toBeNull();
   });
 
   it("adds a comment from a line in the full file view", async () => {

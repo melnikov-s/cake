@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { captureWorkspaceCheckpoint, collectCheckpointChanges, NotGitRepositoryError, parseNameStatus } from "../../../src/main/git-changes";
+import { captureWorkspaceCheckpoint, collectCheckpointChanges, collectWorkingTreeChanges, NotGitRepositoryError, parseNameStatus, summarizeCheckpointChanges } from "../../../src/main/git-changes";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
@@ -61,6 +61,27 @@ describe("Git session checkpoints", () => {
       expect.objectContaining({ path: "deleted.ts", status: "deleted", additions: 0, deletions: 1 }),
       expect.objectContaining({ path: "fresh.ts", status: "added", additions: 1, deletions: 0 })
     ]));
+    expect(await summarizeCheckpointChanges(root, initial.tree, latest.tree)).toEqual({ fileCount: 4, additions: 2, deletions: 2 });
+  });
+
+  it("reads staged, unstaged, and untracked files without recording a checkpoint ref", async () => {
+    const root = await repository();
+    await writeFile(join(root, "staged.ts"), "old staged\n");
+    await writeFile(join(root, "unstaged.ts"), "old unstaged\n");
+    await commit(root);
+    await writeFile(join(root, "staged.ts"), "new staged\n");
+    await git(root, "add", "staged.ts");
+    await writeFile(join(root, "unstaged.ts"), "new unstaged\n");
+    await writeFile(join(root, "untracked.ts"), "new untracked\n");
+    const indexBefore = (await git(root, "diff", "--cached")).stdout;
+
+    expect(await collectWorkingTreeChanges(root)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "staged.ts", status: "modified", diff: expect.stringContaining("+new staged") }),
+      expect.objectContaining({ path: "unstaged.ts", status: "modified", diff: expect.stringContaining("+new unstaged") }),
+      expect.objectContaining({ path: "untracked.ts", status: "added", diff: expect.stringContaining("+new untracked") })
+    ]));
+    expect((await git(root, "diff", "--cached")).stdout).toBe(indexBefore);
+    expect((await git(root, "show-ref")).stdout).not.toContain("refs/cake/checkpoints");
   });
 
   it("keeps checkpoint changes visible after commits and branch deletion", async () => {

@@ -201,21 +201,22 @@
 .workspace-header-actions { display: flex; min-width: 0; flex: 0 1 auto; align-items: center; gap: 6px; -webkit-app-region: no-drag; }
 .plugin-slot-project-session-header { position: relative; display: flex; min-width: 0; height: 30px; max-height: 30px; align-items: center; gap: 4px; overflow: visible; }
 .project-session-workbench { display: grid; overflow: hidden; grid-template-columns: auto minmax(0, 1fr) auto; }
-.project-session-plugin-rail { display: grid; width: clamp(17.5rem, 22cqi, 21rem); min-width: 0; min-height: 0; gap: 12px; overflow: hidden; padding: 12px; grid-template-rows: auto minmax(0, 1fr) auto; background: color-mix(in oklab, var(--sidebar) 38%, var(--background)); }
-.project-session-plugin-rail-left { grid-column: 1; border-right: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
-.project-session-workbench > .chat-layout { grid-column: 2; }
-.project-session-plugin-rail-right { grid-column: 3; border-left: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
+.project-session-plugin-rail { display: grid; width: clamp(15rem, 24vw, 27rem); min-width: 0; min-height: 0; gap: 12px; overflow: hidden; padding: 16px; grid-template-rows: auto minmax(0, 1fr) auto; background: color-mix(in oklab, var(--sidebar) 38%, var(--background)); }
+.project-session-plugin-rail-left { border-right: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
+.project-session-plugin-rail-right { border-left: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
 .project-session-plugin-rail:not(:has(.project-session-rail-slot:not(:empty))) { display: none; }
 .project-session-rail-slot { display: grid; min-width: 0; gap: 12px; align-content: start; }
 .project-session-rail-slot:empty { display: none; }
 .project-session-rail-slot-middle { min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.project-session-rail-slot > * { box-sizing: border-box !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; }
-@container (max-width: 48rem) {
-  .project-session-workbench { overflow: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(32rem, 1fr) auto auto; }
-  .project-session-plugin-rail { display: flex; width: auto; max-height: min(42vh, 22rem); align-items: flex-start; flex-wrap: wrap; overflow: auto; border: 0; padding: 12px 16px; }
-  .project-session-plugin-rail-left { grid-column: 1; grid-row: 2; border-top: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
-  .project-session-plugin-rail-right { grid-column: 1; grid-row: 3; border-top: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
-  .project-session-workbench > .chat-layout { grid-column: 1; grid-row: 1; }
+.project-session-rail-slot > * { width: 100%; min-width: 0; max-width: 100%; }
+@container (max-width: 58rem) {
+  .project-session-workbench { overflow: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(32rem, 1fr); }
+  .project-session-plugin-rail { display: flex; width: auto; max-height: min(38vh, 26rem); align-items: flex-start; flex-wrap: wrap; overflow: auto; border: 0; padding: 12px 16px; }
+  .project-session-plugin-rail-left { border-bottom: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
+  .project-session-plugin-rail-right { border-top: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
+  .project-session-plugin-rail-left { grid-row: 1; }
+  .project-session-plugin-rail-right { grid-row: 2; }
+  .project-session-workbench > .chat-layout { grid-row: 3; }
   .project-session-rail-slot:not(:empty) { min-height: 0; flex: 1 1 min(18rem, 100%); overflow: auto; }
 }
 .plugin-slot-sidebar-header:empty, .plugin-slot-sidebar-footer:empty { display: none; }
@@ -280,6 +281,9 @@
 .change-explorer-file > header { display: flex; min-width: 0; align-items: center; gap: 18px; padding: 0 20px 0 103px; border-bottom: 1px solid var(--border); background: color-mix(in oklab, var(--background) 94%, var(--card)); -webkit-app-region: drag; }
 .change-explorer-file > header > div { min-width: 0; flex: 1; }
 .change-explorer-file > header > .change-explorer-view-toggle { display: flex; flex: none; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 7px; background: color-mix(in oklab, var(--muted) 65%, transparent); -webkit-app-region: no-drag; }
+.change-explorer-source { display: flex; flex: none; align-items: center; gap: 7px; color: var(--muted-foreground); font-size: 10px; -webkit-app-region: no-drag; }
+.change-explorer-source select { height: 31px; padding: 0 28px 0 9px; border: 1px solid var(--border); border-radius: 7px; outline: none; background: color-mix(in oklab, var(--card) 86%, var(--background)); color: var(--foreground); font: 10px var(--font-sans); }
+.change-explorer-source select:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 17%, transparent); }
 .change-explorer-view-toggle button { height: 25px; padding: 0 9px; border: 0; border-radius: 5px; background: transparent; color: var(--muted-foreground); font-size: 10px; font-weight: 600; cursor: pointer; }
 .change-explorer-view-toggle button:hover { color: var(--foreground); }.change-explorer-view-toggle button.active { background: var(--card); color: var(--foreground); box-shadow: 0 1px 2px color-mix(in oklab, black 12%, transparent); }
 .change-explorer-file > header small { display: block; margin-bottom: 3px; color: var(--muted-foreground); font: 9px var(--font-mono); letter-spacing: .11em; text-transform: uppercase; }
@@ -339,6 +343,19 @@
 @keyframes review-run-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .review-run-spinner { animation: none; border-color: var(--accent); } }
 .change-explorer-sidebar-body { display: grid; min-height: 0; grid-template-rows: minmax(110px, 42%) minmax(0, 58%); }
+.change-explorer-turn-body { display: grid; min-height: 0; grid-template-rows: minmax(150px, 52%) minmax(120px, 48%); }
+.change-turn-index { min-height: 0; overflow: auto; padding: 0 10px 12px; }
+.change-turn-index > header, .change-explorer-turn-body nav > header { position: sticky; z-index: 2; top: 0; display: flex; align-items: center; justify-content: space-between; padding: 12px 8px 8px; background: color-mix(in oklab, var(--sidebar) 84%, var(--background)); }
+.change-turn-index > header strong, .change-explorer-turn-body nav > header strong { font-size: 11px; }
+.change-turn-index > header span, .change-explorer-turn-body nav > header span { color: var(--muted-foreground); font: 9px var(--font-mono); }
+.change-turn-index > p { margin: 8px; color: var(--muted-foreground); font-size: 11px; }
+.change-turn-index ol { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
+.change-turn-index li > button { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 9px 8px 9px 12px; border: 0; border-radius: 7px; background: transparent; color: var(--foreground); text-align: left; cursor: pointer; }
+.change-turn-index li > button::before { position: absolute; left: 3px; width: 2px; height: 22px; border-radius: 2px; background: transparent; content: ""; }
+.change-turn-index li > button:hover { background: var(--sidebar-hover); }.change-turn-index li > button.active { background: var(--sidebar-active); }.change-turn-index li > button.active::before { background: var(--accent); }
+.change-turn-index li button > span { display: grid; min-width: 0; gap: 3px; }.change-turn-index li strong, .change-turn-index li small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.change-turn-index li strong { font-size: 11px; font-weight: 560; }.change-turn-index li small { color: var(--muted-foreground); font: 9px var(--font-mono); }
+.change-turn-index li em { display: grid; justify-items: end; gap: 3px; color: var(--muted-foreground); font: 9px var(--font-mono); font-style: normal; white-space: nowrap; }.change-turn-index li em small { color: inherit; }
+.change-explorer-turn-body nav { border-top: 1px solid var(--border); padding-top: 0; }.change-explorer-turn-body nav > ul { padding: 0 10px 24px; }
 .change-explorer-tree nav { min-height: 0; overflow: auto; padding: 12px 10px 24px; }
 .change-explorer-tree ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .change-explorer-tree ul ul { margin-left: 13px; padding-left: 8px; border-left: 1px solid color-mix(in oklab, var(--border) 65%, transparent); }

@@ -22,6 +22,12 @@ export interface WorkspaceCheckpoint {
   ref: string;
 }
 
+export interface CheckpointChangeSummary {
+  fileCount: number;
+  additions: number;
+  deletions: number;
+}
+
 export class NotGitRepositoryError extends Error {
   constructor(readonly workspacePath: string) {
     super(`The workspace is not in a Git repository: ${workspacePath}`);
@@ -32,6 +38,22 @@ export class NotGitRepositoryError extends Error {
 /** Captures the complete non-ignored workspace state without mutating Git's real index. */
 export async function captureWorkspaceCheckpoint(workspacePath: string, sessionId: string): Promise<WorkspaceCheckpoint> {
   const { root, prefix } = await resolveRepository(workspacePath);
+  const tree = await writeWorkspaceTree(root, prefix);
+  const sessionKey = createHash("sha256").update(sessionId).digest("hex").slice(0, 32);
+  const ref = `refs/cake/checkpoints/${sessionKey}/${tree}`;
+  await git(root, ["update-ref", ref, tree], maxStatusBuffer);
+  return { tree, ref };
+}
+
+/** Reads all staged, unstaged, and untracked changes without recording a Cake checkpoint. */
+export async function collectWorkingTreeChanges(workspacePath: string): Promise<ChangedFile[]> {
+  const { root, prefix } = await resolveRepository(workspacePath);
+  const initialTree = await repositoryHeadTree(root);
+  const latestTree = await writeWorkspaceTree(root, prefix);
+  return collectCheckpointChanges(workspacePath, initialTree, latestTree);
+}
+
+async function writeWorkspaceTree(root: string, prefix: string) {
   const temporaryDirectory = await mkdtemp(join(tmpdir(), "cake-git-checkpoint-"));
   const indexPath = join(temporaryDirectory, "index");
   const environment = { ...process.env, GIT_INDEX_FILE: indexPath };
@@ -39,11 +61,19 @@ export async function captureWorkspaceCheckpoint(workspacePath: string, sessionI
     if (await hasHead(root)) await git(root, ["read-tree", "HEAD"], maxStatusBuffer, environment);
     else await git(root, ["read-tree", "--empty"], maxStatusBuffer, environment);
     await git(root, ["add", "-A", "--", prefix || "."], maxStatusBuffer, environment);
-    const tree = (await git(root, ["write-tree"], maxStatusBuffer, environment)).trim();
-    const sessionKey = createHash("sha256").update(sessionId).digest("hex").slice(0, 32);
-    const ref = `refs/cake/checkpoints/${sessionKey}/${tree}`;
-    await git(root, ["update-ref", ref, tree], maxStatusBuffer);
-    return { tree, ref };
+    return (await git(root, ["write-tree"], maxStatusBuffer, environment)).trim();
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+}
+
+async function repositoryHeadTree(root: string) {
+  if (await hasHead(root)) return (await git(root, ["rev-parse", "HEAD^{tree}"], maxStatusBuffer)).trim();
+  const temporaryDirectory = await mkdtemp(join(tmpdir(), "cake-git-empty-tree-"));
+  const environment = { ...process.env, GIT_INDEX_FILE: join(temporaryDirectory, "index") };
+  try {
+    await git(root, ["read-tree", "--empty"], maxStatusBuffer, environment);
+    return (await git(root, ["write-tree"], maxStatusBuffer, environment)).trim();
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
@@ -72,6 +102,31 @@ export async function collectCheckpointChanges(workspacePath: string, initialTre
     });
   }
   return files;
+}
+
+/** Computes turn-list totals without materializing every per-file patch. */
+export async function summarizeCheckpointChanges(workspacePath: string, initialTree: string, latestTree: string): Promise<CheckpointChangeSummary> {
+  const { root, prefix } = await resolveRepository(workspacePath);
+  await git(root, ["cat-file", "-e", `${initialTree}^{tree}`], maxStatusBuffer);
+  await git(root, ["cat-file", "-e", `${latestTree}^{tree}`], maxStatusBuffer);
+  const pathspec = prefix || ".";
+  const [names, numstat] = await Promise.all([
+    git(root, ["diff", "--name-status", "-z", "--find-renames", "--find-copies", initialTree, latestTree, "--", pathspec], maxStatusBuffer),
+    git(root, ["diff", "--numstat", "-z", initialTree, latestTree, "--", pathspec], maxStatusBuffer)
+  ]);
+  let additions = 0;
+  let deletions = 0;
+  for (const record of numstat.split("\0")) {
+    const totals = /^(\d+|-)\t(\d+|-)(?:\t|$)/.exec(record);
+    if (!totals) continue;
+    if (totals[1] !== "-") additions += Number(totals[1]);
+    if (totals[2] !== "-") deletions += Number(totals[2]);
+  }
+  return {
+    fileCount: parseNameStatus(names).filter((entry) => withinWorkspace(entry.path, prefix)).length,
+    additions,
+    deletions
+  };
 }
 
 async function resolveRepository(workspacePath: string) {

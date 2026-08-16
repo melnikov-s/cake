@@ -766,7 +766,7 @@ export const App = observer(function App() {
         ) : (
           <StoreProvider key={`${session.workspacePath}\u0000${session.sessionId}`} store={session}>
             {sessionHeaderHost && createPortal(<>
-                <div className="header-pane-actions"><button className="header-pane-toggle" type="button" aria-label="Browse project files" onClick={() => void store.openWorkspaceBrowser()}><BrowseIcon /><span>Browse</span></button><button className="header-pane-toggle" type="button" aria-label="Open workspace changes" onClick={() => void store.openSessionChanges()}><ChangesIcon /><span>Changes</span>{changes.changes.length > 0 && <b>{changes.changes.length}</b>}</button></div>
+                <div className="header-pane-actions"><button className="header-pane-toggle" type="button" aria-label="Browse project files" onClick={() => void store.openWorkspaceBrowser()}><BrowseIcon /><span>Browse</span></button><button className="header-pane-toggle" type="button" aria-label="Open workspace changes" onClick={() => void store.openSessionChanges()}><ChangesIcon /><span>Changes</span>{changes.workingTreeCount > 0 && <b>{changes.workingTreeCount}</b>}</button></div>
                 <div className="plugin-slot plugin-slot-project-session-header"><Slot name="project-session.header.actions" /></div>
               </>, sessionHeaderHost)}
             <div className="workbench project-session-workbench">

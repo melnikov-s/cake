@@ -46,6 +46,7 @@ import {
   reviewRunEntrySchema,
   reviewRunEntryType,
   reviewRunPart,
+  textFromContent,
   toolArtifactId,
   toolFilePath,
   toolResultDiff,
@@ -73,6 +74,14 @@ const gitCheckpointSchema = z.object({
   capturedAt: z.string().datetime()
 });
 export type GitCheckpoint = z.infer<typeof gitCheckpointSchema>;
+
+export interface GitChangeTurn {
+  id: string;
+  label: string;
+  capturedAt: string;
+  beforeTree: string;
+  afterTree: string;
+}
 
 export interface RuntimeUiRequest {
   kind: "confirm" | "text" | "secret" | "select" | "manual_code" | "editor";
@@ -176,6 +185,7 @@ export interface CakeRuntime {
   captureLatestGitCheckpoint?(): Promise<GitCheckpoint | undefined>;
   waitForGitCheckpoints?(): Promise<void>;
   gitCheckpoints?(): GitCheckpoint[];
+  gitChangeTurns?(): GitChangeTurn[];
   dispose(): void;
 }
 
@@ -420,6 +430,34 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     return checkpoints;
   }
 
+  function gitChangeTurns(): GitChangeTurn[] {
+    const turns: GitChangeTurn[] = [];
+    let previous: GitCheckpoint | undefined;
+    let userLabel = "Agent changes";
+    for (const entry of session.sessionManager.getBranch()) {
+      if (entry.type === "message" && entry.message.role === "user") {
+        const text = textFromContent(entry.message.content).replace(/\s+/g, " ").trim();
+        userLabel = text ? text.slice(0, 1_024) : "User turn";
+        continue;
+      }
+      if (entry.type !== "custom" || entry.customType !== gitCheckpointEntryType) continue;
+      const parsed = gitCheckpointSchema.safeParse(entry.data);
+      if (!parsed.success) continue;
+      const checkpoint = parsed.data;
+      if (previous && previous.tree !== checkpoint.tree) {
+        turns.push({
+          id: entry.id,
+          label: userLabel,
+          capturedAt: checkpoint.capturedAt,
+          beforeTree: previous.tree,
+          afterTree: checkpoint.tree
+        });
+      }
+      previous = checkpoint;
+    }
+    return turns;
+  }
+
   function captureGitCheckpoint() {
     if (!options.captureGitCheckpoint) return Promise.resolve(undefined);
     const operation = checkpointQueue.then(async () => {
@@ -589,6 +627,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     captureLatestGitCheckpoint: captureGitCheckpoint,
     async waitForGitCheckpoints() { await checkpointQueue; },
     gitCheckpoints,
+    gitChangeTurns,
     dispose() {
       if (disposed) return;
       disposed = true;

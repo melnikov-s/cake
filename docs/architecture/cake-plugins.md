@@ -117,10 +117,8 @@ render a button, badge, or other compact trigger there. Expanded content must
 open as a popover, dialog, or overlay anchored to that trigger; it must not grow
 the header row or displace Cake-owned controls.
 
-Rail contributions fill the host-controlled inspector width. Empty rails
-collapse. Rails remain beside the conversation at ordinary desktop sizes; only
-genuinely compact session canvases move occupied rails below the conversation,
-so a plugin never pushes the opening transcript and composer off screen.
+Rail contributions fill the host-controlled rail width. Empty rails collapse;
+on narrow session canvases the occupied rails stack around the conversation.
 Plugins must remain responsive within the provided width and must not use
 absolute or fixed positioning for structural panel layout.
 
