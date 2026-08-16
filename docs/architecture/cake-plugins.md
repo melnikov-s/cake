@@ -132,6 +132,23 @@ it uses the curated `list_customization_files`, `read_customization_file`, and
 `expectedSourceRevision`, plus a provenance request. A changed working tree or
 head is rejected instead of overwriting concurrent edits.
 
+During a user-requested create or edit, a failed typecheck or bundle is
+intermediate authoring feedback. Global chat inspects the diagnostics, repairs
+the source, and repeats the write/build cycle without asking the user to approve
+each attempt. It yields only after activation begins or it encounters a genuine
+blocker. The recovery panel and an offer to repair are for a customization that
+had previously activated and later became incompatible or failed to load; once
+repair is requested, its build iteration is autonomous as well.
+
+Visual health is part of authoring even though compilation cannot prove it.
+Custom scenes and contributions must remain collision-free from 320 CSS pixels
+through wide desktop sizes and when labels or values expand. Structural content
+uses wrapping, normal-flow flex or grid layout, reserves explicit space for
+icons and decorations, and keeps shrinkable children at `min-width: 0`.
+Absolute or fixed positioning is not used for structural text, controls,
+navigation, or Cake-owned children. The authoring agent applies these checks
+before considering a customization complete.
+
 `pnpm build` at the Cake repository root builds the immutable desktop app and
 then writes `out/authoring`, the read-only version-matched source/skill snapshot
 used by packaged Cake. It does not activate files in the developer's real

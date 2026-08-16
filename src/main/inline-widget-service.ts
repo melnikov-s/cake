@@ -38,7 +38,7 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
 }
 
 function documentShell(token: string, body: string, capability: InlineWidgetCapability) {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{color-scheme:light dark;font:14px/1.5 system-ui,sans-serif;background:transparent}body{margin:0;padding:16px;overflow:auto;color:CanvasText;background:Canvas}*,*::before,*::after{box-sizing:border-box}img,svg,video,canvas{max-width:100%;height:auto}button,input,select,textarea{font:inherit}</style>${runtimeBridge(token, capability)}</head><body>${body}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{color-scheme:light dark;font:14px/1.5 system-ui,sans-serif;background:transparent}body{min-width:0;margin:0;padding:16px;overflow:auto;color:CanvasText;background:Canvas}*,*::before,*::after{box-sizing:border-box}body>*{max-width:100%}#cake-widget-root{min-width:0;max-width:100%}:where(h1,h2,h3,h4,h5,h6,p,span,a,button,label,legend,th,td){overflow-wrap:anywhere}img,svg,video,canvas{max-width:100%;height:auto}button,input,select,textarea{max-width:100%;font:inherit}</style>${runtimeBridge(token, capability)}</head><body>${body}</body></html>`;
 }
 
 function widgetModulePlugin(source: string): Plugin {

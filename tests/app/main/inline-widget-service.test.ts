@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { inlineWidgetLayoutRequirements } from "../../../src/agent/sidecar-runtime";
 import { compileInlineWidget, extractRepairedWidget } from "../../../src/main/inline-widget-service";
 
 describe("inline widget service", () => {
@@ -7,6 +8,14 @@ describe("inline widget service", () => {
 
     expect(compiled.document).toContain("cake-inline-widget");
     expect(compiled.document).toContain("<button");
+    expect(compiled.document).toContain("body>*{max-width:100%}");
+    expect(compiled.document).toContain("overflow-wrap:anywhere");
+  });
+
+  it("gives generation and repair agents one collision-free responsive layout contract", () => {
+    expect(inlineWidgetLayoutRequirements).toContain("from 320 CSS pixels through wide desktop sizes");
+    expect(inlineWidgetLayoutRequirements).toContain("do not use absolute or fixed positioning for structural text");
+    expect(inlineWidgetLayoutRequirements).toContain("No text or interactive control may overlap");
   });
 
   it("bundles a default-exported React widget and rejects non-React imports", async () => {
