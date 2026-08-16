@@ -201,22 +201,21 @@
 .workspace-header-actions { display: flex; min-width: 0; flex: 0 1 auto; align-items: center; gap: 6px; -webkit-app-region: no-drag; }
 .plugin-slot-project-session-header { position: relative; display: flex; min-width: 0; height: 30px; max-height: 30px; align-items: center; gap: 4px; overflow: visible; }
 .project-session-workbench { display: grid; overflow: hidden; grid-template-columns: auto minmax(0, 1fr) auto; }
-.project-session-plugin-rail { display: grid; width: clamp(15rem, 24vw, 27rem); min-width: 0; min-height: 0; gap: 12px; overflow: hidden; padding: 16px; grid-template-rows: auto minmax(0, 1fr) auto; background: color-mix(in oklab, var(--sidebar) 38%, var(--background)); }
-.project-session-plugin-rail-left { border-right: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
-.project-session-plugin-rail-right { border-left: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
+.project-session-plugin-rail { display: grid; width: clamp(17.5rem, 22cqi, 21rem); min-width: 0; min-height: 0; gap: 12px; overflow: hidden; padding: 12px; grid-template-rows: auto minmax(0, 1fr) auto; background: color-mix(in oklab, var(--sidebar) 38%, var(--background)); }
+.project-session-plugin-rail-left { grid-column: 1; border-right: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
+.project-session-workbench > .chat-layout { grid-column: 2; }
+.project-session-plugin-rail-right { grid-column: 3; border-left: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
 .project-session-plugin-rail:not(:has(.project-session-rail-slot:not(:empty))) { display: none; }
 .project-session-rail-slot { display: grid; min-width: 0; gap: 12px; align-content: start; }
 .project-session-rail-slot:empty { display: none; }
 .project-session-rail-slot-middle { min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.project-session-rail-slot > * { width: 100%; min-width: 0; max-width: 100%; }
-@container (max-width: 58rem) {
-  .project-session-workbench { overflow: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(32rem, 1fr); }
-  .project-session-plugin-rail { display: flex; width: auto; max-height: min(38vh, 26rem); align-items: flex-start; flex-wrap: wrap; overflow: auto; border: 0; padding: 12px 16px; }
-  .project-session-plugin-rail-left { border-bottom: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
-  .project-session-plugin-rail-right { border-top: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
-  .project-session-plugin-rail-left { grid-row: 1; }
-  .project-session-plugin-rail-right { grid-row: 2; }
-  .project-session-workbench > .chat-layout { grid-row: 3; }
+.project-session-rail-slot > * { box-sizing: border-box !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; }
+@container (max-width: 48rem) {
+  .project-session-workbench { overflow: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(32rem, 1fr) auto auto; }
+  .project-session-plugin-rail { display: flex; width: auto; max-height: min(42vh, 22rem); align-items: flex-start; flex-wrap: wrap; overflow: auto; border: 0; padding: 12px 16px; }
+  .project-session-plugin-rail-left { grid-column: 1; grid-row: 2; border-top: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
+  .project-session-plugin-rail-right { grid-column: 1; grid-row: 3; border-top: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
+  .project-session-workbench > .chat-layout { grid-column: 1; grid-row: 1; }
   .project-session-rail-slot:not(:empty) { min-height: 0; flex: 1 1 min(18rem, 100%); overflow: auto; }
 }
 .plugin-slot-sidebar-header:empty, .plugin-slot-sidebar-footer:empty { display: none; }

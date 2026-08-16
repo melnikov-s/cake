@@ -51,7 +51,9 @@ that should remain across Cake Chat, project sessions, and settings. Use
 session panels belong in the normal-flow `project-session.left.*` and
 `project-session.right.*` rails, each of which has `top`, `middle`, and `bottom`
 outlets. “Top right of the session” means `project-session.right.top`. Rail
-content reserves space and must not position itself over the conversation.
+content reserves a host-controlled inspector width and must not position itself
+over the conversation. At genuinely compact widths Cake moves occupied rails
+below the conversation instead of pushing the opening transcript away.
 Header slots are fixed-height action rows, so put only a compact trigger there.
 Use Cake's `Popover` with `PopoverTrigger` and `PopoverContent` when a temporary
 surface should intentionally overlap the application.
