@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { jsonObjectSchema } from "../ipc/json-contract";
+import { jsonObjectSchema, jsonValueSchema } from "../ipc/json-contract";
 import type { GlobalSessionSummary, ProjectRecord, UiPart } from "../ipc/session-contract";
 import {
   customizationStateSchema,
@@ -216,9 +216,9 @@ export class AppControlBridge {
       const result = {
         ok: true,
         name: invocation.name,
-        plugins: pluginStatusesSchema.parse(this.host.plugins())
+        plugins: toStrictJson(pluginStatusesSchema.parse(this.host.plugins()))
       } as const;
-      return state === undefined ? result : { ...result, state: customizationStateSchema.parse(state) };
+      return state === undefined ? result : { ...result, state: toStrictJson(customizationStateSchema.parse(state)) };
     }
     if (invocation.name === "list_customization_files") return { ok: true, name: invocation.name, ...await this.host.listCustomizationFiles() };
     if (invocation.name === "read_customization_file") return { ok: true, name: invocation.name, path: invocation.arguments.path, content: await this.host.readCustomizationFile(invocation.arguments.path) };
@@ -384,4 +384,9 @@ function matchingSnippet(value: string, index: number, matchLength: number) {
 
 function clip(value: string, limit = 4_000) {
   return value.length <= limit ? value : `${value.slice(0, limit - 1)}…`;
+}
+
+function toStrictJson<T>(value: T): T {
+  // SAFETY: callers pass schema-validated JSON-shaped data; the round trip only removes properties whose value is undefined.
+  return jsonValueSchema.parse(JSON.parse(JSON.stringify(value))) as T;
 }

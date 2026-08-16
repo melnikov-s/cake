@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { reaction } from "r-state-tree";
+import { jsonValueSchema } from "../../../../src/ipc/json-contract";
 import type { ChangedFile, SessionPreview, SessionSnapshot } from "../../../../src/ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../../../../src/renderer/desktop-client";
 import { mountRootStore } from "../../../../src/renderer/stores/RootStore";
@@ -109,7 +110,7 @@ async function openSnapshot(store: ProjectWorkbenchStore, desktop: ReturnType<ty
 }
 
 describe("ProjectWorkbenchStore", () => {
-  it("settles a global control request when its result is not serializable", async () => {
+  it("keeps a non-serializable control result scoped to the failed tool", async () => {
     const desktop = createDesktopClient();
     const { root } = mountTestStore(desktop.client);
     await flush();
@@ -124,7 +125,31 @@ describe("ProjectWorkbenchStore", () => {
       name: "get_app_state",
       error: "Cake produced a control result that could not be serialized."
     });
-    expect(root.globalChatStore.errorDetails ?? root.globalChatStore.activeSession?.errorDetails).toContain("Context:\nCake Chat control response: get_app_state");
+    expect(root.globalChatStore.error).toBeUndefined();
+    expect(root.globalChatStore.activeSession?.error).toBeUndefined();
+    root[Symbol.dispose]();
+  });
+
+  it("returns hydrated customization state as strict JSON", async () => {
+    const desktop = createDesktopClient();
+    desktop.client.getCustomizationState = vi.fn(async () => ({
+      schemaVersion: 1 as const,
+      sourceRevision: "a".repeat(64),
+      activeRevision: "b".repeat(64),
+      lastKnownGoodRevision: "b".repeat(64),
+      rollbackRevision: undefined,
+      pendingRevision: undefined,
+      failedRevision: undefined,
+      recoveryRequired: false,
+      diagnostics: [],
+      updatedAt: new Date(0).toISOString()
+    }));
+    const { root } = mountTestStore(desktop.client);
+    await flush();
+
+    const result = await root.appControl.invoke({ name: "get_customization_state", arguments: {} });
+
+    expect(jsonValueSchema.safeParse(result).success).toBe(true);
     root[Symbol.dispose]();
   });
 

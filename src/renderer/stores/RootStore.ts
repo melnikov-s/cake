@@ -276,8 +276,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         .then((result) => {
           try {
             return jsonValueSchema.parse(result);
-          } catch (error) {
-            this.globalChatStore.reportError(error, `Cake Chat control response: ${event.invocation.name}`);
+          } catch {
             return { ok: false as const, name: event.invocation.name, error: "Cake produced a control result that could not be serialized." };
           }
         })
