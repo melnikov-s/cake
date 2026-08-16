@@ -90,9 +90,10 @@ recovery access.
 
 The version-matched `cake` module exports `definePlugin`, `useCommand`,
 `useContributionReveal`, `observer`, `useStore`, `useOptionalStore`, approved
-Store classes, `Button`, `cn`, and global/session persistence hooks. Plugin UI
-state normally belongs in React. A component reading a Cake Store must be
-wrapped in `observer`.
+application intents through `RootStore`, `Button`, `cn`, and global/session
+persistence hooks. Workflow Stores remain internal rather than becoming a
+traversable public API. Plugin UI state normally belongs in React. A component
+reading a Cake Store must be wrapped in `observer`.
 
 Mounted commands registered with `useCommand(pluginId, name, command)` are
 removed on unmount. Headless commands come from `definePlugin`. Internal names

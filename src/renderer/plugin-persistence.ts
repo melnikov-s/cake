@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore, type Dispatch, type SetStateAction } from "react";
 import type { PluginPersistenceScope } from "../plugin/plugin-contract";
-import { MainChatStore } from "./stores/MainChatStore";
+import { RootStore } from "./stores/RootStore";
 import { useStore } from "r-state-tree/react";
 
 export type SerializablePluginValue = null | boolean | number | string | SerializablePluginValue[] | { [key: string]: SerializablePluginValue };
@@ -61,7 +61,7 @@ export function usePluginGlobalState<T extends SerializablePluginValue>(pluginId
 }
 
 export function usePluginSessionState<T extends SerializablePluginValue>(pluginId: string, key: string, initialValue: T) {
-  const sessionId = useStore(MainChatStore).session?.sessionId;
+  const sessionId = useStore(RootStore).projectWorkbenchStore.activeSession?.sessionId;
   if (!sessionId) throw new Error("Session-scoped plugin state requires an active Cake session");
   return usePluginState(pluginId, key, { kind: "session", sessionId }, initialValue);
 }

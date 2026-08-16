@@ -1,7 +1,7 @@
 import { Store, observable } from "r-state-tree";
 import type { Attachment, FileSuggestion, UiPart } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
-import type { SessionCacheStore } from "./SessionCacheStore";
+import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
 import { describeError } from "../error-details";
@@ -32,7 +32,7 @@ interface PendingUserMessage {
 
 export interface MessageComposerStoreProps {
   client: Pick<DesktopClient, "chooseAttachments" | "suggestFiles" | "submit">;
-  sessionCache: SessionCacheStore;
+  sessionRegistry: SessionRegistryStore;
   reviews(): ReviewsStore;
   projectPath(): string | undefined;
   sessionId(): string | undefined;
@@ -45,6 +45,7 @@ export interface MessageComposerStoreProps {
   matchesPluginCommand(input: string): boolean;
   runPluginCommand(input: string): Promise<boolean>;
   operations: SessionOperationCoordinator;
+  operationOwner: string;
 }
 
 /** Owns attachments, optimistic immediate prompts, and prompt delivery. */
@@ -54,7 +55,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   focusRequestRevision = 0;
   error: string | undefined;
   errorDetails: string | undefined;
-  get activeOperations() { return this.props.operations.active("message-composer"); }
+  get activeOperations() { return this.props.operations.active(this.props.operationOwner); }
 
   private reportError(error: unknown) {
     const described = describeError(error);
@@ -141,7 +142,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     const submissions: Promise<void>[] = [];
     if (threadIds.length > 0) submissions.push(this.props.reviews().submitThreads(threadIds, text || undefined));
     if (text || attachments.length > 0) {
-      const operationId = this.props.operations.start("message-composer");
+      const operationId = this.props.operations.start(this.props.operationOwner);
       this.attachments.splice(0);
       if (delivery === "prompt") this.addPendingUserMessage(operationId, workspacePath, sessionId, text, attachments);
       submissions.push(this.props.client.submit({ operationId, workspacePath, sessionId, text, delivery, attachments }).catch((error) => {
@@ -186,7 +187,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     const parts: UiPart[] = [...(text ? [{ id: `optimistic-user-${operationId}`, kind: "text" as const, role: "user" as const, text, status: "complete" as const }] : []), ...imageParts];
     const firstImageData = imageParts[0]?.kind === "attachment" ? imageParts[0].data : undefined;
     const earlierPendingCount = this.pendingUserMessages.filter((pending) => pending.workspacePath === workspacePath && pending.sessionId === sessionId && pending.text === text && (Boolean(text) || pending.parts.some((part) => part.kind === "attachment" && part.data === firstImageData))).length;
-    this.pendingUserMessages.push({ operationId, workspacePath, sessionId, canonicalPartCount: this.props.sessionCache.find(sessionId, workspacePath)?.uiParts.length ?? 0, expectedOccurrence: this.userMessageOccurrenceCount(workspacePath, sessionId, text, parts) + earlierPendingCount + 1, text, parts });
+    this.pendingUserMessages.push({ operationId, workspacePath, sessionId, canonicalPartCount: this.props.sessionRegistry.findModel(sessionId, workspacePath)?.uiParts.length ?? 0, expectedOccurrence: this.userMessageOccurrenceCount(workspacePath, sessionId, text, parts) + earlierPendingCount + 1, text, parts });
   }
 
   private removePendingUserMessage(operationId: string) {
@@ -195,7 +196,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   }
 
   private userMessageOccurrenceCount(workspacePath: string, sessionId: string, text: string, parts: UiPart[] = []) {
-    const canonical = this.props.sessionCache.find(sessionId, workspacePath)?.uiParts ?? [];
+    const canonical = this.props.sessionRegistry.findModel(sessionId, workspacePath)?.uiParts ?? [];
     if (text) return canonical.filter((part) => part.kind === "text" && part.role === "user" && part.status === "complete" && part.text === text).length;
     const image = parts.find((part): part is Extract<UiPart, { kind: "attachment" }> => part.kind === "attachment" && part.attachmentKind === "image");
     return image?.data ? canonical.filter((part) => part.kind === "attachment" && part.data === image.data).length : 0;

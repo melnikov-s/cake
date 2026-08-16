@@ -33,17 +33,14 @@ if (!window.cake) {
   );
 } else {
   const rootStore = mountRootStore(createDesktopClient(window.cake));
-  const mainChatStore = rootStore.mainChatStore;
   root.render(
     <RendererErrorBoundary>
       <StrictMode>
         <StoreProvider store={rootStore}>
-          <StoreProvider store={mainChatStore}>
-            <Suspense fallback={<main className="loading-screen"><span className="cake-mark">C</span><p>Hydrating customization…</p></main>}>
-              <GlobalScene><App /><CustomizationHealth /></GlobalScene>
-            </Suspense>
-            <CustomizationRecovery />
-          </StoreProvider>
+          <Suspense fallback={<main className="loading-screen"><span className="cake-mark">C</span><p>Hydrating customization…</p></main>}>
+            <GlobalScene><App /><CustomizationHealth /></GlobalScene>
+          </Suspense>
+          <CustomizationRecovery />
         </StoreProvider>
       </StrictMode>
     </RendererErrorBoundary>

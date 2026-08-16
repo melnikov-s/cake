@@ -3,7 +3,7 @@ import { reaction } from "r-state-tree";
 import type { ChangedFile, SessionPreview, SessionSnapshot } from "../../../../src/ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../../../../src/renderer/desktop-client";
 import { mountRootStore } from "../../../../src/renderer/stores/RootStore";
-import type { MainChatStore } from "../../../../src/renderer/stores/MainChatStore";
+import type { ProjectWorkbenchStore } from "../../../../src/renderer/stores/ProjectWorkbenchStore";
 
 const snapshot: SessionSnapshot = {
   workspacePath: "/project",
@@ -96,10 +96,10 @@ async function flush() {
 
 function mountTestStore(client: DesktopClient) {
   const root = mountRootStore(client);
-  return { root, store: root.mainChatStore };
+  return { root, store: root.projectWorkbenchStore };
 }
 
-async function openSnapshot(store: MainChatStore, desktop: ReturnType<typeof createDesktopClient>, nextSnapshot = snapshot, changes: ChangedFile[] = []) {
+async function openSnapshot(store: ProjectWorkbenchStore, desktop: ReturnType<typeof createDesktopClient>, nextSnapshot = snapshot, changes: ChangedFile[] = []) {
   await store.chooseProject();
   const inspectId = store.activeOperations.at(-1)!;
   desktop.emit({ type: "workspace-inspected", operationId: inspectId, path: nextSnapshot.workspacePath, trustRequired: false });
@@ -109,7 +109,21 @@ async function openSnapshot(store: MainChatStore, desktop: ReturnType<typeof cre
   if (changesRequest) desktop.emit({ type: "changes-received", ...changesRequest, files: changes });
 }
 
-describe("MainChatStore", () => {
+describe("ProjectWorkbenchStore", () => {
+  it("uses one root intent to reveal and activate a session", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+    root.showGlobalChat();
+
+    await root.openSession("/project", "session-1");
+
+    expect(root.appShellStore.surface).toBe("workbench");
+    expect(store.activeSession?.sessionId).toBe("session-1");
+    root[Symbol.dispose]();
+  });
+
   it("turns desktop projection exceptions into copyable error details", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
@@ -142,12 +156,12 @@ describe("MainChatStore", () => {
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop);
-    store.setDraft("Review");
+    store.activeSession!.setDraft("Review");
 
-    await root.messageComposerStore.addAttachments();
+    await root.projectWorkbenchStore.activeSession!.composerStore.addAttachments();
 
-    expect(store.draft).toBe('Review @/tmp/foo @"/tmp/my notes.txt"');
-    expect(root.messageComposerStore.attachments).toEqual([
+    expect(store.activeSession!.draft).toBe('Review @/tmp/foo @"/tmp/my notes.txt"');
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.attachments).toEqual([
       { kind: "image", name: "preview.png", mimeType: "image/png", data: "aW1hZ2U=" }
     ]);
     root[Symbol.dispose]();
@@ -166,11 +180,13 @@ describe("MainChatStore", () => {
     }
     vi.stubGlobal("FileReader", MockFileReader);
     const desktop = createDesktopClient();
-    const { root } = mountTestStore(desktop.client);
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
 
-    await root.messageComposerStore.addPastedImages([{ name: "", type: "image/png" } as File]);
+    await root.projectWorkbenchStore.activeSession!.composerStore.addPastedImages([{ name: "", type: "image/png" } as File]);
 
-    expect(root.messageComposerStore.attachments).toEqual([{ kind: "image", name: "Pasted image 1", mimeType: "image/png", data: "Y2xpcGJvYXJk" }]);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.attachments).toEqual([{ kind: "image", name: "Pasted image 1", mimeType: "image/png", data: "Y2xpcGJvYXJk" }]);
     root[Symbol.dispose]();
     vi.unstubAllGlobals();
   });
@@ -187,9 +203,9 @@ describe("MainChatStore", () => {
       ]
     });
 
-    expect(root.mainChatConfigurationStore.modelsByProvider.map((group) => group.id)).toEqual(["openai", "anthropic"]);
-    expect(root.mainChatConfigurationStore.connectedModelsByProvider).toHaveLength(1);
-    expect(root.mainChatConfigurationStore.connectedModelsByProvider[0]).toMatchObject({ id: "openai", models: [expect.objectContaining({ id: "gpt" })] });
+    expect(root.projectWorkbenchStore.activeSession!.configurationStore.modelsByProvider.map((group) => group.id)).toEqual(["openai", "anthropic"]);
+    expect(root.projectWorkbenchStore.activeSession!.configurationStore.connectedModelsByProvider).toHaveLength(1);
+    expect(root.projectWorkbenchStore.activeSession!.configurationStore.connectedModelsByProvider[0]).toMatchObject({ id: "openai", models: [expect.objectContaining({ id: "gpt" })] });
     root[Symbol.dispose]();
   });
 
@@ -236,10 +252,15 @@ describe("MainChatStore", () => {
     const { root, store } = mountTestStore(desktop.client);
     await flush();
 
-    expect(store.hydrated).toBe(true);
-    expect(store.draft).toBe("saved");
+    expect(root.windowPersistence.hydrated).toBe(true);
+    expect(store.activeSession).toBeUndefined();
     expect(desktop.client.inspectWorkspace).toHaveBeenCalledWith(expect.objectContaining({ path: "/project" }));
     expect(desktop.client.saveWindowState).not.toHaveBeenCalled();
+    const inspectId = store.activeOperations.at(-1)!;
+    desktop.emit({ type: "workspace-inspected", operationId: inspectId, path: "/project", trustRequired: false });
+    const openId = store.activeOperations.at(-1)!;
+    desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot });
+    expect(store.activeSession!.draft).toBe("saved");
     root[Symbol.dispose]();
   });
 
@@ -314,10 +335,10 @@ describe("MainChatStore", () => {
     const request = { protocol: "cake.request/v1" as const, id: "form", title: "Answer", responseSchema: { type: "object" as const, required: ["answer"], properties: { answer: { type: "string" as const } } }, view: { type: "form" as const, fields: [{ id: "answer", label: "Answer", type: "text" as const, required: true }], submitLabel: "Send" }, fallback: { markdown: "Answer" } };
     const record = { artifact: { protocol: "cake.artifact/v1" as const, id: request.id, sessionId: "session-1", revision: 1, kind: "request" as const, payload: { request }, fallback: request.fallback, interaction: { mode: "request" as const, responseSchema: request.responseSchema } }, workspacePath: "/project", digest: "a".repeat(64), createdAt: new Date(0).toISOString(), updatedAt: new Date(0).toISOString() };
     desktop.emit({ type: "artifact-requested", operationId, artifactRequestId: crypto.randomUUID(), record });
-    expect(root.artifactInteractionStore.request).toBeDefined();
+    expect(root.projectWorkbenchStore.activeSession!.artifactInteractionStore.request).toBeDefined();
     await store.startNewSession();
     expect(desktop.client.respondToArtifact).toHaveBeenCalledWith(expect.objectContaining({ operationId, cancelled: true }));
-    expect(root.artifactInteractionStore.request).toBeUndefined();
+    expect(root.projectWorkbenchStore.activeSession!.artifactInteractionStore.request).toBeUndefined();
     root[Symbol.dispose]();
   });
 
@@ -330,13 +351,13 @@ describe("MainChatStore", () => {
     const record = { artifact: { protocol: "cake.artifact/v1" as const, id: request.id, sessionId: "session-1", revision: 1, kind: "request" as const, payload: { request }, fallback: request.fallback, interaction: { mode: "request" as const, responseSchema: request.responseSchema } }, workspacePath: "/project", digest: "a".repeat(64), createdAt: new Date(0).toISOString(), updatedAt: new Date(0).toISOString() };
     desktop.emit({ type: "artifact-requested", operationId, artifactRequestId: crypto.randomUUID(), record });
 
-    await root.artifactInteractionStore.respond({});
+    await root.projectWorkbenchStore.activeSession!.artifactInteractionStore.respond({});
     expect(desktop.client.respondToArtifact).not.toHaveBeenCalled();
-    expect(root.artifactInteractionStore.request).toBeDefined();
+    expect(root.projectWorkbenchStore.activeSession!.artifactInteractionStore.request).toBeDefined();
 
-    await root.artifactInteractionStore.respond({ answer: "yes" });
+    await root.projectWorkbenchStore.activeSession!.artifactInteractionStore.respond({ answer: "yes" });
     expect(desktop.client.respondToArtifact).toHaveBeenCalledWith(expect.objectContaining({ value: { answer: "yes" }, cancelled: false }));
-    expect(root.artifactInteractionStore.request).toBeUndefined();
+    expect(root.projectWorkbenchStore.activeSession!.artifactInteractionStore.request).toBeUndefined();
     root[Symbol.dispose]();
   });
 
@@ -350,12 +371,12 @@ describe("MainChatStore", () => {
     const operationId = root.sessionOperationCoordinator.start();
     const uiRequestId = crypto.randomUUID();
     desktop.emit({ type: "ui-requested", operationId, uiRequestId, kind: "confirm", title: "Continue?", message: "Confirm" });
-    const focusRevision = root.messageComposerStore.focusRequestRevision;
+    const focusRevision = root.projectWorkbenchStore.activeSession!.composerStore.focusRequestRevision;
     await root.extensionUiStore.respond("true");
 
-    expect(root.messageComposerStore.parts.map((part) => part.id)).toEqual(["live"]);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts.map((part) => part.id)).toEqual(["live"]);
     expect(desktop.client.respondToUi).toHaveBeenCalledWith({ operationId, workspacePath: "/project", sessionId: "session-1", uiRequestId, value: "true", cancelled: false });
-    expect(root.messageComposerStore.focusRequestRevision).toBe(focusRevision + 1);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.focusRequestRevision).toBe(focusRevision + 1);
     root[Symbol.dispose]();
   });
 
@@ -369,7 +390,7 @@ describe("MainChatStore", () => {
 
     desktop.emit({ type: "part-updated", sessionId: "session-1", part: { id: "tool-edit-2", kind: "tool", name: "edit", input: "", filePath: "src/two.ts", diff: "+2 added", state: "success" } });
 
-    expect(root.changesStore.changes).toEqual([
+    expect(store.changesStore.changes).toEqual([
       expect.objectContaining({ path: "src/one.ts", additions: 1, deletions: 1 })
     ]);
     root[Symbol.dispose]();
@@ -383,8 +404,8 @@ describe("MainChatStore", () => {
       { path: "src/one.ts", status: "modified", additions: 1, deletions: 0, diff: "+new" }
     ]);
 
-    expect(root.changesStore.changes).toHaveLength(1);
-    expect(root.changesStore.path).toBeUndefined();
+    expect(store.changesStore.changes).toHaveLength(1);
+    expect(store.changesStore.path).toBeUndefined();
     root[Symbol.dispose]();
   });
 
@@ -396,11 +417,11 @@ describe("MainChatStore", () => {
       { path: "docs/plan.md", previousPath: "PLAN.md", status: "renamed", additions: 0, deletions: 0, diff: "similarity index 100%" }
     ]);
 
-    await root.changesStore.open("PLAN.md");
-    expect(root.changesStore.selected).toMatchObject({ path: "docs/plan.md", previousPath: "PLAN.md" });
+    await store.changesStore.open("PLAN.md");
+    expect(store.changesStore.selected).toMatchObject({ path: "docs/plan.md", previousPath: "PLAN.md" });
     expect(store.commandPane).toBeUndefined();
-    root.changesStore.close();
-    expect(root.changesStore.path).toBeUndefined();
+    store.changesStore.close();
+    expect(store.changesStore.path).toBeUndefined();
     root[Symbol.dispose]();
   });
 
@@ -414,11 +435,11 @@ describe("MainChatStore", () => {
     vi.mocked(desktop.client.inspectChanges).mockClear();
 
     await store.openSessionChanges();
-    expect(root.changesStore.path).toBe("PLAN.md");
+    expect(store.changesStore.path).toBe("PLAN.md");
     expect(desktop.client.inspectChanges).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project" }));
 
-    root.changesStore.close();
-    expect(root.changesStore.path).toBeUndefined();
+    store.changesStore.close();
+    expect(store.changesStore.path).toBeUndefined();
     root[Symbol.dispose]();
   });
 
@@ -432,12 +453,12 @@ describe("MainChatStore", () => {
     await store.openWorkspaceBrowser();
 
     expect(desktop.client.listWorkspaceFiles).toHaveBeenCalledWith("/project");
-    expect(root.browseStore.files).toEqual(["PLAN.md", "src/app.ts", "src/main.ts"]);
-    expect(root.browseStore.path).toBeNull();
-    root.browseStore.select("src/main.ts");
-    expect(root.browseStore.path).toBe("src/main.ts");
-    root.browseStore.close();
-    expect(root.browseStore.path).toBeUndefined();
+    expect(store.browseStore.files).toEqual(["PLAN.md", "src/app.ts", "src/main.ts"]);
+    expect(store.browseStore.path).toBeNull();
+    store.browseStore.select("src/main.ts");
+    expect(store.browseStore.path).toBe("src/main.ts");
+    store.browseStore.close();
+    expect(store.browseStore.path).toBeUndefined();
     root[Symbol.dispose]();
   });
 
@@ -449,7 +470,7 @@ describe("MainChatStore", () => {
     desktop.emit({ type: "extension-ui-received", sessionId: "stale", event: { kind: "editor-text", text: "stale", mode: "replace" } });
     desktop.emit({ type: "extension-ui-received", sessionId: "session-1", event: { kind: "notify", id: "notice-1", message: "Hello", tone: "info" } });
 
-    expect(store.draft).not.toBe("stale");
+    expect(store.activeSession!.draft).not.toBe("stale");
     expect(root.extensionUiStore.title).toBe("Initial");
     expect(root.extensionUiStore.notifications).toHaveLength(1);
 
@@ -464,14 +485,14 @@ describe("MainChatStore", () => {
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop);
-    store.setDraft("keep this draft");
+    store.activeSession!.setDraft("keep this draft");
     desktop.emit({ type: "pi-state-changed", state: "stopped", workspacePath: "/project" });
     desktop.emit({ type: "pi-state-changed", state: "ready", workspacePath: "/project" });
     const inspectId = store.activeOperations.at(-1)!;
     desktop.emit({ type: "workspace-inspected", operationId: inspectId, path: "/project", trustRequired: false });
     const openId = store.activeOperations.at(-1)!;
     desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot: { ...snapshot, sessionId: "replacement" } });
-    expect(store.draft).toBe("keep this draft");
+    expect(store.activeSession!.draft).toBe("keep this draft");
     root[Symbol.dispose]();
   });
 
@@ -482,21 +503,21 @@ describe("MainChatStore", () => {
     desktop.emit({ type: "pi-state-changed", state: "ready" });
     await openSnapshot(store, desktop, { ...snapshot, streaming: true });
 
-    store.setDraft("Do this next");
-    await root.messageComposerStore.submit();
+    store.activeSession!.setDraft("Do this next");
+    await root.projectWorkbenchStore.activeSession!.composerStore.submit();
     expect(desktop.client.submit).toHaveBeenLastCalledWith(expect.objectContaining({ text: "Do this next", delivery: "follow-up" }));
-    expect(root.messageComposerStore.parts).toEqual([]);
-    expect(root.messageComposerStore.pendingUserMessages).toEqual([]);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([]);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.pendingUserMessages).toEqual([]);
 
-    store.setDraft("Change direction");
-    await root.messageComposerStore.submit("steer");
+    store.activeSession!.setDraft("Change direction");
+    await root.projectWorkbenchStore.activeSession!.composerStore.submit("steer");
     expect(desktop.client.submit).toHaveBeenLastCalledWith(expect.objectContaining({ text: "Change direction", delivery: "steer" }));
-    expect(root.messageComposerStore.parts).toEqual([]);
-    expect(root.messageComposerStore.pendingUserMessages).toEqual([]);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([]);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.pendingUserMessages).toEqual([]);
 
     desktop.emit({ type: "part-updated", sessionId: "session-1", part: { id: "follow-up-canonical", kind: "text", role: "user", text: "Do this next", status: "complete" } });
     desktop.emit({ type: "part-updated", sessionId: "session-1", part: { id: "steer-canonical", kind: "text", role: "user", text: "Change direction", status: "complete" } });
-    expect(root.messageComposerStore.parts.map((part) => part.id)).toEqual(["follow-up-canonical", "steer-canonical"]);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts.map((part) => part.id)).toEqual(["follow-up-canonical", "steer-canonical"]);
     root[Symbol.dispose]();
   });
 
@@ -513,10 +534,10 @@ describe("MainChatStore", () => {
       anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
       messages: [{ id: "comment-1", role: "user", body: "Rename this", createdAt: now, delivered: false, status: "complete" }]
     } });
-    store.setDraft("");
+    store.activeSession!.setDraft("");
 
-    expect(store.canSubmit).toBe(true);
-    await root.messageComposerStore.submit();
+    expect(store.activeSession!.canSubmit).toBe(true);
+    await root.projectWorkbenchStore.activeSession!.composerStore.submit();
 
     expect(desktop.client.submitReviewThreads).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", sessionId: "session-1", threadIds: ["review-1"], commentCount: 1, instruction: undefined }));
     expect(desktop.client.submit).not.toHaveBeenCalled();
@@ -526,7 +547,7 @@ describe("MainChatStore", () => {
     const operationId = vi.mocked(desktop.client.submitReviewThreads).mock.calls[0]![0].operationId;
     desktop.emit({ type: "operation-completed", operationId });
     expect(root.reviewsStore.openThreads).toHaveLength(1);
-    expect(root.messageComposerStore.parts).toEqual([]);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([]);
     root[Symbol.dispose]();
   });
 
@@ -547,7 +568,7 @@ describe("MainChatStore", () => {
 
     await root.reviewsStore.submitPending();
 
-    expect(root.changesStore.path).toBe("src/app.ts");
+    expect(store.changesStore.path).toBe("src/app.ts");
     expect(root.reviewsStore.activeThreadId).toBe("review-1");
     expect(desktop.client.submitReviewThreads).toHaveBeenCalledWith(expect.objectContaining({ threadIds: ["review-1"] }));
     root[Symbol.dispose]();
@@ -591,7 +612,7 @@ describe("MainChatStore", () => {
     const { root } = mountTestStore(desktop.client);
     await flush();
 
-    const model = root.sessionCache.find("session-2", "/other")!.reviewThreads[0]!;
+    const model = root.sessionRegistry.findModel("session-2", "/other")!.reviewThreads[0]!;
     expect(root.reviewsStore.chatCommentCountForSession("/other", "session-2")).toBe(1);
     expect("reviewCount" in root.sidebarStore.sessions[0]!).toBe(false);
     const observedCounts: number[] = [];
@@ -605,7 +626,7 @@ describe("MainChatStore", () => {
       ]
     } });
 
-    expect(root.sessionCache.find("session-2", "/other")!.reviewThreads[0]).toBe(model);
+    expect(root.sessionRegistry.findModel("session-2", "/other")!.reviewThreads[0]).toBe(model);
     expect(root.reviewsStore.chatCommentCountForSession("/other", "session-2")).toBe(0);
     expect(observedCounts).toEqual([0]);
     stop();
@@ -625,13 +646,13 @@ describe("MainChatStore", () => {
       anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
       messages: [{ id: "comment-1", role: "user", body: "Rename this", createdAt: now, delivered: false, status: "complete" }]
     } });
-    store.setDraft("Also explain the overall change");
+    store.activeSession!.setDraft("Also explain the overall change");
 
-    await root.messageComposerStore.submit();
+    await root.projectWorkbenchStore.activeSession!.composerStore.submit();
 
     expect(desktop.client.submit).toHaveBeenCalledWith(expect.objectContaining({ text: "Also explain the overall change", delivery: "prompt" }));
     expect(desktop.client.submitReviewThreads).toHaveBeenCalledWith(expect.objectContaining({ threadIds: ["review-1"], instruction: "Also explain the overall change" }));
-    expect(root.messageComposerStore.parts).toEqual([expect.objectContaining({ role: "user", text: "Also explain the overall change" })]);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([expect.objectContaining({ role: "user", text: "Also explain the overall change" })]);
     expect(root.reviewsStore.pendingThreads).toHaveLength(0);
     root[Symbol.dispose]();
   });
@@ -643,20 +664,20 @@ describe("MainChatStore", () => {
     desktop.emit({ type: "pi-state-changed", state: "ready" });
     await openSnapshot(store, desktop);
 
-    store.setDraft("Show this now");
-    const submission = root.messageComposerStore.submit();
+    store.activeSession!.setDraft("Show this now");
+    const submission = root.projectWorkbenchStore.activeSession!.composerStore.submit();
 
-    expect(root.messageComposerStore.parts).toEqual([
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([
       expect.objectContaining({ id: expect.stringMatching(/^optimistic-user-/), role: "user", text: "Show this now" })
     ]);
     await submission;
 
     desktop.emit({ type: "part-updated", sessionId: "session-1", part: { id: "user-canonical", kind: "text", role: "user", text: "Show this now", status: "complete" } });
 
-    expect(root.messageComposerStore.parts).toEqual([
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([
       { id: "user-canonical", kind: "text", role: "user", text: "Show this now", status: "complete" }
     ]);
-    expect(root.messageComposerStore.pendingUserMessages).toHaveLength(0);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.pendingUserMessages).toHaveLength(0);
     root[Symbol.dispose]();
   });
 
@@ -666,20 +687,20 @@ describe("MainChatStore", () => {
     await flush();
     desktop.emit({ type: "pi-state-changed", state: "ready" });
     await openSnapshot(store, desktop);
-    store.setDraft("");
-    root.messageComposerStore.attachments.push({ kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" });
+    store.activeSession!.setDraft("");
+    root.projectWorkbenchStore.activeSession!.composerStore.attachments.push({ kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" });
 
-    await root.messageComposerStore.submit();
+    await root.projectWorkbenchStore.activeSession!.composerStore.submit();
 
     expect(desktop.client.submit).toHaveBeenCalledWith(expect.objectContaining({
       text: "",
       attachments: [{ kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" }]
     }));
-    expect(root.messageComposerStore.parts).toEqual([expect.objectContaining({ kind: "attachment", name: "clipboard.png", data: "aW1hZ2U=" })]);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([expect.objectContaining({ kind: "attachment", name: "clipboard.png", data: "aW1hZ2U=" })]);
 
     desktop.emit({ type: "part-updated", sessionId: "session-1", part: { id: "user-image", kind: "attachment", name: "Image 1", mediaType: "image/png", attachmentKind: "image", data: "aW1hZ2U=" } });
-    expect(root.messageComposerStore.parts).toEqual([{ id: "user-image", kind: "attachment", name: "Image 1", mediaType: "image/png", attachmentKind: "image", data: "aW1hZ2U=" }]);
-    expect(root.messageComposerStore.pendingUserMessages).toHaveLength(0);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([{ id: "user-image", kind: "attachment", name: "Image 1", mediaType: "image/png", attachmentKind: "image", data: "aW1hZ2U=" }]);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.pendingUserMessages).toHaveLength(0);
     root[Symbol.dispose]();
   });
 
@@ -690,11 +711,11 @@ describe("MainChatStore", () => {
     desktop.emit({ type: "pi-state-changed", state: "ready" });
     await openSnapshot(store, desktop);
 
-    store.setDraft("Think about this");
-    await root.messageComposerStore.submit();
+    store.activeSession!.setDraft("Think about this");
+    await root.projectWorkbenchStore.activeSession!.composerStore.submit();
     desktop.emit({ type: "part-updated", sessionId: "session-1", part: { id: "reasoning-1", kind: "reasoning", text: "Working it out", status: "streaming" } });
 
-    expect(root.messageComposerStore.parts.map((part) => part.id)).toEqual([
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts.map((part) => part.id)).toEqual([
       expect.stringMatching(/^optimistic-user-/),
       "reasoning-1"
     ]);
@@ -708,12 +729,12 @@ describe("MainChatStore", () => {
     desktop.emit({ type: "pi-state-changed", state: "ready" });
     await openSnapshot(store, desktop);
 
-    store.setDraft("Already sent");
-    await root.messageComposerStore.submit();
+    store.activeSession!.setDraft("Already sent");
+    await root.projectWorkbenchStore.activeSession!.composerStore.submit();
     desktop.emit({ type: "session-snapshot-received", snapshot: { ...snapshot, streaming: false } });
 
-    expect(store.draft).toBe("");
-    expect(store.draftsBySession["session-1"]).toBe("");
+    expect(store.activeSession!.draft).toBe("");
+    expect(store.sessionRegistry.findSession("session-1", store.projectPath)!.draft).toBe("");
     root[Symbol.dispose]();
   });
 
@@ -726,21 +747,21 @@ describe("MainChatStore", () => {
       parts: [{ id: "old-tool", kind: "tool", name: "old", input: "", state: "success" }]
     };
     await openSnapshot(store, desktop, oldSnapshot);
-    expect(root.messageComposerStore.parts).toHaveLength(1);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toHaveLength(1);
 
     await store.startNewSession();
     const openId = store.activeOperations.at(-1)!;
     expect(store.session?.sessionId).toBe("session-1");
-    expect(root.messageComposerStore.parts.map((part) => part.id)).toEqual(["old-tool"]);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts.map((part) => part.id)).toEqual(["old-tool"]);
 
     desktop.emit({ type: "session-snapshot-received", snapshot: oldSnapshot });
     desktop.emit({ type: "session-snapshot-received", operationId: crypto.randomUUID(), snapshot: oldSnapshot });
-    expect(root.messageComposerStore.parts.map((part) => part.id)).toEqual(["old-tool"]);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts.map((part) => part.id)).toEqual(["old-tool"]);
 
     const newSnapshot = { ...snapshot, sessionId: "session-2", sessionFile: "/sessions/two.jsonl" };
     desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot: newSnapshot });
     expect(store.session?.sessionId).toBe("session-2");
-    expect(root.messageComposerStore.parts).toEqual([]);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([]);
     root[Symbol.dispose]();
   });
 
@@ -759,7 +780,7 @@ describe("MainChatStore", () => {
     });
 
     expect(store.session?.sessionId).toBe("session-1");
-    expect(root.messageComposerStore.parts).toEqual([]);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([]);
     expect(store.error).toContain("refused to mount history");
     root[Symbol.dispose]();
   });
@@ -782,25 +803,29 @@ describe("MainChatStore", () => {
     desktop.client.registerProject = vi.fn(async () => applicationState);
     const { root, store } = mountTestStore(desktop.client);
     await flush();
-    const draftsBySession = store.draftsBySession;
     const sessions = [
       { id: "session-1", title: "Alpha task", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 1, archived: false },
       { id: "session-2", title: "Beta task", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 2, archived: false }
     ];
     await openSnapshot(store, desktop, { ...snapshot, sessions });
-    store.setDraft("alpha draft");
+    const firstSession = store.activeSession;
+    store.activeSession!.setDraft("alpha draft");
     await store.openSession("/project", "session-2");
     const openId = store.activeOperations.at(-1)!;
     desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot: { ...snapshot, sessionId: "session-2", sessions } });
-    store.setDraft("beta draft");
-    expect(store.draftsBySession).toBe(draftsBySession);
-    expect(store.draftsBySession["session-1"]).toBe("alpha draft");
+    const secondSession = store.activeSession;
+    store.activeSession!.setDraft("beta draft");
+    expect(secondSession).not.toBe(firstSession);
+    expect(secondSession!.composerStore).not.toBe(firstSession!.composerStore);
+    expect(secondSession!.configurationStore).not.toBe(firstSession!.configurationStore);
+    expect(store.sessionRegistry.findSession("session-1", "/project")).toBe(firstSession);
+    expect(store.sessionRegistry.findSession("session-1", store.projectPath)!.draft).toBe("alpha draft");
     expect(root.sidebarStore.projectSessions(store.projectPath!).map((item) => item.id)).toEqual(["session-1", "session-2"]);
     root.sidebarStore.search = "alpha";
     expect(root.sidebarStore.searchedSessions.map((item) => `${item.workspacePath}:${item.id}`).sort()).toEqual(["/other:session-3", "/project:session-1"]);
     await store.openSession("/project", "session-1");
     expect(store.session?.sessionId).toBe("session-1");
-    expect(store.draft).toBe("alpha draft");
+    expect(store.activeSession!.draft).toBe("alpha draft");
     await store.openSession("/other", "session-3");
     expect(desktop.client.inspectWorkspace).toHaveBeenLastCalledWith(expect.objectContaining({ path: "/other" }));
     root[Symbol.dispose]();
@@ -842,7 +867,7 @@ describe("MainChatStore", () => {
     await flush();
 
     expect(store.projectPath).toBe("/third");
-    expect(root.sidebarStore.recentProjectPaths).toEqual(["/first", "/second", "/third"]);
+    expect(root.projectCatalogStore.recentProjectPaths).toEqual(["/first", "/second", "/third"]);
     root[Symbol.dispose]();
   });
 
@@ -860,7 +885,7 @@ describe("MainChatStore", () => {
     await store.openSession("/project", "session-1");
 
     expect(store.session?.sessionId).toBe("session-1");
-    expect(root.messageComposerStore.parts.map((part) => part.id)).toEqual(["one", "late-one"]);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts.map((part) => part.id)).toEqual(["one", "late-one"]);
     expect(desktop.client.inspectWorkspace).toHaveBeenCalledTimes(1);
     expect(desktop.client.openWorkspace).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: "session-1" }));
     root[Symbol.dispose]();
@@ -904,14 +929,14 @@ describe("MainChatStore", () => {
     await flush();
 
     expect(store.session?.sessionId).toBe("session-2");
-    expect(root.messageComposerStore.parts.map((part) => part.id)).toEqual(["preview"]);
-    store.setDraft("not ready yet");
-    expect(store.canSubmit).toBe(false);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts.map((part) => part.id)).toEqual(["preview"]);
+    store.activeSession!.setDraft("not ready yet");
+    expect(store.activeSession!.canSubmit).toBe(false);
 
     const openId = store.activeOperations.at(-1)!;
     desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot: { ...snapshot, sessionId: "session-2", sessionFile: "/sessions/two.jsonl", parts: [{ id: "authoritative", kind: "text", role: "assistant", text: "Ready", status: "complete" }] } });
-    expect(root.messageComposerStore.parts.map((part) => part.id)).toEqual(["authoritative"]);
-    expect(store.canSubmit).toBe(true);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts.map((part) => part.id)).toEqual(["authoritative"]);
+    expect(store.activeSession!.canSubmit).toBe(true);
     root[Symbol.dispose]();
   });
 
@@ -989,15 +1014,15 @@ describe("MainChatStore", () => {
     await flush();
     desktop.emit({ type: "pi-state-changed", state: "ready" });
     await openSnapshot(store, desktop, { ...snapshot, tree: [{ id: "entry-1", type: "message", preview: "Hello", active: true }] });
-    store.setDraft("/tree");
-    await root.messageComposerStore.submit();
+    store.activeSession!.setDraft("/tree");
+    await root.projectWorkbenchStore.activeSession!.composerStore.submit();
 
     expect(store.commandPane).toBe("tree");
     expect(desktop.client.submit).not.toHaveBeenCalled();
 
     store.closeCommandPane();
-    store.setDraft("/changelog");
-    await root.messageComposerStore.submit();
+    store.activeSession!.setDraft("/changelog");
+    await root.projectWorkbenchStore.activeSession!.composerStore.submit();
 
     expect(store.commandPane).toBe("changelog");
     expect(desktop.client.getChangelog).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", sessionId: "session-1" }));
@@ -1007,12 +1032,12 @@ describe("MainChatStore", () => {
     expect(store.changelogMarkdown).toContain("0.84.0");
 
     store.closeCommandPane();
-    store.setDraft("/skill:review");
-    await root.messageComposerStore.submit();
+    store.activeSession!.setDraft("/skill:review");
+    await root.projectWorkbenchStore.activeSession!.composerStore.submit();
 
     expect(desktop.client.submit).toHaveBeenCalledWith(expect.objectContaining({ text: "/skill:review", delivery: "prompt" }));
     expect(store.commandPane).toBeUndefined();
-    expect(store.draft).toBe("");
+    expect(store.activeSession!.draft).toBe("");
     root[Symbol.dispose]();
   });
 
@@ -1025,7 +1050,7 @@ describe("MainChatStore", () => {
     await store.navigateTo("user-entry");
 
     expect(desktop.client.navigateSession).toHaveBeenCalledWith(expect.objectContaining({ entryId: "user-entry" }));
-    expect(store.draft).toBe("Original user message\nwith formatting");
+    expect(store.activeSession!.draft).toBe("Original user message\nwith formatting");
     expect(store.commandPane).toBeUndefined();
     root[Symbol.dispose]();
   });

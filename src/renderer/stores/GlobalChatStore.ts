@@ -1,6 +1,6 @@
 import { Store, observable, untracked } from "r-state-tree";
 import type { DesktopClientEvent } from "../desktop-client";
-import type { SessionCacheStore } from "./SessionCacheStore";
+import type { SessionRegistryStore } from "./SessionRegistryStore";
 import { describeError } from "../error-details";
 
 export interface GlobalChatPort {
@@ -13,7 +13,7 @@ export interface GlobalChatPort {
 export interface GlobalChatStoreProps {
   port: GlobalChatPort;
   tools(): ReadonlyArray<{ name: string; description: string; parameters: Record<string, unknown> }>;
-  sessions(): SessionCacheStore;
+  sessions(): SessionRegistryStore;
 }
 
 /** Owns the singleton global-chat surface, its persistent Pi transcript, and turn policy. */
@@ -35,9 +35,12 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
 
   setDraft(value: string) { this.draft = value; }
 
-  get session() { return this.sessionId ? this.props.sessions().find(this.sessionId) : undefined; }
+  get session() { return this.sessionId ? this.props.sessions().findModel(this.sessionId) : undefined; }
   get parts() { return this.session?.uiParts ?? []; }
   get streaming() { return this.session?.streaming ?? false; }
+  get hasPendingPrompt() {
+    return this.activeOperations.some((operationId) => this.parts.some((part) => part.id === `global-user-${operationId}`));
+  }
 
   open() {
     if (this.openPromise) return this.openPromise;

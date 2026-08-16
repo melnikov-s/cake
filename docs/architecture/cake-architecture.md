@@ -104,6 +104,55 @@ publishing one-for-one forwarding facades. Store providers are lookup scopes,
 not ownership scopes. Stores and their external resources must be disposed with
 their actual owner.
 
+The window Store hierarchy mirrors the product surfaces:
+
+- `RootStore` composes the window, translates application intents, and routes
+  desktop events to their authoritative Store.
+- `AppShellStore` owns which top-level surface is visible. `SidebarStore` owns
+  navigation presentation and filtering; neither opens sessions directly.
+- `ProjectCatalogStore` owns registered project records and their window-local
+  ordering. `SessionCatalogStore` owns lightweight session summaries.
+- `WindowPersistenceCoordinator` hydrates and saves view state that spans the
+  shell, sidebar, workbench, settings, and loaded sessions. It coordinates
+  those owners without absorbing their state.
+- `ProjectWorkbenchStore` owns project inspection, active-session selection,
+  command panes, and its `BrowseStore` and `ChangesStore` children. It
+  coordinates project-level workflows without re-exporting session behavior.
+- The root-scoped `SessionRegistryStore` preserves one keyed
+  `ProjectSessionStore` for every loaded `(workspacePath, sessionId)` target so
+  background events, global chat, and navigation share session identity.
+- Each `ProjectSessionStore` owns that session's draft, activity, transcript,
+  `SessionModel`, composer, configuration, artifacts, and message comments.
+  React mounts it as the nearest provider around the active session surface.
+
+UI and application controls invoke semantic `RootStore` intents such as
+`openSession`, `createSession`, or `showGlobalChat`. The root performs any
+required shell transition and delegates the workflow to its cohesive owner, so
+callers do not assemble cross-Store navigation recipes.
+
+```mermaid
+flowchart TD
+  Root["RootStore"] --> Shell["AppShellStore"]
+  Root --> Sidebar["SidebarStore"]
+  Root --> Projects["ProjectCatalogStore"]
+  Root --> Catalog["SessionCatalogStore"]
+  Root --> Registry["SessionRegistryStore"]
+  Root --> Workbench["ProjectWorkbenchStore"]
+  Root --> Global["GlobalChatStore"]
+  Root --> Settings["SettingsStore"]
+  Root --> Persistence["WindowPersistenceCoordinator"]
+  Workbench -. selects from .-> Registry
+  Workbench --> Browse["BrowseStore"]
+  Workbench --> Changes["ChangesStore"]
+  Registry --> Session["ProjectSessionStore (one per loaded target)"]
+  Session --> Model["SessionModel"]
+  Session --> Composer["MessageComposerStore"]
+  Session --> Transcript["TranscriptViewStore"]
+  Session --> Config["ChatConfigurationStore"]
+  Session --> Comments["MessageCommentsStore"]
+  Session --> Artifacts["ArtifactInteractionStore"]
+```
+
 ## Rich UI has two trust paths
 
 Model-presented content does not become executable application code with Cake

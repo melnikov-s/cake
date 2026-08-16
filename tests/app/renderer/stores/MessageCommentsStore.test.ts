@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { ReviewThread } from "../../../../src/ipc/review-contract";
 import type { DesktopClient } from "../../../../src/renderer/desktop-client";
 import { MessageCommentsStore } from "../../../../src/renderer/stores/MessageCommentsStore";
-import { SessionCacheStore } from "../../../../src/renderer/stores/SessionCacheStore";
+import { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
 import type { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
+import type { SessionOperationCoordinator } from "../../../../src/renderer/stores/SessionOperationCoordinator";
+import type { PluginCommandStore } from "../../../../src/renderer/stores/PluginCommandStore";
 
 describe("MessageCommentsStore", () => {
   it("creates a transcript anchor and immediately submits its sidecar thread", async () => {
@@ -15,10 +17,19 @@ describe("MessageCommentsStore", () => {
       status: "open" as const, createdAt: now, updatedAt: now
     }));
     const submitThreads = vi.fn(async () => undefined);
-    const cache = mount(createStore(SessionCacheStore));
+    const cache = mount(createStore(SessionRegistryStore, {
+      client: {} as DesktopClient,
+      operations: {} as SessionOperationCoordinator,
+      reviews: () => ({} as ReviewsStore),
+      pluginCommands: () => ({} as PluginCommandStore),
+      canSubmit: () => false,
+      isActive: () => false,
+      openCommandPane: async () => undefined,
+      persist: () => undefined
+    }));
     const store = mount(createStore(MessageCommentsStore, {
       client: { createReviewThread } as unknown as DesktopClient,
-      sessionCache: cache,
+      sessionRegistry: cache,
       reviews: () => ({ submitThreads, threadStreaming: () => false, resolveThread: vi.fn() }) as unknown as ReviewsStore,
       context: () => ({ workspacePath: "/project", sessionId: "session-1" }),
       reportError: vi.fn()

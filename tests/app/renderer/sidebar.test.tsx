@@ -6,27 +6,35 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "../../../src/renderer/app";
-import type { MainChatStore } from "../../../src/renderer/stores/MainChatStore";
+import type { ProjectWorkbenchStore } from "../../../src/renderer/stores/ProjectWorkbenchStore";
 
-function sidebarProps(store: MainChatStore) {
+function sidebarProps(store: ProjectWorkbenchStore) {
   const fixture = store as unknown as Record<string, any>;
   return {
     store: {
       get search() { return fixture.sessionSearch; },
       set search(value) { fixture.sessionSearch = value; },
-      recentProjectPaths: fixture.recentProjectPaths,
-      projects: fixture.projects,
       searchedSessions: fixture.searchedSessions,
       projectSessions: fixture.projectSessions,
       sessionLimit: fixture.sessionLimit,
       showMoreSessions: fixture.showMoreSessions,
-      nameFromPath: fixture.nameFromPath,
       sessionActivity: fixture.sessionActivity,
       sessionDisplayTitle: fixture.sessionDisplayTitle
+    } as any,
+    projects: {
+      recentProjectPaths: fixture.recentProjectPaths,
+      projects: fixture.projects,
+      nameFromPath: fixture.nameFromPath,
+      nameForPath: (path: string) => fixture.projects.find((project: { path: string; name: string }) => project.path === path)?.name ?? fixture.nameFromPath(path)
     } as any,
     chat: store,
     reviews: { chatCommentCountForSession: fixture.chatReviewCommentCountForSession } as any,
     onOpenGlobalChat: vi.fn(),
+    onOpenSession: fixture.openSession ?? vi.fn(),
+    onCreateSession: fixture.startNewSession ?? vi.fn(),
+    onStartOneOffChat: fixture.startOneOffChat ?? vi.fn(),
+    onChooseProject: fixture.chooseProject ?? vi.fn(),
+    onViewStateChange: vi.fn(),
     globalChatOpen: false
   };
 }
@@ -75,9 +83,9 @@ describe("Sidebar projects", () => {
       openSession: vi.fn(),
       renameSession: vi.fn(),
       showMoreSessions: vi.fn()
-    } as unknown as MainChatStore;
+    } as unknown as ProjectWorkbenchStore;
 
-    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
+    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
 
     const projectToggle = container.querySelector<HTMLButtonElement>('[aria-label="Collapse Cake"]')!;
     expect(projectToggle.getAttribute("aria-expanded")).toBe("true");
@@ -99,8 +107,8 @@ describe("Sidebar projects", () => {
       sessionSearch: "", recentProjectPaths: [], projects: [], searchedSessions: [], session: { sessionId: "session-1", piSettings: { reloadPending: false } },
       projectSessions: vi.fn(() => []), sessionLimit: vi.fn(() => 8), nameFromPath: vi.fn(() => "cake"), sessionActivity: vi.fn(), sessionDisplayTitle,
       chatReviewCommentCountForSession: vi.fn(() => 0), startOneOffChat: vi.fn(), chooseProject: vi.fn(), showMoreSessions: vi.fn()
-    } as unknown as MainChatStore;
-    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} onReloadPi={reload} settingsOpen={false} />));
+    } as unknown as ProjectWorkbenchStore;
+    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} onReloadPi={reload} settingsOpen={false} />));
 
     const menu = container.querySelector("details.brand-menu")!;
     act(() => menu.setAttribute("open", ""));
@@ -135,9 +143,9 @@ describe("Sidebar projects", () => {
       openSession: vi.fn(),
       renameSession: vi.fn(),
       showMoreSessions: vi.fn()
-    } as unknown as MainChatStore;
+    } as unknown as ProjectWorkbenchStore;
 
-    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
+    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
 
     expect(container.querySelector('[data-session-id="running"] [aria-label="Running"]')).not.toBeNull();
     expect(container.querySelector('[data-session-id="ready"] [aria-label="Ready, unread"]')).not.toBeNull();
@@ -150,9 +158,9 @@ describe("Sidebar projects", () => {
       sessionActivity: vi.fn(() => undefined), chatReviewCommentCountForSession: (_path: string, id: string) => id === "pending" ? 1 : 0,
       sessionDisplayTitle,
       nameFromPath: () => "cake", setSessionSearch: vi.fn(), startOneOffChat: vi.fn(), chooseProject: vi.fn(), startNewSession: vi.fn(), switchProject: vi.fn(), openSession: vi.fn(), renameSession: vi.fn(), showMoreSessions: vi.fn()
-    } as unknown as MainChatStore;
+    } as unknown as ProjectWorkbenchStore;
 
-    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
+    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
 
     expect(container.querySelector('[data-session-id="pending"]')?.textContent).toContain("1 comment");
     expect(container.querySelector('[data-session-id="answered"]')?.textContent).not.toContain("comments");
@@ -168,9 +176,9 @@ describe("Sidebar projects", () => {
       sessionDisplayTitle,
       nameFromPath: (path: string) => path.split("/").at(-1)!, setSessionSearch: vi.fn(), startOneOffChat: vi.fn(), chooseProject: vi.fn(),
       startNewSession, switchProject, openSession: vi.fn(), renameSession: vi.fn(), showMoreSessions: vi.fn()
-    } as unknown as MainChatStore;
+    } as unknown as ProjectWorkbenchStore;
 
-    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onOpenChat={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
+    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} settingsOpen={false} />));
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="New chat in second"]')!.click());
 
     expect(startNewSession).toHaveBeenCalledWith("/work/second");

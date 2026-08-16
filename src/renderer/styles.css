@@ -396,6 +396,11 @@
 .chat-empty h1 { font-size: clamp(26px, 3.2vw, 42px); }
 .chat-empty h1 em { color: var(--foreground); font-style: normal; text-decoration: underline; text-decoration-color: color-mix(in oklab, var(--accent) 65%, transparent); text-decoration-thickness: 2px; text-underline-offset: 6px; }
 .user-message { border-color: transparent !important; background: var(--foreground) !important; color: var(--background) !important; }
+.user-message-awaiting-response { display: flex; align-items: center; gap: 12px; }
+.user-message-awaiting-response .markdown-content { min-width: 0; flex: 1 1 auto; }
+.user-message-loading { width: 14px; height: 14px; flex: 0 0 14px; border: 2px solid color-mix(in oklab, var(--background) 35%, transparent); border-top-color: var(--background); border-radius: 50%; animation: user-message-loading-spin .8s linear infinite; }
+@keyframes user-message-loading-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .user-message-loading { animation: none; border-color: color-mix(in oklab, var(--background) 45%, transparent); border-top-color: var(--background); } }
 .assistant-message { position: relative; }
 .assistant-message-expand { position: absolute; top: -7px; right: 0; display: grid; width: 28px; height: 26px; padding: 0; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted-foreground); opacity: 0; pointer-events: none; transform: translateY(-2px); transition: opacity 120ms ease, transform 120ms ease; }
 .assistant-message-expand:hover { background: var(--muted); color: var(--foreground); }

@@ -4,7 +4,7 @@ import type { ChangedFile } from "../../ipc/session-contract";
 import type { ReviewAnchor, ReviewPoint } from "../../ipc/review-contract";
 import { parseDiff } from "./ai-elements/diff-view";
 import { Button } from "./ui/button";
-import type { MainChatStore } from "../stores/MainChatStore";
+import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { ChangesStore } from "../stores/ChangesStore";
 import type { ReviewsStore } from "../stores/ReviewsStore";
 import type { BrowseStore } from "../stores/BrowseStore";
@@ -97,7 +97,7 @@ function FullFile({ change, reviews, browse, store }: { change: ChangedFile; rev
   return <SourceReview path={change.path} view="full" lines={sourceLines} tokens={content.tokens} diff={change.diff} reviews={reviews} threads={threads} ariaLabel={`Full file ${change.path}`} lineClass={(_line, index) => addedLines.has(index + 1) ? "add" : "context"} prefix={(_line, index) => addedLines.has(index + 1) ? "+" : " "} beforeLine={(index) => removedRows(index + 1)} afterLines={removedRows(sourceLines.length + 1)} />;
 }
 
-export const ChangeExplorer = observer(function ChangeExplorer({ store, reviews, browse, chat, onClose }: { store: ChangesStore; reviews: ReviewsStore; browse: BrowseStore; chat: MainChatStore; onClose?: () => void }) {
+export const ChangeExplorer = observer(function ChangeExplorer({ store, reviews, browse, chat, onClose }: { store: ChangesStore; reviews: ReviewsStore; browse: BrowseStore; chat: ProjectWorkbenchStore; onClose?: () => void }) {
   const close = onClose ?? (() => store.close());
   const [view, setView] = useState<"diff" | "file">("diff");
   const change = store.selected;

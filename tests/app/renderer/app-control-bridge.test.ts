@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import { observable } from "r-state-tree";
 import type { GlobalSessionSummary, ProjectRecord } from "../../../src/ipc/session-contract";
-import { AppControlBridge, appControlToolCatalog } from "../../../src/renderer/app-control-bridge";
+import type { CustomizationState, PluginStatus } from "../../../src/plugin/plugin-contract";
+import { AppControlBridge, appControlToolCatalog, type AppControlHost } from "../../../src/renderer/app-control-bridge";
 
 const projects: ProjectRecord[] = [
   { path: "/cake", name: "Cake", addedAt: "2026-08-01T00:00:00.000Z", lastOpenedAt: "2026-08-12T00:00:00.000Z", archivedSessionIds: [] },
@@ -13,7 +15,10 @@ const sessions: GlobalSessionSummary[] = [
   { id: "running", title: "Background work", created: "2026-08-03T00:00:00.000Z", modified: "2026-08-11T00:00:00.000Z", messageCount: 2, archived: false, workspacePath: "/cake", workspaceName: "Cake" }
 ];
 
-function createBridge() {
+function createBridge(customization: Pick<AppControlHost, "customizationState" | "plugins"> = {
+  customizationState: () => undefined,
+  plugins: () => []
+}) {
   const openSession = vi.fn(async () => undefined);
   const createSession = vi.fn(async () => undefined);
   const sendSessionMessage = vi.fn(async () => undefined);
@@ -39,8 +44,7 @@ function createBridge() {
     renameSession,
     setSessionArchived,
     setSessionModel,
-    customizationState: () => undefined,
-    plugins: () => [],
+    ...customization,
     listCustomizationFiles: vi.fn(async () => ({ workingRevision: "a".repeat(64), buildRevision: "a".repeat(64), files: [] })),
     readCustomizationFile: vi.fn(async () => "source"),
     writeCustomizationFile: vi.fn(async () => ({ workingRevision: "b".repeat(64), buildRevision: "b".repeat(64), files: [] })),
@@ -139,6 +143,27 @@ describe("AppControlBridge", () => {
         ]
       }
     });
+  });
+
+  it("returns cloneable customization snapshots from observable Store data", async () => {
+    const state = observable<CustomizationState>({
+      schemaVersion: 1,
+      recoveryRequired: false,
+      diagnostics: [],
+      updatedAt: new Date(0).toISOString()
+    });
+    const plugins = observable<PluginStatus[]>([
+      { id: "example.widget", enabled: true, entry: "index.tsx", diagnostics: [] }
+    ]);
+    const { bridge } = createBridge({ customizationState: () => state, plugins: () => plugins });
+
+    const result = await bridge.invoke({ name: "get_customization_state", arguments: {} });
+
+    expect(() => structuredClone(result)).not.toThrow();
+    expect(result).toEqual({ ok: true, name: "get_customization_state", state, plugins });
+    if (!result.ok || result.name !== "get_customization_state") throw new Error("Expected customization state");
+    expect(result.state).not.toBe(state);
+    expect(result.plugins).not.toBe(plugins);
   });
 
   it("opens only a session from the live Cake catalog", async () => {

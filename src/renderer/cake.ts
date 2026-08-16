@@ -5,7 +5,6 @@ import { registerPluginDefinition } from "./plugin-runtime";
 export { observer, useOptionalStore, useStore } from "r-state-tree/react";
 export { Button, type ButtonProps } from "./components/ui/button";
 export { cn } from "./lib/utils";
-export { MainChatStore } from "./stores/MainChatStore";
 export { RootStore } from "./stores/RootStore";
 
 export interface CakeCommandContext {

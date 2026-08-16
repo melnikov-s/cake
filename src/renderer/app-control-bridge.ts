@@ -1,6 +1,13 @@
 import { z } from "zod";
 import type { GlobalSessionSummary, ProjectRecord, UiPart } from "../ipc/session-contract";
-import { pluginIdSchema, type CustomizationState, type PluginDiagnostic, type PluginStatus } from "../plugin/plugin-contract";
+import {
+  customizationStateSchema,
+  pluginIdSchema,
+  pluginStatusSchema,
+  type CustomizationState,
+  type PluginDiagnostic,
+  type PluginStatus
+} from "../plugin/plugin-contract";
 
 const sessionTargetSchema = z.object({
   workspacePath: z.string().min(1).max(4_096),
@@ -27,6 +34,7 @@ const searchSessionsSchema = z.object({
 });
 
 const emptyArgumentsSchema = z.object({}).strict();
+const pluginStatusesSchema = z.array(pluginStatusSchema).max(1_000);
 const customizationPathSchema = z.object({ path: z.string().min(1).max(8_192).describe("Exact logical path returned by list_customization_files.") });
 const appControlArgumentSchemas = {
   get_app_state: emptyArgumentsSchema,
@@ -196,7 +204,15 @@ export class AppControlBridge {
   async invoke(input: unknown): Promise<AppControlResult> {
     const invocation = appControlInvocationSchema.parse(input);
     if (invocation.name === "get_app_state") return { ok: true, name: invocation.name, state: this.getAppState() };
-    if (invocation.name === "get_customization_state") return { ok: true, name: invocation.name, state: this.host.customizationState(), plugins: this.host.plugins() };
+    if (invocation.name === "get_customization_state") {
+      const state = this.host.customizationState();
+      return {
+        ok: true,
+        name: invocation.name,
+        state: state === undefined ? undefined : customizationStateSchema.parse(state),
+        plugins: pluginStatusesSchema.parse(this.host.plugins())
+      };
+    }
     if (invocation.name === "list_customization_files") return { ok: true, name: invocation.name, ...await this.host.listCustomizationFiles() };
     if (invocation.name === "read_customization_file") return { ok: true, name: invocation.name, path: invocation.arguments.path, content: await this.host.readCustomizationFile(invocation.arguments.path) };
     if (invocation.name === "write_customization_file") return { ok: true, name: invocation.name, ...await this.host.writeCustomizationFile(invocation.arguments.path, invocation.arguments.content, invocation.arguments.expectedWorkingRevision) };

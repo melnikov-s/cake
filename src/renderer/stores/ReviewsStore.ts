@@ -1,13 +1,13 @@
 import { Store, observable } from "r-state-tree";
 import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
-import type { SessionCacheStore } from "./SessionCacheStore";
+import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
 import { describeError } from "../error-details";
 
 export interface ReviewsStoreProps {
   client: Pick<DesktopClient, "createReviewThread" | "replyReviewThread" | "resolveReviewThread" | "listReviewThreads" | "submitReviewThreads">;
-  sessionCache: SessionCacheStore;
+  sessionRegistry: SessionRegistryStore;
   context(): { workspacePath: string; sessionId: string } | undefined;
   model(): { provider: string; id: string } | undefined;
   operations: SessionOperationCoordinator;
@@ -33,7 +33,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   }
 
   threadsForSession(workspacePath: string, sessionId: string) {
-    return this.props.sessionCache.find(sessionId, workspacePath)?.reviewThreads ?? [];
+    return this.props.sessionRegistry.findModel(sessionId, workspacePath)?.reviewThreads ?? [];
   }
 
   codeThreadsForSession(workspacePath: string, sessionId: string) {
@@ -85,7 +85,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     try {
       const thread = await this.props.client.createReviewThread({ ...context, anchor, body: body.trim() });
       if (this.signal.aborted) return false;
-      this.props.sessionCache.upsertReviewThread(thread);
+      this.props.sessionRegistry.upsertReviewThread(thread);
       return true;
     } catch (error) { this.reportError(error); return false; }
   }
@@ -97,7 +97,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     try {
       const thread = await this.props.client.replyReviewThread({ ...context, threadId, body: body.trim() });
       if (this.signal.aborted) return false;
-      this.props.sessionCache.upsertReviewThread(thread);
+      this.props.sessionRegistry.upsertReviewThread(thread);
       return true;
     } catch (error) { this.reportError(error); return false; }
   }
@@ -109,7 +109,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     try {
       const thread = await this.props.client.resolveReviewThread({ ...context, threadId, resolved });
       if (this.signal.aborted) return false;
-      this.props.sessionCache.upsertReviewThread(thread);
+      this.props.sessionRegistry.upsertReviewThread(thread);
       return true;
     } catch (error) { this.reportError(error); return false; }
   }
@@ -118,7 +118,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     this.clearError();
     try {
       const threads = await this.props.client.listReviewThreads(workspacePath, sessionId);
-      if (!this.signal.aborted) this.props.sessionCache.applyReviewThreads(workspacePath, sessionId, threads);
+      if (!this.signal.aborted) this.props.sessionRegistry.applyReviewThreads(workspacePath, sessionId, threads);
     } catch (error) { if (!this.signal.aborted) this.reportError(error); }
   }
 

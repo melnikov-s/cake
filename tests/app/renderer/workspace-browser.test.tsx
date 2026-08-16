@@ -5,7 +5,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MainChatStore } from "../../../src/renderer/stores/MainChatStore";
+import type { ProjectWorkbenchStore } from "../../../src/renderer/stores/ProjectWorkbenchStore";
 
 vi.mock("@streamdown/code", () => ({
   code: {
@@ -20,7 +20,7 @@ vi.mock("@streamdown/code", () => ({
 
 import { WorkspaceBrowser } from "../../../src/renderer/components/workspace-browser";
 
-function browserProps(store: MainChatStore) {
+function browserProps(store: ProjectWorkbenchStore) {
   const fixture = store as unknown as Record<string, any>;
   return {
     store: { files: fixture.workspaceFiles, path: fixture.workspaceBrowserPath, loading: fixture.workspaceFilesLoading, readFile: fixture.readWorkspaceFile, select: fixture.selectWorkspaceFile, focusPath: fixture.focusWorkspaceReviewThread, close: fixture.closeWorkspaceBrowser } as any,
@@ -49,7 +49,7 @@ describe("WorkspaceBrowser", () => {
       projectName: "cake", reviewThreads: [], pendingReviewCommentCount: 0, activeReviewThread: undefined,
       readWorkspaceFile: vi.fn(async () => "const cake = true;\nexport { cake };") , selectWorkspaceFile, closeWorkspaceBrowser: vi.fn(),
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => true), replyReviewThread: vi.fn(async () => true), resolveReviewThread: vi.fn(async () => true), focusWorkspaceReviewThread: vi.fn(), sendPendingReviewComments: vi.fn()
-    } as unknown as MainChatStore;
+    } as unknown as ProjectWorkbenchStore;
 
     await act(async () => root.render(<WorkspaceBrowser {...browserProps(store)} />));
 
@@ -68,7 +68,7 @@ describe("WorkspaceBrowser", () => {
       projectName: "cake", reviewThreads: [], pendingReviewCommentCount: 0, activeReviewThread: undefined,
       readWorkspaceFile: vi.fn(async () => "const cake = true;"), selectWorkspaceFile: vi.fn(), closeWorkspaceBrowser: vi.fn(),
       reviewThreadStreaming: vi.fn(() => false), createReviewThread, replyReviewThread: vi.fn(async () => true), resolveReviewThread: vi.fn(async () => true), focusWorkspaceReviewThread: vi.fn(), sendPendingReviewComments: vi.fn()
-    } as unknown as MainChatStore;
+    } as unknown as ProjectWorkbenchStore;
     await act(async () => root.render(<WorkspaceBrowser {...browserProps(store)} />));
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="Ask about line 1"]')!.click());
     const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Review comment"]')!;

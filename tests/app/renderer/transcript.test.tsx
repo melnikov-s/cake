@@ -5,7 +5,6 @@ import React, { act, forwardRef, useEffect, useImperativeHandle } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UiPart } from "../../../src/ipc/session-contract";
-import type { MainChatStore } from "../../../src/renderer/stores/MainChatStore";
 
 const { scrollToIndex, virtualizedLifecycle, virtualizedProps } = vi.hoisted(() => ({
   scrollToIndex: vi.fn(),
@@ -35,11 +34,19 @@ vi.mock("@/components/ai-elements/conversation", () => ({
 import { captureMessageSelection, MESSAGE_COMMENT_SELECTION_DELAY_MS, Transcript } from "../../../src/renderer/app";
 import type { MessageCommentsStore } from "../../../src/renderer/stores/MessageCommentsStore";
 
-function storeWith(parts: UiPart[], isStreaming = false, error?: string, errorDetails?: string) {
-  return { parts, visibleParts: parts, projectName: "Cake", error, errorDetails, thinkingExpanded: false, isStreaming, toggleThinking: vi.fn(), forkAt: vi.fn() } as unknown as MainChatStore;
+interface TranscriptHarness {
+  visibleParts: UiPart[];
+  isStreaming: boolean;
+  error?: string;
+  errorDetails?: string;
+  forkAt(entryId: string): void | Promise<void>;
 }
 
-function TestTranscript({ store, sessionId }: { store: MainChatStore; sessionId: string }) {
+function storeWith(parts: UiPart[], isStreaming = false, error?: string, errorDetails?: string): TranscriptHarness {
+  return { visibleParts: parts, error, errorDetails, isStreaming, forkAt: vi.fn() };
+}
+
+function TestTranscript({ store, sessionId }: { store: TranscriptHarness; sessionId: string }) {
   return <Transcript parts={store.visibleParts} sessionId={sessionId} isStreaming={store.isStreaming} behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, onFork: (entryId) => { void store.forkAt(entryId); } }} empty={<div />} error={store.error} errorDetails={store.errorDetails} />;
 }
 
@@ -134,6 +141,22 @@ describe("Transcript scrolling", () => {
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([assistant, user])} />));
 
     expect(scrollToIndex).toHaveBeenCalledWith({ index: 1, align: "end", behavior: "auto" });
+  });
+
+  it("shows loading in the user message until the first model response arrives", () => {
+    const user: UiPart = { id: "user-1", kind: "text", role: "user", text: "My message", status: "complete" };
+    const reasoning: UiPart = { id: "reasoning-1", kind: "reasoning", text: "Working it out", status: "streaming" };
+
+    act(() => root.render(<Transcript parts={[user]} sessionId="session-1" isStreaming={false} isSubmitting behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined }} empty={<div />} />));
+    const userMessage = container.querySelector<HTMLElement>(".user-message")!;
+    expect(userMessage.classList.contains("user-message-awaiting-response")).toBe(true);
+    expect(userMessage.querySelector('[role="status"][aria-label="Waiting for Cake"]')).not.toBeNull();
+
+    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user, reasoning], true)} />));
+    const respondedUserMessage = container.querySelector<HTMLElement>(".user-message")!;
+    expect(respondedUserMessage.classList.contains("user-message-awaiting-response")).toBe(false);
+    expect(respondedUserMessage.querySelector(".user-message-loading")).toBeNull();
+    expect(container.querySelector(".activity-group")).not.toBeNull();
   });
 
   it("keeps the streaming work log scrolled to its latest entry", () => {

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { observer } from "r-state-tree/react";
-import type { MainChatStore } from "../stores/MainChatStore";
+import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { BrowseStore } from "../stores/BrowseStore";
 import type { ReviewsStore } from "../stores/ReviewsStore";
 import { Button } from "./ui/button";
@@ -16,7 +16,7 @@ const SourceFile = observer(function SourceFile({ path, store, reviews }: { path
   return <SourceReview path={path} view="file" lines={content.source.split("\n")} tokens={content.tokens} diff="" reviews={reviews} threads={threads} ariaLabel={`Workspace file ${path}`} className="workspace-source" actionLabel="Ask about" onFocusThread={(thread) => { reviews.activeThreadId = thread.id; store.focusPath(thread.anchor.path); }} />;
 });
 
-export const WorkspaceBrowser = observer(function WorkspaceBrowser({ store, reviews, chat, onClose }: { store: BrowseStore; reviews: ReviewsStore; chat: MainChatStore; onClose?: () => void }) {
+export const WorkspaceBrowser = observer(function WorkspaceBrowser({ store, reviews, chat, onClose }: { store: BrowseStore; reviews: ReviewsStore; chat: ProjectWorkbenchStore; onClose?: () => void }) {
   const close = onClose ?? (() => store.close());
   const tree = sourceTree(store.files, (file) => file);
   const path = typeof store.path === "string" ? store.path : undefined;

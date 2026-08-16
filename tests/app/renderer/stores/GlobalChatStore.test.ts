@@ -1,9 +1,13 @@
 import { createStore, mount } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { GlobalChatStore } from "../../../../src/renderer/stores/GlobalChatStore";
-import { SessionCacheStore } from "../../../../src/renderer/stores/SessionCacheStore";
+import { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
 import type { SessionSnapshot } from "../../../../src/ipc/session-contract";
 import { ChatConfigurationStore } from "../../../../src/renderer/stores/ChatConfigurationStore";
+import type { DesktopClient } from "../../../../src/renderer/desktop-client";
+import type { SessionOperationCoordinator } from "../../../../src/renderer/stores/SessionOperationCoordinator";
+import type { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
+import type { PluginCommandStore } from "../../../../src/renderer/stores/PluginCommandStore";
 
 const snapshot: SessionSnapshot = {
   workspacePath: "/home/user",
@@ -30,7 +34,16 @@ function createTestStore() {
     abort: vi.fn(async () => undefined),
     clear: vi.fn(async () => undefined)
   };
-  const sessions = mount(createStore(SessionCacheStore));
+  const sessions = mount(createStore(SessionRegistryStore, {
+    client: {} as DesktopClient,
+    operations: {} as SessionOperationCoordinator,
+    reviews: () => ({} as ReviewsStore),
+    pluginCommands: () => ({} as PluginCommandStore),
+    canSubmit: () => false,
+    isActive: () => false,
+    openCommandPane: async () => undefined,
+    persist: () => undefined
+  }));
   const store = mount(createStore(GlobalChatStore, {
     port,
     tools: () => [{ name: "get_app_state", description: "Read app state", parameters: { type: "object", properties: {} } }],

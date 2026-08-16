@@ -1,26 +1,25 @@
-import { Store, observable, untracked } from "r-state-tree";
+import { Store, child, createStore, observable } from "r-state-tree";
 import type {
   ApplicationState,
+  GlobalSessionSummary,
   SessionSnapshot,
   WindowViewState
 } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent, PiState } from "../desktop-client";
-import type { BrowseStore } from "./BrowseStore";
-import type { ChangesStore } from "./ChangesStore";
+import { BrowseStore } from "./BrowseStore";
+import { ChangesStore } from "./ChangesStore";
 import type { ReviewsStore } from "./ReviewsStore";
-import type { SidebarStore } from "./SidebarStore";
-import type { SettingsStore } from "./SettingsStore";
 import type { ExtensionUiStore } from "./ExtensionUiStore";
-import type { ArtifactInteractionStore } from "./ArtifactInteractionStore";
-import type { MessageComposerStore } from "./MessageComposerStore";
-import type { TranscriptViewStore } from "./TranscriptViewStore";
 import type { PluginCommandStore } from "./PluginCommandStore";
+import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
-import type { SessionCacheStore } from "./SessionCacheStore";
+import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
+import type { WindowPersistenceCoordinator } from "./WindowPersistenceCoordinator";
 import { describeError } from "../error-details";
+import { displaySessionTitle } from "../models/session-title";
 
-export interface MainChatStoreProps {
+export interface ProjectWorkbenchStoreProps {
   client: Pick<DesktopClient,
     | "abort"
     | "archiveSession"
@@ -30,40 +29,33 @@ export interface MainChatStoreProps {
     | "getChangelog"
     | "getHomeDirectory"
     | "inspectWorkspace"
-    | "listSessions"
-    | "loadApplicationState"
+    | "inspectChanges"
+    | "listWorkspaceFiles"
     | "loadSession"
-    | "loadWindowState"
     | "navigateSession"
     | "openWorkspace"
     | "registerProject"
+    | "readWorkspaceFile"
     | "removeProject"
     | "renameProject"
     | "renameSession"
     | "respondToWorkspaceTrust"
     | "restartPi"
-    | "saveWindowState"
   >;
-  sessionCache: SessionCacheStore;
+  sessionRegistry: SessionRegistryStore;
   operations: SessionOperationCoordinator;
-  sidebar(): SidebarStore;
-  browse(): BrowseStore;
-  changes(): ChangesStore;
+  projects: ProjectCatalogStore;
   reviews(): ReviewsStore;
-  settings(): SettingsStore;
   extensionUi(): ExtensionUiStore;
-  artifacts(): ArtifactInteractionStore;
-  composer(): MessageComposerStore;
-  transcriptView(): TranscriptViewStore;
   pluginCommands(): PluginCommandStore;
+  persistence(): WindowPersistenceCoordinator;
   catalog: SessionCatalogStore;
 }
 
-/** Owns the active conversation, composer, and session interaction workflow. */
-export class MainChatStore extends Store<MainChatStoreProps> {
+/** Owns active project/session activation and the project workbench workflow. */
+export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   readonly process = "renderer" as const;
   piState: PiState = "starting";
-  hydrated = false;
   projectPath: string | undefined;
   selectedSessionId: string | undefined;
   pendingTrustPath: string | undefined;
@@ -71,9 +63,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
   private activeOpenOperationId: string | undefined;
   private activeOpenTarget: { path: string; sessionId?: string; newSession: boolean } | undefined;
   private activeOpenExpectsEmpty = false;
-  draft = "";
   commandPane: "changelog" | "tree" | "resources" | undefined;
-  draftsBySession: Record<string, string> = observable({});
   changelogMarkdown = "";
   changelogLoading = false;
   error: string | undefined;
@@ -82,59 +72,49 @@ export class MainChatStore extends Store<MainChatStoreProps> {
   private openRevision = 0;
   private reopenAfterAgentRestart = false;
   private draftAfterAgentRestart: string | undefined;
-  private persistTimer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(props: MainChatStore["props"]) {
-    super(props);
-    this.effect(() => {
-      untracked(() => { void this.hydrate(); });
-      return () => {
-        if (this.persistTimer) clearTimeout(this.persistTimer);
-      };
+  private get reviews() { return this.props.reviews(); }
+  private get extensionUi() { return this.props.extensionUi(); }
+
+  @child
+  get browseStore(): BrowseStore {
+    return createStore(BrowseStore, {
+      client: this.client,
+      projectPath: () => this.projectPath
     });
   }
 
-  private get sidebar() { return this.props.sidebar(); }
-  private get browse() { return this.props.browse(); }
-  private get changes() { return this.props.changes(); }
-  private get reviews() { return this.props.reviews(); }
-  private get settings() { return this.props.settings(); }
-  private get extensionUi() { return this.props.extensionUi(); }
-  private get artifactInteractions() { return this.props.artifacts(); }
-  private get composer() { return this.props.composer(); }
-  private get transcriptView() { return this.props.transcriptView(); }
+  @child
+  get changesStore(): ChangesStore {
+    return createStore(ChangesStore, {
+      client: this.client,
+      projectPath: () => this.projectPath,
+      sessionId: () => this.session?.sessionId,
+      operations: this.props.operations
+    });
+  }
 
   get isBusy() {
     return this.activeOperations.length > 0;
   }
-  get activeOperations() { return this.props.operations.active("main-chat"); }
+  get activeOperations() { return this.props.operations.active("project-workbench"); }
 
   get client() {
     return this.props.client;
   }
 
-  get sessionCache() {
-    return this.props.sessionCache;
+  get sessionRegistry() {
+    return this.props.sessionRegistry;
   }
 
-  get session() {
+  get activeSession() {
     return this.selectedSessionId && this.projectPath
-      ? this.sessionCache.find(this.selectedSessionId, this.projectPath)
+      ? this.sessionRegistry.findSession(this.selectedSessionId, this.projectPath)
       : undefined;
   }
 
-  get canonicalParts() {
-    return this.session?.uiParts ?? [];
-  }
-
-  get visibleParts() {
-    return this.session?.piSettings?.hideThinkingBlock
-      ? this.composer.parts.filter((part) => part.kind !== "reasoning")
-      : this.composer.parts;
-  }
-
-  get artifacts() {
-    return this.session?.artifacts.map((artifact) => artifact.value) ?? [];
+  get session() {
+    return this.activeSession?.model;
   }
 
   get sessionTitle() {
@@ -144,94 +124,49 @@ export class MainChatStore extends Store<MainChatStoreProps> {
   }
 
   sessionDisplayTitle(title: string) {
-    return this.sidebar.sessionDisplayTitle(title);
-  }
-
-  get isStreaming() {
-    return this.session?.streaming ?? false;
-  }
-
-  get canSubmit() {
-    return Boolean(this.session && !this.activeOpenOperationId && (this.draft.trim() || this.composer.attachments.length > 0 || this.reviews.pendingThreads.length > 0) && (this.isLocalSlashCommand || this.piState === "ready"));
+    return displaySessionTitle(title);
   }
 
   get isLocalSlashCommand() {
-    const command = this.draft.trim().toLocaleLowerCase();
-    return command === "/tree" || command === "/resources" || command === "/changelog" || this.props.pluginCommands().matches(this.draft);
+    const draft = this.activeSession?.draft ?? "";
+    const command = draft.trim().toLocaleLowerCase();
+    return command === "/tree" || command === "/resources" || command === "/changelog" || this.props.pluginCommands().matches(draft);
+  }
+
+  canSubmitSession(target: { workspacePath: string; sessionId: string }) {
+    if (!this.isActiveSession(target.workspacePath, target.sessionId) || this.activeOpenOperationId) return false;
+    const session = this.sessionRegistry.findSession(target.sessionId, target.workspacePath);
+    if (!session) return false;
+    const command = session.draft.trim().toLocaleLowerCase();
+    const local = command === "/tree" || command === "/resources" || command === "/changelog" || this.props.pluginCommands().matches(session.draft);
+    return local || this.piState === "ready";
   }
 
   get pluginCommands() { return this.props.pluginCommands().commands; }
 
   get projectName() {
-    return this.projectPath ? this.sidebar.nameFromPath(this.projectPath) : "No workspace";
+    return this.projectPath ? this.props.projects.nameForPath(this.projectPath) : "No workspace";
   }
 
-  private markSessionRead(workspacePath: string, sessionId: string) { this.sidebar.markSessionRead(workspacePath, sessionId); }
-
-  private async hydrate() {
-    try {
-      const [state, application, sessionIndex] = await Promise.all([this.client.loadWindowState(), this.client.loadApplicationState(), this.client.listSessions()]);
-      if (this.signal.aborted) return;
-      this.applyApplicationState(application);
-      this.props.catalog.replace(sessionIndex.sessions);
-      const reviewsBySession = new Map<string, typeof sessionIndex.reviewThreads>();
-      for (const thread of sessionIndex.reviewThreads) {
-        const key = this.reviewSessionKey(thread.workspacePath, thread.sessionId);
-        const threads = reviewsBySession.get(key) ?? [];
-        threads.push(thread);
-        reviewsBySession.set(key, threads);
-      }
-      for (const session of sessionIndex.sessions) this.sessionCache.applyReviewThreads(session.workspacePath, session.id, reviewsBySession.get(this.reviewSessionKey(session.workspacePath, session.id)) ?? []);
-      this.projectPath = state.projectPath;
-      this.sidebar.recentProjectPaths.splice(0, this.sidebar.recentProjectPaths.length, ...state.recentProjectPaths);
-      this.draft = state.draft;
-      this.settings.theme = state.theme;
-      this.transcriptView.setThinkingExpanded(state.thinkingExpanded);
-      this.sidebar.search = state.sessionSearch;
-      for (const sessionId of Object.keys(this.draftsBySession)) delete this.draftsBySession[sessionId];
-      Object.assign(this.draftsBySession, state.draftsBySession);
-      this.hydrated = true;
-      if (state.projectPath) {
-        const selectedSession = state.selectedSessionId
-          ? sessionIndex.sessions.find((session) => session.workspacePath === state.projectPath && session.id === state.selectedSessionId)
-          : undefined;
-        await this.inspectPath(state.projectPath, Boolean(state.selectedSessionId && !selectedSession), selectedSession?.id);
-      }
-    } catch (error) {
-      if (this.signal.aborted) return;
-      this.hydrated = true;
-      this.setError(error);
-    }
-  }
-
-  private viewState(): WindowViewState {
-    return {
-      projectPath: this.projectPath,
-      selectedSessionId: this.session?.sessionId,
-      recentProjectPaths: this.sidebar.recentProjectPaths.slice(),
-      draft: this.draft,
-      theme: this.settings.theme,
-      thinkingExpanded: this.transcriptView.thinkingExpanded,
-      sessionSearch: this.sidebar.search,
-      draftsBySession: { ...this.draftsBySession }
-    };
+  private markSessionRead(workspacePath: string, sessionId: string) {
+    this.sessionRegistry.findSession(sessionId, workspacePath)?.markRead();
   }
 
   private applyApplicationState(state: ApplicationState) {
-    this.sidebar.applyApplicationState(state);
+    this.props.projects.applyApplicationState(state);
   }
 
-  private schedulePersist() {
-    if (!this.hydrated) return;
-    if (this.persistTimer) clearTimeout(this.persistTimer);
-    this.persistTimer = setTimeout(() => {
-      this.persistTimer = undefined;
-      void this.client.saveWindowState(this.viewState()).catch((error) => this.setError(error));
-    }, 180);
+  async restoreSelection(state: WindowViewState, sessions: readonly GlobalSessionSummary[]) {
+    this.projectPath = state.projectPath;
+    if (!state.projectPath) return;
+    const selectedSession = state.selectedSessionId
+      ? sessions.find((session) => session.workspacePath === state.projectPath && session.id === state.selectedSessionId)
+      : undefined;
+    await this.inspectPath(state.projectPath, Boolean(state.selectedSessionId && !selectedSession), selectedSession?.id);
   }
 
   startOperation() {
-    const operationId = this.props.operations.start("main-chat");
+    const operationId = this.props.operations.start("project-workbench");
     this.error = undefined;
     this.errorDetails = undefined;
     return operationId;
@@ -278,7 +213,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
         this.projectPath = undefined;
         this.selectedSessionId = undefined;
       }
-      this.schedulePersist();
+      this.props.persistence().schedule();
     } catch (error) { this.setError(error); }
   }
 
@@ -313,7 +248,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
       const pendingMatches = this.pendingOpen?.path === workspacePath && this.pendingOpen.sessionId === sessionId;
       const activeMatches = this.activeOpenTarget?.path === workspacePath && this.activeOpenTarget.sessionId === sessionId;
       if (!pendingMatches && !activeMatches) return;
-      this.sessionCache.hydratePreview(preview);
+      this.sessionRegistry.hydratePreview(preview);
       this.showCachedSession(workspacePath, sessionId);
     } catch {
       // Runtime activation remains authoritative when the fast disk preview is unavailable.
@@ -321,20 +256,17 @@ export class MainChatStore extends Store<MainChatStoreProps> {
   }
 
   private showCachedSession(workspacePath: string, sessionId: string) {
-    const session = this.sessionCache.find(sessionId, workspacePath);
+    const session = this.sessionRegistry.findSession(sessionId, workspacePath);
     if (!session) return false;
-    const previousSessionId = this.session?.sessionId;
-    if (previousSessionId) this.draftsBySession[previousSessionId] = this.draft;
     this.projectPath = workspacePath;
     this.selectedSessionId = sessionId;
     this.markSessionRead(workspacePath, sessionId);
-    this.draft = this.draftsBySession[sessionId] ?? "";
     this.extensionUi.clear();
     this.commandPane = undefined;
-    this.changes.reset();
-    this.browse.close();
-    this.schedulePersist();
-    this.composer.requestFocus();
+    this.changesStore.reset();
+    this.browseStore.close();
+    this.props.persistence().schedule();
+    session.composerStore.requestFocus();
     return true;
   }
 
@@ -371,20 +303,20 @@ export class MainChatStore extends Store<MainChatStoreProps> {
   }
 
   private async openPath(path: string, newSession = false, sessionId?: string) {
-    if (this.artifactInteractions.request) await this.artifactInteractions.respond(undefined, true);
+    if (this.activeSession?.artifactInteractionStore.request) await this.activeSession.artifactInteractionStore.respond(undefined, true);
     const revision = ++this.openRevision;
     const operationId = this.startOperation();
     this.activeOpenOperationId = operationId;
     this.activeOpenTarget = { path, sessionId, newSession };
     this.activeOpenExpectsEmpty = newSession;
     this.extensionUi.clear();
-    this.artifactInteractions.request = undefined;
+    if (this.activeSession) this.activeSession.artifactInteractionStore.request = undefined;
     this.commandPane = undefined;
-    this.changes.reset();
-    this.browse.close();
+    this.changesStore.reset();
+    this.browseStore.close();
     try {
       await this.client.openWorkspace({ operationId, path, newSession, sessionId });
-      void this.client.registerProject(path, this.sidebar.nameFromPath(path)).then((state) => this.applyApplicationState(state)).catch((error) => this.setError(error));
+      void this.client.registerProject(path, this.props.projects.nameFromPath(path)).then((state) => this.applyApplicationState(state)).catch((error) => this.setError(error));
     } catch (error) {
       if (revision === this.openRevision) this.setError(error);
       if (this.activeOpenOperationId === operationId) {
@@ -396,15 +328,6 @@ export class MainChatStore extends Store<MainChatStoreProps> {
     }
   }
 
-  setDraft(value: string) {
-    this.draft = value;
-    if (this.session) this.draftsBySession[this.session.sessionId] = value;
-    this.schedulePersist();
-  }
-
-  persistViewState() { this.schedulePersist(); }
-
-
   async openCommandPane(pane: "changelog" | "tree" | "resources") {
     this.commandPane = pane;
     if (pane === "changelog") await this.refreshChangelog();
@@ -412,7 +335,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
 
   closeCommandPane() {
     this.commandPane = undefined;
-    this.composer.requestFocus();
+    this.activeSession?.composerStore.requestFocus();
   }
 
   async openSessionChanges(threadId?: string) {
@@ -423,18 +346,23 @@ export class MainChatStore extends Store<MainChatStoreProps> {
       this.reviews.activeThreadId = thread.id;
       return;
     }
-    this.browse.close();
+    this.browseStore.close();
     this.reviews.activeThreadId = thread?.id;
-    await this.changes.open(thread?.anchor.path);
+    await this.changesStore.open(thread?.anchor.path);
   }
 
   async openWorkspaceBrowser(path?: string) {
     this.commandPane = undefined;
-    this.changes.close();
+    this.changesStore.close();
     this.reviews.activeThreadId = undefined;
-    await this.browse.open(path);
+    await this.browseStore.open(path);
   }
 
+  dismissSecondarySurfaces() {
+    this.commandPane = undefined;
+    this.browseStore.close();
+    this.changesStore.close();
+  }
 
   sessionContext() {
     if (!this.projectPath || !this.session) return undefined;
@@ -444,8 +372,6 @@ export class MainChatStore extends Store<MainChatStoreProps> {
   openingSession(workspacePath: string, sessionId: string) {
     return this.activeOpenTarget?.path === workspacePath && this.activeOpenTarget.sessionId === sessionId;
   }
-
-  private reviewSessionKey(workspacePath: string, sessionId: string) { return `${workspacePath}\u0000${sessionId}`; }
 
   async refreshChangelog() {
     const context = this.sessionContext();
@@ -498,7 +424,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
     const operationId = this.startOperation();
     try {
       await this.client.navigateSession({ operationId, ...context, entryId });
-      if (editorText !== undefined) this.setDraft(editorText);
+      if (editorText !== undefined) this.activeSession?.setDraft(editorText);
     }
     catch (error) { this.finishOperation(operationId); this.setError(error); }
   }
@@ -522,22 +448,21 @@ export class MainChatStore extends Store<MainChatStoreProps> {
 
   applySessionSnapshot(snapshot: SessionSnapshot, previousSessionId?: string, focusComposer = false) {
     const restartDraft = this.draftAfterAgentRestart;
-    if (previousSessionId) this.draftsBySession[previousSessionId] = this.draft;
     this.projectPath = snapshot.workspacePath;
     this.selectedSessionId = snapshot.sessionId;
+    const activeSession = this.sessionRegistry.ensure(snapshot.sessionId, snapshot.workspacePath);
     this.markSessionRead(snapshot.workspacePath, snapshot.sessionId);
-    this.draft = restartDraft ?? this.draftsBySession[snapshot.sessionId] ?? (previousSessionId ? "" : this.draft);
+    this.props.persistence().applySessionRestore(activeSession, previousSessionId, restartDraft);
     this.draftAfterAgentRestart = undefined;
-    this.draftsBySession[snapshot.sessionId] = this.draft;
     if (previousSessionId !== undefined) this.extensionUi.clear();
     this.extensionUi.applyState(snapshot.extensionUi);
     this.pendingOpen = undefined;
-    const workspaceName = this.sidebar.projects.find((project) => project.path === snapshot.workspacePath)?.name ?? this.sidebar.nameFromPath(snapshot.workspacePath);
+    const workspaceName = this.props.projects.nameForPath(snapshot.workspacePath);
     this.props.catalog.applyWorkspace(snapshot.workspacePath, workspaceName, snapshot.sessions);
-    if (!this.sidebar.recentProjectPaths.includes(snapshot.workspacePath)) this.sidebar.recentProjectPaths.push(snapshot.workspacePath);
-    this.schedulePersist();
+    this.props.projects.recordOpened(snapshot.workspacePath);
+    this.props.persistence().schedule();
     void this.reviews.loadThreads(snapshot.workspacePath, snapshot.sessionId);
-    if (focusComposer) this.composer.requestFocus();
+    if (focusComposer) activeSession.composerStore.requestFocus();
   }
 
   isActiveSession(workspacePath: string, sessionId: string) {
@@ -574,7 +499,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
       this.piState = event.state;
       if (event.state === "failed" || event.state === "stopped") {
         this.reopenAfterAgentRestart = Boolean(this.projectPath && this.session);
-        if (this.reopenAfterAgentRestart) this.draftAfterAgentRestart = this.draft;
+        if (this.reopenAfterAgentRestart) this.draftAfterAgentRestart = this.activeSession?.draft;
         this.props.operations.reset();
         for (const operationId of Object.keys(this.pendingRenames)) this.rollbackRename(operationId);
         this.activeOpenOperationId = undefined;

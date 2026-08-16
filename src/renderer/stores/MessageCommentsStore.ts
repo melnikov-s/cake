@@ -1,13 +1,13 @@
 import { Store } from "r-state-tree";
 import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { DesktopClient } from "../desktop-client";
-import type { SessionCacheStore } from "./SessionCacheStore";
+import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import { describeError } from "../error-details";
 
 export interface MessageCommentsStoreProps {
   client: Pick<DesktopClient, "createReviewThread" | "replyReviewThread">;
-  sessionCache: SessionCacheStore;
+  sessionRegistry: SessionRegistryStore;
   reviews(): ReviewsStore;
   context(): { workspacePath: string; sessionId: string } | undefined;
 }
@@ -35,7 +35,7 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
   get threads() {
     const context = this.props.context();
     if (!context) return [];
-    return this.props.sessionCache.find(context.sessionId, context.workspacePath)?.reviewThreads
+    return this.props.sessionRegistry.findModel(context.sessionId, context.workspacePath)?.reviewThreads
       .filter((thread) => thread.anchor.view === "message") ?? [];
   }
 
@@ -67,7 +67,7 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
     try {
       const thread = await this.props.client.createReviewThread({ ...context, anchor, body: body.trim() });
       if (this.signal.aborted) return undefined;
-      this.props.sessionCache.upsertReviewThread(thread);
+      this.props.sessionRegistry.upsertReviewThread(thread);
       await this.props.reviews().submitThreads([thread.id]);
       return thread.id;
     } catch (error) {
@@ -82,7 +82,7 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
     try {
       const thread = await this.props.client.replyReviewThread({ ...context, threadId, body: body.trim() });
       if (this.signal.aborted) return false;
-      this.props.sessionCache.upsertReviewThread(thread);
+      this.props.sessionRegistry.upsertReviewThread(thread);
       await this.props.reviews().submitThreads([thread.id]);
       return true;
     } catch (error) {
