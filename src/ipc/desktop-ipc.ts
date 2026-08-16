@@ -72,6 +72,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("use-factory-customization") }),
   z.object({ type: z.literal("list-plugins") }),
   z.object({ type: z.literal("set-plugin-enabled"), pluginId: pluginIdSchema, enabled: z.boolean() }),
+  z.object({ type: z.literal("delete-plugin"), pluginId: pluginIdSchema }),
   z.object({ type: z.literal("load-plugin-state"), pluginId: pluginIdSchema, key: pluginPersistenceKeySchema, scope: pluginPersistenceScopeSchema }),
   z.object({ type: z.literal("save-plugin-state"), pluginId: pluginIdSchema, key: pluginPersistenceKeySchema, scope: pluginPersistenceScopeSchema, value: z.json(), expectedVersion: z.number().int().nonnegative().optional() }),
   z.object({ type: z.literal("choose-attachments") }),

@@ -70,6 +70,7 @@ export interface DesktopClient {
   useFactoryCustomization(): Promise<CustomizationState>;
   listPlugins(): Promise<PluginStatus[]>;
   setPluginEnabled(pluginId: string, enabled: boolean): Promise<PluginStatus[]>;
+  deletePlugin(pluginId: string): Promise<PluginStatus[]>;
   chooseAttachments(): Promise<Attachment[]>;
   suggestFiles(workspacePath: string, prefix: string): Promise<FileSuggestion[]>;
   listWorkspaceFiles(workspacePath: string): Promise<string[]>;
@@ -207,6 +208,11 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
     async setPluginEnabled(pluginId, enabled) {
       const response = await bridge.request({ type: "set-plugin-enabled", pluginId, enabled });
       if (response.type !== "plugins-listed") throw new Error("Cake could not update the plugin");
+      return response.plugins;
+    },
+    async deletePlugin(pluginId) {
+      const response = await bridge.request({ type: "delete-plugin", pluginId });
+      if (response.type !== "plugins-listed") throw new Error("Cake could not delete the plugin");
       return response.plugins;
     },
     async chooseAttachments() {

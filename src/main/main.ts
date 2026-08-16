@@ -368,6 +368,16 @@ ipcMain.handle("cake:request", async (event, input: unknown) => {
     }
     return desktopResponseSchema.parse({ type: "plugins-listed", plugins });
   }
+  if (request.type === "delete-plugin") {
+    const { wasEnabled, plugins } = await pluginActivation.builder.repository.deletePlugin(request.pluginId);
+    await refreshPluginAgentResources();
+    if (wasEnabled) {
+      await pluginActivation.fail(pluginActivation.snapshot().activeRevision, { phase: "discovery", pluginId: request.pluginId, message: `Plugin ${request.pluginId} was deleted. Rebuild the global scene after removing or replacing its contributions.` });
+      globalChatDriver.refreshRecoveryContext();
+      reloadAllAfterResponse({ kind: "factory" });
+    }
+    return desktopResponseSchema.parse({ type: "plugins-listed", plugins });
+  }
   if (request.type === "load-plugin-state") {
     return desktopResponseSchema.parse({ type: "plugin-state", record: await pluginPersistence.read(request.pluginId, request.key, request.scope) });
   }

@@ -8,6 +8,7 @@ type CustomizationClient = Pick<DesktopClient,
   | "listPlugins"
   | "rollbackCustomization"
   | "setPluginEnabled"
+  | "deletePlugin"
   | "useFactoryCustomization"
 >;
 
@@ -56,8 +57,16 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
 
   async setPluginEnabled(pluginId: string, enabled: boolean) {
     if (this.busy) return;
-    this.busy = true;
+    this.busy = true; this.error = undefined;
     try { const plugins = await this.props.client.setPluginEnabled(pluginId, enabled); this.plugins.splice(0, this.plugins.length, ...plugins); }
+    catch (error) { this.error = error instanceof Error ? error.message : String(error); }
+    finally { this.busy = false; }
+  }
+
+  async deletePlugin(pluginId: string) {
+    if (this.busy) return;
+    this.busy = true; this.error = undefined;
+    try { const plugins = await this.props.client.deletePlugin(pluginId); this.plugins.splice(0, this.plugins.length, ...plugins); }
     catch (error) { this.error = error instanceof Error ? error.message : String(error); }
     finally { this.busy = false; }
   }

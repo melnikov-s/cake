@@ -15,6 +15,7 @@ function createBridge() {
     if (input.type === "load-window-state") return { type: "window-state-loaded", state: { draft: "", recentProjectPaths: [], theme: "system", thinkingExpanded: false, sessionSearch: "", draftsBySession: {} } };
     if (input.type === "list-sessions") return { type: "sessions-listed", sessions: [], reviewThreads: [] };
     if (input.type === "load-session") return { type: "session-loaded", session: undefined };
+    if (input.type === "list-plugins" || input.type === "set-plugin-enabled" || input.type === "delete-plugin") return { type: "plugins-listed", plugins: [] };
     return { type: "window-state-saved" };
   });
   const bridge: CakeDesktopBridge = {
@@ -35,6 +36,7 @@ describe("desktop client", () => {
     expect(await client.loadSession("/project", "session")).toBeUndefined();
     expect(await client.suggestFiles("/project", "app")).toEqual([{ value: "@src/app.ts", label: "app.ts", description: "src/app.ts" }]);
     expect(await client.listWorkspaceFiles("/project")).toEqual(["PLAN.md", "src/app.ts"]);
+    expect(await client.deletePlugin("example.calendar")).toEqual([]);
     await client.respondToWorkspaceTrust({ operationId, path: "/project", approved: true });
     await client.openWorkspace({ operationId, path: "/project" });
     await client.inspectChanges({ operationId, workspacePath: "/project", sessionId: "session" });
@@ -49,6 +51,7 @@ describe("desktop client", () => {
     expect(desktop.request).toHaveBeenCalledWith({ type: "load-session", workspacePath: "/project", sessionId: "session" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "suggest-files", workspacePath: "/project", prefix: "app" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "list-workspace-files", workspacePath: "/project" });
+    expect(desktop.request).toHaveBeenCalledWith({ type: "delete-plugin", pluginId: "example.calendar" });
   });
 
   it("projects transport events into Cake application events", () => {

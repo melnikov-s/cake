@@ -36,6 +36,7 @@ function createDesktopClient(restoredPath?: string) {
     useFactoryCustomization: vi.fn(async () => ({ schemaVersion: 1 as const, recoveryRequired: false, diagnostics: [], updatedAt: new Date(0).toISOString() })),
     listPlugins: vi.fn(async () => []),
     setPluginEnabled: vi.fn(async () => []),
+    deletePlugin: vi.fn(async () => []),
     chooseAttachments: vi.fn(async () => []),
     suggestFiles: vi.fn(async () => []),
     listWorkspaceFiles: vi.fn(async () => []),

@@ -66,12 +66,13 @@ export class PluginRepository {
     const statuses: PluginStatus[] = [];
     for (const entry of await readdir(this.paths.plugins, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
+      if (!/^[a-z0-9]+(?:[.-][a-z0-9]+)+$/.test(entry.name)) continue;
       const manifestPath = join(this.paths.plugins, entry.name, "cake-plugin.json");
       try {
         const manifest = cakePluginManifestSchema.parse(JSON.parse(await readFile(manifestPath, "utf8")));
-        statuses.push({ id: manifest.id, enabled: manifest.enabled, entry: manifest.entry, diagnostics: manifest.id === entry.name ? [] : [{ phase: "discovery", file: manifestPath, message: `Manifest ID ${manifest.id} must match directory ${entry.name}` }] });
+        statuses.push({ id: entry.name, enabled: manifest.id === entry.name && manifest.enabled, entry: manifest.entry, diagnostics: manifest.id === entry.name ? [] : [{ phase: "discovery", file: manifestPath, message: `Manifest ID ${manifest.id} must match directory ${entry.name}` }] });
       } catch (error) {
-        if (/^[a-z0-9]+(?:[.-][a-z0-9]+)+$/.test(entry.name)) statuses.push({ id: entry.name, enabled: false, entry: "", diagnostics: [{ phase: "discovery", file: manifestPath, message: error instanceof Error ? error.message : String(error) }] });
+        statuses.push({ id: entry.name, enabled: false, entry: "", diagnostics: [{ phase: "discovery", file: manifestPath, message: error instanceof Error ? error.message : String(error) }] });
       }
     }
     return statuses.sort((a, b) => a.id.localeCompare(b.id));
@@ -85,6 +86,26 @@ export class PluginRepository {
     if (manifest.id !== pluginId) throw new Error("Plugin manifest ID does not match its directory");
     await this.writer.write(manifestPath, `${JSON.stringify({ ...manifest, enabled }, null, 2)}\n`);
     return this.listPluginStatuses();
+  }
+
+  async deletePlugin(pluginId: string) {
+    await mkdir(this.paths.plugins, { recursive: true });
+    const pluginsRoot = await realpath(this.paths.plugins);
+    const requestedRoot = join(pluginsRoot, pluginId);
+    const root = await realpath(requestedRoot);
+    if (!isWithin(pluginsRoot, root) || root !== requestedRoot || basename(root) !== pluginId) {
+      throw new Error("Plugin directory does not match its ID");
+    }
+    let wasEnabled = false;
+    try {
+      const manifest = cakePluginManifestSchema.parse(JSON.parse(await readFile(join(root, "cake-plugin.json"), "utf8")));
+      wasEnabled = manifest.id === pluginId && manifest.enabled;
+    } catch {
+      // Invalid plugin source is still removable after its directory is
+      // independently constrained to the canonical plugin root.
+    }
+    await rm(root, { recursive: true });
+    return { wasEnabled, plugins: await this.listPluginStatuses() };
   }
 
   async authoringSnapshot() {

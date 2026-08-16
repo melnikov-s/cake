@@ -78,4 +78,43 @@ describe("PluginRepository", () => {
     const snapshot = await repository.authoringSnapshot();
     await expect(repository.writeAuthoringFile("plugins/example.escape/index.tsx", "no", snapshot.workingRevision)).rejects.toThrow("non-directory");
   });
+
+  it("deletes only a validated plugin directory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-plugin-repository-")); roots.push(root);
+    const paths = resolveCakePaths({ env: { CAKE_HOME: join(root, "cake") }, homeDirectory: join(root, "home") });
+    const plugin = join(paths.plugins, "example.removable");
+    await mkdir(plugin, { recursive: true });
+    await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 1, id: "example.removable", entry: "index.tsx", enabled: true }));
+    await writeFile(join(plugin, "index.tsx"), "export default {}\n");
+
+    const repository = new PluginRepository(paths);
+    const result = await repository.deletePlugin("example.removable");
+    expect(result).toEqual({ wasEnabled: true, plugins: [] });
+    await expect(access(plugin)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("refuses to delete a plugin-directory symlink", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-plugin-repository-")); roots.push(root);
+    const paths = resolveCakePaths({ env: { CAKE_HOME: join(root, "cake") }, homeDirectory: join(root, "home") });
+    const outside = join(root, "outside");
+    await Promise.all([mkdir(paths.plugins, { recursive: true }), mkdir(outside, { recursive: true })]);
+    await writeFile(join(outside, "cake-plugin.json"), JSON.stringify({ schemaVersion: 1, id: "example.escape", entry: "index.tsx" }));
+    await symlink(outside, join(paths.plugins, "example.escape"));
+
+    await expect(new PluginRepository(paths).deletePlugin("example.escape")).rejects.toThrow("does not match");
+    await access(outside);
+  });
+
+  it("lists and deletes a plugin with an invalid manifest", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-plugin-repository-")); roots.push(root);
+    const paths = resolveCakePaths({ env: { CAKE_HOME: join(root, "cake") }, homeDirectory: join(root, "home") });
+    const plugin = join(paths.plugins, "example.broken");
+    await mkdir(plugin, { recursive: true });
+    await writeFile(join(plugin, "cake-plugin.json"), "{}\n");
+
+    const repository = new PluginRepository(paths);
+    expect(await repository.listPluginStatuses()).toEqual([expect.objectContaining({ id: "example.broken", enabled: false, diagnostics: [expect.anything()] })]);
+    expect(await repository.deletePlugin("example.broken")).toEqual({ wasEnabled: false, plugins: [] });
+    await expect(access(plugin)).rejects.toMatchObject({ code: "ENOENT" });
+  });
 });

@@ -26,12 +26,14 @@ import { SlashCommandCombobox } from "@/components/slash-command-combobox";
 import { PanelResizeHandle } from "@/components/panel-resize-handle";
 import { CopyErrorDetailsButton } from "@/components/copy-error-details-button";
 import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
+import { PluginSettings } from "@/components/plugin-settings";
 import { MessageCommentDraftPopover, MessageCommentThreadPopover, MessageSelectionAction, type MessageCommentAnchorRect } from "@/components/message-comment-popover";
 import type { CompatibilityResource, PiSettings, UiPart } from "../ipc/session-contract";
 import type { MainChatStore } from "./stores/MainChatStore";
 import type { ReviewsStore } from "./stores/ReviewsStore";
 import type { SidebarStore } from "./stores/SidebarStore";
 import type { SettingsStore } from "./stores/SettingsStore";
+import type { CustomizationStore } from "./stores/CustomizationStore";
 import { RootStore } from "./stores/RootStore";
 import type { ExtensionUiStore, UiRequestState } from "./stores/ExtensionUiStore";
 import type { ArtifactInteractionStore } from "./stores/ArtifactInteractionStore";
@@ -647,7 +649,7 @@ function SettingsPackagesField({ value, onApply }: { value: PiSettings["packages
   return <label className="settings-multiline"><span>Packages<small>Pi package sources as JSON. Saving reloads every open Pi session.</small>{error && <small className="settings-validation" role="alert">{error}</small>}</span><span className="settings-editor"><textarea aria-label="Pi packages" value={draft} rows={6} onChange={(event) => setDraft(event.target.value)} /><Button variant="outline" size="sm" type="button" onClick={apply}>Apply</Button></span></label>;
 }
 
-export const SettingsPage = observer(function SettingsPage({ store, settings, configuration }: { store: MainChatStore; settings: SettingsStore; configuration: ChatConfigurationStore }) {
+export const SettingsPage = observer(function SettingsPage({ store, settings, configuration, customization }: { store: MainChatStore; settings: SettingsStore; configuration: ChatConfigurationStore; customization: CustomizationStore }) {
   const selectedModel = store.session?.model;
   const pi = store.session?.piSettings;
   const authNotice = store.canonicalParts.find((part) => part.kind === "notice" && part.id === "auth-status");
@@ -699,6 +701,8 @@ export const SettingsPage = observer(function SettingsPage({ store, settings, co
           <SettingsLinesField label="Prompt paths" description="One path, glob, inclusion, or exclusion per line." value={pi.prompts} onApply={(value) => void settings.setPiSetting({ key: "prompts", value })} />
         </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
       </section>
+
+      <PluginSettings store={customization} />
 
       <section className="settings-section" aria-labelledby="content-title">
         <header><div><h2 id="content-title">Content</h2><p>Control images, skills, and transcript diagnostics.</p></div></header>
@@ -811,7 +815,7 @@ export const App = observer(function App() {
       <section className="workspace" data-session-id={store.session?.sessionId}>
         <button className={page === "settings" ? "workspace-settings-icon active" : "workspace-settings-icon"} type="button" aria-label="Open settings" aria-current={page === "settings" ? "page" : undefined} onClick={() => navigation.openSettings()}><SettingsIcon /></button>
         <header className="workspace-header"><div><button className="header-sidebar-toggle" aria-label="Toggle sidebar" onClick={() => setSidebarCollapsed((value) => !value)}><SidebarIcon /></button>{page === "settings" && <button className="header-back" aria-label="Back to chat" onClick={returnToChat}><BackIcon /></button>}<strong>{page === "settings" ? "Settings" : page === "global" ? "Global chat" : extensionUi.title ?? (store.session ? store.sessionTitle : "Cake")}</strong>{page === "chat" && store.projectPath && <span>{store.projectPath}</span>}</div>{globalChat ? <Button variant="ghost" size="sm" onClick={() => { if (window.confirm("Clear global chat history?")) void globalChat.clear(); }}>Clear</Button> : page === "chat" && store.session && <div className="header-pane-actions"><button className="header-pane-toggle" type="button" aria-label="Browse project files" onClick={() => void store.openWorkspaceBrowser()}><BrowseIcon /><span>Browse</span></button><button className="header-pane-toggle" type="button" aria-label="Open workspace changes" onClick={() => void store.openSessionChanges()}><ChangesIcon /><span>Changes</span>{changes.changes.length > 0 && <b>{changes.changes.length}</b>}</button></div>}</header>
-        {page === "settings" ? <SettingsPage store={store} settings={settings} configuration={chatConfiguration} /> : globalChat ? <GlobalChatPanel store={globalChat} configuration={root.globalChatConfigurationStore} transcriptView={root.globalTranscriptViewStore} /> : !store.session ? (
+        {page === "settings" ? <SettingsPage store={store} settings={settings} configuration={chatConfiguration} customization={root.customizationStore} /> : globalChat ? <GlobalChatPanel store={globalChat} configuration={root.globalChatConfigurationStore} transcriptView={root.globalTranscriptViewStore} /> : !store.session ? (
           <div className="welcome"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build?</h1><p>Open a project for durable workspace chats, or start a one-off chat from your home directory.</p><div><Button size="lg" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.chooseProject()}><FolderIcon /> Open project</Button><Button size="lg" variant="outline" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void store.startOneOffChat()}><ChatIcon /> One-off chat</Button></div>{store.error && <ErrorNotice title="Operation failed" message={store.error} details={store.errorDetails} />}</div>
         ) : (
           <div className="workbench"><div className="chat-layout"><Transcript sessionId={store.session.sessionId} parts={composer.parts} isStreaming={store.isStreaming} hideThinking={store.session.piSettings?.hideThinkingBlock} behavior={{ thinkingExpanded: root.mainTranscriptViewStore.thinkingExpanded, onToggleThinking: () => { root.mainTranscriptViewStore.toggleThinking(); store.persistViewState(); }, onFork: (entryId) => { void store.forkAt(entryId); }, onOpenReviewRun: (threadId) => { void store.openSessionChanges(threadId); }, messageComments: root.messageCommentsStore, inlineWidgets: { store: root.inlineWidgetStore, workspacePath: store.session.workspacePath, sessionId: store.session.sessionId, model: store.session.model }, artifacts: { records: store.artifacts, interaction: artifactInteractions } }} empty={<div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>} footer={<ArtifactsPanel store={store} artifacts={artifactInteractions} inlineWidgets={root.inlineWidgetStore} />} error={chatError} errorDetails={chatErrorDetails} /><ComposerPanel store={store} composer={composer} reviews={reviews} configuration={chatConfiguration} extensionUi={extensionUi} /></div></div>
