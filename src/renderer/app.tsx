@@ -245,11 +245,11 @@ const AssistantTextMessage = observer(function AssistantTextMessage({ part, beha
     return () => { observer?.disconnect(); window.removeEventListener("resize", update); };
   }, [part.text, commentThreads.map((thread) => `${thread.id}:${thread.anchor.startOffset}:${thread.anchor.endOffset}`).join("|")]);
 
-  const scheduleSelectionAction = () => {
+  const scheduleSelectionAction = (container: HTMLElement | null = contentRef.current) => {
     window.clearTimeout(selectionTimer.current);
     setSelectionAction(undefined);
-    if (!behavior.messageComments || part.status === "streaming" || !contentRef.current) return;
-    const captured = captureMessageSelection(contentRef.current, part.id, part.entryId);
+    if (!behavior.messageComments || part.status === "streaming" || !container) return;
+    const captured = captureMessageSelection(container, part.id, part.entryId);
     const selection = window.getSelection();
     if (!captured || !selection?.rangeCount) return;
     const rect = plainRect(selection.getRangeAt(0).getBoundingClientRect());
@@ -261,7 +261,7 @@ const AssistantTextMessage = observer(function AssistantTextMessage({ part, beha
   const activeThread = openThread ? commentThreads.find((thread) => thread.id === openThread.id) : undefined;
 
   return (
-    <ChatTextMessage ref={messageRef} part={part} contentRef={contentRef} onMouseUp={scheduleSelectionAction}>
+    <ChatTextMessage ref={messageRef} part={part} contentRef={contentRef} onMouseUp={() => scheduleSelectionAction()}>
       <FullscreenButton className="assistant-message-expand" label="View response fullscreen" onClick={() => setFullscreen(true)} />
       {commentThreads.map((thread, index) => markerPositions[thread.id] && <button key={thread.id} className="message-comment-marker" style={markerPositions[thread.id]} type="button" aria-label={`Open selection chat ${index + 1}`} title={thread.anchor.selectedText} onClick={(event) => setOpenThread({ id: thread.id, anchor: event.currentTarget })}><ChatIcon /><b>{thread.messages.length}</b></button>)}
       {selectionAction && <MessageSelectionAction rect={selectionAction.rect} onChat={(anchor) => { behavior.messageComments?.prepareDraft(selectionAction.selection); setDraft({ selection: selectionAction.selection, anchor }); setSelectionAction(undefined); }} />}
@@ -275,7 +275,7 @@ const AssistantTextMessage = observer(function AssistantTextMessage({ part, beha
         <button type="button" aria-label={copied ? "Copied response" : "Copy response"} title={copied ? "Copied" : "Copy response"} onClick={() => void copy()}>{copied ? <CheckIcon /> : <CopyIcon />}</button>
         {part.entryId && behavior.onFork && <button type="button" aria-label="Fork response into new chat" title="Fork into new chat" onClick={() => behavior.onFork!(part.entryId!)}><ForkIcon /></button>}
       </div>}
-      {fullscreen && <FullscreenSurface eyebrow="Full response" title="Cake" onClose={closeFullscreen}>{content()}</FullscreenSurface>}
+      {fullscreen && <FullscreenSurface eyebrow="Full response" title="Cake" onClose={closeFullscreen} onContentMouseUp={(event) => scheduleSelectionAction(event.currentTarget)}>{content()}</FullscreenSurface>}
     </ChatTextMessage>
   );
 });

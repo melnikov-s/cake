@@ -449,8 +449,8 @@
 @keyframes message-comment-arrive { from { opacity: 0; } to { opacity: 1; } }
 @media (hover: none) { .assistant-message-actions, .assistant-message-expand, .artifact-fullscreen-button { opacity: 1; pointer-events: auto; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .assistant-message-actions, .assistant-message-expand, .artifact-fullscreen-button { transition: none; }.message-selection-action, .message-comment-popover { animation: none; } }
-.fullscreen-surface { position: fixed; z-index: 50; inset: 0; display: flex; flex-direction: column; overflow: hidden; background: color-mix(in oklab, var(--background) 96%, transparent); backdrop-filter: blur(8px); }
-.fullscreen-surface > header { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 20px; min-height: 72px; padding: 12px clamp(18px, 4vw, 56px) 12px 103px; border-bottom: 1px solid color-mix(in oklab, var(--border) 78%, transparent); background: color-mix(in oklab, var(--background) 90%, transparent); -webkit-app-region: drag; }
+.fullscreen-surface { position: fixed; z-index: 50; inset: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--background); }
+.fullscreen-surface > header { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 20px; min-height: 72px; padding: 12px clamp(18px, 4vw, 56px) 12px 103px; border-bottom: 1px solid var(--border); background: var(--background); -webkit-app-region: drag; }
 .fullscreen-surface > header div { display: grid; gap: 1px; }
 .fullscreen-surface > header span { color: var(--muted-foreground); font: 650 9px/1.4 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; }
 .fullscreen-surface > header h2 { margin: 0; font: 680 17px/1.35 var(--font-display); letter-spacing: -.015em; }

@@ -370,6 +370,54 @@ describe("Transcript scrolling", () => {
     vi.useRealTimers();
   });
 
+  it("offers the same selection chat above a fullscreen assistant response", () => {
+    vi.useFakeTimers();
+    const draftChat = mount(createStore(ChatStore, {
+      id: () => "fullscreen-message-comment-draft",
+      parts: () => [],
+      streaming: () => false,
+      submitting: () => false,
+      configuration: () => undefined,
+      commands: () => [],
+      placeholder: () => "Ask Cake about this passage…",
+      inputLabel: () => "Message about selected fullscreen text",
+      canSubmit: (draft) => Boolean(draft.trim()),
+      submit: async () => true
+    }));
+    const comments = { threadsForMessage: () => [], prepareDraft: vi.fn(), draftChatStore: draftChat } as unknown as MessageCommentsStore;
+    act(() => root.render(<Transcript
+      parts={[{ id: "assistant-1", kind: "text", role: "assistant", entryId: "entry-1", text: "Alpha important detail.", status: "complete" }]}
+      sessionId="session-1"
+      isStreaming={false}
+      behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, messageComments: comments }}
+      empty={<div />}
+    />));
+
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="View response fullscreen"]')!.click());
+    const fullscreen = document.body.querySelector<HTMLElement>(".fullscreen-surface")!;
+    const content = fullscreen.querySelector<HTMLElement>(".fullscreen-surface-content")!;
+    const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+    let important: Node | null = walker.nextNode();
+    while (important && !important.textContent?.includes("Alpha important detail")) important = walker.nextNode();
+    const range = document.createRange();
+    range.setStart(important!, 6);
+    range.setEnd(important!, 15);
+    const browserSelection = window.getSelection()!;
+    browserSelection.removeAllRanges();
+    browserSelection.addRange(range);
+    act(() => content.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })));
+    act(() => vi.advanceTimersByTime(MESSAGE_COMMENT_SELECTION_DELAY_MS));
+
+    act(() => document.body.querySelector<HTMLButtonElement>(".message-selection-action")!.click());
+    expect(document.body.querySelector(".fullscreen-surface")).toBe(fullscreen);
+    expect(document.body.querySelector('[role="dialog"][aria-label="Chat about this"]')).not.toBeNull();
+    expect(comments.prepareDraft).toHaveBeenCalledWith(expect.objectContaining({ selectedText: "important", startOffset: 6, endOffset: 15 }));
+    expect(document.body.querySelector<HTMLTextAreaElement>('[aria-label="Message about selected fullscreen text"]')).toBe(document.activeElement);
+    browserSelection.removeAllRanges();
+    draftChat[Symbol.dispose]();
+    vi.useRealTimers();
+  });
+
   it("restores a selection marker and reopens its persisted chat", () => {
     const now = new Date(0).toISOString();
     const thread = {

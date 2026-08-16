@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type MouseEventHandler, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -15,7 +15,7 @@ export function FullscreenButton({ className, disabled, label, onClick }: { clas
   return <Button className={cn("fullscreen-trigger", className)} variant="ghost" disabled={disabled} aria-label={label} title="View fullscreen" onClick={onClick}><ExpandIcon /></Button>;
 }
 
-export function FullscreenSurface({ children, eyebrow, mode = "reader", onClose, title }: { children: ReactNode; eyebrow: string; mode?: "reader" | "canvas"; onClose(): void; title: string }) {
+export function FullscreenSurface({ children, eyebrow, mode = "reader", onClose, onContentMouseUp, title }: { children: ReactNode; eyebrow: string; mode?: "reader" | "canvas"; onClose(): void; onContentMouseUp?: MouseEventHandler<HTMLElement>; title: string }) {
   const closeButton = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
   const titleId = useId();
@@ -47,7 +47,7 @@ export function FullscreenSurface({ children, eyebrow, mode = "reader", onClose,
         <button ref={closeButton} className="fullscreen-surface-close" type="button" aria-label={`Exit fullscreen ${title}`} title="Exit fullscreen" onClick={onClose}><CloseIcon /></button>
       </header>
       <main>
-        <article className="fullscreen-surface-content" onMouseDown={(event) => event.stopPropagation()}>{children}</article>
+        <article className="fullscreen-surface-content" onMouseDown={(event) => event.stopPropagation()} onMouseUp={onContentMouseUp}>{children}</article>
       </main>
     </div>,
     document.body
