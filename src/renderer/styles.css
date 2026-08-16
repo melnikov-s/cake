@@ -208,6 +208,7 @@
 .header-pane-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; }
 .workspace-header strong { display: block; min-width: 0; max-width: 100%; overflow: hidden; font-size: 13px; font-weight: 630; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-header span { overflow: hidden; color: var(--muted-foreground); font: 10px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.workspace-header > button { flex: 0 0 auto; -webkit-app-region: no-drag; }
 .header-back, .header-sidebar-toggle { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--muted-foreground); -webkit-app-region: no-drag; }
 .header-pane-toggle { display: flex; height: 30px; flex: 0 0 auto; align-items: center; gap: 6px; padding: 0 9px; border: 0; border-radius: 7px; background: transparent; color: var(--muted-foreground); font-size: 11px; -webkit-app-region: no-drag; }
 .header-pane-toggle:hover, .header-pane-toggle.active { background: var(--muted); color: var(--foreground); }
