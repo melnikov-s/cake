@@ -1,5 +1,5 @@
 import { Model, id, state } from "r-state-tree";
-import type { UiPart } from "../../ipc/session-contract";
+import { uiPartSchema, type UiPart } from "../../ipc/session-contract";
 
 type TextRole = Extract<UiPart, { kind: "text" }>["role"];
 type PartStatus = Extract<UiPart, { kind: "text" }>["status"];
@@ -37,7 +37,7 @@ export class MessageModel extends Model {
       case "text":
         return { id: this.id, kind: this.kind, role: this.role!, entryId: this.entryId, text: this.text!, status: this.status! };
       case "reasoning":
-        return { id: this.id, kind: this.kind, text: this.text!, status: this.status as "streaming" | "complete" };
+        return uiPartSchema.parse({ id: this.id, kind: this.kind, text: this.text!, status: this.status });
       case "tool":
         return { id: this.id, kind: this.kind, name: this.name!, input: this.input!, output: this.output, artifactId: this.artifactId, filePath: this.filePath, diff: this.diff, state: this.state! };
       case "source":
@@ -47,7 +47,7 @@ export class MessageModel extends Model {
       case "notice":
         return { id: this.id, kind: this.kind, tone: this.tone!, title: this.title!, detail: this.detail };
       case "review-run":
-        return { id: this.id, kind: this.kind, operationId: this.operationId!, threadIds: this.threadIds!, commentCount: this.commentCount!, status: this.status as Extract<UiPart, { kind: "review-run" }>["status"] };
+        return uiPartSchema.parse({ id: this.id, kind: this.kind, operationId: this.operationId!, threadIds: this.threadIds!, commentCount: this.commentCount!, status: this.status });
     }
   }
 }

@@ -1,17 +1,26 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import mermaid from "mermaid";
+import { z } from "zod";
 import { fencedCode, Markdown } from "@/components/ai-elements/markdown";
 import { Button } from "@/components/ui/button";
 import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
 import { observer } from "r-state-tree/react";
 import type { ArtifactRecord, CakeArtifactV1 } from "../../ipc/artifact-contract";
+import type { JsonValue } from "../../ipc/json-contract";
+
+const inlineWidgetMessageSchema = z.discriminatedUnion("type", [
+  z.object({ source: z.literal("cake-inline-widget"), token: z.string(), type: z.literal("height"), value: z.number() }),
+  z.object({ source: z.literal("cake-inline-widget"), token: z.string(), type: z.literal("error"), value: z.json() }),
+  z.object({ source: z.literal("cake-inline-widget"), token: z.string(), type: z.literal("submit"), value: z.json() }),
+  z.object({ source: z.literal("cake-inline-widget"), token: z.string(), type: z.literal("cancel") }),
+]);
 import { cakeRequestV1Schema, type CakeRequestView } from "../../ipc/request-contract";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 
 interface ArtifactHostProps {
   record: ArtifactRecord;
   requested?: boolean;
-  onSubmit?(value: unknown): void;
+  onSubmit?(value: JsonValue): void;
   onCancel?(): void;
   inlineWidgets?: InlineWidgetStore;
 }
@@ -58,9 +67,10 @@ const WidgetArtifact = observer(function WidgetArtifact({ artifact, workspacePat
   useEffect(() => {
     if (!inlineWidgets) return;
     const receive = (event: MessageEvent) => {
-      if ((event.source !== iframe.current?.contentWindow && event.source !== fullscreenIframe.current?.contentWindow) || !state?.compiled || event.data?.source !== "cake-inline-widget" || event.data.token !== state.compiled.token) return;
-      if (event.data.type === "height" && typeof event.data.value === "number") setHeight(Math.max(120, Math.min(1_200, Math.ceil(event.data.value))));
-      if (event.data.type === "error") inlineWidgets.reportRuntimeError(id, String(event.data.value));
+      const parsed = inlineWidgetMessageSchema.safeParse(event.data);
+      if ((event.source !== iframe.current?.contentWindow && event.source !== fullscreenIframe.current?.contentWindow) || !state?.compiled || !parsed.success || parsed.data.token !== state.compiled.token) return;
+      if (parsed.data.type === "height") setHeight(Math.max(120, Math.min(1_200, Math.ceil(parsed.data.value))));
+      if (parsed.data.type === "error") inlineWidgets.reportRuntimeError(id, String(parsed.data.value));
     };
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
@@ -76,7 +86,7 @@ const WidgetArtifact = observer(function WidgetArtifact({ artifact, workspacePat
   </section>;
 });
 
-function RequestArtifact({ artifact, workspacePath, requested, onSubmit, onCancel, inlineWidgets, fullscreen, onCloseFullscreen }: { artifact: Extract<CakeArtifactV1, { kind: "request" }>; workspacePath: string; requested: boolean; onSubmit?: (value: unknown) => void; onCancel?: () => void; inlineWidgets?: InlineWidgetStore; fullscreen: boolean; onCloseFullscreen(): void }) {
+function RequestArtifact({ artifact, workspacePath, requested, onSubmit, onCancel, inlineWidgets, fullscreen, onCloseFullscreen }: { artifact: Extract<CakeArtifactV1, { kind: "request" }>; workspacePath: string; requested: boolean; onSubmit?: (value: JsonValue) => void; onCancel?: () => void; inlineWidgets?: InlineWidgetStore; fullscreen: boolean; onCloseFullscreen(): void }) {
   const parsed = cakeRequestV1Schema.safeParse(artifact.payload.request);
   if (!parsed.success) return <div className="notice notice-error"><strong>Request could not render</strong><span>{parsed.error.message}</span></div>;
   const request = parsed.data;
@@ -85,13 +95,13 @@ function RequestArtifact({ artifact, workspacePath, requested, onSubmit, onCance
   return <RequestWidget artifact={artifact} workspacePath={workspacePath} view={request.view} title={request.title} requested={requested} fallback={request.fallback.markdown} onSubmit={onSubmit} onCancel={onCancel} store={inlineWidgets} fullscreen={fullscreen} onCloseFullscreen={onCloseFullscreen} />;
 }
 
-function RequestForm({ view, requested, onSubmit, onCancel }: { view: Extract<CakeRequestView, { type: "form" }>; requested: boolean; onSubmit?: (value: unknown) => void; onCancel?: () => void }) {
+function RequestForm({ view, requested, onSubmit, onCancel }: { view: Extract<CakeRequestView, { type: "form" }>; requested: boolean; onSubmit?: (value: JsonValue) => void; onCancel?: () => void }) {
   const [values, setValues] = useState<Record<string, string | number | boolean>>({});
   const submit = (event: FormEvent) => { event.preventDefault(); if (requested) onSubmit?.(values); };
   return <form className="artifact-form" onSubmit={submit}>{view.fields.map((field) => <label key={field.id}><span>{field.label}{field.required ? " *" : ""}</span>{field.type === "textarea" ? <textarea required={field.required} placeholder={field.placeholder} value={String(values[field.id] ?? "")} onChange={(event) => setValues({ ...values, [field.id]: event.target.value })} /> : field.type === "select" ? <select required={field.required} value={String(values[field.id] ?? "")} onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}><option value="">Select…</option>{field.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : field.type === "checkbox" ? <input type="checkbox" checked={Boolean(values[field.id])} onChange={(event) => setValues({ ...values, [field.id]: event.target.checked })} /> : <input type={field.type} required={field.required} placeholder={field.placeholder} value={String(values[field.id] ?? "")} onChange={(event) => setValues({ ...values, [field.id]: field.type === "number" ? event.target.valueAsNumber : event.target.value })} />}</label>)}{requested && <div className="artifact-actions"><Button type="button" variant="outline" onClick={onCancel}>Cancel</Button><Button type="submit">{view.submitLabel}</Button></div>}</form>;
 }
 
-const RequestWidget = observer(function RequestWidget({ artifact, workspacePath, view, title, requested, fallback, onSubmit, onCancel, store, fullscreen, onCloseFullscreen }: { artifact: Extract<CakeArtifactV1, { kind: "request" }>; workspacePath: string; view: Extract<CakeRequestView, { type: "widget" }>; title: string; requested: boolean; fallback: string; onSubmit?: (value: unknown) => void; onCancel?: () => void; store: InlineWidgetStore; fullscreen: boolean; onCloseFullscreen(): void }) {
+const RequestWidget = observer(function RequestWidget({ artifact, workspacePath, view, title, requested, fallback, onSubmit, onCancel, store, fullscreen, onCloseFullscreen }: { artifact: Extract<CakeArtifactV1, { kind: "request" }>; workspacePath: string; view: Extract<CakeRequestView, { type: "widget" }>; title: string; requested: boolean; fallback: string; onSubmit?: (value: JsonValue) => void; onCancel?: () => void; store: InlineWidgetStore; fullscreen: boolean; onCloseFullscreen(): void }) {
   const id = `${artifact.sessionId}:request:${artifact.id}:${artifact.revision}`;
   const state = store.state(id);
   const iframe = useRef<HTMLIFrameElement>(null);
@@ -101,11 +111,12 @@ const RequestWidget = observer(function RequestWidget({ artifact, workspacePath,
   useEffect(() => store.prepare(id, view.language, view.source, "request"), [id, store, view.language, view.source]);
   useEffect(() => {
     const receive = (event: MessageEvent) => {
-      if ((event.source !== iframe.current?.contentWindow && event.source !== fullscreenIframe.current?.contentWindow) || !state?.compiled || event.data?.source !== "cake-inline-widget" || event.data.token !== state.compiled.token) return;
-      if (event.data.type === "height" && typeof event.data.value === "number") setHeight(Math.max(120, Math.min(1_200, Math.ceil(event.data.value))));
-      if (event.data.type === "error") store.reportRuntimeError(id, String(event.data.value));
-      if (requested && event.data.type === "submit") onSubmit?.(event.data.value);
-      if (requested && event.data.type === "cancel") onCancel?.();
+      const parsed = inlineWidgetMessageSchema.safeParse(event.data);
+      if ((event.source !== iframe.current?.contentWindow && event.source !== fullscreenIframe.current?.contentWindow) || !state?.compiled || !parsed.success || parsed.data.token !== state.compiled.token) return;
+      if (parsed.data.type === "height") setHeight(Math.max(120, Math.min(1_200, Math.ceil(parsed.data.value))));
+      if (parsed.data.type === "error") store.reportRuntimeError(id, String(parsed.data.value));
+      if (requested && parsed.data.type === "submit") onSubmit?.(parsed.data.value);
+      if (requested && parsed.data.type === "cancel") onCancel?.();
     };
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
@@ -150,7 +161,7 @@ function DiagramArtifact({ artifact }: { artifact: Extract<CakeArtifactV1, { kin
   return svg ? <iframe className="artifact-diagram" title={artifact.title ?? artifact.id} sandbox="" srcDoc={isolatedDocument(svg, "img-src data:; style-src 'unsafe-inline'")} /> : <p>Rendering diagram…</p>;
 }
 
-function FormArtifact({ artifact, requested, onSubmit, onCancel }: { artifact: Extract<CakeArtifactV1, { kind: "form" }>; requested: boolean; onSubmit?: (value: unknown) => void; onCancel?: () => void }) {
+function FormArtifact({ artifact, requested, onSubmit, onCancel }: { artifact: Extract<CakeArtifactV1, { kind: "form" }>; requested: boolean; onSubmit?: (value: JsonValue) => void; onCancel?: () => void }) {
   const [values, setValues] = useState<Record<string, string | number | boolean>>({});
   const submit = (event: FormEvent) => { event.preventDefault(); onSubmit?.(values); };
   return <form className="artifact-form" onSubmit={submit}>{artifact.payload.fields.map((field) => <label key={field.id}><span>{field.label}{field.required ? " *" : ""}</span>{field.type === "textarea" ? <textarea required={field.required} placeholder={field.placeholder} value={String(values[field.id] ?? "")} onChange={(event) => setValues({ ...values, [field.id]: event.target.value })} /> : field.type === "select" ? <select required={field.required} value={String(values[field.id] ?? "")} onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}><option value="">Select…</option>{field.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : field.type === "checkbox" ? <input type="checkbox" checked={Boolean(values[field.id])} onChange={(event) => setValues({ ...values, [field.id]: event.target.checked })} /> : <input type={field.type} required={field.required} placeholder={field.placeholder} value={String(values[field.id] ?? "")} onChange={(event) => setValues({ ...values, [field.id]: field.type === "number" ? event.target.valueAsNumber : event.target.value })} />}</label>)}{requested && <div className="artifact-actions"><Button type="button" variant="outline" onClick={onCancel}>Cancel</Button><Button type="submit">{artifact.payload.submitLabel}</Button></div>}</form>;
@@ -172,7 +183,8 @@ function isolatedDocument(body: string, policy: string) {
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; ${policy}; form-action 'none'; base-uri 'none'"><style>html{color-scheme:light dark;font:14px system-ui}body{margin:12px;overflow:auto}svg,img,video{max-width:100%;height:auto}</style></head><body>${body}</body></html>`;
 }
 
-function compare(left: unknown, right: unknown) { return typeof left === "number" && typeof right === "number" ? left - right : String(left ?? "").localeCompare(String(right ?? ""), undefined, { numeric: true }); }
+function compare(left: JsonValue | undefined, right: JsonValue | undefined) { return isNumber(left) && isNumber(right) ? left - right : String(left ?? "").localeCompare(String(right ?? ""), undefined, { numeric: true }); }
+function isNumber(value: JsonValue | undefined): value is number { return typeof value === "number"; }
 function csvCell(value: string) { return /[",\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value; }
 function download(name: string, content: string, type: string) { const url = URL.createObjectURL(new Blob([content], { type })); const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 0); }
 

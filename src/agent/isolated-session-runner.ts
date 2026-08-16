@@ -60,16 +60,22 @@ export async function runIsolatedSession(options: IsolatedSessionOptions): Promi
     systemPrompt: options.systemPrompt
   });
   await resourceLoader.reload({ resolveProjectTrust: async () => options.projectTrusted });
-  const { session } = await createAgentSession({
+  const agentSessionOptions = {
     cwd: options.cwd,
     agentDir: options.agentDir,
     modelRuntime,
     resourceLoader,
     settingsManager,
     sessionManager: options.sessionManager,
-    ...(options.tools ? { tools: options.tools } : {}),
-    ...(options.noTools ? { noTools: options.noTools } : {})
-  });
+  };
+  const optionsWithTools = options.tools
+    ? { ...agentSessionOptions, tools: options.tools }
+    : agentSessionOptions;
+  const { session } = await createAgentSession(
+    options.noTools
+      ? { ...optionsWithTools, noTools: options.noTools }
+      : optionsWithTools,
+  );
 
   try {
     if (options.signal?.aborted) throw new Error(options.cancellationMessage);

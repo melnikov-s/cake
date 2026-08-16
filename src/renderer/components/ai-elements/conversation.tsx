@@ -71,6 +71,11 @@ function VirtualizedConversationInner<Item>(
   );
 }
 
-export const VirtualizedConversation = forwardRef(VirtualizedConversationInner) as <Item>(
+const ForwardedVirtualizedConversation = forwardRef(VirtualizedConversationInner);
+
+export const VirtualizedConversation =
+  // SAFETY: React.forwardRef erases the inner component's generic Item parameter;
+  // this restores the same props and ref contract exposed by the implementation.
+  ForwardedVirtualizedConversation as <Item>(
   props: VirtualizedConversationProps<Item> & RefAttributes<VirtualizedConversationHandle>
 ) => ReactElement;

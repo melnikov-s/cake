@@ -2,17 +2,18 @@ import { Store, observable, untracked } from "r-state-tree";
 import type { DesktopClientEvent } from "../desktop-client";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import { describeError } from "../error-details";
+import type { JsonObject } from "../../ipc/json-contract";
 
 export interface GlobalChatPort {
-  open(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: Record<string, unknown> }> }): Promise<void>;
+  open(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: JsonObject }> }): Promise<void>;
   prompt(input: { operationId: string; text: string }): Promise<void>;
   abort(operationId: string): Promise<void>;
-  clear(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: Record<string, unknown> }> }): Promise<void>;
+  clear(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: JsonObject }> }): Promise<void>;
 }
 
 export interface GlobalChatStoreProps {
   port: GlobalChatPort;
-  tools(): ReadonlyArray<{ name: string; description: string; parameters: Record<string, unknown> }>;
+  tools(): ReadonlyArray<{ name: string; description: string; parameters: JsonObject }>;
   sessions(): SessionRegistryStore;
 }
 

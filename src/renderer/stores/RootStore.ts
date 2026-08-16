@@ -1,4 +1,5 @@
 import { Store, child, createStore, mount } from "r-state-tree";
+import { jsonValueSchema } from "../../ipc/json-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import { SessionRegistryStore } from "./SessionRegistryStore";
 import { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
@@ -139,7 +140,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       operationActive: (operationId) => this.sessionOperationCoordinator.includes(operationId),
       setDraft: (value) => {
         const session = this.projectWorkbenchStore.activeSession;
-        if (session) session.setDraft(typeof value === "function" ? value(session.draft) : value);
+        if (session) session.setDraft(resolveDraftUpdate(value, session.draft));
       },
       requestComposerFocus: () => this.projectWorkbenchStore.activeSession?.composerStore.requestFocus()
     });
@@ -258,7 +259,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     if (event.type === "global-chat-control-requested") {
       void this.appControl.invoke(event.invocation)
         .catch((error) => ({ ok: false as const, name: event.invocation.name, error: error instanceof Error ? error.message : String(error) }))
-        .then((result) => this.client.respondToGlobalChatControl(event.controlRequestId, result))
+        .then((result) => this.client.respondToGlobalChatControl(event.controlRequestId, jsonValueSchema.parse(result)))
         .catch((error) => this.globalChatStore.reportError(error, `Global chat control response: ${event.invocation.name}`));
       return;
     }
@@ -332,6 +333,14 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     this.projectWorkbenchStore.receive(event);
   }
 
+}
+
+function resolveDraftUpdate(value: string | ((current: string) => string), current: string) {
+  return isDraftUpdater(value) ? value(current) : value;
+}
+
+function isDraftUpdater(value: string | ((current: string) => string)): value is (current: string) => string {
+  return typeof value === "function";
 }
 
 export function mountRootStore(client: DesktopClient) {

@@ -59,11 +59,14 @@ export function toolArtifactId(value: unknown) {
   const direct = Reflect.get(value, "artifactId");
   if (typeof direct === "string") return direct;
   const details = Reflect.get(value, "details");
-  if (typeof details === "object" && details !== null && typeof Reflect.get(details, "artifactId") === "string") return Reflect.get(details, "artifactId") as string;
+  const detailedId = typeof details === "object" && details !== null ? Reflect.get(details, "artifactId") : undefined;
+  if (typeof detailedId === "string") return detailedId;
   const artifact = Reflect.get(value, "artifact");
-  if (typeof artifact === "object" && artifact !== null && typeof Reflect.get(artifact, "id") === "string") return Reflect.get(artifact, "id") as string;
+  const artifactId = typeof artifact === "object" && artifact !== null ? Reflect.get(artifact, "id") : undefined;
+  if (typeof artifactId === "string") return artifactId;
   const request = Reflect.get(value, "request");
-  return typeof request === "object" && request !== null && typeof Reflect.get(request, "id") === "string" ? Reflect.get(request, "id") as string : undefined;
+  const requestId = typeof request === "object" && request !== null ? Reflect.get(request, "id") : undefined;
+  return typeof requestId === "string" ? requestId : undefined;
 }
 
 export function textFromContent(content: unknown): string {
@@ -236,32 +239,28 @@ function sourceTitle(url: string) {
   }
 }
 
-function entryPreview(entry: { type: string }) {
-  const value = entry as unknown as Record<string, unknown>;
+function entryPreview(entry: SessionEntry) {
   if (entry.type === "message") {
-    const message = value.message as Record<string, unknown> | undefined;
-    const role = String(message?.role ?? "message");
-    const text = textFromContent(message?.content).replace(/[\n\t]+/g, " ").trim();
+    const message = entry.message;
+    const role = message.role;
+    const text = ("content" in message ? textFromContent(message.content) : "")
+      .replace(/[\n\t]+/g, " ")
+      .trim();
     if (role === "user") return text.slice(0, 2_048);
-    if (role === "assistant") {
+    if (message.role === "assistant") {
       if (text) return text.slice(0, 2_048);
-      if (message?.stopReason === "aborted") return "(aborted)";
-      if (message?.errorMessage) return String(message.errorMessage).replace(/[\n\t]+/g, " ").trim().slice(0, 2_048);
+      if (message.stopReason === "aborted") return "(aborted)";
+      if (message.errorMessage) return message.errorMessage.replace(/[\n\t]+/g, " ").trim().slice(0, 2_048);
       return "";
     }
-    if (role === "toolResult") return `[${String(message?.toolName ?? "tool")}]`;
-    if (role === "bashExecution") return `[bash]: ${String(message?.command ?? "")}`.slice(0, 2_048);
+    if (message.role === "toolResult") return `[${message.toolName}]`;
+    if (message.role === "bashExecution") return `[bash]: ${message.command}`.slice(0, 2_048);
     return `[${role}]`;
   }
-  if (entry.type === "compaction" || entry.type === "branch_summary") return String(value.summary ?? "").slice(0, 2_048);
-  if (entry.type === "session_info") return String(value.name ?? "Session renamed").slice(0, 2_048);
-  if (entry.type === "model_change") return `${String(value.provider ?? "")}/${String(value.modelId ?? "")}`;
+  if (entry.type === "compaction" || entry.type === "branch_summary") return entry.summary.slice(0, 2_048);
+  if (entry.type === "session_info") return (entry.name ?? "Session renamed").slice(0, 2_048);
+  if (entry.type === "model_change") return `${entry.provider}/${entry.modelId}`;
   return entry.type.replaceAll("_", " ");
-}
-
-function entryMessageValue(entry: object, key: string) {
-  const message = Reflect.get(entry, "message");
-  return typeof message === "object" && message !== null ? Reflect.get(message, key) : undefined;
 }
 
 export function projectTree(sessionManager: SessionManager): SessionTreeEntry[] {
@@ -274,9 +273,9 @@ export function projectTree(sessionManager: SessionManager): SessionTreeEntry[] 
       id: node.entry.id,
       parentId: node.entry.parentId ?? undefined,
       type: node.entry.type,
-      messageRole: node.entry.type === "message" ? String(entryMessageValue(node.entry, "role") ?? "message") : undefined,
-      editorText: node.entry.type === "message" && entryMessageValue(node.entry, "role") === "user"
-        ? textFromContent(entryMessageValue(node.entry, "content"))
+      messageRole: node.entry.type === "message" ? node.entry.message.role : undefined,
+      editorText: node.entry.type === "message" && node.entry.message.role === "user"
+        ? textFromContent(node.entry.message.content)
         : undefined,
       label: node.label,
       preview: entryPreview(node.entry),

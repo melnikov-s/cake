@@ -54,7 +54,8 @@ const authoringRoot = resolve(process.env.CAKE_AUTHORING_ROOT || (app.isPackaged
 process.env.CAKE_AUTHORING_ROOT = authoringRoot;
 const pluginActivation = new PluginActivationService(cakePaths, new PluginBuildService(cakePaths, authoringRoot, applicationRoot));
 const pluginPersistence = new PluginPersistenceRepository(cakePaths.state, () => pluginActivation.snapshot().activeRevision);
-let pluginAgentResources = { skills: [] as string[], prompts: [] as string[], extensions: [] as string[] };
+interface PluginAgentResources { skills: string[]; prompts: string[]; extensions: string[] }
+let pluginAgentResources: PluginAgentResources = { skills: [], prompts: [], extensions: [] };
 const artifactRepository = new ArtifactRepository(join(app.getPath("userData"), "artifacts"));
 const reviewRepository = new ReviewRepository(
   join(app.getPath("userData"), "reviews"),
@@ -178,16 +179,20 @@ function scheduleIdle(path: string) {
 }
 
 function createWindow(slot = nextWindowSlot++) {
-  const window = new BrowserWindow({
+  const browserWindowOptions = {
     width: 1180,
     height: 820,
     minWidth: 760,
     minHeight: 560,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    ...(process.platform === "darwin" ? { trafficLightPosition: { x: 18, y: 18 } } : {}),
     backgroundColor: "#15191d",
     webPreferences: { preload: join(import.meta.dirname, "../preload/preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: true }
-  });
+  } as const;
+  const window = new BrowserWindow(
+    process.platform === "darwin"
+      ? { ...browserWindowOptions, trafficLightPosition: { x: 18, y: 18 } }
+      : browserWindowOptions,
+  );
   const webContentsId = window.webContents.id;
   windows.set(window.id, window);
   windowSlots.set(webContentsId, slot);
@@ -254,7 +259,13 @@ function reloadAllAfterResponse(renderer: ReturnType<PluginActivationService["st
   setTimeout(() => reloadAllWith(renderer), 100);
 }
 
-const imageMimeTypes: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp" };
+const imageMimeTypes = new Map([
+  [".png", "image/png"],
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
+  [".gif", "image/gif"],
+  [".webp", "image/webp"],
+]);
 const runFile = promisify(execFile);
 
 async function regularWorkspaceFiles(workspace: string, paths: string[]) {
@@ -301,13 +312,13 @@ async function chooseAttachments(window: BrowserWindow): Promise<Attachment[]> {
   const result = await dialog.showOpenDialog(window, { properties: ["openFile", "multiSelections"] });
   if (result.canceled) return [];
   return Promise.all(result.filePaths.slice(0, 20).map(async (path): Promise<Attachment> => {
-    const mimeType = imageMimeTypes[extname(path).toLowerCase()];
+    const mimeType = imageMimeTypes.get(extname(path).toLowerCase());
     return mimeType ? { kind: "image", name: basename(path), mimeType, data: (await readFile(path)).toString("base64") } : { kind: "file", name: basename(path), path };
   }));
 }
 
-ipcMain.handle("cake:request", async (event, input: unknown) => {
-  const request = desktopRequestSchema.parse(input);
+ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
+  const request = desktopRequestSchema.parse(untrustedInput);
   const owner = BrowserWindow.fromWebContents(event.sender);
   const slot = windowSlots.get(event.sender.id) ?? 0;
   if (request.type === "get-customization-state") return desktopResponseSchema.parse({ type: "customization-state", state: pluginActivation.snapshot() });
@@ -621,7 +632,7 @@ app.on("before-quit", () => {
 if (process.env.CAKE_ELECTRON_SMOKE === "1") {
   Object.assign(globalThis, {
     cakeSmokeResetPi() {
-      const host = piHosts.values().next().value as PiHost | undefined;
+      const host = [...piHosts.values()][0];
       if (!host) throw new Error("Pi runtime is unavailable");
       piHosts.delete(host.path);
       host.driver[Symbol.dispose]();

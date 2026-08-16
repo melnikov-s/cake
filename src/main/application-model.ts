@@ -37,8 +37,8 @@ export class ApplicationModel extends Model {
   @state
   trustedProjectPaths: string[] = [];
 
-  static from(input: unknown) {
-    return ApplicationModel.create(applicationStateSchema.parse(input));
+  static from(untrustedInput: unknown) {
+    return ApplicationModel.create(applicationStateSchema.parse(untrustedInput));
   }
 
   upsertProject(path: string, defaultName: string) {

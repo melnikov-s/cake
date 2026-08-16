@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
+import { Fragment, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { observer } from "r-state-tree/react";
 import type { ChangedFile } from "../../ipc/session-contract";
 import type { ReviewAnchor, ReviewPoint } from "../../ipc/review-contract";
@@ -49,7 +49,7 @@ const HighlightedDiff = observer(function HighlightedDiff({ change, reviews, sto
   const threads = reviews.threads.filter((thread) => thread.anchor.view !== "file" && thread.anchor.view !== "full" && thread.anchor.view !== "message" && store.changeMatchesPath(change, thread.anchor.path));
 
   const selectText = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement).closest("button, textarea, .review-thread, .review-composer")) return;
+    if (event.target instanceof Element && event.target.closest("button, textarea, .review-thread, .review-composer")) return;
     const selected = extractSourceSelection(event.currentTarget, ".change-explorer-line[data-diff-index]", "data-diff-index");
     if (!selected) return;
     setComposer({ anchor: reviewAnchor(change, lines, selected.startIndex, selected.endIndex, selected.selectedText, selected.startColumn, selected.endColumn), floating: true, position: selected.position });
@@ -59,7 +59,7 @@ const HighlightedDiff = observer(function HighlightedDiff({ change, reviews, sto
     ? <div className="change-explorer-line meta" role="row" key={line.key}><span /><span /><code>{line.content}</code></div>
     : <Fragment key={line.key}><div className={`change-explorer-line ${line.kind}`} data-diff-index={index} role="row">
         <span className="review-gutter"><button aria-label={`Comment on line ${line.newNumber ?? line.oldNumber}`} onClick={() => setComposer({ anchor: reviewAnchor(change, lines, index, index, line.content, 0, line.content.length), floating: false })}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5" /></svg></button>{line.oldNumber}</span><span>{line.newNumber}</span><code><b data-review-prefix>{line.kind === "add" ? "+" : line.kind === "remove" ? "−" : " "}</b>{(tokens?.[index] ?? []).length > 0
-          ? tokens![index]!.map((token, tokenIndex) => <i className="syntax-token" style={token.htmlStyle as CSSProperties} key={`${tokenIndex}-${token.content}`}>{token.content}</i>)
+          ? tokens![index]!.map((token, tokenIndex) => <i className="syntax-token" style={token.htmlStyle} key={`${tokenIndex}-${token.content}`}>{token.content}</i>)
           : line.content || " "}</code>
       </div>{composer && !composer.floating && composer.anchor.end.diffLine === index && <ReviewComposer anchor={composer.anchor} onSave={(body) => reviews.createThread(composer.anchor, body)} onCancel={() => setComposer(undefined)} />}{threads.filter((thread) => thread.anchor.end.diffLine === index).map((thread) => <ReviewThreadCard key={`${thread.id}:${thread.status}`} thread={thread} store={reviews} />)}</Fragment>)}
     {composer?.floating && <ReviewComposer anchor={composer.anchor} floating position={composer.position} onSave={(body) => reviews.createThread(composer.anchor, body)} onCancel={() => { setComposer(undefined); window.getSelection()?.removeAllRanges(); }} />}</div>;

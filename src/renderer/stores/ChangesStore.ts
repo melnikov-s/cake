@@ -21,7 +21,7 @@ export class ChangesStore extends Store<ChangesStoreProps> {
   private preferredPath: string | undefined;
 
   get selected() {
-    if (typeof this.path !== "string") return this.changes[0];
+    if (this.path == null) return this.changes[0];
     return this.changeForPath(this.path) ?? this.changes[0];
   }
 
@@ -106,7 +106,7 @@ export class ChangesStore extends Store<ChangesStoreProps> {
   }
 
   private changeForPath(path?: string | null) {
-    return typeof path === "string" ? this.changes.find((change) => this.changeMatchesPath(change, path)) : undefined;
+    return path == null ? undefined : this.changes.find((change) => this.changeMatchesPath(change, path));
   }
 
   private finishRefresh(operationId: string) {

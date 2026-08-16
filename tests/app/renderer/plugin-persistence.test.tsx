@@ -3,6 +3,7 @@ import React, { Suspense, act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePluginGlobalState } from "../../../src/renderer/plugin-persistence";
+import { z } from "zod";
 
 describe("plugin persistence hooks", () => {
   const containers: HTMLDivElement[] = [];
@@ -15,7 +16,7 @@ describe("plugin persistence hooks", () => {
     Object.defineProperty(window, "cake", { configurable: true, value: { request, subscribe: vi.fn() } });
     const effect = vi.fn();
     function Probe() {
-      const [value] = usePluginGlobalState("test.persistence", "hydration", "default");
+      const [value] = usePluginGlobalState("test.persistence", "hydration", z.string(), "default");
       useEffect(() => effect(value), [value]);
       return <span>{value}</span>;
     }

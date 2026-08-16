@@ -2,9 +2,10 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { mkdir } from "node:fs/promises";
-import { pluginIdSchema, pluginPersistenceKeySchema, pluginPersistenceRecordSchema, pluginPersistenceScopeSchema, type PluginPersistenceRecord, type PluginPersistenceScope } from "../plugin/plugin-contract";
+import { pluginIdSchema, pluginPersistenceKeySchema, pluginPersistenceRecordSchema, pluginPersistenceScopeSchema, type PluginPersistenceRecord, type PluginPersistenceScope, type PluginPersistenceValue } from "../plugin/plugin-contract";
 import { AtomicFileWriter } from "./atomic-file-writer";
 import { KeyedSerialExecutor } from "./keyed-serial-executor";
+import { hasFileErrorCode } from "./file-errors";
 
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 
@@ -22,10 +23,10 @@ export class PluginPersistenceRepository {
 
   async read(pluginId: string, key: string, scope: PluginPersistenceScope): Promise<PluginPersistenceRecord | undefined> {
     try { return pluginPersistenceRecordSchema.parse(JSON.parse(await readFile(this.path(pluginId, key, scope), "utf8"))); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
+    catch (error) { if (hasFileErrorCode(error, "ENOENT")) return undefined; throw error; }
   }
 
-  async write(pluginId: string, key: string, scope: PluginPersistenceScope, value: unknown, expectedVersion?: number, sourceRevision = this.sourceRevision()) {
+  async write(pluginId: string, key: string, scope: PluginPersistenceScope, value: PluginPersistenceValue, expectedVersion?: number, sourceRevision = this.sourceRevision()) {
     const encoded = JSON.stringify(value);
     if (encoded === undefined) throw new Error("Plugin state must be JSON-serializable");
     if (encoded.length > 1_000_000) throw new Error("Plugin state exceeds the 1 MB value limit");

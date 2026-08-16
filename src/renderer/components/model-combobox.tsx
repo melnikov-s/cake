@@ -41,7 +41,7 @@ export function ModelCombobox({ ariaLabel, groups, value, onSelect, variant = "c
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      if (!(event.target instanceof Node) || !rootRef.current?.contains(event.target)) setOpen(false);
     };
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
@@ -97,7 +97,7 @@ export function ModelCombobox({ ariaLabel, groups, value, onSelect, variant = "c
 
   let optionIndex = 0;
   return <div ref={rootRef} className={`model-combobox ${variant}`} onBlur={(event) => {
-    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+    if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) {
       setOpen(false);
       setQuery("");
     }

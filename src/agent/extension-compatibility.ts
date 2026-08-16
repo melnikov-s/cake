@@ -81,7 +81,10 @@ export function createCakeExtensionUiContext(options: {
     setFooter() { degraded("setFooter", "terminal footer factories cannot run in the renderer"); },
     setHeader() { degraded("setHeader", "terminal header factories cannot run in the renderer"); },
     setTitle(title) { options.state.title = title; options.emit({ kind: "title", title }); },
-    async custom() { degraded("custom", "arbitrary TUI components require a Cake artifact or widget fallback"); return undefined as never; },
+    async custom() {
+      degraded("custom", "arbitrary TUI components require a Cake artifact or widget fallback");
+      throw new Error("Cake cannot host an arbitrary terminal UI component");
+    },
     pasteToEditor(text) { editorText += text; options.emit({ kind: "editor-text", text, mode: "insert" }); },
     setEditorText(text) { editorText = text; options.emit({ kind: "editor-text", text, mode: "replace" }); },
     getEditorText: () => editorText,

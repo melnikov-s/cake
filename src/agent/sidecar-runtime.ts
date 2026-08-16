@@ -81,7 +81,7 @@ export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewT
   const messageComment = options.thread.anchor.view === "message";
   const sessionManager = openReviewSession(options);
   const parentTranscriptPath = await writeReviewParentContext(options);
-  const result = await runIsolatedSession({
+  const isolatedSessionOptions = {
     cwd: options.cwd,
     agentDir: options.agentDir,
     sessionManager,
@@ -94,8 +94,12 @@ export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewT
     cancellationMessage: "The review run was cancelled",
     bindExtensions: true,
     capturePromptError: true,
-    ...(messageComment ? { tools: ["read", "grep", "find", "ls"] } : {})
-  });
+  };
+  const result = await runIsolatedSession(
+    messageComment
+      ? { ...isolatedSessionOptions, tools: ["read", "grep", "find", "ls"] }
+      : isolatedSessionOptions,
+  );
   return { sessionId: result.sessionId, sessionFile: result.sessionFile, error: result.error };
 }
 

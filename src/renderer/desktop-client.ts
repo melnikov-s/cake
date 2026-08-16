@@ -17,6 +17,7 @@ import type { ArtifactRecord } from "../ipc/artifact-contract";
 import type { ReviewAnchor, ReviewThread } from "../ipc/review-contract";
 import type { CustomizationState, PluginDiagnostic, PluginStatus } from "../plugin/plugin-contract";
 import type { CompiledInlineWidget, InlineWidgetCapability, InlineWidgetLanguage, RepairedInlineWidget } from "../ipc/inline-widget-contract";
+import type { JsonObject, JsonValue } from "../ipc/json-contract";
 
 export type PiState = "starting" | "ready" | "stopped" | "failed";
 
@@ -33,7 +34,7 @@ export type DesktopClientEvent =
   | { type: "global-chat-streaming-changed"; streaming: boolean }
   | { type: "global-chat-operation-completed"; operationId: string }
   | { type: "global-chat-operation-failed"; operationId: string; message: string }
-  | { type: "global-chat-control-requested"; controlRequestId: string; invocation: { name: string; arguments: unknown } }
+  | { type: "global-chat-control-requested"; controlRequestId: string; invocation: { name: string; arguments: JsonValue } }
   | { type: "extension-ui-received"; sessionId: string; event: ExtensionUiEvent }
   | { type: "changes-received"; operationId: string; workspacePath: string; sessionId: string; files: ChangedFile[] }
   | { type: "changelog-received"; operationId: string; workspacePath: string; sessionId: string; markdown: string }
@@ -82,13 +83,13 @@ export interface DesktopClient {
   loadApplicationState(): Promise<ApplicationState>;
   listSessions(): Promise<{ sessions: GlobalSessionSummary[]; reviewThreads: ReviewThread[] }>;
   loadSession(workspacePath: string, sessionId: string): Promise<SessionPreview | undefined>;
-  openGlobalChat(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: Record<string, unknown> }> }): Promise<void>;
+  openGlobalChat(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: JsonObject }> }): Promise<void>;
   promptGlobalChat(input: { operationId: string; text: string }): Promise<void>;
   abortGlobalChat(operationId: string): Promise<void>;
-  clearGlobalChat(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: Record<string, unknown> }> }): Promise<void>;
+  clearGlobalChat(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: JsonObject }> }): Promise<void>;
   setGlobalChatModel(input: { operationId: string; provider: string; modelId: string }): Promise<void>;
   setGlobalChatThinkingLevel(input: { operationId: string; level: ThinkingLevel }): Promise<void>;
-  respondToGlobalChatControl(controlRequestId: string, result: unknown): Promise<void>;
+  respondToGlobalChatControl(controlRequestId: string, result: JsonValue): Promise<void>;
   listReviewThreads(workspacePath: string, sessionId: string): Promise<ReviewThread[]>;
   createReviewThread(input: { workspacePath: string; sessionId: string; anchor: ReviewAnchor; body: string }): Promise<ReviewThread>;
   replyReviewThread(input: { workspacePath: string; sessionId: string; threadId: string; body: string }): Promise<ReviewThread>;
@@ -117,7 +118,7 @@ export interface DesktopClient {
   inspectChanges(input: { operationId: string; workspacePath: string; sessionId: string }): Promise<void>;
   getChangelog(input: { operationId: string; workspacePath: string; sessionId: string }): Promise<void>;
   respondToUi(input: { operationId: string; workspacePath: string; sessionId: string; uiRequestId: string; value?: string; cancelled: boolean }): Promise<void>;
-  respondToArtifact(input: { operationId: string; workspacePath: string; sessionId: string; artifactRequestId: string; value?: unknown; cancelled: boolean }): Promise<void>;
+  respondToArtifact(input: { operationId: string; workspacePath: string; sessionId: string; artifactRequestId: string; value?: JsonValue; cancelled: boolean }): Promise<void>;
   exportArtifacts(workspacePath: string, sessionId: string): Promise<string>;
   subscribe(listener: (event: DesktopClientEvent) => void): () => void;
 }

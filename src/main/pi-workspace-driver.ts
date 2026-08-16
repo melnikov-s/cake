@@ -4,6 +4,7 @@ import { createCakeRuntime, type CakeRuntime, type RuntimeUiRequest } from "../a
 import { loadPiChangelog } from "../agent/session-discovery";
 import { runInlineWidgetGeneration, runInlineWidgetRepair, runReviewTurn, type InlineWidgetGenerationRequest } from "../agent/sidecar-runtime";
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
+import type { JsonValue } from "../ipc/json-contract";
 import { parseArtifactInput, type ArtifactRecord, type CakeArtifactV1 } from "../ipc/artifact-contract";
 import { REVIEW_TEXT_MAX_LENGTH } from "../ipc/review-contract";
 import type { ArtifactRepository } from "./artifact-repository";
@@ -42,7 +43,11 @@ interface PendingUi {
 
 interface PendingArtifact {
   operationId: string;
-  settle(value: unknown | undefined): void;
+  settle(value: JsonValue | undefined): void;
+}
+
+interface RuntimeReference {
+  current?: CakeRuntime;
 }
 
 export interface PiWorkspaceDriverOptions {
@@ -284,9 +289,9 @@ export class PiWorkspaceDriver {
     const operationId = this.operationContext.getStore()?.operationId;
     if (!operationId) throw new Error("Pi requested an artifact response without an active Cake operation");
     const artifactRequestId = crypto.randomUUID();
-    return new Promise<unknown | undefined>((resolve) => {
+    return new Promise<JsonValue | undefined>((resolve) => {
       let settled = false;
-      const settle = (value: unknown | undefined) => {
+      const settle = (value: JsonValue | undefined) => {
         if (settled) return;
         settled = true;
         this.pendingArtifacts.delete(artifactRequestId);
@@ -314,7 +319,7 @@ export class PiWorkspaceDriver {
   private async createRuntime(newSession: boolean, sessionId?: string, sessionFile?: string) {
     const requestedArtifactSessionId = sessionId;
     let openedSessionId = sessionId;
-    const runtimeRef: { current?: CakeRuntime } = {};
+    const runtimeRef: RuntimeReference = {};
     const runtime = await this.createRuntimeImpl({
       cwd: this.workspacePath,
       agentDir: this.agentDir,

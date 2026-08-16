@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jsonValueSchema, type JsonValue } from "./json-contract";
 
 export const ARTIFACT_PROTOCOL = "cake.artifact/v1" as const;
 export const MAX_ARTIFACT_INPUT_BYTES = 1_048_576;
@@ -139,13 +140,14 @@ export function parseArtifactInput(input: unknown): CakeArtifactV1 {
   return artifact;
 }
 
-export function validateArtifactResponse(schema: JsonSchema | undefined, value: unknown): unknown {
+export function validateArtifactResponse(schema: JsonSchema | undefined, value: JsonValue | undefined): JsonValue | undefined {
   if (new TextEncoder().encode(JSON.stringify(value)).byteLength > MAX_ARTIFACT_INPUT_BYTES) throw new Error("Artifact response exceeds the size limit");
-  if (schema) validateJsonValue(schema, value, "$response");
-  return value;
+  const parsedValue = value === undefined ? undefined : jsonValueSchema.parse(value);
+  if (schema) validateJsonValue(schema, parsedValue, "$response");
+  return parsedValue;
 }
 
-function validateJsonValue(schema: JsonSchema, value: unknown, path: string): void {
+function validateJsonValue(schema: JsonSchema, value: JsonValue | undefined, path: string): void {
   if (schema.enum && !schema.enum.some((candidate) => Object.is(candidate, value))) throw new Error(`${path} is not an allowed value`);
   if (schema.type === "null" && value !== null) throw new Error(`${path} must be null`);
   if (schema.type === "boolean" && typeof value !== "boolean") throw new Error(`${path} must be a boolean`);
@@ -159,9 +161,8 @@ function validateJsonValue(schema: JsonSchema, value: unknown, path: string): vo
   }
   if (schema.type === "object") {
     if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`${path} must be an object`);
-    const record = value as Record<string, unknown>;
-    for (const key of schema.required ?? []) if (!(key in record)) throw new Error(`${path}.${key} is required`);
-    for (const [key, child] of Object.entries(schema.properties ?? {})) if (key in record) validateJsonValue(child, record[key], `${path}.${key}`);
+    for (const key of schema.required ?? []) if (!(key in value)) throw new Error(`${path}.${key} is required`);
+    for (const [key, child] of Object.entries(schema.properties ?? {})) if (key in value) validateJsonValue(child, value[key], `${path}.${key}`);
   }
 }
 

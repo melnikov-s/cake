@@ -1,5 +1,6 @@
 /** Version-matched public surface available to trusted user plugins. */
 import type { ComponentType } from "react";
+import type { JsonValue } from "../ipc/json-contract";
 import { registerPluginDefinition } from "./plugin-runtime";
 
 export { observer, useOptionalStore, useStore } from "r-state-tree/react";
@@ -9,7 +10,7 @@ export { RootStore } from "./stores/RootStore";
 
 export interface CakeCommandContext {
   signal: AbortSignal;
-  reveal(contributionId: string, input?: unknown): void;
+  reveal(contributionId: string, input?: JsonValue): void;
 }
 
 export interface CakePluginCommand {

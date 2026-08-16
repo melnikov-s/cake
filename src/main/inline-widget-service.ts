@@ -82,14 +82,20 @@ createRoot(host).render(React.createElement(Widget, ${capability === "request" ?
     plugins: [widgetModulePlugin(source)],
     logLevel: "silent"
   }).catch((error: unknown) => {
-    const messages = typeof error === "object" && error !== null && "errors" in error && Array.isArray(error.errors)
-      ? diagnostics(error.errors as Message[])
+    const messages = isBuildFailure(error)
+      ? diagnostics(error.errors)
       : [error instanceof Error ? error.message : String(error)];
     throw new Error(messages.join("\n"));
   });
   const javascript = result.outputFiles[0]?.text;
   if (!javascript) throw new Error("Cake did not produce an inline React widget bundle");
   return { token, document: documentShell(token, `<div id="cake-widget-root"></div><script>${javascript.replaceAll("</script", "<\\/script")}</script>`, capability) };
+}
+
+interface InlineWidgetBuildFailure { errors: Message[] }
+
+function isBuildFailure(error: unknown): error is InlineWidgetBuildFailure {
+  return typeof error === "object" && error !== null && "errors" in error && Array.isArray(error.errors);
 }
 
 export function extractRepairedWidget(text: string, language: InlineWidgetLanguage) {

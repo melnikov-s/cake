@@ -4,6 +4,7 @@ import { reviewAnchorSchema, reviewThreadSchema } from "./review-contract";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { customizationStateSchema, pluginDiagnosticSchema, pluginIdSchema, pluginPersistenceKeySchema, pluginPersistenceRecordSchema, pluginPersistenceScopeSchema, pluginStatusSchema } from "../plugin/plugin-contract";
 import { compiledInlineWidgetSchema, inlineWidgetCapabilitySchema, inlineWidgetLanguageSchema, inlineWidgetSourceSchema, repairedInlineWidgetSchema } from "./inline-widget-contract";
+import { jsonObjectSchema, jsonValueSchema } from "./json-contract";
 import {
   applicationStateSchema,
   attachmentSchema,
@@ -32,7 +33,7 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("global-chat-streaming"), streaming: z.boolean() }),
   z.object({ type: z.literal("global-chat-operation-completed"), requestId: z.uuid() }),
   z.object({ type: z.literal("global-chat-operation-failed"), requestId: z.uuid(), message: ipcProjectionString(2_048) }),
-  z.object({ type: z.literal("global-chat-control-request"), controlRequestId: z.uuid(), invocation: z.object({ name: z.string().min(1).max(256), arguments: z.unknown() }) }),
+  z.object({ type: z.literal("global-chat-control-request"), controlRequestId: z.uuid(), invocation: z.object({ name: z.string().min(1).max(256), arguments: jsonValueSchema }) }),
   z.object({ type: z.literal("extension-ui"), sessionId: z.string().max(256), event: extensionUiEventSchema }),
   z.object({ type: z.literal("changes-snapshot"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), files: ipcProjectionArray(changedFileSchema, 10_000) }),
   z.object({ type: z.literal("changelog-snapshot"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), markdown: ipcProjectionString(1_000_000) }),
@@ -86,13 +87,13 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("load-application-state") }),
   z.object({ type: z.literal("list-sessions") }),
   z.object({ type: z.literal("load-session"), workspacePath: z.string().max(4_096), sessionId: z.string().min(1).max(256) }),
-  z.object({ type: z.literal("open-global-chat"), requestId: z.uuid(), tools: z.array(z.object({ name: z.string().min(1).max(256), description: z.string().min(1).max(2_048), parameters: z.record(z.string(), z.unknown()) })).min(1).max(50) }),
+  z.object({ type: z.literal("open-global-chat"), requestId: z.uuid(), tools: z.array(z.object({ name: z.string().min(1).max(256), description: z.string().min(1).max(2_048), parameters: jsonObjectSchema })).min(1).max(50) }),
   z.object({ type: z.literal("prompt-global-chat"), requestId: z.uuid(), text: z.string().trim().min(1).max(262_144) }),
   z.object({ type: z.literal("abort-global-chat"), requestId: z.uuid() }),
-  z.object({ type: z.literal("clear-global-chat"), requestId: z.uuid(), tools: z.array(z.object({ name: z.string().min(1).max(256), description: z.string().min(1).max(2_048), parameters: z.record(z.string(), z.unknown()) })).min(1).max(50) }),
+  z.object({ type: z.literal("clear-global-chat"), requestId: z.uuid(), tools: z.array(z.object({ name: z.string().min(1).max(256), description: z.string().min(1).max(2_048), parameters: jsonObjectSchema })).min(1).max(50) }),
   z.object({ type: z.literal("set-global-chat-model"), requestId: z.uuid(), provider: z.string().min(1).max(256), modelId: z.string().min(1).max(512) }),
   z.object({ type: z.literal("set-global-chat-thinking"), requestId: z.uuid(), level: thinkingLevelSchema }),
-  z.object({ type: z.literal("respond-global-chat-control"), controlRequestId: z.uuid(), result: z.unknown() }),
+  z.object({ type: z.literal("respond-global-chat-control"), controlRequestId: z.uuid(), result: jsonValueSchema }),
   z.object({ type: z.literal("list-review-threads"), workspacePath: z.string().max(4_096), sessionId: z.string().min(1).max(256) }),
   z.object({ type: z.literal("create-review-thread"), workspacePath: z.string().max(4_096), sessionId: z.string().min(1).max(256), anchor: reviewAnchorSchema, body: z.string().min(1).max(262_144) }),
   z.object({ type: z.literal("reply-review-thread"), workspacePath: z.string().max(4_096), sessionId: z.string().min(1).max(256), threadId: z.string().min(1).max(256), body: z.string().min(1).max(262_144) }),
@@ -126,7 +127,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("navigate-session"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), entryId: z.string().max(256) }),
   z.object({ type: z.literal("inspect-changes"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }),
   z.object({ type: z.literal("get-changelog"), requestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }),
-  z.object({ type: z.literal("respond-artifact"), requestId: z.uuid(), artifactRequestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), value: z.unknown().optional(), cancelled: z.boolean() }),
+  z.object({ type: z.literal("respond-artifact"), requestId: z.uuid(), artifactRequestId: z.uuid(), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), value: jsonValueSchema.optional(), cancelled: z.boolean() }),
   z.object({ type: z.literal("export-artifacts"), workspacePath: z.string().max(4_096), sessionId: z.string().max(256) }),
   z.object({
     type: z.literal("respond-ui"),

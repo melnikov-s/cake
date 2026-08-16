@@ -89,7 +89,9 @@ async function resolveRepository(workspacePath: string) {
   return { root, prefix };
 }
 
-function isNotGitRepositoryFailure(error: unknown) {
+interface GitCommandFailure { stderr: string | Buffer }
+
+function isNotGitRepositoryFailure(error: unknown): error is GitCommandFailure {
   if (!error || typeof error !== "object" || !("stderr" in error)) return false;
   return String(error.stderr).toLowerCase().includes("not a git repository");
 }

@@ -4,10 +4,15 @@ import { customizationProvenanceSchema, customizationStateSchema, type Customiza
 import type { CakePaths } from "./cake-paths";
 import type { CandidateBuild, PluginBuildService } from "./plugin-build-service";
 import { AtomicFileWriter } from "./atomic-file-writer";
+import { hasFileErrorCode } from "./file-errors";
 
 function initialState(): CustomizationState {
   return customizationStateSchema.parse({ schemaVersion: 1, recoveryRequired: false, diagnostics: [], updatedAt: new Date().toISOString() });
 }
+
+export type StartupRenderer =
+  | { kind: "factory" }
+  | { kind: "custom"; path: string; revision: string };
 
 export class PluginActivationService {
   private state = initialState();
@@ -26,7 +31,7 @@ export class PluginActivationService {
     await mkdir(this.paths.recovery, { recursive: true });
     try { this.state = customizationStateSchema.parse(JSON.parse(await readFile(this.statePath, "utf8"))); }
     catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT" && !(error instanceof SyntaxError)) {
+      if (!hasFileErrorCode(error, "ENOENT") && !(error instanceof SyntaxError)) {
         this.state = { ...initialState(), recoveryRequired: true, diagnostics: [{ phase: "discovery", message: `Could not read customization activation state: ${error instanceof Error ? error.message : String(error)}` }] };
       }
     }
@@ -43,7 +48,7 @@ export class PluginActivationService {
 
   buildPath(revision: string) { return join(this.paths.recovery, "builds", revision, "index.html"); }
 
-  startupRenderer(): { kind: "factory" | "custom"; path?: string; revision?: string } {
+  startupRenderer(): StartupRenderer {
     if (this.state.recoveryRequired || this.state.pendingRevision || !this.state.activeRevision) return { kind: "factory" };
     return { kind: "custom", revision: this.state.activeRevision, path: this.buildPath(this.state.activeRevision) };
   }

@@ -1,9 +1,10 @@
 import { homedir } from "node:os";
 import { createCakeRuntime, type CakeRuntime, type CakeRuntimeEvent, type GlobalControlTool } from "../agent/cake-runtime";
 import type { DesktopEvent } from "../ipc/desktop-ipc";
+import type { JsonValue } from "../ipc/json-contract";
 
 interface PendingControlRequest {
-  settle(result: unknown): void;
+  settle(result: JsonValue): void;
 }
 
 export interface GlobalChatDriverOptions {
@@ -71,7 +72,7 @@ export class GlobalChatDriver {
     });
   }
 
-  respond(controlRequestId: string, result: unknown) {
+  respond(controlRequestId: string, result: JsonValue) {
     this.pendingControl.get(controlRequestId)?.settle(result);
   }
 
@@ -116,10 +117,10 @@ export class GlobalChatDriver {
     }
   }
 
-  private requestControl(invocation: { name: string; arguments: unknown }, signal: AbortSignal) {
-    return new Promise<unknown>((resolve) => {
+  private requestControl(invocation: { name: string; arguments: JsonValue }, signal: AbortSignal) {
+    return new Promise<JsonValue>((resolve) => {
       const controlRequestId = crypto.randomUUID();
-      const settle = (result: unknown) => {
+      const settle = (result: JsonValue) => {
         this.pendingControl.delete(controlRequestId);
         signal.removeEventListener("abort", abort);
         resolve(result);
@@ -146,11 +147,9 @@ export class GlobalChatDriver {
   }
 
   private emitSnapshot(snapshot: Awaited<ReturnType<CakeRuntime["snapshot"]>>, requestId?: string) {
-    this.options.emit({
-      type: "global-chat-snapshot",
-      ...(requestId ? { requestId } : {}),
-      snapshot
-    });
+    this.options.emit(requestId
+      ? { type: "global-chat-snapshot", requestId, snapshot }
+      : { type: "global-chat-snapshot", snapshot });
   }
 
   private async run(requestId: string, operation: () => Promise<void>) {

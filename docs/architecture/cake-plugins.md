@@ -102,8 +102,9 @@ plugin owns that alias. Async commands receive an `AbortSignal` and are aborted
 when the renderer is replaced. `context.reveal()` pairs with
 `useContributionReveal()` without imposing fixed layout slots.
 
-`usePluginGlobalState(pluginId, key, initialValue)` and
-`usePluginSessionState(pluginId, key, initialValue)` suspend the contribution
+`usePluginGlobalState(pluginId, key, schema, initialValue)` and
+`usePluginSessionState(pluginId, key, schema, initialValue)` validate persisted
+JSON through the supplied Zod schema and suspend the contribution
 until the stored JSON value is loaded, so dependent effects do not run against
 a temporary default. Writes use React updater semantics and optimistic storage
 versions. Global records are keyed by plugin and key; session records also use

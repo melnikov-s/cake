@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { cakePluginManifestSchema, type CakePluginManifest, type PluginDiagnostic } from "../plugin/plugin-contract";
+import { hasFileErrorCode } from "./file-errors";
 import type { CakePaths } from "./cake-paths";
 import { AtomicFileWriter } from "./atomic-file-writer";
 import type { PluginStatus } from "../plugin/plugin-contract";
@@ -163,7 +164,7 @@ export class PluginRepository {
       try {
         const entry = await lstat(current);
         if (entry.isSymbolicLink() || !entry.isDirectory()) throw new Error(`Customization path crosses a non-directory entry: ${logicalPath}`);
-      } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") break; throw error; }
+      } catch (error) { if (hasFileErrorCode(error, "ENOENT")) break; throw error; }
     }
     if (!mustExist) return target;
     const canonical = await realpath(target);
@@ -175,7 +176,7 @@ export class PluginRepository {
     await Promise.all([mkdir(this.paths.plugins, { recursive: true }), mkdir(this.paths.scenes, { recursive: true })]);
     const scenePath = join(this.paths.scenes, "global.tsx");
     try { await lstat(scenePath); } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      if (!hasFileErrorCode(error, "ENOENT")) throw error;
       await writeFile(scenePath, defaultGlobalScene, { flag: "wx" });
     }
     const scene = await realpath(scenePath);
@@ -201,13 +202,13 @@ export class PluginRepository {
     }
     plugins.sort((a, b) => a.manifest.id.localeCompare(b.manifest.id));
 
-    const agentResources = { skills: [] as string[], prompts: [] as string[], extensions: [] as string[] };
+    const agentResources: CustomizationSource["agentResources"] = { skills: [], prompts: [], extensions: [] };
     for (const plugin of plugins) {
       for (const [directory, target, directories] of [["skills", agentResources.skills, true], ["prompts", agentResources.prompts, false], ["pi-extensions", agentResources.extensions, false]] as const) {
         const resourceRoot = join(plugin.root, directory);
         let entries;
         try { entries = await readdir(resourceRoot, { withFileTypes: true }); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") continue; throw error; }
+        catch (error) { if (hasFileErrorCode(error, "ENOENT")) continue; throw error; }
         for (const entry of entries) {
           if (directories ? !entry.isDirectory() : !entry.isFile()) continue;
           const resource = await realpath(join(resourceRoot, entry.name));
@@ -224,7 +225,7 @@ export class PluginRepository {
   async snapshotSource(source: CustomizationSource) {
     const destination = join(this.paths.recovery, "sources", source.revision);
     try { if ((await lstat(destination)).isDirectory()) return destination; }
-    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    catch (error) { if (!hasFileErrorCode(error, "ENOENT")) throw error; }
     const temporary = `${destination}.tmp-${crypto.randomUUID()}`;
     const roots = [
       { label: "scenes", root: this.paths.scenes },
@@ -248,7 +249,7 @@ export class PluginRepository {
       await rename(temporary, destination);
     } catch (error) {
       await rm(temporary, { recursive: true, force: true });
-      if ((error as NodeJS.ErrnoException).code === "EEXIST") return destination;
+      if (hasFileErrorCode(error, "EEXIST")) return destination;
       throw error;
     }
     return destination;

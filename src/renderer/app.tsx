@@ -28,7 +28,7 @@ import { CopyErrorDetailsButton } from "@/components/copy-error-details-button";
 import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
 import { PluginSettings } from "@/components/plugin-settings";
 import { MessageCommentDraftPopover, MessageCommentThreadPopover, MessageSelectionAction, type MessageCommentAnchorRect } from "@/components/message-comment-popover";
-import type { CompatibilityResource, PiSettings, UiPart } from "../ipc/session-contract";
+import { piSettingsSchema, thinkingLevelSchema, type CompatibilityResource, type PiSettings, type UiPart } from "../ipc/session-contract";
 import type { ProjectWorkbenchStore } from "./stores/ProjectWorkbenchStore";
 import type { ProjectSessionStore } from "./stores/ProjectSessionStore";
 import type { ProjectCatalogStore } from "./stores/ProjectCatalogStore";
@@ -68,12 +68,13 @@ const ForkIcon = () => <Icon size={15}><circle cx="6" cy="5" r="2" /><circle cx=
 const CheckIcon = () => <Icon size={15}><path d="m5 12 4 4L19 6" /></Icon>;
 const ChangesIcon = () => <Icon size={15}><path d="M4 7h10M4 17h10M17 4v6M14 7l3 3 3-3M17 14v6M14 17l3 3 3-3" /></Icon>;
 const BrowseIcon = () => <Icon size={15}><path d="M4 5.5h6l1.8 2H20v11H4z" /><path d="M4 9h16" /></Icon>;
+const compatibilityResourceKinds: CompatibilityResource["kind"][] = ["extension", "skill", "prompt", "package"];
 
 function CommandPane({ store, extensionUi }: { store: ProjectWorkbenchStore; extensionUi: ExtensionUiStore }) {
   if (!store.commandPane || !store.session) return null;
   const title = store.commandPane === "tree" ? "Session tree" : store.commandPane === "changelog" ? "Pi changelog" : "Pi resources";
   const resourceGroups = store.commandPane === "resources"
-    ? (["extension", "skill", "prompt", "package"] as CompatibilityResource["kind"][]).map((kind) => ({ kind, resources: store.session!.compatibility.resources.filter((item) => item.kind === kind) }))
+    ? compatibilityResourceKinds.map((kind) => ({ kind, resources: store.session!.compatibility.resources.filter((item) => item.kind === kind) }))
     : [];
   const diagnostics = store.commandPane === "resources"
     ? [...new Map([...store.session.compatibility.diagnostics, ...extensionUi.compatibilityDiagnostics].map((item) => [item.id, item])).values()]
@@ -92,9 +93,15 @@ function CommandPane({ store, extensionUi }: { store: ProjectWorkbenchStore; ext
 
 const messageHighlightRanges = new Map<string, Range[]>();
 
+type HighlightValue = { readonly priority?: number };
+
 function refreshMessageHighlights() {
-  const registry = Reflect.get(globalThis.CSS ?? {}, "highlights") as { set(name: string, value: unknown): void; delete(name: string): void } | undefined;
-  const HighlightConstructor = Reflect.get(globalThis, "Highlight") as (new (...ranges: Range[]) => unknown) | undefined;
+  // SAFETY: CSS.highlights is feature-detected before use; TypeScript's DOM
+  // declarations do not yet expose the experimental registry consistently.
+  const registry = Reflect.get(globalThis.CSS ?? {}, "highlights") as { set(name: string, value: HighlightValue): void; delete(name: string): void } | undefined;
+  // SAFETY: the experimental Highlight constructor is feature-detected and is
+  // invoked only with DOM Range instances.
+  const HighlightConstructor = Reflect.get(globalThis, "Highlight") as (new (...ranges: Range[]) => HighlightValue) | undefined;
   if (!registry || !HighlightConstructor) return;
   if (!document.getElementById("cake-message-comment-highlight-style")) {
     const style = document.createElement("style");
@@ -578,7 +585,7 @@ const ChatComposer = observer(function ChatComposer({ configuration, onSubmit, i
       <div className="composer-context">
         {toolbarLeading}
         <ModelCombobox ariaLabel="Model" groups={configuration.connectedModelsByProvider} value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onSelect={(value) => void configuration.selectModel(value)} />
-        <select aria-label="Thinking level" value={session?.thinkingLevel ?? "off"} onChange={(event) => void configuration.selectThinkingLevel(event.target.value as NonNullable<typeof session>["thinkingLevel"])}>{session?.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "No reasoning" : `${level.charAt(0).toUpperCase()}${level.slice(1)} reasoning`}</option>)}</select>
+        <select aria-label="Thinking level" value={session?.thinkingLevel ?? "off"} onChange={(event) => void configuration.selectThinkingLevel(thinkingLevelSchema.parse(event.target.value))}>{session?.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "No reasoning" : `${level.charAt(0).toUpperCase()}${level.slice(1)} reasoning`}</option>)}</select>
       </div>
       <div className="composer-actions">{toolbarActions}</div>
     </ComposerToolbar>
@@ -652,9 +659,7 @@ function SettingsPackagesField({ value, onApply }: { value: PiSettings["packages
   useEffect(() => { setDraft(serialized); setError(undefined); }, [serialized]);
   const apply = () => {
     try {
-      const parsed: unknown = JSON.parse(draft);
-      if (!Array.isArray(parsed)) throw new Error("Packages must be a JSON array");
-      onApply(parsed as PiSettings["packages"]);
+      onApply(piSettingsSchema.shape.packages.parse(JSON.parse(draft)));
       setError(undefined);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError));
@@ -683,7 +688,7 @@ export const SettingsPage = observer(function SettingsPage({ store, settings, co
         <header><div><h2 id="pi-settings-title">Current chat</h2><p>Model and reasoning changes apply to this chat and become Pi’s defaults.</p></div><span className={`settings-runtime status-${store.piState}`}><i />{store.piState}</span></header>
         {store.session ? <div className="settings-fields">
           <div className="settings-field"><span>Model<small>The model Pi uses for its next response.</small></span><ModelCombobox ariaLabel="Settings model" groups={configuration?.connectedModelsByProvider ?? []} value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onSelect={(value) => void configuration?.selectModel(value)} variant="settings" /></div>
-          <label><span>Reasoning<small>Controls how much time Pi spends thinking.</small></span><select aria-label="Settings thinking level" value={store.session.thinkingLevel} onChange={(event) => void configuration?.selectThinkingLevel(event.target.value as NonNullable<typeof store.session>["thinkingLevel"])}>{store.session.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "Off" : level.charAt(0).toUpperCase() + level.slice(1)}</option>)}</select></label>
+          <label><span>Reasoning<small>Controls how much time Pi spends thinking.</small></span><select aria-label="Settings thinking level" value={store.session.thinkingLevel} onChange={(event) => void configuration?.selectThinkingLevel(thinkingLevelSchema.parse(event.target.value))}>{store.session.availableThinkingLevels.map((level) => <option key={level} value={level}>{level === "off" ? "Off" : level.charAt(0).toUpperCase() + level.slice(1)}</option>)}</select></label>
         </div> : <p className="settings-empty">Open a project or start a one-off chat to choose a model and reasoning level.</p>}
       </section>
 
@@ -693,8 +698,8 @@ export const SettingsPage = observer(function SettingsPage({ store, settings, co
           <SettingsToggle label="Auto-compact" description="Compact context automatically when it gets too large." checked={pi.autoCompact} onChange={(value) => void settings.setPiSetting({ key: "autoCompact", value })} />
           <SettingsToggle label="Automatic retry" description="Retry transient provider failures automatically." checked={pi.retryEnabled} onChange={(value) => void settings.setPiSetting({ key: "retryEnabled", value })} />
           <SettingsToggle label="Hide thinking" description="Hide reasoning blocks in assistant responses." checked={pi.hideThinkingBlock} onChange={(value) => void settings.setPiSetting({ key: "hideThinkingBlock", value })} />
-          <label><span>Steering mode<small>How steering messages are delivered while Pi is working.</small></span><select aria-label="Steering mode" value={pi.steeringMode} onChange={(event) => void settings.setPiSetting({ key: "steeringMode", value: event.target.value as typeof pi.steeringMode })}><option value="one-at-a-time">One at a time</option><option value="all">All at once</option></select></label>
-          <label><span>Follow-up mode<small>How queued follow-ups are delivered after Pi stops.</small></span><select aria-label="Follow-up mode" value={pi.followUpMode} onChange={(event) => void settings.setPiSetting({ key: "followUpMode", value: event.target.value as typeof pi.followUpMode })}><option value="one-at-a-time">One at a time</option><option value="all">All at once</option></select></label>
+          <label><span>Steering mode<small>How steering messages are delivered while Pi is working.</small></span><select aria-label="Steering mode" value={pi.steeringMode} onChange={(event) => void settings.setPiSetting({ key: "steeringMode", value: piSettingsSchema.shape.steeringMode.parse(event.target.value) })}><option value="one-at-a-time">One at a time</option><option value="all">All at once</option></select></label>
+          <label><span>Follow-up mode<small>How queued follow-ups are delivered after Pi stops.</small></span><select aria-label="Follow-up mode" value={pi.followUpMode} onChange={(event) => void settings.setPiSetting({ key: "followUpMode", value: piSettingsSchema.shape.followUpMode.parse(event.target.value) })}><option value="one-at-a-time">One at a time</option><option value="all">All at once</option></select></label>
         </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
       </section>
 
@@ -732,7 +737,7 @@ export const SettingsPage = observer(function SettingsPage({ store, settings, co
       <section className="settings-section" aria-labelledby="network-title">
         <header><div><h2 id="network-title">Network</h2><p>Choose Pi’s provider transport and idle timeout.</p></div></header>
         {pi ? <div className="settings-fields">
-          <label><span>Transport<small>Preferred transport when a provider supports more than one.</small></span><select aria-label="Provider transport" value={pi.transport} onChange={(event) => void settings.setPiSetting({ key: "transport", value: event.target.value as typeof pi.transport })}><option value="auto">Automatic</option><option value="sse">SSE</option><option value="websocket">WebSocket</option><option value="websocket-cached">WebSocket cached</option></select></label>
+          <label><span>Transport<small>Preferred transport when a provider supports more than one.</small></span><select aria-label="Provider transport" value={pi.transport} onChange={(event) => void settings.setPiSetting({ key: "transport", value: piSettingsSchema.shape.transport.parse(event.target.value) })}><option value="auto">Automatic</option><option value="sse">SSE</option><option value="websocket">WebSocket</option><option value="websocket-cached">WebSocket cached</option></select></label>
           <label><span>HTTP idle timeout<small>Maximum pause while Pi waits for HTTP data.</small></span><select aria-label="HTTP idle timeout" value={pi.httpIdleTimeoutMs} onChange={(event) => void settings.setPiSetting({ key: "httpIdleTimeoutMs", value: Number(event.target.value) })}><option value={30_000}>30 seconds</option><option value={60_000}>1 minute</option><option value={120_000}>2 minutes</option><option value={300_000}>5 minutes</option><option value={0}>Disabled</option></select></label>
         </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
       </section>
@@ -740,7 +745,7 @@ export const SettingsPage = observer(function SettingsPage({ store, settings, co
       <section className="settings-section" aria-labelledby="safety-title">
         <header><div><h2 id="safety-title">Safety & privacy</h2><p>Trust defaults, warnings, and Pi’s optional update telemetry.</p></div></header>
         {pi ? <div className="settings-fields">
-          <label><span>Default project trust<small>Fallback when no saved trust decision applies.</small></span><select aria-label="Default project trust" value={pi.defaultProjectTrust} onChange={(event) => void settings.setPiSetting({ key: "defaultProjectTrust", value: event.target.value as typeof pi.defaultProjectTrust })}><option value="ask">Ask</option><option value="always">Always trust</option><option value="never">Never trust</option></select></label>
+          <label><span>Default project trust<small>Fallback when no saved trust decision applies.</small></span><select aria-label="Default project trust" value={pi.defaultProjectTrust} onChange={(event) => void settings.setPiSetting({ key: "defaultProjectTrust", value: piSettingsSchema.shape.defaultProjectTrust.parse(event.target.value) })}><option value="ask">Ask</option><option value="always">Always trust</option><option value="never">Never trust</option></select></label>
           <SettingsToggle label="Anthropic extra usage warning" description="Warn when subscription authentication may use paid extra usage." checked={pi.anthropicExtraUsageWarning} onChange={(value) => void settings.setPiSetting({ key: "anthropicExtraUsageWarning", value })} />
           <SettingsToggle label="Install telemetry" description="Send Pi’s anonymous version/update ping after detected updates." checked={pi.enableInstallTelemetry} onChange={(value) => void settings.setPiSetting({ key: "enableInstallTelemetry", value })} />
         </div> : <p className="settings-empty">Open a chat to load Pi’s settings.</p>}
@@ -762,7 +767,7 @@ export const SettingsPage = observer(function SettingsPage({ store, settings, co
 
       <section className="settings-section" aria-labelledby="appearance-title">
         <header><div><h2 id="appearance-title">Appearance</h2><p>Choose how Cake looks on this device.</p></div></header>
-        <div className="settings-fields"><label><span>Theme<small>Follow your system or use a fixed appearance.</small></span><select aria-label="Color theme" value={settings.theme} onChange={(event) => { settings.setTheme(event.target.value as typeof settings.theme); onViewStateChange(); }}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label></div>
+        <div className="settings-fields"><label><span>Theme<small>Follow your system or use a fixed appearance.</small></span><select aria-label="Color theme" value={settings.theme} onChange={(event) => { const theme = (["system", "light", "dark"] as const).find((candidate) => candidate === event.target.value); if (theme) settings.setTheme(theme); onViewStateChange(); }}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label></div>
       </section>
     </div>
   );
@@ -825,8 +830,12 @@ export const App = observer(function App() {
   if (changes.path !== undefined) return <ChangeExplorer store={changes} reviews={reviews} browse={browse} chat={store} onClose={returnToWorkbench} />;
   if (browse.path !== undefined) return <WorkspaceBrowser store={browse} reviews={reviews} chat={store} onClose={returnToWorkbench} />;
 
+  const shellStyle: CSSProperties & Record<"--sidebar-width" | "--right-pane-width", string> = {
+    "--sidebar-width": `${Math.min(sidebarWidth, sidebarMax)}px`,
+    "--right-pane-width": `${Math.min(commandPaneWidth, commandPaneMax)}px`,
+  };
   return (
-    <main className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${store.commandPane ? "right-pane-open" : ""} ${resizingPanel ? "is-resizing" : ""}`} style={{ "--sidebar-width": `${Math.min(sidebarWidth, sidebarMax)}px`, "--right-pane-width": `${Math.min(commandPaneWidth, commandPaneMax)}px` } as CSSProperties}>
+    <main className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${store.commandPane ? "right-pane-open" : ""} ${resizingPanel ? "is-resizing" : ""}`} style={shellStyle}>
       <Sidebar store={sidebar} projects={projects} chat={store} reviews={reviews} settingsOpen={surface === "settings"} globalChatOpen={surface === "global-chat"} onViewStateChange={() => persistence.schedule()} onToggle={() => setSidebarCollapsed((value) => !value)} onOpenSettings={() => root.showSettings()} onOpenGlobalChat={() => root.showGlobalChat()} onOpenSession={(workspacePath, sessionId) => { void root.openSession(workspacePath, sessionId); }} onCreateSession={(workspacePath) => { void root.createSession(workspacePath); }} onStartOneOffChat={() => { void root.startOneOffChat(); }} onChooseProject={() => { void root.chooseProject(); }} onReloadPi={() => void settings.reloadPi()} />
       {!sidebarCollapsed && <PanelResizeHandle className="sidebar-resize-handle" label="Resize project sidebar" value={sidebarWidth} min={220} max={sidebarMax} edge="left" onChange={setSidebarWidth} onResizeStart={() => setResizingPanel(true)} onResizeEnd={() => setResizingPanel(false)} />}
       <section className="workspace" data-session-id={session?.sessionId}>

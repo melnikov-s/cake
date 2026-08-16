@@ -1,5 +1,5 @@
 import { Model, id, state } from "r-state-tree";
-import type { ArtifactRecord, CakeArtifactV1 } from "../../ipc/artifact-contract";
+import { cakeArtifactV1Schema, type ArtifactRecord, type CakeArtifactV1 } from "../../ipc/artifact-contract";
 
 export class ArtifactModel extends Model {
   @id id = "";
@@ -18,7 +18,7 @@ export class ArtifactModel extends Model {
 
   get value(): ArtifactRecord {
     return {
-      artifact: {
+      artifact: cakeArtifactV1Schema.parse({
         protocol: this.protocol,
         id: this.id,
         sessionId: this.sessionId,
@@ -28,7 +28,7 @@ export class ArtifactModel extends Model {
         payload: this.payload,
         fallback: this.fallback,
         interaction: this.interaction
-      } as CakeArtifactV1,
+      }),
       workspacePath: this.workspacePath,
       digest: this.digest,
       createdAt: this.createdAt,

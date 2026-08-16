@@ -43,6 +43,8 @@ export class SessionModel extends Model {
 
   applySnapshot(snapshot: SessionSnapshot) {
     batch(() => {
+      // SAFETY: This partial snapshot only updates scalar SessionModel state; child collections
+      // are reconciled separately below so their model identities remain stable.
       applySnapshot(this, {
         workspacePath: snapshot.workspacePath,
         sessionId: snapshot.sessionId,
@@ -75,12 +77,14 @@ export class SessionModel extends Model {
   }
 
   upsertPart(part: UiPart) {
+    // SAFETY: MessageModel's persisted fields are the UiPart discriminated union.
+    const partSnapshot = part as Snapshot<MessageModel>;
     const existing = this.parts.find((current) => current.id === part.id);
     if (existing) {
-      applySnapshot(existing, part as Snapshot<MessageModel>);
+      applySnapshot(existing, partSnapshot);
       return;
     }
-    this.parts.push(MessageModel.create(part as Snapshot<MessageModel>));
+    this.parts.push(MessageModel.create(partSnapshot));
   }
 
   removePart(partId: string) {
@@ -104,12 +108,14 @@ export class SessionModel extends Model {
   }
 
   upsertReviewThread(thread: ReviewThread) {
+    // SAFETY: ReviewThreadModel mirrors the validated ReviewThread IPC contract.
+    const threadSnapshot = thread as Snapshot<ReviewThreadModel>;
     const existing = this.reviewThreads.find((item) => item.id === thread.id);
     if (existing) {
-      if (existing.updatedAt <= thread.updatedAt) applySnapshot(existing, thread as Snapshot<ReviewThreadModel>);
+      if (existing.updatedAt <= thread.updatedAt) applySnapshot(existing, threadSnapshot);
       return;
     }
-    this.reviewThreads.push(ReviewThreadModel.create(thread as Snapshot<ReviewThreadModel>));
+    this.reviewThreads.push(ReviewThreadModel.create(threadSnapshot));
   }
 }
 
@@ -122,26 +128,30 @@ function reconcileModelOptions(target: ModelOptionModel[], snapshots: SessionSna
   const key = (value: { provider: string; id: string }) => `${value.provider}/${value.id}`;
   const existing = new Map(target.map((model) => [key(model), model]));
   const next = snapshots.map((snapshot) => {
-    const model = existing.get(key(snapshot)) ?? ModelOptionModel.create(snapshot as Snapshot<ModelOptionModel>);
-    if (existing.has(key(snapshot))) applySnapshot(model, snapshot as Snapshot<ModelOptionModel>);
+    // SAFETY: ModelOptionModel mirrors each model option in the validated session snapshot.
+    const modelSnapshot = snapshot as Snapshot<ModelOptionModel>;
+    const model = existing.get(key(snapshot)) ?? ModelOptionModel.create(modelSnapshot);
+    if (existing.has(key(snapshot))) applySnapshot(model, modelSnapshot);
     return model;
   });
   target.splice(0, target.length, ...next);
 }
 
-type ChildConstructor<T extends Model> = {
+type ChildConstructor<T extends Model & { id: string }> = {
   create(snapshot?: Snapshot<T>): T;
 };
 
-function reconcileChildren<T extends Model, S extends { id: string }>(
+function reconcileChildren<T extends Model & { id: string }, S extends { id: string }>(
   target: T[],
   snapshots: S[],
   Type: ChildConstructor<T>
 ) {
-  const existing = new Map(target.map((model) => [(model as T & { id: string }).id, model]));
+  const existing = new Map(target.map((model) => [model.id, model]));
   const next = snapshots.map((snapshot) => {
-    const model = existing.get(snapshot.id) ?? Type.create(snapshot as Snapshot<T>);
-    if (existing.has(snapshot.id)) applySnapshot(model, snapshot as Snapshot<T>);
+    // SAFETY: Each caller pairs a validated IPC snapshot with the model that mirrors it.
+    const childSnapshot = snapshot as Snapshot<T>;
+    const model = existing.get(snapshot.id) ?? Type.create(childSnapshot);
+    if (existing.has(snapshot.id)) applySnapshot(model, childSnapshot);
     return model;
   });
   target.splice(0, target.length, ...next);

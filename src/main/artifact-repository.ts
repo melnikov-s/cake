@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { z } from "zod";
 import {
   artifactRecordSchema,
   parseArtifactInput,
@@ -22,13 +23,25 @@ interface StoredArtifactMetadata {
   updatedAt: string;
 }
 
+const storedArtifactMetadataSchema: z.ZodType<StoredArtifactMetadata> = z.object({
+  protocol: z.literal("cake.artifact/v1"),
+  id: z.string(),
+  sessionId: z.string(),
+  workspacePath: z.string(),
+  revision: z.number().int().positive(),
+  kind: z.enum(["markdown", "table", "diagram", "form", "media", "diff", "html", "widget", "request"]),
+  digest: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
 export class ArtifactRepository {
   private readonly updates = new KeyedSerialExecutor<string>();
   private readonly writer = new AtomicFileWriter();
   constructor(private readonly root: string) {}
 
-  async upsert(workspacePath: string, input: unknown): Promise<ArtifactRecord> {
-    const artifact = parseArtifactInput(input);
+  async upsert(workspacePath: string, untrustedInput: unknown): Promise<ArtifactRecord> {
+    const artifact = parseArtifactInput(untrustedInput);
     const key = this.recordPath(workspacePath, artifact.sessionId, artifact.id);
     return this.updates.run(key, async () => {
       const existing = await this.get(workspacePath, artifact.sessionId, artifact.id);
@@ -57,7 +70,7 @@ export class ArtifactRepository {
 
   async get(workspacePath: string, sessionId: string, artifactId: string): Promise<ArtifactRecord | undefined> {
     try {
-      const metadata = JSON.parse(await readFile(this.recordPath(workspacePath, sessionId, artifactId), "utf8")) as StoredArtifactMetadata;
+      const metadata = storedArtifactMetadataSchema.parse(JSON.parse(await readFile(this.recordPath(workspacePath, sessionId, artifactId), "utf8")));
       const artifact = JSON.parse(await readFile(this.blobPath(metadata.digest), "utf8"));
       return artifactRecordSchema.parse({ artifact, ...metadata });
     } catch (error) {
@@ -75,7 +88,7 @@ export class ArtifactRepository {
       throw error;
     }
     const records = await Promise.all(names.filter((name) => name.endsWith(".json")).map(async (name) => {
-      const metadata = JSON.parse(await readFile(join(this.recordDirectory(workspacePath, sessionId), name), "utf8")) as StoredArtifactMetadata;
+      const metadata = storedArtifactMetadataSchema.parse(JSON.parse(await readFile(join(this.recordDirectory(workspacePath, sessionId), name), "utf8")));
       return this.get(metadata.workspacePath, metadata.sessionId, metadata.id);
     }));
     return records.filter((record): record is ArtifactRecord => Boolean(record)).sort((left, right) => left.createdAt.localeCompare(right.createdAt));

@@ -3,6 +3,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import ts from "typescript";
+import { z } from "zod";
 import { build, type Plugin as VitePlugin } from "vite";
 import type { PluginDiagnostic } from "../plugin/plugin-contract";
 import type { CakePaths } from "./cake-paths";
@@ -14,6 +15,13 @@ export interface CandidateBuild {
   directory: string;
   indexHtml: string;
   diagnostics: PluginDiagnostic[];
+}
+
+const authoringSnapshotSchema = z.object({ schemaVersion: z.number(), cakeVersion: z.string() });
+const runtimePackageSchema = z.object({ version: z.string() });
+
+interface PluginCompilerPaths {
+  [specifier: string]: string[];
 }
 
 async function typescriptFiles(root: string): Promise<string[]> {
@@ -85,7 +93,7 @@ export class PluginBuildService {
   private async typecheck(source: CustomizationSource): Promise<PluginDiagnostic[]> {
     const rootNames = [source.scene, resolve(this.sourceRoot, "src/renderer/env.d.ts")];
     for (const plugin of source.plugins) rootNames.push(...await typescriptFiles(plugin.root));
-    const paths: Record<string, string[]> = {
+    const paths: PluginCompilerPaths = {
       cake: [resolve(this.sourceRoot, "src/renderer/cake.ts")],
       "@/*": [resolve(this.sourceRoot, "src/renderer/*")],
       react: [resolve(this.runtimeRoot, "node_modules/@types/react/index.d.ts")],
@@ -112,8 +120,8 @@ export class PluginBuildService {
     if (this.sourceRoot !== this.runtimeRoot) {
       try {
         const [snapshot, runtimePackage] = await Promise.all([
-          readFile(join(this.sourceRoot, "cake-authoring.json"), "utf8").then(JSON.parse) as Promise<{ schemaVersion: number; cakeVersion: string }>,
-          readFile(join(this.runtimeRoot, "package.json"), "utf8").then(JSON.parse) as Promise<{ version: string }>
+          readFile(join(this.sourceRoot, "cake-authoring.json"), "utf8").then((source) => authoringSnapshotSchema.parse(JSON.parse(source))),
+          readFile(join(this.runtimeRoot, "package.json"), "utf8").then((source) => runtimePackageSchema.parse(JSON.parse(source)))
         ]);
         if (snapshot.schemaVersion !== 1 || snapshot.cakeVersion !== runtimePackage.version) throw new Error(`Authoring snapshot ${snapshot.cakeVersion} does not match Cake ${runtimePackage.version}`);
       } catch (error) {

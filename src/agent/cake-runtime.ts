@@ -24,6 +24,7 @@ import type {
   UiPart
 } from "../ipc/session-contract";
 import { piBuiltinSlashCommands, slashCommandSchema } from "../ipc/session-contract";
+import { jsonValueSchema, type JsonObject, type JsonValue } from "../ipc/json-contract";
 import { artifactRecordSchema, type ArtifactRecord, type ArtifactPointer, type CakeArtifactV1 } from "../ipc/artifact-contract";
 import type { TSchema } from "@earendil-works/pi-ai";
 import { createCakeArtifactExtension } from "./artifact-extension";
@@ -103,7 +104,7 @@ export interface CakeRuntimeOptions {
   pluginResources?: { skills: string[]; prompts: string[]; extensions: string[] };
   requestUi(request: RuntimeUiRequest): Promise<string | undefined>;
   persistArtifact?(artifact: CakeArtifactV1): Promise<ArtifactRecord>;
-  requestArtifact?(record: ArtifactRecord, signal: AbortSignal): Promise<unknown | undefined>;
+  requestArtifact?(record: ArtifactRecord, signal: AbortSignal): Promise<JsonValue | undefined>;
   generateInlineWidget?(input: InlineWidgetGenerationRequest): Promise<InlineWidgetGenerationResult>;
   listArtifacts?(pointers: ArtifactPointer[]): Promise<ArtifactRecord[]>;
   openExternal?(url: string): Promise<void>;
@@ -112,7 +113,7 @@ export interface CakeRuntimeOptions {
   globalControl?: {
     tools: readonly GlobalControlTool[];
     recoveryContext?: string;
-    invoke(input: { name: string; arguments: unknown }, signal: AbortSignal): Promise<unknown>;
+    invoke(input: { name: string; arguments: JsonValue }, signal: AbortSignal): Promise<JsonValue>;
   };
   onEvent(event: CakeRuntimeEvent): void;
 }
@@ -120,7 +121,7 @@ export interface CakeRuntimeOptions {
 export interface GlobalControlTool {
   name: string;
   description: string;
-  parameters: Record<string, unknown>;
+  parameters: JsonObject;
 }
 
 function createGlobalControlExtension(control: NonNullable<CakeRuntimeOptions["globalControl"]>): InlineExtension {
@@ -130,9 +131,11 @@ function createGlobalControlExtension(control: NonNullable<CakeRuntimeOptions["g
         name: tool.name,
         label: tool.name.replaceAll("_", " "),
         description: tool.description,
+        // SAFETY: appControlToolCatalog produced this JSON Schema through
+        // z.toJSONSchema; Pi's TSchema input consumes that same schema shape.
         parameters: tool.parameters as TSchema,
         async execute(_toolCallId, params, signal) {
-          const result = await control.invoke({ name: tool.name, arguments: params }, signal ?? new AbortController().signal);
+          const result = await control.invoke({ name: tool.name, arguments: jsonValueSchema.parse(params) }, signal ?? new AbortController().signal);
           return { content: [{ type: "text", text: formatUnknown(result, 24_000) }], details: result };
         }
       });
@@ -188,7 +191,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   const persistArtifact = options.persistArtifact ?? (async (artifact: CakeArtifactV1) => artifactRecordSchema.parse({ artifact, workspacePath: options.cwd, digest: "0".repeat(64), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }));
   const requestArtifact = options.requestArtifact ?? (async () => undefined);
   let getPiCommands: () => SlashCommandInfo[] = () => [];
-  const runtimeIdentity: { sessionId?: string } = {};
+  interface RuntimeIdentity { sessionId?: string }
+  const runtimeIdentity: RuntimeIdentity = {};
   const commandCatalogExtension: InlineExtension = (pi) => { getPiCommands = () => pi.getCommands(); };
   const resourceLoader = new DefaultResourceLoader(options.globalControl ? {
     cwd: options.cwd,
@@ -237,15 +241,19 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     : directSession ?? (requestedSession
       ? SessionManager.open(requestedSession.path, sessionDir, options.cwd)
       : SessionManager.continueRecent(options.cwd, sessionDir));
-  const { session, extensionsResult, modelFallbackMessage } = await createAgentSession({
+  const agentSessionOptions = {
     cwd: options.cwd,
     agentDir,
     modelRuntime,
     resourceLoader,
     settingsManager,
     sessionManager,
-    ...(options.globalControl ? { noTools: "builtin" as const } : {})
-  });
+  };
+  const { session, extensionsResult, modelFallbackMessage } = await createAgentSession(
+    options.globalControl
+      ? { ...agentSessionOptions, noTools: "builtin" as const }
+      : agentSessionOptions,
+  );
   const cakeSessionId = session.sessionManager.getSessionId();
   runtimeIdentity.sessionId = cakeSessionId;
   let disposed = false;

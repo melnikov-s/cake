@@ -1,12 +1,14 @@
 /* Adapted from Vercel AI Elements tool.tsx at 0c1f5e8c75273f0e95c8faa031544a8aa2bb1a5b (Apache-2.0). Uses Cake tool states. */
 import { useState } from "react";
+import { z } from "zod";
+import { jsonObjectSchema, jsonValueSchema } from "../../../ipc/json-contract";
 import type { UiPart } from "../../../ipc/session-contract";
 import { DiffView } from "./diff-view";
 import { fencedCode, Markdown } from "./markdown";
 
 function parseJson(value: string) {
   try {
-    return JSON.parse(value) as unknown;
+    return jsonValueSchema.parse(JSON.parse(value));
   } catch {
     return undefined;
   }
@@ -20,14 +22,16 @@ function toolTitle(part: Extract<UiPart, { kind: "tool" }>) {
   if (part.name === "edit" && part.filePath) return `edit ${part.filePath}`;
 
   const parsed = parseJson(part.input);
-  const structured = typeof parsed === "object" && parsed !== null ? parsed as Record<string, unknown> : undefined;
+  const structuredResult = jsonObjectSchema.safeParse(parsed);
+  const structured = structuredResult.success ? structuredResult.data : undefined;
+  const parsedString = z.string().safeParse(parsed);
   const detail = part.name === "bash"
     ? part.input
     : part.filePath
       ?? ["command", "path", "file_path", "query", "pattern", "url"]
-        .map((key) => structured?.[key])
-        .find((value): value is string => typeof value === "string")
-      ?? (typeof parsed === "string" ? parsed : parsed === undefined ? part.input : "");
+        .map((key) => z.string().safeParse(structured?.[key]))
+        .find((result) => result.success)?.data
+      ?? (parsedString.success ? parsedString.data : parsed === undefined ? part.input : "");
   const summary = oneLine(detail);
   return summary ? `${part.name} ${summary}` : part.name;
 }
@@ -41,7 +45,9 @@ function editPreview(part: Extract<UiPart, { kind: "tool" }>) {
   if (part.name !== "edit") return undefined;
   if (part.diff) return part.diff;
   try {
-    const input = JSON.parse(part.input) as { edits?: Array<{ oldText?: string; newText?: string }> };
+    const input = z.object({
+      edits: z.array(z.object({ oldText: z.string().optional(), newText: z.string().optional() })).optional(),
+    }).parse(JSON.parse(part.input));
     const edits = Array.isArray(input.edits) ? input.edits : [];
     if (edits.length === 0) return undefined;
     return edits.flatMap((edit, index) => [

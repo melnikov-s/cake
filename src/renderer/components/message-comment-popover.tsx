@@ -62,7 +62,7 @@ function useDismissablePopover(surfaceRef: RefObject<HTMLDivElement | null>, onC
   useEffect(() => {
     const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const dismiss = (event: PointerEvent) => {
-      if (!surfaceRef.current?.contains(event.target as Node)) onClose();
+      if (!(event.target instanceof Node) || !surfaceRef.current?.contains(event.target)) onClose();
     };
     const keydown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();

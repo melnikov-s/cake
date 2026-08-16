@@ -1,6 +1,7 @@
 import { Type } from "@earendil-works/pi-ai";
 import type { InlineExtension } from "@earendil-works/pi-coding-agent";
 import { z } from "zod";
+import { jsonValueSchema, type JsonValue } from "../ipc/json-contract";
 import {
   MAX_ARTIFACT_INPUT_BYTES,
   artifactPointerSchema,
@@ -14,7 +15,7 @@ import type { InlineWidgetGenerationRequest, InlineWidgetGenerationResult } from
 
 export interface ArtifactExtensionOptions {
   persistArtifact(artifact: CakeArtifactV1): Promise<ArtifactRecord>;
-  requestArtifact(record: ArtifactRecord, signal: AbortSignal): Promise<unknown | undefined>;
+  requestArtifact(record: ArtifactRecord, signal: AbortSignal): Promise<JsonValue | undefined>;
   generateInlineWidget?(input: InlineWidgetGenerationRequest): Promise<InlineWidgetGenerationResult>;
 }
 
@@ -83,7 +84,7 @@ export function createCakeArtifactExtension(options: ArtifactExtensionOptions): 
         appendPointer(record);
         const value = await options.requestArtifact(record, signal ?? new AbortController().signal);
         if (value === undefined) return { content: [{ type: "text", text: `The user cancelled request ${request.id}.` }], details: { artifactId: record.artifact.id, cancelled: true } };
-        const validated = validateArtifactResponse(request.responseSchema, value);
+        const validated = validateArtifactResponse(request.responseSchema, jsonValueSchema.parse(value));
         return { content: [{ type: "text", text: `The user submitted a validated response for request ${request.id}: ${formatUnknown(validated, 8_000)}` }], details: { artifactId: record.artifact.id, cancelled: false, value: validated } };
       }
     });
@@ -165,7 +166,7 @@ export function createCakeArtifactExtension(options: ArtifactExtensionOptions): 
         }, sessionId);
         appendPointer(form);
         const value = await options.requestArtifact(form, new AbortController().signal);
-        const validated = value === undefined ? undefined : validateArtifactResponse(form.artifact.interaction?.responseSchema, value);
+        const validated = value === undefined ? undefined : validateArtifactResponse(form.artifact.interaction?.responseSchema, jsonValueSchema.parse(value));
         if (validated !== undefined) {
           const completedForm = await persist({ ...form.artifact, revision: 2, interaction: { mode: "present" }, fallback: { markdown: `${form.artifact.fallback.markdown}\n\n_Response submitted._` } }, sessionId);
           appendPointer(completedForm);

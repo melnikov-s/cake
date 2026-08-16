@@ -2,6 +2,7 @@ import { Store } from "r-state-tree";
 import { validateArtifactResponse, type ArtifactRecord } from "../../ipc/artifact-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import { describeError } from "../error-details";
+import type { JsonValue } from "../../ipc/json-contract";
 
 export interface ArtifactRequestState {
   operationId: string;
@@ -23,7 +24,7 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
   error: string | undefined;
   errorDetails: string | undefined;
 
-  async respond(value?: unknown, cancelled = false) {
+  async respond(value?: JsonValue, cancelled = false) {
     const request = this.request;
     if (!request || this.responding) return;
     this.error = undefined; this.errorDetails = undefined;

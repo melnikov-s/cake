@@ -1,5 +1,5 @@
 import { code } from "@streamdown/code";
-import { Fragment, useEffect, useState, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { ReviewThreadModel } from "../models/review-thread";
@@ -12,14 +12,14 @@ type HighlightResult = ReturnType<typeof code.highlight>;
 export type HighlightTokens = NonNullable<HighlightResult>["tokens"];
 type HighlightLanguage = Parameters<typeof code.highlight>[0]["language"];
 
-const languages: Record<string, HighlightLanguage> = {
-  c: "c", cc: "cpp", cpp: "cpp", css: "css", go: "go", html: "html", java: "java", js: "javascript", jsx: "jsx",
-  json: "json", md: "markdown", mdx: "mdx", php: "php", py: "python", rb: "ruby", rs: "rust", scss: "scss", sh: "shellscript",
-  sql: "sql", svelte: "svelte", ts: "typescript", tsx: "tsx", vue: "vue", xml: "xml", yaml: "yaml", yml: "yaml"
-};
+const languages = new Map<string, HighlightLanguage>([
+  ["c", "c"], ["cc", "cpp"], ["cpp", "cpp"], ["css", "css"], ["go", "go"], ["html", "html"], ["java", "java"], ["js", "javascript"], ["jsx", "jsx"],
+  ["json", "json"], ["md", "markdown"], ["mdx", "mdx"], ["php", "php"], ["py", "python"], ["rb", "ruby"], ["rs", "rust"], ["scss", "scss"], ["sh", "shellscript"],
+  ["sql", "sql"], ["svelte", "svelte"], ["ts", "typescript"], ["tsx", "tsx"], ["vue", "vue"], ["xml", "xml"], ["yaml", "yaml"], ["yml", "yaml"],
+]);
 
 export function languageForSource(path: string): HighlightLanguage {
-  return languages[path.split(".").pop()?.toLowerCase() ?? ""] ?? "markdown";
+  return languages.get(path.split(".").pop()?.toLowerCase() ?? "") ?? "markdown";
 }
 
 function highlightSource(path: string, source: string, apply: (tokens: HighlightTokens) => void) {
@@ -69,7 +69,7 @@ function sourceAnchor(path: string, view: "full" | "file", lines: string[], diff
   };
 }
 
-export function ReviewComposer({ anchor, floating, position, onSave, onCancel }: { anchor: ReviewAnchor; floating?: boolean; position?: { left: number; top: number }; onSave(body: string): Promise<unknown>; onCancel(): void }) {
+export function ReviewComposer({ anchor, floating, position, onSave, onCancel }: { anchor: ReviewAnchor; floating?: boolean; position?: { left: number; top: number }; onSave(body: string): Promise<boolean | void>; onCancel(): void }) {
   const [body, setBody] = useState("");
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -147,7 +147,7 @@ export const SourceReview = observer(function SourceReview({ path, view, lines, 
   useEffect(() => setComposer(undefined), [path, view]);
   const makeAnchor = (startIndex: number, endIndex: number, selectedText: string, startColumn?: number, endColumn?: number) => sourceAnchor(path, view, lines, diff, startIndex, endIndex, selectedText, startColumn, endColumn);
   const selectText = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement).closest("button, textarea, .review-thread, .review-composer")) return;
+    if (event.target instanceof Element && event.target.closest("button, textarea, .review-thread, .review-composer")) return;
     const selected = extractSourceSelection(event.currentTarget, ".change-explorer-line[data-source-index]", "data-source-index");
     if (!selected) return;
     setComposer({
@@ -158,7 +158,7 @@ export const SourceReview = observer(function SourceReview({ path, view, lines, 
   };
   return <div className={`change-explorer-diff change-explorer-full-file ${className}`.trim()} role="table" aria-label={ariaLabel} onMouseUp={selectText}>{lines.map((line, index) => <Fragment key={index}>
     {beforeLine?.(index)}
-    <div className={`change-explorer-line ${lineClass?.(line, index) ?? "context"}`} data-source-index={index} role="row"><span className="review-gutter"><button aria-label={`${actionLabel} line ${index + 1}`} onClick={() => setComposer({ anchor: makeAnchor(index, index, line, 0, line.length), floating: false })}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5" /></svg></button>{index + 1}</span><code><b data-review-prefix>{prefix?.(line, index) ?? " "}</b>{(tokens?.[index] ?? []).length > 0 ? tokens![index]!.map((token, tokenIndex) => <i className="syntax-token" style={token.htmlStyle as CSSProperties} key={`${tokenIndex}-${token.content}`}>{token.content}</i>) : line || " "}</code></div>
+    <div className={`change-explorer-line ${lineClass?.(line, index) ?? "context"}`} data-source-index={index} role="row"><span className="review-gutter"><button aria-label={`${actionLabel} line ${index + 1}`} onClick={() => setComposer({ anchor: makeAnchor(index, index, line, 0, line.length), floating: false })}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5" /></svg></button>{index + 1}</span><code><b data-review-prefix>{prefix?.(line, index) ?? " "}</b>{(tokens?.[index] ?? []).length > 0 ? tokens![index]!.map((token, tokenIndex) => <i className="syntax-token" style={token.htmlStyle} key={`${tokenIndex}-${token.content}`}>{token.content}</i>) : line || " "}</code></div>
     {composer && !composer.floating && composer.anchor.end.diffLine === index && <ReviewComposer anchor={composer.anchor} onSave={(body) => reviews.createThread(composer.anchor, body)} onCancel={() => setComposer(undefined)} />}
     {threads.filter((thread) => thread.anchor.end.diffLine === index).map((thread) => <ReviewThreadCard key={`${thread.id}:${thread.status}`} thread={thread} store={reviews} onFocus={onFocusThread ? () => onFocusThread(thread) : undefined} />)}
   </Fragment>)}{afterLines}{composer?.floating && <ReviewComposer anchor={composer.anchor} floating position={composer.position} onSave={(body) => reviews.createThread(composer.anchor, body)} onCancel={() => setComposer(undefined)} />}</div>;

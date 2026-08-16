@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jsonObjectSchema } from "../ipc/json-contract";
 import type { GlobalSessionSummary, ProjectRecord, UiPart } from "../ipc/session-contract";
 import {
   customizationStateSchema,
@@ -183,7 +184,12 @@ const recentSessionLimit = 20;
 export class AppControlBridge {
   constructor(private readonly host: AppControlHost) {}
 
-  listTools() { return appControlToolCatalog; }
+  listTools() {
+    return appControlToolCatalog.map((tool) => ({
+      ...tool,
+      parameters: jsonObjectSchema.parse(tool.parameters),
+    }));
+  }
 
   getAppState(): AppControlState {
     const sessions = this.sortedSessions();
@@ -201,8 +207,8 @@ export class AppControlBridge {
     };
   }
 
-  async invoke(input: unknown): Promise<AppControlResult> {
-    const invocation = appControlInvocationSchema.parse(input);
+  async invoke(untrustedInput: unknown): Promise<AppControlResult> {
+    const invocation = appControlInvocationSchema.parse(untrustedInput);
     if (invocation.name === "get_app_state") return { ok: true, name: invocation.name, state: this.getAppState() };
     if (invocation.name === "get_customization_state") {
       const state = this.host.customizationState();
@@ -281,7 +287,8 @@ export class AppControlBridge {
     const matching = this.sortedSessions().filter((session) => (!workspacePath || session.workspacePath === workspacePath) && (includeArchived || !session.archived));
     const sessions = matching.slice(cursor, cursor + limit).map((session) => this.toControlSession(session));
     const nextCursor = cursor + sessions.length < matching.length ? cursor + sessions.length : undefined;
-    return { ok: true, name: "list_sessions", sessions, total: matching.length, ...(nextCursor === undefined ? {} : { nextCursor }) };
+    const result = { ok: true, name: "list_sessions", sessions, total: matching.length } as const;
+    return nextCursor === undefined ? result : { ...result, nextCursor };
   }
 
   private async readSession(known: GlobalSessionSummary, { workspacePath, sessionId, cursor, limit }: z.infer<typeof sessionReadSchema>): Promise<AppControlResult> {
@@ -289,14 +296,14 @@ export class AppControlBridge {
     if (!parts) return { ok: false, name: "read_session", error: "Cake could not read that session." };
     const page = parts.slice(cursor, cursor + limit).map((part, offset) => this.toReadablePart(part, cursor + offset));
     const nextCursor = cursor + page.length < parts.length ? cursor + page.length : undefined;
-    return {
+    const result = {
       ok: true,
       name: "read_session",
       session: this.toControlSession(known),
       parts: page,
       totalParts: parts.length,
-      ...(nextCursor === undefined ? {} : { nextCursor })
-    };
+    } as const;
+    return nextCursor === undefined ? result : { ...result, nextCursor };
   }
 
   private async searchSessions({ query, workspacePath, includeArchived, limit }: z.infer<typeof searchSessionsSchema>): Promise<AppControlResult> {
@@ -333,7 +340,7 @@ export class AppControlBridge {
 
   private toControlSession(session: GlobalSessionSummary): AppControlSession {
     const activity = this.host.sessionActivity(session.workspacePath, session.id);
-    return {
+    const result = {
       workspacePath: session.workspacePath,
       workspaceName: session.workspaceName,
       sessionId: session.id,
@@ -341,8 +348,8 @@ export class AppControlBridge {
       modified: session.modified,
       messageCount: session.messageCount,
       archived: session.archived,
-      ...(activity ? { activity } : {})
     };
+    return activity ? { ...result, activity } : result;
   }
 
   private toReadablePart(part: UiPart, index: number): AppControlReadablePart {

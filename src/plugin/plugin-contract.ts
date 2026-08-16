@@ -59,6 +59,7 @@ export const pluginPersistenceRecordSchema = z.object({
 });
 export type PluginPersistenceScope = z.infer<typeof pluginPersistenceScopeSchema>;
 export type PluginPersistenceRecord = z.infer<typeof pluginPersistenceRecordSchema>;
+export type PluginPersistenceValue = PluginPersistenceRecord["value"];
 
 export const pluginStatusSchema = z.object({ id: pluginIdSchema, enabled: z.boolean(), entry: z.string().max(1_024), diagnostics: z.array(pluginDiagnosticSchema).max(100) });
 export type PluginStatus = z.infer<typeof pluginStatusSchema>;

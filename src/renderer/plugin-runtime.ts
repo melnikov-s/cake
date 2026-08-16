@@ -1,5 +1,7 @@
 import { useEffect } from "react";
+import { z } from "zod";
 import type { CakeCommandContext, CakePluginCommand, CakePluginDefinition } from "./cake";
+import type { JsonValue } from "../ipc/json-contract";
 
 interface RegisteredCommand extends CakePluginCommand { pluginId: string; name: string; token: symbol; }
 const commands = new Map<string, RegisteredCommand>();
@@ -26,9 +28,14 @@ export function useCommand(pluginId: string, name: string, command: CakePluginCo
   }, [pluginId, name, command]);
 }
 
-export function useContributionReveal(contributionId: string, reveal: (input: unknown) => void) {
+export function useContributionReveal(contributionId: string, reveal: (input: JsonValue | undefined) => void) {
   useEffect(() => {
-    const listener = (event: Event) => { const detail = (event as CustomEvent<{ contributionId: string; input?: unknown }>).detail; if (detail.contributionId === contributionId) reveal(detail.input); };
+    const detailSchema = z.object({ contributionId: z.string(), input: z.json().optional() });
+    const listener = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const detail = detailSchema.safeParse(event.detail);
+      if (detail.success && detail.data.contributionId === contributionId) reveal(detail.data.input);
+    };
     window.addEventListener("cake:reveal-contribution", listener);
     return () => window.removeEventListener("cake:reveal-contribution", listener);
   }, [contributionId, reveal]);

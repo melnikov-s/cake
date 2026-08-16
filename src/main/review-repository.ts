@@ -199,8 +199,8 @@ export class ReviewRepository {
     });
   }
 
-  private async readRecord(value: unknown): Promise<ReviewThreadRecord> {
-    return reviewThreadRecordSchema.parse(value);
+  private async readRecord(untrustedValue: unknown): Promise<ReviewThreadRecord> {
+    return reviewThreadRecordSchema.parse(untrustedValue);
   }
 
   private async write(record: ReviewThreadRecord) {
