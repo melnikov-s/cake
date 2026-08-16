@@ -110,6 +110,25 @@ async function openSnapshot(store: ProjectWorkbenchStore, desktop: ReturnType<ty
 }
 
 describe("ProjectWorkbenchStore", () => {
+  it("settles a global control request when its result is not serializable", async () => {
+    const desktop = createDesktopClient();
+    const { root } = mountTestStore(desktop.client);
+    await flush();
+    vi.spyOn(root.appControl, "invoke").mockResolvedValue({ ok: true, name: "get_app_state", state: undefined } as never);
+    const controlRequestId = crypto.randomUUID();
+
+    desktop.emit({ type: "global-chat-control-requested", controlRequestId, invocation: { name: "get_app_state", arguments: {} } });
+    await flush();
+
+    expect(desktop.client.respondToGlobalChatControl).toHaveBeenCalledWith(controlRequestId, {
+      ok: false,
+      name: "get_app_state",
+      error: "Cake produced a control result that could not be serialized."
+    });
+    expect(root.globalChatStore.errorDetails).toContain("Context:\nGlobal chat control response: get_app_state");
+    root[Symbol.dispose]();
+  });
+
   it("uses one root intent to reveal and activate a session", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);

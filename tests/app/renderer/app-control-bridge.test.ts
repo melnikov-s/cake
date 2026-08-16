@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { observable } from "r-state-tree";
+import { jsonValueSchema } from "../../../src/ipc/json-contract";
 import type { GlobalSessionSummary, ProjectRecord } from "../../../src/ipc/session-contract";
 import type { CustomizationState, PluginStatus } from "../../../src/plugin/plugin-contract";
 import { AppControlBridge, appControlToolCatalog, type AppControlHost } from "../../../src/renderer/app-control-bridge";
@@ -15,10 +16,7 @@ const sessions: GlobalSessionSummary[] = [
   { id: "running", title: "Background work", created: "2026-08-03T00:00:00.000Z", modified: "2026-08-11T00:00:00.000Z", messageCount: 2, archived: false, workspacePath: "/cake", workspaceName: "Cake" }
 ];
 
-function createBridge(customization: Pick<AppControlHost, "customizationState" | "plugins"> = {
-  customizationState: () => undefined,
-  plugins: () => []
-}) {
+function createBridge(customization: Partial<Pick<AppControlHost, "currentSession" | "customizationState" | "plugins">> = {}) {
   const openSession = vi.fn(async () => undefined);
   const createSession = vi.fn(async () => undefined);
   const sendSessionMessage = vi.fn(async () => undefined);
@@ -27,12 +25,12 @@ function createBridge(customization: Pick<AppControlHost, "customizationState" |
   const setSessionArchived = vi.fn(async () => undefined);
   const setSessionModel = vi.fn(async () => undefined);
   const readSession = vi.fn(async () => [
-    { id: "user-1", kind: "text" as const, role: "user" as const, entryId: "entry-1", text: "Find the PDF session", status: "complete" as const },
+    { id: "user-1", kind: "text" as const, role: "user" as const, text: "Find the PDF session", status: "complete" as const },
     { id: "tool-1", kind: "tool" as const, name: "search", input: "PDF", output: "Found it", state: "success" as const },
     { id: "assistant-1", kind: "text" as const, role: "assistant" as const, entryId: "entry-2", text: "Here it is", status: "complete" as const }
   ]);
   const bridge = new AppControlBridge({
-    currentSession: () => ({ workspacePath: "/cake", sessionId: "current" }),
+    currentSession: customization.currentSession ?? (() => ({ workspacePath: "/cake", sessionId: "current" })),
     projects: () => projects,
     sessions: () => sessions,
     sessionActivity: (_workspacePath, sessionId) => sessionId === "running" ? "running" : undefined,
@@ -44,7 +42,8 @@ function createBridge(customization: Pick<AppControlHost, "customizationState" |
     renameSession,
     setSessionArchived,
     setSessionModel,
-    ...customization,
+    customizationState: customization.customizationState ?? (() => undefined),
+    plugins: customization.plugins ?? (() => []),
     listCustomizationFiles: vi.fn(async () => ({ workingRevision: "a".repeat(64), buildRevision: "a".repeat(64), files: [] })),
     readCustomizationFile: vi.fn(async () => "source"),
     writeCustomizationFile: vi.fn(async () => ({ workingRevision: "b".repeat(64), buildRevision: "b".repeat(64), files: [] })),
@@ -104,17 +103,19 @@ describe("AppControlBridge", () => {
   it("reads a session without opening it", async () => {
     const { bridge, openSession, readSession } = createBridge();
 
-    await expect(bridge.invoke({ name: "read_session", arguments: { workspacePath: "/cake", sessionId: "current", limit: 2 } }))
-      .resolves.toMatchObject({
+    const result = await bridge.invoke({ name: "read_session", arguments: { workspacePath: "/cake", sessionId: "current", limit: 2 } });
+
+    expect(result).toMatchObject({
         ok: true,
         name: "read_session",
         totalParts: 3,
         nextCursor: 2,
         parts: [
-          { index: 0, id: "user-1", entryId: "entry-1", role: "user", text: "Find the PDF session" },
+          { index: 0, id: "user-1", role: "user", text: "Find the PDF session" },
           { index: 1, id: "tool-1", text: "Tool: search\nPDF\nFound it" }
         ]
       });
+    expect(jsonValueSchema.safeParse(result).success).toBe(true);
     expect(readSession).toHaveBeenCalledWith("/cake", "current");
     expect(openSession).not.toHaveBeenCalled();
   });
@@ -143,6 +144,22 @@ describe("AppControlBridge", () => {
         ]
       }
     });
+  });
+
+  it("omits unavailable optional state instead of returning undefined JSON properties", async () => {
+    const { bridge } = createBridge({
+      currentSession: () => undefined,
+      customizationState: () => undefined,
+      plugins: () => []
+    });
+
+    const appState = await bridge.invoke({ name: "get_app_state", arguments: {} });
+    const customizationState = await bridge.invoke({ name: "get_customization_state", arguments: {} });
+
+    expect(appState).not.toHaveProperty("state.currentSession");
+    expect(customizationState).not.toHaveProperty("state");
+    expect(jsonValueSchema.safeParse(appState).success).toBe(true);
+    expect(jsonValueSchema.safeParse(customizationState).success).toBe(true);
   });
 
   it("returns cloneable customization snapshots from observable Store data", async () => {

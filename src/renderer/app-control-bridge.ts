@@ -193,8 +193,7 @@ export class AppControlBridge {
 
   getAppState(): AppControlState {
     const sessions = this.sortedSessions();
-    return {
-      currentSession: this.host.currentSession(),
+    const state = {
       projectCount: this.host.projects().length,
       sessionCount: sessions.length,
       projects: this.host.projects().map((project) => ({
@@ -205,6 +204,8 @@ export class AppControlBridge {
       attentionSessions: sessions.filter((session) => this.host.sessionActivity(session.workspacePath, session.id)).map((session) => this.toControlSession(session)),
       recentSessions: sessions.slice(0, recentSessionLimit).map((session) => this.toControlSession(session))
     };
+    const currentSession = this.host.currentSession();
+    return currentSession ? { ...state, currentSession } : state;
   }
 
   async invoke(untrustedInput: unknown): Promise<AppControlResult> {
@@ -212,12 +213,12 @@ export class AppControlBridge {
     if (invocation.name === "get_app_state") return { ok: true, name: invocation.name, state: this.getAppState() };
     if (invocation.name === "get_customization_state") {
       const state = this.host.customizationState();
-      return {
+      const result = {
         ok: true,
         name: invocation.name,
-        state: state === undefined ? undefined : customizationStateSchema.parse(state),
         plugins: pluginStatusesSchema.parse(this.host.plugins())
-      };
+      } as const;
+      return state === undefined ? result : { ...result, state: customizationStateSchema.parse(state) };
     }
     if (invocation.name === "list_customization_files") return { ok: true, name: invocation.name, ...await this.host.listCustomizationFiles() };
     if (invocation.name === "read_customization_file") return { ok: true, name: invocation.name, path: invocation.arguments.path, content: await this.host.readCustomizationFile(invocation.arguments.path) };
@@ -354,7 +355,10 @@ export class AppControlBridge {
 
   private toReadablePart(part: UiPart, index: number): AppControlReadablePart {
     const base = { index, id: part.id, kind: part.kind };
-    if (part.kind === "text") return { ...base, entryId: part.entryId, role: part.role, text: clip(part.text) };
+    if (part.kind === "text") {
+      const result = { ...base, role: part.role, text: clip(part.text) };
+      return part.entryId === undefined ? result : { ...result, entryId: part.entryId };
+    }
     if (part.kind === "reasoning") return { ...base, text: clip(part.text) };
     if (part.kind === "tool") return { ...base, text: clip([`Tool: ${part.name}`, part.input, part.output].filter(Boolean).join("\n")) };
     if (part.kind === "source") return { ...base, text: clip(`${part.title}\n${part.url}`) };

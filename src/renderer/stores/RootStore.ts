@@ -260,7 +260,15 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     if (event.type === "global-chat-control-requested") {
       void this.appControl.invoke(event.invocation)
         .catch((error) => ({ ok: false as const, name: event.invocation.name, error: error instanceof Error ? error.message : String(error) }))
-        .then((result) => this.client.respondToGlobalChatControl(event.controlRequestId, jsonValueSchema.parse(result)))
+        .then((result) => {
+          try {
+            return jsonValueSchema.parse(result);
+          } catch (error) {
+            this.globalChatStore.reportError(error, `Global chat control response: ${event.invocation.name}`);
+            return { ok: false as const, name: event.invocation.name, error: "Cake produced a control result that could not be serialized." };
+          }
+        })
+        .then((result) => this.client.respondToGlobalChatControl(event.controlRequestId, result))
         .catch((error) => this.globalChatStore.reportError(error, `Global chat control response: ${event.invocation.name}`));
       return;
     }
