@@ -5,7 +5,7 @@ export interface PanelResizeHandleProps {
   value: number;
   min: number;
   max: number;
-  edge: "left" | "right";
+  edge: "left" | "right" | "top" | "bottom";
   className?: string;
   onChange(value: number): void;
   onResizeStart?(): void;
@@ -18,7 +18,9 @@ function clamp(value: number, min: number, max: number) {
 
 /** A pointer- and keyboard-accessible separator for CSS-grid side panels. */
 export function PanelResizeHandle({ label, value, min, max, edge, className = "", onChange, onResizeStart, onResizeEnd }: PanelResizeHandleProps) {
-  const drag = useRef<{ pointerId: number; clientX: number; value: number } | undefined>(undefined);
+  const horizontal = edge === "top" || edge === "bottom";
+  const direction = edge === "left" || edge === "top" ? 1 : -1;
+  const drag = useRef<{ pointerId: number; position: number; value: number } | undefined>(undefined);
   const finish = (event: PointerEvent<HTMLDivElement>) => {
     if (drag.current?.pointerId !== event.pointerId) return;
     drag.current = undefined;
@@ -26,11 +28,12 @@ export function PanelResizeHandle({ label, value, min, max, edge, className = ""
     onResizeEnd?.();
   };
   const keyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const direction = edge === "left" ? 1 : -1;
     const step = event.shiftKey ? 48 : 16;
     let next: number | undefined;
-    if (event.key === "ArrowLeft") next = value - step * direction;
-    else if (event.key === "ArrowRight") next = value + step * direction;
+    if (!horizontal && event.key === "ArrowLeft") next = value - step * direction;
+    else if (!horizontal && event.key === "ArrowRight") next = value + step * direction;
+    else if (horizontal && event.key === "ArrowUp") next = value - step * direction;
+    else if (horizontal && event.key === "ArrowDown") next = value + step * direction;
     else if (event.key === "Home") next = min;
     else if (event.key === "End") next = max;
     if (next === undefined) return;
@@ -41,7 +44,7 @@ export function PanelResizeHandle({ label, value, min, max, edge, className = ""
     className={`panel-resize-handle panel-resize-handle-${edge} ${className}`.trim()}
     role="separator"
     aria-label={label}
-    aria-orientation="vertical"
+    aria-orientation={horizontal ? "horizontal" : "vertical"}
     aria-valuemin={min}
     aria-valuemax={max}
     aria-valuenow={Math.round(value)}
@@ -49,15 +52,15 @@ export function PanelResizeHandle({ label, value, min, max, edge, className = ""
     onKeyDown={keyDown}
     onPointerDown={(event) => {
       if (event.button !== 0) return;
-      drag.current = { pointerId: event.pointerId, clientX: event.clientX, value };
+      drag.current = { pointerId: event.pointerId, position: horizontal ? event.clientY : event.clientX, value };
       event.currentTarget.setPointerCapture?.(event.pointerId);
       onResizeStart?.();
       event.preventDefault();
     }}
     onPointerMove={(event) => {
       if (drag.current?.pointerId !== event.pointerId) return;
-      const direction = edge === "left" ? 1 : -1;
-      onChange(clamp(drag.current.value + (event.clientX - drag.current.clientX) * direction, min, max));
+      const position = horizontal ? event.clientY : event.clientX;
+      onChange(clamp(drag.current.value + (position - drag.current.position) * direction, min, max));
     }}
     onPointerUp={finish}
     onPointerCancel={finish}

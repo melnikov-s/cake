@@ -44,4 +44,17 @@ describe("PanelResizeHandle", () => {
 
     expect(onChange).toHaveBeenCalledWith(336);
   });
+
+  it("resizes a bottom panel vertically and exposes a horizontal separator", () => {
+    const onChange = vi.fn();
+    act(() => root.render(<PanelResizeHandle label="Resize comments" value={120} min={76} max={500} edge="bottom" onChange={onChange} />));
+    const handle = container.querySelector<HTMLElement>('[role="separator"]')!;
+
+    expect(handle.getAttribute("aria-orientation")).toBe("horizontal");
+    act(() => handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })));
+    act(() => handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", shiftKey: true, bubbles: true })));
+
+    expect(onChange).toHaveBeenNthCalledWith(1, 136);
+    expect(onChange).toHaveBeenNthCalledWith(2, 76);
+  });
 });

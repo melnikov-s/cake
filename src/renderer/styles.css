@@ -110,8 +110,12 @@
 .app-shell.sidebar-collapsed.right-pane-open { grid-template-columns: 0 minmax(0, 1fr) var(--right-pane-width); }
 .app-shell.is-resizing, .change-explorer.is-resizing { cursor: col-resize; user-select: none; }
 .app-shell.is-resizing { transition: none; }
-.panel-resize-handle { position: absolute; z-index: 40; top: 0; bottom: 0; width: 9px; cursor: col-resize; touch-action: none; -webkit-app-region: no-drag; }
-.panel-resize-handle::after { position: absolute; top: 0; bottom: 0; left: 4px; width: 1px; background: transparent; content: ""; transition: background 120ms ease, box-shadow 120ms ease; }
+.panel-resize-handle { position: absolute; z-index: 40; touch-action: none; -webkit-app-region: no-drag; }
+.panel-resize-handle-left, .panel-resize-handle-right { top: 0; bottom: 0; width: 9px; cursor: col-resize; }
+.panel-resize-handle-top, .panel-resize-handle-bottom { right: 0; left: 0; height: 9px; cursor: row-resize; }
+.panel-resize-handle::after { position: absolute; background: transparent; content: ""; transition: background 120ms ease, box-shadow 120ms ease; }
+.panel-resize-handle-left::after, .panel-resize-handle-right::after { top: 0; bottom: 0; left: 4px; width: 1px; }
+.panel-resize-handle-top::after, .panel-resize-handle-bottom::after { top: 4px; right: 0; left: 0; height: 1px; }
 .panel-resize-handle:hover::after, .panel-resize-handle:focus-visible::after, .panel-resize-handle:active::after { background: var(--accent); box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 25%, transparent); }
 .panel-resize-handle:focus-visible { outline: 0; }
 .sidebar-resize-handle { left: calc(var(--sidebar-width) - 5px); }
@@ -286,7 +290,7 @@
 .change-explorer-source select:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 17%, transparent); }
 .change-explorer-view-toggle button { height: 25px; padding: 0 9px; border: 0; border-radius: 5px; background: transparent; color: var(--muted-foreground); font-size: 10px; font-weight: 600; cursor: pointer; }
 .change-explorer-view-toggle button:hover { color: var(--foreground); }.change-explorer-view-toggle button.active { background: var(--card); color: var(--foreground); box-shadow: 0 1px 2px color-mix(in oklab, black 12%, transparent); }
-.change-explorer-file > header small { display: block; margin-bottom: 3px; color: var(--muted-foreground); font: 9px var(--font-mono); letter-spacing: .11em; text-transform: uppercase; }
+.change-explorer-file > header small { display: block; overflow: hidden; margin-bottom: 3px; color: var(--muted-foreground); font: 9px var(--font-mono); letter-spacing: .11em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
 .change-explorer-file h1 { overflow: hidden; margin: 0; font: 600 13px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .change-explorer-file > header > span { display: flex; gap: 8px; font: 10px var(--font-mono); }
 .change-explorer-file > header b { color: oklch(0.66 0.14 152); }.change-explorer-file > header i { color: oklch(0.65 0.18 28); font-style: normal; font-weight: 700; }
@@ -339,7 +343,9 @@
 .change-explorer-tree > header button { -webkit-app-region: no-drag; }
 .change-explorer-actions { display: flex; align-items: center; gap: 5px; }
 .review-run-message > button { display: flex; width: min(100%, 34rem); align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in oklab, var(--card) 92%, var(--accent)); color: var(--foreground); text-align: left; cursor: pointer; }.review-run-message > button:hover { border-color: color-mix(in oklab, var(--accent) 45%, var(--border)); }.review-run-message > button > strong { font-size: 12px; }.review-run-message > button > span:last-child { margin-left: auto; color: var(--accent); font: 10px var(--font-mono); }.review-run-message > button.error > strong { color: var(--destructive); }
-.change-explorer-sidebar-body { display: grid; min-height: 0; grid-template-rows: minmax(110px, 42%) minmax(0, 58%); }
+.change-explorer-sidebar-body { --review-panel-height: 0px; position: relative; display: grid; min-height: 0; grid-template-rows: minmax(110px, 1fr) var(--review-panel-height); }
+.change-explorer-sidebar-body.is-resizing { cursor: row-resize; user-select: none; }
+.review-index-resize-handle { bottom: calc(var(--review-panel-height) - 5px); }
 .change-explorer-turn-body { display: grid; min-height: 0; grid-template-rows: minmax(150px, 52%) minmax(120px, 48%); }
 .change-turn-index { min-height: 0; overflow: auto; padding: 0 10px 12px; }
 .change-turn-index > header, .change-explorer-turn-body nav > header { position: sticky; z-index: 2; top: 0; display: flex; align-items: center; justify-content: space-between; padding: 12px 8px 8px; background: color-mix(in oklab, var(--sidebar) 84%, var(--background)); }

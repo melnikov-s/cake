@@ -121,8 +121,32 @@ describe("ChangeExplorer", () => {
     expect(container.querySelector(".syntax-token")?.textContent).toContain("const old");
     expect(container.querySelector(".change-explorer-tree")?.textContent).toContain("src");
     expect(container.querySelector(".change-explorer-tree")?.textContent).toContain("PLAN.md");
+    expect(container.querySelector(".review-thread-index")).toBeNull();
+    expect(container.querySelector('[aria-label="Resize comments panel"]')).toBeNull();
     act(() => container.querySelector<HTMLButtonElement>(".change-explorer-tree li button")!.click());
     expect((store as unknown as Record<string, any>).selectChangeExplorerFile).toHaveBeenCalledWith("src/app.ts");
+  });
+
+  it("keeps the full session name available when the header context is truncated", () => {
+    const sessionTitle = "A very long session name that should stay on a single truncated line in the Changes header";
+    const store = {
+      workspaceChanges: changes,
+      selectedWorkspaceChange: changes[0],
+      sessionTitle,
+      reviewThreads: [],
+      reviewThreadStreaming: vi.fn(() => false),
+      createReviewThread: vi.fn(async () => undefined),
+      replyReviewThread: vi.fn(async () => undefined),
+      resolveReviewThread: vi.fn(async () => undefined),
+      selectChangeExplorerFile: vi.fn(),
+      closeChangeExplorer: vi.fn()
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
+
+    const context = container.querySelector<HTMLElement>(".change-explorer-file > header small")!;
+    expect(context.title).toContain(sessionTitle);
+    expect(context.textContent).toContain(sessionTitle);
   });
 
   it("shows historical changes by conversation turn without review controls", () => {
@@ -383,6 +407,11 @@ describe("ChangeExplorer", () => {
     expect(container.querySelector(".review-navigation")).toBeNull();
     expect(container.querySelector(".review-thread-index")?.textContent).toContain("Can you explain this?");
     expect(container.querySelector(".review-thread-index")?.textContent).toContain("src/app.ts · L1");
+    const resizeHandle = container.querySelector<HTMLElement>('[aria-label="Resize comments panel"]')!;
+    expect(resizeHandle.getAttribute("aria-orientation")).toBe("horizontal");
+    expect(resizeHandle.getAttribute("aria-valuenow")).toBe("104");
+    act(() => resizeHandle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })));
+    expect(container.querySelector<HTMLElement>(".change-explorer-sidebar-body")?.style.getPropertyValue("--review-panel-height")).toBe("120px");
     act(() => container.querySelector<HTMLButtonElement>(".review-thread-index li button")!.click());
     expect(focusReviewThread).toHaveBeenCalledWith("review-1");
   });
