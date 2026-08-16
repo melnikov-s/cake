@@ -10,9 +10,8 @@ export interface SidebarStoreProps {
   sessions: SessionRegistryStore;
 }
 
-/** Owns project navigation, session search/pagination, and activity badges. */
+/** Owns project navigation, session pagination, and activity badges. */
 export class SidebarStore extends Store<SidebarStoreProps> {
-  search = "";
   limitsByProject: Record<string, number> = observable({});
 
   get sessions() { return this.props.catalog.sessions; }
@@ -31,12 +30,6 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   showMoreSessions(workspacePath: string) {
     this.limitsByProject[workspacePath] = this.sessionLimit(workspacePath) + 10;
-  }
-
-  get searchedSessions() {
-    const query = this.search.trim().toLocaleLowerCase();
-    if (!query) return [];
-    return this.sessions.filter((item) => `${item.title}\n${item.workspaceName}\n${item.workspacePath}`.toLocaleLowerCase().includes(query));
   }
 
   sessionDisplayTitle(title: string) {

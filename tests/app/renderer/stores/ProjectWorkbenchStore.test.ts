@@ -43,7 +43,7 @@ function createDesktopClient(restoredPath?: string) {
     readWorkspaceFile: vi.fn(async () => ""),
     compileInlineWidget: vi.fn(async () => ({ url: "cake-widget://document/00000000-0000-4000-8000-000000000001", token: "00000000-0000-4000-8000-000000000001" })),
     repairInlineWidget: vi.fn(async (input) => ({ source: input.source, repairSessionId: "repair-session" })),
-    loadWindowState: vi.fn(async () => ({ projectPath: restoredPath, recentProjectPaths: restoredPath ? [restoredPath] : [], draft: "saved", theme: "system" as const, thinkingExpanded: false, sessionSearch: "", draftsBySession: {} })),
+    loadWindowState: vi.fn(async () => ({ projectPath: restoredPath, recentProjectPaths: restoredPath ? [restoredPath] : [], draft: "saved", theme: "system" as const, thinkingExpanded: false, draftsBySession: {} })),
     saveWindowState: vi.fn(async () => undefined),
     loadApplicationState: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], trustedProjectPaths: [] })),
     listSessions: vi.fn(async () => ({ sessions: [], reviewThreads: [] })),
@@ -51,7 +51,6 @@ function createDesktopClient(restoredPath?: string) {
     openGlobalChat: vi.fn(async () => undefined),
     promptGlobalChat: vi.fn(async () => undefined),
     abortGlobalChat: vi.fn(async () => undefined),
-    clearGlobalChat: vi.fn(async () => undefined),
     setGlobalChatModel: vi.fn(async () => undefined),
     setGlobalChatThinkingLevel: vi.fn(async () => undefined),
     respondToGlobalChatControl: vi.fn(async () => undefined),
@@ -125,7 +124,7 @@ describe("ProjectWorkbenchStore", () => {
       name: "get_app_state",
       error: "Cake produced a control result that could not be serialized."
     });
-    expect(root.globalChatStore.errorDetails).toContain("Context:\nGlobal chat control response: get_app_state");
+    expect(root.globalChatStore.errorDetails ?? root.globalChatStore.activeSession?.errorDetails).toContain("Context:\nCake Chat control response: get_app_state");
     root[Symbol.dispose]();
   });
 
@@ -139,7 +138,28 @@ describe("ProjectWorkbenchStore", () => {
     await root.openSession("/project", "session-1");
 
     expect(root.appShellStore.surface).toBe("workbench");
+    expect(root.appShellStore.selection).toEqual({ kind: "project-session", workspacePath: "/project", sessionId: "session-1" });
     expect(store.activeSession?.sessionId).toBe("session-1");
+    root[Symbol.dispose]();
+  });
+
+  it("starts recovery work in a new Cake Chat session", async () => {
+    const desktop = createDesktopClient();
+    const { root } = mountTestStore(desktop.client);
+    await flush();
+    vi.mocked(desktop.client.openGlobalChat).mockClear();
+
+    await root.startCakeChat("Repair the current Cake customization.");
+
+    expect(root.appShellStore.surface).toBe("global-chat");
+    expect(root.appShellStore.selection).toEqual({ kind: "cake-chat", sessionId: undefined });
+    expect(desktop.client.openGlobalChat).toHaveBeenCalledWith(expect.objectContaining({ newSession: true }));
+    expect(desktop.client.openGlobalChat).toHaveBeenCalledWith(expect.objectContaining({ initialPrompt: "Repair the current Cake customization." }));
+
+    const operationId = vi.mocked(desktop.client.openGlobalChat).mock.calls.at(-1)![0].operationId;
+    desktop.emit({ type: "global-chat-snapshot-received", operationId, snapshot: { ...snapshot, workspacePath: "/home/user", sessionId: "cake-chat-1" } });
+
+    expect(root.appShellStore.selection).toEqual({ kind: "cake-chat", sessionId: "cake-chat-1" });
     root[Symbol.dispose]();
   });
 
@@ -292,7 +312,6 @@ describe("ProjectWorkbenchStore", () => {
       draft: "",
       theme: "system" as const,
       thinkingExpanded: false,
-      sessionSearch: "",
       draftsBySession: { "unpersisted-session": "" }
     }));
     const { root, store } = mountTestStore(desktop.client);
@@ -804,7 +823,7 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("keeps drafts per session and searches sessions across projects", async () => {
+  it("keeps drafts per session across projects", async () => {
     const desktop = createDesktopClient();
     const applicationState = {
       schemaVersion: 1 as const,
@@ -840,8 +859,6 @@ describe("ProjectWorkbenchStore", () => {
     expect(store.sessionRegistry.findSession("session-1", "/project")).toBe(firstSession);
     expect(store.sessionRegistry.findSession("session-1", store.projectPath)!.chatStore.draft).toBe("alpha draft");
     expect(root.sidebarStore.projectSessions(store.projectPath!).map((item) => item.id)).toEqual(["session-1", "session-2"]);
-    root.sidebarStore.search = "alpha";
-    expect(root.sidebarStore.searchedSessions.map((item) => `${item.workspacePath}:${item.id}`).sort()).toEqual(["/other:session-3", "/project:session-1"]);
     await store.openSession("/project", "session-1");
     expect(store.session?.sessionId).toBe("session-1");
     expect(store.activeSession!.chatStore.draft).toBe("alpha draft");
@@ -867,7 +884,6 @@ describe("ProjectWorkbenchStore", () => {
       draft: "",
       theme: "system" as const,
       thinkingExpanded: false,
-      sessionSearch: "",
       draftsBySession: {}
     }));
     desktop.client.registerProject = vi.fn(async () => applicationState);

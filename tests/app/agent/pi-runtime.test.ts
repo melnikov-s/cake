@@ -128,6 +128,21 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(() => sessionSnapshotSchema.shape.sessions.parse([summary])).not.toThrow();
   });
 
+  it("lists Cake Chat sessions directly from its dedicated session directory", async () => {
+    const directory = await createTemporaryDirectory();
+    const sessionDir = join(directory, "cake-chat-sessions");
+    const timestamp = new Date().toISOString();
+    await mkdir(sessionDir, { recursive: true });
+    await writeFile(join(sessionDir, "cake-chat.jsonl"), [
+      { type: "session", version: 3, id: "cake-chat", timestamp, cwd: directory },
+      { type: "message", id: "user-1", parentId: null, timestamp, message: { role: "user", content: [{ type: "text", text: "Repair my plugins" }], timestamp: Date.now() } }
+    ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+
+    const summaries = await listWorkspaceSessions(directory, sessionDir, true);
+
+    expect(summaries).toEqual([expect.objectContaining({ id: "cake-chat", title: "Repair my plugins" })]);
+  });
+
   it("persists Git checkpoints in the Pi session branch and reloads them", async () => {
     const directory = await createTemporaryDirectory();
     const sessionDir = join(directory, "sessions");

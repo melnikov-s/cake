@@ -22,6 +22,7 @@ import { PluginPersistenceRepository } from "./plugin-persistence-repository";
 import { compileInlineWidget, extractRepairedWidget } from "./inline-widget-service";
 import { handleInlineWidgetScheme, publishInlineWidget, registerInlineWidgetScheme } from "./inline-widget-protocol";
 
+app.setName("Cake");
 registerInlineWidgetScheme();
 
 interface PiHost {
@@ -398,32 +399,27 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
   }
   if (request.type === "open-global-chat") {
     globalChatController = event.sender;
-    globalChatDriver.open(request.requestId, request.tools);
+    globalChatDriver.open(request.requestId, request.tools, { newSession: request.newSession, sessionId: request.sessionId, initialPrompt: request.initialPrompt });
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "prompt-global-chat") {
     globalChatController = event.sender;
-    globalChatDriver.prompt(request.requestId, request.text, request.attachments);
+    globalChatDriver.prompt(request.requestId, request.sessionId, request.text, request.attachments);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "abort-global-chat") {
     globalChatController = event.sender;
-    globalChatDriver.abort(request.requestId);
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
-  }
-  if (request.type === "clear-global-chat") {
-    globalChatController = event.sender;
-    globalChatDriver.clear(request.requestId, request.tools);
+    globalChatDriver.abort(request.requestId, request.sessionId);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "set-global-chat-model") {
     globalChatController = event.sender;
-    globalChatDriver.setModel(request.requestId, request.provider, request.modelId);
+    globalChatDriver.setModel(request.requestId, request.sessionId, request.provider, request.modelId);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "set-global-chat-thinking") {
     globalChatController = event.sender;
-    globalChatDriver.setThinkingLevel(request.requestId, request.level);
+    globalChatDriver.setThinkingLevel(request.requestId, request.sessionId, request.level);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "respond-global-chat-control") {

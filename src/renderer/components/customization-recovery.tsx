@@ -2,7 +2,8 @@ import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 
 export const CustomizationRecovery = observer(function CustomizationRecovery() {
-  const store = useStore(RootStore).customizationStore;
+  const root = useStore(RootStore);
+  const store = root.customizationStore;
   const state = store.state;
   if (!state || (!state.recoveryRequired && state.diagnostics.length === 0 && !store.error)) return null;
   const latestDiagnostic = state.diagnostics.at(-1);
@@ -28,7 +29,7 @@ export const CustomizationRecovery = observer(function CustomizationRecovery() {
       </details>
       {store.plugins.length > 0 && <details><summary>Plugins ({store.plugins.length})</summary><div className="customization-plugin-list">{store.plugins.map((plugin) => <p key={plugin.id}><span>{plugin.name} · {plugin.id}{plugin.diagnostics[0] ? ` · ${plugin.diagnostics[0].message}` : ""}</span><button type="button" disabled={store.busy} onClick={() => void store.setPluginEnabled(plugin.id, !plugin.enabled)}>{plugin.enabled ? "Disable" : "Enable"}</button></p>)}</div></details>}
       <nav>
-        <button type="button" disabled={store.busy} onClick={() => void store.rebuild()}>{store.busy ? "Building…" : "Build and retry"}</button>
+        <button type="button" onClick={() => void root.startCakeChat("Repair the current Cake customization, build it, and retry activation.")}>Build and retry</button>
         {(state.rollbackRevision || state.lastKnownGoodRevision) && <button type="button" disabled={store.busy} onClick={() => void store.rollback()}>Roll back</button>}
         <button type="button" disabled={store.busy} onClick={() => void store.useFactory()}>Use default Cake</button>
       </nav>

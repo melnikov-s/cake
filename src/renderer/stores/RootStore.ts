@@ -33,28 +33,54 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   }
 
   async openSession(workspacePath: string, sessionId: string) {
-    this.showWorkbench();
-    await this.projectWorkbenchStore.openSession(workspacePath, sessionId);
+    this.showEmptyWorkbench();
+    const opening = this.projectWorkbenchStore.openSession(workspacePath, sessionId);
+    if (this.projectWorkbenchStore.isActiveSession(workspacePath, sessionId)) {
+      this.appShellStore.selectProjectSession(workspacePath, sessionId);
+    }
+    await opening;
   }
 
   async createSession(workspacePath: string) {
-    this.showWorkbench();
+    this.showEmptyWorkbench();
     await this.projectWorkbenchStore.startNewSession(workspacePath);
   }
 
   async startOneOffChat() {
-    this.showWorkbench();
+    this.showEmptyWorkbench();
     await this.projectWorkbenchStore.startOneOffChat();
   }
 
   async chooseProject() {
-    this.showWorkbench();
+    this.showEmptyWorkbench();
     await this.projectWorkbenchStore.chooseProject();
   }
 
-  showWorkbench() { this.projectWorkbenchStore.dismissSecondarySurfaces(); this.appShellStore.showWorkbench(); }
-  showGlobalChat() { this.projectWorkbenchStore.dismissSecondarySurfaces(); this.appShellStore.showGlobalChat(); }
+  showWorkbench() {
+    this.projectWorkbenchStore.dismissSecondarySurfaces();
+    const context = this.projectWorkbenchStore.sessionContext();
+    if (context) this.appShellStore.selectProjectSession(context.workspacePath, context.sessionId);
+    else this.appShellStore.showWorkbench();
+  }
+  showGlobalChat(sessionId = this.globalChatStore.sessionId) {
+    this.projectWorkbenchStore.dismissSecondarySurfaces();
+    this.appShellStore.selectCakeChat(sessionId);
+  }
+  async openCakeChat(sessionId?: string) {
+    this.showGlobalChat(sessionId);
+    if (sessionId) await this.globalChatStore.openSession(sessionId);
+  }
+  async startCakeChat(prompt?: string) {
+    this.projectWorkbenchStore.dismissSecondarySurfaces();
+    this.appShellStore.selectCakeChat();
+    await this.globalChatStore.startNewSession(prompt);
+  }
   showSettings() { this.projectWorkbenchStore.dismissSecondarySurfaces(); this.appShellStore.showSettings(); }
+
+  private showEmptyWorkbench() {
+    this.projectWorkbenchStore.dismissSecondarySurfaces();
+    this.appShellStore.showWorkbench();
+  }
 
   @child
   get customizationStore(): CustomizationStore {
@@ -177,13 +203,13 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       port: {
         open: (input) => this.client.openGlobalChat(input),
         prompt: (input) => this.client.promptGlobalChat(input),
-        abort: (operationId) => this.client.abortGlobalChat(operationId),
-        clear: (input) => this.client.clearGlobalChat(input)
+        abort: (input) => this.client.abortGlobalChat(input),
+        setModel: (input) => this.client.setGlobalChatModel(input),
+        setThinkingLevel: (input) => this.client.setGlobalChatThinkingLevel(input)
       },
       tools: () => this.appControl.listTools(),
       sessions: () => this.sessionRegistry,
-      setModel: (operationId, provider, modelId) => this.client.setGlobalChatModel({ operationId, provider, modelId }),
-      setThinkingLevel: (operationId, level) => this.client.setGlobalChatThinkingLevel({ operationId, level })
+      operations: this.sessionOperationCoordinator
     });
   }
 
@@ -251,17 +277,23 @@ export class RootStore extends Store<{ client: DesktopClient }> {
           try {
             return jsonValueSchema.parse(result);
           } catch (error) {
-            this.globalChatStore.reportError(error, `Global chat control response: ${event.invocation.name}`);
+            this.globalChatStore.reportError(error, `Cake Chat control response: ${event.invocation.name}`);
             return { ok: false as const, name: event.invocation.name, error: "Cake produced a control result that could not be serialized." };
           }
         })
         .then((result) => this.client.respondToGlobalChatControl(event.controlRequestId, result))
-        .catch((error) => this.globalChatStore.reportError(error, `Global chat control response: ${event.invocation.name}`));
+        .catch((error) => this.globalChatStore.reportError(error, `Cake Chat control response: ${event.invocation.name}`));
       return;
     }
     if (event.type.startsWith("global-chat-")) {
-      this.globalChatStore.configurationStore.receive(event);
+      for (const session of this.globalChatStore.loadedSessions) session.configurationStore.receive(event);
       this.globalChatStore.receive(event);
+      if (event.type === "global-chat-snapshot-received" && this.appShellStore.selection.kind === "cake-chat") {
+        const requestedSessionId = this.appShellStore.selection.sessionId;
+        if (!requestedSessionId || requestedSessionId === event.snapshot.sessionId) {
+          this.appShellStore.selectCakeChat(event.snapshot.sessionId);
+        }
+      }
       return;
     }
     const sessionReceivers = event.type === "pi-state-changed" && event.workspacePath
@@ -288,6 +320,9 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       session.composerStore.reconcile(event.snapshot.sessionId);
       if (event.operationId || this.projectWorkbenchStore.isActiveSession(event.snapshot.workspacePath, event.snapshot.sessionId)) {
         this.projectWorkbenchStore.applySessionSnapshot(event.snapshot, event.operationId ? previousSessionId : undefined, Boolean(event.operationId));
+        if (this.appShellStore.surface === "workbench") {
+          this.appShellStore.selectProjectSession(event.snapshot.workspacePath, event.snapshot.sessionId);
+        }
         void this.projectWorkbenchStore.changesStore.refresh();
       }
       return;

@@ -37,8 +37,8 @@ export async function suggestProjectFiles(options: { cwd: string; prefix: string
   return (suggestions?.items ?? []).slice(0, 20).map(({ value, label, description }) => ({ value, label, description }));
 }
 
-export async function listWorkspaceSessions(cwd: string, sessionDir: string): Promise<SessionSummary[]> {
-  const sessions = await SessionManager.list(cwd, cakeWorkspaceSessionDirectory(cwd, sessionDir));
+export async function listWorkspaceSessions(cwd: string, sessionDir: string, direct = false): Promise<SessionSummary[]> {
+  const sessions = await SessionManager.list(cwd, direct ? resolve(sessionDir) : cakeWorkspaceSessionDirectory(cwd, sessionDir));
   const idsByPath = new Map(sessions.map((item) => [item.path, item.id]));
   return sessions.map((item) => ({
     id: item.id,

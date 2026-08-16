@@ -21,11 +21,11 @@ const snapshot: SessionSnapshot = {
   tree: []
 };
 
-function runtime(): CakeRuntime {
+function runtime(nextSnapshot = snapshot): CakeRuntime {
   return {
-    sessionId: snapshot.sessionId,
-    sessionFile: snapshot.sessionFile,
-    snapshot: vi.fn(async () => snapshot),
+    sessionId: nextSnapshot.sessionId,
+    sessionFile: nextSnapshot.sessionFile,
+    snapshot: vi.fn(async () => nextSnapshot),
     prompt: vi.fn(async () => undefined),
     abort: vi.fn(async () => undefined),
     setModel: vi.fn(async () => undefined),
@@ -65,13 +65,16 @@ describe("GlobalChatDriver", () => {
   it("applies model and reasoning selections to the persistent runtime", async () => {
     const events: DesktopEvent[] = [];
     const cakeRuntime = runtime();
-    const driver = new GlobalChatDriver({ agentDir: "/cake/pi", sessionDir: "/cake/pi/global-chat/sessions", emit: (event) => events.push(event), createRuntime: vi.fn(async () => cakeRuntime) });
+    const createRuntime = vi.fn(async () => cakeRuntime);
+    const driver = new GlobalChatDriver({ agentDir: "/cake/pi", sessionDir: "/cake/pi/global-chat/sessions", emit: (event) => events.push(event), createRuntime });
     const modelId = crypto.randomUUID();
     const thinkingId = crypto.randomUUID();
 
-    driver.setModel(modelId, "openai", "gpt-5");
+    driver.open(crypto.randomUUID(), [{ name: "get_app_state", description: "Read state", parameters: { type: "object", properties: {} } }], { sessionId: "global-1" });
+    await vi.waitFor(() => expect(createRuntime).toHaveBeenCalledOnce());
+    driver.setModel(modelId, "global-1", "openai", "gpt-5");
     await vi.waitFor(() => expect(cakeRuntime.setModel).toHaveBeenCalledWith("openai", "gpt-5"));
-    driver.setThinkingLevel(thinkingId, "high");
+    driver.setThinkingLevel(thinkingId, "global-1", "high");
     await vi.waitFor(() => expect(cakeRuntime.setThinkingLevel).toHaveBeenCalledWith("high"));
     expect(events).toContainEqual({ type: "global-chat-operation-completed", requestId: modelId });
     expect(events).toContainEqual({ type: "global-chat-operation-completed", requestId: thinkingId });
@@ -85,22 +88,56 @@ describe("GlobalChatDriver", () => {
     const requestId = crypto.randomUUID();
     const attachments = [{ kind: "image" as const, name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" }];
 
-    driver.prompt(requestId, "", attachments);
+    driver.open(crypto.randomUUID(), [{ name: "get_app_state", description: "Read state", parameters: { type: "object", properties: {} } }], { sessionId: "global-1" });
+    await vi.waitFor(() => expect(cakeRuntime.snapshot).toHaveBeenCalled());
+    driver.prompt(requestId, "global-1", "", attachments);
 
     await vi.waitFor(() => expect(cakeRuntime.prompt).toHaveBeenCalledWith("", "prompt", attachments));
     expect(events).toContainEqual({ type: "global-chat-operation-completed", requestId });
     driver[Symbol.dispose]();
   });
 
-  it("creates a new persistent Pi session when cleared", async () => {
+  it("creates a new persistent Cake Chat session on request", async () => {
     const events: DesktopEvent[] = [];
     const createRuntime = vi.fn(async () => runtime());
     const driver = new GlobalChatDriver({ agentDir: "/cake/pi", sessionDir: "/cake/pi/global-chat/sessions", emit: (event) => events.push(event), createRuntime });
-    const clearId = crypto.randomUUID();
+    const openId = crypto.randomUUID();
 
-    driver.clear(clearId, [{ name: "get_app_state", description: "Read state", parameters: { type: "object", properties: {} } }]);
-    await vi.waitFor(() => expect(events).toContainEqual({ type: "global-chat-operation-completed", requestId: clearId }));
+    driver.open(openId, [{ name: "get_app_state", description: "Read state", parameters: { type: "object", properties: {} } }], { newSession: true });
+    await vi.waitFor(() => expect(events).toContainEqual({ type: "global-chat-operation-completed", requestId: openId }));
     expect(createRuntime).toHaveBeenCalledWith(expect.objectContaining({ newSession: true }));
+    driver[Symbol.dispose]();
+  });
+
+  it("opens a selected Cake Chat session", async () => {
+    const events: DesktopEvent[] = [];
+    const createRuntime = vi.fn(async () => runtime());
+    const driver = new GlobalChatDriver({ agentDir: "/cake/pi", sessionDir: "/cake/pi/global-chat/sessions", emit: (event) => events.push(event), createRuntime });
+    const openId = crypto.randomUUID();
+
+    driver.open(openId, [{ name: "get_app_state", description: "Read state", parameters: { type: "object", properties: {} } }], { sessionId: "global-1" });
+    await vi.waitFor(() => expect(events).toContainEqual({ type: "global-chat-operation-completed", requestId: openId }));
+    expect(createRuntime).toHaveBeenCalledWith(expect.objectContaining({ newSession: false, sessionId: "global-1" }));
+    driver[Symbol.dispose]();
+  });
+
+  it("keeps multiple Cake Chat runtimes alive and routes turns by session", async () => {
+    const events: DesktopEvent[] = [];
+    const first = runtime(snapshot);
+    const secondSnapshot = { ...snapshot, sessionId: "global-2", sessionFile: "/data/global-chat/global-2.jsonl", parts: [] };
+    const second = runtime(secondSnapshot);
+    const createRuntime = vi.fn(async (options: CakeRuntimeOptions) => options.sessionId === "global-1" ? first : second);
+    const driver = new GlobalChatDriver({ agentDir: "/cake/pi", sessionDir: "/cake/pi/global-chat/sessions", emit: (event) => events.push(event), createRuntime });
+
+    driver.open(crypto.randomUUID(), [{ name: "get_app_state", description: "Read state", parameters: { type: "object", properties: {} } }], { sessionId: "global-1" });
+    driver.open(crypto.randomUUID(), [{ name: "get_app_state", description: "Read state", parameters: { type: "object", properties: {} } }], { sessionId: "global-2" });
+    await vi.waitFor(() => expect(createRuntime).toHaveBeenCalledTimes(2));
+    driver.prompt(crypto.randomUUID(), "global-1", "first turn", []);
+    driver.prompt(crypto.randomUUID(), "global-2", "second turn", []);
+    await vi.waitFor(() => expect(first.prompt).toHaveBeenCalledWith("first turn", "prompt", []));
+    await vi.waitFor(() => expect(second.prompt).toHaveBeenCalledWith("second turn", "prompt", []));
+    expect(first.dispose).not.toHaveBeenCalled();
+    expect(second.dispose).not.toHaveBeenCalled();
     driver[Symbol.dispose]();
   });
 

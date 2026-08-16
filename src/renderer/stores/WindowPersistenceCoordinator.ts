@@ -80,7 +80,6 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
       this.props.sessions.replace(sessionIndex.sessions);
       this.props.projects.applyApplicationState(application);
       this.props.projects.restoreRecentPaths(state.recentProjectPaths);
-      this.props.sidebar().search = state.sessionSearch;
       this.props.settings().theme = state.theme;
       this.restoredDraft = state.draft;
       this.restoredThinkingExpanded = state.thinkingExpanded;
@@ -119,7 +118,6 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
       draft: activeSession?.chatStore.draft ?? "",
       theme: this.props.settings().theme,
       thinkingExpanded: activeSession?.chatStore.thinkingExpanded ?? false,
-      sessionSearch: this.props.sidebar().search,
       draftsBySession: Object.fromEntries(this.props.registry.sessions.map((session) => [session.sessionId, session.chatStore.draft]))
     };
   }

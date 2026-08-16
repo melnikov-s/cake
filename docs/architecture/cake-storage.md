@@ -24,7 +24,7 @@ installations.
 Every production Pi adapter call receives `agentDir` and `sessionDir`
 explicitly. Workspace sessions list, create, continue, open, preview, and fork
 only beneath Pi's encoded per-workspace directories in `pi/sessions`. Review,
-inline-discussion, and global-chat sessions have narrower roots under `pi/`, and direct
+inline-discussion and Cake Chat sessions have narrower roots under `pi/`, and direct
 session-file opens are validated against the relevant Cake root. Pi still owns
 the session engine and JSONL format.
 
@@ -52,5 +52,5 @@ discovered from standalone `~/.pi/agent`.
 Application and window snapshots, artifact payloads, and review annotations
 remain under Electron's `app.getPath("userData")`. Their location can be changed
 by `app.setPath()` (the test override is `CAKE_ELECTRON_USER_DATA`) and is tied
-to Electron's platform lifecycle. Review and global-chat Pi sessions live under
+to Electron's platform lifecycle. Review and Cake Chat Pi sessions live under
 the Cake Pi roots above.

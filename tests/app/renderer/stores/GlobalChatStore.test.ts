@@ -1,12 +1,12 @@
 import { createStore, mount } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import { GlobalChatStore } from "../../../../src/renderer/stores/GlobalChatStore";
+import { GlobalChatStore, type GlobalChatPort } from "../../../../src/renderer/stores/GlobalChatStore";
 import { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
 import type { SessionSnapshot } from "../../../../src/ipc/session-contract";
 import type { DesktopClient } from "../../../../src/renderer/desktop-client";
-import type { SessionOperationCoordinator } from "../../../../src/renderer/stores/SessionOperationCoordinator";
 import type { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
 import type { PluginCommandStore } from "../../../../src/renderer/stores/PluginCommandStore";
+import { SessionOperationCoordinator } from "../../../../src/renderer/stores/SessionOperationCoordinator";
 
 const snapshot: SessionSnapshot = {
   workspacePath: "/home/user",
@@ -28,10 +28,11 @@ const snapshot: SessionSnapshot = {
 
 function createTestStore() {
   const port = {
-    open: vi.fn(async () => undefined),
-    prompt: vi.fn(async () => undefined),
-    abort: vi.fn(async () => undefined),
-    clear: vi.fn(async () => undefined)
+    open: vi.fn(async (input: Parameters<GlobalChatPort["open"]>[0]) => { void input; }),
+    prompt: vi.fn(async (input: Parameters<GlobalChatPort["prompt"]>[0]) => { void input; }),
+    abort: vi.fn(async (input: Parameters<GlobalChatPort["abort"]>[0]) => { void input; }),
+    setModel: vi.fn(async (input: Parameters<GlobalChatPort["setModel"]>[0]) => { void input; }),
+    setThinkingLevel: vi.fn(async (input: Parameters<GlobalChatPort["setThinkingLevel"]>[0]) => { void input; })
   };
   const sessions = mount(createStore(SessionRegistryStore, {
     client: {} as DesktopClient,
@@ -45,71 +46,104 @@ function createTestStore() {
     projectName: () => "Project",
     abort: async () => undefined
   }));
-  const configurationPort = {
-    setModel: vi.fn(async (input: { operationId: string; provider: string; modelId: string }) => { void input; }),
-    setThinkingLevel: vi.fn(async (input: { operationId: string; level: SessionSnapshot["thinkingLevel"] }) => { void input; })
-  };
+  const operations = mount(createStore(SessionOperationCoordinator));
   const store = mount(createStore(GlobalChatStore, {
     port,
     tools: () => [{ name: "get_app_state", description: "Read app state", parameters: { type: "object", properties: {} } }],
     sessions: () => sessions,
-    setModel: (operationId, provider, modelId) => configurationPort.setModel({ operationId, provider, modelId }),
-    setThinkingLevel: (operationId, level) => configurationPort.setThinkingLevel({ operationId, level })
+    operations
   }));
-  const configuration = store.configurationStore;
-  return { store, port, sessions, configuration, configurationPort };
+  return { store, port, sessions, operations };
 }
 
 describe("GlobalChatStore", () => {
   it("hydrates the persistent transcript and submits a follow-up", async () => {
-    const { store, port, sessions, configuration, configurationPort } = createTestStore();
+    const { store, port, sessions, operations } = createTestStore();
     await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
     store.receive({
       type: "global-chat-snapshot-received",
       snapshot
     });
 
-    store.chatStore.setDraft("Open it");
-    await store.chatStore.submit();
+    const active = store.activeSession!;
+    active.chatStore.setDraft("Open it");
+    await active.chatStore.submit();
 
-    expect(store.parts.map((part) => part.kind === "text" ? part.text : "")).toEqual(["The PDF task is task-7.", "Open it"]);
-    expect(port.prompt).toHaveBeenCalledWith(expect.objectContaining({ text: "Open it" }));
-    await configuration.selectModel("openai/gpt");
-    await configuration.selectThinkingLevel("high");
-    expect(configurationPort.setModel).toHaveBeenCalledWith(expect.objectContaining({ provider: "openai", modelId: "gpt" }));
-    expect(configurationPort.setThinkingLevel).toHaveBeenCalledWith(expect.objectContaining({ level: "high" }));
+    expect(active.parts.map((part) => part.kind === "text" ? part.text : "")).toEqual(["The PDF task is task-7.", "Open it"]);
+    expect(port.prompt).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "global-1", text: "Open it" }));
+    await active.configurationStore.selectModel("openai/gpt");
+    await active.configurationStore.selectThinkingLevel("high");
+    expect(port.setModel).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "global-1", provider: "openai", modelId: "gpt" }));
+    expect(port.setThinkingLevel).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "global-1", level: "high" }));
     store[Symbol.dispose]();
     sessions[Symbol.dispose]();
+    operations[Symbol.dispose]();
   });
 
-  it("starts a new hidden session when cleared", async () => {
-    const { store, port, sessions } = createTestStore();
+  it("starts a new Cake Chat session without clearing prior history", async () => {
+    const { store, port, sessions, operations } = createTestStore();
     await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
 
-    await store.clear();
+    await store.startNewSession();
 
-    expect(port.clear).toHaveBeenCalledWith(expect.objectContaining({ tools: [{ name: "get_app_state", description: "Read app state", parameters: { type: "object", properties: {} } }] }));
+    expect(port.open).toHaveBeenLastCalledWith(expect.objectContaining({ newSession: true, tools: [{ name: "get_app_state", description: "Read app state", parameters: { type: "object", properties: {} } }] }));
     store[Symbol.dispose]();
     sessions[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
+  it("keeps independent Stores for multiple selected and background Cake Chat sessions", async () => {
+    const { store, port, sessions, operations } = createTestStore();
+    await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
+    store.receive({ type: "global-chat-snapshot-received", snapshot });
+    store.activeSession!.chatStore.setDraft("draft one");
+
+    await store.startNewSession();
+    const operationId = port.open.mock.calls.at(-1)![0].operationId;
+    const now = new Date().toISOString();
+    const second = {
+      ...snapshot,
+      sessionId: "global-2",
+      sessionFile: "/global-2.jsonl",
+      parts: [],
+      sessions: [
+        { id: "global-1", title: "First chat", created: now, modified: now, messageCount: 2, archived: false },
+        { id: "global-2", title: "Second chat", created: now, modified: now, messageCount: 0, archived: false }
+      ]
+    };
+    store.receive({ type: "global-chat-snapshot-received", operationId, snapshot: second });
+    store.activeSession!.chatStore.setDraft("draft two");
+    store.receive({ type: "global-chat-streaming-changed", sessionId: "global-1", streaming: true });
+
+    expect(store.selectedSessionId).toBe("global-2");
+    expect(store.loadedSessions).toHaveLength(2);
+    expect(store.findSession("global-1")!.chatStore.draft).toBe("draft one");
+    expect(store.findSession("global-2")!.chatStore.draft).toBe("draft two");
+    expect(store.findSession("global-1")!.streaming).toBe(true);
+    store[Symbol.dispose]();
+    sessions[Symbol.dispose]();
+    operations[Symbol.dispose]();
   });
 
   it("uses the shared chat store to submit pasted image attachments", async () => {
-    const { store, port, sessions } = createTestStore();
+    const { store, port, sessions, operations } = createTestStore();
     await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
     store.receive({ type: "global-chat-snapshot-received", snapshot });
-    store.attachments.push({ kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" });
+    const active = store.activeSession!;
+    active.attachments.push({ kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" });
 
-    expect(store.chatStore.canPasteImages).toBe(true);
-    expect(store.chatStore.canSubmit).toBe(true);
-    await store.chatStore.submit();
+    expect(active.chatStore.canPasteImages).toBe(true);
+    expect(active.chatStore.canSubmit).toBe(true);
+    await active.chatStore.submit();
 
     expect(port.prompt).toHaveBeenCalledWith(expect.objectContaining({
       text: "",
       attachments: [{ kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" }]
     }));
-    expect(store.attachments).toEqual([]);
-    expect(store.parts).toContainEqual(expect.objectContaining({ kind: "attachment", name: "clipboard.png", data: "aW1hZ2U=" }));
+    expect(active.attachments).toEqual([]);
+    expect(active.parts).toContainEqual(expect.objectContaining({ kind: "attachment", name: "clipboard.png", data: "aW1hZ2U=" }));
     store[Symbol.dispose]();
     sessions[Symbol.dispose]();
+    operations[Symbol.dispose]();
   });
 });

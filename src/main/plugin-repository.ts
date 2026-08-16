@@ -122,7 +122,7 @@ export class PluginRepository {
   async readAuthoringFile(logicalPath: string) {
     const target = await this.authoringTarget(logicalPath, true);
     const content = await readFile(target, "utf8");
-    if (content.length > 2_000_000) throw new Error("Customization source file is too large to read through global chat");
+    if (content.length > 2_000_000) throw new Error("Customization source file is too large to read through Cake Chat");
     return content;
   }
 

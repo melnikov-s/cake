@@ -141,7 +141,8 @@
 .new-chat { display: grid; width: 100%; grid-template-columns: 20px 1fr; align-items: center; gap: 9px; min-height: 36px; margin: 0 0 13px; padding: 0 7px; border: 0; border-radius: 7px; background: transparent; color: inherit; font-size: 13.5px; text-align: left; }
 .new-chat:hover { background: var(--sidebar-hover); }
 .new-chat.active { background: var(--sidebar-active); }
-.global-chat-link { margin-bottom: 2px; }
+.cake-chat-sessions { margin-bottom: 4px; }
+.cake-chat-link { margin-bottom: 2px; }
 .cake-mini-mark { display: grid; width: 20px; height: 20px; place-items: center; border: 1px solid var(--border); border-radius: 50%; font-size: 10px; font-weight: 700; }
 .new-chat kbd { color: var(--muted-foreground); font: 11px var(--font-sans); opacity: .7; }
 .sidebar-scroll { min-height: 0; flex: 1; overflow-y: auto; overflow-x: hidden; padding: 7px 12px 16px; }
@@ -152,7 +153,6 @@
 .project-options svg { width: 14px; height: 14px; }
 .section-heading button, .project-add { display: grid; width: 27px; height: 27px; place-items: center; border: 0; border-radius: 7px; background: transparent; color: inherit; }
 .section-heading button:hover, .project-add:hover { background: var(--sidebar-hover); color: var(--foreground); }
-.section-heading .search-trigger.active { background: var(--sidebar-hover); color: var(--foreground); }
 .section-heading svg, .project-add svg { width: 14px; height: 14px; }
 .sidebar-empty { margin: 6px 8px; color: var(--muted-foreground); font-size: 12px; line-height: 1.6; }
 .project-group { margin-bottom: 12px; }
@@ -181,14 +181,6 @@
 .session-more { margin: 1px 0 2px 25px; padding: 5px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--muted-foreground); font-size: 12px; }
 .session-more:hover { background: var(--sidebar-hover); color: var(--foreground); }
 .session-more span { margin-left: 3px; opacity: .65; }
-.session-filter { display: flex; gap: 4px; margin: 3px 5px 7px 20px; }
-.session-filter input { width: 0; min-width: 0; flex: 1; height: 28px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: color-mix(in oklab, var(--sidebar) 80%, var(--background)); color: var(--foreground); font-size: 11px; }
-.global-session-filter { max-height: 0; margin: -4px 5px 0; overflow: hidden; opacity: 0; transform: translateY(-4px); transition: max-height 180ms ease, margin 180ms ease, opacity 140ms ease, transform 180ms ease; }
-.global-session-filter.expanded { max-height: 32px; margin: 0 5px 10px; opacity: 1; transform: translateY(0); }
-.global-session-filter input { width: 100%; flex: none; }
-.global-session-results { margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid color-mix(in oklab, var(--border) 60%, transparent); }
-.global-session-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 7px; }
-.global-session-row small { max-width: 82px; overflow: hidden; color: var(--muted-foreground); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-footer { display: flex; min-height: 52px; align-items: center; justify-content: flex-end; padding: 8px 16px; border-top: 1px solid color-mix(in oklab, var(--border) 65%, transparent); color: var(--muted-foreground); }
 .sidebar-settings-icon { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--muted-foreground); }
 .sidebar-settings-icon svg { width: 17px; height: 17px; }
@@ -199,7 +191,7 @@
 .sidebar-collapsed .sidebar-footer { justify-content: center; margin-top: auto; padding-inline: 10px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-shell, .global-session-filter, .project-disclosure { transition: none; }
+  .app-shell, .project-disclosure { transition: none; }
 }
 
 .workspace { position: relative; display: grid; min-width: 0; min-height: 0; contain: inline-size; overflow: hidden; grid-template-rows: 52px minmax(0, 1fr); }

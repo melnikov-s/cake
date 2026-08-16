@@ -130,8 +130,8 @@ running Cake installation. The result is:
 ```
 
 In the running app, use **Build and retry** in the immutable customization
-recovery panel. The same operation is available to global chat through
-`build_customization`. Global chat has no general filesystem or shell access;
+recovery panel. The same operation is available to Cake Chat through
+`build_customization`. Cake Chat has no general filesystem or shell access;
 it uses the curated `list_customization_files`, `read_customization_file`, and
 `write_customization_file` controls. Every write supplies the latest
 `workingRevision`. The final build supplies the original active/source head as
@@ -140,7 +140,7 @@ it uses the curated `list_customization_files`, `read_customization_file`, and
 head is rejected instead of overwriting concurrent edits.
 
 During a user-requested create or edit, a failed typecheck or bundle is
-intermediate authoring feedback. Global chat inspects the diagnostics, repairs
+intermediate authoring feedback. Cake Chat inspects the diagnostics, repairs
 the source, and repeats the write/build cycle without asking the user to approve
 each attempt. It yields only after activation begins or it encounters a genuine
 blocker. The recovery panel and an offer to repair are for a customization that
@@ -176,9 +176,9 @@ pending activation, a missing health report, an error boundary report, or an
 Electron renderer-process crash selects immutable factory UI and records an
 attributed diagnostic.
 
-Factory UI contains the ordinary Cake application, global chat, model/thinking
+Factory UI contains the ordinary Cake application, Cake Chat, model/thinking
 controls, diagnostics, plugin enable/disable, rebuild, rollback, and factory
-selection. It evaluates no user scene or plugin code. Global chat is recreated
+selection. It evaluates no user scene or plugin code. Cake Chat is recreated
 with exact recovery context and has curated controls to inspect state, build an
 exact candidate, disable a plugin, roll back, or use factory UI. Broken source,
 builds, snapshots, provenance, and persistence are preserved.

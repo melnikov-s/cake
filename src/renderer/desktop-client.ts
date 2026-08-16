@@ -29,9 +29,9 @@ export type DesktopClientEvent =
   | { type: "part-removed"; sessionId: string; partId: string }
   | { type: "streaming-changed"; sessionId: string; streaming: boolean }
   | { type: "global-chat-snapshot-received"; operationId?: string; snapshot: SessionSnapshot }
-  | { type: "global-chat-part-updated"; part: UiPart }
-  | { type: "global-chat-part-removed"; partId: string }
-  | { type: "global-chat-streaming-changed"; streaming: boolean }
+  | { type: "global-chat-part-updated"; sessionId: string; part: UiPart }
+  | { type: "global-chat-part-removed"; sessionId: string; partId: string }
+  | { type: "global-chat-streaming-changed"; sessionId: string; streaming: boolean }
   | { type: "global-chat-operation-completed"; operationId: string }
   | { type: "global-chat-operation-failed"; operationId: string; message: string }
   | { type: "global-chat-control-requested"; controlRequestId: string; invocation: { name: string; arguments: JsonValue } }
@@ -83,12 +83,11 @@ export interface DesktopClient {
   loadApplicationState(): Promise<ApplicationState>;
   listSessions(): Promise<{ sessions: GlobalSessionSummary[]; reviewThreads: ReviewThread[] }>;
   loadSession(workspacePath: string, sessionId: string): Promise<SessionPreview | undefined>;
-  openGlobalChat(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: JsonObject }> }): Promise<void>;
-  promptGlobalChat(input: { operationId: string; text: string; attachments: Attachment[] }): Promise<void>;
-  abortGlobalChat(operationId: string): Promise<void>;
-  clearGlobalChat(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: JsonObject }> }): Promise<void>;
-  setGlobalChatModel(input: { operationId: string; provider: string; modelId: string }): Promise<void>;
-  setGlobalChatThinkingLevel(input: { operationId: string; level: ThinkingLevel }): Promise<void>;
+  openGlobalChat(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: JsonObject }>; newSession?: boolean; sessionId?: string; initialPrompt?: string }): Promise<void>;
+  promptGlobalChat(input: { operationId: string; sessionId: string; text: string; attachments: Attachment[] }): Promise<void>;
+  abortGlobalChat(input: { operationId: string; sessionId: string }): Promise<void>;
+  setGlobalChatModel(input: { operationId: string; sessionId: string; provider: string; modelId: string }): Promise<void>;
+  setGlobalChatThinkingLevel(input: { operationId: string; sessionId: string; level: ThinkingLevel }): Promise<void>;
   respondToGlobalChatControl(controlRequestId: string, result: JsonValue): Promise<void>;
   listReviewThreads(workspacePath: string, sessionId: string): Promise<ReviewThread[]>;
   createReviewThread(input: { workspacePath: string; sessionId: string; anchor: ReviewAnchor; body: string }): Promise<ReviewThread>;
@@ -131,7 +130,7 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
   if (event.type === "session-streaming") return { type: "streaming-changed", sessionId: event.sessionId, streaming: event.streaming };
   if (event.type === "global-chat-snapshot") return { type: "global-chat-snapshot-received", operationId: event.requestId, snapshot: event.snapshot };
   if (event.type === "global-chat-part-updated" || event.type === "global-chat-part-removed") return event;
-  if (event.type === "global-chat-streaming") return { type: "global-chat-streaming-changed", streaming: event.streaming };
+  if (event.type === "global-chat-streaming") return { type: "global-chat-streaming-changed", sessionId: event.sessionId, streaming: event.streaming };
   if (event.type === "global-chat-operation-completed") return { type: event.type, operationId: event.requestId };
   if (event.type === "global-chat-operation-failed") return { type: event.type, operationId: event.requestId, message: event.message };
   if (event.type === "global-chat-control-request") return { type: "global-chat-control-requested", controlRequestId: event.controlRequestId, invocation: event.invocation };
@@ -270,12 +269,11 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       if (response.type !== "session-loaded") throw new Error("Cake received invalid session content");
       return response.session;
     },
-    openGlobalChat: (input) => accept(bridge, { type: "open-global-chat", requestId: input.operationId, tools: [...input.tools] }),
-    promptGlobalChat: (input) => accept(bridge, { type: "prompt-global-chat", requestId: input.operationId, text: input.text, attachments: input.attachments }),
-    abortGlobalChat: (operationId) => accept(bridge, { type: "abort-global-chat", requestId: operationId }),
-    clearGlobalChat: (input) => accept(bridge, { type: "clear-global-chat", requestId: input.operationId, tools: [...input.tools] }),
-    setGlobalChatModel: (input) => accept(bridge, { type: "set-global-chat-model", requestId: input.operationId, provider: input.provider, modelId: input.modelId }),
-    setGlobalChatThinkingLevel: (input) => accept(bridge, { type: "set-global-chat-thinking", requestId: input.operationId, level: input.level }),
+    openGlobalChat: (input) => accept(bridge, { type: "open-global-chat", requestId: input.operationId, tools: [...input.tools], newSession: input.newSession ?? false, sessionId: input.sessionId, initialPrompt: input.initialPrompt }),
+    promptGlobalChat: (input) => accept(bridge, { type: "prompt-global-chat", requestId: input.operationId, sessionId: input.sessionId, text: input.text, attachments: input.attachments }),
+    abortGlobalChat: (input) => accept(bridge, { type: "abort-global-chat", requestId: input.operationId, sessionId: input.sessionId }),
+    setGlobalChatModel: (input) => accept(bridge, { type: "set-global-chat-model", requestId: input.operationId, sessionId: input.sessionId, provider: input.provider, modelId: input.modelId }),
+    setGlobalChatThinkingLevel: (input) => accept(bridge, { type: "set-global-chat-thinking", requestId: input.operationId, sessionId: input.sessionId, level: input.level }),
     async respondToGlobalChatControl(controlRequestId, result) {
       const response = await bridge.request({ type: "respond-global-chat-control", controlRequestId, result });
       if (response.type !== "accepted" || response.requestId !== controlRequestId) throw new Error("Cake received a mismatched global control response");

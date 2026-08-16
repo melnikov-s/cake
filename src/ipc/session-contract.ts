@@ -365,9 +365,8 @@ export const windowViewStateSchema = z.object({
   recentProjectPaths: z.array(z.string().max(4_096)).max(50).default([]),
   draft: z.string().max(262_144).default(""),
   theme: z.enum(["system", "light", "dark"]).default("system"),
-  thinkingExpanded: z.boolean().default(false)
-  ,sessionSearch: z.string().max(1_024).default("")
-  ,draftsBySession: z.record(z.string(), z.string().max(262_144)).default({})
+  thinkingExpanded: z.boolean().default(false),
+  draftsBySession: z.record(z.string(), z.string().max(262_144)).default({})
 });
 
 export type FileSuggestion = z.infer<typeof fileSuggestionSchema>;

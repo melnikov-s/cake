@@ -24,9 +24,9 @@ Cake operates at two related levels:
 
 The second level is functionality that a single Pi terminal session does not
 provide. Cake can navigate across sessions, expose relationships and activity,
-and host an application-level global chat. Global chat is itself Pi-backed, but
-acts as a meta-session: it can reason about and navigate the application through
-curated Cake controls without absorbing the histories of project sessions.
+and host application-level Cake Chat sessions. Cake Chat is Pi-backed, but its
+conversations are meta-sessions: they can reason about and navigate the application
+through curated Cake controls without absorbing the histories of project sessions.
 
 The conversation remains the center of the product. Files, changes, reviews,
 artifacts, and plugin scenes support the work rather than turning Cake into a
@@ -40,7 +40,7 @@ Every durable concept has one authority.
 | --- | --- | --- |
 | Project-session transcripts, tool history, branching, compaction | Pi session files and `SessionManager` | Render validated snapshots and events in the GUI |
 | Models, providers, authentication, Pi settings and resources | Pi | Offer Cake controls through the Pi adapter |
-| Application-level global-chat transcript | Its dedicated hidden Pi session | Present it as a Cake-wide meta-session and route curated controls |
+| Application-level Cake Chat transcripts | Their dedicated Pi sessions | Present them as Cake-wide meta-sessions and route curated controls |
 | Projects, archived-session flags, window selection and view state | Cake | Persist application and window metadata without copying Pi history |
 | Changes, reviews, and inline discussions | Cake workflow services, with Pi sidecar-session references where relevant | Persist anchors and workflow metadata without copying Pi transcripts |
 | Rich artifacts | Cake artifact repository plus Pi transcript pointers/fallbacks | Persist and render bounded, versioned artifact data |
@@ -108,30 +108,38 @@ The window Store hierarchy mirrors the product surfaces:
 
 - `RootStore` composes the window, translates application intents, and routes
   desktop events to their authoritative Store.
-- `AppShellStore` owns which top-level surface is visible. `SidebarStore` owns
-  navigation presentation and filtering; neither opens sessions directly.
+- `AppShellStore` owns the window's one mutually exclusive application
+  selection: a project session, a Cake Chat session, settings, or an empty
+  workbench. The visible surface and every active navigation treatment derive
+  from that selection. `SidebarStore` owns navigation presentation and
+  filtering; neither Store opens sessions directly.
 - `ProjectCatalogStore` owns registered project records and their window-local
   ordering. `SessionCatalogStore` owns lightweight session summaries.
 - `WindowPersistenceCoordinator` hydrates and saves view state that spans the
   shell, sidebar, workbench, settings, and loaded sessions. It coordinates
   those owners without absorbing their state.
-- `ProjectWorkbenchStore` owns project inspection, active-session selection,
+- `ProjectWorkbenchStore` owns project inspection, its collection-local
+  last-opened session,
   command panes, and its `BrowseStore` and `ChangesStore` children. It
   coordinates project-level workflows without re-exporting session behavior.
 - The root-scoped `SessionRegistryStore` preserves one keyed
   `ProjectSessionStore` for every loaded `(workspacePath, sessionId)` target so
-  background events, global chat, and navigation share session identity.
+  background events, Cake Chat, and navigation share session identity.
 - Each `ProjectSessionStore` owns that session's activity, `SessionModel`,
   message composer, chat configuration, artifacts, and message comments. Its
   `ChatStore` is the common conversation-facing state boundary: it presents the
   draft, transcript parts, streaming state, configuration, and composer actions
   consumed by the authoritative `Chat` component.
-- Project sessions, global chat, selection chats, and review threads all render
+- Project sessions, Cake Chat sessions, selection chats, and review threads all render
   the same `Chat` component and supply a `ChatStore`. A surface may provide a
   richer transcript projection, but it must compose the shared message,
   loading, and composer primitives instead of creating chat-specific controls.
   React mounts the project session as the nearest provider around the active
   session surface.
+- The Cake Chat collection owns one keyed `CakeChatSessionStore` per loaded
+  meta-session. Each session retains its own draft, attachments, configuration,
+  transcript projection, streaming state, and live Pi runtime while another
+  Cake Chat session is selected.
 
 UI and application controls invoke semantic `RootStore` intents such as
 `openSession`, `createSession`, or `showGlobalChat`. The root performs any
@@ -146,8 +154,9 @@ flowchart TD
   Root --> Catalog["SessionCatalogStore"]
   Root --> Registry["SessionRegistryStore"]
   Root --> Workbench["ProjectWorkbenchStore"]
-  Root --> Global["GlobalChatStore"]
-  Global --> GlobalChat["ChatStore"]
+  Root --> CakeChat["Cake Chat collection Store"]
+  CakeChat --> CakeSession["CakeChatSessionStore per loaded meta-session"]
+  CakeSession --> MetaChat["ChatStore"]
   Root --> Settings["SettingsStore"]
   Root --> Persistence["WindowPersistenceCoordinator"]
   Workbench -. selects from .-> Registry
@@ -202,9 +211,9 @@ to the agent needed to fix it.
 
 The immutable core shell must be able to start without importing user plugins.
 On a plugin activation or runtime failure, Cake opens a vanilla recovery surface
-with global chat, the ordinary transcript and composer, model controls, tool
+with Cake Chat, the ordinary transcript and composer, model controls, tool
 activity, exact diagnostics, the failed plugin identity and revision, and safe
-disable/rollback actions. Global chat receives the recovery context so the user
+disable/rollback actions. A new Cake Chat session receives the recovery context so the user
 and agent can inspect the plugin, edit it with explicit authority, run its
 checks, activate a candidate transactionally, and reload the repaired scene.
 

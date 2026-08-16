@@ -10,7 +10,7 @@ test("keeps window state independent across Pi sessions", async () => {
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
   await Promise.all([mkdir(userData, { recursive: true }), mkdir(project, { recursive: true })]);
-  const base = { projectPath: project, recentProjectPaths: [project], theme: "system", thinkingExpanded: false, sessionSearch: "", draftsBySession: {} };
+  const base = { projectPath: project, recentProjectPaths: [project], theme: "system", thinkingExpanded: false, draftsBySession: {} };
   await Promise.all([
     writeFile(join(userData, "window-state.json"), JSON.stringify({ ...base, draft: "first window draft" })),
     writeFile(join(userData, "window-state-1.json"), JSON.stringify({ ...base, draft: "second window draft" })),
