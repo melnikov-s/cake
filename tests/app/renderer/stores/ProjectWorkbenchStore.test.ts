@@ -175,11 +175,11 @@ describe("ProjectWorkbenchStore", () => {
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop);
-    store.activeSession!.setDraft("Review");
+    store.activeSession!.chatStore.setDraft("Review");
 
     await root.projectWorkbenchStore.activeSession!.composerStore.addAttachments();
 
-    expect(store.activeSession!.draft).toBe('Review @/tmp/foo @"/tmp/my notes.txt"');
+    expect(store.activeSession!.chatStore.draft).toBe('Review @/tmp/foo @"/tmp/my notes.txt"');
     expect(root.projectWorkbenchStore.activeSession!.composerStore.attachments).toEqual([
       { kind: "image", name: "preview.png", mimeType: "image/png", data: "aW1hZ2U=" }
     ]);
@@ -279,7 +279,7 @@ describe("ProjectWorkbenchStore", () => {
     desktop.emit({ type: "workspace-inspected", operationId: inspectId, path: "/project", trustRequired: false });
     const openId = store.activeOperations.at(-1)!;
     desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot });
-    expect(store.activeSession!.draft).toBe("saved");
+    expect(store.activeSession!.chatStore.draft).toBe("saved");
     root[Symbol.dispose]();
   });
 
@@ -489,7 +489,7 @@ describe("ProjectWorkbenchStore", () => {
     desktop.emit({ type: "extension-ui-received", sessionId: "stale", event: { kind: "editor-text", text: "stale", mode: "replace" } });
     desktop.emit({ type: "extension-ui-received", sessionId: "session-1", event: { kind: "notify", id: "notice-1", message: "Hello", tone: "info" } });
 
-    expect(store.activeSession!.draft).not.toBe("stale");
+    expect(store.activeSession!.chatStore.draft).not.toBe("stale");
     expect(root.extensionUiStore.title).toBe("Initial");
     expect(root.extensionUiStore.notifications).toHaveLength(1);
 
@@ -504,14 +504,14 @@ describe("ProjectWorkbenchStore", () => {
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop);
-    store.activeSession!.setDraft("keep this draft");
+    store.activeSession!.chatStore.setDraft("keep this draft");
     desktop.emit({ type: "pi-state-changed", state: "stopped", workspacePath: "/project" });
     desktop.emit({ type: "pi-state-changed", state: "ready", workspacePath: "/project" });
     const inspectId = store.activeOperations.at(-1)!;
     desktop.emit({ type: "workspace-inspected", operationId: inspectId, path: "/project", trustRequired: false });
     const openId = store.activeOperations.at(-1)!;
     desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot: { ...snapshot, sessionId: "replacement" } });
-    expect(store.activeSession!.draft).toBe("keep this draft");
+    expect(store.activeSession!.chatStore.draft).toBe("keep this draft");
     root[Symbol.dispose]();
   });
 
@@ -522,13 +522,13 @@ describe("ProjectWorkbenchStore", () => {
     desktop.emit({ type: "pi-state-changed", state: "ready" });
     await openSnapshot(store, desktop, { ...snapshot, streaming: true });
 
-    store.activeSession!.setDraft("Do this next");
+    store.activeSession!.chatStore.setDraft("Do this next");
     await root.projectWorkbenchStore.activeSession!.composerStore.submit();
     expect(desktop.client.submit).toHaveBeenLastCalledWith(expect.objectContaining({ text: "Do this next", delivery: "follow-up" }));
     expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([]);
     expect(root.projectWorkbenchStore.activeSession!.composerStore.pendingUserMessages).toEqual([]);
 
-    store.activeSession!.setDraft("Change direction");
+    store.activeSession!.chatStore.setDraft("Change direction");
     await root.projectWorkbenchStore.activeSession!.composerStore.submit("steer");
     expect(desktop.client.submit).toHaveBeenLastCalledWith(expect.objectContaining({ text: "Change direction", delivery: "steer" }));
     expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([]);
@@ -553,7 +553,7 @@ describe("ProjectWorkbenchStore", () => {
       anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
       messages: [{ id: "comment-1", role: "user", body: "Rename this", createdAt: now, delivered: false, status: "complete" }]
     } });
-    store.activeSession!.setDraft("");
+    store.activeSession!.chatStore.setDraft("");
 
     expect(store.activeSession!.canSubmit).toBe(true);
     await root.projectWorkbenchStore.activeSession!.composerStore.submit();
@@ -665,7 +665,7 @@ describe("ProjectWorkbenchStore", () => {
       anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
       messages: [{ id: "comment-1", role: "user", body: "Rename this", createdAt: now, delivered: false, status: "complete" }]
     } });
-    store.activeSession!.setDraft("Also explain the overall change");
+    store.activeSession!.chatStore.setDraft("Also explain the overall change");
 
     await root.projectWorkbenchStore.activeSession!.composerStore.submit();
 
@@ -683,7 +683,7 @@ describe("ProjectWorkbenchStore", () => {
     desktop.emit({ type: "pi-state-changed", state: "ready" });
     await openSnapshot(store, desktop);
 
-    store.activeSession!.setDraft("Show this now");
+    store.activeSession!.chatStore.setDraft("Show this now");
     const submission = root.projectWorkbenchStore.activeSession!.composerStore.submit();
 
     expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([
@@ -706,7 +706,7 @@ describe("ProjectWorkbenchStore", () => {
     await flush();
     desktop.emit({ type: "pi-state-changed", state: "ready" });
     await openSnapshot(store, desktop);
-    store.activeSession!.setDraft("");
+    store.activeSession!.chatStore.setDraft("");
     root.projectWorkbenchStore.activeSession!.composerStore.attachments.push({ kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" });
 
     await root.projectWorkbenchStore.activeSession!.composerStore.submit();
@@ -730,7 +730,7 @@ describe("ProjectWorkbenchStore", () => {
     desktop.emit({ type: "pi-state-changed", state: "ready" });
     await openSnapshot(store, desktop);
 
-    store.activeSession!.setDraft("Think about this");
+    store.activeSession!.chatStore.setDraft("Think about this");
     await root.projectWorkbenchStore.activeSession!.composerStore.submit();
     desktop.emit({ type: "part-updated", sessionId: "session-1", part: { id: "reasoning-1", kind: "reasoning", text: "Working it out", status: "streaming" } });
 
@@ -748,12 +748,12 @@ describe("ProjectWorkbenchStore", () => {
     desktop.emit({ type: "pi-state-changed", state: "ready" });
     await openSnapshot(store, desktop);
 
-    store.activeSession!.setDraft("Already sent");
+    store.activeSession!.chatStore.setDraft("Already sent");
     await root.projectWorkbenchStore.activeSession!.composerStore.submit();
     desktop.emit({ type: "session-snapshot-received", snapshot: { ...snapshot, streaming: false } });
 
-    expect(store.activeSession!.draft).toBe("");
-    expect(store.sessionRegistry.findSession("session-1", store.projectPath)!.draft).toBe("");
+    expect(store.activeSession!.chatStore.draft).toBe("");
+    expect(store.sessionRegistry.findSession("session-1", store.projectPath)!.chatStore.draft).toBe("");
     root[Symbol.dispose]();
   });
 
@@ -828,23 +828,23 @@ describe("ProjectWorkbenchStore", () => {
     ];
     await openSnapshot(store, desktop, { ...snapshot, sessions });
     const firstSession = store.activeSession;
-    store.activeSession!.setDraft("alpha draft");
+    store.activeSession!.chatStore.setDraft("alpha draft");
     await store.openSession("/project", "session-2");
     const openId = store.activeOperations.at(-1)!;
     desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot: { ...snapshot, sessionId: "session-2", sessions } });
     const secondSession = store.activeSession;
-    store.activeSession!.setDraft("beta draft");
+    store.activeSession!.chatStore.setDraft("beta draft");
     expect(secondSession).not.toBe(firstSession);
     expect(secondSession!.composerStore).not.toBe(firstSession!.composerStore);
     expect(secondSession!.configurationStore).not.toBe(firstSession!.configurationStore);
     expect(store.sessionRegistry.findSession("session-1", "/project")).toBe(firstSession);
-    expect(store.sessionRegistry.findSession("session-1", store.projectPath)!.draft).toBe("alpha draft");
+    expect(store.sessionRegistry.findSession("session-1", store.projectPath)!.chatStore.draft).toBe("alpha draft");
     expect(root.sidebarStore.projectSessions(store.projectPath!).map((item) => item.id)).toEqual(["session-1", "session-2"]);
     root.sidebarStore.search = "alpha";
     expect(root.sidebarStore.searchedSessions.map((item) => `${item.workspacePath}:${item.id}`).sort()).toEqual(["/other:session-3", "/project:session-1"]);
     await store.openSession("/project", "session-1");
     expect(store.session?.sessionId).toBe("session-1");
-    expect(store.activeSession!.draft).toBe("alpha draft");
+    expect(store.activeSession!.chatStore.draft).toBe("alpha draft");
     await store.openSession("/other", "session-3");
     expect(desktop.client.inspectWorkspace).toHaveBeenLastCalledWith(expect.objectContaining({ path: "/other" }));
     root[Symbol.dispose]();
@@ -949,7 +949,7 @@ describe("ProjectWorkbenchStore", () => {
 
     expect(store.session?.sessionId).toBe("session-2");
     expect(root.projectWorkbenchStore.activeSession!.composerStore.parts.map((part) => part.id)).toEqual(["preview"]);
-    store.activeSession!.setDraft("not ready yet");
+    store.activeSession!.chatStore.setDraft("not ready yet");
     expect(store.activeSession!.canSubmit).toBe(false);
 
     const openId = store.activeOperations.at(-1)!;
@@ -1033,14 +1033,14 @@ describe("ProjectWorkbenchStore", () => {
     await flush();
     desktop.emit({ type: "pi-state-changed", state: "ready" });
     await openSnapshot(store, desktop, { ...snapshot, tree: [{ id: "entry-1", type: "message", preview: "Hello", active: true }] });
-    store.activeSession!.setDraft("/tree");
+    store.activeSession!.chatStore.setDraft("/tree");
     await root.projectWorkbenchStore.activeSession!.composerStore.submit();
 
     expect(store.commandPane).toBe("tree");
     expect(desktop.client.submit).not.toHaveBeenCalled();
 
     store.closeCommandPane();
-    store.activeSession!.setDraft("/changelog");
+    store.activeSession!.chatStore.setDraft("/changelog");
     await root.projectWorkbenchStore.activeSession!.composerStore.submit();
 
     expect(store.commandPane).toBe("changelog");
@@ -1051,12 +1051,12 @@ describe("ProjectWorkbenchStore", () => {
     expect(store.changelogMarkdown).toContain("0.84.0");
 
     store.closeCommandPane();
-    store.activeSession!.setDraft("/skill:review");
+    store.activeSession!.chatStore.setDraft("/skill:review");
     await root.projectWorkbenchStore.activeSession!.composerStore.submit();
 
     expect(desktop.client.submit).toHaveBeenCalledWith(expect.objectContaining({ text: "/skill:review", delivery: "prompt" }));
     expect(store.commandPane).toBeUndefined();
-    expect(store.activeSession!.draft).toBe("");
+    expect(store.activeSession!.chatStore.draft).toBe("");
     root[Symbol.dispose]();
   });
 
@@ -1069,7 +1069,7 @@ describe("ProjectWorkbenchStore", () => {
     await store.navigateTo("user-entry");
 
     expect(desktop.client.navigateSession).toHaveBeenCalledWith(expect.objectContaining({ entryId: "user-entry" }));
-    expect(store.activeSession!.draft).toBe("Original user message\nwith formatting");
+    expect(store.activeSession!.chatStore.draft).toBe("Original user message\nwith formatting");
     expect(store.commandPane).toBeUndefined();
     root[Symbol.dispose]();
   });

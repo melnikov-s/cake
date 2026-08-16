@@ -62,9 +62,9 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
   }
 
   applySessionRestore(session: ProjectSessionStore, previousSessionId?: string, restartDraft?: string) {
-    if (restartDraft !== undefined) session.draft = restartDraft;
-    else if (!previousSessionId && !session.draft) session.draft = this.restoredDraft;
-    session.transcriptViewStore.setThinkingExpanded(this.restoredThinkingExpanded);
+    if (restartDraft !== undefined) session.chatStore.setDraft(restartDraft);
+    else if (!previousSessionId && !session.chatStore.draft) session.chatStore.setDraft(this.restoredDraft);
+    session.chatStore.setThinkingExpanded(this.restoredThinkingExpanded);
     this.restoredDraft = "";
     this.restoredThinkingExpanded = false;
   }
@@ -97,7 +97,7 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
       }
       for (const [sessionId, draft] of Object.entries(state.draftsBySession)) {
         const summary = sessionIndex.sessions.find((session) => session.id === sessionId);
-        if (summary) this.props.registry.ensure(sessionId, summary.workspacePath).draft = draft;
+        if (summary) this.props.registry.ensure(sessionId, summary.workspacePath).chatStore.setDraft(draft);
       }
 
       this.hydrated = true;
@@ -116,11 +116,11 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
       projectPath: workbench.projectPath,
       selectedSessionId: activeSession?.sessionId,
       recentProjectPaths: this.props.projects.recentProjectPaths.slice(),
-      draft: activeSession?.draft ?? "",
+      draft: activeSession?.chatStore.draft ?? "",
       theme: this.props.settings().theme,
-      thinkingExpanded: activeSession?.transcriptViewStore.thinkingExpanded ?? false,
+      thinkingExpanded: activeSession?.chatStore.thinkingExpanded ?? false,
       sessionSearch: this.props.sidebar().search,
-      draftsBySession: Object.fromEntries(this.props.registry.sessions.map((session) => [session.sessionId, session.draft]))
+      draftsBySession: Object.fromEntries(this.props.registry.sessions.map((session) => [session.sessionId, session.chatStore.draft]))
     };
   }
 

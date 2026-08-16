@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { observer } from "r-state-tree/react";
-import { Markdown } from "@/components/ai-elements/markdown";
-import { Button } from "@/components/ui/button";
-import { ChatComposer } from "@/components/chat-composer";
-import { SlashCommandCombobox } from "@/components/slash-command-combobox";
+import { Chat } from "@/components/chat";
 import type { ReviewThreadModel } from "../models/review-thread";
 import type { MessageCommentsStore, MessageSelectionAnchor } from "../stores/MessageCommentsStore";
-import type { ChatConfigurationStore } from "../stores/ChatConfigurationStore";
 
 export interface MessageCommentAnchorRect {
   top: number;
@@ -147,37 +143,16 @@ export function MessageSelectionAction({ rect, onChat }: { rect: MessageCommentA
   return createPortal(<button className="message-selection-action" type="button" style={style} onPointerDown={(event) => event.preventDefault()} onClick={(event) => onChat(event.currentTarget.getBoundingClientRect())}>Chat about this</button>, document.body);
 }
 
-export function MessageCommentDraftPopover({ anchor, selection, store, configuration, onCreated, onClose }: { anchor: MessageCommentAnchorRect; selection: MessageSelectionAnchor; store: MessageCommentsStore; configuration?: ChatConfigurationStore; onCreated(threadId: string): void; onClose(): void }) {
-  const [question, setQuestion] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const send = async (body = question) => {
-    if (!body.trim() || submitting) return;
-    setSubmitting(true);
-    const threadId = await store.createThread(selection, body);
-    setSubmitting(false);
-    if (threadId) onCreated(threadId);
-  };
+export function MessageCommentDraftPopover({ anchor, selection, store, onCreated, onClose }: { anchor: MessageCommentAnchorRect; selection: MessageSelectionAnchor; store: MessageCommentsStore; onCreated(threadId: string): void; onClose(): void }) {
   return <PopoverShell anchor={anchor} title="Chat about this" selectedText={selection.selectedText} className="message-comment-draft-popover" onClose={onClose}>
-    <ChatComposer className="message-comment-composer" configuration={configuration} onSubmit={(event) => { event.preventDefault(); void send(); }} input={<SlashCommandCombobox autoFocus aria-label="Message about selected text" commands={[]} placeholder="Ask Cake about this passage…" value={question} disabled={submitting} onValueChange={setQuestion} onSubmit={(value) => { if (value !== undefined) setQuestion(value); void send(value); }} />} toolbarActions={<Button size="sm" type="submit" disabled={!question.trim() || submitting}>{submitting ? "Sending…" : "Send"}</Button>} />
+    <Chat store={store.draftChatStore} embedded composerOnly onSubmitted={() => { if (store.createdThreadId) onCreated(store.createdThreadId); }} />
   </PopoverShell>;
 }
 
-export const MessageCommentThreadPopover = observer(function MessageCommentThreadPopover({ anchor, thread, store, configuration, onClose }: { anchor: HTMLElement | MessageCommentAnchorRect; thread: ReviewThreadModel; store: MessageCommentsStore; configuration?: ChatConfigurationStore; onClose(): void }) {
-  const [reply, setReply] = useState("");
-  const [replying, setReplying] = useState(false);
-  const messagesRef = useRef<HTMLDivElement>(null);
-  const streaming = store.threadStreaming(thread.id);
-  useLayoutEffect(() => { messagesRef.current?.scrollTo?.({ top: messagesRef.current.scrollHeight }); }, [thread.messages.length, streaming]);
-  const send = async (body = reply) => {
-    if (!body.trim() || replying) return;
-    setReplying(true);
-    if (await store.replyThread(thread.id, body)) setReply("");
-    setReplying(false);
-  };
+export const MessageCommentThreadPopover = observer(function MessageCommentThreadPopover({ anchor, thread, store, onClose }: { anchor: HTMLElement | MessageCommentAnchorRect; thread: ReviewThreadModel; store: MessageCommentsStore; onClose(): void }) {
+  const chat = store.chatStore(thread.id);
   return <PopoverShell anchor={anchor} title="Selection chat" selectedText={thread.anchor.selectedText} className="message-comment-thread-popover" onClose={onClose}>
-    <div ref={messagesRef} className="message-comment-messages">{thread.messages.map((message) => <div key={message.id} className={`message-comment-message ${message.role} ${message.status}`}><strong>{message.role === "user" ? "You" : "Cake"}</strong><Markdown>{message.body}</Markdown></div>)}</div>
-    {streaming && <div className="message-comment-working"><span className="review-run-spinner" aria-hidden="true" />Cake is replying…</div>}
-    {thread.status === "open" && !streaming && <ChatComposer className="message-comment-composer" configuration={configuration} onSubmit={(event) => { event.preventDefault(); void send(); }} input={<SlashCommandCombobox autoFocus aria-label="Reply to selection chat" commands={[]} placeholder="Ask a follow-up…" value={reply} disabled={replying} onValueChange={setReply} onSubmit={(value) => { if (value !== undefined) setReply(value); void send(value); }} />} toolbarActions={<Button size="sm" type="submit" disabled={!reply.trim() || replying}>{replying ? "Sending…" : "Reply"}</Button>} />}
+    {chat && <Chat store={chat} embedded />}
     <footer className="message-comment-thread-actions"><button type="button" onClick={() => void store.resolveThread(thread.id, thread.status !== "resolved")}>{thread.status === "resolved" ? "Reopen chat" : "Resolve chat"}</button></footer>
   </PopoverShell>;
 });

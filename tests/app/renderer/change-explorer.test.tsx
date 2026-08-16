@@ -5,8 +5,10 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createStore, mount } from "r-state-tree";
 import type { ChangedFile } from "../../../src/ipc/session-contract";
 import type { ProjectWorkbenchStore } from "../../../src/renderer/stores/ProjectWorkbenchStore";
+import { ChatStore } from "../../../src/renderer/stores/ChatStore";
 
 vi.mock("@streamdown/code", () => ({
   code: {
@@ -28,6 +30,25 @@ const changes: ChangedFile[] = [
 
 function explorerProps(store: ProjectWorkbenchStore) {
   const fixture = store as unknown as Record<string, any>;
+  const chats = new Map<string, ChatStore>();
+  const chatStore = (threadId: string) => {
+    const current = chats.get(threadId);
+    if (current) return current;
+    const chat = mount(createStore(ChatStore, {
+      id: () => threadId,
+      parts: () => (fixture.reviewThreads ?? []).find((thread: { id: string }) => thread.id === threadId)?.messages.map((message: { id: string; role: "user" | "assistant"; body: string; status: "complete" | "streaming" }) => ({ id: message.id, kind: "text" as const, role: message.role, text: message.body, status: message.status })) ?? [],
+      streaming: () => fixture.reviewThreadStreaming?.(threadId) ?? false,
+      submitting: () => false,
+      configuration: () => undefined,
+      commands: () => [],
+      placeholder: () => "Ask a follow-up…",
+      inputLabel: () => "Reply to review thread",
+      canSubmit: (draft) => Boolean(draft.trim()),
+      submit: (draft) => fixture.replyReviewThread(threadId, draft)
+    }));
+    chats.set(threadId, chat);
+    return chat;
+  };
   return {
     store: {
       get changes() { return fixture.workspaceChanges; },
@@ -46,6 +67,7 @@ function explorerProps(store: ProjectWorkbenchStore) {
       get activeThread() { return fixture.activeReviewThread; },
       get pendingCommentCount() { return fixture.pendingReviewCommentCount ?? fixture.pendingReviewThreads?.length ?? 0; },
       threadStreaming: fixture.reviewThreadStreaming ?? (() => false),
+      chatStore,
       createThread: fixture.createReviewThread,
       replyThread: fixture.replyReviewThread,
       resolveThread: fixture.resolveReviewThread,
@@ -270,7 +292,7 @@ describe("ChangeExplorer", () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, "First reply");
       textarea.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await act(async () => container.querySelector<HTMLButtonElement>(".review-reply button")!.click());
+    await act(async () => container.querySelector<HTMLButtonElement>(".chat-embedded-composer button[type=submit]")!.click());
     expect(replyReviewThread).toHaveBeenLastCalledWith("review-1", "First reply");
 
     act(() => {

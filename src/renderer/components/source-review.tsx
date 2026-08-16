@@ -6,6 +6,7 @@ import type { ReviewThreadModel } from "../models/review-thread";
 import type { ReviewsStore } from "../stores/ReviewsStore";
 import { Button } from "./ui/button";
 import { extractSourceSelection } from "./source-selection";
+import { Chat } from "./chat";
 export { selectionColumn } from "./source-selection";
 
 type HighlightResult = ReturnType<typeof code.highlight>;
@@ -98,9 +99,8 @@ export function ReviewComposer({ anchor, floating, position, onSave, onCancel }:
 }
 
 export const ReviewThreadCard = observer(function ReviewThreadCard({ thread, store, onFocus }: { thread: ReviewThreadModel; store: ReviewsStore; onFocus?: () => void }) {
-  const [reply, setReply] = useState("");
-  const [replying, setReplying] = useState(false);
   const [expanded, setExpanded] = useState(thread.status === "open");
+  const chat = store.chatStore(thread.id);
   const focus = () => onFocus ? onFocus() : store.activeThreadId = thread.id;
   if (!expanded) return <button className={`review-thread-resolved ${store.activeThread?.id === thread.id ? "active" : ""}`} data-review-thread-id={thread.id} onClick={() => { focus(); setExpanded(true); }}>✓ Resolved thread · {thread.messages.length} messages</button>;
   return <article className={`review-thread ${thread.status} ${store.activeThread?.id === thread.id ? "active" : ""}`} data-review-thread-id={thread.id} aria-label={`Review thread on ${thread.anchor.path}`} onClick={focus}>
@@ -108,19 +108,7 @@ export const ReviewThreadCard = observer(function ReviewThreadCard({ thread, sto
       if (thread.status === "resolved") setExpanded(false);
       else { setExpanded(false); void store.resolveThread(thread.id); }
     }}> {thread.status === "resolved" ? "Minimize" : "Resolve"}</button></div></header>
-    <div className="review-thread-messages">{thread.messages.map((message) => <div className={`review-message ${message.role} ${message.status}`} key={message.id}><strong>{message.role === "user" ? "You" : "Cake"}</strong><p>{message.body}</p></div>)}{store.threadStreaming(thread.id) && <div className="review-message assistant streaming"><strong>Cake</strong><p><span /><span /><span /></p></div>}</div>
-    {thread.status === "open" && !thread.pending && !store.threadStreaming(thread.id) && <form className="review-reply" onSubmit={async (event) => {
-      event.preventDefault();
-      if (!reply.trim() || replying) return;
-      setReplying(true);
-      const saved = await store.replyThread(thread.id, reply);
-      if (saved) setReply("");
-      setReplying(false);
-    }}><textarea aria-label="Reply to review thread" placeholder="Reply…" value={reply} disabled={replying} onChange={(event) => setReply(event.target.value)} onKeyDown={(event) => {
-      if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
-      event.preventDefault();
-      event.currentTarget.form?.requestSubmit();
-    }} /><Button type="submit" size="sm" disabled={!reply.trim() || replying}>{replying ? "Replying…" : "Reply"}</Button></form>}
+    {chat && <Chat store={chat} embedded />}
   </article>;
 });
 

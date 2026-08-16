@@ -1,9 +1,10 @@
-import { Store } from "r-state-tree";
+import { Store, child, createStore } from "r-state-tree";
 import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { DesktopClient } from "../desktop-client";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import { describeError } from "../error-details";
+import { ChatStore } from "./ChatStore";
 
 export interface MessageCommentsStoreProps {
   client: Pick<DesktopClient, "createReviewThread" | "replyReviewThread">;
@@ -26,6 +27,8 @@ export interface MessageSelectionAnchor {
 export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
   error: string | undefined;
   errorDetails: string | undefined;
+  draftSelection: MessageSelectionAnchor | undefined;
+  createdThreadId: string | undefined;
 
   private reportError(error: unknown) {
     const described = describeError(error);
@@ -45,6 +48,36 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
 
   threadStreaming(threadId: string) {
     return this.props.reviews().threadStreaming(threadId);
+  }
+
+  chatStore(threadId: string) { return this.props.reviews().chatStore(threadId); }
+
+  prepareDraft(selection: MessageSelectionAnchor) {
+    this.draftSelection = selection;
+    this.createdThreadId = undefined;
+    this.draftChatStore.setDraft("");
+  }
+
+  @child
+  get draftChatStore(): ChatStore {
+    return createStore(ChatStore, {
+      id: () => "message-comment-draft",
+      parts: () => [],
+      streaming: () => false,
+      submitting: () => false,
+      configuration: () => this.props.reviews().configuration,
+      commands: () => [],
+      placeholder: () => "Ask Cake about this passage…",
+      inputLabel: () => "Message about selected text",
+      canSubmit: (draft) => Boolean(this.draftSelection && draft.trim()),
+      submit: async (draft) => {
+        if (!this.draftSelection) return false;
+        const threadId = await this.createThread(this.draftSelection, draft);
+        this.createdThreadId = threadId;
+        return Boolean(threadId);
+      },
+      error: () => ({ message: this.error, details: this.errorDetails })
+    });
   }
 
   async createThread(selection: MessageSelectionAnchor, body: string) {

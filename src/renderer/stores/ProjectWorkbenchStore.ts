@@ -128,7 +128,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   get isLocalSlashCommand() {
-    const draft = this.activeSession?.draft ?? "";
+    const draft = this.activeSession?.chatStore.draft ?? "";
     const command = draft.trim().toLocaleLowerCase();
     return command === "/tree" || command === "/resources" || command === "/changelog" || this.props.pluginCommands().matches(draft);
   }
@@ -137,8 +137,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (!this.isActiveSession(target.workspacePath, target.sessionId) || this.activeOpenOperationId) return false;
     const session = this.sessionRegistry.findSession(target.sessionId, target.workspacePath);
     if (!session) return false;
-    const command = session.draft.trim().toLocaleLowerCase();
-    const local = command === "/tree" || command === "/resources" || command === "/changelog" || this.props.pluginCommands().matches(session.draft);
+    const command = session.chatStore.draft.trim().toLocaleLowerCase();
+    const local = command === "/tree" || command === "/resources" || command === "/changelog" || this.props.pluginCommands().matches(session.chatStore.draft);
     return local || this.piState === "ready";
   }
 
@@ -424,7 +424,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const operationId = this.startOperation();
     try {
       await this.client.navigateSession({ operationId, ...context, entryId });
-      if (editorText !== undefined) this.activeSession?.setDraft(editorText);
+      if (editorText !== undefined) this.activeSession?.chatStore.setDraft(editorText);
     }
     catch (error) { this.finishOperation(operationId); this.setError(error); }
   }
@@ -499,7 +499,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       this.piState = event.state;
       if (event.state === "failed" || event.state === "stopped") {
         this.reopenAfterAgentRestart = Boolean(this.projectPath && this.session);
-        if (this.reopenAfterAgentRestart) this.draftAfterAgentRestart = this.activeSession?.draft;
+        if (this.reopenAfterAgentRestart) this.draftAfterAgentRestart = this.activeSession?.chatStore.draft;
         this.props.operations.reset();
         for (const operationId of Object.keys(this.pendingRenames)) this.rollbackRename(operationId);
         this.activeOpenOperationId = undefined;

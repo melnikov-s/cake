@@ -10,7 +10,7 @@ import {
 } from "@/components/ai-elements/confirmation";
 import { Conversation, VirtualizedConversation, type VirtualizedConversationHandle } from "@/components/ai-elements/conversation";
 import { Markdown } from "@/components/ai-elements/markdown";
-import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
+import { Message, MessageLabel } from "@/components/ai-elements/message";
 import { Reasoning } from "@/components/ai-elements/reasoning";
 import { Source } from "@/components/ai-elements/source";
 import { Tool } from "@/components/ai-elements/tool";
@@ -21,13 +21,12 @@ import { ChangeExplorer } from "@/components/change-explorer";
 import { WorkspaceBrowser } from "@/components/workspace-browser";
 import { ModelCombobox } from "@/components/model-combobox";
 import { SessionTree } from "@/components/session-tree";
-import { SlashCommandCombobox } from "@/components/slash-command-combobox";
 import { PanelResizeHandle } from "@/components/panel-resize-handle";
 import { CopyErrorDetailsButton } from "@/components/copy-error-details-button";
 import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
 import { PluginSettings } from "@/components/plugin-settings";
 import { MessageCommentDraftPopover, MessageCommentThreadPopover, MessageSelectionAction, type MessageCommentAnchorRect } from "@/components/message-comment-popover";
-import { ChatComposer } from "@/components/chat-composer";
+import { Chat, ChatLoadingIndicator, ChatTextMessage } from "@/components/chat";
 import { piSettingsSchema, thinkingLevelSchema, type CompatibilityResource, type PiSettings, type UiPart } from "../ipc/session-contract";
 import type { ProjectWorkbenchStore } from "./stores/ProjectWorkbenchStore";
 import type { ProjectSessionStore } from "./stores/ProjectSessionStore";
@@ -39,9 +38,7 @@ import type { CustomizationStore } from "./stores/CustomizationStore";
 import { RootStore } from "./stores/RootStore";
 import type { ExtensionUiStore, UiRequestState } from "./stores/ExtensionUiStore";
 import type { ArtifactInteractionStore } from "./stores/ArtifactInteractionStore";
-import type { GlobalChatStore } from "./stores/GlobalChatStore";
 import type { ChatConfigurationStore } from "./stores/ChatConfigurationStore";
-import type { TranscriptViewStore } from "./stores/TranscriptViewStore";
 import type { InlineWidgetStore } from "./stores/InlineWidgetStore";
 import type { MessageCommentsStore, MessageSelectionAnchor } from "./stores/MessageCommentsStore";
 import type { ArtifactRecord } from "../ipc/artifact-contract";
@@ -55,8 +52,6 @@ const PlusIcon = () => <Icon><path d="M12 5v14M5 12h14" /></Icon>;
 const ChatIcon = () => <Icon><path d="M20 15a3 3 0 0 1-3 3H8l-5 3 1.7-5.1A7 7 0 0 1 4 13V8a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3z" /></Icon>;
 const SearchIcon = () => <Icon><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></Icon>;
 const CloseIcon = () => <Icon><path d="m6 6 12 12M18 6 6 18" /></Icon>;
-const PaperclipIcon = () => <Icon><path d="m20.5 11.5-8.9 8.9a6 6 0 0 1-8.5-8.5l9.6-9.6a4 4 0 0 1 5.7 5.7l-9.6 9.6a2 2 0 1 1-2.8-2.8l8.9-8.9" /></Icon>;
-const SendIcon = () => <Icon><path d="m5 12 7-7 7 7M12 19V5" /></Icon>;
 const BackIcon = () => <Icon><path d="m15 18-6-6 6-6" /></Icon>;
 const ForwardIcon = () => <Icon><path d="m9 18 6-6-6-6" /></Icon>;
 const SidebarIcon = () => <Icon><rect x="3.5" y="4" width="17" height="16" rx="3" /><path d="M9 4v16" /></Icon>;
@@ -255,24 +250,22 @@ const AssistantTextMessage = observer(function AssistantTextMessage({ part, beha
   const activeThread = openThread ? commentThreads.find((thread) => thread.id === openThread.id) : undefined;
 
   return (
-    <Message ref={messageRef} className="assistant-message mr-auto w-full">
-      <MessageLabel>{part.status === "streaming" ? "Cake · working" : "Cake"}</MessageLabel>
+    <ChatTextMessage ref={messageRef} part={part} contentRef={contentRef} onMouseUp={scheduleSelectionAction}>
       <FullscreenButton className="assistant-message-expand" label="View response fullscreen" onClick={() => setFullscreen(true)} />
-      <MessageContent ref={contentRef} className="assistant-message-content" onMouseUp={scheduleSelectionAction}>{content()}</MessageContent>
       {commentThreads.map((thread, index) => markerPositions[thread.id] && <button key={thread.id} className={`message-comment-marker ${thread.status}`} style={markerPositions[thread.id]} type="button" aria-label={`Open selection chat ${index + 1}`} title={thread.anchor.selectedText} onClick={(event) => setOpenThread({ id: thread.id, anchor: event.currentTarget })}><ChatIcon /><b>{thread.messages.length}</b></button>)}
-      {selectionAction && <MessageSelectionAction rect={selectionAction.rect} onChat={(anchor) => { setDraft({ selection: selectionAction.selection, anchor }); setSelectionAction(undefined); }} />}
-      {draft && behavior.messageComments && <MessageCommentDraftPopover anchor={draft.anchor} selection={draft.selection} store={behavior.messageComments} configuration={behavior.chatConfiguration} onClose={() => setDraft(undefined)} onCreated={(threadId) => {
+      {selectionAction && <MessageSelectionAction rect={selectionAction.rect} onChat={(anchor) => { behavior.messageComments?.prepareDraft(selectionAction.selection); setDraft({ selection: selectionAction.selection, anchor }); setSelectionAction(undefined); }} />}
+      {draft && behavior.messageComments && <MessageCommentDraftPopover anchor={draft.anchor} selection={draft.selection} store={behavior.messageComments} onClose={() => setDraft(undefined)} onCreated={(threadId) => {
         setOpenThread({ id: threadId, anchor: draft.anchor });
         setDraft(undefined);
         window.getSelection()?.removeAllRanges();
       }} />}
-      {activeThread && behavior.messageComments && <MessageCommentThreadPopover anchor={openThread!.anchor} thread={activeThread} store={behavior.messageComments} configuration={behavior.chatConfiguration} onClose={() => setOpenThread(undefined)} />}
+      {activeThread && behavior.messageComments && <MessageCommentThreadPopover anchor={openThread!.anchor} thread={activeThread} store={behavior.messageComments} onClose={() => setOpenThread(undefined)} />}
       {part.status !== "streaming" && <div className="assistant-message-actions" aria-label="Message actions">
         <button type="button" aria-label={copied ? "Copied response" : "Copy response"} title={copied ? "Copied" : "Copy response"} onClick={() => void copy()}>{copied ? <CheckIcon /> : <CopyIcon />}</button>
         {part.entryId && behavior.onFork && <button type="button" aria-label="Fork response into new chat" title="Fork into new chat" onClick={() => behavior.onFork!(part.entryId!)}><ForkIcon /></button>}
       </div>}
       {fullscreen && <FullscreenSurface eyebrow="Full response" title="Cake" onClose={closeFullscreen}>{content()}</FullscreenSurface>}
-    </Message>
+    </ChatTextMessage>
   );
 });
 
@@ -284,21 +277,12 @@ interface TranscriptBehavior {
   inlineWidgets?: { store: InlineWidgetStore; workspacePath: string; sessionId: string; model?: { provider: string; id: string } };
   artifacts?: { records: ArtifactRecord[]; interaction: ArtifactInteractionStore };
   messageComments?: MessageCommentsStore;
-  chatConfiguration?: ChatConfigurationStore;
 }
 
 const TranscriptPart = observer(function TranscriptPart({ part, behavior, awaitingResponse = false }: { part: UiPart; behavior: TranscriptBehavior; awaitingResponse?: boolean }) {
   if (part.kind === "text") {
     if (part.role === "assistant") return <AssistantTextMessage part={part} behavior={behavior} />;
-    return (
-      <Message className="ml-auto w-[min(88%,42rem)]">
-        <MessageLabel>You</MessageLabel>
-        <MessageContent className={`user-message${awaitingResponse ? " user-message-awaiting-response" : ""}`}>
-          <Markdown>{part.text}</Markdown>
-          {awaitingResponse && <span className="user-message-loading" role="status" aria-label="Waiting for Cake" />}
-        </MessageContent>
-      </Message>
-    );
+    return <ChatTextMessage part={part} awaitingResponse={awaitingResponse} />;
   }
   if (part.kind === "reasoning") return <Reasoning open={behavior.thinkingExpanded} onToggle={behavior.onToggleThinking} streaming={part.status === "streaming"} hasContent={Boolean(part.text.trim())}><Markdown>{part.text}</Markdown></Reasoning>;
   if (part.kind === "tool") {
@@ -378,13 +362,7 @@ function ActivityGroup({ parts, behavior, isStreaming }: { parts: UiPart[]; beha
 }
 
 function AssistantLoadingIndicator() {
-  return (
-    <div className="assistant-loading" role="status" aria-label="Cake is working">
-      <span aria-hidden="true" />
-      <span aria-hidden="true" />
-      <span aria-hidden="true" />
-    </div>
-  );
+  return <ChatLoadingIndicator />;
 }
 
 function ReviewRunMessage({ run, onOpen }: { run: Extract<UiPart, { kind: "review-run" }>; onOpen?(threadId?: string): void }) {
@@ -573,49 +551,6 @@ export const Sidebar = observer(function Sidebar({ store, projects, chat, review
         <button className={settingsOpen ? "sidebar-settings-icon active" : "sidebar-settings-icon"} type="button" aria-label="Open settings" aria-current={settingsOpen ? "page" : undefined} onClick={onOpenSettings}><SettingsIcon /></button>
       </div>
     </aside>
-  );
-});
-
-const GlobalChatPanel = observer(function GlobalChatPanel({ store, configuration, transcriptView }: { store: GlobalChatStore; configuration: ChatConfigurationStore; transcriptView: TranscriptViewStore }) {
-  const submit = (event: FormEvent) => { event.preventDefault(); void store.submit(); };
-  return <div className="workbench global-chat"><div className="chat-layout">
-    <Transcript parts={store.parts} sessionId={store.sessionId ?? "global-chat"} isStreaming={store.streaming} isSubmitting={store.hasPendingPrompt} hideThinking={store.session?.piSettings?.hideThinkingBlock} behavior={{ thinkingExpanded: transcriptView.thinkingExpanded, onToggleThinking: () => transcriptView.toggleThinking() }} empty={<div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What can I help you find or do?</h1><p>Ask about your tasks, open one, or delegate work to it.</p></div>} error={configuration.error ?? store.error} errorDetails={configuration.error ? configuration.errorDetails : store.errorDetails} errorTitle="Global chat failed" />
-    <div className="composer-dock"><ChatComposer configuration={configuration} onSubmit={submit} input={<SlashCommandCombobox autoFocus aria-label="Message global chat" commands={store.session?.commands ?? []} placeholder="Ask Cake to find or control a task…" value={store.draft} onValueChange={(value) => store.setDraft(value)} onSubmit={(value) => { if (value !== undefined) store.setDraft(value); void store.submit(); }} />} toolbarActions={<>{store.streaming && <Button variant="ghost" size="sm" type="button" onClick={() => void store.abort()}>Stop</Button>}<Button className="send-button" size="sm" type="submit" disabled={!store.draft.trim()}>{store.streaming ? "Queue" : "Send"}<SendIcon /></Button></>} /></div>
-  </div></div>;
-});
-
-const ComposerPanel = observer(function ComposerPanel({ workbench, session, reviews, extensionUi }: { workbench: ProjectWorkbenchStore; session: ProjectSessionStore; reviews: ReviewsStore; extensionUi: ExtensionUiStore }) {
-  const composer = session.composerStore;
-  const configuration = session.configurationStore;
-  const usage = session.model.usage;
-  const context = usage?.context;
-  const contextPercent = context?.percent === null || context?.percent === undefined ? undefined : Math.round(context.percent);
-  const contextLabel = contextPercent === undefined ? "Context usage unavailable" : `${contextPercent}% context used`;
-  const contextTitle = context
-    ? `${context.tokens === null ? "Unknown" : context.tokens.toLocaleString()} of ${context.contextWindow.toLocaleString()} context tokens`
-    : "Context usage is unavailable";
-  return (
-    <div className="composer-dock">
-      <ChatComposer configuration={configuration} onSubmit={(event) => { event.preventDefault(); void composer.submit(); }} input={<SlashCommandCombobox autoFocus aria-label="Message" commands={[...session.model.commands, ...workbench.pluginCommands]} focusRequestRevision={composer.focusRequestRevision} suggestFiles={(prefix) => composer.suggestFiles(prefix)} placeholder={session.isStreaming ? "Add the next instruction…" : `Ask Cake to work in ${workbench.projectName}…`} value={session.draft} onValueChange={(value) => session.setDraft(value)} onPaste={(event) => {
-          const images = [...event.clipboardData.files].filter((file) => file.type.startsWith("image/"));
-          if (images.length === 0) {
-            for (const item of event.clipboardData.items) {
-              if (!item.type.startsWith("image/")) continue;
-              const file = item.getAsFile();
-              if (file) images.push(file);
-            }
-          }
-          if (images.length === 0) return;
-          event.preventDefault();
-          void composer.addPastedImages(images);
-        }} onSubmit={(value) => { if (value !== undefined) session.setDraft(value); void composer.submit(); }} />} toolbarLeading={<button type="button" className="icon-button" aria-label="Attach files" title="Attach files" onClick={() => void composer.addAttachments()}><PaperclipIcon /></button>} toolbarActions={<>{usage && <div className="session-usage" aria-label={`${contextLabel}, session cost $${usage.cost.toFixed(3)}`} title={`${contextTitle} · ${usage.tokens.total.toLocaleString()} billed tokens`}><svg className="context-gauge" viewBox="0 0 36 36" aria-hidden="true"><circle className="context-gauge-track" cx="18" cy="18" r="15.5" pathLength="100" /><circle className="context-gauge-value" cx="18" cy="18" r="15.5" pathLength="100" strokeDasharray={`${Math.min(100, contextPercent ?? 0)} 100`} /><text x="18" y="18">{contextPercent === undefined ? "—" : `${contextPercent}%`}</text></svg><span className="session-cost">${usage.cost.toFixed(3)}</span></div>}{session.isStreaming && <><Button variant="ghost" size="sm" type="button" onClick={() => void workbench.abort()}>Stop</Button><Button variant="outline" size="sm" type="button" disabled={!session.canSubmit} onClick={() => void composer.submit("steer")}>Steer</Button></>}<Button className="send-button" size="sm" type="submit" disabled={!session.canSubmit}>{session.isStreaming ? "Queue" : "Send"}<SendIcon /></Button></>}>
-        {reviews.chatCommentCount > 0 && <div className="review-context-badge"><button type="button" onClick={() => void workbench.openSessionChanges()}><span>{reviews.chatCommentCount}</span> {reviews.chatCommentCount === 1 ? "comment ready to send" : "comments ready to send"}</button></div>}
-        {composer.attachments.length > 0 && <div className="attachment-list">{composer.attachments.map((attachment, index) => attachment.kind === "image"
-          ? <button className="image-attachment" type="button" aria-label={`Remove ${attachment.name}`} key={`${attachment.kind}-${attachment.name}-${index}`} onClick={() => composer.removeAttachment(index)}><img src={`data:${attachment.mimeType};base64,${attachment.data}`} alt="" /><span>{attachment.name}<b aria-hidden="true">×</b></span></button>
-          : <button type="button" key={`${attachment.kind}-${attachment.name}-${index}`} onClick={() => composer.removeAttachment(index)}>@ {attachment.name} <span>×</span></button>)}</div>}
-      </ChatComposer>
-      {extensionUi.statuses.length > 0 && <div className="extension-statuses" role="status">{extensionUi.statuses.map((status) => <span key={status.key}><strong>{status.key}</strong> {status.text}</span>)}</div>}
-    </div>
   );
 });
 
@@ -825,10 +760,10 @@ export const App = observer(function App() {
       <section className="workspace" data-session-id={session?.sessionId}>
         <button className={surface === "settings" ? "workspace-settings-icon active" : "workspace-settings-icon"} type="button" aria-label="Open settings" aria-current={surface === "settings" ? "page" : undefined} onClick={() => root.showSettings()}><SettingsIcon /></button>
         <header className="workspace-header"><div><button className="header-sidebar-toggle" aria-label="Toggle sidebar" onClick={() => setSidebarCollapsed((value) => !value)}><SidebarIcon /></button>{surface === "settings" && <button className="header-back" aria-label="Back to chat" onClick={returnToWorkbench}><BackIcon /></button>}<strong>{surface === "settings" ? "Settings" : surface === "global-chat" ? "Global chat" : extensionUi.title ?? (session ? store.sessionTitle : "Cake")}</strong>{surface === "workbench" && store.projectPath && <span>{store.projectPath}</span>}</div>{globalChat ? <Button variant="ghost" size="sm" onClick={() => { if (window.confirm("Clear global chat history?")) void globalChat.clear(); }}>Clear</Button> : surface === "workbench" && session && <div className="header-pane-actions"><button className="header-pane-toggle" type="button" aria-label="Browse project files" onClick={() => void store.openWorkspaceBrowser()}><BrowseIcon /><span>Browse</span></button><button className="header-pane-toggle" type="button" aria-label="Open workspace changes" onClick={() => void store.openSessionChanges()}><ChangesIcon /><span>Changes</span>{changes.changes.length > 0 && <b>{changes.changes.length}</b>}</button></div>}</header>
-        {surface === "settings" ? <SettingsPage store={store} settings={settings} configuration={chatConfiguration} customization={root.customizationStore} onViewStateChange={() => persistence.schedule()} /> : globalChat ? <GlobalChatPanel store={globalChat} configuration={root.globalChatConfigurationStore} transcriptView={root.globalTranscriptViewStore} /> : !session ? (
+        {surface === "settings" ? <SettingsPage store={store} settings={settings} configuration={chatConfiguration} customization={root.customizationStore} onViewStateChange={() => persistence.schedule()} /> : globalChat ? <div className="workbench global-chat"><Chat store={globalChat.chatStore} transcript={<Transcript parts={globalChat.chatStore.parts} sessionId={globalChat.chatStore.id} isStreaming={globalChat.chatStore.streaming} isSubmitting={globalChat.chatStore.submitting} hideThinking={globalChat.chatStore.hideThinking} behavior={{ thinkingExpanded: globalChat.chatStore.thinkingExpanded, onToggleThinking: () => globalChat.chatStore.toggleThinking() }} empty={<div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What can I help you find or do?</h1><p>Ask about your tasks, open one, or delegate work to it.</p></div>} error={globalChat.chatStore.error?.message} errorDetails={globalChat.chatStore.error?.details} errorTitle={globalChat.chatStore.error?.title} />} /></div> : !session ? (
           <div className="welcome"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build?</h1><p>Open a project for durable workspace chats, or start a one-off chat from your home directory.</p><div><Button size="lg" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void root.chooseProject()}><FolderIcon /> Open project</Button><Button size="lg" variant="outline" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void root.startOneOffChat()}><ChatIcon /> One-off chat</Button></div>{chatError && <ErrorNotice title="Operation failed" message={chatError} details={chatErrorDetails} />}</div>
         ) : (
-          <StoreProvider key={`${session.workspacePath}\u0000${session.sessionId}`} store={session}><div className="workbench"><div className="chat-layout"><Transcript sessionId={session.sessionId} parts={composer!.parts} isStreaming={session.isStreaming} isSubmitting={composer!.activeOperations.length > 0} hideThinking={session.model.piSettings?.hideThinkingBlock} behavior={{ thinkingExpanded: session.transcriptViewStore.thinkingExpanded, onToggleThinking: () => { session.transcriptViewStore.toggleThinking(); persistence.schedule(); }, onFork: (entryId) => { void store.forkAt(entryId); }, onOpenReviewRun: (threadId) => { void store.openSessionChanges(threadId); }, messageComments: session.messageCommentsStore, chatConfiguration: session.configurationStore, inlineWidgets: { store: root.inlineWidgetStore, workspacePath: session.workspacePath, sessionId: session.sessionId, model: session.model.model }, artifacts: { records: session.model.artifacts.map((artifact) => artifact.value), interaction: session.artifactInteractionStore } }} empty={<div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>} footer={<ArtifactsPanel session={session} inlineWidgets={root.inlineWidgetStore} />} error={chatError} errorDetails={chatErrorDetails} /><ComposerPanel workbench={store} session={session} reviews={reviews} extensionUi={extensionUi} /></div></div></StoreProvider>
+          <StoreProvider key={`${session.workspacePath}\u0000${session.sessionId}`} store={session}><div className="workbench"><Chat store={session.chatStore} transcript={<Transcript sessionId={session.chatStore.id} parts={session.chatStore.parts} isStreaming={session.chatStore.streaming} isSubmitting={session.chatStore.submitting} hideThinking={session.chatStore.hideThinking} behavior={{ thinkingExpanded: session.chatStore.thinkingExpanded, onToggleThinking: () => session.chatStore.toggleThinking(), onFork: (entryId) => { void store.forkAt(entryId); }, onOpenReviewRun: (threadId) => { void store.openSessionChanges(threadId); }, messageComments: session.messageCommentsStore, inlineWidgets: { store: root.inlineWidgetStore, workspacePath: session.workspacePath, sessionId: session.sessionId, model: session.model.model }, artifacts: { records: session.model.artifacts.map((artifact) => artifact.value), interaction: session.artifactInteractionStore } }} empty={<div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>} footer={<ArtifactsPanel session={session} inlineWidgets={root.inlineWidgetStore} />} error={chatError} errorDetails={chatErrorDetails} />} composerContent={reviews.chatCommentCount > 0 && <div className="review-context-badge"><button type="button" onClick={() => void store.openSessionChanges()}><span>{reviews.chatCommentCount}</span> {reviews.chatCommentCount === 1 ? "comment ready to send" : "comments ready to send"}</button></div>} status={extensionUi.statuses.length > 0 && <div className="extension-statuses" role="status">{extensionUi.statuses.map((status) => <span key={status.key}><strong>{status.key}</strong> {status.text}</span>)}</div>} /></div></StoreProvider>
         )}
       </section>
       <CommandPane store={store} extensionUi={extensionUi} />

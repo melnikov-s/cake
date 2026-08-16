@@ -121,9 +121,17 @@ The window Store hierarchy mirrors the product surfaces:
 - The root-scoped `SessionRegistryStore` preserves one keyed
   `ProjectSessionStore` for every loaded `(workspacePath, sessionId)` target so
   background events, global chat, and navigation share session identity.
-- Each `ProjectSessionStore` owns that session's draft, activity, transcript,
-  `SessionModel`, composer, configuration, artifacts, and message comments.
-  React mounts it as the nearest provider around the active session surface.
+- Each `ProjectSessionStore` owns that session's activity, `SessionModel`,
+  message composer, chat configuration, artifacts, and message comments. Its
+  `ChatStore` is the common conversation-facing state boundary: it presents the
+  draft, transcript parts, streaming state, configuration, and composer actions
+  consumed by the authoritative `Chat` component.
+- Project sessions, global chat, selection chats, and review threads all render
+  the same `Chat` component and supply a `ChatStore`. A surface may provide a
+  richer transcript projection, but it must compose the shared message,
+  loading, and composer primitives instead of creating chat-specific controls.
+  React mounts the project session as the nearest provider around the active
+  session surface.
 
 UI and application controls invoke semantic `RootStore` intents such as
 `openSession`, `createSession`, or `showGlobalChat`. The root performs any
@@ -139,6 +147,7 @@ flowchart TD
   Root --> Registry["SessionRegistryStore"]
   Root --> Workbench["ProjectWorkbenchStore"]
   Root --> Global["GlobalChatStore"]
+  Global --> GlobalChat["ChatStore"]
   Root --> Settings["SettingsStore"]
   Root --> Persistence["WindowPersistenceCoordinator"]
   Workbench -. selects from .-> Registry
@@ -147,10 +156,12 @@ flowchart TD
   Registry --> Session["ProjectSessionStore (one per loaded target)"]
   Session --> Model["SessionModel"]
   Session --> Composer["MessageComposerStore"]
-  Session --> Transcript["TranscriptViewStore"]
   Session --> Config["ChatConfigurationStore"]
+  Session --> Chat["ChatStore"]
   Session --> Comments["MessageCommentsStore"]
   Session --> Artifacts["ArtifactInteractionStore"]
+  Root --> Reviews["ReviewsStore"]
+  Reviews --> ThreadChats["ChatStore per review or selection thread"]
 ```
 
 ## Rich UI has two trust paths

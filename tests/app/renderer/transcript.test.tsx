@@ -4,6 +4,7 @@
 import React, { act, forwardRef, useEffect, useImperativeHandle } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createStore, mount } from "r-state-tree";
 import type { UiPart } from "../../../src/ipc/session-contract";
 
 const { scrollToIndex, virtualizedLifecycle, virtualizedProps } = vi.hoisted(() => ({
@@ -34,6 +35,7 @@ vi.mock("@/components/ai-elements/conversation", () => ({
 import { captureMessageSelection, MESSAGE_COMMENT_SELECTION_DELAY_MS, Transcript } from "../../../src/renderer/app";
 import type { MessageCommentsStore } from "../../../src/renderer/stores/MessageCommentsStore";
 import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
+import { ChatStore } from "../../../src/renderer/stores/ChatStore";
 
 interface TranscriptHarness {
   visibleParts: UiPart[];
@@ -325,7 +327,19 @@ describe("Transcript scrolling", () => {
 
   it("waits before offering a chat for selected assistant text", () => {
     vi.useFakeTimers();
-    const comments = { threadsForMessage: () => [] } as unknown as MessageCommentsStore;
+    const draftChat = mount(createStore(ChatStore, {
+      id: () => "message-comment-draft",
+      parts: () => [],
+      streaming: () => false,
+      submitting: () => false,
+      configuration: () => undefined,
+      commands: () => [],
+      placeholder: () => "Ask Cake about this passage…",
+      inputLabel: () => "Message about selected text",
+      canSubmit: (draft) => Boolean(draft.trim()),
+      submit: async () => true
+    }));
+    const comments = { threadsForMessage: () => [], prepareDraft: vi.fn(), draftChatStore: draftChat } as unknown as MessageCommentsStore;
     act(() => root.render(<Transcript
       parts={[{ id: "assistant-1", kind: "text", role: "assistant", entryId: "entry-1", text: "Alpha important detail.", status: "complete" }]}
       sessionId="session-1"
@@ -355,6 +369,7 @@ describe("Transcript scrolling", () => {
     expect(document.body.querySelector('[role="dialog"][aria-label="Chat about this"]')).not.toBeNull();
     expect(document.body.querySelector<HTMLTextAreaElement>('[aria-label="Message about selected text"]')).toBe(document.activeElement);
     browserSelection.removeAllRanges();
+    draftChat[Symbol.dispose]();
     vi.useRealTimers();
   });
 
@@ -370,12 +385,6 @@ describe("Transcript scrolling", () => {
       status: "open",
       updatedAt: now
     };
-    const comments = {
-      threadsForMessage: () => [thread],
-      threadStreaming: () => false,
-      replyThread: vi.fn(),
-      resolveThread: vi.fn()
-    } as unknown as MessageCommentsStore;
     const configuration = {
       session: {
         model: { provider: "openai", id: "gpt" },
@@ -386,11 +395,30 @@ describe("Transcript scrolling", () => {
       selectModel: vi.fn(),
       selectThinkingLevel: vi.fn()
     } as unknown as ChatConfigurationStore;
+    const threadChat = mount(createStore(ChatStore, {
+      id: () => thread.id,
+      parts: () => thread.messages.map((message) => ({ id: message.id, kind: "text" as const, role: message.role as "user" | "assistant", text: message.body, status: message.status as "complete" })),
+      streaming: () => false,
+      submitting: () => false,
+      configuration: () => configuration,
+      commands: () => [],
+      placeholder: () => "Ask a follow-up…",
+      inputLabel: () => "Reply to selection chat",
+      canSubmit: (draft) => Boolean(draft.trim()),
+      submit: async () => true
+    }));
+    const comments = {
+      threadsForMessage: () => [thread],
+      threadStreaming: () => false,
+      chatStore: () => threadChat,
+      replyThread: vi.fn(),
+      resolveThread: vi.fn()
+    } as unknown as MessageCommentsStore;
     act(() => root.render(<Transcript
       parts={[{ id: "assistant-1", kind: "text", role: "assistant", text: "Alpha important detail.", status: "complete" }]}
       sessionId="session-1"
       isStreaming={false}
-      behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, messageComments: comments, chatConfiguration: configuration }}
+      behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, messageComments: comments }}
       empty={<div />}
     />));
 
@@ -400,7 +428,7 @@ describe("Transcript scrolling", () => {
     const chat = document.body.querySelector('[role="dialog"][aria-label="Selection chat"]');
     expect(chat?.textContent).toContain("Why this word?");
     expect(chat?.textContent).toContain("Because it carries the point.");
-    expect(chat?.querySelector(".message-comment-composer")).not.toBeNull();
+    expect(chat?.querySelector(".chat-embedded-workbench-composer")).not.toBeNull();
     expect(chat?.querySelector<HTMLInputElement>('[aria-label="Model"]')?.value).toBe("GPT");
     expect(chat?.querySelector<HTMLSelectElement>('[aria-label="Thinking level"]')?.value).toBe("medium");
 
@@ -412,6 +440,7 @@ describe("Transcript scrolling", () => {
     act(() => document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })));
     expect((chat as HTMLElement).style.left).toBe("150px");
     expect((chat as HTMLElement).style.top).toBe("170px");
+    threadChat[Symbol.dispose]();
   });
 
   it("opens every assistant response in a fullscreen reader regardless of text length or streaming state", () => {

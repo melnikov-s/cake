@@ -16,6 +16,8 @@ export interface SessionRegistryStoreProps {
   isActive(target: SessionTarget): boolean;
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
   persist(): void;
+  projectName(workspacePath: string): string;
+  abort(target: SessionTarget): Promise<void>;
 }
 
 /** Owns the keyed collection of loaded per-session Store instances for a window. */
@@ -35,7 +37,9 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
       canSubmit: () => this.props.canSubmit(target),
       isActive: () => this.props.isActive(target),
       openCommandPane: (pane) => this.props.openCommandPane(pane),
-      persist: () => this.props.persist()
+      persist: () => this.props.persist(),
+      projectName: () => this.props.projectName(target.workspacePath),
+      abort: () => this.props.abort(target)
     }));
   }
 

@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import { GlobalChatStore } from "../../../../src/renderer/stores/GlobalChatStore";
 import { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
 import type { SessionSnapshot } from "../../../../src/ipc/session-contract";
-import { ChatConfigurationStore } from "../../../../src/renderer/stores/ChatConfigurationStore";
 import type { DesktopClient } from "../../../../src/renderer/desktop-client";
 import type { SessionOperationCoordinator } from "../../../../src/renderer/stores/SessionOperationCoordinator";
 import type { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
@@ -42,23 +41,22 @@ function createTestStore() {
     canSubmit: () => false,
     isActive: () => false,
     openCommandPane: async () => undefined,
-    persist: () => undefined
-  }));
-  const store = mount(createStore(GlobalChatStore, {
-    port,
-    tools: () => [{ name: "get_app_state", description: "Read app state", parameters: { type: "object", properties: {} } }],
-    sessions: () => sessions
+    persist: () => undefined,
+    projectName: () => "Project",
+    abort: async () => undefined
   }));
   const configurationPort = {
     setModel: vi.fn(async (input: { operationId: string; provider: string; modelId: string }) => { void input; }),
     setThinkingLevel: vi.fn(async (input: { operationId: string; level: SessionSnapshot["thinkingLevel"] }) => { void input; })
   };
-  const configuration = mount(createStore(ChatConfigurationStore, {
-    session: () => store.session,
-    operations: store,
+  const store = mount(createStore(GlobalChatStore, {
+    port,
+    tools: () => [{ name: "get_app_state", description: "Read app state", parameters: { type: "object", properties: {} } }],
+    sessions: () => sessions,
     setModel: (operationId, provider, modelId) => configurationPort.setModel({ operationId, provider, modelId }),
     setThinkingLevel: (operationId, level) => configurationPort.setThinkingLevel({ operationId, level })
   }));
+  const configuration = store.configurationStore;
   return { store, port, sessions, configuration, configurationPort };
 }
 
@@ -71,8 +69,8 @@ describe("GlobalChatStore", () => {
       snapshot
     });
 
-    store.setDraft("Open it");
-    await store.submit();
+    store.chatStore.setDraft("Open it");
+    await store.chatStore.submit();
 
     expect(store.parts.map((part) => part.kind === "text" ? part.text : "")).toEqual(["The PDF task is task-7.", "Open it"]);
     expect(port.prompt).toHaveBeenCalledWith(expect.objectContaining({ text: "Open it" }));
@@ -80,19 +78,17 @@ describe("GlobalChatStore", () => {
     await configuration.selectThinkingLevel("high");
     expect(configurationPort.setModel).toHaveBeenCalledWith(expect.objectContaining({ provider: "openai", modelId: "gpt" }));
     expect(configurationPort.setThinkingLevel).toHaveBeenCalledWith(expect.objectContaining({ level: "high" }));
-    configuration[Symbol.dispose]();
     store[Symbol.dispose]();
     sessions[Symbol.dispose]();
   });
 
   it("starts a new hidden session when cleared", async () => {
-    const { store, port, sessions, configuration } = createTestStore();
+    const { store, port, sessions } = createTestStore();
     await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
 
     await store.clear();
 
     expect(port.clear).toHaveBeenCalledWith(expect.objectContaining({ tools: [{ name: "get_app_state", description: "Read app state", parameters: { type: "object", properties: {} } }] }));
-    configuration[Symbol.dispose]();
     store[Symbol.dispose]();
     sessions[Symbol.dispose]();
   });

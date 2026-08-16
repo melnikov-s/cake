@@ -25,7 +25,9 @@ describe("MessageCommentsStore", () => {
       canSubmit: () => false,
       isActive: () => false,
       openCommandPane: async () => undefined,
-      persist: () => undefined
+      persist: () => undefined,
+      projectName: () => "Project",
+      abort: async () => undefined
     }));
     const store = mount(createStore(MessageCommentsStore, {
       client: { createReviewThread } as unknown as DesktopClient,

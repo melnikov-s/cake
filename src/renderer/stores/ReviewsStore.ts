@@ -1,10 +1,12 @@
-import { Store, observable } from "r-state-tree";
+import { Store, child, createStore, observable } from "r-state-tree";
 import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
 import { describeError } from "../error-details";
 import type { ThinkingLevel } from "../../ipc/session-contract";
+import type { ChatConfigurationStore } from "./ChatConfigurationStore";
+import { ChatStore } from "./ChatStore";
 
 export interface ReviewsStoreProps {
   client: Pick<DesktopClient, "createReviewThread" | "replyReviewThread" | "resolveReviewThread" | "listReviewThreads" | "submitReviewThreads">;
@@ -12,6 +14,7 @@ export interface ReviewsStoreProps {
   context(): { workspacePath: string; sessionId: string } | undefined;
   model(): { provider: string; id: string } | undefined;
   thinkingLevel(): ThinkingLevel | undefined;
+  configuration(): ChatConfigurationStore | undefined;
   operations: SessionOperationCoordinator;
 }
 
@@ -78,7 +81,33 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     return context ? this.chatCommentCountForSession(context.workspacePath, context.sessionId) : 0;
   }
   get activeThread() { return this.threads.find((thread) => thread.id === this.activeThreadId) ?? this.openThreads[0]; }
+  get configuration() { return this.props.configuration(); }
   threadStreaming(threadId: string) { return this.streamingThreadIds.includes(threadId); }
+
+  @child
+  get chatStores(): ChatStore[] {
+    return this.threads.map((thread) => createStore(ChatStore, {
+      key: thread.id,
+      id: () => thread.id,
+      parts: () => thread.messages.map((message) => ({ id: message.id, kind: "text" as const, role: message.role, text: message.body, status: message.status })),
+      streaming: () => this.threadStreaming(thread.id),
+      submitting: () => false,
+      configuration: () => this.props.configuration(),
+      commands: () => [],
+      placeholder: () => "Ask a follow-up…",
+      inputLabel: () => thread.anchor.view === "message" ? "Reply to selection chat" : "Reply to review thread",
+      canSubmit: (draft) => Boolean(draft.trim()) && thread.status === "open" && !thread.pending && !this.threadStreaming(thread.id),
+      submit: async (draft) => {
+        const saved = await this.replyThread(thread.id, draft);
+        if (saved && thread.anchor.view === "message") await this.submitThreads([thread.id]);
+        return saved;
+      },
+      composerVisible: () => thread.status === "open" && !thread.pending && !this.threadStreaming(thread.id),
+      error: () => ({ message: this.error, details: this.errorDetails })
+    }));
+  }
+
+  chatStore(threadId: string) { return this.chatStores.find((chat) => chat.id === threadId); }
 
   async createThread(anchor: ReviewAnchor, body: string) {
     const context = this.props.context();

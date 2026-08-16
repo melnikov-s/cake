@@ -7,7 +7,7 @@ import type { ReviewsStore } from "./ReviewsStore";
 import type { PluginCommandStore } from "./PluginCommandStore";
 import { MessageComposerStore } from "./MessageComposerStore";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
-import { TranscriptViewStore } from "./TranscriptViewStore";
+import { ChatStore } from "./ChatStore";
 import { ArtifactInteractionStore } from "./ArtifactInteractionStore";
 import { MessageCommentsStore } from "./MessageCommentsStore";
 
@@ -30,12 +30,13 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   isActive(): boolean;
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
   persist(): void;
+  projectName(): string;
+  abort(): Promise<void>;
 }
 
 /** Owns the view and interaction workflow for one project Pi session. */
 export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   readonly model: SessionModel;
-  draft = "";
   activity: "running" | "unread" | undefined;
 
   constructor(props: ProjectSessionStore["props"]) {
@@ -54,15 +55,10 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   get isStreaming() { return this.model.streaming; }
   get canSubmit() {
     return this.props.canSubmit() && Boolean(
-      this.draft.trim()
+      this.chatStore.draft.trim()
       || this.composerStore.attachments.length > 0
       || this.props.reviews().pendingThreads.length > 0
     );
-  }
-
-  setDraft(value: string) {
-    this.draft = value;
-    this.props.persist();
   }
 
   markRead() {
@@ -87,8 +83,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       projectPath: () => this.workspacePath,
       sessionId: () => this.sessionId,
       canonicalParts: () => this.canonicalParts,
-      draft: () => this.draft,
-      setDraft: (value) => this.setDraft(value),
+      draft: () => this.chatStore.draft,
+      setDraft: (value) => this.chatStore.setDraft(value),
       canSubmit: () => this.canSubmit,
       isStreaming: () => this.isStreaming,
       openCommandPane: (pane) => this.props.openCommandPane(pane),
@@ -111,8 +107,31 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
 
   @child
-  get transcriptViewStore(): TranscriptViewStore {
-    return createStore(TranscriptViewStore);
+  get chatStore(): ChatStore {
+    return createStore(ChatStore, {
+      id: () => this.sessionId,
+      parts: () => this.composerStore.parts,
+      streaming: () => this.isStreaming,
+      submitting: () => this.composerStore.activeOperations.length > 0,
+      configuration: () => this.configurationStore,
+      commands: () => [...this.model.commands, ...this.props.pluginCommands().commands],
+      placeholder: () => this.isStreaming ? "Add the next instruction…" : `Ask Cake to work in ${this.props.projectName()}…`,
+      inputLabel: () => "Message",
+      canSubmit: () => this.canSubmit,
+      submit: async (_draft, mode) => { await this.composerStore.submit(mode === "steer" ? "steer" : undefined); },
+      abort: () => this.props.abort(),
+      attachments: () => this.composerStore.attachments,
+      addAttachments: () => this.composerStore.addAttachments(),
+      addPastedImages: (files) => this.composerStore.addPastedImages(files),
+      removeAttachment: (index) => this.composerStore.removeAttachment(index),
+      suggestFiles: (prefix) => this.composerStore.suggestFiles(prefix),
+      focusRequestRevision: () => this.composerStore.focusRequestRevision,
+      usage: () => this.model.usage,
+      allowSteer: true,
+      hideThinking: () => Boolean(this.model.piSettings?.hideThinkingBlock),
+      error: () => ({ message: this.composerStore.error ?? this.configurationStore.error, details: this.composerStore.errorDetails ?? this.configurationStore.errorDetails }),
+      persist: () => this.props.persist()
+    });
   }
 
   @child

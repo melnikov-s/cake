@@ -1,8 +1,11 @@
-import { Store, observable, untracked } from "r-state-tree";
+import { Store, child, createStore, observable, untracked } from "r-state-tree";
 import type { DesktopClientEvent } from "../desktop-client";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import { describeError } from "../error-details";
 import type { JsonObject } from "../../ipc/json-contract";
+import { ChatConfigurationStore } from "./ChatConfigurationStore";
+import { ChatStore } from "./ChatStore";
+import type { ThinkingLevel } from "../../ipc/session-contract";
 
 export interface GlobalChatPort {
   open(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: JsonObject }> }): Promise<void>;
@@ -15,12 +18,13 @@ export interface GlobalChatStoreProps {
   port: GlobalChatPort;
   tools(): ReadonlyArray<{ name: string; description: string; parameters: JsonObject }>;
   sessions(): SessionRegistryStore;
+  setModel(operationId: string, provider: string, modelId: string): Promise<void>;
+  setThinkingLevel(operationId: string, level: ThinkingLevel): Promise<void>;
 }
 
 /** Owns the singleton global-chat surface, its persistent Pi transcript, and turn policy. */
 export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   sessionId: string | undefined;
-  draft = "";
   hydrated = false;
   error: string | undefined;
   errorDetails: string | undefined;
@@ -33,8 +37,6 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       untracked(() => { void this.open(); });
     });
   }
-
-  setDraft(value: string) { this.draft = value; }
 
   get session() { return this.sessionId ? this.props.sessions().findModel(this.sessionId) : undefined; }
   get parts() { return this.session?.uiParts ?? []; }
@@ -52,17 +54,46 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     return this.openPromise;
   }
 
-  async submit() {
-    const text = this.draft.trim();
+  async submit(text: string) {
+    text = text.trim();
     if (!text) return;
     const operationId = this.start();
-    this.draft = "";
     this.session?.upsertPart({ id: `global-user-${operationId}`, kind: "text", role: "user", text, status: "complete" });
     try {
       await this.props.port.prompt({ operationId, text });
     } catch (error) {
       this.fail(operationId, error);
     }
+  }
+
+  @child
+  get configurationStore(): ChatConfigurationStore {
+    return createStore(ChatConfigurationStore, {
+      session: () => this.session,
+      operations: this,
+      operationOwner: "global-chat-configuration",
+      setModel: (operationId, provider, modelId) => this.props.setModel(operationId, provider, modelId),
+      setThinkingLevel: (operationId, level) => this.props.setThinkingLevel(operationId, level)
+    });
+  }
+
+  @child
+  get chatStore(): ChatStore {
+    return createStore(ChatStore, {
+      id: () => this.sessionId ?? "global-chat",
+      parts: () => this.parts,
+      streaming: () => this.streaming,
+      submitting: () => this.hasPendingPrompt,
+      configuration: () => this.configurationStore,
+      commands: () => this.session?.commands ?? [],
+      placeholder: () => "Ask Cake to find or control a task…",
+      inputLabel: () => "Message global chat",
+      canSubmit: (draft) => Boolean(draft.trim()),
+      submit: async (draft) => { await this.submit(draft); },
+      abort: () => this.abort(),
+      hideThinking: () => Boolean(this.session?.piSettings?.hideThinkingBlock),
+      error: () => ({ message: this.configurationStore.error ?? this.error, details: this.configurationStore.errorDetails ?? this.errorDetails, title: "Global chat failed" })
+    });
   }
 
   async abort() {

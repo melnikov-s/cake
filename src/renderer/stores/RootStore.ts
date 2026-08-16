@@ -10,8 +10,6 @@ import { ExtensionUiStore } from "./ExtensionUiStore";
 import { AppControlBridge } from "../app-control-bridge";
 import { GlobalChatStore } from "./GlobalChatStore";
 import { AppShellStore } from "./AppShellStore";
-import { ChatConfigurationStore } from "./ChatConfigurationStore";
-import { TranscriptViewStore } from "./TranscriptViewStore";
 import { CustomizationStore } from "./CustomizationStore";
 import { PluginCommandStore } from "./PluginCommandStore";
 import { InlineWidgetStore } from "./InlineWidgetStore";
@@ -73,7 +71,9 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       canSubmit: (target) => this.projectWorkbenchStore.canSubmitSession(target),
       isActive: (target) => this.projectWorkbenchStore.isActiveSession(target.workspacePath, target.sessionId),
       openCommandPane: (pane) => this.projectWorkbenchStore.openCommandPane(pane),
-      persist: () => this.windowPersistence.schedule()
+      persist: () => this.windowPersistence.schedule(),
+      projectName: (workspacePath) => this.projectCatalogStore.nameForPath(workspacePath),
+      abort: () => this.projectWorkbenchStore.abort()
     });
   }
 
@@ -98,11 +98,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   }
 
   @child
-  get globalTranscriptViewStore(): TranscriptViewStore {
-    return createStore(TranscriptViewStore);
-  }
-
-  @child
   get sidebarStore(): SidebarStore {
     return createStore(SidebarStore, {
       projects: this.projectCatalogStore,
@@ -119,7 +114,8 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       operations: this.sessionOperationCoordinator,
       context: () => this.projectWorkbenchStore.sessionContext(),
       model: () => this.projectWorkbenchStore.session?.model,
-      thinkingLevel: () => this.projectWorkbenchStore.session?.thinkingLevel
+      thinkingLevel: () => this.projectWorkbenchStore.session?.thinkingLevel,
+      configuration: () => this.projectWorkbenchStore.activeSession?.configurationStore
     });
   }
 
@@ -141,7 +137,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       operationActive: (operationId) => this.sessionOperationCoordinator.includes(operationId),
       setDraft: (value) => {
         const session = this.projectWorkbenchStore.activeSession;
-        if (session) session.setDraft(resolveDraftUpdate(value, session.draft));
+        if (session) session.chatStore.setDraft(resolveDraftUpdate(value, session.chatStore.draft));
       },
       requestComposerFocus: () => this.projectWorkbenchStore.activeSession?.composerStore.requestFocus()
     });
@@ -185,16 +181,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         clear: (input) => this.client.clearGlobalChat(input)
       },
       tools: () => this.appControl.listTools(),
-      sessions: () => this.sessionRegistry
-    });
-  }
-
-  @child
-  get globalChatConfigurationStore(): ChatConfigurationStore {
-    return createStore(ChatConfigurationStore, {
-      session: () => this.globalChatStore.session,
-      operations: this.globalChatStore,
-      operationOwner: "global-chat-configuration",
+      sessions: () => this.sessionRegistry,
       setModel: (operationId, provider, modelId) => this.client.setGlobalChatModel({ operationId, provider, modelId }),
       setThinkingLevel: (operationId, level) => this.client.setGlobalChatThinkingLevel({ operationId, level })
     });
@@ -273,7 +260,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       return;
     }
     if (event.type.startsWith("global-chat-")) {
-      this.globalChatConfigurationStore.receive(event);
+      this.globalChatStore.configurationStore.receive(event);
       this.globalChatStore.receive(event);
       return;
     }
