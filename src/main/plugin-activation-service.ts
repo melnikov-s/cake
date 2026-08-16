@@ -22,6 +22,7 @@ export class PluginActivationService {
   private request = "Rebuild Cake customization";
   private baseRevision: string | undefined;
   private preparing = false;
+  private startupCandidateRevision: string | undefined;
 
   constructor(readonly paths: CakePaths, readonly builder: PluginBuildService) {
     this.statePath = join(paths.recovery, "customization-state.json");
@@ -41,6 +42,21 @@ export class PluginActivationService {
       this.state = { ...this.state, recoveryRequired: true, diagnostics: [...this.state.diagnostics, { phase: "render", message: `Customization ${this.state.pendingRevision} did not finish activation before Cake exited.` }], updatedAt: new Date().toISOString() };
       await this.persist();
     }
+    if (!this.state.recoveryRequired && !this.state.pendingRevision && this.state.activeRevision && !await this.builder.isBuildCurrent(this.state.activeRevision)) {
+      this.attemptId = crypto.randomUUID();
+      this.request = "Rebuild customization for the current Cake renderer";
+      this.baseRevision = this.state.sourceRevision;
+      const candidate = await this.builder.buildCandidate();
+      if (candidate.diagnostics.length) {
+        this.state = { ...this.state, sourceRevision: candidate.sourceRevision, recoveryRequired: true, diagnostics: candidate.diagnostics, updatedAt: new Date().toISOString() };
+        await this.record("rejected", candidate.revision, candidate.diagnostics);
+      } else {
+        this.startupCandidateRevision = candidate.revision;
+        this.state = { ...this.state, sourceRevision: candidate.sourceRevision, pendingRevision: candidate.revision, recoveryRequired: true, diagnostics: [], updatedAt: new Date().toISOString() };
+        await this.record("candidate", candidate.revision, []);
+      }
+      await this.persist();
+    }
     return this.snapshot();
   }
 
@@ -49,6 +65,9 @@ export class PluginActivationService {
   buildPath(revision: string) { return join(this.paths.recovery, "builds", revision, "index.html"); }
 
   startupRenderer(): StartupRenderer {
+    if (this.startupCandidateRevision && this.state.pendingRevision === this.startupCandidateRevision) {
+      return { kind: "custom", revision: this.startupCandidateRevision, path: this.buildPath(this.startupCandidateRevision) };
+    }
     if (this.state.recoveryRequired || this.state.pendingRevision || !this.state.activeRevision) return { kind: "factory" };
     return { kind: "custom", revision: this.state.activeRevision, path: this.buildPath(this.state.activeRevision) };
   }
@@ -70,12 +89,12 @@ export class PluginActivationService {
       this.baseRevision = this.state.sourceRevision;
       const candidate = await this.builder.buildCandidate();
       if (candidate.diagnostics.length) {
-        this.state = { ...this.state, sourceRevision: candidate.revision, diagnostics: candidate.diagnostics, updatedAt: new Date().toISOString() };
+        this.state = { ...this.state, sourceRevision: candidate.sourceRevision, diagnostics: candidate.diagnostics, updatedAt: new Date().toISOString() };
         await this.persist();
         await this.record("rejected", candidate.revision, candidate.diagnostics);
         return candidate;
       }
-      this.state = { ...this.state, sourceRevision: candidate.revision, pendingRevision: candidate.revision, recoveryRequired: true, diagnostics: [], updatedAt: new Date().toISOString() };
+      this.state = { ...this.state, sourceRevision: candidate.sourceRevision, pendingRevision: candidate.revision, recoveryRequired: true, diagnostics: [], updatedAt: new Date().toISOString() };
       await this.persist();
       await this.record("candidate", candidate.revision, []);
       return candidate;
@@ -86,10 +105,11 @@ export class PluginActivationService {
 
   async markHealthy(revision: string) {
     if (this.state.pendingRevision !== revision) throw new Error(`Customization ${revision} is not the pending activation`);
+    const refreshedForCurrentRenderer = this.startupCandidateRevision === revision;
     this.state = {
       ...this.state,
       activeRevision: revision,
-      rollbackRevision: this.state.lastKnownGoodRevision,
+      rollbackRevision: refreshedForCurrentRenderer ? undefined : this.state.lastKnownGoodRevision,
       lastKnownGoodRevision: revision,
       pendingRevision: undefined,
       failedRevision: undefined,
@@ -98,10 +118,12 @@ export class PluginActivationService {
       updatedAt: new Date().toISOString()
     };
     await this.persist();
+    this.startupCandidateRevision = undefined;
     await this.record("activated", revision, []);
   }
 
   async fail(revision: string | undefined, diagnostic: PluginDiagnostic) {
+    this.startupCandidateRevision = undefined;
     this.state = { ...this.state, pendingRevision: undefined, failedRevision: revision, recoveryRequired: true, diagnostics: [...this.state.diagnostics, { ...diagnostic, message: `${revision ? `[${revision}] ` : ""}${diagnostic.message}` }], updatedAt: new Date().toISOString() };
     await this.persist();
     if (revision) await this.record("failed", revision, [diagnostic]);

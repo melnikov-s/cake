@@ -1,4 +1,5 @@
-import { mkdir, readFile, readdir, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -12,6 +13,7 @@ import { PluginRepository, type CustomizationSource } from "./plugin-repository"
 
 export interface CandidateBuild {
   revision: string;
+  sourceRevision: string;
   directory: string;
   indexHtml: string;
   diagnostics: PluginDiagnostic[];
@@ -19,6 +21,12 @@ export interface CandidateBuild {
 
 const authoringSnapshotSchema = z.object({ schemaVersion: z.number(), cakeVersion: z.string() });
 const runtimePackageSchema = z.object({ version: z.string() });
+const rendererBuildMetadataSchema = z.object({
+  schemaVersion: z.literal(1),
+  coreRevision: z.string().regex(/^[a-f0-9]{64}$/),
+  sourceRevision: z.string().regex(/^[a-f0-9]{64}$/),
+  buildRevision: z.string().regex(/^[a-f0-9]{64}$/)
+});
 
 interface PluginCompilerPaths {
   [specifier: string]: string[];
@@ -86,8 +94,42 @@ function formatDiagnostic(diagnostic: ts.Diagnostic) {
 
 export class PluginBuildService {
   readonly repository: PluginRepository;
+  private coreRevisionPromise: Promise<string> | undefined;
   constructor(readonly paths: CakePaths, readonly sourceRoot: string, readonly runtimeRoot = sourceRoot) {
     this.repository = new PluginRepository(paths);
+  }
+
+  private coreRevision() {
+    if (this.coreRevisionPromise) return this.coreRevisionPromise;
+    this.coreRevisionPromise = (async () => {
+      const hash = createHash("sha256");
+      const roots = ["package.json", "src/renderer", "src/ipc", "src/plugin"];
+      const visit = async (path: string, label: string) => {
+        const entries = await readdir(path, { withFileTypes: true });
+        for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+          const child = join(path, entry.name);
+          const childLabel = `${label}/${entry.name}`;
+          if (entry.isDirectory()) await visit(child, childLabel);
+          else if (entry.isFile()) hash.update(childLabel).update("\0").update(await readFile(child)).update("\0");
+        }
+      };
+      for (const relativePath of roots) {
+        const path = resolve(this.sourceRoot, relativePath);
+        if (relativePath === "package.json") hash.update(relativePath).update("\0").update(await readFile(path)).update("\0");
+        else await visit(path, relativePath);
+      }
+      return hash.digest("hex");
+    })();
+    return this.coreRevisionPromise;
+  }
+
+  async isBuildCurrent(revision: string) {
+    try {
+      const metadata = rendererBuildMetadataSchema.parse(JSON.parse(await readFile(join(this.paths.recovery, "builds", revision, "cake-build.json"), "utf8")));
+      return metadata.buildRevision === revision && metadata.coreRevision === await this.coreRevision();
+    } catch {
+      return false;
+    }
   }
 
   private async typecheck(source: CustomizationSource): Promise<PluginDiagnostic[]> {
@@ -117,6 +159,9 @@ export class PluginBuildService {
   }
 
   async buildCandidate(): Promise<CandidateBuild> {
+    const source = await this.repository.inspect();
+    const coreRevision = await this.coreRevision();
+    const revision = createHash("sha256").update(source.revision).update("\0").update(coreRevision).digest("hex");
     if (this.sourceRoot !== this.runtimeRoot) {
       try {
         const [snapshot, runtimePackage] = await Promise.all([
@@ -125,25 +170,23 @@ export class PluginBuildService {
         ]);
         if (snapshot.schemaVersion !== 1 || snapshot.cakeVersion !== runtimePackage.version) throw new Error(`Authoring snapshot ${snapshot.cakeVersion} does not match Cake ${runtimePackage.version}`);
       } catch (error) {
-        const source = await this.repository.inspect();
-        return { revision: source.revision, directory: "", indexHtml: "", diagnostics: [{ phase: "bundle", message: `Cake's packaged authoring snapshot is unavailable or mismatched: ${error instanceof Error ? error.message : String(error)}` }] };
+        return { revision, sourceRevision: source.revision, directory: "", indexHtml: "", diagnostics: [{ phase: "bundle", message: `Cake's packaged authoring snapshot is unavailable or mismatched: ${error instanceof Error ? error.message : String(error)}` }] };
       }
     }
-    const source = await this.repository.inspect();
     try { await this.repository.snapshotSource(source); }
     catch (error) {
-      return { revision: source.revision, directory: "", indexHtml: "", diagnostics: [{ phase: "bundle", message: error instanceof Error ? error.message : String(error) }] };
+      return { revision, sourceRevision: source.revision, directory: "", indexHtml: "", diagnostics: [{ phase: "bundle", message: error instanceof Error ? error.message : String(error) }] };
     }
     const diagnostics = [...source.diagnostics, ...await this.typecheck(source)];
-    if (diagnostics.length) return { revision: source.revision, directory: "", indexHtml: "", diagnostics };
-    const directory = join(this.paths.recovery, "builds", source.revision);
+    if (diagnostics.length) return { revision, sourceRevision: source.revision, directory: "", indexHtml: "", diagnostics };
+    const directory = join(this.paths.recovery, "builds", revision);
     await mkdir(directory, { recursive: true });
     try {
       await build({
         configFile: false,
         root: resolve(this.sourceRoot, "src/renderer"),
         base: "./",
-        define: { __CAKE_CUSTOMIZATION_REVISION__: JSON.stringify(source.revision) },
+        define: { __CAKE_CUSTOMIZATION_REVISION__: JSON.stringify(revision) },
         resolve: { alias: [
           { find: "virtual:cake-global-scene", replacement: source.scene },
           { find: "cake", replacement: resolve(this.sourceRoot, "src/renderer/cake.ts") },
@@ -160,12 +203,13 @@ export class PluginBuildService {
       const current = await this.repository.inspect();
       if (current.revision !== source.revision) {
         await rm(directory, { recursive: true, force: true });
-        return { revision: current.revision, directory: "", indexHtml: "", diagnostics: [{ phase: "bundle", message: `Customization source changed during build: started at ${source.revision}, finished at ${current.revision}` }] };
+        return { revision, sourceRevision: current.revision, directory: "", indexHtml: "", diagnostics: [{ phase: "bundle", message: `Customization source changed during build: started at ${source.revision}, finished at ${current.revision}` }] };
       }
-      return { revision: source.revision, directory, indexHtml: join(directory, "index.html"), diagnostics: [] };
+      await writeFile(join(directory, "cake-build.json"), `${JSON.stringify(rendererBuildMetadataSchema.parse({ schemaVersion: 1, coreRevision, sourceRevision: source.revision, buildRevision: revision }), null, 2)}\n`);
+      return { revision, sourceRevision: source.revision, directory, indexHtml: join(directory, "index.html"), diagnostics: [] };
     } catch (error) {
       await rm(directory, { recursive: true, force: true });
-      return { revision: source.revision, directory: "", indexHtml: "", diagnostics: [{ phase: "bundle", message: error instanceof Error ? error.stack ?? error.message : String(error) }] };
+      return { revision, sourceRevision: source.revision, directory: "", indexHtml: "", diagnostics: [{ phase: "bundle", message: error instanceof Error ? error.stack ?? error.message : String(error) }] };
     }
   }
 }

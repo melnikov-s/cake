@@ -113,12 +113,15 @@ semantic repair.
 
 ## How bundles are built
 
-Plugin source is never emitted as an independent package. A rebuild computes a
-SHA-256 revision over the global scene and every enabled plugin, snapshots those
-sources, typechecks them against the authoring source shipped with this exact
-Cake version, then invokes Vite on Cake's complete renderer entry. Runtime
-aliases force React, React DOM, Zod, and `cake` to resolve from the running Cake
-installation. The result is:
+Plugin source is never emitted as an independent package. A rebuild computes
+separate SHA-256 identities for the customization source and the complete Cake
+renderer graph, snapshots the user sources, typechecks them against the
+authoring source shipped with this exact Cake version, then invokes Vite on
+Cake's complete renderer entry. The immutable build revision combines both
+identities, so Cake automatically rebuilds an otherwise healthy active scene
+after the host renderer changes instead of loading stale bundled core code.
+Runtime aliases force React, React DOM, Zod, and `cake` to resolve from the
+running Cake installation. The result is:
 
 ```text
 ~/.cake/recovery/builds/<revision>/index.html

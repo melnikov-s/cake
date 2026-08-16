@@ -8,7 +8,7 @@ import type { PluginBuildService } from "../../../src/main/plugin-build-service"
 
 const roots: string[] = [];
 afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))));
-const candidate = (revision: string) => ({ revision, directory: `/builds/${revision}`, indexHtml: `/builds/${revision}/index.html`, diagnostics: [] });
+const candidate = (revision: string, sourceRevision = revision) => ({ revision, sourceRevision, directory: `/builds/${revision}`, indexHtml: `/builds/${revision}/index.html`, diagnostics: [] });
 
 describe("PluginActivationService", () => {
   it("requires a render handshake, retains rollback history, and rolls back atomically", async () => {
@@ -58,5 +58,26 @@ describe("PluginActivationService", () => {
     const restarted = new PluginActivationService(paths, builder); await restarted.load();
     expect(restarted.startupRenderer()).toEqual({ kind: "factory" });
     expect(restarted.snapshot().diagnostics.at(-1)?.message).toContain("did not finish activation");
+  });
+
+  it("rebuilds an active customization when its bundled Cake renderer is stale", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-plugin-activation-")); roots.push(root);
+    const paths = resolveCakePaths({ env: { CAKE_HOME: join(root, "cake") }, homeDirectory: join(root, "home") });
+    const sourceRevision = "a".repeat(64);
+    const oldBuild = "b".repeat(64);
+    const newBuild = "c".repeat(64);
+    const initialBuilder = { buildCandidate: vi.fn(async () => candidate(oldBuild, sourceRevision)), isBuildCurrent: vi.fn(async () => true) } as unknown as PluginBuildService;
+    const initial = new PluginActivationService(paths, initialBuilder); await initial.load();
+    const first = await initial.prepare(); await initial.markHealthy(first.revision);
+
+    const currentBuilder = { buildCandidate: vi.fn(async () => candidate(newBuild, sourceRevision)), isBuildCurrent: vi.fn(async () => false) } as unknown as PluginBuildService;
+    const restarted = new PluginActivationService(paths, currentBuilder); await restarted.load();
+
+    expect(currentBuilder.buildCandidate).toHaveBeenCalledOnce();
+    expect(restarted.snapshot()).toMatchObject({ sourceRevision, pendingRevision: newBuild, recoveryRequired: true });
+    expect(restarted.startupRenderer()).toEqual({ kind: "custom", revision: newBuild, path: join(paths.recovery, "builds", newBuild, "index.html") });
+    await restarted.markHealthy(newBuild);
+    expect(restarted.snapshot()).toMatchObject({ activeRevision: newBuild, lastKnownGoodRevision: newBuild, recoveryRequired: false });
+    expect(restarted.snapshot().rollbackRevision).toBeUndefined();
   });
 });

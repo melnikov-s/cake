@@ -19,7 +19,10 @@ describe("PluginBuildService", () => {
     await writeFile(join(paths.scenes, "global.tsx"), `import type { ReactNode } from "react";\nimport calendar from "plugin:example.calendar";\nconst Badge = calendar.contributions.Badge;\nexport default function Scene({ children }: { children: ReactNode }) { return <><Badge />{children}</>; }\n`);
     const candidate = await new PluginBuildService(paths, resolve(import.meta.dirname, "../../..")).buildCandidate();
     expect(candidate.diagnostics).toEqual([]);
+    expect(candidate.revision).not.toBe(candidate.sourceRevision);
     await access(candidate.indexHtml);
+    await access(join(candidate.directory, "cake-build.json"));
+    expect(await new PluginBuildService(paths, resolve(import.meta.dirname, "../../..")).isBuildCurrent(candidate.revision)).toBe(true);
     const assets = join(candidate.directory, "assets");
     const scripts = (await readdir(assets)).filter((name) => name.endsWith(".js"));
     const output = (await Promise.all(scripts.map((name) => readFile(join(assets, name), "utf8")))).join("\n");
