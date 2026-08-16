@@ -153,6 +153,5 @@ export const MessageCommentThreadPopover = observer(function MessageCommentThrea
   const chat = store.chatStore(thread.id);
   return <PopoverShell anchor={anchor} title="Selection chat" selectedText={thread.anchor.selectedText} className="message-comment-thread-popover" onClose={onClose}>
     {chat && <Chat store={chat} embedded />}
-    <footer className="message-comment-thread-actions"><button type="button" onClick={() => void store.resolveThread(thread.id, thread.status !== "resolved")}>{thread.status === "resolved" ? "Reopen chat" : "Resolve chat"}</button></footer>
   </PopoverShell>;
 });

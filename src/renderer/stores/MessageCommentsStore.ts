@@ -7,7 +7,7 @@ import { describeError } from "../error-details";
 import { ChatStore } from "./ChatStore";
 
 export interface MessageCommentsStoreProps {
-  client: Pick<DesktopClient, "createReviewThread" | "replyReviewThread">;
+  client: Pick<DesktopClient, "createReviewThread">;
   sessionRegistry: SessionRegistryStore;
   reviews(): ReviewsStore;
   context(): { workspacePath: string; sessionId: string } | undefined;
@@ -109,22 +109,4 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
     }
   }
 
-  async replyThread(threadId: string, body: string) {
-    const context = this.props.context();
-    if (!context || !body.trim()) return false;
-    try {
-      const thread = await this.props.client.replyReviewThread({ ...context, threadId, body: body.trim() });
-      if (this.signal.aborted) return false;
-      this.props.sessionRegistry.upsertReviewThread(thread);
-      await this.props.reviews().submitThreads([thread.id]);
-      return true;
-    } catch (error) {
-      if (!this.signal.aborted) this.reportError(error);
-      return false;
-    }
-  }
-
-  resolveThread(threadId: string, resolved = true) {
-    return this.props.reviews().resolveThread(threadId, resolved);
-  }
 }

@@ -428,6 +428,8 @@ describe("Transcript scrolling", () => {
     const chat = document.body.querySelector('[role="dialog"][aria-label="Selection chat"]');
     expect(chat?.textContent).toContain("Why this word?");
     expect(chat?.textContent).toContain("Because it carries the point.");
+    expect(chat?.textContent).not.toContain("Resolve chat");
+    expect(chat?.textContent).not.toContain("Reopen chat");
     expect(chat?.querySelector(".chat-embedded-workbench-composer")).not.toBeNull();
     expect(chat?.querySelector<HTMLInputElement>('[aria-label="Model"]')?.value).toBe("GPT");
     expect(chat?.querySelector<HTMLSelectElement>('[aria-label="Thinking level"]')?.value).toBe("medium");

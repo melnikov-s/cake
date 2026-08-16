@@ -96,13 +96,13 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
       commands: () => [],
       placeholder: () => "Ask a follow-up…",
       inputLabel: () => thread.anchor.view === "message" ? "Reply to selection chat" : "Reply to review thread",
-      canSubmit: (draft) => Boolean(draft.trim()) && thread.status === "open" && !thread.pending && !this.threadStreaming(thread.id),
+      canSubmit: (draft) => Boolean(draft.trim()) && (thread.anchor.view === "message" || thread.status === "open") && !thread.pending && !this.threadStreaming(thread.id),
       submit: async (draft) => {
         const saved = await this.replyThread(thread.id, draft);
         if (saved && thread.anchor.view === "message") await this.submitThreads([thread.id]);
         return saved;
       },
-      composerVisible: () => thread.status === "open" && !thread.pending && !this.threadStreaming(thread.id),
+      composerVisible: () => (thread.anchor.view === "message" || thread.status === "open") && !thread.pending && !this.threadStreaming(thread.id),
       error: () => ({ message: this.error, details: this.errorDetails })
     }));
   }
