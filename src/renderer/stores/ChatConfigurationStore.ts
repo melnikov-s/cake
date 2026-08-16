@@ -1,4 +1,4 @@
-import { Store, observable } from "r-state-tree";
+import { Store } from "r-state-tree";
 import type { ModelOption, ThinkingLevel } from "../../ipc/session-contract";
 import type { SessionModel } from "../models/session";
 import type { DesktopClientEvent } from "../desktop-client";
@@ -6,17 +6,24 @@ import { describeError } from "../error-details";
 
 export interface ChatConfigurationStoreProps {
   session(): SessionModel | undefined;
-  operations: { start(): string; finish(operationId: string): void };
+  operations: {
+    start(owner?: string): string;
+    finish(operationId: string): void;
+    includes(operationId: string, owner?: string): boolean;
+    active(owner?: string): string[];
+    reset(owner?: string): void;
+  };
+  operationOwner?: string;
   setModel(operationId: string, provider: string, modelId: string): Promise<void>;
   setThinkingLevel(operationId: string, level: ThinkingLevel): Promise<void>;
 }
 
 /** Reusable model-catalog and reasoning configuration for one Pi chat session. */
 export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
-  readonly activeOperations: string[] = observable([]);
   error: string | undefined;
   errorDetails: string | undefined;
   get session() { return this.props.session(); }
+  get activeOperations() { return this.props.operations.active(this.props.operationOwner); }
 
   get modelsByProvider() {
     const groups = new Map<string, { name: string; models: ModelOption[] }>();
@@ -46,7 +53,7 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
 
   receive(event: DesktopClientEvent) {
     if (event.type === "pi-state-changed" && (event.state === "failed" || event.state === "stopped")) {
-      for (const operationId of this.activeOperations.slice()) this.finish(operationId);
+      this.props.operations.reset(this.props.operationOwner);
       return;
     }
     if ((event.type === "operation-completed" || event.type === "operation-failed") && event.operationId && this.activeOperations.includes(event.operationId)) {
@@ -62,8 +69,7 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
 
   private async run(command: (operationId: string) => Promise<void>) {
     this.error = undefined; this.errorDetails = undefined;
-    const operationId = this.props.operations.start();
-    this.activeOperations.push(operationId);
+    const operationId = this.props.operations.start(this.props.operationOwner);
     try { await command(operationId); }
     catch (error) {
       this.reportError(error);
@@ -72,8 +78,6 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   }
 
   private finish(operationId: string) {
-    const index = this.activeOperations.indexOf(operationId);
-    if (index >= 0) this.activeOperations.splice(index, 1);
     this.props.operations.finish(operationId);
   }
 

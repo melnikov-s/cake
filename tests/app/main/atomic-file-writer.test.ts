@@ -2,9 +2,9 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { SerializedFileWriter } from "../../../src/main/serialized-file-writer";
+import { AtomicFileWriter } from "../../../src/main/atomic-file-writer";
 
-describe("SerializedFileWriter", () => {
+describe("AtomicFileWriter", () => {
   const directories: string[] = [];
 
   afterEach(async () => {
@@ -15,7 +15,7 @@ describe("SerializedFileWriter", () => {
     const directory = await mkdtemp(join(tmpdir(), "cake-state-writer-"));
     directories.push(directory);
     const target = join(directory, "application.json");
-    const writer = new SerializedFileWriter();
+    const writer = new AtomicFileWriter();
 
     await Promise.all([
       writer.write(target, "first"),

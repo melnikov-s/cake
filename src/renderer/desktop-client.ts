@@ -81,10 +81,10 @@ export interface DesktopClient {
   loadApplicationState(): Promise<ApplicationState>;
   listSessions(): Promise<{ sessions: GlobalSessionSummary[]; reviewThreads: ReviewThread[] }>;
   loadSession(workspacePath: string, sessionId: string): Promise<SessionPreview | undefined>;
-  openGlobalChat(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string }> }): Promise<void>;
+  openGlobalChat(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: Record<string, unknown> }> }): Promise<void>;
   promptGlobalChat(input: { operationId: string; text: string }): Promise<void>;
   abortGlobalChat(operationId: string): Promise<void>;
-  clearGlobalChat(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string }> }): Promise<void>;
+  clearGlobalChat(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: Record<string, unknown> }> }): Promise<void>;
   setGlobalChatModel(input: { operationId: string; provider: string; modelId: string }): Promise<void>;
   setGlobalChatThinkingLevel(input: { operationId: string; level: ThinkingLevel }): Promise<void>;
   respondToGlobalChatControl(controlRequestId: string, result: unknown): Promise<void>;

@@ -2,24 +2,31 @@ import { Store, observable } from "r-state-tree";
 
 /** Correlates runtime operation ids with session-scoped UI/artifact events. */
 export class SessionOperationCoordinator extends Store<Record<string, never>> {
-  private readonly operationIds: string[] = observable([]);
+  private readonly operations: Array<{ id: string; owner: string }> = observable([]);
 
-  start() {
+  start(owner = "shared") {
     const operationId = crypto.randomUUID();
-    this.operationIds.push(operationId);
+    this.operations.push({ id: operationId, owner });
     return operationId;
   }
 
   finish(operationId: string) {
-    const index = this.operationIds.indexOf(operationId);
-    if (index >= 0) this.operationIds.splice(index, 1);
+    const index = this.operations.findIndex((operation) => operation.id === operationId);
+    if (index >= 0) this.operations.splice(index, 1);
   }
 
-  includes(operationId: string) {
-    return this.operationIds.includes(operationId);
+  includes(operationId: string, owner?: string) {
+    return this.operations.some((operation) => operation.id === operationId && (!owner || operation.owner === owner));
   }
 
-  reset() {
-    this.operationIds.splice(0);
+  active(owner?: string) {
+    return this.operations.filter((operation) => !owner || operation.owner === owner).map((operation) => operation.id);
+  }
+
+  reset(owner?: string) {
+    if (!owner) this.operations.splice(0);
+    else for (let index = this.operations.length - 1; index >= 0; index -= 1) {
+      if (this.operations[index]!.owner === owner) this.operations.splice(index, 1);
+    }
   }
 }

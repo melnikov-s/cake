@@ -13,7 +13,7 @@ import { shouldAllowNavigation } from "./navigation-policy";
 import { PiWorkspaceDriver, type PiWorkspaceCommand } from "./pi-workspace-driver";
 import { ArtifactRepository } from "./artifact-repository";
 import { ReviewRepository } from "./review-repository";
-import { SerializedFileWriter } from "./serialized-file-writer";
+import { AtomicFileWriter } from "./atomic-file-writer";
 import { GlobalChatDriver } from "./global-chat-driver";
 import { resolveCakePaths } from "./cake-paths";
 import { PluginBuildService } from "./plugin-build-service";
@@ -41,7 +41,7 @@ const windowCustomizationRevisions = new Map<number, string>();
 const customizationHealthTimers = new Map<number, ReturnType<typeof setTimeout>>();
 let nextWindowSlot = 0;
 let applicationModel = ApplicationModel.from({});
-const stateFileWriter = new SerializedFileWriter();
+const stateFileWriter = new AtomicFileWriter();
 
 function clearPendingTrustRequests(webContentsId: number) {
   for (const key of pendingTrustRequests.keys()) if (key.startsWith(`${webContentsId}:`)) pendingTrustRequests.delete(key);

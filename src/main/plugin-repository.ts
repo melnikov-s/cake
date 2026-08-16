@@ -3,7 +3,7 @@ import { copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, writeF
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { cakePluginManifestSchema, type CakePluginManifest, type PluginDiagnostic } from "../plugin/plugin-contract";
 import type { CakePaths } from "./cake-paths";
-import { SerializedFileWriter } from "./serialized-file-writer";
+import { AtomicFileWriter } from "./atomic-file-writer";
 import type { PluginStatus } from "../plugin/plugin-contract";
 
 const defaultGlobalScene = `import type { ReactNode } from "react";
@@ -57,7 +57,7 @@ async function hashRoots(roots: Array<{ label: string; root: string }>) {
 }
 
 export class PluginRepository {
-  private readonly writer = new SerializedFileWriter();
+  private readonly writer = new AtomicFileWriter();
   private authoringPending: Promise<void> = Promise.resolve();
   constructor(readonly paths: CakePaths) {}
 

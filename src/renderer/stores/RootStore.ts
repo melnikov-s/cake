@@ -134,6 +134,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     return createStore(ChatConfigurationStore, {
       session: () => this.mainChatStore.session,
       operations: this.sessionOperationCoordinator,
+      operationOwner: "chat-configuration",
       setModel: (operationId, provider, modelId) => {
         const context = this.mainChatStore.sessionContext();
         if (!context) throw new Error("No active session");
@@ -227,10 +228,8 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   get globalChatConfigurationStore(): ChatConfigurationStore {
     return createStore(ChatConfigurationStore, {
       session: () => this.globalChatStore.session,
-      operations: {
-        start: () => this.globalChatStore.startOperation(),
-        finish: (operationId) => this.globalChatStore.finishOperation(operationId)
-      },
+      operations: this.globalChatStore,
+      operationOwner: "global-chat-configuration",
       setModel: (operationId, provider, modelId) => this.client.setGlobalChatModel({ operationId, provider, modelId }),
       setThinkingLevel: (operationId, level) => this.client.setGlobalChatThinkingLevel({ operationId, level })
     });

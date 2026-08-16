@@ -33,7 +33,7 @@ function createTestStore() {
   const sessions = mount(createStore(SessionCacheStore));
   const store = mount(createStore(GlobalChatStore, {
     port,
-    tools: () => [{ name: "get_app_state", description: "Read app state" }],
+    tools: () => [{ name: "get_app_state", description: "Read app state", parameters: { type: "object", properties: {} } }],
     sessions: () => sessions
   }));
   const configurationPort = {
@@ -42,10 +42,7 @@ function createTestStore() {
   };
   const configuration = mount(createStore(ChatConfigurationStore, {
     session: () => store.session,
-    operations: {
-      start: () => store.startOperation(),
-      finish: (operationId: string) => store.finishOperation(operationId)
-    },
+    operations: store,
     setModel: (operationId, provider, modelId) => configurationPort.setModel({ operationId, provider, modelId }),
     setThinkingLevel: (operationId, level) => configurationPort.setThinkingLevel({ operationId, level })
   }));
@@ -81,7 +78,7 @@ describe("GlobalChatStore", () => {
 
     await store.clear();
 
-    expect(port.clear).toHaveBeenCalledWith(expect.objectContaining({ tools: [{ name: "get_app_state", description: "Read app state" }] }));
+    expect(port.clear).toHaveBeenCalledWith(expect.objectContaining({ tools: [{ name: "get_app_state", description: "Read app state", parameters: { type: "object", properties: {} } }] }));
     configuration[Symbol.dispose]();
     store[Symbol.dispose]();
     sessions[Symbol.dispose]();

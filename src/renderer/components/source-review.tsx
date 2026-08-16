@@ -5,6 +5,8 @@ import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { ReviewThreadModel } from "../models/review-thread";
 import type { ReviewsStore } from "../stores/ReviewsStore";
 import { Button } from "./ui/button";
+import { extractSourceSelection } from "./source-selection";
+export { selectionColumn } from "./source-selection";
 
 type HighlightResult = ReturnType<typeof code.highlight>;
 export type HighlightTokens = NonNullable<HighlightResult>["tokens"];
@@ -52,19 +54,6 @@ export function useFileContent(path: string, readFile: (path: string) => Promise
     return () => { active = false; };
   }, [path, readFile]);
   return state.path === path ? state : { path };
-}
-
-function elementForNode(node: Node | null) {
-  return node instanceof HTMLElement ? node : node?.parentElement ?? null;
-}
-
-export function selectionColumn(codeElement: HTMLElement, node: Node, offset: number) {
-  const range = document.createRange();
-  range.selectNodeContents(codeElement);
-  try { range.setEnd(node, offset); }
-  catch { return undefined; }
-  const prefixLength = codeElement.querySelector<HTMLElement>("[data-review-prefix]")?.textContent?.length ?? 0;
-  return Math.max(0, range.toString().length - prefixLength);
 }
 
 function sourceAnchor(path: string, view: "full" | "file", lines: string[], diff: string, startIndex: number, endIndex: number, selectedText: string, startColumn?: number, endColumn?: number): ReviewAnchor {
@@ -159,26 +148,12 @@ export const SourceReview = observer(function SourceReview({ path, view, lines, 
   const makeAnchor = (startIndex: number, endIndex: number, selectedText: string, startColumn?: number, endColumn?: number) => sourceAnchor(path, view, lines, diff, startIndex, endIndex, selectedText, startColumn, endColumn);
   const selectText = (event: ReactMouseEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest("button, textarea, .review-thread, .review-composer")) return;
-    const selection = window.getSelection();
-    if (!selection || selection.isCollapsed || !selection.anchorNode || !selection.focusNode) return;
-    const anchorRow = elementForNode(selection.anchorNode)?.closest<HTMLElement>(".change-explorer-line[data-source-index]");
-    const focusRow = elementForNode(selection.focusNode)?.closest<HTMLElement>(".change-explorer-line[data-source-index]");
-    if (!anchorRow || !focusRow || !event.currentTarget.contains(anchorRow) || !event.currentTarget.contains(focusRow)) return;
-    const anchorIndex = Number(anchorRow.dataset.sourceIndex);
-    const focusIndex = Number(focusRow.dataset.sourceIndex);
-    const forward = anchorIndex < focusIndex || (anchorIndex === focusIndex && selection.anchorOffset <= selection.focusOffset);
-    const startIndex = Math.min(anchorIndex, focusIndex);
-    const endIndex = Math.max(anchorIndex, focusIndex);
-    const startNode = forward ? selection.anchorNode : selection.focusNode;
-    const endNode = forward ? selection.focusNode : selection.anchorNode;
-    const startCode = elementForNode(startNode)?.closest<HTMLElement>("code");
-    const endCode = elementForNode(endNode)?.closest<HTMLElement>("code");
-    if (!startCode || !endCode) return;
-    const rect = selection.getRangeAt(0).getBoundingClientRect();
+    const selected = extractSourceSelection(event.currentTarget, ".change-explorer-line[data-source-index]", "data-source-index");
+    if (!selected) return;
     setComposer({
-      anchor: makeAnchor(startIndex, endIndex, selection.toString(), selectionColumn(startCode, startNode, forward ? selection.anchorOffset : selection.focusOffset), selectionColumn(endCode, endNode, forward ? selection.focusOffset : selection.anchorOffset)),
+      anchor: makeAnchor(selected.startIndex, selected.endIndex, selected.selectedText, selected.startColumn, selected.endColumn),
       floating: true,
-      position: { left: Math.min(window.innerWidth - 390, Math.max(16, rect.left)), top: Math.min(window.innerHeight - 250, rect.bottom + 8) }
+      position: selected.position
     });
   };
   return <div className={`change-explorer-diff change-explorer-full-file ${className}`.trim()} role="table" aria-label={ariaLabel} onMouseUp={selectText}>{lines.map((line, index) => <Fragment key={index}>

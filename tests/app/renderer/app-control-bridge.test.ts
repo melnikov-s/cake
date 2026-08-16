@@ -76,6 +76,12 @@ describe("AppControlBridge", () => {
       "set_session_archived",
       "set_session_model"
     ]);
+    expect(appControlToolCatalog.find((tool) => tool.name === "list_sessions")?.parameters).toMatchObject({
+      properties: { cursor: { minimum: 0 }, limit: { minimum: 1, maximum: 200, default: 100 } }
+    });
+    expect(appControlToolCatalog.find((tool) => tool.name === "read_session")?.parameters).toMatchObject({
+      properties: { limit: { minimum: 1, maximum: 50, default: 20 } }
+    });
   });
 
   it("lists sessions with filtering and pagination", async () => {

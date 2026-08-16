@@ -4,15 +4,15 @@ import type { SessionCacheStore } from "./SessionCacheStore";
 import { describeError } from "../error-details";
 
 export interface GlobalChatPort {
-  open(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string }> }): Promise<void>;
+  open(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: Record<string, unknown> }> }): Promise<void>;
   prompt(input: { operationId: string; text: string }): Promise<void>;
   abort(operationId: string): Promise<void>;
-  clear(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string }> }): Promise<void>;
+  clear(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: Record<string, unknown> }> }): Promise<void>;
 }
 
 export interface GlobalChatStoreProps {
   port: GlobalChatPort;
-  tools(): ReadonlyArray<{ name: string; description: string }>;
+  tools(): ReadonlyArray<{ name: string; description: string; parameters: Record<string, unknown> }>;
   sessions(): SessionCacheStore;
 }
 
@@ -23,7 +23,7 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   hydrated = false;
   error: string | undefined;
   errorDetails: string | undefined;
-  readonly activeOperations: string[] = observable([]);
+  private readonly operations: Array<{ id: string; owner: string }> = observable([]);
   private openPromise: Promise<void> | undefined;
 
   constructor(props: GlobalChatStore["props"]) {
@@ -41,7 +41,7 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
 
   open() {
     if (this.openPromise) return this.openPromise;
-    const operationId = this.startOperation();
+    const operationId = this.start();
     this.openPromise = this.props.port.open({ operationId, tools: this.toolCatalog() }).catch((error) => {
       if (!this.signal.aborted) this.fail(operationId, error);
     }).finally(() => { this.openPromise = undefined; });
@@ -51,7 +51,7 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   async submit() {
     const text = this.draft.trim();
     if (!text) return;
-    const operationId = this.startOperation();
+    const operationId = this.start();
     this.draft = "";
     this.session?.upsertPart({ id: `global-user-${operationId}`, kind: "text", role: "user", text, status: "complete" });
     try {
@@ -63,28 +63,39 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
 
   async abort() {
     if (!this.streaming) return;
-    const operationId = this.startOperation();
+    const operationId = this.start();
     try { await this.props.port.abort(operationId); }
     catch (error) { this.fail(operationId, error); }
   }
 
   async clear() {
-    const operationId = this.startOperation();
+    const operationId = this.start();
     try { await this.props.port.clear({ operationId, tools: this.toolCatalog() }); }
     catch (error) { this.fail(operationId, error); }
   }
 
-  startOperation() {
+  get activeOperations() { return this.active("global-chat"); }
+
+  start(owner = "global-chat") {
     const operationId = crypto.randomUUID();
-    this.activeOperations.push(operationId);
+    this.operations.push({ id: operationId, owner });
     this.error = undefined;
     this.errorDetails = undefined;
     return operationId;
   }
 
-  finishOperation(operationId: string) {
-    const index = this.activeOperations.indexOf(operationId);
-    if (index >= 0) this.activeOperations.splice(index, 1);
+  finish(operationId: string) {
+    const index = this.operations.findIndex((operation) => operation.id === operationId);
+    if (index >= 0) this.operations.splice(index, 1);
+  }
+
+  includes(operationId: string, owner?: string) { return this.operations.some((operation) => operation.id === operationId && (!owner || operation.owner === owner)); }
+  active(owner?: string) { return this.operations.filter((operation) => !owner || operation.owner === owner).map((operation) => operation.id); }
+  reset(owner?: string) {
+    if (!owner) this.operations.splice(0);
+    else for (let index = this.operations.length - 1; index >= 0; index -= 1) {
+      if (this.operations[index]!.owner === owner) this.operations.splice(index, 1);
+    }
   }
 
   reportError(error: unknown, context?: string) {
@@ -113,19 +124,19 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       return;
     }
     if (event.type === "global-chat-operation-completed" && this.activeOperations.includes(event.operationId)) {
-      this.finishOperation(event.operationId);
+      this.finish(event.operationId);
       return;
     }
     if (event.type === "global-chat-operation-failed" && this.activeOperations.includes(event.operationId)) this.fail(event.operationId, event.message);
   }
 
   private toolCatalog() {
-    return this.props.tools().map(({ name, description }) => ({ name, description }));
+    return this.props.tools();
   }
 
   private fail(operationId: string, error: unknown) {
     if (!this.activeOperations.includes(operationId)) return;
-    this.finishOperation(operationId);
+    this.finish(operationId);
     this.session?.setStreaming(false);
     this.hydrated = true;
     this.reportError(error);

@@ -340,8 +340,8 @@ describe("S1 Pi runtime", () => {
       requestUi: async () => undefined,
       globalControl: {
         tools: [
-          { name: "get_app_state", description: "Read Cake application state." },
-          { name: "search_sessions", description: "Search Cake sessions." }
+          { name: "get_app_state", description: "Read Cake application state.", parameters: { type: "object", properties: {} } },
+          { name: "search_sessions", description: "Search Cake sessions.", parameters: { type: "object", properties: {} } }
         ],
         invoke: async () => ({ ok: true })
       },

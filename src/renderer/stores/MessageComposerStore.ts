@@ -52,9 +52,9 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   attachments: Attachment[] = observable([]);
   pendingUserMessages: PendingUserMessage[] = observable([]);
   focusRequestRevision = 0;
-  readonly activeOperations: string[] = observable([]);
   error: string | undefined;
   errorDetails: string | undefined;
+  get activeOperations() { return this.props.operations.active("message-composer"); }
 
   private reportError(error: unknown) {
     const described = describeError(error);
@@ -141,8 +141,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     const submissions: Promise<void>[] = [];
     if (threadIds.length > 0) submissions.push(this.props.reviews().submitThreads(threadIds, text || undefined));
     if (text || attachments.length > 0) {
-      const operationId = this.props.operations.start();
-      this.activeOperations.push(operationId);
+      const operationId = this.props.operations.start("message-composer");
       this.attachments.splice(0);
       if (delivery === "prompt") this.addPendingUserMessage(operationId, workspacePath, sessionId, text, attachments);
       submissions.push(this.props.client.submit({ operationId, workspacePath, sessionId, text, delivery, attachments }).catch((error) => {
@@ -179,8 +178,6 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   }
 
   private finishOperation(operationId: string) {
-    const index = this.activeOperations.indexOf(operationId);
-    if (index >= 0) this.activeOperations.splice(index, 1);
     this.props.operations.finish(operationId);
   }
 

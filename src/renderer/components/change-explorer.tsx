@@ -9,7 +9,8 @@ import type { ChangesStore } from "../stores/ChangesStore";
 import type { ReviewsStore } from "../stores/ReviewsStore";
 import type { BrowseStore } from "../stores/BrowseStore";
 import type { ReviewThreadModel } from "../models/review-thread";
-import { ReviewComposer, ReviewThreadCard, SourceReview, reviewThreadPreview, selectionColumn, useFileContent, useHighlightedSource } from "./source-review";
+import { ReviewComposer, ReviewThreadCard, SourceReview, reviewThreadPreview, useFileContent, useHighlightedSource } from "./source-review";
+import { extractSourceSelection } from "./source-selection";
 import { SourceExplorerLayout, SourceTree, sourceTree } from "./source-explorer";
 
 function reviewPoint(lines: ReturnType<typeof parseDiff>, index: number, column?: number): ReviewPoint {
@@ -28,10 +29,6 @@ function reviewAnchor(change: ChangedFile, lines: ReturnType<typeof parseDiff>, 
     contextAfter: lines.slice(endIndex + 1, endIndex + 4).map(content).join("\n"),
     diff: change.diff
   };
-}
-
-function elementForNode(node: Node | null) {
-  return node instanceof HTMLElement ? node : node?.parentElement ?? null;
 }
 
 function threadLocation(thread: ReviewThreadModel) {
@@ -53,25 +50,9 @@ const HighlightedDiff = observer(function HighlightedDiff({ change, reviews, sto
 
   const selectText = (event: ReactMouseEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest("button, textarea, .review-thread, .review-composer")) return;
-    const selection = window.getSelection();
-    if (!selection || selection.isCollapsed || !selection.anchorNode || !selection.focusNode) return;
-    const anchorRow = elementForNode(selection.anchorNode)?.closest<HTMLElement>(".change-explorer-line[data-diff-index]");
-    const focusRow = elementForNode(selection.focusNode)?.closest<HTMLElement>(".change-explorer-line[data-diff-index]");
-    if (!anchorRow || !focusRow || !event.currentTarget.contains(anchorRow) || !event.currentTarget.contains(focusRow)) return;
-    const anchorIndex = Number(anchorRow.dataset.diffIndex);
-    const focusIndex = Number(focusRow.dataset.diffIndex);
-    const forward = anchorIndex < focusIndex || (anchorIndex === focusIndex && selection.anchorOffset <= selection.focusOffset);
-    const startIndex = Math.min(anchorIndex, focusIndex);
-    const endIndex = Math.max(anchorIndex, focusIndex);
-    const startNode = forward ? selection.anchorNode : selection.focusNode;
-    const endNode = forward ? selection.focusNode : selection.anchorNode;
-    const startOffset = forward ? selection.anchorOffset : selection.focusOffset;
-    const endOffset = forward ? selection.focusOffset : selection.anchorOffset;
-    const startCode = elementForNode(startNode)?.closest<HTMLElement>("code");
-    const endCode = elementForNode(endNode)?.closest<HTMLElement>("code");
-    if (!startCode || !endCode) return;
-    const rect = selection.getRangeAt(0).getBoundingClientRect();
-    setComposer({ anchor: reviewAnchor(change, lines, startIndex, endIndex, selection.toString(), startCode ? selectionColumn(startCode, startNode, startOffset) : undefined, endCode ? selectionColumn(endCode, endNode, endOffset) : undefined), floating: true, position: { left: Math.min(window.innerWidth - 390, Math.max(16, rect.left)), top: Math.min(window.innerHeight - 250, rect.bottom + 8) } });
+    const selected = extractSourceSelection(event.currentTarget, ".change-explorer-line[data-diff-index]", "data-diff-index");
+    if (!selected) return;
+    setComposer({ anchor: reviewAnchor(change, lines, selected.startIndex, selected.endIndex, selected.selectedText, selected.startColumn, selected.endColumn), floating: true, position: selected.position });
   };
 
   return <div className="change-explorer-diff" role="table" aria-label={`Session changes to ${change.path}`} onMouseUp={selectText}>{lines.map((line, index) => line.kind === "meta"

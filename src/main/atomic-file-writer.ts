@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { rename, rm, writeFile } from "node:fs/promises";
+import { KeyedSerialExecutor } from "./keyed-serial-executor";
 
-export class SerializedFileWriter {
-  private pending: Promise<void> = Promise.resolve();
+/** Atomically replaces text files and orders concurrent writes to the same path. */
+export class AtomicFileWriter {
+  private readonly writes = new KeyedSerialExecutor<string>();
 
   write(target: string, content: string) {
-    const operation = async () => {
+    return this.writes.run(target, async () => {
       const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
       try {
         await writeFile(temporary, content, { encoding: "utf8", mode: 0o600 });
@@ -14,9 +16,6 @@ export class SerializedFileWriter {
         await rm(temporary, { force: true }).catch(() => undefined);
         throw error;
       }
-    };
-    const result = this.pending.then(operation, operation);
-    this.pending = result.catch(() => undefined);
-    return result;
+    });
   }
 }

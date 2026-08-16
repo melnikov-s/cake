@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
   projectReviewThread,
@@ -9,11 +9,14 @@ import {
   type ReviewThread,
   type ReviewThreadRecord
 } from "../ipc/review-contract";
+import { AtomicFileWriter } from "./atomic-file-writer";
+import { KeyedSerialExecutor } from "./keyed-serial-executor";
 
 export type ReviewMessageLoader = (record: ReviewThreadRecord) => Promise<ReviewMessage[]>;
 export class ReviewRepository {
-  private readonly updates = new Map<string, Promise<unknown>>();
-  private readonly contextUpdates = new Map<string, Promise<unknown>>();
+  private readonly updates = new KeyedSerialExecutor<string>();
+  private readonly contextUpdates = new KeyedSerialExecutor<string>();
+  private readonly writer = new AtomicFileWriter();
 
   constructor(
     private readonly root: string,
@@ -146,11 +149,9 @@ export class ReviewRepository {
 
   private async refreshReviewContext(workspacePath: string, sessionId: string) {
     const key = `${workspacePath}\u0000${sessionId}`;
-    const previous = this.contextUpdates.get(key) ?? Promise.resolve();
-    const next = previous.catch(() => undefined).then(async () => {
+    await this.contextUpdates.run(key, async () => {
       const threads = await this.listSession(workspacePath, sessionId);
       const target = this.reviewContextPath(workspacePath, sessionId);
-      const temporary = `${target}.${process.pid}.${crypto.randomUUID()}.tmp`;
       const sections = threads.map((thread) => [
         `## Thread ${thread.id} · ${thread.status}`,
         thread.anchor.view === "message"
@@ -160,12 +161,8 @@ export class ReviewRepository {
         ...thread.messages.map((message) => `### ${message.role === "user" ? "User" : "Assistant"}\n\n${message.body}`)
       ].join("\n\n"));
       await mkdir(this.sessionDirectory(workspacePath, sessionId), { recursive: true, mode: 0o700 });
-      await writeFile(temporary, `# Review threads\n\nParent session: ${sessionId}\n\nThis is a derived index of inline code reviews and assistant-message discussions.\n\n${sections.join("\n\n---\n\n")}\n`, { encoding: "utf8", mode: 0o600 });
-      await rename(temporary, target);
+      await this.writer.write(target, `# Review threads\n\nParent session: ${sessionId}\n\nThis is a derived index of inline code reviews and assistant-message discussions.\n\n${sections.join("\n\n---\n\n")}\n`);
     });
-    this.contextUpdates.set(key, next);
-    try { await next; }
-    finally { if (this.contextUpdates.get(key) === next) this.contextUpdates.delete(key); }
   }
 
   private async project(record: ReviewThreadRecord) {
@@ -193,17 +190,13 @@ export class ReviewRepository {
 
   private async update(workspacePath: string, sessionId: string, threadId: string, mutate: (thread: ReviewThreadRecord) => ReviewThreadRecord): Promise<ReviewThreadRecord> {
     const key = `${workspacePath}\u0000${sessionId}\u0000${threadId}`;
-    const previous = this.updates.get(key) ?? Promise.resolve();
-    const next = previous.catch(() => undefined).then(async () => {
+    return this.updates.run(key, async () => {
       const existing = await this.get(workspacePath, sessionId, threadId);
       if (!existing) throw new Error("That review thread no longer exists");
       const record = reviewThreadRecordSchema.parse(mutate(existing));
       await this.write(record);
       return record;
     });
-    this.updates.set(key, next);
-    try { return await next; }
-    finally { if (this.updates.get(key) === next) this.updates.delete(key); }
   }
 
   private async readRecord(value: unknown): Promise<ReviewThreadRecord> {
@@ -214,9 +207,7 @@ export class ReviewRepository {
     const directory = this.sessionDirectory(record.workspacePath, record.sessionId);
     await mkdir(directory, { recursive: true, mode: 0o700 });
     const target = this.threadPath(record.workspacePath, record.sessionId, record.id);
-    const temporary = `${target}.${process.pid}.${crypto.randomUUID()}.tmp`;
-    await writeFile(temporary, `${JSON.stringify(reviewThreadRecordSchema.parse(record), null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-    await rename(temporary, target);
+    await this.writer.write(target, `${JSON.stringify(reviewThreadRecordSchema.parse(record), null, 2)}\n`);
   }
 
   private sessionDirectory(workspacePath: string, sessionId: string) { return join(this.root, digestKey(workspacePath), digestKey(sessionId)); }

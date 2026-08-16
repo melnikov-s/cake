@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { customizationProvenanceSchema, customizationStateSchema, type CustomizationState, type PluginDiagnostic } from "../plugin/plugin-contract";
 import type { CakePaths } from "./cake-paths";
 import type { CandidateBuild, PluginBuildService } from "./plugin-build-service";
-import { SerializedFileWriter } from "./serialized-file-writer";
+import { AtomicFileWriter } from "./atomic-file-writer";
 
 function initialState(): CustomizationState {
   return customizationStateSchema.parse({ schemaVersion: 1, recoveryRequired: false, diagnostics: [], updatedAt: new Date().toISOString() });
@@ -11,7 +11,7 @@ function initialState(): CustomizationState {
 
 export class PluginActivationService {
   private state = initialState();
-  private readonly writer = new SerializedFileWriter();
+  private readonly writer = new AtomicFileWriter();
   private readonly statePath: string;
   private attemptId: string | undefined;
   private request = "Rebuild Cake customization";

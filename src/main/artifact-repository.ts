@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
   artifactRecordSchema,
@@ -7,6 +7,8 @@ import {
   type ArtifactRecord,
   type CakeArtifactV1
 } from "../ipc/artifact-contract";
+import { AtomicFileWriter } from "./atomic-file-writer";
+import { KeyedSerialExecutor } from "./keyed-serial-executor";
 
 interface StoredArtifactMetadata {
   protocol: "cake.artifact/v1";
@@ -21,14 +23,14 @@ interface StoredArtifactMetadata {
 }
 
 export class ArtifactRepository {
-  private readonly updates = new Map<string, Promise<ArtifactRecord>>();
+  private readonly updates = new KeyedSerialExecutor<string>();
+  private readonly writer = new AtomicFileWriter();
   constructor(private readonly root: string) {}
 
   async upsert(workspacePath: string, input: unknown): Promise<ArtifactRecord> {
     const artifact = parseArtifactInput(input);
     const key = this.recordPath(workspacePath, artifact.sessionId, artifact.id);
-    const previous = this.updates.get(key) ?? Promise.resolve();
-    const next = previous.catch(() => undefined).then(async () => {
+    return this.updates.run(key, async () => {
       const existing = await this.get(workspacePath, artifact.sessionId, artifact.id);
       if (existing && artifact.revision !== existing.artifact.revision + 1) {
         throw new Error(`Artifact ${artifact.id} revision must advance from ${existing.artifact.revision} to ${existing.artifact.revision + 1}`);
@@ -47,13 +49,10 @@ export class ArtifactRepository {
       });
       await mkdir(this.blobDirectory(), { recursive: true, mode: 0o700 });
       await mkdir(this.recordDirectory(workspacePath, artifact.sessionId), { recursive: true, mode: 0o700 });
-      await atomicWrite(this.blobPath(digest), serialized);
-      await atomicWrite(key, `${JSON.stringify(toMetadata(record), null, 2)}\n`);
+      await this.writer.write(this.blobPath(digest), serialized);
+      await this.writer.write(key, `${JSON.stringify(toMetadata(record), null, 2)}\n`);
       return record;
     });
-    this.updates.set(key, next);
-    try { return await next; }
-    finally { if (this.updates.get(key) === next) this.updates.delete(key); }
   }
 
   async get(workspacePath: string, sessionId: string, artifactId: string): Promise<ArtifactRecord | undefined> {
@@ -84,7 +83,7 @@ export class ArtifactRepository {
 
   async linkSession(record: ArtifactRecord, sessionId: string): Promise<void> {
     await mkdir(this.recordDirectory(record.workspacePath, sessionId), { recursive: true, mode: 0o700 });
-    await atomicWrite(this.recordPath(record.workspacePath, sessionId, record.artifact.id), `${JSON.stringify(toMetadata(record), null, 2)}\n`);
+    await this.writer.write(this.recordPath(record.workspacePath, sessionId, record.artifact.id), `${JSON.stringify(toMetadata(record), null, 2)}\n`);
   }
 
   async exportMarkdown(workspacePath: string, sessionId: string): Promise<string> {
@@ -113,12 +112,6 @@ function toMetadata(record: ArtifactRecord): StoredArtifactMetadata {
 }
 
 function digestKey(value: string) { return createHash("sha256").update(value).digest("hex"); }
-
-async function atomicWrite(target: string, content: string) {
-  const temporary = `${target}.${process.pid}.${crypto.randomUUID()}.tmp`;
-  await writeFile(temporary, content, { encoding: "utf8", mode: 0o600 });
-  await rename(temporary, target);
-}
 
 function isMissing(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error && error.code === "ENOENT";

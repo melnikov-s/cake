@@ -14,9 +14,9 @@ export interface SettingsStoreProps {
 export class SettingsStore extends Store<SettingsStoreProps> {
   theme: "system" | "light" | "dark" = "system";
   providerOperations: Record<string, { provider: string; kind: "login" | "logout" }> = observable({});
-  readonly activeOperations: string[] = observable([]);
   error: string | undefined;
   errorDetails: string | undefined;
+  get activeOperations() { return this.props.operations.active("settings"); }
 
   private reportError(error: unknown) {
     const described = describeError(error);
@@ -39,8 +39,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   async authenticate(provider: string, authType: "api_key" | "oauth") {
     if (this.providerOperation(provider)) return;
     this.error = undefined; this.errorDetails = undefined;
-    const operationId = this.props.operations.start();
-    this.activeOperations.push(operationId);
+    const operationId = this.props.operations.start("settings");
     this.providerOperations[operationId] = { provider, kind: "login" };
     try {
       const context = this.requireContext();
@@ -55,8 +54,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   async logout(provider: string) {
     if (this.providerOperation(provider)) return;
     this.error = undefined; this.errorDetails = undefined;
-    const operationId = this.props.operations.start();
-    this.activeOperations.push(operationId);
+    const operationId = this.props.operations.start("settings");
     this.providerOperations[operationId] = { provider, kind: "logout" };
     try {
       const context = this.requireContext();
@@ -98,8 +96,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
 
   private async run(command: (operationId: string, context: { workspacePath: string; sessionId: string }) => Promise<void>) {
     this.error = undefined; this.errorDetails = undefined;
-    const operationId = this.props.operations.start();
-    this.activeOperations.push(operationId);
+    const operationId = this.props.operations.start("settings");
     try {
       await command(operationId, this.requireContext());
     } catch (error) {
@@ -109,8 +106,6 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   }
 
   private finish(operationId: string) {
-    const index = this.activeOperations.indexOf(operationId);
-    if (index >= 0) this.activeOperations.splice(index, 1);
     this.props.operations.finish(operationId);
   }
 }

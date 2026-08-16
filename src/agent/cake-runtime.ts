@@ -25,7 +25,7 @@ import type {
 } from "../ipc/session-contract";
 import { piBuiltinSlashCommands, slashCommandSchema } from "../ipc/session-contract";
 import { artifactRecordSchema, type ArtifactRecord, type ArtifactPointer, type CakeArtifactV1 } from "../ipc/artifact-contract";
-import { Type } from "@earendil-works/pi-ai";
+import type { TSchema } from "@earendil-works/pi-ai";
 import { createCakeArtifactExtension } from "./artifact-extension";
 import { compatibilityCatalog, createCakeExtensionUiContext } from "./extension-compatibility";
 import type { InlineWidgetGenerationRequest, InlineWidgetGenerationResult, ReviewParentContext } from "./sidecar-runtime";
@@ -120,26 +120,7 @@ export interface CakeRuntimeOptions {
 export interface GlobalControlTool {
   name: string;
   description: string;
-}
-
-
-
-function controlToolParameters(name: string) {
-  const target = { workspacePath: Type.String(), sessionId: Type.String() };
-  if (["get_app_state", "get_customization_state", "list_customization_files", "rollback_customization", "use_factory_customization"].includes(name)) return Type.Object({});
-  if (name === "read_customization_file") return Type.Object({ path: Type.String() });
-  if (name === "write_customization_file") return Type.Object({ path: Type.String(), content: Type.String(), expectedWorkingRevision: Type.String() });
-  if (name === "build_customization") return Type.Object({ expectedBaseRevision: Type.Optional(Type.String()), expectedSourceRevision: Type.Optional(Type.String()), request: Type.String() });
-  if (name === "set_plugin_enabled") return Type.Object({ pluginId: Type.String(), enabled: Type.Boolean() });
-  if (name === "list_sessions") return Type.Object({ workspacePath: Type.Optional(Type.String()), includeArchived: Type.Optional(Type.Boolean()), cursor: Type.Optional(Type.Integer()), limit: Type.Optional(Type.Integer()) });
-  if (name === "read_session") return Type.Object({ ...target, cursor: Type.Optional(Type.Integer()), limit: Type.Optional(Type.Integer()) });
-  if (name === "search_sessions") return Type.Object({ query: Type.String(), workspacePath: Type.Optional(Type.String()), includeArchived: Type.Optional(Type.Boolean()), limit: Type.Optional(Type.Integer()) });
-  if (name === "create_session") return Type.Object({ workspacePath: Type.String() });
-  if (name === "send_session_message") return Type.Object({ ...target, text: Type.String(), delivery: Type.Optional(Type.Union([Type.Literal("prompt"), Type.Literal("follow-up"), Type.Literal("steer")])) });
-  if (name === "rename_session") return Type.Object({ ...target, title: Type.String() });
-  if (name === "set_session_archived") return Type.Object({ ...target, archived: Type.Boolean() });
-  if (name === "set_session_model") return Type.Object({ ...target, provider: Type.String(), modelId: Type.String() });
-  return Type.Object(target);
+  parameters: Record<string, unknown>;
 }
 
 function createGlobalControlExtension(control: NonNullable<CakeRuntimeOptions["globalControl"]>): InlineExtension {
@@ -149,7 +130,7 @@ function createGlobalControlExtension(control: NonNullable<CakeRuntimeOptions["g
         name: tool.name,
         label: tool.name.replaceAll("_", " "),
         description: tool.description,
-        parameters: controlToolParameters(tool.name),
+        parameters: tool.parameters as TSchema,
         async execute(_toolCallId, params, signal) {
           const result = await control.invoke({ name: tool.name, arguments: params }, signal ?? new AbortController().signal);
           return { content: [{ type: "text", text: formatUnknown(result, 24_000) }], details: result };

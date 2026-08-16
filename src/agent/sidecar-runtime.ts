@@ -1,9 +1,12 @@
 import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
-import { chmod, mkdir, rename, writeFile } from "node:fs/promises";
+import { chmod, mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { REVIEW_TEXT_MAX_LENGTH, type ReviewMessage, type ReviewThreadRecord } from "../ipc/review-contract";
 import { runIsolatedSession } from "./isolated-session-runner";
 import { assertSessionPath } from "./session-path";
+import { AtomicFileWriter } from "../main/atomic-file-writer";
+
+const atomicFileWriter = new AtomicFileWriter();
 
 export interface ReviewTurnOptions {
   cwd: string;
@@ -153,10 +156,8 @@ async function writeReviewParentContext(options: ReviewTurnOptions) {
   const entries = parent.getBranch(options.parent.leafId);
   const directory = join(options.sessionDir, "context");
   const target = join(directory, "parent-transcript.md");
-  const temporary = `${target}.${process.pid}.${crypto.randomUUID()}.tmp`;
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  await writeFile(temporary, renderParentTranscript(parent.getSessionId(), entries), { encoding: "utf8", mode: 0o600 });
-  await rename(temporary, target);
+  await atomicFileWriter.write(target, renderParentTranscript(parent.getSessionId(), entries));
   await chmod(target, 0o400);
   return target;
 }

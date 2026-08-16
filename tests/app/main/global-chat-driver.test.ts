@@ -50,7 +50,7 @@ describe("GlobalChatDriver", () => {
     const driver = new GlobalChatDriver({ agentDir: "/cake/pi", sessionDir: "/cake/pi/global-chat/sessions", emit: (event) => events.push(event), createRuntime });
     const openId = crypto.randomUUID();
 
-    driver.open(openId, [{ name: "open_session", description: "Open a session" }]);
+    driver.open(openId, [{ name: "open_session", description: "Open a session", parameters: { type: "object", properties: {} } }]);
     await vi.waitFor(() => expect(events).toContainEqual(expect.objectContaining({ type: "global-chat-snapshot", requestId: openId, snapshot: expect.objectContaining({ sessionId: "global-1" }) })));
     expect(createRuntime).toHaveBeenCalledWith(expect.objectContaining({ newSession: false, agentDir: "/cake/pi", sessionDir: "/cake/pi/global-chat/sessions" }));
 
@@ -84,7 +84,7 @@ describe("GlobalChatDriver", () => {
     const driver = new GlobalChatDriver({ agentDir: "/cake/pi", sessionDir: "/cake/pi/global-chat/sessions", emit: (event) => events.push(event), createRuntime });
     const clearId = crypto.randomUUID();
 
-    driver.clear(clearId, [{ name: "get_app_state", description: "Read state" }]);
+    driver.clear(clearId, [{ name: "get_app_state", description: "Read state", parameters: { type: "object", properties: {} } }]);
     await vi.waitFor(() => expect(events).toContainEqual({ type: "global-chat-operation-completed", requestId: clearId }));
     expect(createRuntime).toHaveBeenCalledWith(expect.objectContaining({ newSession: true }));
     driver[Symbol.dispose]();
@@ -96,8 +96,8 @@ describe("GlobalChatDriver", () => {
     const createRuntime = vi.fn(() => new Promise<CakeRuntime>((resolve) => { release = resolve; }));
     const driver = new GlobalChatDriver({ agentDir: "/cake/pi", sessionDir: "/cake/pi/global-chat/sessions", emit: (event) => events.push(event), createRuntime });
 
-    driver.open(crypto.randomUUID(), [{ name: "get_app_state", description: "Read state" }]);
-    driver.open(crypto.randomUUID(), [{ name: "get_app_state", description: "Read state" }]);
+    driver.open(crypto.randomUUID(), [{ name: "get_app_state", description: "Read state", parameters: { type: "object", properties: {} } }]);
+    driver.open(crypto.randomUUID(), [{ name: "get_app_state", description: "Read state", parameters: { type: "object", properties: {} } }]);
     await vi.waitFor(() => expect(createRuntime).toHaveBeenCalledOnce());
     release(runtime());
     await vi.waitFor(() => expect(events.filter((event) => event.type === "global-chat-snapshot")).toHaveLength(2));
@@ -112,7 +112,7 @@ describe("GlobalChatDriver", () => {
       recoveryContext: () => "failed revision",
       createRuntime: vi.fn(async (input) => { options = input; return cakeRuntime; })
     });
-    driver.open(crypto.randomUUID(), [{ name: "get_customization_state", description: "Read customization" }]);
+    driver.open(crypto.randomUUID(), [{ name: "get_customization_state", description: "Read customization", parameters: { type: "object", properties: {} } }]);
     await vi.waitFor(() => expect(options).toBeDefined());
     options.onEvent({ type: "streaming", sessionId: snapshot.sessionId, streaming: true });
     driver.refreshRecoveryContext();

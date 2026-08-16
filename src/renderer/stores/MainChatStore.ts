@@ -78,7 +78,6 @@ export class MainChatStore extends Store<MainChatStoreProps> {
   changelogLoading = false;
   error: string | undefined;
   errorDetails: string | undefined;
-  activeOperations: string[] = [];
   private pendingRenames: Record<string, { workspacePath: string; sessionId: string; previousTitle: string }> = observable({});
   private openRevision = 0;
   private reopenAfterAgentRestart = false;
@@ -108,6 +107,7 @@ export class MainChatStore extends Store<MainChatStoreProps> {
   get isBusy() {
     return this.activeOperations.length > 0;
   }
+  get activeOperations() { return this.props.operations.active("main-chat"); }
 
   get client() {
     return this.props.client;
@@ -231,16 +231,13 @@ export class MainChatStore extends Store<MainChatStoreProps> {
   }
 
   startOperation() {
-    const operationId = this.props.operations.start();
-    this.activeOperations.push(operationId);
+    const operationId = this.props.operations.start("main-chat");
     this.error = undefined;
     this.errorDetails = undefined;
     return operationId;
   }
 
   finishOperation(operationId: string) {
-    const index = this.activeOperations.indexOf(operationId);
-    if (index >= 0) this.activeOperations.splice(index, 1);
     this.props.operations.finish(operationId);
   }
 
@@ -578,7 +575,6 @@ export class MainChatStore extends Store<MainChatStoreProps> {
       if (event.state === "failed" || event.state === "stopped") {
         this.reopenAfterAgentRestart = Boolean(this.projectPath && this.session);
         if (this.reopenAfterAgentRestart) this.draftAfterAgentRestart = this.draft;
-        this.activeOperations.splice(0);
         this.props.operations.reset();
         for (const operationId of Object.keys(this.pendingRenames)) this.rollbackRename(operationId);
         this.activeOpenOperationId = undefined;
