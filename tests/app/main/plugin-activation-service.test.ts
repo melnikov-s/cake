@@ -60,6 +60,21 @@ describe("PluginActivationService", () => {
     expect(restarted.snapshot().diagnostics.at(-1)?.message).toContain("did not finish activation");
   });
 
+  it("keeps build revisions out of user-facing diagnostic messages", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-plugin-activation-")); roots.push(root);
+    const paths = resolveCakePaths({ env: { CAKE_HOME: join(root, "cake") }, homeDirectory: join(root, "home") });
+    const revision = "f".repeat(64);
+    const builder = { buildCandidate: vi.fn(async () => candidate(revision)) } as unknown as PluginBuildService;
+    const service = new PluginActivationService(paths, builder); await service.load();
+
+    await service.fail(revision, { phase: "render", message: "The custom interface did not finish loading." });
+
+    expect(service.snapshot()).toMatchObject({
+      failedRevision: revision,
+      diagnostics: [{ phase: "render", message: "The custom interface did not finish loading." }]
+    });
+  });
+
   it("rebuilds an active customization when its bundled Cake renderer is stale", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-plugin-activation-")); roots.push(root);
     const paths = resolveCakePaths({ env: { CAKE_HOME: join(root, "cake") }, homeDirectory: join(root, "home") });

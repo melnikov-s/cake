@@ -5,6 +5,7 @@ export const pluginIdSchema = z.string().regex(/^[a-z0-9]+(?:[.-][a-z0-9]+)+$/, 
 export const cakePluginManifestSchema = z.object({
   schemaVersion: z.literal(1),
   id: pluginIdSchema,
+  name: z.string().trim().min(1).max(128),
   entry: z.string().min(1).max(1_024).default("index.tsx"),
   enabled: z.boolean().default(true)
 });
@@ -61,5 +62,5 @@ export type PluginPersistenceScope = z.infer<typeof pluginPersistenceScopeSchema
 export type PluginPersistenceRecord = z.infer<typeof pluginPersistenceRecordSchema>;
 export type PluginPersistenceValue = PluginPersistenceRecord["value"];
 
-export const pluginStatusSchema = z.object({ id: pluginIdSchema, enabled: z.boolean(), entry: z.string().max(1_024), diagnostics: z.array(pluginDiagnosticSchema).max(100) });
+export const pluginStatusSchema = z.object({ id: pluginIdSchema, name: z.string().trim().min(1).max(128), enabled: z.boolean(), entry: z.string().max(1_024), diagnostics: z.array(pluginDiagnosticSchema).max(100) });
 export type PluginStatus = z.infer<typeof pluginStatusSchema>;

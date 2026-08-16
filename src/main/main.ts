@@ -238,7 +238,7 @@ async function loadSelectedRenderer(window: BrowserWindow, renderer: ReturnType<
     const previous = customizationHealthTimers.get(window.webContents.id); if (previous) clearTimeout(previous);
     customizationHealthTimers.set(window.webContents.id, setTimeout(() => {
       if (windowCustomizationRevisions.get(window.webContents.id) !== renderer.revision) return;
-      void pluginActivation.fail(renderer.revision, { phase: "render", message: "Customization did not report a healthy render within 10 seconds." }).then(() => {
+      void pluginActivation.fail(renderer.revision, { phase: "render", message: "The custom interface did not finish loading within 10 seconds." }).then(() => {
         globalChatDriver.refreshRecoveryContext();
         broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
         return loadSelectedRenderer(window, { kind: "factory" });

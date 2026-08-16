@@ -26,7 +26,8 @@ export const PluginSettings = observer(function PluginSettings({ store }: { stor
         {store.plugins.map((plugin) => <article className="plugin-settings-row" key={plugin.id}>
           <div className="plugin-settings-identity">
             <span className={plugin.enabled ? "plugin-state enabled" : "plugin-state"}><i />{plugin.enabled ? "Enabled" : "Disabled"}</span>
-            <strong>{plugin.id}</strong>
+            <strong>{plugin.name}</strong>
+            <small>Plugin ID: {plugin.id}</small>
             <small>Entry: {plugin.entry || "Invalid manifest"}</small>
             {plugin.diagnostics[0] && <small className="plugin-diagnostic" role="status">{plugin.diagnostics[0].message}</small>}
           </div>

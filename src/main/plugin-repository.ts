@@ -71,9 +71,9 @@ export class PluginRepository {
       const manifestPath = join(this.paths.plugins, entry.name, "cake-plugin.json");
       try {
         const manifest = cakePluginManifestSchema.parse(JSON.parse(await readFile(manifestPath, "utf8")));
-        statuses.push({ id: entry.name, enabled: manifest.id === entry.name && manifest.enabled, entry: manifest.entry, diagnostics: manifest.id === entry.name ? [] : [{ phase: "discovery", file: manifestPath, message: `Manifest ID ${manifest.id} must match directory ${entry.name}` }] });
+        statuses.push({ id: entry.name, name: manifest.name, enabled: manifest.id === entry.name && manifest.enabled, entry: manifest.entry, diagnostics: manifest.id === entry.name ? [] : [{ phase: "discovery", file: manifestPath, message: `Manifest ID ${manifest.id} must match directory ${entry.name}` }] });
       } catch (error) {
-        statuses.push({ id: entry.name, enabled: false, entry: "", diagnostics: [{ phase: "discovery", file: manifestPath, message: error instanceof Error ? error.message : String(error) }] });
+        statuses.push({ id: entry.name, name: entry.name, enabled: false, entry: "", diagnostics: [{ phase: "discovery", file: manifestPath, message: error instanceof Error ? error.message : String(error) }] });
       }
     }
     return statuses.sort((a, b) => a.id.localeCompare(b.id));

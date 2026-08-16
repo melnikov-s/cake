@@ -14,7 +14,7 @@ describe("PluginBuildService", () => {
     const paths = resolveCakePaths({ env: { CAKE_HOME: join(root, "cake") }, homeDirectory: join(root, "home") });
     const plugin = join(paths.plugins, "example.calendar");
     await mkdir(plugin, { recursive: true }); await mkdir(paths.scenes, { recursive: true });
-    await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 1, id: "example.calendar", entry: "index.tsx" }));
+    await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 1, id: "example.calendar", name: "Example Calendar", entry: "index.tsx" }));
     await writeFile(join(plugin, "index.tsx"), `import { definePlugin } from "cake";\nexport default definePlugin({ id: "example.calendar", contributions: { Badge: () => <i>PLUGIN_BUILD_MARKER</i> } });\n`);
     await writeFile(join(paths.scenes, "global.tsx"), `import type { ReactNode } from "react";\nimport calendar from "plugin:example.calendar";\nconst Badge = calendar.contributions.Badge;\nexport default function Scene({ children }: { children: ReactNode }) { return <><Badge />{children}</>; }\n`);
     const candidate = await new PluginBuildService(paths, resolve(import.meta.dirname, "../../..")).buildCandidate();
@@ -35,7 +35,7 @@ describe("PluginBuildService", () => {
     const paths = resolveCakePaths({ env: { CAKE_HOME: join(root, "cake") }, homeDirectory: join(root, "home") });
     const plugin = join(paths.plugins, "example.broken");
     await mkdir(plugin, { recursive: true });
-    await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 1, id: "example.broken", entry: "index.tsx" }));
+    await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 1, id: "example.broken", name: "Example Broken", entry: "index.tsx" }));
     await writeFile(join(plugin, "index.tsx"), `const wrong: number = "no"; export default wrong;\n`);
     const candidate = await new PluginBuildService(paths, resolve(import.meta.dirname, "../../..")).buildCandidate();
     expect(candidate.directory).toBe("");

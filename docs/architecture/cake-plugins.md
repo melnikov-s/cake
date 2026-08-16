@@ -27,14 +27,16 @@ recovery/
 state/plugin-state/             # versioned namespaced JSON persistence
 ```
 
-`cake-plugin.json` is strict version 1 metadata. The directory name and `id`
-must match. IDs are stable, namespaced, lowercase identifiers such as
-`acme.calendar`.
+`cake-plugin.json` is strict version 1 metadata. `name` is the human-readable
+label shown in Cake; the directory name and `id` must match. IDs are stable,
+namespaced, lowercase identifiers such as `acme.calendar` and are not used as
+the primary UI label.
 
 ```json
 {
   "schemaVersion": 1,
   "id": "acme.calendar",
+  "name": "Acme Calendar",
   "entry": "index.tsx",
   "enabled": true
 }

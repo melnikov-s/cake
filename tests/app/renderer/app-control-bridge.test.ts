@@ -170,7 +170,7 @@ describe("AppControlBridge", () => {
       updatedAt: new Date(0).toISOString()
     });
     const plugins = observable<PluginStatus[]>([
-      { id: "example.widget", enabled: true, entry: "index.tsx", diagnostics: [] }
+      { id: "example.widget", name: "Example Widget", enabled: true, entry: "index.tsx", diagnostics: [] }
     ]);
     const { bridge } = createBridge({ customizationState: () => state, plugins: () => plugins });
 

@@ -14,12 +14,15 @@ describe("PluginRepository", () => {
     const paths = resolveCakePaths({ env: { CAKE_HOME: join(root, "cake") }, homeDirectory: join(root, "home") });
     const plugin = join(paths.plugins, "example.calendar");
     await mkdir(plugin, { recursive: true });
-    await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 1, id: "example.calendar", entry: "index.tsx" }));
+    await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 1, id: "example.calendar", name: "Example Calendar", entry: "index.tsx" }));
     await writeFile(join(plugin, "index.tsx"), "export default {}\n");
 
     const repository = new PluginRepository(paths);
     const first = await repository.inspect();
     expect(first.plugins.map((item) => item.manifest.id)).toEqual(["example.calendar"]);
+    expect(await repository.listPluginStatuses()).toEqual([
+      expect.objectContaining({ id: "example.calendar", name: "Example Calendar", enabled: true })
+    ]);
     expect(await readFile(first.scene, "utf8")).toContain("GlobalScene");
     await repository.snapshotSource(first);
     await access(join(paths.recovery, "sources", first.revision, "plugins", "example.calendar", "index.tsx"));
@@ -42,7 +45,7 @@ describe("PluginRepository", () => {
     const paths = resolveCakePaths({ env: { CAKE_HOME: join(root, "cake") }, homeDirectory: join(root, "home") });
     const plugin = join(paths.plugins, "example.authoring");
     await mkdir(plugin, { recursive: true });
-    await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 1, id: "example.authoring", entry: "index.tsx" }));
+    await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 1, id: "example.authoring", name: "Example Authoring", entry: "index.tsx" }));
     await writeFile(join(plugin, "index.tsx"), "export default {}\n");
     const repository = new PluginRepository(paths);
     const before = await repository.authoringSnapshot();
@@ -84,7 +87,7 @@ describe("PluginRepository", () => {
     const paths = resolveCakePaths({ env: { CAKE_HOME: join(root, "cake") }, homeDirectory: join(root, "home") });
     const plugin = join(paths.plugins, "example.removable");
     await mkdir(plugin, { recursive: true });
-    await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 1, id: "example.removable", entry: "index.tsx", enabled: true }));
+    await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 1, id: "example.removable", name: "Example Removable", entry: "index.tsx", enabled: true }));
     await writeFile(join(plugin, "index.tsx"), "export default {}\n");
 
     const repository = new PluginRepository(paths);
@@ -98,7 +101,7 @@ describe("PluginRepository", () => {
     const paths = resolveCakePaths({ env: { CAKE_HOME: join(root, "cake") }, homeDirectory: join(root, "home") });
     const outside = join(root, "outside");
     await Promise.all([mkdir(paths.plugins, { recursive: true }), mkdir(outside, { recursive: true })]);
-    await writeFile(join(outside, "cake-plugin.json"), JSON.stringify({ schemaVersion: 1, id: "example.escape", entry: "index.tsx" }));
+    await writeFile(join(outside, "cake-plugin.json"), JSON.stringify({ schemaVersion: 1, id: "example.escape", name: "Example Escape", entry: "index.tsx" }));
     await symlink(outside, join(paths.plugins, "example.escape"));
 
     await expect(new PluginRepository(paths).deletePlugin("example.escape")).rejects.toThrow("does not match");

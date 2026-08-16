@@ -13,7 +13,7 @@ test("builds, activates, persists, recovers, and rolls back a plugin renderer", 
   const plugin = join(cakeHome, "plugins", "smoke.example");
   const scenes = join(cakeHome, "scenes");
   await Promise.all([mkdir(plugin, { recursive: true }), mkdir(scenes, { recursive: true }), mkdir(userData, { recursive: true })]);
-  await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 1, id: "smoke.example", entry: "index.tsx" }));
+  await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 1, id: "smoke.example", name: "Smoke Example", entry: "index.tsx" }));
   const writePlugin = (label: string) => writeFile(join(plugin, "index.tsx"), `import { definePlugin } from "cake"; export default definePlugin({ id: "smoke.example", contributions: { Badge: () => <b>${label}</b> } });\n`);
   await writePlugin("PLUGIN_V1");
   await writeFile(join(scenes, "global.tsx"), `import type { ReactNode } from "react"; import plugin from "plugin:smoke.example"; const Badge = plugin.contributions.Badge; export default function Scene({ children }: { children: ReactNode }) { return <><div id="plugin-marker"><Badge /></div>{children}</>; }\n`);
@@ -48,7 +48,8 @@ test("builds, activates, persists, recovers, and rolls back a plugin renderer", 
     const filesBeforeCrash = await request({ type: "list-customization-files" }) as { workingRevision: string };
     const broken = await request({ type: "write-customization-file", path: "scenes/global.tsx", content: `import type { ReactNode } from "react"; export default function Broken(_props: { children: ReactNode }) { throw new Error("PLUGIN_RUNTIME_CRASH"); }\n`, expectedWorkingRevision: filesBeforeCrash.workingRevision }) as { buildRevision: string };
     await build({ expectedBaseRevision: activeV2.state.sourceRevision, expectedSourceRevision: broken.buildRevision, request: "Exercise runtime recovery" });
-    await expect(page.locator("[aria-label='Customization recovery']")).toContainText("recovery scene", { timeout: 20_000 });
+    await expect(page.locator("[aria-label='Customization recovery']")).toContainText("Cake opened the default interface", { timeout: 20_000 });
+    await expect(page.locator("[aria-label='Customization recovery']")).toContainText("Smoke Example didn’t load");
     await expect(page.locator("[aria-label='Customization recovery']")).toContainText("PLUGIN_RUNTIME_CRASH");
     await page.getByRole("button", { name: "Roll back" }).click();
     await expect.poll(() => page.evaluate(async () => (await (window as unknown as { cake: { request(input: unknown): Promise<{ state?: { recoveryRequired?: boolean; activeRevision?: string } }> } }).cake.request({ type: "get-customization-state" })).state)).toMatchObject({ recoveryRequired: false, activeRevision: expect.any(String) });

@@ -198,7 +198,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
     },
     async useFactoryCustomization() {
       const response = await bridge.request({ type: "use-factory-customization" });
-      if (response.type !== "customization-state") throw new Error("Cake could not switch to the factory scene");
+      if (response.type !== "customization-state") throw new Error("Cake could not switch to the default interface");
       return response.state;
     },
     async listPlugins() {

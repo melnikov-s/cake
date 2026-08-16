@@ -124,7 +124,7 @@ export class PluginActivationService {
 
   async fail(revision: string | undefined, diagnostic: PluginDiagnostic) {
     this.startupCandidateRevision = undefined;
-    this.state = { ...this.state, pendingRevision: undefined, failedRevision: revision, recoveryRequired: true, diagnostics: [...this.state.diagnostics, { ...diagnostic, message: `${revision ? `[${revision}] ` : ""}${diagnostic.message}` }], updatedAt: new Date().toISOString() };
+    this.state = { ...this.state, pendingRevision: undefined, failedRevision: revision, recoveryRequired: true, diagnostics: [...this.state.diagnostics, diagnostic], updatedAt: new Date().toISOString() };
     await this.persist();
     if (revision) await this.record("failed", revision, [diagnostic]);
   }
