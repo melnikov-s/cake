@@ -188,8 +188,7 @@ describe("Sidebar projects", () => {
 
     act(() => root.render(<Sidebar {...props} selection={{ kind: "cake-chat", sessionId: "cake-chat-1" }} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
     expect(container.querySelector(".brand-menu summary")?.textContent).toContain("🍰 Cake Chat");
-    expect(container.querySelector('[aria-label="Search sessions"]')).toBeNull();
-    expect(container.querySelector(".cake-chat-heading")).toBeNull();
+    expect(container.querySelector(".sidebar input")).toBeNull();
     expect(container.textContent).toContain("Repair the sidebar");
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="New Cake Chat"]')!.click());
     expect(props.onCreateCakeChat).toHaveBeenCalledOnce();
