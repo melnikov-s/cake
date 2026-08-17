@@ -7,6 +7,7 @@ import { RendererErrorBoundary } from "./components/renderer-error-boundary";
 import { CustomizationRecovery } from "./components/customization-recovery";
 import { LoadingState } from "./components/ui/loading-state";
 import { createDesktopClient } from "./desktop-client";
+import { installStaleAssetRecovery } from "./stale-asset-recovery";
 import { mountRootStore } from "./stores/RootStore";
 import "katex/dist/katex.min.css";
 import "streamdown/styles.css";
@@ -14,6 +15,7 @@ import "./styles.css";
 import "./customization-recovery.css";
 
 const root = createRoot(document.getElementById("root")!);
+const disposeStaleAssetRecovery = installStaleAssetRecovery();
 const customizationRevision = typeof __CAKE_CUSTOMIZATION_REVISION__ === "undefined" ? undefined : __CAKE_CUSTOMIZATION_REVISION__;
 
 function CustomizationHealth() {
@@ -47,5 +49,8 @@ if (!window.cake) {
       </StrictMode>
     </RendererErrorBoundary>
   );
-  window.addEventListener("pagehide", () => rootStore[Symbol.dispose](), { once: true });
+  window.addEventListener("pagehide", () => {
+    disposeStaleAssetRecovery();
+    rootStore[Symbol.dispose]();
+  }, { once: true });
 }
