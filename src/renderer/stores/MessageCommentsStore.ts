@@ -29,6 +29,7 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
   errorDetails: string | undefined;
   draftSelection: MessageSelectionAnchor | undefined;
   createdThreadId: string | undefined;
+  draftFocusRequestRevision = 0;
 
   private reportError(error: unknown) {
     const described = describeError(error);
@@ -55,12 +56,13 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
   prepareDraft(selection: MessageSelectionAnchor) {
     this.draftSelection = selection;
     this.createdThreadId = undefined;
-    this.draftChatStore.setDraft("");
+    this.draftFocusRequestRevision += 1;
   }
 
   @child
   get draftChatStore(): ChatStore {
     return createStore(ChatStore, {
+      key: `message-comment-draft:${this.draftFocusRequestRevision}`,
       id: () => "message-comment-draft",
       parts: () => [],
       streaming: () => false,
@@ -69,6 +71,7 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
       commands: () => [],
       placeholder: () => "Ask Cake about this passage…",
       inputLabel: () => "Message about selected text",
+      focusRequestRevision: () => this.draftFocusRequestRevision,
       canSubmit: (draft) => Boolean(this.draftSelection && draft.trim()),
       submit: async (draft) => {
         if (!this.draftSelection) return false;

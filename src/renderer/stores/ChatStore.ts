@@ -56,6 +56,7 @@ export class ChatStore extends Store<ChatStoreProps> {
   get focusRequestRevision() { return this.props.focusRequestRevision?.(); }
   get usage() { return this.props.usage?.(); }
   get error() { return this.props.error?.(); }
+  canSubmitDraft(value: string) { return !this.submittingLocally && this.props.canSubmit(value); }
 
   setDraft(value: string) {
     this.draft = value;

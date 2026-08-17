@@ -34,8 +34,8 @@ vi.mock("@/components/ai-elements/conversation", () => ({
 }));
 
 import { Chat } from "../../../src/renderer/components/chat";
-import { captureMessageSelection, ChatTranscript, MESSAGE_COMMENT_SELECTION_DELAY_MS, type ChatTranscriptBehavior } from "../../../src/renderer/components/chat-transcript";
-import type { MessageCommentsStore } from "../../../src/renderer/stores/MessageCommentsStore";
+import { captureMessageSelection, ChatTranscript, MESSAGE_COMMENT_SELECTION_SETTLE_MS, type ChatTranscriptBehavior } from "../../../src/renderer/components/chat-transcript";
+import { MessageCommentsStore } from "../../../src/renderer/stores/MessageCommentsStore";
 import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
 
@@ -351,21 +351,14 @@ describe("Transcript scrolling", () => {
     browserSelection.removeAllRanges();
   });
 
-  it("waits before offering a chat for selected assistant text", () => {
+  it("offers a chat immediately when text selection finishes", () => {
     vi.useFakeTimers();
-    const draftChat = mount(createStore(ChatStore, {
-      id: () => "message-comment-draft",
-      parts: () => [],
-      streaming: () => false,
-      submitting: () => false,
-      configuration: () => undefined,
-      commands: () => [],
-      placeholder: () => "Ask Cake about this passage…",
-      inputLabel: () => "Message about selected text",
-      canSubmit: (draft) => Boolean(draft.trim()),
-      submit: async () => true
+    const comments = mount(createStore(MessageCommentsStore, {
+      client: { createReviewThread: vi.fn() } as never,
+      sessionRegistry: { findModel: () => undefined } as never,
+      reviews: () => ({ configuration: undefined }) as never,
+      context: () => ({ workspacePath: "/project", sessionId: "session-1" })
     }));
-    const comments = { threadsForMessage: () => [], prepareDraft: vi.fn(), draftChatStore: draftChat } as unknown as MessageCommentsStore;
     act(() => root.render(<Transcript
       parts={[{ id: "assistant-1", kind: "text", role: "assistant", entryId: "entry-1", text: "Alpha important detail.", status: "complete" }]}
       sessionId="session-1"
@@ -384,11 +377,8 @@ describe("Transcript scrolling", () => {
     const browserSelection = window.getSelection()!;
     browserSelection.removeAllRanges();
     browserSelection.addRange(range);
-    act(() => container.querySelector<HTMLElement>(".assistant-message-content")!.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })));
-
-    act(() => vi.advanceTimersByTime(MESSAGE_COMMENT_SELECTION_DELAY_MS - 1));
-    expect(document.body.querySelector(".message-selection-action")).toBeNull();
-    act(() => vi.advanceTimersByTime(1));
+    act(() => document.dispatchEvent(new Event("selectionchange")));
+    act(() => vi.advanceTimersByTime(MESSAGE_COMMENT_SELECTION_SETTLE_MS));
     expect(document.body.querySelector<HTMLButtonElement>(".message-selection-action")?.textContent).toBe("Chat about this");
 
     act(() => document.body.querySelector<HTMLButtonElement>(".message-selection-action")!.click());
@@ -402,10 +392,11 @@ describe("Transcript scrolling", () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "Why is this important?");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    expect(draftChat.draft).toBe("Why is this important?");
+    expect(comments.draftChatStore.draft).toBe("Why is this important?");
+    expect(input.value).toBe("Why is this important?");
     expect(input).toBe(document.activeElement);
     browserSelection.removeAllRanges();
-    draftChat[Symbol.dispose]();
+    comments[Symbol.dispose]();
     vi.useRealTimers();
   });
 
@@ -445,9 +436,49 @@ describe("Transcript scrolling", () => {
     browserSelection.removeAllRanges();
     browserSelection.addRange(range);
     const codeBlock = codeText!.parentElement!.closest("[data-streamdown='code-block'], pre, code")!;
-    codeBlock.addEventListener("mouseup", (event) => event.stopPropagation());
-    act(() => codeBlock.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })));
-    act(() => vi.advanceTimersByTime(MESSAGE_COMMENT_SELECTION_DELAY_MS));
+    codeBlock.addEventListener("pointerup", (event) => event.stopPropagation());
+    act(() => document.dispatchEvent(new Event("selectionchange")));
+    act(() => vi.advanceTimersByTime(MESSAGE_COMMENT_SELECTION_SETTLE_MS));
+
+    expect(document.body.querySelector<HTMLButtonElement>(".message-selection-action")?.textContent).toBe("Chat about this");
+    browserSelection.removeAllRanges();
+    draftChat[Symbol.dispose]();
+    vi.useRealTimers();
+  });
+
+  it("detects native selection changes inside assistant Markdown", () => {
+    vi.useFakeTimers();
+    const draftChat = mount(createStore(ChatStore, {
+      id: () => "keyboard-message-comment-draft",
+      parts: () => [],
+      streaming: () => false,
+      submitting: () => false,
+      configuration: () => undefined,
+      commands: () => [],
+      placeholder: () => "Ask Cake about this passage…",
+      inputLabel: () => "Message about selected text",
+      canSubmit: (draft) => Boolean(draft.trim()),
+      submit: async () => true
+    }));
+    const comments = { threadsForMessage: () => [], prepareDraft: vi.fn(), draftChatStore: draftChat } as unknown as MessageCommentsStore;
+    act(() => root.render(<Transcript
+      parts={[{ id: "assistant-keyboard", kind: "text", role: "assistant", text: "Keyboard selection works.", status: "complete" }]}
+      sessionId="session-1"
+      isStreaming={false}
+      behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, messageComments: comments }}
+      empty={<div />}
+    />));
+
+    const content = container.querySelector<HTMLElement>(".assistant-message-content")!;
+    const text = document.createTreeWalker(content, NodeFilter.SHOW_TEXT).nextNode()!;
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, "Keyboard".length);
+    const browserSelection = window.getSelection()!;
+    browserSelection.removeAllRanges();
+    browserSelection.addRange(range);
+    act(() => document.dispatchEvent(new Event("selectionchange")));
+    act(() => vi.advanceTimersByTime(MESSAGE_COMMENT_SELECTION_SETTLE_MS));
 
     expect(document.body.querySelector<HTMLButtonElement>(".message-selection-action")?.textContent).toBe("Chat about this");
     browserSelection.removeAllRanges();
@@ -491,7 +522,6 @@ describe("Transcript scrolling", () => {
     browserSelection.removeAllRanges();
     browserSelection.addRange(range);
     act(() => content.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })));
-    act(() => vi.advanceTimersByTime(MESSAGE_COMMENT_SELECTION_DELAY_MS));
 
     act(() => document.body.querySelector<HTMLButtonElement>(".message-selection-action")!.click());
     expect(document.body.querySelector(".fullscreen-surface")).toBe(fullscreen);

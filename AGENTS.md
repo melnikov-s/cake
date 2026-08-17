@@ -92,3 +92,20 @@ Before adding state, identify its authority, cohesive owner, lifetime, persisten
 ## Verification
 
 Run focused tests and the relevant typecheck or build for the files changed. Preserve unrelated worktree changes.
+
+### Electron UI verification
+
+- Cake is an Electron application. Do not use a localhost browser page to verify Cake UI unless the task explicitly targets a separately identified web surface.
+- Renderer behavior that depends on focus, text selection, portals, keyboard input, or native DOM events must be verified through an isolated Playwright Electron test.
+- Electron smoke tests run the compiled `out/` application. Run `pnpm build` after the final source change and before interpreting smoke-test results.
+- Do not treat jsdom or a browser-only render as proof of focus, controlled-input, text-selection, or portal behavior.
+- A chat-composer test must verify focus, actual typing, retained value, and enabled submission, not merely that a textarea rendered.
+- Markdown selection tests must cover fenced code as well as prose. Wait for asynchronous syntax highlighting to settle before measuring text coordinates or simulating a drag.
+
+### Debugging discipline
+
+- Reproduce a reported UI defect in the smallest real Electron fixture before refactoring shared abstractions.
+- After two failed implementation hypotheses, stop changing architecture. Summarize the evidence, identify the unresolved boundary, and choose one narrow experiment.
+- Remove temporary diagnostics before broader verification.
+- Do not broaden a surface-specific fix into `Chat`, `ChatStore`, or another shared primitive unless the behavior belongs to every consumer.
+- When a shared chat primitive changes, run Electron smoke tests for the affected secondary chat, normal project chat input, and slash-command keyboard handling.

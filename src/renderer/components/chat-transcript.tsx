@@ -39,12 +39,11 @@ export function chatWorkIsActive(parts: UiPart[], streaming: boolean, submitting
 export const ChatTextMessage = forwardRef<HTMLElement, {
   part: Extract<UiPart, { kind: "text" }>;
   contentRef?: RefObject<HTMLDivElement | null>;
-  onMouseUpCapture?: ComponentProps<"article">["onMouseUpCapture"];
   children?: ReactNode;
-}>(function ChatTextMessage({ part, contentRef, onMouseUpCapture, children }, ref) {
+}>(function ChatTextMessage({ part, contentRef, children }, ref) {
   const assistant = part.role === "assistant";
   const userLabel = part.deliveryState === "queued" ? "You · queued" : part.deliveryState === "steering" ? "You · steering next" : part.deliveryState === "sending" ? "You · sending" : "You";
-  return <Message ref={ref} className={assistant ? "assistant-message mr-auto w-full" : "ml-auto w-[min(88%,42rem)]"} onMouseUpCapture={onMouseUpCapture}>
+  return <Message ref={ref} className={assistant ? "assistant-message mr-auto w-full" : "ml-auto w-[min(88%,42rem)]"}>
     <MessageLabel>{assistant ? part.status === "streaming" ? "Cake · working" : "Cake" : userLabel}</MessageLabel>
     <MessageContent ref={contentRef} className={assistant ? "assistant-message-content" : "user-message"}>
       <Markdown>{part.text}</Markdown>
@@ -131,10 +130,14 @@ export function captureMessageSelection(container: HTMLElement, messageId: strin
   };
 }
 
-export const MESSAGE_COMMENT_SELECTION_DELAY_MS = 450;
+export const MESSAGE_COMMENT_SELECTION_SETTLE_MS = 80;
 
 function plainRect(rect: DOMRect): MessageCommentAnchorRect {
   return { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left };
+}
+
+function selectionEndRect(range: Range) {
+  return Array.from(range.getClientRects()).at(-1) ?? range.getBoundingClientRect();
 }
 
 export interface ChatTranscriptBehavior {
@@ -148,7 +151,7 @@ export interface ChatTranscriptBehavior {
 interface CanonicalTranscriptBehavior extends ChatTranscriptBehavior {
   thinkingExpanded: boolean;
   onToggleThinking(): void;
-  renderChat(store: ChatStore, onSubmitted?: () => void, options?: { composerOnly?: boolean }): ReactNode;
+  renderChat(store: ChatStore, onSubmitted?: () => void, options?: { composerOnly?: boolean; draftValue?: string; onDraftValueChange?(value: string): void }): ReactNode;
 }
 
 const AssistantTextMessage = observer(function AssistantTextMessage({ part, behavior }: { part: Extract<UiPart, { kind: "text" }>; behavior: CanonicalTranscriptBehavior }) {
@@ -159,6 +162,7 @@ const AssistantTextMessage = observer(function AssistantTextMessage({ part, beha
   const [openThread, setOpenThread] = useState<{ id: string; anchor: HTMLElement | MessageCommentAnchorRect }>();
   const [markerPositions, setMarkerPositions] = useState<Record<string, { left: number; top: number }>>({});
   const selectionTimer = useRef<number | undefined>(undefined);
+  const selectionFrame = useRef<number | undefined>(undefined);
   const messageRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const commentThreads = behavior.messageComments?.threadsForMessage(part.id) ?? [];
@@ -168,7 +172,10 @@ const AssistantTextMessage = observer(function AssistantTextMessage({ part, beha
     const timeout = window.setTimeout(() => setCopied(false), 1_500);
     return () => window.clearTimeout(timeout);
   }, [copied]);
-  useEffect(() => () => window.clearTimeout(selectionTimer.current), []);
+  useEffect(() => () => {
+    window.clearTimeout(selectionTimer.current);
+    if (selectionFrame.current !== undefined) cancelAnimationFrame(selectionFrame.current);
+  }, []);
 
   const content = () => <Markdown>{part.text}</Markdown>;
 
@@ -216,28 +223,68 @@ const AssistantTextMessage = observer(function AssistantTextMessage({ part, beha
     return () => { resizeObserver?.disconnect(); window.removeEventListener("resize", update); };
   }, [part.text, commentThreads.map((thread) => `${thread.id}:${thread.anchor.startOffset}:${thread.anchor.endOffset}`).join("|")]);
 
-  const scheduleSelectionAction = (container: HTMLElement | null = contentRef.current) => {
+  const showSelectionAction = useCallback((container: HTMLElement | null = contentRef.current) => {
     window.clearTimeout(selectionTimer.current);
-    setSelectionAction(undefined);
-    if (!behavior.messageComments || part.status === "streaming" || !container) return;
+    if (!behavior.messageComments || part.status === "streaming" || !container) {
+      setSelectionAction(undefined);
+      return;
+    }
     const captured = captureMessageSelection(container, part.id, part.entryId);
     const selection = window.getSelection();
-    if (!captured || !selection?.rangeCount) return;
-    const rect = plainRect(selection.getRangeAt(0).getBoundingClientRect());
-    selectionTimer.current = window.setTimeout(() => {
-      if (window.getSelection()?.toString().trim() === captured.selectedText) setSelectionAction({ selection: captured, rect });
-    }, MESSAGE_COMMENT_SELECTION_DELAY_MS);
-  };
+    if (!captured || !selection?.rangeCount) {
+      setSelectionAction(undefined);
+      return;
+    }
+    setSelectionAction({ selection: captured, rect: plainRect(selectionEndRect(selection.getRangeAt(0))) });
+  }, [behavior.messageComments, part.entryId, part.id, part.status]);
+
+  useEffect(() => {
+    const message = messageRef.current;
+    const contentNode = contentRef.current;
+    if (!message || !contentNode || !behavior.messageComments || part.status === "streaming") return;
+    const settleSelection = () => {
+      window.clearTimeout(selectionTimer.current);
+      if (selectionFrame.current !== undefined) cancelAnimationFrame(selectionFrame.current);
+      const selection = window.getSelection();
+      if (!selection?.rangeCount || selection.isCollapsed) {
+        setSelectionAction(undefined);
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      if (!contentNode.contains(range.startContainer) || !contentNode.contains(range.endContainer)) {
+        setSelectionAction(undefined);
+        return;
+      }
+      selectionTimer.current = window.setTimeout(() => showSelectionAction(contentNode), MESSAGE_COMMENT_SELECTION_SETTLE_MS);
+    };
+    const finishSelection = () => {
+      window.clearTimeout(selectionTimer.current);
+      if (selectionFrame.current !== undefined) cancelAnimationFrame(selectionFrame.current);
+      selectionFrame.current = requestAnimationFrame(() => {
+        selectionFrame.current = undefined;
+        showSelectionAction(contentNode);
+      });
+    };
+    document.addEventListener("selectionchange", settleSelection);
+    message.addEventListener("pointerup", finishSelection, true);
+    message.addEventListener("keyup", finishSelection, true);
+    return () => {
+      window.clearTimeout(selectionTimer.current);
+      if (selectionFrame.current !== undefined) cancelAnimationFrame(selectionFrame.current);
+      document.removeEventListener("selectionchange", settleSelection);
+      message.removeEventListener("pointerup", finishSelection, true);
+      message.removeEventListener("keyup", finishSelection, true);
+    };
+  }, [behavior.messageComments, part.status, showSelectionAction]);
 
   const activeThread = openThread ? commentThreads.find((thread) => thread.id === openThread.id) : undefined;
+  const draftChatStore = draft ? behavior.messageComments?.draftChatStore : undefined;
 
-  return <ChatTextMessage ref={messageRef} part={part} contentRef={contentRef} onMouseUpCapture={(event) => {
-    if (event.target instanceof Node && contentRef.current?.contains(event.target)) scheduleSelectionAction();
-  }}>
+  return <ChatTextMessage ref={messageRef} part={part} contentRef={contentRef}>
     <FullscreenButton className="assistant-message-expand" label="View response fullscreen" onClick={() => setFullscreen(true)} />
     {commentThreads.map((thread, index) => markerPositions[thread.id] && <button key={thread.id} className="message-comment-marker" style={markerPositions[thread.id]} type="button" aria-label={`Open selection chat ${index + 1}`} title={thread.anchor.selectedText} onClick={(event) => setOpenThread({ id: thread.id, anchor: event.currentTarget })}><ChatIcon /><b>{thread.messages.length}</b></button>)}
     {selectionAction && <MessageSelectionAction rect={selectionAction.rect} onChat={(anchor) => { behavior.messageComments?.prepareDraft(selectionAction.selection); setDraft({ selection: selectionAction.selection, anchor }); setSelectionAction(undefined); }} />}
-    {draft && behavior.messageComments && <MessageCommentDraftPopover anchor={draft.anchor} selection={draft.selection} store={behavior.messageComments} renderChat={behavior.renderChat} onClose={() => setDraft(undefined)} onCreated={(threadId) => {
+    {draft && behavior.messageComments && draftChatStore && <MessageCommentDraftPopover anchor={draft.anchor} selection={draft.selection} store={behavior.messageComments} chatStore={draftChatStore} renderChat={behavior.renderChat} onClose={() => setDraft(undefined)} onCreated={(threadId) => {
       setOpenThread({ id: threadId, anchor: draft.anchor });
       setDraft(undefined);
       window.getSelection()?.removeAllRanges();
@@ -247,7 +294,7 @@ const AssistantTextMessage = observer(function AssistantTextMessage({ part, beha
       <button type="button" aria-label={copied ? "Copied response" : "Copy response"} title={copied ? "Copied" : "Copy response"} onClick={() => void navigator.clipboard.writeText(part.text).then(() => setCopied(true))}>{copied ? <CheckIcon /> : <CopyIcon />}</button>
       {part.entryId && behavior.onFork && <button type="button" aria-label="Fork response into new chat" title="Fork into new chat" onClick={() => behavior.onFork!(part.entryId!)}><ForkIcon /></button>}
     </div>}
-    {fullscreen && <FullscreenSurface eyebrow="Full response" title="Cake" onClose={closeFullscreen} onContentMouseUp={(event) => scheduleSelectionAction(event.currentTarget)}>{content()}</FullscreenSurface>}
+    {fullscreen && <FullscreenSurface eyebrow="Full response" title="Cake" onClose={closeFullscreen} onContentMouseUp={(event) => showSelectionAction(event.currentTarget)}>{content()}</FullscreenSurface>}
   </ChatTextMessage>;
 });
 
@@ -337,7 +384,7 @@ function ErrorNotice({ title, message, details = message }: { title: string; mes
   return <div className="notice notice-error" role="alert"><strong>{title}</strong><span>{message}</span><CopyErrorDetailsButton details={details} /></div>;
 }
 
-export const ChatTranscript = observer(function ChatTranscript({ store, behavior = {}, empty, footer, error: errorOverride, renderChat }: { store: ChatStore; behavior?: ChatTranscriptBehavior; empty?: ReactNode; footer?: ReactNode; error?: { message: string; details?: string; title?: string }; renderChat(store: ChatStore, onSubmitted?: () => void, options?: { composerOnly?: boolean }): ReactNode }) {
+export const ChatTranscript = observer(function ChatTranscript({ store, behavior = {}, empty, footer, error: errorOverride, renderChat }: { store: ChatStore; behavior?: ChatTranscriptBehavior; empty?: ReactNode; footer?: ReactNode; error?: { message: string; details?: string; title?: string }; renderChat(store: ChatStore, onSubmitted?: () => void, options?: { composerOnly?: boolean; draftValue?: string; onDraftValueChange?(value: string): void }): ReactNode }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const visibleParts = store.hideThinking ? store.parts.filter((part) => part.kind !== "reasoning") : store.parts;
   const showAssistantLoading = chatWorkIsActive(store.parts, store.streaming, store.submitting);

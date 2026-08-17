@@ -9,6 +9,37 @@ import type { SessionOperationCoordinator } from "../../../../src/renderer/store
 import type { PluginCommandStore } from "../../../../src/renderer/stores/PluginCommandStore";
 
 describe("MessageCommentsStore", () => {
+  it("keeps one editable draft chat store for the active selection", () => {
+    const cache = mount(createStore(SessionRegistryStore, {
+      client: {} as DesktopClient,
+      operations: {} as SessionOperationCoordinator,
+      reviews: () => ({} as ReviewsStore),
+      pluginCommands: () => ({} as PluginCommandStore),
+      canSubmit: () => false,
+      isActive: () => false,
+      openCommandPane: async () => undefined,
+      persist: () => undefined,
+      projectName: () => "Project",
+      abort: async () => undefined
+    }));
+    const store = mount(createStore(MessageCommentsStore, {
+      client: {} as DesktopClient,
+      sessionRegistry: cache,
+      reviews: () => ({ configuration: undefined }) as unknown as ReviewsStore,
+      context: () => ({ workspacePath: "/project", sessionId: "session-1" })
+    }));
+    store.prepareDraft({ messageId: "assistant-1", selectedText: "value", startOffset: 0, endOffset: 5, contextBefore: "", contextAfter: "" });
+    const draftChat = store.draftChatStore;
+
+    draftChat.setDraft("Why this value?");
+
+    expect(store.draftChatStore).toBe(draftChat);
+    expect(store.draftChatStore.draft).toBe("Why this value?");
+    expect(store.draftChatStore.focusRequestRevision).toBe(1);
+    store[Symbol.dispose]();
+    cache[Symbol.dispose]();
+  });
+
   it("creates a transcript anchor and immediately submits its sidecar thread", async () => {
     const now = new Date(0).toISOString();
     const createReviewThread = vi.fn(async (input: { anchor: ReviewThread["anchor"] }) => ({

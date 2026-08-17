@@ -147,11 +147,12 @@ export function MessageSelectionAction({ rect, onChat }: { rect: MessageCommentA
   return createPortal(<button className="message-selection-action" type="button" style={style} onPointerDown={(event) => event.preventDefault()} onClick={(event) => onChat(event.currentTarget.getBoundingClientRect())}>Chat about this</button>, document.body);
 }
 
-export function MessageCommentDraftPopover({ anchor, selection, store, renderChat, onCreated, onClose }: { anchor: MessageCommentAnchorRect; selection: MessageSelectionAnchor; store: MessageCommentsStore; renderChat(store: ChatStore, onSubmitted?: () => void, options?: { composerOnly?: boolean }): ReactNode; onCreated(threadId: string): void; onClose(): void }) {
+export const MessageCommentDraftPopover = observer(function MessageCommentDraftPopover({ anchor, selection, store, chatStore, renderChat, onCreated, onClose }: { anchor: MessageCommentAnchorRect; selection: MessageSelectionAnchor; store: MessageCommentsStore; chatStore: ChatStore; renderChat(store: ChatStore, onSubmitted?: () => void, options?: { composerOnly?: boolean; draftValue?: string; onDraftValueChange?(value: string): void }): ReactNode; onCreated(threadId: string): void; onClose(): void }) {
+  const [draftValue, setDraftValue] = useState(chatStore.draft);
   return <PopoverShell anchor={anchor} title="Chat about this" selectedText={selection.selectedText} className="message-comment-draft-popover" onClose={onClose}>
-    {renderChat(store.draftChatStore, () => { if (store.createdThreadId) onCreated(store.createdThreadId); }, { composerOnly: true })}
+    {renderChat(chatStore, () => { if (store.createdThreadId) onCreated(store.createdThreadId); }, { composerOnly: true, draftValue, onDraftValueChange: setDraftValue })}
   </PopoverShell>;
-}
+});
 
 export const MessageCommentThreadPopover = observer(function MessageCommentThreadPopover({ anchor, thread, store, renderChat, onClose }: { anchor: HTMLElement | MessageCommentAnchorRect; thread: ReviewThreadModel; store: MessageCommentsStore; renderChat(store: ChatStore): ReactNode; onClose(): void }) {
   const chat = store.chatStore(thread.id);
