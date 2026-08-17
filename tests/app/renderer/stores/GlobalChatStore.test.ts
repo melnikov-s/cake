@@ -32,7 +32,8 @@ function createTestStore() {
     prompt: vi.fn(async (input: Parameters<GlobalChatPort["prompt"]>[0]) => { void input; }),
     abort: vi.fn(async (input: Parameters<GlobalChatPort["abort"]>[0]) => { void input; }),
     setModel: vi.fn(async (input: Parameters<GlobalChatPort["setModel"]>[0]) => { void input; }),
-    setThinkingLevel: vi.fn(async (input: Parameters<GlobalChatPort["setThinkingLevel"]>[0]) => { void input; })
+    setThinkingLevel: vi.fn(async (input: Parameters<GlobalChatPort["setThinkingLevel"]>[0]) => { void input; }),
+    resolveSession: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] }))
   };
   const sessions = mount(createStore(SessionRegistryStore, {
     client: {} as DesktopClient,
@@ -92,6 +93,26 @@ describe("GlobalChatStore", () => {
     operations[Symbol.dispose]();
   });
 
+  it("applies persisted resolved state and can restore a Cake Chat", async () => {
+    const { store, port, sessions, operations } = createTestStore();
+    await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
+    const now = new Date().toISOString();
+    store.applyApplicationState({ schemaVersion: 1, projects: [], resolvedCakeChatSessionIds: ["global-1"], trustedProjectPaths: [] });
+    store.receive({
+      type: "global-chat-snapshot-received",
+      snapshot: { ...snapshot, sessions: [{ id: "global-1", title: "Resolved work", created: now, modified: now, messageCount: 1, resolved: false }] }
+    });
+
+    expect(store.summaries[0]?.resolved).toBe(true);
+    port.resolveSession.mockResolvedValueOnce({ schemaVersion: 1, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] });
+    await store.resolveSession("global-1", false);
+    expect(port.resolveSession).toHaveBeenCalledWith("global-1", false);
+    expect(store.summaries[0]?.resolved).toBe(false);
+    store[Symbol.dispose]();
+    sessions[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
   it("keeps independent Stores for multiple selected and background Cake Chat sessions", async () => {
     const { store, port, sessions, operations } = createTestStore();
     await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
@@ -107,8 +128,8 @@ describe("GlobalChatStore", () => {
       sessionFile: "/global-2.jsonl",
       parts: [],
       sessions: [
-        { id: "global-1", title: "First chat", created: now, modified: now, messageCount: 2, archived: false },
-        { id: "global-2", title: "Second chat", created: now, modified: now, messageCount: 0, archived: false }
+        { id: "global-1", title: "First chat", created: now, modified: now, messageCount: 2, resolved: false },
+        { id: "global-2", title: "Second chat", created: now, modified: now, messageCount: 0, resolved: false }
       ]
     };
     store.receive({ type: "global-chat-snapshot-received", operationId, snapshot: second });

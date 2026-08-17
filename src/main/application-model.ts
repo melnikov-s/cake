@@ -11,7 +11,7 @@ export class ProjectModel extends Model {
   @state
   lastOpenedAt = "";
   @state
-  archivedSessionIds: string[] = [];
+  resolvedSessionIds: string[] = [];
 
   rename(name: string) {
     const next = name.trim();
@@ -22,10 +22,10 @@ export class ProjectModel extends Model {
     this.lastOpenedAt = at;
   }
 
-  setSessionArchived(sessionId: string, archived: boolean) {
-    const index = this.archivedSessionIds.indexOf(sessionId);
-    if (archived && index === -1) this.archivedSessionIds.push(sessionId);
-    else if (!archived && index !== -1) this.archivedSessionIds.splice(index, 1);
+  setSessionResolved(sessionId: string, resolved: boolean) {
+    const index = this.resolvedSessionIds.indexOf(sessionId);
+    if (resolved && index === -1) this.resolvedSessionIds = [...this.resolvedSessionIds, sessionId];
+    else if (!resolved && index !== -1) this.resolvedSessionIds = this.resolvedSessionIds.filter((id) => id !== sessionId);
   }
 }
 
@@ -34,6 +34,8 @@ export class ApplicationModel extends Model {
   schemaVersion = 1 as const;
   @child(ProjectModel)
   projects: ProjectModel[] = [];
+  @state
+  resolvedCakeChatSessionIds: string[] = [];
   @state
   trustedProjectPaths: string[] = [];
   @state
@@ -50,7 +52,7 @@ export class ApplicationModel extends Model {
       return existing;
     }
     const now = new Date().toISOString();
-    const project = ProjectModel.create({ path, name: defaultName, addedAt: now, lastOpenedAt: now, archivedSessionIds: [] });
+    const project = ProjectModel.create({ path, name: defaultName, addedAt: now, lastOpenedAt: now, resolvedSessionIds: [] });
     this.projects.unshift(project);
     return project;
   }
@@ -76,6 +78,18 @@ export class ApplicationModel extends Model {
     this.utilityModel = model ? utilityModelSchema.parse(model) : undefined;
   }
 
+  setCakeChatSessionResolved(sessionId: string, resolved: boolean) {
+    const index = this.resolvedCakeChatSessionIds.indexOf(sessionId);
+    if (resolved && index === -1) this.resolvedCakeChatSessionIds = [...this.resolvedCakeChatSessionIds, sessionId];
+    else if (!resolved && index !== -1) this.resolvedCakeChatSessionIds = this.resolvedCakeChatSessionIds.filter((id) => id !== sessionId);
+  }
+
+  setProjectSessionResolved(path: string, sessionId: string, resolved: boolean) {
+    const project = this.projects.find((candidate) => candidate.path === path);
+    if (!project) throw new Error("Project is not registered");
+    project.setSessionResolved(sessionId, resolved);
+  }
+
   isProjectTrusted(path: string) {
     return this.trustedProjectPaths.includes(path);
   }
@@ -91,7 +105,7 @@ export class ApplicationModel extends Model {
       name: match.name,
       addedAt: match.addedAt,
       lastOpenedAt: match.lastOpenedAt,
-      archivedSessionIds: match.archivedSessionIds.slice()
+      resolvedSessionIds: match.resolvedSessionIds.slice()
     } : undefined;
   }
 }

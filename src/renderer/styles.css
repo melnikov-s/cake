@@ -151,6 +151,8 @@
 .new-chat kbd { color: var(--muted-foreground); font: 11px var(--font-sans); opacity: .7; }
 .sidebar-scroll { min-height: 0; flex: 1; overflow-y: auto; overflow-x: hidden; padding: 7px 12px 16px; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; padding: 8px 5px 7px; color: var(--muted-foreground); font-size: 12px; font-weight: 500; }
+.lane-heading { padding-top: 10px; color: color-mix(in oklab, var(--muted-foreground) 88%, var(--foreground)); font-size: 10px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
+.conversation-group-heading { padding-top: 4px; padding-bottom: 3px; color: color-mix(in oklab, var(--muted-foreground) 92%, var(--foreground)); font-size: 11.5px; }
 .projects-heading { margin-top: 2px; }
 .section-heading > div { display: flex; }
 .project-options { display: grid; width: 27px; height: 27px; place-items: center; }
@@ -183,9 +185,16 @@
 .session-item .session-row { width: calc(100% - 25px); }
 .session-item.active .session-row { background: var(--sidebar-active); color: var(--foreground); font-weight: 650; box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 1px color-mix(in oklab, var(--accent) 18%, transparent); }
 .session-item.active .session-row:hover { background: color-mix(in oklab, var(--sidebar-active) 88%, var(--accent)); }
+.session-item.has-session-action .session-row { padding-right: 36px; }
+.session-resolve-action { position: absolute; z-index: 1; right: 4px; display: grid; width: 26px; height: 25px; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted-foreground); }
+.session-resolve-action:hover { background: color-mix(in oklab, var(--accent) 14%, var(--sidebar-hover)); color: var(--foreground); }
+.session-resolve-action:focus-visible { outline: 2px solid color-mix(in oklab, var(--accent) 72%, transparent); outline-offset: 1px; }
+.session-resolve-action svg { width: 14px; height: 14px; }
 .session-more { margin: 1px 0 2px 25px; padding: 5px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--muted-foreground); font-size: 12px; }
 .session-more:hover { background: var(--sidebar-hover); color: var(--foreground); }
 .session-more span { margin-left: 3px; opacity: .65; }
+.resolved-lane { margin-top: 17px; padding-top: 7px; border-top: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
+.resolved-lane .session-item:not(.active) { opacity: .72; }
 .sidebar-footer { display: flex; min-height: 52px; align-items: center; justify-content: flex-end; padding: 8px 16px; border-top: 1px solid color-mix(in oklab, var(--border) 65%, transparent); color: var(--muted-foreground); }
 .sidebar-settings-icon { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--muted-foreground); }
 .sidebar-settings-icon svg { width: 17px; height: 17px; }

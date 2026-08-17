@@ -59,8 +59,8 @@ function createDesktopClient(restoredPath?: string) {
     repairInlineWidget: vi.fn(async (input) => ({ source: input.source, repairSessionId: "repair-session" })),
     loadWindowState: vi.fn(async () => ({ projectPath: restoredPath, recentProjectPaths: restoredPath ? [restoredPath] : [], draft: "saved", theme: "system" as const, thinkingExpanded: false, draftsBySession: {} })),
     saveWindowState: vi.fn(async () => undefined),
-    loadApplicationState: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], trustedProjectPaths: [] })),
-    setUtilityModel: vi.fn(async (model) => ({ schemaVersion: 1 as const, projects: [], trustedProjectPaths: [], utilityModel: model })),
+    loadApplicationState: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
+    setUtilityModel: vi.fn(async (model) => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [], utilityModel: model })),
     listSessions: vi.fn(async () => ({ sessions: [], reviewThreads: [] })),
     loadSession: vi.fn(async () => undefined),
     openGlobalChat: vi.fn(async () => undefined),
@@ -74,10 +74,11 @@ function createDesktopClient(restoredPath?: string) {
     replyReviewThread: vi.fn(async () => { throw new Error("not mocked"); }),
     resolveReviewThread: vi.fn(async () => { throw new Error("not mocked"); }),
     submitReviewThread: vi.fn(async () => undefined),
-    registerProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], trustedProjectPaths: [] })),
-    renameProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], trustedProjectPaths: [] })),
-    removeProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], trustedProjectPaths: [] })),
-    archiveSession: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], trustedProjectPaths: [] })),
+    registerProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
+    renameProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
+    removeProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
+    resolveSession: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
+    resolveCakeChatSession: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
     createWindow: vi.fn(async () => undefined),
     restartPi: vi.fn(async () => undefined),
     inspectWorkspace: vi.fn(async () => undefined),
@@ -397,7 +398,7 @@ describe("ProjectWorkbenchStore", () => {
       draftsBySession: {}
     }));
     desktop.client.listSessions = vi.fn(async () => ({
-      sessions: [{ id: "session-1", title: "Project work", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 1, archived: false, workspacePath: "/project", workspaceName: "Project" }],
+      sessions: [{ id: "session-1", title: "Project work", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 1, resolved: false, workspacePath: "/project", workspaceName: "Project" }],
       reviewThreads: []
     }));
     const { root } = mountTestStore(desktop.client);
@@ -885,23 +886,24 @@ describe("ProjectWorkbenchStore", () => {
     const desktop = createDesktopClient();
     const applicationState = {
       schemaVersion: 1 as const,
+      resolvedCakeChatSessionIds: [],
       trustedProjectPaths: [],
       projects: [
-        { path: "/project", name: "Project", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString(), archivedSessionIds: ["session-2"] },
-        { path: "/other", name: "Other", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString(), archivedSessionIds: [] }
+        { path: "/project", name: "Project", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString(), resolvedSessionIds: ["session-2"] },
+        { path: "/other", name: "Other", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString(), resolvedSessionIds: [] }
       ]
     };
     desktop.client.loadApplicationState = vi.fn(async () => applicationState);
     desktop.client.listSessions = vi.fn(async () => ({
-      sessions: [{ id: "session-3", title: "Alpha elsewhere", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 3, archived: false, workspacePath: "/other", workspaceName: "Other" }],
+      sessions: [{ id: "session-3", title: "Alpha elsewhere", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 3, resolved: false, workspacePath: "/other", workspaceName: "Other" }],
       reviewThreads: []
     }));
     desktop.client.registerProject = vi.fn(async () => applicationState);
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     const sessions = [
-      { id: "session-1", title: "Alpha task", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 1, archived: false },
-      { id: "session-2", title: "Beta task", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 2, archived: false }
+      { id: "session-1", title: "Alpha task", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 1, resolved: false },
+      { id: "session-2", title: "Beta task", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 2, resolved: false }
     ];
     await openSnapshot(store, desktop, { ...snapshot, sessions });
     const firstSession = store.activeSession;
@@ -916,7 +918,8 @@ describe("ProjectWorkbenchStore", () => {
     expect(secondSession!.configurationStore).not.toBe(firstSession!.configurationStore);
     expect(store.sessionRegistry.findSession("session-1", "/project")).toBe(firstSession);
     expect(store.sessionRegistry.findSession("session-1", store.projectPath)!.chatStore.draft).toBe("alpha draft");
-    expect(root.sidebarStore.projectSessions(store.projectPath!).map((item) => item.id)).toEqual(["session-1", "session-2"]);
+    expect(root.sidebarStore.projectSessions(store.projectPath!).map((item) => item.id)).toEqual(["session-1"]);
+    expect(root.sidebarStore.projectSessions(store.projectPath!, true).map((item) => item.id)).toEqual(["session-2"]);
     await store.openSession("/project", "session-1");
     expect(store.session?.sessionId).toBe("session-1");
     expect(store.activeSession!.chatStore.draft).toBe("alpha draft");
@@ -932,9 +935,9 @@ describe("ProjectWorkbenchStore", () => {
       name: path.slice(1),
       addedAt: new Date(0).toISOString(),
       lastOpenedAt: new Date(0).toISOString(),
-      archivedSessionIds: []
+      resolvedSessionIds: []
     }));
-    const applicationState = { schemaVersion: 1 as const, projects, trustedProjectPaths: [] };
+    const applicationState = { schemaVersion: 1 as const, projects, resolvedCakeChatSessionIds: [], trustedProjectPaths: [] };
     desktop.client.loadApplicationState = vi.fn(async () => applicationState);
     desktop.client.loadWindowState = vi.fn(async () => ({
       projectPath: "/first",
@@ -1042,7 +1045,7 @@ describe("ProjectWorkbenchStore", () => {
         created: new Date(0).toISOString(),
         modified: new Date(index).toISOString(),
         messageCount: index,
-        archived: false,
+        resolved: false,
         workspacePath: "/other",
         workspaceName: "Other"
       })),
@@ -1068,7 +1071,7 @@ describe("ProjectWorkbenchStore", () => {
       created: new Date(0).toISOString(),
       modified: new Date(0).toISOString(),
       messageCount: 1,
-      archived: false,
+      resolved: false,
       workspacePath: "/other",
       workspaceName: "Other"
     }], reviewThreads: [] }));
@@ -1087,7 +1090,7 @@ describe("ProjectWorkbenchStore", () => {
     const { root, store } = mountTestStore(desktop.client);
     await flush(); await openSnapshot(store, desktop, {
       ...snapshot,
-      sessions: [{ id: "session-1", title: "Session", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 0, archived: false }]
+      sessions: [{ id: "session-1", title: "Session", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 0, resolved: false }]
     });
 
     await store.renameCurrentSession("Renamed everywhere");

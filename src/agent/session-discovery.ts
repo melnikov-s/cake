@@ -47,7 +47,7 @@ export async function listWorkspaceSessions(cwd: string, sessionDir: string, dir
     modified: item.modified.toISOString(),
     messageCount: item.messageCount,
     parentSessionId: item.parentSessionPath ? idsByPath.get(item.parentSessionPath) : undefined,
-    archived: false
+    resolved: false
   }));
 }
 

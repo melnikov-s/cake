@@ -66,7 +66,7 @@ describe("process IPC", () => {
         created: new Date(0).toISOString(),
         modified: new Date(0).toISOString(),
         messageCount: 1,
-        archived: false,
+        resolved: false,
         workspacePath: "/project",
         workspaceName: "Project"
       }],

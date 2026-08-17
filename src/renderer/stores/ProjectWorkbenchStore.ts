@@ -21,7 +21,7 @@ import { describeError } from "../error-details";
 export interface ProjectWorkbenchStoreProps {
   client: Pick<DesktopClient,
     | "abort"
-    | "archiveSession"
+    | "resolveSession"
     | "chooseProject"
     | "createWindow"
     | "forkSession"
@@ -399,8 +399,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     catch (error) { this.finishOperation(operationId); this.setError(error); }
   }
 
-  async archiveSession(workspacePath: string, sessionId: string, archived: boolean) {
-    try { this.applyApplicationState(await this.client.archiveSession(workspacePath, sessionId, archived)); }
+  async resolveSession(workspacePath: string, sessionId: string, resolved: boolean) {
+    try { this.applyApplicationState(await this.client.resolveSession(workspacePath, sessionId, resolved)); }
     catch (error) { this.setError(error); }
   }
 

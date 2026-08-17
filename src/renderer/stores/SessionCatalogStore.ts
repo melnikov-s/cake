@@ -1,5 +1,5 @@
 import { Store, observable } from "r-state-tree";
-import type { GlobalSessionSummary, SessionSnapshot } from "../../ipc/session-contract";
+import type { GlobalSessionSummary, ProjectRecord, SessionSnapshot } from "../../ipc/session-contract";
 
 /** The single renderer-owned catalog of Pi session summaries. */
 export class SessionCatalogStore extends Store<Record<string, never>> {
@@ -15,10 +15,20 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
   }
 
   applyWorkspace(workspacePath: string, workspaceName: string, sessions: SessionSnapshot["sessions"]) {
+    const prior = new Map(this.sessions.filter((session) => session.workspacePath === workspacePath).map((session) => [session.id, session]));
     const otherSessions = this.sessions.filter((session) => session.workspacePath !== workspacePath);
-    const workspaceSessions = sessions.map((session) => ({ ...session, workspacePath, workspaceName }));
+    const workspaceSessions = sessions.map((session) => ({ ...session, resolved: prior.get(session.id)?.resolved ?? session.resolved, workspacePath, workspaceName }));
     this.sessions.splice(0, this.sessions.length, ...otherSessions, ...workspaceSessions);
     this.sortByActivity();
+  }
+
+  applyProjectResolvedState(projects: readonly ProjectRecord[]) {
+    const resolvedByProject = new Map(projects.map((project) => [project.path, new Set(project.resolvedSessionIds)]));
+    for (let index = 0; index < this.sessions.length; index += 1) {
+      const session = this.sessions[index]!;
+      const resolved = resolvedByProject.get(session.workspacePath)?.has(session.id) ?? false;
+      if (session.resolved !== resolved) this.sessions.splice(index, 1, { ...session, resolved });
+    }
   }
 
   rename(workspacePath: string, sessionId: string, title: string) {

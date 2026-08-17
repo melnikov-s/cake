@@ -8,7 +8,7 @@ const summary = (id: string, modified: string) => ({
   created: modified,
   modified,
   messageCount: 1,
-  archived: false,
+  resolved: false,
   workspacePath: "/project",
   workspaceName: "Project"
 });
@@ -37,6 +37,17 @@ describe("SessionCatalogStore", () => {
     ]);
 
     expect(store.sessions.map((session) => session.id)).toEqual(["second", "first"]);
+    store[Symbol.dispose]();
+  });
+
+  it("keeps Cake-owned resolved state when Pi refreshes workspace summaries", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    store.replace([{ ...summary("resolved", "2026-08-16T12:00:00.000Z"), resolved: true }]);
+    store.applyWorkspace("/project", "Project", [{ ...summary("resolved", "2026-08-17T12:00:00.000Z"), resolved: false }]);
+
+    expect(store.sessions[0]?.resolved).toBe(true);
+    store.applyProjectResolvedState([{ path: "/project", name: "Project", addedAt: "", lastOpenedAt: "", resolvedSessionIds: [] }]);
+    expect(store.sessions[0]?.resolved).toBe(false);
     store[Symbol.dispose]();
   });
 });

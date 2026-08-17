@@ -52,6 +52,8 @@ const ForwardIcon = () => <Icon><path d="m9 18 6-6-6-6" /></Icon>;
 const SidebarIcon = () => <Icon><rect x="3.5" y="4" width="17" height="16" rx="3" /><path d="M9 4v16" /></Icon>;
 const ChevronIcon = () => <Icon size={13}><path d="m8 10 4 4 4-4" /></Icon>;
 const MoreIcon = () => <Icon><circle cx="5" cy="12" r=".7" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r=".7" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r=".7" fill="currentColor" stroke="none" /></Icon>;
+const ResolveIcon = () => <Icon size={14}><circle cx="12" cy="12" r="8.5" /><path d="m8.5 12 2.25 2.25L15.8 9.2" /></Icon>;
+const RestoreIcon = () => <Icon size={14}><path d="M4.5 9A8 8 0 1 1 4 14" /><path d="M4.5 4.5V9H9" /></Icon>;
 const SettingsIcon = () => <Icon><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06-2.83 2.83-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21h-4v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06-2.83-2.83.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3v-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06 2.83-2.83.06.06A1.65 1.65 0 0 0 9 4.68h.08a1.65 1.65 0 0 0 1-1.51V3h4v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06 2.83 2.83-.06.06A1.65 1.65 0 0 0 19.32 9v.08a1.65 1.65 0 0 0 1.51 1H21v4h-.09A1.65 1.65 0 0 0 19.4 15z" /></Icon>;
 const ChangesIcon = () => <Icon size={15}><path d="M4 7h10M4 17h10M17 4v6M14 7l3 3 3-3M17 14v6M14 17l3 3 3-3" /></Icon>;
 const BrowseIcon = () => <Icon size={15}><path d="M4 5.5h6l1.8 2H20v11H4z" /><path d="M4 9h16" /></Icon>;
@@ -136,30 +138,47 @@ export const Sidebar = observer(function Sidebar({ store, projects, chat, cakeCh
   };
   const cakeChatSelected = (sessionId?: string) => selection.kind === "cake-chat" && selection.sessionId === sessionId;
   const projectSessionSelected = (workspacePath: string, sessionId: string) => selection.kind === "project-session" && selection.workspacePath === workspacePath && selection.sessionId === sessionId;
+  const renderCakeChatSession = (session: GlobalChatStore["summaries"][number], resolved: boolean) => {
+    const selected = cakeChatSelected(session.id);
+    return <div key={session.id} data-session-id={session.id} className={`session-item ${selected ? "active has-session-action" : ""}`}><button className="session-row" aria-current={selected ? "page" : undefined} onClick={() => onOpenCakeChat(session.id)}><span className="session-title" title={session.title}>{session.title}</span>{!selected && <time className="session-time" dateTime={session.modified} title={new Date(session.modified).toLocaleString()}>{store.sessionActivityTime(session.modified)}</time>}{cakeChat.findSession(session.id)?.streaming && <i className="session-status session-status-running" role="img" aria-label="Running" title="Running" />}</button>{selected && <button className="session-resolve-action" type="button" aria-label={`${resolved ? "Restore" : "Resolve"} ${session.title}`} title={resolved ? "Restore" : "Resolve"} onClick={() => void store.setCakeChatSessionResolved(session.id, !resolved)}>{resolved ? <RestoreIcon /> : <ResolveIcon />}</button>}</div>;
+  };
+  const renderProjectGroup = (path: string, resolved: boolean) => {
+    const collapsed = collapsedProjects.has(`${resolved ? "resolved" : "active"}:${path}`);
+    const sessions = store.projectSessions(path, resolved);
+    if (resolved && sessions.length === 0) return null;
+    const visibleSessions = sessions.slice(0, store.sessionLimit(path, resolved));
+    const collapseKey = `${resolved ? "resolved" : "active"}:${path}`;
+    return <div className="project-group" key={path}>
+      <div className="project-row" title={path}><button className="project-label" type="button" aria-expanded={!collapsed} aria-label={`${collapsed ? "Expand" : "Collapse"} ${projects.nameForPath(path)}${resolved ? " resolved" : ""}`} onClick={() => toggleProject(collapseKey)}><span className={`project-disclosure ${collapsed ? "collapsed" : ""}`}><ChevronIcon /></span><FolderIcon /><span>{projects.nameForPath(path)}</span></button>{!resolved && <button className="project-add" aria-label={`New chat in ${projects.nameFromPath(path)}`} onClick={() => onCreateSession(path)}><PlusIcon /></button>}</div>
+      {!collapsed && visibleSessions.map((session) => {
+        const selected = projectSessionSelected(path, session.id);
+        return <div key={session.id} data-session-id={session.id} className={`session-item ${selected ? "active has-session-action" : ""}`}><button className="session-row" aria-current={selected ? "page" : undefined} onClick={() => onOpenSession(path, session.id)} onContextMenu={(event) => renameSession(event, path, session.id, session.title)}><span className="session-title" title={session.title}>{session.title}</span>{!selected && <time className="session-time" dateTime={session.modified} title={new Date(session.modified).toLocaleString()}>{store.sessionActivityTime(session.modified)}</time>}{activityIndicator(path, session.id)}</button>{selected && <button className="session-resolve-action" type="button" aria-label={`${resolved ? "Restore" : "Resolve"} ${session.title}`} title={resolved ? "Restore" : "Resolve"} onClick={() => void store.setProjectSessionResolved(path, session.id, !resolved)}>{resolved ? <RestoreIcon /> : <ResolveIcon />}</button>}</div>;
+      })}
+      {!collapsed && sessions.length > visibleSessions.length && <button className="session-more" onClick={() => store.showMoreSessions(path, resolved)}>Show more</button>}
+    </div>;
+  };
+  const activeCakeChats = store.cakeChatSessions();
+  const resolvedCakeChats = store.cakeChatSessions(true);
   return (
     <aside className="sidebar">
       <div className="sidebar-window-tools"><button aria-label="Toggle sidebar" onClick={onToggle}><SidebarIcon /></button><button aria-label="Back" disabled><BackIcon /></button><button aria-label="Forward" disabled><ForwardIcon /></button></div>
       <div className="sidebar-brand"><details className="brand-menu"><summary><span>🍰 Cake Chat</span><ChevronIcon /></summary><div className="brand-dropdown"><button type="button" disabled={!chat.session || !onReloadPi} onClick={(event) => { onReloadPi?.(); event.currentTarget.closest("details")?.removeAttribute("open"); }}>Reload Pi<span>{chat.session?.piSettings?.reloadPending ? "Queued" : "Settings and resources"}</span></button></div></details><div className="brand-actions"><button aria-label="New Cake Chat" onClick={onCreateCakeChat}><PlusIcon /></button></div></div>
       <div className="plugin-slot plugin-slot-sidebar-header"><Slot name="global.sidebar.header" /></div>
       <div className="sidebar-scroll">
+        <div className="section-heading lane-heading"><span>Active</span></div>
+        <div className="section-heading conversation-group-heading"><span>Cake Chats</span></div>
         <div className="project-group cake-chat-sessions">
-          {cakeChat.summaries.map((session) => <div key={session.id} data-session-id={session.id} className={`session-item ${cakeChatSelected(session.id) ? "active" : ""}`}><button className="session-row" aria-current={cakeChatSelected(session.id) ? "page" : undefined} onClick={() => onOpenCakeChat(session.id)}><span className="session-title" title={session.title}>{session.title}</span><time className="session-time" dateTime={session.modified} title={new Date(session.modified).toLocaleString()}>{store.sessionActivityTime(session.modified)}</time>{cakeChat.findSession(session.id)?.streaming && <i className="session-status session-status-running" role="img" aria-label="Running" title="Running" />}</button></div>)}
-          {cakeChat.summaries.length === 0 && <button className={`new-chat cake-chat-link${cakeChatSelected() ? " active" : ""}`} aria-current={cakeChatSelected() ? "page" : undefined} onClick={() => onOpenCakeChat()}><span className="cake-mini-mark">C</span><span>Open Cake Chat</span></button>}
+          {activeCakeChats.map((session) => renderCakeChatSession(session, false))}
+          {activeCakeChats.length === 0 && <button className={`new-chat cake-chat-link${cakeChatSelected() ? " active" : ""}`} aria-current={cakeChatSelected() ? "page" : undefined} onClick={() => onOpenCakeChat()}><span className="cake-mini-mark">C</span><span>Open Cake Chat</span></button>}
         </div>
         <button className="new-chat" onClick={onStartOneOffChat}><ChatIcon /><span>New chat</span></button>
         <div className="section-heading projects-heading"><span>Projects</span><div><span className="project-options" aria-hidden="true"><MoreIcon /></span><button aria-label="Add project" onClick={onChooseProject}><PlusIcon /></button></div></div>
-        {projects.recentProjectPaths.length === 0 ? <p className="sidebar-empty">Add a folder to start a project.</p> : projects.recentProjectPaths.map((path) => {
-          const collapsed = collapsedProjects.has(path);
-          const sessions = store.projectSessions(path);
-          const visibleSessions = sessions.slice(0, store.sessionLimit(path));
-          return <div className="project-group" key={path}>
-            <div className="project-row" title={path}><button className="project-label" type="button" aria-expanded={!collapsed} aria-label={`${collapsed ? "Expand" : "Collapse"} ${projects.nameForPath(path)}`} onClick={() => toggleProject(path)}><span className={`project-disclosure ${collapsed ? "collapsed" : ""}`}><ChevronIcon /></span><FolderIcon /><span>{projects.nameForPath(path)}</span></button><button className="project-add" aria-label={`New chat in ${projects.nameFromPath(path)}`} onClick={() => onCreateSession(path)}><PlusIcon /></button></div>
-            {!collapsed && visibleSessions.map((session) => {
-              return <div key={session.id} data-session-id={session.id} className={`session-item ${projectSessionSelected(path, session.id) ? "active" : ""}`}><button className="session-row" aria-current={projectSessionSelected(path, session.id) ? "page" : undefined} onClick={() => onOpenSession(path, session.id)} onContextMenu={(event) => renameSession(event, path, session.id, session.title)}><span className="session-title" title={session.title}>{session.title}</span><time className="session-time" dateTime={session.modified} title={new Date(session.modified).toLocaleString()}>{store.sessionActivityTime(session.modified)}</time>{activityIndicator(path, session.id)}</button></div>;
-            })}
-            {!collapsed && sessions.length > visibleSessions.length && <button className="session-more" onClick={() => store.showMoreSessions(path)}>Show more</button>}
-          </div>;
-        })}
+        {projects.recentProjectPaths.length === 0 ? <p className="sidebar-empty">Add a folder to start a project.</p> : projects.recentProjectPaths.map((path) => renderProjectGroup(path, false))}
+        {store.hasResolvedSessions && <section className="resolved-lane" aria-labelledby="resolved-lane-heading">
+          <div className="section-heading lane-heading" id="resolved-lane-heading"><span>Resolved</span></div>
+          {resolvedCakeChats.length > 0 && <><div className="section-heading conversation-group-heading"><span>Cake Chats</span></div><div className="project-group cake-chat-sessions">{resolvedCakeChats.map((session) => renderCakeChatSession(session, true))}</div></>}
+          {projects.recentProjectPaths.map((path) => renderProjectGroup(path, true))}
+        </section>}
       </div>
       <div className="sidebar-footer">
         <div className="plugin-slot plugin-slot-sidebar-footer"><Slot name="global.sidebar.footer" /></div>

@@ -26,7 +26,7 @@ const snapshot: SessionSnapshot = {
   usage: { tokens: { input: 120, output: 30, cacheRead: 80, cacheWrite: 0, total: 230 }, cost: 0.0042, context: { tokens: 200, contextWindow: 1_000, percent: 20 } },
   compatibility: { resources: [{ id: "extension:/fixture.ts", kind: "extension", name: "fixture.ts", path: "/fixture.ts", source: "fixture", scope: "project", origin: "package", commands: ["fixture"], tools: [], enabled: true }], diagnostics: [{ id: "compat:one", severity: "warning", source: "compatibility", method: "custom", message: "Unavailable" }] },
   extensionUi: { statuses: [] },
-  sessions: [{ id: "session-1", title: "Session", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 1, archived: false }],
+  sessions: [{ id: "session-1", title: "Session", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 1, resolved: false }],
   tree: [{ id: "entry-1", type: "message", preview: "Hello", active: true }]
 };
 

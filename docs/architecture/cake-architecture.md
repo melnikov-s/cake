@@ -42,7 +42,7 @@ Every durable concept has one authority.
 | Models, providers, authentication, Pi settings and resources | Pi | Offer Cake controls through the Pi adapter |
 | Utility-model selection | Cake application preferences, referencing a Pi provider/model | Run only explicitly configured, bounded background completions through Pi's model runtime |
 | Application-level Cake Chat transcripts | Their dedicated Pi sessions | Present them as Cake-wide meta-sessions and route curated controls |
-| Projects, archived-session flags, window selection and view state | Cake | Persist application and window metadata without copying Pi history |
+| Projects, resolved-session flags, window selection and view state | Cake | Persist application and window metadata without copying Pi history |
 | Changes, reviews, and inline discussions | Cake workflow services, with Pi sidecar-session references where relevant | Persist anchors and workflow metadata without copying Pi transcripts |
 | Rich artifacts | Cake artifact repository plus Pi transcript pointers/fallbacks | Persist and render bounded, versioned artifact data |
 | Blocking structured requests | `cake.request/v1` plus the active Pi tool call | Render trusted forms or sandboxed custom request widgets and return one validated value |

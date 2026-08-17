@@ -115,7 +115,8 @@ export interface DesktopClient {
   registerProject(path: string, name: string): Promise<ApplicationState>;
   renameProject(path: string, name: string): Promise<ApplicationState>;
   removeProject(path: string): Promise<ApplicationState>;
-  archiveSession(path: string, sessionId: string, archived: boolean): Promise<ApplicationState>;
+  resolveSession(path: string, sessionId: string, resolved: boolean): Promise<ApplicationState>;
+  resolveCakeChatSession(sessionId: string, resolved: boolean): Promise<ApplicationState>;
   createWindow(): Promise<void>;
   restartPi(path: string): Promise<void>;
   inspectWorkspace(input: { operationId: string; path: string }): Promise<void>;
@@ -384,9 +385,14 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       if (response.type !== "application-state-updated") throw new Error("Cake could not remove the project");
       return response.state;
     },
-    async archiveSession(path, sessionId, archived) {
-      const response = await bridge.request({ type: "archive-session", path, sessionId, archived });
-      if (response.type !== "application-state-updated") throw new Error("Cake could not archive the session");
+    async resolveSession(path, sessionId, resolved) {
+      const response = await bridge.request({ type: "resolve-session", path, sessionId, resolved });
+      if (response.type !== "application-state-updated") throw new Error("Cake could not resolve the session");
+      return response.state;
+    },
+    async resolveCakeChatSession(sessionId, resolved) {
+      const response = await bridge.request({ type: "resolve-cake-chat-session", sessionId, resolved });
+      if (response.type !== "application-state-updated") throw new Error("Cake could not resolve the Cake Chat session");
       return response.state;
     },
     async createWindow() {

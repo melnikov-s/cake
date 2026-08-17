@@ -140,7 +140,10 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     return createStore(SidebarStore, {
       projects: this.projectCatalogStore,
       catalog: this.sessionCatalogStore,
-      sessions: this.sessionRegistry
+      sessions: this.sessionRegistry,
+      cakeChat: () => this.globalChatStore,
+      setProjectSessionResolved: (workspacePath, sessionId, resolved) => this.projectWorkbenchStore.resolveSession(workspacePath, sessionId, resolved),
+      setCakeChatSessionResolved: (sessionId, resolved) => this.globalChatStore.resolveSession(sessionId, resolved)
     });
   }
 
@@ -219,7 +222,8 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         prompt: (input) => this.client.promptGlobalChat(input),
         abort: (input) => this.client.abortGlobalChat(input),
         setModel: (input) => this.client.setGlobalChatModel(input),
-        setThinkingLevel: (input) => this.client.setGlobalChatThinkingLevel(input)
+        setThinkingLevel: (input) => this.client.setGlobalChatThinkingLevel(input),
+        resolveSession: (sessionId, resolved) => this.client.resolveCakeChatSession(sessionId, resolved)
       },
       tools: () => this.appControl.listTools(),
       sessions: () => this.sessionRegistry,
@@ -257,7 +261,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       abortSession: (workspacePath, sessionId) => this.appControlOperationStore.run((operationId) =>
         this.client.abort({ operationId, workspacePath, sessionId })),
       renameSession: (workspacePath, sessionId, title) => this.projectWorkbenchStore.renameSession(workspacePath, sessionId, title),
-      setSessionArchived: (workspacePath, sessionId, archived) => this.projectWorkbenchStore.archiveSession(workspacePath, sessionId, archived),
+      setSessionResolved: (workspacePath, sessionId, resolved) => this.projectWorkbenchStore.resolveSession(workspacePath, sessionId, resolved),
       setSessionModel: (workspacePath, sessionId, provider, modelId) => this.appControlOperationStore.run((operationId) =>
         this.client.setModel({ operationId, workspacePath, sessionId, provider, modelId })),
       customizationState: () => this.customizationStore.state,

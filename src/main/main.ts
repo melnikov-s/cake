@@ -593,7 +593,8 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
   if (request.type === "list-sessions") {
     const sessions = (await Promise.all(applicationModel.projects.map(async (project) => {
       try {
-        return (await listWorkspaceSessions(project.path, cakePaths.piSessions)).map((session) => ({ ...session, workspacePath: project.path, workspaceName: project.name }));
+        const resolvedSessionIds = new Set(project.resolvedSessionIds);
+        return (await listWorkspaceSessions(project.path, cakePaths.piSessions)).map((session) => ({ ...session, resolved: resolvedSessionIds.has(session.id), workspacePath: project.path, workspaceName: project.name }));
       } catch {
         return [];
       }
@@ -627,9 +628,14 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
     await persistApplicationState();
     return desktopResponseSchema.parse({ type: "application-state-updated", state: applicationModel.snapshot() });
   }
-  if (request.type === "archive-session") {
+  if (request.type === "resolve-session") {
     if (!allowedProjectPaths.has(request.path)) throw new Error("Project path was not selected by the user");
-    applicationModel.projects.find((project) => project.path === request.path)?.setSessionArchived(request.sessionId, request.archived);
+    applicationModel.setProjectSessionResolved(request.path, request.sessionId, request.resolved);
+    await persistApplicationState();
+    return desktopResponseSchema.parse({ type: "application-state-updated", state: applicationModel.snapshot() });
+  }
+  if (request.type === "resolve-cake-chat-session") {
+    applicationModel.setCakeChatSessionResolved(request.sessionId, request.resolved);
     await persistApplicationState();
     return desktopResponseSchema.parse({ type: "application-state-updated", state: applicationModel.snapshot() });
   }

@@ -17,7 +17,7 @@ const sessionTargetSchema = z.object({
 
 const sessionPageSchema = z.object({
   workspacePath: z.string().min(1).max(4_096).optional(),
-  includeArchived: z.boolean().default(false),
+  includeResolved: z.boolean().default(false),
   cursor: z.number().int().nonnegative().default(0),
   limit: z.number().int().min(1).max(200).default(100)
 });
@@ -30,7 +30,7 @@ const sessionReadSchema = sessionTargetSchema.extend({
 const searchSessionsSchema = z.object({
   query: z.string().trim().min(1).max(500),
   workspacePath: z.string().min(1).max(4_096).optional(),
-  includeArchived: z.boolean().default(false),
+  includeResolved: z.boolean().default(false),
   limit: z.number().int().min(1).max(50).default(10)
 });
 
@@ -60,7 +60,7 @@ const appControlArgumentSchemas = {
   send_session_message: sessionTargetSchema.extend({ text: z.string().trim().min(1).max(100_000), delivery: z.enum(["prompt", "follow-up", "steer"]).optional() }),
   abort_session: sessionTargetSchema,
   rename_session: sessionTargetSchema.extend({ title: z.string().trim().min(1).max(500) }),
-  set_session_archived: sessionTargetSchema.extend({ archived: z.boolean() }),
+  set_session_resolved: sessionTargetSchema.extend({ resolved: z.boolean() }),
   set_session_model: sessionTargetSchema.extend({ provider: z.string().trim().min(1).max(100), modelId: z.string().trim().min(1).max(200) })
 } as const;
 
@@ -75,7 +75,7 @@ export const appControlInvocationSchema = z.discriminatedUnion("name", [
   invocation("use_factory_customization"), invocation("set_plugin_enabled"), invocation("set_active_scene"),
   invocation("get_session_status"), invocation("open_session"), invocation("list_sessions"), invocation("read_session"),
   invocation("search_sessions"), invocation("create_session"), invocation("send_session_message"), invocation("abort_session"),
-  invocation("rename_session"), invocation("set_session_archived"), invocation("set_session_model")
+  invocation("rename_session"), invocation("set_session_resolved"), invocation("set_session_model")
 ]);
 
 export type AppControlInvocation = z.infer<typeof appControlInvocationSchema>;
@@ -96,14 +96,14 @@ export const appControlToolCatalog = [
   tool("set_active_scene", "Choose an enabled plugin's optional scene as the whole-app scene, or omit pluginId to use Cake's default scene. Ordinary widgets do not need this.", appControlArgumentSchemas.set_active_scene),
   tool("get_session_status", "Inspect whether a known session is selected, running, unread, or idle.", appControlArgumentSchemas.get_session_status),
   tool("open_session", "Open a known Cake session in its project.", appControlArgumentSchemas.open_session),
-  tool("list_sessions", "List Cake sessions by recency, optionally limited to one project or including archived sessions.", appControlArgumentSchemas.list_sessions),
+  tool("list_sessions", "List Cake sessions by recency, optionally limited to one project or including resolved sessions.", appControlArgumentSchemas.list_sessions),
   tool("read_session", "Read a bounded page of displayable parts from a known Cake session without opening it.", appControlArgumentSchemas.read_session),
   tool("search_sessions", "Search session titles and transcript contents without opening sessions.", appControlArgumentSchemas.search_sessions),
   tool("create_session", "Start a new session in a known Cake project and open it.", appControlArgumentSchemas.create_session),
   tool("send_session_message", "Send an instruction to a known session without opening it. Use only when the user explicitly asks to send or delegate work.", appControlArgumentSchemas.send_session_message),
   tool("abort_session", "Stop a known session that is currently running.", appControlArgumentSchemas.abort_session),
   tool("rename_session", "Rename a known session.", appControlArgumentSchemas.rename_session),
-  tool("set_session_archived", "Archive or restore a known session.", appControlArgumentSchemas.set_session_archived),
+  tool("set_session_resolved", "Resolve or restore a known session.", appControlArgumentSchemas.set_session_resolved),
   tool("set_session_model", "Change the model for one known session. Use provider and model IDs returned by Cake settings.", appControlArgumentSchemas.set_session_model)
 ] as const;
 
@@ -118,7 +118,7 @@ export interface AppControlHost {
   sendSessionMessage(workspacePath: string, sessionId: string, text: string, delivery: "prompt" | "follow-up" | "steer"): Promise<void>;
   abortSession(workspacePath: string, sessionId: string): Promise<void>;
   renameSession(workspacePath: string, sessionId: string, title: string): Promise<void>;
-  setSessionArchived(workspacePath: string, sessionId: string, archived: boolean): Promise<void>;
+  setSessionResolved(workspacePath: string, sessionId: string, resolved: boolean): Promise<void>;
   setSessionModel(workspacePath: string, sessionId: string, provider: string, modelId: string): Promise<void>;
   customizationState(): CustomizationState | undefined;
   plugins(): readonly PluginStatus[];
@@ -142,7 +142,7 @@ export interface AppControlSession {
   title: string;
   modified: string;
   messageCount: number;
-  archived: boolean;
+  resolved: boolean;
   activity?: "running" | "unread";
 }
 
@@ -188,7 +188,7 @@ export type AppControlResult =
   | { ok: true; name: "send_session_message"; target: SessionTarget; delivery: "prompt" | "follow-up" | "steer"; status: "sent" }
   | { ok: true; name: "abort_session"; target: SessionTarget; status: "stopping" }
   | { ok: true; name: "rename_session"; target: SessionTarget; title: string }
-  | { ok: true; name: "set_session_archived"; target: SessionTarget; archived: boolean }
+  | { ok: true; name: "set_session_resolved"; target: SessionTarget; resolved: boolean }
   | { ok: true; name: "set_session_model"; target: SessionTarget; provider: string; modelId: string; status: "changing" }
   | { ok: false; name: AppControlInvocation["name"]; error: string };
 
@@ -287,9 +287,9 @@ export class AppControlBridge {
       await this.host.renameSession(workspacePath, sessionId, invocation.arguments.title);
       return { ok: true, name: invocation.name, target, title: invocation.arguments.title };
     }
-    if (invocation.name === "set_session_archived") {
-      await this.host.setSessionArchived(workspacePath, sessionId, invocation.arguments.archived);
-      return { ok: true, name: invocation.name, target, archived: invocation.arguments.archived };
+    if (invocation.name === "set_session_resolved") {
+      await this.host.setSessionResolved(workspacePath, sessionId, invocation.arguments.resolved);
+      return { ok: true, name: invocation.name, target, resolved: invocation.arguments.resolved };
     }
     await this.host.setSessionModel(workspacePath, sessionId, invocation.arguments.provider, invocation.arguments.modelId);
     return { ok: true, name: invocation.name, target, provider: invocation.arguments.provider, modelId: invocation.arguments.modelId, status: "changing" };
@@ -303,8 +303,8 @@ export class AppControlBridge {
     return this.host.sessions().find((session) => session.workspacePath === workspacePath && session.id === sessionId);
   }
 
-  private listSessions({ workspacePath, includeArchived, cursor, limit }: z.infer<typeof sessionPageSchema>): AppControlResult {
-    const matching = this.sortedSessions().filter((session) => (!workspacePath || session.workspacePath === workspacePath) && (includeArchived || !session.archived));
+  private listSessions({ workspacePath, includeResolved, cursor, limit }: z.infer<typeof sessionPageSchema>): AppControlResult {
+    const matching = this.sortedSessions().filter((session) => (!workspacePath || session.workspacePath === workspacePath) && (includeResolved || !session.resolved));
     const sessions = matching.slice(cursor, cursor + limit).map((session) => this.toControlSession(session));
     const nextCursor = cursor + sessions.length < matching.length ? cursor + sessions.length : undefined;
     const result = { ok: true, name: "list_sessions", sessions, total: matching.length } as const;
@@ -326,8 +326,8 @@ export class AppControlBridge {
     return nextCursor === undefined ? result : { ...result, nextCursor };
   }
 
-  private async searchSessions({ query, workspacePath, includeArchived, limit }: z.infer<typeof searchSessionsSchema>): Promise<AppControlResult> {
-    const candidates = this.sortedSessions().filter((session) => (!workspacePath || session.workspacePath === workspacePath) && (includeArchived || !session.archived));
+  private async searchSessions({ query, workspacePath, includeResolved, limit }: z.infer<typeof searchSessionsSchema>): Promise<AppControlResult> {
+    const candidates = this.sortedSessions().filter((session) => (!workspacePath || session.workspacePath === workspacePath) && (includeResolved || !session.resolved));
     const needle = query.toLocaleLowerCase();
     const results: AppControlSearchMatch[] = [];
     let searchedSessions = 0;
@@ -367,7 +367,7 @@ export class AppControlBridge {
       title: session.title,
       modified: session.modified,
       messageCount: session.messageCount,
-      archived: session.archived,
+      resolved: session.resolved,
     };
     return activity ? { ...result, activity } : result;
   }

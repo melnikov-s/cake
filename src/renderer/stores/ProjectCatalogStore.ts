@@ -22,6 +22,7 @@ export class ProjectCatalogStore extends Store<{ sessions: SessionCatalogStore }
 
   applyApplicationState(state: ApplicationState) {
     this.projects.splice(0, this.projects.length, ...state.projects);
+    this.props.sessions.applyProjectResolvedState(state.projects);
     this.props.sessions.updateWorkspaceNames(new Map(state.projects.map((project) => [project.path, project.name])));
     this.reconcileRecentPaths();
   }
