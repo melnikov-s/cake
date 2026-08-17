@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { observer, StoreProvider, useStore } from "r-state-tree/react";
 import {
@@ -9,14 +9,7 @@ import {
   ConfirmationRequest,
   ConfirmationTitle
 } from "@/components/ai-elements/confirmation";
-import { Conversation, VirtualizedConversation, type VirtualizedConversationHandle } from "@/components/ai-elements/conversation";
 import { Markdown } from "@/components/ai-elements/markdown";
-import { Message, MessageLabel } from "@/components/ai-elements/message";
-import { CompactionMessage } from "@/components/compaction-message";
-import { Reasoning } from "@/components/ai-elements/reasoning";
-import { Source } from "@/components/ai-elements/source";
-import { Tool } from "@/components/ai-elements/tool";
-import { diffStats } from "@/components/ai-elements/diff-view";
 import { Button } from "@/components/ui/button";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ArtifactHost, downloadArtifactMarkdown } from "@/components/artifact-host";
@@ -26,10 +19,8 @@ import { SettingsPage } from "@/components/settings-page";
 import { SessionTree } from "@/components/session-tree";
 import { PanelResizeHandle } from "@/components/panel-resize-handle";
 import { CopyErrorDetailsButton } from "@/components/copy-error-details-button";
-import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
-import { MessageCommentDraftPopover, MessageCommentThreadPopover, MessageSelectionAction, type MessageCommentAnchorRect } from "@/components/message-comment-popover";
-import { Chat, ChatTextMessage, chatWorkIsActive } from "@/components/chat";
-import type { CompatibilityResource, UiPart } from "../ipc/session-contract";
+import { Chat } from "@/components/chat";
+import type { CompatibilityResource } from "../ipc/session-contract";
 import type { ProjectWorkbenchStore } from "./stores/ProjectWorkbenchStore";
 import type { ProjectSessionStore } from "./stores/ProjectSessionStore";
 import type { ProjectCatalogStore } from "./stores/ProjectCatalogStore";
@@ -37,12 +28,9 @@ import type { ReviewsStore } from "./stores/ReviewsStore";
 import type { SidebarStore } from "./stores/SidebarStore";
 import { RootStore } from "./stores/RootStore";
 import type { ExtensionUiStore, UiRequestState } from "./stores/ExtensionUiStore";
-import type { ArtifactInteractionStore } from "./stores/ArtifactInteractionStore";
 import type { InlineWidgetStore } from "./stores/InlineWidgetStore";
 import type { GlobalChatStore } from "./stores/GlobalChatStore";
 import type { AppSelection } from "./stores/AppShellStore";
-import type { MessageCommentsStore, MessageSelectionAnchor } from "./stores/MessageCommentsStore";
-import type { ArtifactRecord } from "../ipc/artifact-contract";
 import { Slot } from "./plugin-runtime";
 
 function ProjectSessionPluginRail({ side }: { side: "left" | "right" }) {
@@ -66,9 +54,6 @@ const SidebarIcon = () => <Icon><rect x="3.5" y="4" width="17" height="16" rx="3
 const ChevronIcon = () => <Icon size={13}><path d="m8 10 4 4 4-4" /></Icon>;
 const MoreIcon = () => <Icon><circle cx="5" cy="12" r=".7" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r=".7" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r=".7" fill="currentColor" stroke="none" /></Icon>;
 const SettingsIcon = () => <Icon><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06-2.83 2.83-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21h-4v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06-2.83-2.83.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3v-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06 2.83-2.83.06.06A1.65 1.65 0 0 0 9 4.68h.08a1.65 1.65 0 0 0 1-1.51V3h4v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06 2.83 2.83-.06.06A1.65 1.65 0 0 0 19.32 9v.08a1.65 1.65 0 0 0 1.51 1H21v4h-.09A1.65 1.65 0 0 0 19.4 15z" /></Icon>;
-const CopyIcon = () => <Icon size={15}><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></Icon>;
-const ForkIcon = () => <Icon size={15}><circle cx="6" cy="5" r="2" /><circle cx="18" cy="5" r="2" /><circle cx="12" cy="19" r="2" /><path d="M6 7v2a4 4 0 0 0 4 4h2M18 7v2a4 4 0 0 1-4 4h-2v4" /></Icon>;
-const CheckIcon = () => <Icon size={15}><path d="m5 12 4 4L19 6" /></Icon>;
 const ChangesIcon = () => <Icon size={15}><path d="M4 7h10M4 17h10M17 4v6M14 7l3 3 3-3M17 14v6M14 17l3 3 3-3" /></Icon>;
 const BrowseIcon = () => <Icon size={15}><path d="M4 5.5h6l1.8 2H20v11H4z" /><path d="M4 9h16" /></Icon>;
 const compatibilityResourceKinds: CompatibilityResource["kind"][] = ["extension", "skill", "prompt", "package"];
@@ -94,354 +79,10 @@ function CommandPane({ store, extensionUi }: { store: ProjectWorkbenchStore; ext
   );
 }
 
-const messageHighlightRanges = new Map<string, Range[]>();
-
-type HighlightValue = { readonly priority?: number };
-
-function refreshMessageHighlights() {
-  // SAFETY: CSS.highlights is feature-detected before use; TypeScript's DOM
-  // declarations do not yet expose the experimental registry consistently.
-  const registry = Reflect.get(globalThis.CSS ?? {}, "highlights") as { set(name: string, value: HighlightValue): void; delete(name: string): void } | undefined;
-  // SAFETY: the experimental Highlight constructor is feature-detected and is
-  // invoked only with DOM Range instances.
-  const HighlightConstructor = Reflect.get(globalThis, "Highlight") as (new (...ranges: Range[]) => HighlightValue) | undefined;
-  if (!registry || !HighlightConstructor) return;
-  if (!document.getElementById("cake-message-comment-highlight-style")) {
-    const style = document.createElement("style");
-    style.id = "cake-message-comment-highlight-style";
-    style.textContent = "::highlight(cake-message-comment){background:color-mix(in oklab,var(--accent) 28%,transparent);text-decoration:underline;text-decoration-color:color-mix(in oklab,var(--accent) 75%,transparent);text-decoration-thickness:2px;text-underline-offset:2px}";
-    document.head.appendChild(style);
-  }
-  const ranges = [...messageHighlightRanges.values()].flat();
-  if (ranges.length === 0) registry.delete("cake-message-comment");
-  else registry.set("cake-message-comment", new HighlightConstructor(...ranges));
-}
-
-function textOffset(container: Node, node: Node, offset: number) {
-  const range = document.createRange();
-  range.selectNodeContents(container);
-  range.setEnd(node, offset);
-  return range.toString().length;
-}
-
-function rangeAtOffsets(container: Node, start: number, end: number) {
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-  let traversed = 0;
-  let startPoint: { node: Node; offset: number } | undefined;
-  let endPoint: { node: Node; offset: number } | undefined;
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const length = node.textContent?.length ?? 0;
-    if (!startPoint && start <= traversed + length) startPoint = { node, offset: Math.max(0, start - traversed) };
-    if (end <= traversed + length) { endPoint = { node, offset: Math.max(0, end - traversed) }; break; }
-    traversed += length;
-  }
-  if (!startPoint || !endPoint) return undefined;
-  const range = document.createRange();
-  range.setStart(startPoint.node, startPoint.offset);
-  range.setEnd(endPoint.node, endPoint.offset);
-  return range;
-}
-
-export function captureMessageSelection(container: HTMLElement, messageId: string, entryId?: string): MessageSelectionAnchor | undefined {
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return undefined;
-  const range = selection.getRangeAt(0);
-  if (!container.contains(range.startContainer) || !container.contains(range.endContainer)) return undefined;
-  const raw = range.toString();
-  const selectedText = raw.trim();
-  if (!selectedText) return undefined;
-  const leading = raw.length - raw.trimStart().length;
-  const trailing = raw.length - raw.trimEnd().length;
-  const startOffset = textOffset(container, range.startContainer, range.startOffset) + leading;
-  const endOffset = textOffset(container, range.endContainer, range.endOffset) - trailing;
-  const text = container.textContent ?? "";
-  return {
-    messageId,
-    entryId,
-    selectedText,
-    startOffset,
-    endOffset,
-    contextBefore: text.slice(Math.max(0, startOffset - 320), startOffset),
-    contextAfter: text.slice(endOffset, endOffset + 320)
-  };
-}
-
-export const MESSAGE_COMMENT_SELECTION_DELAY_MS = 450;
-
-function plainRect(rect: DOMRect): MessageCommentAnchorRect {
-  return { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left };
-}
-
-const AssistantTextMessage = observer(function AssistantTextMessage({ part, behavior }: { part: Extract<UiPart, { kind: "text" }>; behavior: TranscriptBehavior }) {
-  const [copied, setCopied] = useState(false);
-  const [fullscreen, setFullscreen] = useState(false);
-  const [selectionAction, setSelectionAction] = useState<{ selection: MessageSelectionAnchor; rect: MessageCommentAnchorRect }>();
-  const [draft, setDraft] = useState<{ selection: MessageSelectionAnchor; anchor: MessageCommentAnchorRect }>();
-  const [openThread, setOpenThread] = useState<{ id: string; anchor: HTMLElement | MessageCommentAnchorRect }>();
-  const [markerPositions, setMarkerPositions] = useState<Record<string, { left: number; top: number }>>({});
-  const selectionTimer = useRef<number | undefined>(undefined);
-  const messageRef = useRef<HTMLElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const commentThreads = behavior.messageComments?.threadsForMessage(part.id) ?? [];
-  const closeFullscreen = useCallback(() => setFullscreen(false), []);
-  useEffect(() => {
-    if (!copied) return;
-    const timeout = window.setTimeout(() => setCopied(false), 1_500);
-    return () => window.clearTimeout(timeout);
-  }, [copied]);
-  useEffect(() => () => window.clearTimeout(selectionTimer.current), []);
-
-  const copy = async () => {
-    await navigator.clipboard.writeText(part.text);
-    setCopied(true);
-  };
-
-  const content = () => <Markdown>{part.text}</Markdown>;
-
-  useLayoutEffect(() => {
-    const key = `${part.id}:${part.entryId ?? ""}`;
-    const container = contentRef.current;
-    const ranges = container ? commentThreads.flatMap((thread) => {
-      const start = thread.anchor.startOffset;
-      const end = thread.anchor.endOffset;
-      if (start === undefined || end === undefined) return [];
-      const range = rangeAtOffsets(container, start, end);
-      return range ? [range] : [];
-    }) : [];
-    messageHighlightRanges.set(key, ranges);
-    refreshMessageHighlights();
-    return () => { messageHighlightRanges.delete(key); refreshMessageHighlights(); };
-  }, [part.id, part.entryId, part.text, commentThreads.map((thread) => `${thread.id}:${thread.updatedAt}`).join("|")]);
-
-  useLayoutEffect(() => {
-    const message = messageRef.current;
-    const content = contentRef.current;
-    if (!message || !content) return;
-    const update = () => {
-      const messageRect = message.getBoundingClientRect();
-      const next: Record<string, { left: number; top: number }> = {};
-      for (const thread of commentThreads) {
-        const start = thread.anchor.startOffset;
-        const end = thread.anchor.endOffset;
-        if (start === undefined || end === undefined) continue;
-        const range = rangeAtOffsets(content, start, end);
-        const rangeRects = range ? Array.from(range.getClientRects()) : [];
-        const rect = rangeRects.at(-1) ?? range?.getBoundingClientRect();
-        if (!rect) continue;
-        next[thread.id] = {
-          left: Math.min(Math.max(8, rect.right - messageRect.left + 7), Math.max(8, messageRect.width - 30)),
-          top: rect.top - messageRect.top + rect.height / 2
-        };
-      }
-      setMarkerPositions(next);
-    };
-    update();
-    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(update);
-    observer?.observe(content);
-    window.addEventListener("resize", update);
-    return () => { observer?.disconnect(); window.removeEventListener("resize", update); };
-  }, [part.text, commentThreads.map((thread) => `${thread.id}:${thread.anchor.startOffset}:${thread.anchor.endOffset}`).join("|")]);
-
-  const scheduleSelectionAction = (container: HTMLElement | null = contentRef.current) => {
-    window.clearTimeout(selectionTimer.current);
-    setSelectionAction(undefined);
-    if (!behavior.messageComments || part.status === "streaming" || !container) return;
-    const captured = captureMessageSelection(container, part.id, part.entryId);
-    const selection = window.getSelection();
-    if (!captured || !selection?.rangeCount) return;
-    const rect = plainRect(selection.getRangeAt(0).getBoundingClientRect());
-    selectionTimer.current = window.setTimeout(() => {
-      if (window.getSelection()?.toString().trim() === captured.selectedText) setSelectionAction({ selection: captured, rect });
-    }, MESSAGE_COMMENT_SELECTION_DELAY_MS);
-  };
-
-  const activeThread = openThread ? commentThreads.find((thread) => thread.id === openThread.id) : undefined;
-
-  return (
-    <ChatTextMessage ref={messageRef} part={part} contentRef={contentRef} onMouseUp={() => scheduleSelectionAction()}>
-      <FullscreenButton className="assistant-message-expand" label="View response fullscreen" onClick={() => setFullscreen(true)} />
-      {commentThreads.map((thread, index) => markerPositions[thread.id] && <button key={thread.id} className="message-comment-marker" style={markerPositions[thread.id]} type="button" aria-label={`Open selection chat ${index + 1}`} title={thread.anchor.selectedText} onClick={(event) => setOpenThread({ id: thread.id, anchor: event.currentTarget })}><ChatIcon /><b>{thread.messages.length}</b></button>)}
-      {selectionAction && <MessageSelectionAction rect={selectionAction.rect} onChat={(anchor) => { behavior.messageComments?.prepareDraft(selectionAction.selection); setDraft({ selection: selectionAction.selection, anchor }); setSelectionAction(undefined); }} />}
-      {draft && behavior.messageComments && <MessageCommentDraftPopover anchor={draft.anchor} selection={draft.selection} store={behavior.messageComments} onClose={() => setDraft(undefined)} onCreated={(threadId) => {
-        setOpenThread({ id: threadId, anchor: draft.anchor });
-        setDraft(undefined);
-        window.getSelection()?.removeAllRanges();
-      }} />}
-      {activeThread && behavior.messageComments && <MessageCommentThreadPopover anchor={openThread!.anchor} thread={activeThread} store={behavior.messageComments} onClose={() => setOpenThread(undefined)} />}
-      {part.status !== "streaming" && <div className="assistant-message-actions" aria-label="Message actions">
-        <button type="button" aria-label={copied ? "Copied response" : "Copy response"} title={copied ? "Copied" : "Copy response"} onClick={() => void copy()}>{copied ? <CheckIcon /> : <CopyIcon />}</button>
-        {part.entryId && behavior.onFork && <button type="button" aria-label="Fork response into new chat" title="Fork into new chat" onClick={() => behavior.onFork!(part.entryId!)}><ForkIcon /></button>}
-      </div>}
-      {fullscreen && <FullscreenSurface eyebrow="Full response" title="Cake" onClose={closeFullscreen} onContentMouseUp={(event) => scheduleSelectionAction(event.currentTarget)}>{content()}</FullscreenSurface>}
-    </ChatTextMessage>
-  );
-});
-
-interface TranscriptBehavior {
-  thinkingExpanded: boolean;
-  onToggleThinking(): void;
-  onFork?(entryId: string): void;
-  onOpenReviewRun?(threadId?: string): void;
-  inlineWidgets?: { store: InlineWidgetStore; workspacePath: string; sessionId: string; model?: { provider: string; id: string } };
-  artifacts?: { records: ArtifactRecord[]; interaction: ArtifactInteractionStore };
-  messageComments?: MessageCommentsStore;
-}
-
-const TranscriptPart = observer(function TranscriptPart({ part, behavior }: { part: UiPart; behavior: TranscriptBehavior }) {
-  if (part.kind === "text") {
-    if (part.role === "assistant") return <AssistantTextMessage part={part} behavior={behavior} />;
-    return <ChatTextMessage part={part} />;
-  }
-  if (part.kind === "reasoning") return <Reasoning open={behavior.thinkingExpanded} onToggle={behavior.onToggleThinking} streaming={part.status === "streaming"} hasContent={Boolean(part.text.trim())}><Markdown>{part.text}</Markdown></Reasoning>;
-  if (part.kind === "tool") {
-    const record = part.artifactId ? behavior.artifacts?.records.find((candidate) => candidate.artifact.id === part.artifactId) : undefined;
-    if (record && behavior.artifacts) {
-      const request = behavior.artifacts.interaction.request?.record.artifact.id === record.artifact.id ? behavior.artifacts.interaction.request : undefined;
-      return <ArtifactHost record={record} requested={Boolean(request)} onSubmit={(value) => void behavior.artifacts!.interaction.respond(value)} onCancel={() => void behavior.artifacts!.interaction.respond(undefined, true)} inlineWidgets={behavior.inlineWidgets?.store} />;
-    }
-    return <Tool part={part} />;
-  }
-  if (part.kind === "source") return <Source title={part.title} url={part.url} />;
-  if (part.kind === "attachment") return part.attachmentKind === "image" && part.data
-    ? <figure className="transcript-image"><img src={`data:${part.mediaType};base64,${part.data}`} alt={part.name} /><figcaption>{part.name}</figcaption></figure>
-    : <div className="w-fit rounded-full border border-border px-3 py-1 font-mono text-[0.68rem]">{part.attachmentKind} · {part.name}</div>;
-  if (part.kind === "review-run") return <ReviewRunMessage run={part} onOpen={behavior.onOpenReviewRun} />;
-  if (part.kind === "compaction") return <CompactionMessage part={part} />;
-  return <div className={`notice notice-${part.tone}`} role={part.tone === "error" ? "alert" : "status"}><strong>{part.title}</strong>{part.detail && <span>{part.detail}</span>}</div>;
-});
-
-type TranscriptItem = UiPart | { kind: "activity-group"; id: string; parts: UiPart[] } | { kind: "loading-state"; id: string };
-
-function errorNoticeFollowsUser(items: TranscriptItem[], index: number) {
-  const item = items[index];
-  const previous = items[index - 1];
-  return item?.kind === "notice"
-    && item.tone === "error"
-    && previous?.kind === "text"
-    && previous.role === "user";
-}
-
-function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
-  const items: TranscriptItem[] = [];
-  let activity: UiPart[] = [];
-  const flush = () => {
-    if (activity.length === 0) return;
-    items.push({ kind: "activity-group", id: `activity-${activity[0]!.id}`, parts: activity });
-    activity = [];
-  };
-  for (const part of parts) {
-    if ((part.kind === "tool" && !part.artifactId) || part.kind === "reasoning") activity.push(part);
-    else {
-      flush();
-      items.push(part);
-    }
-  }
-  flush();
-  return items;
-}
-
-function ActivityGroup({ parts, behavior, isStreaming }: { parts: UiPart[]; behavior: TranscriptBehavior; isStreaming: boolean }) {
-  const logRef = useRef<HTMLDivElement>(null);
-  const tools = parts.filter((part) => part.kind === "tool").length;
-  const reasoningParts = parts.filter((part): part is Extract<UiPart, { kind: "reasoning" }> => part.kind === "reasoning");
-  const reasoningHasContent = reasoningParts.some((part) => Boolean(part.text.trim()));
-  const reasoningIsStreaming = reasoningParts.some((part) => part.status === "streaming");
-  const toolParts = parts.filter((part): part is Extract<UiPart, { kind: "tool" }> => part.kind === "tool");
-  const activityIsRunning = reasoningIsStreaming || toolParts.some((part) => part.state === "running");
-  const editParts = parts.filter((part): part is Extract<UiPart, { kind: "tool" }> => part.kind === "tool" && part.name === "edit" && Boolean(part.diff));
-  const editTotals = editParts.reduce((total, part) => { const stats = diffStats(part.diff!); return { additions: total.additions + stats.additions, deletions: total.deletions + stats.deletions }; }, { additions: 0, deletions: 0 });
-  const label = editParts.length > 0 ? `${editParts.length} ${editParts.length === 1 ? "edit" : "edits"} · +${editTotals.additions} −${editTotals.deletions}` : tools === 0 ? "Reasoning" : `${tools} tool ${tools === 1 ? "call" : "calls"}`;
-  useLayoutEffect(() => {
-    if (!isStreaming || !logRef.current) return;
-    logRef.current.scrollTop = logRef.current.scrollHeight;
-  });
-  if (tools === 0 && !reasoningHasContent) {
-    return <div className="activity-group activity-group-status" role="status"><span className={`work-log-state${activityIsRunning ? " work-log-running" : ""}`} aria-label={activityIsRunning ? "working" : "complete"} />{reasoningIsStreaming ? "Thinking…" : "Reasoning details not exposed"}</div>;
-  }
-  return (
-    <details className="activity-group">
-      <summary><span className={`work-log-state${activityIsRunning ? " work-log-running" : ""}`} aria-label={activityIsRunning ? "working" : "complete"} />Work log <small>{label}</small></summary>
-      <div ref={logRef}>{parts.map((part) => <TranscriptPart key={part.id} part={part} behavior={behavior} />)}</div>
-    </details>
-  );
-}
-
-function ReviewRunMessage({ run, onOpen }: { run: Extract<UiPart, { kind: "review-run" }>; onOpen?(threadId?: string): void }) {
-  const count = run.commentCount;
-  const label = run.status === "running"
-    ? `Replying to ${count} ${count === 1 ? "comment" : "comments"}`
-    : run.status === "error"
-      ? `${count} ${count === 1 ? "comment needs" : "comments need"} another try`
-      : `${count} ${count === 1 ? "comment" : "comments"} replied`;
-  return <Message className="review-run-message mr-auto w-full">
-    <MessageLabel>{run.status === "running" ? "Cake · working" : "Cake"}</MessageLabel>
-    <button type="button" className={run.status} disabled={!onOpen} onClick={() => onOpen?.(run.threadIds[0])}>
-      {run.status === "running" && <LoadingState label={label} variant="Dots" />}
-      {run.status !== "running" && <strong>{label}</strong>}<span>View in Changes</span>
-    </button>
-  </Message>;
-}
-
-const TranscriptList = forwardRef<HTMLDivElement, ComponentProps<"div">>(function TranscriptList({ className, ...props }, ref) {
-  return <div ref={ref} className={`transcript-list ${className ?? ""}`} aria-label="Conversation" {...props} />;
-});
-
 function ErrorNotice({ title, message, details = message }: { title: string; message: string; details?: string }) {
   return <div className="notice notice-error" role="alert"><strong>{title}</strong><span>{message}</span><CopyErrorDetailsButton details={details} /></div>;
 }
 
-export const Transcript = observer(function Transcript({ parts, sessionId, isStreaming, isSubmitting = false, hideThinking = false, behavior, empty, footer, error, errorDetails, errorTitle = "Operation failed" }: { parts: UiPart[]; sessionId: string; isStreaming: boolean; isSubmitting?: boolean; hideThinking?: boolean; behavior: TranscriptBehavior; empty: ReactNode; footer?: ReactNode; error?: string; errorDetails?: string; errorTitle?: string }) {
-  const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
-  const visibleParts = hideThinking ? parts.filter((part) => part.kind !== "reasoning") : parts;
-  const showAssistantLoading = chatWorkIsActive(parts, isStreaming, isSubmitting);
-  const items: TranscriptItem[] = [
-    ...groupTranscriptParts(visibleParts),
-    ...(showAssistantLoading ? [{ kind: "loading-state" as const, id: "loading-state" }] : [])
-  ];
-  const latestUserPartId = parts.findLast((part) => (part.kind === "text" && part.role === "user") || (part.kind === "attachment" && part.attachmentKind === "image"))?.id;
-  const itemCountRef = useRef(items.length);
-  itemCountRef.current = items.length;
-
-  const scrollToLatest = useCallback(() => {
-    if (itemCountRef.current === 0) return;
-    virtuosoRef.current?.scrollToIndex({ index: itemCountRef.current - 1, align: "end", behavior: "auto" });
-  }, []);
-
-  useLayoutEffect(() => {
-    scrollToLatest();
-  }, [sessionId, scrollToLatest]);
-
-  useEffect(() => {
-    if (!latestUserPartId) return;
-    scrollToLatest();
-    const frame = requestAnimationFrame(scrollToLatest);
-    return () => cancelAnimationFrame(frame);
-  }, [latestUserPartId, scrollToLatest]);
-
-  if (visibleParts.length === 0) {
-    return (
-      <div className="transcript transcript-empty">
-        <Conversation>{empty}{showAssistantLoading && <LoadingState />}{footer}{error && <ErrorNotice title={errorTitle} message={error} details={errorDetails} />}</Conversation>
-      </div>
-    );
-  }
-
-  return (
-    <VirtualizedConversation
-      ref={virtuosoRef}
-      className="transcript"
-      data={items}
-      computeItemKey={(_index, item) => item.id}
-      initialTopMostItemIndex={{ index: items.length - 1, align: "end" }}
-      followOutput={(isAtBottom) => isAtBottom ? "auto" : false}
-      components={{
-        List: TranscriptList,
-        Footer: () => <div className="transcript-footer">{footer}{error && <ErrorNotice title={errorTitle} message={error} details={errorDetails} />}</div>
-      }}
-      itemContent={(index, item) => <div className={`transcript-item${errorNoticeFollowsUser(items, index) ? " transcript-item-error-after-user" : ""}`}>{item.kind === "activity-group" ? <ActivityGroup parts={item.parts} behavior={behavior} isStreaming={isStreaming} /> : item.kind === "loading-state" ? <LoadingState /> : item.kind === "review-run" ? <ReviewRunMessage run={item} onOpen={behavior.onOpenReviewRun} /> : <TranscriptPart part={item} behavior={behavior} />}</div>}
-    />
-  );
-});
 
 const ArtifactsPanel = observer(function ArtifactsPanel({ session, inlineWidgets }: { session: ProjectSessionStore; inlineWidgets: InlineWidgetStore }) {
   const artifacts = session.artifactInteractionStore;
@@ -604,7 +245,7 @@ export const App = observer(function App() {
       <section className="workspace" data-session-id={shell.selection.kind === "cake-chat" ? shell.selection.sessionId : shell.selection.kind === "project-session" ? shell.selection.sessionId : undefined}>
         <button className={surface === "settings" ? "workspace-settings-icon active" : "workspace-settings-icon"} type="button" aria-label="Open settings" aria-current={surface === "settings" ? "page" : undefined} onClick={() => root.showSettings()}><SettingsIcon /></button>
         <header className="workspace-header"><div><button className="header-sidebar-toggle" aria-label="Toggle sidebar" onClick={() => setSidebarCollapsed((value) => !value)}><SidebarIcon /></button>{surface === "settings" && <button className="header-back" aria-label="Back to chat" onClick={returnToWorkbench}><BackIcon /></button>}<strong>{surface === "settings" ? "Settings" : surface === "global-chat" ? "Cake Chat" : extensionUi.title ?? (session ? store.sessionTitle : "Cake")}</strong>{surface === "workbench" && store.projectPath && <span>{store.projectPath}</span>}</div><div className="workspace-header-actions" ref={setSessionHeaderHost} /></header>
-        {surface === "settings" ? <SettingsPage store={store} settings={settings} configuration={chatConfiguration} customization={root.customizationStore} onViewStateChange={() => persistence.schedule()} /> : globalChat ? cakeChatSession ? <div className="workbench global-chat"><Chat store={cakeChatSession.chatStore} transcript={<Transcript parts={cakeChatSession.chatStore.parts} sessionId={cakeChatSession.chatStore.id} isStreaming={cakeChatSession.chatStore.streaming} isSubmitting={cakeChatSession.chatStore.submitting} hideThinking={cakeChatSession.chatStore.hideThinking} behavior={{ thinkingExpanded: cakeChatSession.chatStore.thinkingExpanded, onToggleThinking: () => cakeChatSession.chatStore.toggleThinking() }} empty={<div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What can I help you find or do?</h1><p>Ask about your tasks, open one, or delegate work to it.</p></div>} error={cakeChatSession.chatStore.error?.message} errorDetails={cakeChatSession.chatStore.error?.details} errorTitle={cakeChatSession.chatStore.error?.title} />} /></div> : <div className="loading-screen"><span className="cake-mark">C</span><LoadingState label="Opening Cake Chat" /></div> : !session ? (
+        {surface === "settings" ? <SettingsPage store={store} settings={settings} configuration={chatConfiguration} customization={root.customizationStore} onViewStateChange={() => persistence.schedule()} /> : globalChat ? cakeChatSession ? <div className="workbench global-chat"><Chat store={cakeChatSession.chatStore} empty={<div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What can I help you find or do?</h1><p>Ask about your tasks, open one, or delegate work to it.</p></div>} /></div> : <div className="loading-screen"><span className="cake-mark">C</span><LoadingState label="Opening Cake Chat" /></div> : !session ? (
           <div className="welcome"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build?</h1><p>Open a project for durable workspace chats, or start a one-off chat from your home directory.</p><div><Button size="lg" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void root.chooseProject()}><FolderIcon /> Open project</Button><Button size="lg" variant="outline" disabled={store.piState !== "ready" || store.isBusy} onClick={() => void root.startOneOffChat()}><ChatIcon /> One-off chat</Button></div>{chatError && <ErrorNotice title="Operation failed" message={chatError} details={chatErrorDetails} />}</div>
         ) : (
           <StoreProvider key={`${session.workspacePath}\u0000${session.sessionId}`} store={session}>
@@ -614,7 +255,7 @@ export const App = observer(function App() {
               </>, sessionHeaderHost)}
             <div className="workbench project-session-workbench">
               <ProjectSessionPluginRail side="left" />
-              <Chat store={session.chatStore} transcript={<Transcript sessionId={session.chatStore.id} parts={session.chatStore.parts} isStreaming={session.chatStore.streaming} isSubmitting={session.chatStore.submitting} hideThinking={session.chatStore.hideThinking} behavior={{ thinkingExpanded: session.chatStore.thinkingExpanded, onToggleThinking: () => session.chatStore.toggleThinking(), onFork: (entryId) => { void store.forkAt(entryId); }, onOpenReviewRun: (threadId) => { void store.openSessionChanges(threadId); }, messageComments: session.messageCommentsStore, inlineWidgets: { store: root.inlineWidgetStore, workspacePath: session.workspacePath, sessionId: session.sessionId, model: session.model.model }, artifacts: { records: session.model.artifacts.map((artifact) => artifact.value), interaction: session.artifactInteractionStore } }} empty={<div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>} footer={<><ArtifactsPanel session={session} inlineWidgets={root.inlineWidgetStore} /><Slot name="project-session.transcript.after" /></>} error={chatError} errorDetails={chatErrorDetails} />} composerContent={<>{reviews.chatCommentCount > 0 && <div className="review-context-badge"><button type="button" onClick={() => void store.openSessionChanges()}><span>{reviews.chatCommentCount}</span> {reviews.chatCommentCount === 1 ? "comment ready to send" : "comments ready to send"}</button></div>}<Slot name="project-session.composer.before" /></>} pluginActions={<Slot name="project-session.composer.actions" />} status={<>{extensionUi.statuses.length > 0 && <div className="extension-statuses" role="status">{extensionUi.statuses.map((status) => <span key={status.key}><strong>{status.key}</strong> {status.text}</span>)}</div>}<Slot name="project-session.status" /></>} />
+              <Chat store={session.chatStore} transcriptBehavior={{ onFork: (entryId) => { void store.forkAt(entryId); }, onOpenReviewRun: (threadId) => { void store.openSessionChanges(threadId); }, messageComments: session.messageCommentsStore, inlineWidgets: { store: root.inlineWidgetStore, workspacePath: session.workspacePath, sessionId: session.sessionId, model: session.model.model }, artifacts: { records: session.model.artifacts.map((artifact) => artifact.value), interaction: session.artifactInteractionStore } }} empty={<div className="chat-empty"><span className="cake-orbit"><span className="cake-mark">C</span></span><h1>What should we build in <em>{store.projectName}</em>?</h1><p>Describe a task, ask a question, or type <code>/</code> for commands.</p></div>} footer={<><ArtifactsPanel session={session} inlineWidgets={root.inlineWidgetStore} /><Slot name="project-session.transcript.after" /></>} error={chatError ? { message: chatError, details: chatErrorDetails } : undefined} composerContent={<>{reviews.chatCommentCount > 0 && <div className="review-context-badge"><button type="button" onClick={() => void store.openSessionChanges()}><span>{reviews.chatCommentCount}</span> {reviews.chatCommentCount === 1 ? "comment ready to send" : "comments ready to send"}</button></div>}<Slot name="project-session.composer.before" /></>} pluginActions={<Slot name="project-session.composer.actions" />} status={<>{extensionUi.statuses.length > 0 && <div className="extension-statuses" role="status">{extensionUi.statuses.map((status) => <span key={status.key}><strong>{status.key}</strong> {status.text}</span>)}</div>}<Slot name="project-session.status" /></>} />
               <ProjectSessionPluginRail side="right" />
             </div>
           </StoreProvider>

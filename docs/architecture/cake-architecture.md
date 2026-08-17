@@ -164,10 +164,12 @@ The window Store hierarchy mirrors the product surfaces:
   `ChatStore` is the common conversation-facing state boundary: it presents the
   draft, transcript parts, streaming state, configuration, and composer actions
   consumed by the authoritative `Chat` component.
-- Project sessions, Cake Chat sessions, selection chats, and review threads all render
-  the same `Chat` component and supply a `ChatStore`. A surface may provide a
-  richer transcript projection, but it must compose the shared message,
-  loading, and composer primitives instead of creating chat-specific controls.
+- Project sessions, Cake Chat sessions, selection chats, and review threads all
+  render the same `Chat` component and supply a `ChatStore`. `Chat` owns the
+  authoritative virtualized transcript, message rendering, loading behavior,
+  scrolling, and composer. A surface may add contextual framing or capabilities
+  through the shared component's explicit extension points, but it must not
+  substitute a parallel transcript, message, input, or composer implementation.
   React mounts the project session as the nearest provider around the active
   session surface.
 - The Cake Chat collection owns one keyed `CakeChatSessionStore` per loaded

@@ -5,6 +5,19 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { createStore, mount } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/components/ai-elements/conversation", async () => {
+  const actual = await vi.importActual<Record<string, unknown>>("@/components/ai-elements/conversation");
+  const ReactModule = await import("react");
+  return {
+    ...actual,
+    VirtualizedConversation: ReactModule.forwardRef(function TestVirtualizedConversation({ data, itemContent }: { data: Array<{ id: string }>; itemContent(index: number, item: { id: string }): React.ReactNode }, ref) {
+      ReactModule.useImperativeHandle(ref, () => ({ scrollToIndex: vi.fn() }));
+      return <div className="transcript">{data.map((item, index) => <React.Fragment key={item.id}>{itemContent(index, item)}</React.Fragment>)}</div>;
+    })
+  };
+});
+
 import { Chat } from "../../../src/renderer/components/chat";
 import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";

@@ -17,6 +17,7 @@ vi.mock("@/components/ai-elements/conversation", () => ({
   Conversation: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
   VirtualizedConversation: forwardRef(function MockVirtualizedConversation(
     props: {
+      className?: string;
       data: Array<{ id: string }>;
       itemContent: (index: number, item: { id: string }) => React.ReactNode;
     },
@@ -28,11 +29,12 @@ vi.mock("@/components/ai-elements/conversation", () => ({
       virtualizedLifecycle("mounted");
       return () => virtualizedLifecycle("unmounted");
     }, []);
-    return <div>{props.data.map((item, index) => <React.Fragment key={item.id}>{props.itemContent(index, item)}</React.Fragment>)}</div>;
+    return <div className={props.className}>{props.data.map((item, index) => <React.Fragment key={item.id}>{props.itemContent(index, item)}</React.Fragment>)}</div>;
   })
 }));
 
-import { captureMessageSelection, MESSAGE_COMMENT_SELECTION_DELAY_MS, Transcript } from "../../../src/renderer/app";
+import { Chat } from "../../../src/renderer/components/chat";
+import { captureMessageSelection, ChatTranscript, MESSAGE_COMMENT_SELECTION_DELAY_MS, type ChatTranscriptBehavior } from "../../../src/renderer/components/chat-transcript";
 import type { MessageCommentsStore } from "../../../src/renderer/stores/MessageCommentsStore";
 import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
@@ -47,6 +49,33 @@ interface TranscriptHarness {
 
 function storeWith(parts: UiPart[], isStreaming = false, error?: string, errorDetails?: string): TranscriptHarness {
   return { visibleParts: parts, error, errorDetails, isStreaming, forkAt: vi.fn() };
+}
+
+function Transcript({ parts, sessionId, isStreaming, isSubmitting = false, hideThinking = false, behavior, empty, footer, error, errorDetails, errorTitle }: {
+  parts: UiPart[];
+  sessionId: string;
+  isStreaming: boolean;
+  isSubmitting?: boolean;
+  hideThinking?: boolean;
+  behavior: ChatTranscriptBehavior & { thinkingExpanded: boolean; onToggleThinking(): void };
+  empty?: React.ReactNode;
+  footer?: React.ReactNode;
+  error?: string;
+  errorDetails?: string;
+  errorTitle?: string;
+}) {
+  const { thinkingExpanded, onToggleThinking, ...transcriptBehavior } = behavior;
+  const store = {
+    id: sessionId,
+    parts,
+    streaming: isStreaming,
+    submitting: isSubmitting,
+    hideThinking,
+    thinkingExpanded,
+    toggleThinking: onToggleThinking,
+    error: undefined
+  } as unknown as ChatStore;
+  return <ChatTranscript store={store} behavior={transcriptBehavior} empty={empty} footer={footer} error={error ? { message: error, details: errorDetails, title: errorTitle } : undefined} renderChat={(nestedStore, onSubmitted, options) => <Chat store={nestedStore} embedded composerOnly={options?.composerOnly} onSubmitted={onSubmitted} />} />;
 }
 
 function TestTranscript({ store, sessionId }: { store: TranscriptHarness; sessionId: string }) {
@@ -363,8 +392,64 @@ describe("Transcript scrolling", () => {
     expect(document.body.querySelector<HTMLButtonElement>(".message-selection-action")?.textContent).toBe("Chat about this");
 
     act(() => document.body.querySelector<HTMLButtonElement>(".message-selection-action")!.click());
-    expect(document.body.querySelector('[role="dialog"][aria-label="Chat about this"]')).not.toBeNull();
-    expect(document.body.querySelector<HTMLTextAreaElement>('[aria-label="Message about selected text"]')).toBe(document.activeElement);
+    const dialog = document.body.querySelector<HTMLElement>('[role="dialog"][aria-label="Chat about this"]')!;
+    expect(dialog).not.toBeNull();
+    expect(dialog.querySelector(".message-comment-selection .user-message")?.textContent).toBe("important");
+    expect(dialog.querySelector(".transcript")).toBeNull();
+    const input = dialog.querySelector<HTMLTextAreaElement>('[aria-label="Message about selected text"]')!;
+    expect(input).toBe(document.activeElement);
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "Why is this important?");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(draftChat.draft).toBe("Why is this important?");
+    expect(input).toBe(document.activeElement);
+    browserSelection.removeAllRanges();
+    draftChat[Symbol.dispose]();
+    vi.useRealTimers();
+  });
+
+  it("captures selections from fenced code at the assistant message boundary", () => {
+    vi.useFakeTimers();
+    const draftChat = mount(createStore(ChatStore, {
+      id: () => "code-message-comment-draft",
+      parts: () => [],
+      streaming: () => false,
+      submitting: () => false,
+      configuration: () => undefined,
+      commands: () => [],
+      placeholder: () => "Ask Cake about this passage…",
+      inputLabel: () => "Message about selected code",
+      canSubmit: (draft) => Boolean(draft.trim()),
+      submit: async () => true
+    }));
+    const comments = { threadsForMessage: () => [], prepareDraft: vi.fn(), draftChatStore: draftChat } as unknown as MessageCommentsStore;
+    act(() => root.render(<Transcript
+      parts={[{ id: "assistant-code", kind: "text", role: "assistant", entryId: "entry-code", text: "```tsx\nconst value = 42;\n```", status: "complete" }]}
+      sessionId="session-1"
+      isStreaming={false}
+      behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, messageComments: comments }}
+      empty={<div />}
+    />));
+
+    const content = container.querySelector<HTMLElement>(".assistant-message-content")!;
+    const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+    let codeText: Node | null = walker.nextNode();
+    while (codeText && !codeText.textContent?.includes("const value = 42")) codeText = walker.nextNode();
+    expect(codeText).not.toBeNull();
+    const start = codeText!.textContent!.indexOf("value");
+    const range = document.createRange();
+    range.setStart(codeText!, start);
+    range.setEnd(codeText!, start + "value".length);
+    const browserSelection = window.getSelection()!;
+    browserSelection.removeAllRanges();
+    browserSelection.addRange(range);
+    const codeBlock = codeText!.parentElement!.closest("[data-streamdown='code-block'], pre, code")!;
+    codeBlock.addEventListener("mouseup", (event) => event.stopPropagation());
+    act(() => codeBlock.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })));
+    act(() => vi.advanceTimersByTime(MESSAGE_COMMENT_SELECTION_DELAY_MS));
+
+    expect(document.body.querySelector<HTMLButtonElement>(".message-selection-action")?.textContent).toBe("Chat about this");
     browserSelection.removeAllRanges();
     draftChat[Symbol.dispose]();
     vi.useRealTimers();
@@ -473,6 +558,8 @@ describe("Transcript scrolling", () => {
     const chat = document.body.querySelector('[role="dialog"][aria-label="Selection chat"]');
     expect(chat?.textContent).toContain("Why this word?");
     expect(chat?.textContent).toContain("Because it carries the point.");
+    expect(chat?.querySelector(".chat-layout-embedded > .transcript")).not.toBeNull();
+    expect(chat?.querySelector(".assistant-message .assistant-message-actions")).not.toBeNull();
     expect(chat?.textContent).not.toContain("Resolve chat");
     expect(chat?.textContent).not.toContain("Reopen chat");
     expect(chat?.querySelector(".chat-embedded-workbench-composer")).not.toBeNull();

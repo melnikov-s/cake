@@ -1,13 +1,9 @@
-import { forwardRef, type ComponentProps, type ReactNode, type RefObject } from "react";
+import type { ReactNode } from "react";
 import { observer } from "r-state-tree/react";
-import { Conversation } from "@/components/ai-elements/conversation";
-import { Markdown } from "@/components/ai-elements/markdown";
-import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
 import { Button } from "@/components/ui/button";
-import { LoadingState } from "@/components/ui/loading-state";
 import { ChatComposer } from "@/components/chat-composer";
+import { ChatTranscript, type ChatTranscriptBehavior } from "@/components/chat-transcript";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
-import type { UiPart } from "../../ipc/session-contract";
 import type { ChatStore } from "../stores/ChatStore";
 
 function Icon({ children }: { children: ReactNode }) {
@@ -16,40 +12,6 @@ function Icon({ children }: { children: ReactNode }) {
 
 const PaperclipIcon = () => <Icon><path d="m20.5 11.5-8.9 8.9a6 6 0 0 1-8.5-8.5l9.6-9.6a4 4 0 0 1 5.7 5.7l-9.6 9.6a2 2 0 1 1-2.8-2.8l8.9-8.9" /></Icon>;
 const SendIcon = () => <Icon><path d="m5 12 7-7 7 7M12 19V5" /></Icon>;
-
-export function chatWorkIsActive(parts: UiPart[], streaming: boolean, submitting: boolean) {
-  if (streaming) return true;
-  if (!submitting) return false;
-  const latestUserIndex = parts.findLastIndex((part) => (part.kind === "text" && part.role === "user") || (part.kind === "attachment" && part.attachmentKind === "image"));
-  return latestUserIndex < 0 || latestUserIndex === parts.length - 1;
-}
-
-export const ChatTextMessage = forwardRef<HTMLElement, {
-  part: Extract<UiPart, { kind: "text" }>;
-  contentRef?: RefObject<HTMLDivElement | null>;
-  onMouseUp?: ComponentProps<"div">["onMouseUp"];
-  children?: ReactNode;
-}>(function ChatTextMessage({ part, contentRef, onMouseUp, children }, ref) {
-  const assistant = part.role === "assistant";
-  const userLabel = part.deliveryState === "queued" ? "You · queued" : part.deliveryState === "steering" ? "You · steering next" : part.deliveryState === "sending" ? "You · sending" : "You";
-  return <Message ref={ref} className={assistant ? "assistant-message mr-auto w-full" : "ml-auto w-[min(88%,42rem)]"}>
-    <MessageLabel>{assistant ? part.status === "streaming" ? "Cake · working" : "Cake" : userLabel}</MessageLabel>
-    <MessageContent ref={contentRef} className={assistant ? "assistant-message-content" : "user-message"} onMouseUp={onMouseUp}>
-      <Markdown>{part.text}</Markdown>
-    </MessageContent>
-    {children}
-  </Message>;
-});
-
-const DefaultChatTranscript = observer(function DefaultChatTranscript({ store, empty }: { store: ChatStore; empty?: ReactNode }) {
-  const textParts = store.parts.filter((part): part is Extract<UiPart, { kind: "text" }> => part.kind === "text");
-  const showLoading = chatWorkIsActive(store.parts, store.streaming, store.submitting);
-  return <div className="transcript chat-basic-transcript"><Conversation>
-    {textParts.length === 0 ? empty : textParts.map((part) => <ChatTextMessage key={part.id} part={part} />)}
-    {showLoading && <LoadingState />}
-    {store.error?.message && <div className="notice notice-error" role="alert"><strong>{store.error.title ?? "Operation failed"}</strong><span>{store.error.message}</span></div>}
-  </Conversation></div>;
-});
 
 function Usage({ store }: { store: ChatStore }) {
   const usage = store.usage;
@@ -61,11 +23,12 @@ function Usage({ store }: { store: ChatStore }) {
   return <div className="session-usage" aria-label={`${contextLabel}, session cost $${usage.cost.toFixed(3)}`} title={`${contextTitle} · ${usage.tokens.total.toLocaleString()} billed tokens`}><svg className="context-gauge" viewBox="0 0 36 36" aria-hidden="true"><circle className="context-gauge-track" cx="18" cy="18" r="15.5" pathLength="100" /><circle className="context-gauge-value" cx="18" cy="18" r="15.5" pathLength="100" strokeDasharray={`${Math.min(100, percent ?? 0)} 100`} /><text x="18" y="18">{percent === undefined ? "—" : `${percent}%`}</text></svg><span className="session-cost">${usage.cost.toFixed(3)}</span></div>;
 }
 
-export const Chat = observer(function Chat({ store, transcript, empty, footer, status, composerContent, pluginActions, className = "", embedded = false, composerOnly = false, onSubmitted }: {
+export const Chat = observer(function Chat({ store, transcriptBehavior, empty, footer, error, status, composerContent, pluginActions, className = "", embedded = false, composerOnly = false, onSubmitted }: {
   store: ChatStore;
-  transcript?: ReactNode;
+  transcriptBehavior?: ChatTranscriptBehavior;
   empty?: ReactNode;
   footer?: ReactNode;
+  error?: { message: string; details?: string; title?: string };
   status?: ReactNode;
   composerContent?: ReactNode;
   pluginActions?: ReactNode;
@@ -104,5 +67,8 @@ export const Chat = observer(function Chat({ store, transcript, empty, footer, s
     {status}
   </div>;
   if (composerOnly) return composer;
-  return <div className={`chat-layout ${className}`.trim()}>{transcript ?? <DefaultChatTranscript store={store} empty={empty} />}{footer}{composer}</div>;
+  return <div className={`chat-layout${embedded ? " chat-layout-embedded" : ""} ${className}`.trim()}>
+    <ChatTranscript store={store} behavior={transcriptBehavior} empty={empty} footer={footer} error={error} renderChat={(nestedStore, nestedOnSubmitted, options) => <Chat store={nestedStore} embedded composerOnly={options?.composerOnly} onSubmitted={nestedOnSubmitted} />} />
+    {composer}
+  </div>;
 });

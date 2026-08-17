@@ -120,7 +120,7 @@ export function PopoverContent({ align = "center", children, className, offset =
     document.addEventListener("keydown", escape);
     document.addEventListener("scroll", reposition, true);
     window.addEventListener("resize", reposition);
-    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(reposition);
+    const observer = "ResizeObserver" in globalThis ? new globalThis.ResizeObserver(reposition) : undefined;
     if (contentRef.current) observer?.observe(contentRef.current);
     if (triggerRef.current) observer?.observe(triggerRef.current);
     return () => {
@@ -132,7 +132,7 @@ export function PopoverContent({ align = "center", children, className, offset =
     };
   }, [open, setOpen, triggerRef, updatePosition]);
 
-  if (!open || typeof document === "undefined") return null;
+  if (!open || !("document" in globalThis)) return null;
   return createPortal(<div
     {...props}
     id={contentId}
