@@ -13,7 +13,7 @@ test("builds, activates, persists, recovers, and disables a failed plugin render
   const plugin = join(cakeHome, "plugins", "smoke.example");
   await Promise.all([mkdir(plugin, { recursive: true }), mkdir(userData, { recursive: true })]);
   await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 2, id: "smoke.example", name: "Smoke Example", renderer: "index.tsx", backend: "backend.ts", scene: "scene.tsx", activeScene: true }));
-  await writeFile(join(plugin, "backend.ts"), `import { execFile } from "node:child_process"; import { readFile } from "node:fs/promises"; import { promisify } from "node:util"; import { definePluginBackend } from "cake/backend"; const run = promisify(execFile); export default definePluginBackend({ methods: { async capabilities() { await readFile(new URL(import.meta.url)); const { stdout } = await run("git", ["--version"]); return { marker: "BACKEND_OK", git: stdout.trim() }; } } });\n`);
+  await writeFile(join(plugin, "backend.ts"), `import { execFile } from "node:child_process"; import { readFile, writeFile } from "node:fs/promises"; import { promisify } from "node:util"; import { definePluginBackend } from "cake/backend"; const run = promisify(execFile); export default definePluginBackend({ methods: { async capabilities() { await readFile(new URL(import.meta.url)); const target = ${JSON.stringify(join(temporaryRoot, "backend-output.txt"))}; await writeFile(target, "FILE_WRITE_OK"); const file = await readFile(target, "utf8"); const network = await fetch("data:text/plain,FIXTURE_NETWORK_OK").then((response) => response.text()); const { stdout } = await run("git", ["--version"]); return { marker: "BACKEND_OK", file, network, git: stdout.trim() }; } } });\n`);
   const writePlugin = (label: string) => writeFile(join(plugin, "index.tsx"), `import { useState } from "react"; import { definePlugin, usePluginBackend } from "cake"; function Badge() { const backend = usePluginBackend("smoke.example"); const [result, setResult] = useState(""); return <button id="plugin-marker" onClick={() => void backend.call("capabilities").then((value) => setResult(JSON.stringify(value)))}>${label} {result}</button>; } export default definePlugin({ id: "smoke.example", contributions: { Badge }, slots: { "global.sidebar.header": [{ id: "badge", component: Badge }] } });\n`);
   await writePlugin("PLUGIN_V1");
   await writeFile(join(plugin, "scene.tsx"), `import { DefaultScene } from "cake"; export default function Scene() { return <DefaultScene />; }\n`);
@@ -32,6 +32,8 @@ test("builds, activates, persists, recovers, and disables a failed plugin render
     await expect(page.locator("#plugin-marker")).toContainText("PLUGIN_V1", { timeout: 20_000 });
     await page.locator("#plugin-marker").click();
     await expect(page.locator("#plugin-marker")).toContainText("BACKEND_OK", { timeout: 20_000 });
+    await expect(page.locator("#plugin-marker")).toContainText("FILE_WRITE_OK");
+    await expect(page.locator("#plugin-marker")).toContainText("FIXTURE_NETWORK_OK");
     await expect.poll(() => page.evaluate(async () => (await (window as unknown as { cake: { request(input: unknown): Promise<{ state?: { pendingRevision?: string; activeRevision?: string } }> } }).cake.request({ type: "get-customization-state" })).state)).toMatchObject({ pendingRevision: undefined, activeRevision: expect.any(String) });
 
     await page.evaluate(async () => {

@@ -22,6 +22,7 @@ import { PluginPersistenceRepository } from "./plugin-persistence-repository";
 import { PluginBackendManager } from "./plugin-backend-manager";
 import { compileInlineWidget, extractRepairedWidget } from "./inline-widget-service";
 import { handleInlineWidgetScheme, publishInlineWidget, registerInlineWidgetScheme } from "./inline-widget-protocol";
+import { PluginAgentHost, resolveAgentModel } from "./plugin-agent-host";
 
 app.setName("Cake");
 registerInlineWidgetScheme();
@@ -70,6 +71,7 @@ const pluginBackends = new PluginBackendManager(
   }
 );
 const pluginPersistence = new PluginPersistenceRepository(cakePaths.state, () => pluginActivation.snapshot().activeRevision);
+const pluginCompletionControllers = new Map<string, AbortController>();
 interface PluginAgentResources { skills: string[]; prompts: string[]; extensions: string[] }
 let pluginAgentResources: PluginAgentResources = { skills: [], prompts: [], extensions: [] };
 const artifactRepository = new ArtifactRepository(join(app.getPath("userData"), "artifacts"));
@@ -91,6 +93,12 @@ const globalChatDriver = new GlobalChatDriver({
     if (event.type === "global-chat-control-request" && globalChatController && !globalChatController.isDestroyed()) sendTo(globalChatController, event);
     else broadcast(event);
   }
+});
+const pluginAgents = new PluginAgentHost({
+  agentDir: cakePaths.piAgent,
+  utilityModel: () => applicationModel.utilityModel,
+  driver: (workspacePath) => launchPi(workspacePath).driver,
+  emit: sendTo
 });
 
 function sendTo(target: WebContents, event: DesktopEvent) {
@@ -159,12 +167,14 @@ function launchPi(path: string) {
     agentDir: cakePaths.piAgent,
     sessionDir: cakePaths.piSessions,
     widgetSessionDir: cakePaths.piWidgetSessions,
+    pluginAgentSessionDir: cakePaths.piPluginAgentSessions,
     emit: broadcast,
     artifactRepository,
     reviewRepository,
     pluginResources: pluginAgentResources,
     isTrusted: () => applicationModel.isProjectTrusted(path),
     utilityModel: () => applicationModel.utilityModel,
+    resolveAgentModel: (preference, snapshot) => resolveAgentModel(preference, snapshot, applicationModel.utilityModel),
     openExternal: async (url) => {
       const protocol = new URL(url).protocol;
       if (protocol !== "https:" && protocol !== "http:") throw new Error("Authentication URL must use HTTP or HTTPS");
@@ -238,6 +248,7 @@ function createWindow(slot = nextWindowSlot++) {
     windowSlots.delete(webContentsId);
     windowWorkspaces.delete(webContentsId);
     clearPendingTrustRequests(webContentsId);
+    pluginAgents.disposeOwner(webContentsId);
     windowCustomizationRevisions.delete(webContentsId);
     const healthTimer = customizationHealthTimers.get(webContentsId); if (healthTimer) clearTimeout(healthTimer);
     customizationHealthTimers.delete(webContentsId);
@@ -471,6 +482,38 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
   if (request.type === "cancel-plugin-backend-call") {
     pluginBackends.cancel(request.pluginId, request.callId);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.callId });
+  }
+  if (request.type === "open-plugin-agent") {
+    if (!owner) throw new Error("Plugin agents require an application window");
+    return desktopResponseSchema.parse({ type: "plugin-agent-snapshot", snapshot: await pluginAgents.open(event.sender, request.pluginId, request.options, request.implicitSession) });
+  }
+  if (request.type === "prompt-plugin-agent") {
+    if (!owner) throw new Error("Plugin agents require an application window");
+    return desktopResponseSchema.parse({ type: "plugin-agent-snapshot", snapshot: await pluginAgents.command(event.sender, request.pluginId, request.handleId, request.delivery, request.text) });
+  }
+  if (request.type === "abort-plugin-agent") {
+    if (!owner) throw new Error("Plugin agents require an application window");
+    return desktopResponseSchema.parse({ type: "plugin-agent-snapshot", snapshot: await pluginAgents.abort(event.sender, request.pluginId, request.handleId) });
+  }
+  if (request.type === "detach-plugin-agent") {
+    if (!owner) throw new Error("Plugin agents require an application window");
+    pluginAgents.detach(event.sender, request.pluginId, request.handleId);
+    return desktopResponseSchema.parse({ type: "plugin-agent-detached", handleId: request.handleId });
+  }
+  if (request.type === "run-plugin-completion") {
+    const key = `${event.sender.id}:${request.pluginId}:${request.requestId}`;
+    const controller = new AbortController();
+    pluginCompletionControllers.set(key, controller);
+    try {
+      const result = await pluginAgents.complete(request.pluginId, request.request, request.implicitSession, controller.signal);
+      return desktopResponseSchema.parse({ type: "plugin-completion-result", requestId: request.requestId, result });
+    } finally {
+      if (pluginCompletionControllers.get(key) === controller) pluginCompletionControllers.delete(key);
+    }
+  }
+  if (request.type === "cancel-plugin-completion") {
+    pluginCompletionControllers.get(`${event.sender.id}:${request.pluginId}:${request.requestId}`)?.abort();
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "open-global-chat") {
     globalChatController = event.sender;

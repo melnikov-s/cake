@@ -21,6 +21,7 @@ export const SettingsPage = observer(function SettingsPage({ store, settings, co
   const providerGroups = configuration?.modelsByProvider ?? [];
   const utilityModel = settings.utilityModel;
   const utilityModelValue = utilityModel ? `${utilityModel.provider}/${utilityModel.modelId}` : "";
+  const defaultModelValue = pi?.defaultProvider && pi.defaultModel ? `${pi.defaultProvider}/${pi.defaultModel}` : "";
   return (
     <div className="settings-page">
       <div className="settings-intro">
@@ -37,6 +38,14 @@ export const SettingsPage = observer(function SettingsPage({ store, settings, co
           <div className="settings-field"><span>Model<small>The model Pi uses for its next response.</small></span><ModelCombobox ariaLabel="Settings model" groups={configuration?.connectedModelsByProvider ?? []} value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onSelect={(value) => void configuration?.selectModel(value)} variant="settings" /></div>
           <label><span>Reasoning<small>Controls how much time Pi spends thinking.</small></span><ThinkingLevelSelect ariaLabel="Settings thinking level" value={store.session.thinkingLevel} levels={store.session.availableThinkingLevels} onSelect={(level) => void configuration?.selectThinkingLevel(level)} /></label>
         </div> : <p className="settings-empty">Open a project or start a one-off chat to choose a model and reasoning level.</p>}
+      </section>
+
+      <section className="settings-section" aria-labelledby="default-model-title">
+        <header><div><h2 id="default-model-title">Default agent model</h2><p>Pi’s own default profile for new project chats and plugin agents.</p></div><span className="settings-source">Pi global</span></header>
+        {pi ? <div className="settings-fields">
+          <div className="settings-field"><span>Model<small>Used when a plugin requests the default profile.</small></span><ModelCombobox ariaLabel="Default agent model" groups={configuration?.connectedModelsByProvider ?? []} value={defaultModelValue} onSelect={(value) => { const separator = value.indexOf("/"); if (separator > 0) void settings.setPiSetting({ key: "defaultModel", provider: value.slice(0, separator), modelId: value.slice(separator + 1) }); }} variant="settings" /></div>
+          <label><span>Reasoning<small>The reasoning effort attached to Pi’s default profile.</small></span><ThinkingLevelSelect ariaLabel="Default agent thinking level" value={pi.defaultThinkingLevel ?? "off"} levels={thinkingLevelSchema.options} onSelect={(value) => void settings.setPiSetting({ key: "defaultThinkingLevel", value })} /></label>
+        </div> : <p className="settings-empty">Open a chat to load Pi’s defaults.</p>}
       </section>
 
       <section className="settings-section" aria-labelledby="utility-model-title">

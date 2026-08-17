@@ -21,6 +21,7 @@ import type { ReviewAnchor, ReviewThread } from "../ipc/review-contract";
 import type { CustomizationState, PluginDiagnostic, PluginStatus } from "../plugin/plugin-contract";
 import type { CompiledInlineWidget, InlineWidgetCapability, InlineWidgetLanguage, RepairedInlineWidget } from "../ipc/inline-widget-contract";
 import type { JsonObject, JsonValue } from "../ipc/json-contract";
+import type { PluginAgentOpenOptions, PluginAgentSnapshot, PluginCompletionRequest, PluginCompletionResult, SessionRef } from "../ipc/plugin-agent-contract";
 
 export type PiState = "starting" | "ready" | "stopped" | "failed";
 
@@ -62,7 +63,8 @@ export type DesktopClientEvent =
     }
   | { type: "operation-completed"; operationId: string }
   | { type: "operation-failed"; operationId?: string; message: string }
-  | { type: "customization-state-changed"; state: CustomizationState };
+  | { type: "customization-state-changed"; state: CustomizationState }
+  | { type: "plugin-agent-event"; pluginId: string; snapshot: PluginAgentSnapshot };
 
 export interface DesktopClient {
   chooseProject(): Promise<string | undefined>;
@@ -81,6 +83,12 @@ export interface DesktopClient {
   setPluginEnabled(pluginId: string, enabled: boolean): Promise<PluginStatus[]>;
   setActiveScene(pluginId?: string): Promise<PluginStatus[]>;
   deletePlugin(pluginId: string): Promise<PluginStatus[]>;
+  openPluginAgent(pluginId: string, options: PluginAgentOpenOptions, implicitSession?: SessionRef): Promise<PluginAgentSnapshot>;
+  promptPluginAgent(pluginId: string, handleId: string, delivery: "prompt" | "steer" | "follow-up", text: string): Promise<PluginAgentSnapshot>;
+  abortPluginAgent(pluginId: string, handleId: string): Promise<PluginAgentSnapshot>;
+  detachPluginAgent(pluginId: string, handleId: string): Promise<void>;
+  runPluginCompletion(pluginId: string, requestId: string, request: PluginCompletionRequest, implicitSession?: SessionRef): Promise<PluginCompletionResult>;
+  cancelPluginCompletion(pluginId: string, requestId: string): Promise<void>;
   chooseAttachments(): Promise<Attachment[]>;
   suggestFiles(workspacePath: string, prefix: string): Promise<FileSuggestion[]>;
   listWorkspaceFiles(workspacePath: string): Promise<string[]>;
@@ -145,6 +153,7 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
   if (event.type === "global-chat-operation-failed") return { type: event.type, operationId: event.requestId, message: event.message };
   if (event.type === "global-chat-control-request") return { type: "global-chat-control-requested", controlRequestId: event.controlRequestId, invocation: event.invocation };
   if (event.type === "extension-ui") return { type: "extension-ui-received", sessionId: event.sessionId, event: event.event };
+  if (event.type === "plugin-agent-event") return event;
   if (event.type === "artifact-updated") return event;
   if (event.type === "artifact-requested") return { type: "artifact-requested", operationId: event.requestId, artifactRequestId: event.artifactRequestId, record: event.record };
   if (event.type === "review-threads-snapshot") return { type: "review-threads-received", workspacePath: event.workspacePath, sessionId: event.sessionId, threads: event.threads };
@@ -244,6 +253,33 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       const response = await bridge.request({ type: "delete-plugin", pluginId });
       if (response.type !== "plugins-listed") throw new Error("Cake could not delete the plugin");
       return response.plugins;
+    },
+    async openPluginAgent(pluginId, options, implicitSession) {
+      const response = await bridge.request({ type: "open-plugin-agent", pluginId, options, implicitSession });
+      if (response.type !== "plugin-agent-snapshot") throw new Error("Cake could not open the plugin agent");
+      return response.snapshot;
+    },
+    async promptPluginAgent(pluginId, handleId, delivery, text) {
+      const response = await bridge.request({ type: "prompt-plugin-agent", pluginId, handleId, delivery, text });
+      if (response.type !== "plugin-agent-snapshot") throw new Error("Cake could not prompt the plugin agent");
+      return response.snapshot;
+    },
+    async abortPluginAgent(pluginId, handleId) {
+      const response = await bridge.request({ type: "abort-plugin-agent", pluginId, handleId });
+      if (response.type !== "plugin-agent-snapshot") throw new Error("Cake could not abort the plugin agent");
+      return response.snapshot;
+    },
+    async detachPluginAgent(pluginId, handleId) {
+      const response = await bridge.request({ type: "detach-plugin-agent", pluginId, handleId });
+      if (response.type !== "plugin-agent-detached" || response.handleId !== handleId) throw new Error("Cake could not detach the plugin agent");
+    },
+    async runPluginCompletion(pluginId, requestId, request, implicitSession) {
+      const response = await bridge.request({ type: "run-plugin-completion", pluginId, requestId, request, implicitSession });
+      if (response.type !== "plugin-completion-result" || response.requestId !== requestId) throw new Error("Cake received a mismatched plugin completion");
+      return response.result;
+    },
+    async cancelPluginCompletion(pluginId, requestId) {
+      await bridge.request({ type: "cancel-plugin-completion", pluginId, requestId });
     },
     async chooseAttachments() {
       const response = await bridge.request({ type: "choose-attachments" });

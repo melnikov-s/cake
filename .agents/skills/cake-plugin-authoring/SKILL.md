@@ -93,6 +93,63 @@ plugin-owned UI state. Components reading Cake Stores use `observer` and
 values; never persist runtime resources such as promises, timers, controllers,
 or subscriptions.
 
+### Renderer contribution lifecycle
+
+Treat every contribution as unmountable at any time and clean up all effects.
+In Cake's default scene, changing the selected `(workspacePath, sessionId)`
+unmounts the complete `project-session.*` subtree and mounts fresh contribution
+instances under the newly selected session. React-local state, refs, pending
+effects, and subscriptions from the previous instance do not carry across the
+switch, even though Cake may retain that session's Store in its window registry.
+The new instance obtains the new target from `usePluginSession()`.
+
+Within one selected session, a contribution may rerender as its observed Store
+data changes. Drive work that must refresh after a completed turn from an
+authoritative reactive value or host event, not merely from the component's
+initial mount. Do not assume that putting `workspacePath` or `sessionId` in an
+effect dependency array makes one `project-session.*` instance survive a session
+switch; the default scene replaces that instance.
+
+`global.*` contributions normally remain mounted while the user changes
+sessions or opens Cake Chat and Settings. Derive the active target reactively
+when global UI follows selection, and cancel target-scoped work when that target
+changes. Plugin activation, renderer reload, recovery, a custom scene, or outlet
+removal may still unmount any global or session contribution, so never depend on
+mount permanence.
+
+For asynchronous work, create an `AbortController` or equivalent resource in an
+effect, capture the exact target and source revision, cancel it in cleanup, and
+ignore stale results. Put durable serializable state or per-session caches in
+the appropriate plugin persistence scope, keyed by session identity and source
+revision; do not rely on component-local state to survive navigation. Backend
+process lifetime is plugin-wide rather than contribution-wide, so unsubscribe
+from backend events on unmount and send explicit target identity with every
+targeted call.
+
+### Choosing backend, completion, or agent work
+
+Use the smallest host path that fits the requested behavior:
+
+- Use `usePluginBackend(pluginId)` for deterministic privileged operations.
+  Network fetches, file reads/writes (including outside the selected project),
+  Git, `execFile`, Bash, and other subprocesses belong in an unrestricted Node
+  backend. Create the plugin with `backend: true`; do not expand renderer imports.
+- Use `usePluginCompletion()` for bounded summaries, classification, extraction,
+  or formatting that needs no tools and no durable transcript. Trigger derived
+  work from `usePluginSessionActivity().settledRevision`, and cache by plugin,
+  session ref, revision, prompt version, and resolved model.
+- Use `usePluginAgent()` for open-ended, multi-turn, tool-using work. `new`,
+  `attach`, and `fork` default to the selected workspace/session inside
+  `project-session.*`. The handle supports repeated `prompt`, `steer`, and
+  `followUp` calls plus explicit `abort`.
+
+Agent observation detaches on unmount while durable work continues. Pass
+`{ abortOnUnmount: true }` only when work belongs to the mounted view. Model
+preferences are `utility`, `default`, `current`, and `exact`; inspect
+`resolvedModel` for the selected provider/model and preflight fallback reasons.
+Delegated inline widgets never receive backend, completion, agent, filesystem,
+network, Node, Electron, Cake, or raw Pi authority.
+
 ## Backend source
 
 Backend source imports `definePluginBackend` from `cake/backend`. It otherwise
@@ -142,9 +199,12 @@ replaced by a plugin.
    concurrent conflict.
 6. Verify automatic registration, each intended slot, commands, reactive Store
    reads, persistence hydration, backend calls/events/cancellation, and cleanup
-   on replacement. A custom scene that omits a contributed canonical slot must
-   do so intentionally; resolve Settings warnings for accidental missing or
-   duplicate outlets.
+   on replacement. For `project-session.*` UI, switch between two sessions and
+   verify fresh target data, effect cleanup, stale-result rejection, and any
+   intended cache hydration. For `global.*` UI that follows selection, verify it
+   updates without retaining work from the previous target. A custom scene that
+   omits a contributed canonical slot must do so intentionally; resolve Settings
+   warnings for accidental missing or duplicate outlets.
 7. Check responsive behavior from 320 CSS pixels through wide desktop sizes and
    with long values. Use wrapping normal-flow flex/grid, reserve icon space, set
    `min-width: 0` on shrinkable children, and avoid absolute/fixed positioning

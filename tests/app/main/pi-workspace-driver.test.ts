@@ -26,6 +26,23 @@ const snapshot: SessionSnapshot = {
 };
 
 describe("PiWorkspaceDriver", () => {
+  it("coordinates concurrent attaches through one writable runtime", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const runtime: CakeRuntime = {
+      sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile,
+      snapshot: vi.fn(async () => snapshot), prompt: vi.fn(async () => undefined), abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), recordReviewRun: vi.fn(), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
+    };
+    const createRuntime = vi.fn(async () => { await gate; return runtime; });
+    const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", emit: vi.fn(), createRuntime });
+    const first = driver.openAgent({ target: { kind: "attach", sessionId: snapshot.sessionId } });
+    const second = driver.openAgent({ target: { kind: "attach", sessionId: snapshot.sessionId } });
+    release();
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+    expect(createRuntime).toHaveBeenCalledOnce();
+    driver[Symbol.dispose]();
+  });
+
   it("treats a workspace outside Git as having no session changes", async () => {
     const events: DesktopEvent[] = [];
     const runtime: CakeRuntime = {

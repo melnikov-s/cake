@@ -2,7 +2,9 @@ import type { AgentSession, SettingsManager } from "@earendil-works/pi-coding-ag
 import type { PiSettingUpdate } from "../ipc/session-contract";
 
 export function applyPiSetting(settingsManager: SettingsManager, session: AgentSession, update: PiSettingUpdate) {
-  if (update.key === "autoCompact") session.setAutoCompactionEnabled(update.value);
+  if (update.key === "defaultModel") settingsManager.setDefaultModelAndProvider(update.provider, update.modelId);
+  else if (update.key === "defaultThinkingLevel") settingsManager.setDefaultThinkingLevel(update.value);
+  else if (update.key === "autoCompact") session.setAutoCompactionEnabled(update.value);
   else if (update.key === "autoResizeImages") settingsManager.setImageAutoResize(update.value);
   else if (update.key === "blockImages") settingsManager.setBlockImages(update.value);
   else if (update.key === "enableSkillCommands") settingsManager.setEnableSkillCommands(update.value);

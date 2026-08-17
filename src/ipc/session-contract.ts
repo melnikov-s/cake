@@ -37,6 +37,9 @@ const piPackageSourceSchema = z.union([
 ]);
 
 export const piSettingsSchema = z.object({
+  defaultProvider: z.string().max(256).optional(),
+  defaultModel: z.string().max(512).optional(),
+  defaultThinkingLevel: thinkingLevelSchema.optional(),
   autoCompact: z.boolean(),
   autoResizeImages: z.boolean(),
   blockImages: z.boolean(),
@@ -67,6 +70,8 @@ export const piSettingsSchema = z.object({
 });
 
 export const piSettingUpdateSchema = z.discriminatedUnion("key", [
+  z.object({ key: z.literal("defaultModel"), provider: z.string().min(1).max(256), modelId: z.string().min(1).max(512) }),
+  z.object({ key: z.literal("defaultThinkingLevel"), value: thinkingLevelSchema }),
   z.object({ key: z.literal("autoCompact"), value: z.boolean() }),
   z.object({ key: z.literal("autoResizeImages"), value: z.boolean() }),
   z.object({ key: z.literal("blockImages"), value: z.boolean() }),

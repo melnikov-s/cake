@@ -205,13 +205,34 @@ adapters, approved Stores and components, and styling utilities. Workflow
 Stores remain internal. Components reading Cake state must use `observer`.
 
 `usePluginSession()` exposes the selected project session's `workspacePath`,
-Pi `sessionId`, and an `openChanges()` host intent. Use the workspace path as an
+Pi `sessionId`, opaque `workspace` and `ref` values, and an `openChanges()` host intent. Use the workspace path as an
 explicit input to backend Git/filesystem methods; never guess a repository from
 the backend process working directory. `openChanges()` opens Cake's native
 Changes surface for that same selected session and rejects if the contribution
 became stale after a session switch. The hook is valid only in
 `project-session.*` contributions or custom-scene branches that render while a
 project session is selected.
+
+Trusted contributions use three distinct execution paths. Use
+`usePluginBackend(pluginId)` for deterministic privileged Node work such as
+network, filesystem, Git, and subprocess operations. Use
+`usePluginCompletion()` for bounded, tool-less transformations over a
+host-selected session slice. Use `usePluginAgent()` for durable, multi-turn,
+tool-using Pi work that creates, attaches to, or forks a session. Inside a
+`project-session.*` contribution, omitted targets resolve to the selected
+session or workspace.
+
+`usePluginSessionActivity()` exposes streaming state, a settled source
+revision, the branch leaf, and the last message ID. Derived widgets refresh on
+settled revisions rather than streamed tokens. Completion calls are
+take-latest and cancellable. Agent observation detaches on unmount while durable
+work continues; `{ abortOnUnmount: true }` opts into view-scoped cancellation.
+
+Agent and completion model preferences are utility, Pi default, current
+session, or an exact provider/model. Preflight fallback is observable in the
+returned resolved-model metadata; provider failures after execution begins are
+surfaced without another-model retry. These APIs exist only in the trusted
+plugin renderer graph. Delegated inline widgets receive none of them.
 
 Mounted commands registered with `useCommand(pluginId, name, command)` are
 removed on unmount. Headless commands come from `definePlugin`. Internal names

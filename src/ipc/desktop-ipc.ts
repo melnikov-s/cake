@@ -5,6 +5,7 @@ import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { customizationStateSchema, pluginBackendEventSchema, pluginDiagnosticSchema, pluginIdSchema, pluginPersistenceKeySchema, pluginPersistenceRecordSchema, pluginPersistenceScopeSchema, pluginStatusSchema } from "../plugin/plugin-contract";
 import { compiledInlineWidgetSchema, inlineWidgetCapabilitySchema, inlineWidgetLanguageSchema, inlineWidgetSourceSchema, repairedInlineWidgetSchema } from "./inline-widget-contract";
 import { jsonObjectSchema, jsonValueSchema } from "./json-contract";
+import { pluginAgentOpenOptionsSchema, pluginAgentSnapshotSchema, pluginCompletionRequestSchema, pluginCompletionResultSchema, sessionRefSchema } from "./plugin-agent-contract";
 import {
   applicationStateSchema,
   attachmentSchema,
@@ -64,6 +65,7 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("fatal"), requestId: z.uuid().optional(), message: ipcProjectionString(2_048) })
   ,pluginBackendEventSchema.extend({ type: z.literal("plugin-backend-event") })
   ,z.object({ type: z.literal("customization-state-changed"), state: customizationStateSchema })
+  ,z.object({ type: z.literal("plugin-agent-event"), pluginId: pluginIdSchema, snapshot: pluginAgentSnapshotSchema })
 ]);
 
 export const desktopRequestSchema = z.discriminatedUnion("type", [
@@ -87,6 +89,12 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("delete-plugin"), pluginId: pluginIdSchema }),
   z.object({ type: z.literal("call-plugin-backend"), pluginId: pluginIdSchema, callId: z.uuid(), method: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/).max(256), input: jsonValueSchema }),
   z.object({ type: z.literal("cancel-plugin-backend-call"), pluginId: pluginIdSchema, callId: z.uuid() }),
+  z.object({ type: z.literal("open-plugin-agent"), pluginId: pluginIdSchema, options: pluginAgentOpenOptionsSchema, implicitSession: sessionRefSchema.optional() }),
+  z.object({ type: z.literal("prompt-plugin-agent"), pluginId: pluginIdSchema, handleId: z.uuid(), delivery: z.enum(["prompt", "steer", "follow-up"]), text: z.string().min(1).max(262_144) }),
+  z.object({ type: z.literal("abort-plugin-agent"), pluginId: pluginIdSchema, handleId: z.uuid() }),
+  z.object({ type: z.literal("detach-plugin-agent"), pluginId: pluginIdSchema, handleId: z.uuid() }),
+  z.object({ type: z.literal("run-plugin-completion"), pluginId: pluginIdSchema, requestId: z.uuid(), request: pluginCompletionRequestSchema, implicitSession: sessionRefSchema.optional() }),
+  z.object({ type: z.literal("cancel-plugin-completion"), pluginId: pluginIdSchema, requestId: z.uuid() }),
   z.object({ type: z.literal("load-plugin-state"), pluginId: pluginIdSchema, key: pluginPersistenceKeySchema, scope: pluginPersistenceScopeSchema }),
   z.object({ type: z.literal("save-plugin-state"), pluginId: pluginIdSchema, key: pluginPersistenceKeySchema, scope: pluginPersistenceScopeSchema, value: z.json(), expectedVersion: z.number().int().nonnegative().optional() }),
   z.object({ type: z.literal("choose-attachments") }),
@@ -164,6 +172,9 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("plugin-state"), record: pluginPersistenceRecordSchema.optional() }),
   z.object({ type: z.literal("plugins-listed"), plugins: z.array(pluginStatusSchema).max(1_000) }),
   z.object({ type: z.literal("plugin-backend-result"), callId: z.uuid(), ok: z.boolean(), value: jsonValueSchema.optional(), error: ipcProjectionString(32_768).optional() }),
+  z.object({ type: z.literal("plugin-agent-snapshot"), snapshot: pluginAgentSnapshotSchema }),
+  z.object({ type: z.literal("plugin-agent-detached"), handleId: z.uuid() }),
+  z.object({ type: z.literal("plugin-completion-result"), requestId: z.uuid(), result: pluginCompletionResultSchema }),
   z.object({ type: z.literal("attachments-chosen"), attachments: z.array(attachmentSchema).max(20) }),
   z.object({ type: z.literal("file-suggestions"), suggestions: z.array(fileSuggestionSchema).max(20) }),
   z.object({ type: z.literal("workspace-files"), files: z.array(z.string().min(1).max(8_192)).max(50_000) }),

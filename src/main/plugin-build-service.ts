@@ -193,7 +193,10 @@ export class PluginBuildService {
         configFile: false,
         root: resolve(this.sourceRoot, "src/renderer"),
         base: "./",
-        define: { __CAKE_CUSTOMIZATION_REVISION__: JSON.stringify(revision) },
+        define: {
+          __CAKE_CUSTOMIZATION_REVISION__: JSON.stringify(revision),
+          __CAKE_ACTIVE_SCENE_PLUGIN_ID__: JSON.stringify(source.scenePluginId)
+        },
         resolve: { alias: [
           { find: "virtual:cake-scene", replacement: source.scene ?? resolve(this.sourceRoot, "src/renderer/factory-scene.tsx") },
           { find: "cake", replacement: resolve(this.sourceRoot, "src/renderer/cake.ts") },

@@ -26,6 +26,7 @@ import type {
 } from "../ipc/session-contract";
 import { piBuiltinSlashCommands, slashCommandSchema } from "../ipc/session-contract";
 import { jsonValueSchema, type JsonObject, type JsonValue } from "../ipc/json-contract";
+import { agentModelPreferenceSchema } from "../ipc/plugin-agent-contract";
 import { artifactRecordSchema, type ArtifactRecord, type ArtifactPointer, type CakeArtifactV1 } from "../ipc/artifact-contract";
 import type { TSchema } from "@earendil-works/pi-ai";
 import { createCakeArtifactExtension } from "./artifact-extension";
@@ -114,6 +115,7 @@ export interface CakeRuntimeOptions {
   sessionId?: string;
   sessionFile?: string;
   pluginResources?: { skills: string[]; prompts: string[]; extensions: string[] };
+  additionalSystemPrompt?: string;
   requestUi(request: RuntimeUiRequest): Promise<string | undefined>;
   persistArtifact?(artifact: CakeArtifactV1): Promise<ArtifactRecord>;
   requestArtifact?(record: ArtifactRecord, signal: AbortSignal): Promise<JsonValue | undefined>;
@@ -128,6 +130,12 @@ export interface CakeRuntimeOptions {
     tools: readonly GlobalControlTool[];
     recoveryContext?: string;
     invoke(input: { name: string; arguments: JsonValue }, signal: AbortSignal): Promise<JsonValue>;
+  };
+  agentControl?: {
+    open(input: { target: "new" | "attach" | "fork"; sessionId?: string; entryId?: string; visibility: "private" | "project"; model: z.infer<typeof agentModelPreferenceSchema>; instructions?: string }, parentSessionId: string, signal: AbortSignal): Promise<JsonValue>;
+    prompt(input: { handleId: string; text: string; delivery: "prompt" | "follow-up" }, parentSessionId: string, signal: AbortSignal): Promise<JsonValue>;
+    wait(handleId: string, parentSessionId: string, signal: AbortSignal): Promise<JsonValue>;
+    abort(handleId: string, parentSessionId: string): Promise<JsonValue>;
   };
   onEvent(event: CakeRuntimeEvent): void;
 }
@@ -154,6 +162,40 @@ function createGlobalControlExtension(control: NonNullable<CakeRuntimeOptions["g
         }
       });
     }
+  };
+}
+
+function createAgentControlExtension(control: NonNullable<CakeRuntimeOptions["agentControl"]>, parentSessionId: () => string | undefined): InlineExtension {
+  const openSchema = z.object({
+    target: z.enum(["new", "attach", "fork"]),
+    sessionId: z.string().min(1).max(256).optional(),
+    entryId: z.string().min(1).max(256).optional(),
+    visibility: z.enum(["private", "project"]).default("private"),
+    model: agentModelPreferenceSchema.default({ prefer: "current" }),
+    instructions: z.string().max(32_768).optional()
+  });
+  const promptSchema = z.object({ handleId: z.uuid(), text: z.string().min(1).max(262_144) });
+  const handleSchema = z.object({ handleId: z.uuid() });
+  const tools = [
+    { name: "agent_open", description: "Create, attach to, or fork a coordinated Cake Pi agent session.", schema: openSchema, run: (value: z.infer<typeof openSchema>, parent: string, signal: AbortSignal) => control.open(value, parent, signal) },
+    { name: "agent_prompt", description: "Send a normal prompt to an idle child agent and wait for its turn.", schema: promptSchema, run: (value: z.infer<typeof promptSchema>, parent: string, signal: AbortSignal) => control.prompt({ ...value, delivery: "prompt" }, parent, signal) },
+    { name: "agent_follow_up", description: "Queue a follow-up for a child agent using Pi's normal queue policy.", schema: promptSchema, run: (value: z.infer<typeof promptSchema>, parent: string, signal: AbortSignal) => control.prompt({ ...value, delivery: "follow-up" }, parent, signal) },
+    { name: "agent_wait", description: "Read the latest state of a child agent.", schema: handleSchema, run: (value: z.infer<typeof handleSchema>, parent: string, signal: AbortSignal) => control.wait(value.handleId, parent, signal) },
+    { name: "agent_abort", description: "Abort active work in a child agent.", schema: handleSchema, run: (value: z.infer<typeof handleSchema>, parent: string) => control.abort(value.handleId, parent) }
+  ];
+  return (pi) => {
+    for (const tool of tools) pi.registerTool({
+      name: tool.name,
+      label: tool.name.replaceAll("_", " "),
+      description: tool.description,
+      parameters: z.toJSONSchema(tool.schema) as TSchema,
+      async execute(_toolCallId, params, signal) {
+        const parent = parentSessionId();
+        if (!parent) throw new Error("The parent Cake session is not ready");
+        const result = await tool.run(tool.schema.parse(params) as never, parent, signal ?? new AbortController().signal);
+        return { content: [{ type: "text", text: formatUnknown(result, 24_000) }], details: result };
+      }
+    });
   };
 }
 
@@ -221,17 +263,20 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     noContextFiles: true,
     systemPrompt: `You are Cake Chat, Cake's application assistant. Help the user find, understand, navigate, and control their Cake sessions. Use the provided application tools instead of filesystem or shell tools. Earlier messages are part of the conversation; resolve follow-up references from them. Refresh live application state with tools when it may have changed. Never claim an action succeeded unless its tool result says it did.
 
+For Cake customizations, choose the execution path deliberately: deterministic network, filesystem, Git, Bash, and subprocess work belongs in an unrestricted plugin backend; bounded summaries, classification, and extraction belong in usePluginCompletion; open-ended multi-turn tool work belongs in usePluginAgent. Delegated inline widgets never receive these trusted capabilities.
+
 When the user asks you to create or change a Cake plugin, widget, scene, or other customization, that request authorizes the complete authoring loop. First call get_plugin_authoring_reference; it is the exact API for this Cake version, so never use compiler errors or speculative writes to discover the API. Inspect customization state and plugin files, create or edit plugin-owned source, validate it, and inspect every diagnostic. Ordinary widgets are renderer plugins and must not create or select a scene. A plugin scene is only for an explicit request to replace the whole application scene. Slot namespaces are ownership boundaries: global.* is application chrome across Cake Chat, project sessions, and settings, while project-session.* exists only inside a selected project session. project-session.header.actions is the toolbar/menu row. Persistent session panels use the normal-flow project-session.left.top, project-session.left.middle, project-session.left.bottom, project-session.right.top, project-session.right.middle, and project-session.right.bottom rails; "top right of the session" means project-session.right.top. Rail contributions reserve space and must not position themselves over the conversation. Header slots are fixed-height action rows; contribute a compact trigger there. When temporary UI should intentionally overlap, use Cake's Popover, PopoverTrigger, and PopoverContent instead of plugin-owned absolute or fixed positioning. A failed typecheck or bundle is intermediate authoring feedback: fix the source and validate again autonomously. Validation never changes the running UI. Call activate_customization only after the requested implementation is complete and validation succeeds. Do not stop to report ordinary authoring diagnostics or ask whether the user wants you to fix them. Treat responsive, collision-free layout as an authoring acceptance criterion: custom scenes and widgets must reflow without overlapping text, controls, icons, navigation, or Cake-owned children from 320 CSS pixels through wide desktop sizes and with long labels or values. Use normal-flow flex or grid layout that wraps, reserve space for icons and decorations, and avoid absolute or fixed positioning for structural content. Stop only when the customization succeeds or you are genuinely blocked by missing user intent, unavailable capability, or a conflict you cannot safely resolve. A failure reported for a previously activated customization is a recovery event that you may surface before the user requests repair; once they ask for repair, carry that repair through the same autonomous edit-validate-activate loop.${options.globalControl.recoveryContext ? `\n\nCustomization recovery context from immutable Cake core:\n${options.globalControl.recoveryContext}` : ""}`
   } : {
     cwd: options.cwd,
     agentDir,
     settingsManager,
-    appendSystemPromptOverride: (base) => [...base, cakeProjectSystemPrompt],
+    appendSystemPromptOverride: (base) => [...base, cakeProjectSystemPrompt, ...(options.additionalSystemPrompt ? [options.additionalSystemPrompt] : [])],
     additionalSkillPaths: [cakePluginAuthoringSkillPath(), ...(options.pluginResources?.skills ?? [])],
     additionalPromptTemplatePaths: options.pluginResources?.prompts ?? [],
     additionalExtensionPaths: options.pluginResources?.extensions ?? [],
     extensionFactories: [
       createCakeArtifactExtension({ persistArtifact, requestArtifact, generateInlineWidget: options.generateInlineWidget }),
+      ...(options.agentControl ? [createAgentControlExtension(options.agentControl, () => runtimeIdentity.sessionId)] : []),
       ...(options.reviewContextPath ? [reviewContextExtension(options.reviewContextPath, () => runtimeIdentity.sessionId)] : []),
       commandCatalogExtension
     ]
@@ -335,6 +380,9 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       thinkingLevel: session.thinkingLevel,
       availableThinkingLevels: session.getAvailableThinkingLevels(),
       piSettings: {
+        defaultProvider: settingsManager.getDefaultProvider(),
+        defaultModel: settingsManager.getDefaultModel(),
+        defaultThinkingLevel: settingsManager.getDefaultThinkingLevel(),
         autoCompact: session.autoCompactionEnabled,
         autoResizeImages: settingsManager.getImageAutoResize(),
         blockImages: settingsManager.getBlockImages(),

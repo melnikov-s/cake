@@ -15,7 +15,7 @@ describe("PluginBuildService", () => {
     const plugin = join(paths.plugins, "example.calendar");
     await mkdir(plugin, { recursive: true });
     await writeFile(join(plugin, "cake-plugin.json"), JSON.stringify({ schemaVersion: 2, id: "example.calendar", name: "Example Calendar", renderer: "index.tsx" }));
-    await writeFile(join(plugin, "index.tsx"), `import { definePlugin } from "cake";\nconst Badge = () => <i>PLUGIN_BUILD_MARKER</i>;\nexport default definePlugin({ id: "example.calendar", contributions: { Badge }, slots: { "global.sidebar.header": [{ id: "badge", component: Badge }] } });\n`);
+    await writeFile(join(plugin, "index.tsx"), `import { definePlugin, usePluginAgent, usePluginCompletion } from "cake";\nconst Badge = () => { const agent = usePluginAgent(); const completion = usePluginCompletion(); return <i data-agent={agent.status} data-completion={completion.status}>PLUGIN_BUILD_MARKER</i>; };\nexport default definePlugin({ id: "example.calendar", contributions: { Badge }, slots: { "global.sidebar.header": [{ id: "badge", component: Badge }] } });\n`);
     const candidate = await new PluginBuildService(paths, resolve(import.meta.dirname, "../../..")).buildCandidate();
     expect(candidate.diagnostics).toEqual([]);
     expect(candidate.revision).not.toBe(candidate.sourceRevision);

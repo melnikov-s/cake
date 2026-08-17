@@ -112,6 +112,19 @@ Each feature supplies explicit bounded input, output, timeout, cancellation,
 and validation policy. Utility results remain advisory metadata until the owning
 feature validates and commits them.
 
+Trusted plugins may explicitly request the utility profile through the bounded
+completion or agent host. Those public requests use observable preflight
+fallback (utility → Pi default → calling-session current) when a profile is not
+configured, unknown, or unauthenticated. The resolved profile and fallback
+reasons are returned; a provider failure after execution begins never triggers
+fallback. Opportunistic internal utility work still skips when no utility model
+is configured.
+
+Pi agents receive focused `agent_open`, `agent_prompt`, `agent_follow_up`,
+`agent_wait`, and `agent_abort` tools backed by the same coordinator. Child
+handles are parent-scoped, cancellation reaches active child work, and
+synchronous self-prompt/self-wait cycles are rejected.
+
 Automatic project-session naming is the first utility workflow. After a
 completed assistant turn, an unnamed session may send its original first user
 and first assistant messages, with bounded lengths, to the configured utility

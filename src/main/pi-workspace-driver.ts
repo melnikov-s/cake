@@ -1,11 +1,14 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { resolve } from "node:path";
-import { createCakeRuntime, type CakeRuntime, type RuntimeUiRequest } from "../agent/cake-runtime";
-import { loadPiChangelog } from "../agent/session-discovery";
+import { createCakeRuntime, type CakeRuntime, type CakeRuntimeEvent, type RuntimeUiRequest } from "../agent/cake-runtime";
+import { cakeWorkspaceSessionDirectory, loadPiChangelog } from "../agent/session-discovery";
 import { runInlineWidgetGeneration, runInlineWidgetRepair, runReviewTurn, type InlineWidgetGenerationRequest } from "../agent/sidecar-runtime";
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
 import type { ChangeTurn, UtilityModel } from "../ipc/session-contract";
 import type { JsonValue } from "../ipc/json-contract";
+import { jsonValueSchema } from "../ipc/json-contract";
+import type { AgentModelPreference, ResolvedAgentModel } from "../ipc/plugin-agent-contract";
 import { parseArtifactInput, type ArtifactRecord, type CakeArtifactV1 } from "../ipc/artifact-contract";
 import { REVIEW_TEXT_MAX_LENGTH } from "../ipc/review-contract";
 import type { ArtifactRepository } from "./artifact-repository";
@@ -56,6 +59,7 @@ export interface PiWorkspaceDriverOptions {
   agentDir: string;
   sessionDir: string;
   widgetSessionDir?: string;
+  pluginAgentSessionDir?: string;
   emit(event: DesktopEvent): void;
   createRuntime?: typeof createCakeRuntime;
   runReviewTurn?: typeof runReviewTurn;
@@ -72,6 +76,7 @@ export interface PiWorkspaceDriverOptions {
   isTrusted?: () => boolean;
   utilityModel?: () => UtilityModel | undefined;
   pluginResources?: { skills: string[]; prompts: string[]; extensions: string[] };
+  resolveAgentModel?: (preference: AgentModelPreference, snapshot: Awaited<ReturnType<CakeRuntime["snapshot"]>>) => ResolvedAgentModel;
 }
 
 export class PiWorkspaceDriver {
@@ -80,6 +85,7 @@ export class PiWorkspaceDriver {
   private readonly agentDir: string;
   private readonly sessionDir: string;
   private readonly widgetSessionDir: string;
+  private readonly pluginAgentSessionDir: string;
   private readonly createRuntimeImpl: typeof createCakeRuntime;
   private readonly runReviewTurnImpl: typeof runReviewTurn;
   private readonly runWidgetGeneration: typeof runInlineWidgetGeneration;
@@ -96,6 +102,12 @@ export class PiWorkspaceDriver {
   private readonly utilityModel: () => UtilityModel | undefined;
   private readonly pluginResources: { skills: string[]; prompts: string[]; extensions: string[] };
   private readonly runtimes = new Map<string, CakeRuntime>();
+  private readonly runtimePromises = new Map<string, Promise<CakeRuntime>>();
+  private readonly runtimeListeners = new Map<string, Set<(event: CakeRuntimeEvent) => void>>();
+  private readonly privateRuntimeIds = new Set<string>();
+  private readonly activeAgentTurns = new Set<string>();
+  private readonly delegatedAgentHandles = new Map<string, { parentSessionId: string; sessionId: string }>();
+  private readonly resolveAgentModel: NonNullable<PiWorkspaceDriverOptions["resolveAgentModel"]>;
   private readonly pendingUi = new Map<string, PendingUi>();
   private readonly pendingArtifacts = new Map<string, PendingArtifact>();
   private readonly operationContext = new AsyncLocalStorage<{ operationId: string; sessionId?: string }>();
@@ -109,6 +121,7 @@ export class PiWorkspaceDriver {
     this.agentDir = options.agentDir;
     this.sessionDir = options.sessionDir;
     this.widgetSessionDir = options.widgetSessionDir ?? resolve(options.sessionDir, "..", "widget-sessions");
+    this.pluginAgentSessionDir = options.pluginAgentSessionDir ?? resolve(options.sessionDir, "..", "plugin-agent-sessions");
     this.emitEvent = options.emit;
     this.createRuntimeImpl = options.createRuntime ?? createCakeRuntime;
     this.runReviewTurnImpl = options.runReviewTurn ?? runReviewTurn;
@@ -123,6 +136,11 @@ export class PiWorkspaceDriver {
     this.isTrusted = options.isTrusted ?? (() => false);
     this.utilityModel = options.utilityModel ?? (() => undefined);
     this.pluginResources = options.pluginResources ?? { skills: [], prompts: [], extensions: [] };
+    this.resolveAgentModel = options.resolveAgentModel ?? ((preference, snapshot) => {
+      if (preference.prefer === "exact") return { requested: "exact", source: "exact", provider: preference.provider, modelId: preference.modelId, thinkingLevel: preference.thinkingLevel ?? snapshot.thinkingLevel, fallbacks: [] };
+      if (!snapshot.model) throw new Error("The calling session has no current model");
+      return { requested: preference.prefer, source: "current", provider: snapshot.model.provider, modelId: snapshot.model.id, thinkingLevel: snapshot.thinkingLevel, fallbacks: preference.prefer === "current" ? [] : [{ source: preference.prefer, reason: "not-configured" }] };
+    });
     this.artifactRepository = options.artifactRepository ?? {
       async upsert(workspacePath, artifact) {
         const now = new Date().toISOString();
@@ -232,6 +250,69 @@ export class PiWorkspaceDriver {
     this.pendingArtifacts.clear();
   }
 
+  async openAgent(input: {
+    target: { kind: "new"; visibility: "private" | "project" } | { kind: "attach"; sessionId: string } | { kind: "fork"; sessionId: string; entryId?: string; visibility: "private" | "project" };
+    instructions?: string;
+  }) {
+    let runtime: CakeRuntime;
+    if (input.target.kind === "new") {
+      runtime = await this.createRuntime(true, undefined, undefined, input.instructions, input.target.visibility === "private" ? this.pluginAgentSessionDir : this.sessionDir);
+      if (input.target.visibility === "private") this.privateRuntimeIds.add(runtime.sessionId);
+    } else if (input.target.kind === "attach") {
+      runtime = this.runtimes.get(input.target.sessionId) ?? await this.createRuntime(false, input.target.sessionId);
+    } else {
+      const source = this.runtimes.get(input.target.sessionId) ?? await this.createRuntime(false, input.target.sessionId);
+      const sourceSnapshot = await source.snapshot();
+      const entryId = input.target.entryId ?? [...sourceSnapshot.parts].reverse().flatMap((part) => "entryId" in part && part.entryId ? [part.entryId] : [])[0];
+      if (!entryId) throw new Error("The source session has no branch leaf to fork");
+      if (!sourceSnapshot.sessionFile) throw new Error("The source session is not persisted");
+      const targetRoot = input.target.visibility === "private" ? this.pluginAgentSessionDir : this.sessionDir;
+      const forked = SessionManager.forkFrom(sourceSnapshot.sessionFile, this.workspacePath, cakeWorkspaceSessionDirectory(this.workspacePath, targetRoot));
+      runtime = await this.createRuntime(false, forked.getSessionId(), forked.getSessionFile() ?? undefined, input.instructions, targetRoot);
+      await runtime.navigate(entryId);
+      if (input.target.visibility === "private") this.privateRuntimeIds.add(runtime.sessionId);
+    }
+    return runtime.snapshot();
+  }
+
+  async agentSnapshot(sessionId: string) {
+    return this.runtimeFor(sessionId).snapshot();
+  }
+
+  async agentPrompt(sessionId: string, text: string, delivery: "prompt" | "steer" | "follow-up") {
+    const runtime = this.runtimeFor(sessionId);
+    if (delivery === "prompt" && this.activeAgentTurns.has(sessionId)) throw new Error("That agent session already has an active turn");
+    if (delivery === "prompt") this.activeAgentTurns.add(sessionId);
+    try {
+      await runtime.prompt(text, delivery, []);
+      return runtime.snapshot();
+    } finally {
+      if (delivery === "prompt") this.activeAgentTurns.delete(sessionId);
+    }
+  }
+
+  async agentAbort(sessionId: string) {
+    await this.runtimeFor(sessionId).abort();
+    return this.runtimeFor(sessionId).snapshot();
+  }
+
+  async configureAgent(sessionId: string, provider: string, modelId: string, thinkingLevel: Parameters<CakeRuntime["setThinkingLevel"]>[0]) {
+    const runtime = this.runtimeFor(sessionId);
+    await runtime.setModel(provider, modelId);
+    await runtime.setThinkingLevel(thinkingLevel);
+    return runtime.snapshot();
+  }
+
+  subscribeAgent(sessionId: string, listener: (event: CakeRuntimeEvent) => void) {
+    const listeners = this.runtimeListeners.get(sessionId) ?? new Set();
+    listeners.add(listener);
+    this.runtimeListeners.set(sessionId, listeners);
+    return () => {
+      listeners.delete(listener);
+      if (listeners.size === 0) this.runtimeListeners.delete(sessionId);
+    };
+  }
+
   private emit(event: DesktopEvent) {
     if (!this.disposed) this.emitEvent(event);
   }
@@ -328,19 +409,39 @@ export class PiWorkspaceDriver {
     return runtime.reload();
   }
 
-  private async createRuntime(newSession: boolean, sessionId?: string, sessionFile?: string) {
+  private async createRuntime(newSession: boolean, sessionId?: string, sessionFile?: string, additionalSystemPrompt?: string, sessionRoot = this.sessionDir) {
+    if (sessionId && !sessionFile) {
+      const existing = this.runtimes.get(sessionId);
+      if (existing) return existing;
+      const pending = this.runtimePromises.get(sessionId);
+      if (pending) return pending;
+    }
+    const opening = this.createRuntimeUncoordinated(newSession, sessionId, sessionFile, additionalSystemPrompt, sessionRoot);
+    if (sessionId) this.runtimePromises.set(sessionId, opening);
+    try { return await opening; }
+    finally { if (sessionId && this.runtimePromises.get(sessionId) === opening) this.runtimePromises.delete(sessionId); }
+  }
+
+  private async createRuntimeUncoordinated(newSession: boolean, sessionId?: string, sessionFile?: string, additionalSystemPrompt?: string, sessionRoot = this.sessionDir) {
     const requestedArtifactSessionId = sessionId;
     let openedSessionId = sessionId;
     const runtimeRef: RuntimeReference = {};
     const runtime = await this.createRuntimeImpl({
       cwd: this.workspacePath,
       agentDir: this.agentDir,
-      sessionDir: this.sessionDir,
+      sessionDir: sessionRoot,
       trusted: this.trusted,
       newSession,
       sessionId,
       sessionFile,
       pluginResources: this.pluginResources,
+      additionalSystemPrompt,
+      agentControl: {
+        open: (input, parentSessionId, signal) => this.openDelegatedAgent(input, parentSessionId, signal),
+        prompt: (input, parentSessionId, signal) => this.promptDelegatedAgent(input, parentSessionId, signal),
+        wait: (handleId, parentSessionId, signal) => this.waitDelegatedAgent(handleId, parentSessionId, signal),
+        abort: (handleId, parentSessionId) => this.abortDelegatedAgent(handleId, parentSessionId)
+      },
       requestUi: (request) => this.requestUi(request),
       persistArtifact: (artifact) => this.persistArtifact(artifact),
       requestArtifact: (record, signal) => this.requestArtifact(record, signal),
@@ -364,6 +465,9 @@ export class PiWorkspaceDriver {
         return [...records.values()];
       },
       onEvent: (event) => {
+        for (const listener of this.runtimeListeners.get(event.type === "snapshot" ? event.snapshot.sessionId : event.sessionId) ?? []) listener(event);
+        const eventSessionId = event.type === "snapshot" ? event.snapshot.sessionId : event.sessionId;
+        if (this.privateRuntimeIds.has(eventSessionId)) return;
         if (event.type === "snapshot") this.emit({ type: "session-snapshot", requestId: event.requestId, snapshot: event.snapshot });
         else if (event.type === "part-updated" || event.type === "part-removed" || event.type === "extension-ui") {
           this.emit(event);
@@ -416,6 +520,75 @@ export class PiWorkspaceDriver {
       await this.compileWidget(language, source, "display");
       return { language, source, generationSessionId: generated.sessionId };
     }
+  }
+
+  private async openDelegatedAgent(input: { target: "new" | "attach" | "fork"; sessionId?: string; entryId?: string; visibility: "private" | "project"; model: AgentModelPreference; instructions?: string }, parentSessionId: string, signal: AbortSignal) {
+    if (signal.aborted) throw signal.reason;
+    const target = input.target === "new"
+      ? { kind: "new" as const, visibility: input.visibility }
+      : input.target === "attach"
+        ? { kind: "attach" as const, sessionId: input.sessionId ?? parentSessionId }
+        : { kind: "fork" as const, sessionId: input.sessionId ?? parentSessionId, entryId: input.entryId, visibility: input.visibility };
+    let snapshot = await this.openAgent({ target, instructions: input.instructions });
+    const resolvedModel = this.resolveAgentModel(input.model, snapshot);
+    const modelAlreadySelected = snapshot.model?.provider === resolvedModel.provider && snapshot.model.id === resolvedModel.modelId && snapshot.thinkingLevel === resolvedModel.thinkingLevel;
+    if (!modelAlreadySelected) {
+      if (snapshot.streaming) throw new Error("Cannot change the model profile while the attached agent is running");
+      snapshot = await this.configureAgent(snapshot.sessionId, resolvedModel.provider, resolvedModel.modelId, resolvedModel.thinkingLevel);
+    }
+    const handleId = crypto.randomUUID();
+    this.delegatedAgentHandles.set(handleId, { parentSessionId, sessionId: snapshot.sessionId });
+    return jsonValueSchema.parse({ handleId, sessionId: snapshot.sessionId, resolvedModel, streaming: snapshot.streaming });
+  }
+
+  private async promptDelegatedAgent(input: { handleId: string; text: string; delivery: "prompt" | "follow-up" }, parentSessionId: string, signal: AbortSignal) {
+    const handle = this.delegatedHandle(input.handleId, parentSessionId);
+    if (handle.sessionId === parentSessionId) throw new Error("An agent cannot synchronously prompt or wait on itself");
+    const onAbort = () => { void this.agentAbort(handle.sessionId); };
+    signal.addEventListener("abort", onAbort, { once: true });
+    try {
+      const snapshot = await this.agentPrompt(handle.sessionId, input.text, input.delivery);
+      return jsonValueSchema.parse({ handleId: input.handleId, sessionId: handle.sessionId, streaming: snapshot.streaming, parts: snapshot.parts, usage: snapshot.usage });
+    } finally {
+      signal.removeEventListener("abort", onAbort);
+    }
+  }
+
+  private async waitDelegatedAgent(handleId: string, parentSessionId: string, signal: AbortSignal) {
+    const handle = this.delegatedHandle(handleId, parentSessionId);
+    if (handle.sessionId === parentSessionId) throw new Error("An agent cannot synchronously wait on itself");
+    let snapshot = await this.agentSnapshot(handle.sessionId);
+    if (snapshot.streaming) {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => finish(new Error("Timed out waiting for the child agent")), 5 * 60_000);
+        const unsubscribe = this.subscribeAgent(handle.sessionId, (event) => {
+          if (event.type === "streaming" && !event.streaming) finish();
+        });
+        const onAbort = () => finish(signal.reason instanceof Error ? signal.reason : new Error("Child-agent wait aborted"));
+        const finish = (error?: Error) => {
+          clearTimeout(timeout);
+          unsubscribe();
+          signal.removeEventListener("abort", onAbort);
+          if (error) reject(error); else resolve();
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+        if (signal.aborted) onAbort();
+      });
+      snapshot = await this.agentSnapshot(handle.sessionId);
+    }
+    return jsonValueSchema.parse({ handleId, sessionId: handle.sessionId, streaming: snapshot.streaming, parts: snapshot.parts, usage: snapshot.usage });
+  }
+
+  private async abortDelegatedAgent(handleId: string, parentSessionId: string) {
+    const handle = this.delegatedHandle(handleId, parentSessionId);
+    const snapshot = await this.agentAbort(handle.sessionId);
+    return jsonValueSchema.parse({ handleId, sessionId: handle.sessionId, streaming: snapshot.streaming });
+  }
+
+  private delegatedHandle(handleId: string, parentSessionId: string) {
+    const handle = this.delegatedAgentHandles.get(handleId);
+    if (!handle || handle.parentSessionId !== parentSessionId) throw new Error("That child-agent handle does not belong to this parent session");
+    return handle;
   }
 
   private async inspectChanges(command: Extract<PiWorkspaceCommand, { type: "inspect-changes" }>) {

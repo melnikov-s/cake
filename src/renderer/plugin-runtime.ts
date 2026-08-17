@@ -1,4 +1,4 @@
-import { Component, Fragment, createElement, useEffect, useSyncExternalStore, type ErrorInfo, type ReactNode } from "react";
+import { Component, Fragment, createContext, createElement, useContext, useEffect, useSyncExternalStore, type ErrorInfo, type ReactNode } from "react";
 import { z } from "zod";
 import { cakeSlotNames, type CakeSlotName } from "../plugin/slot-contract";
 import type { CakeCommandContext, CakePluginCommand, CakePluginDefinition } from "./cake";
@@ -12,6 +12,7 @@ const definitions = new Map<string, CakePluginDefinition>();
 const mountedSlots = new Map<CakeSlotName, number>();
 let revision = 0;
 const identity = (pluginId: string, name: string) => `${pluginId}.${name}`;
+const PluginIdentityContext = createContext<string | undefined>(undefined);
 const emit = () => { revision += 1; for (const listener of listeners) listener(); };
 
 function add(pluginId: string, name: string, command: CakePluginCommand, token: symbol) {
@@ -40,8 +41,14 @@ class SlotBoundary extends Component<SlotBoundaryProps, SlotBoundaryState> {
   }
   render() {
     if (this.state.error) return createElement("span", { className: "plugin-slot-error", role: "status", title: this.state.error.message }, `${this.props.pluginId} failed`);
-    return this.props.children;
+    return createElement(PluginIdentityContext.Provider, { value: this.props.pluginId }, this.props.children);
   }
+}
+
+export function useCurrentPluginId() {
+  const pluginId = useContext(PluginIdentityContext) ?? (typeof __CAKE_ACTIVE_SCENE_PLUGIN_ID__ === "string" ? __CAKE_ACTIVE_SCENE_PLUGIN_ID__ : undefined);
+  if (!pluginId) throw new Error("Plugin capability hooks require a mounted plugin contribution");
+  return pluginId;
 }
 
 function slotSnapshot(name: CakeSlotName) {

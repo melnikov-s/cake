@@ -50,3 +50,5 @@ export { Slot, useCommand, useContributionReveal } from "./plugin-runtime";
 export { usePluginBackend } from "./plugin-backend";
 export { usePluginGlobalState, usePluginSessionState, type SerializablePluginValue } from "./plugin-persistence";
 export { usePluginSession, type CakePluginSession } from "./plugin-session";
+export { usePluginAgent, usePluginCompletion, usePluginSessionActivity, type PluginAgentHandle, type PluginCompletionHandle } from "./plugin-agent";
+export type { AgentModelPreference, AgentSessionTarget, PluginAgentOpenOptions, PluginCompletionRequest, PluginCompletionResult, PluginSessionActivity, ResolvedAgentModel, SessionContextSelection, SessionRef, WorkspaceRef } from "../ipc/plugin-agent-contract";
