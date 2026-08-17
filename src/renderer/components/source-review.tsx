@@ -70,13 +70,13 @@ function sourceAnchor(path: string, view: "full" | "file", lines: string[], diff
   };
 }
 
-export function ReviewComposer({ anchor, floating, position, onSave, onCancel }: { anchor: ReviewAnchor; floating?: boolean; position?: { left: number; top: number }; onSave(body: string): Promise<boolean | void>; onCancel(): void }) {
+export function ReviewComposer({ anchor, floating, position, onSave, onCancel }: { anchor: ReviewAnchor; floating?: boolean; position?: { left: number; top: number }; onSave(body: string): Promise<string | undefined>; onCancel(): void }) {
   const [body, setBody] = useState("");
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!body.trim()) return;
     const saved = await onSave(body);
-    if (saved === false) return;
+    if (!saved) return;
     onCancel();
     window.getSelection()?.removeAllRanges();
   };

@@ -24,7 +24,6 @@ describe("MessageCommentsStore", () => {
       abort: async () => undefined
     }));
     const store = mount(createStore(MessageCommentsStore, {
-      client: {} as DesktopClient,
       sessionRegistry: cache,
       reviews: () => ({ configuration: undefined }) as unknown as ReviewsStore,
       draftChatStore: () => popupChat,
@@ -47,12 +46,6 @@ describe("MessageCommentsStore", () => {
 
   it("creates a transcript anchor and immediately submits its sidecar thread", async () => {
     const now = new Date(0).toISOString();
-    const createReviewThread = vi.fn(async (input: { anchor: ReviewThread["anchor"] }) => ({
-      id: "thread-1", workspacePath: "/project", sessionId: "session-1", anchor: input.anchor,
-      parts: [{ id: "question-1", kind: "text" as const, role: "user" as const, text: "Why?", status: "complete" as const, deliveryState: "sending" as const }],
-      status: "open" as const, createdAt: now, updatedAt: now
-    }));
-    const submitThreads = vi.fn(async () => undefined);
     const cache = mount(createStore(SessionRegistryStore, {
       client: {} as DesktopClient,
       operations: {} as SessionOperationCoordinator,
@@ -65,13 +58,19 @@ describe("MessageCommentsStore", () => {
       projectName: () => "Project",
       abort: async () => undefined
     }));
+    const createThread = vi.fn(async (anchor: ReviewThread["anchor"]) => {
+      cache.upsertReviewThread({
+        id: "thread-1", workspacePath: "/project", sessionId: "session-1", anchor,
+        parts: [{ id: "question-1", kind: "text" as const, role: "user" as const, text: "Why?", status: "complete" as const, deliveryState: "sending" as const }],
+        status: "open" as const, createdAt: now, updatedAt: now
+      });
+      return "thread-1";
+    });
     const store = mount(createStore(MessageCommentsStore, {
-      client: { createReviewThread } as unknown as DesktopClient,
       sessionRegistry: cache,
-      reviews: () => ({ submitThreads, threadStreaming: () => false, resolveThread: vi.fn() }) as unknown as ReviewsStore,
+      reviews: () => ({ createThread, submitThread: vi.fn(), threadStreaming: () => false, resolveThread: vi.fn() }) as unknown as ReviewsStore,
       draftChatStore: () => popupChat,
-      context: () => ({ workspacePath: "/project", sessionId: "session-1" }),
-      reportError: vi.fn()
+      context: () => ({ workspacePath: "/project", sessionId: "session-1" })
     }));
     const popupChat: ChatStore = mount(store.draftChatStoreElement);
 
@@ -79,12 +78,7 @@ describe("MessageCommentsStore", () => {
     const chat = store.draftChatStore;
     await expect(chat.submit("Why?")).resolves.toBe(true);
 
-    expect(createReviewThread).toHaveBeenCalledWith(expect.objectContaining({
-      workspacePath: "/project",
-      sessionId: "session-1",
-      anchor: expect.objectContaining({ view: "message", messageId: "assistant-1", entryId: "entry-1", startOffset: 6, endOffset: 15 })
-    }));
-    expect(submitThreads).toHaveBeenCalledWith(["thread-1"]);
+    expect(createThread).toHaveBeenCalledWith(expect.objectContaining({ view: "message", messageId: "assistant-1", entryId: "entry-1", startOffset: 6, endOffset: 15 }), "Why?");
     expect(store.threadsForMessage("assistant-1")).toHaveLength(1);
     expect(store.draftChatStore).toBe(chat);
     expect(chat.composerVisible).toBe(true);

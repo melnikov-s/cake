@@ -146,7 +146,7 @@ describe("SessionModel", () => {
     model[Symbol.dispose]();
   });
 
-  it("keeps one review model instance and derives actionable comments from its chat parts", () => {
+  it("keeps one review model instance while its sidecar turn settles", () => {
     const model = SessionModel.create({ workspacePath: "/project", sessionId: "session-1" });
     const now = new Date(0).toISOString();
     const thread = {
@@ -158,7 +158,7 @@ describe("SessionModel", () => {
     const review = model.reviewThreads[0]!;
 
     expect(review).toBeInstanceOf(ReviewThreadModel);
-    expect(review.actionableCommentCount).toBe(1);
+    expect(review.pending).toBe(true);
 
     model.upsertReviewThread({ ...thread, updatedAt: new Date(1).toISOString(), parts: [
       { ...thread.parts[0]!, deliveryState: undefined },
@@ -166,7 +166,7 @@ describe("SessionModel", () => {
     ] });
 
     expect(model.reviewThreads[0]).toBe(review);
-    expect(review.actionableCommentCount).toBe(0);
+    expect(review.pending).toBe(false);
     model[Symbol.dispose]();
   });
 });

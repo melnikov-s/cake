@@ -64,9 +64,10 @@ independent lightweight Pi sessions using the same runtime pipeline. Their
 anchors belong to Cake; their replies remain authoritative in the referenced Pi
 sidecar session. Before each reply, Cake regenerates a read-only Markdown
 projection of the parent session's current active branch. The sidecar receives
-only its anchor, nearby context, its own short history, and ordinary file tools;
-assistant-message threads are read-only while code-review threads may edit the
-workspace. Neither kind forks the parent transcript. A single derived Markdown
+only its anchor, nearby context, its own short history, and read-only file tools.
+Both assistant-message and code-anchored chats are read-only; the code anchor
+changes the source material, not the sidecar's authority. Neither kind forks or
+records work in the parent transcript. A single derived Markdown
 thread index is also available to the parent agent through its ordinary project
 tools.
 

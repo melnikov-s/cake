@@ -126,7 +126,7 @@ describe("PiWorkspaceDriver", () => {
     events.splice(0);
 
     const requestId = crypto.randomUUID();
-    driver.dispatch({ type: "submit-review-threads", requestId, workspacePath: "/project", sessionId: snapshot.sessionId, threadIds: [thread.id], commentCount: 1, thinkingLevel: "high" });
+    driver.dispatch({ type: "submit-review-thread", requestId, workspacePath: "/project", sessionId: snapshot.sessionId, threadId: thread.id, thinkingLevel: "high" });
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId }));
 
     expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ thread: expect.objectContaining({ id: thread.id, submission: expect.objectContaining({ status: "running" }) }) }));
@@ -135,8 +135,7 @@ describe("PiWorkspaceDriver", () => {
     expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ thinkingLevel: "high" }));
     expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ parent: expect.objectContaining({ sessionId: snapshot.sessionId, leafId: "parent-leaf", systemPrompt: "Parent prompt" }) }));
     expect(reviewRepository.completeRun).toHaveBeenCalledWith("/project", snapshot.sessionId, thread.id, expect.any(String), expect.objectContaining({ sessionId: "review-session" }));
-    expect(runtime.recordReviewRun).toHaveBeenNthCalledWith(1, { operationId: requestId, threadIds: [thread.id], commentCount: 1, status: "running" });
-    expect(runtime.recordReviewRun).toHaveBeenNthCalledWith(2, { operationId: requestId, threadIds: [thread.id], commentCount: 1, status: "complete" });
+    expect(runtime.recordReviewRun).not.toHaveBeenCalled();
     expect(events).toContainEqual(expect.objectContaining({ type: "review-thread-updated", thread: expect.objectContaining({ id: thread.id }) }));
     expect(events).toContainEqual(expect.objectContaining({ type: "review-thread-part-updated", threadId: thread.id, part: expect.objectContaining({ kind: "reasoning" }) }));
     expect(events).toContainEqual(expect.objectContaining({ type: "review-thread-usage-updated", threadId: thread.id, usage }));
@@ -169,7 +168,7 @@ describe("PiWorkspaceDriver", () => {
     const openId = crypto.randomUUID();
     driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
-    driver.dispatch({ type: "submit-review-threads", requestId: crypto.randomUUID(), workspacePath: "/project", sessionId: snapshot.sessionId, threadIds: [thread.id], commentCount: 1 });
+    driver.dispatch({ type: "submit-review-thread", requestId: crypto.randomUUID(), workspacePath: "/project", sessionId: snapshot.sessionId, threadId: thread.id });
     await vi.waitFor(() => expect(runReview).toHaveBeenCalledOnce());
 
     driver[Symbol.dispose]();

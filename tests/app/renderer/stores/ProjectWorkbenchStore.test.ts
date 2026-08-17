@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { reaction } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -68,7 +67,7 @@ function createDesktopClient(restoredPath?: string) {
     createReviewThread: vi.fn(async () => { throw new Error("not mocked"); }),
     replyReviewThread: vi.fn(async () => { throw new Error("not mocked"); }),
     resolveReviewThread: vi.fn(async () => { throw new Error("not mocked"); }),
-    submitReviewThreads: vi.fn(async () => undefined),
+    submitReviewThread: vi.fn(async () => undefined),
     registerProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], trustedProjectPaths: [] })),
     renameProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], trustedProjectPaths: [] })),
     removeProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], trustedProjectPaths: [] })),
@@ -694,145 +693,53 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("submits pending review threads with an empty composer without adding to the primary prompt", async () => {
+  it("starts code chats immediately without coupling them to the parent composer", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     desktop.emit({ type: "pi-state-changed", state: "ready" });
     await openSnapshot(store, desktop);
-    await flush();
     const now = new Date(0).toISOString();
-    desktop.emit({ type: "review-thread-updated", thread: {
+    vi.mocked(desktop.client.createReviewThread).mockResolvedValue({
       id: "review-1", workspacePath: "/project", sessionId: "session-1", status: "open", createdAt: now, updatedAt: now,
-      anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
-      parts: [{ id: "comment-1", kind: "text", role: "user", text: "Rename this", status: "complete", deliveryState: "sending" }]
-    } });
-    const reviewUsage = { tokens: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, total: 15 }, cost: 0.012, context: { tokens: 20, contextWindow: 1_000, percent: 2 } };
-    desktop.emit({ type: "review-thread-part-updated", workspacePath: "/project", sessionId: "session-1", threadId: "review-1", part: { id: "reasoning-1", kind: "reasoning", text: "Inspecting", status: "streaming" } });
-    desktop.emit({ type: "review-thread-part-updated", workspacePath: "/project", sessionId: "session-1", threadId: "review-1", part: { id: "tool-1", kind: "tool", name: "read", input: "src/app.ts", state: "running" } });
-    desktop.emit({ type: "review-thread-usage-updated", workspacePath: "/project", sessionId: "session-1", threadId: "review-1", usage: reviewUsage });
-    expect(root.reviewsStore.chatStore("review-1")?.parts).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "reasoning" }), expect.objectContaining({ kind: "tool" })]));
-    expect(root.reviewsStore.chatStore("review-1")?.usage).toEqual(reviewUsage);
-    store.activeSession!.chatStore.setDraft("");
+      anchor: { path: "src/app.ts", view: "diff", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
+      parts: [{ id: "comment-1", kind: "text", role: "user", text: "Why this value?", status: "complete", deliveryState: "sending" }]
+    });
 
-    expect(store.activeSession!.canSubmit).toBe(true);
-    await root.projectWorkbenchStore.activeSession!.composerStore.submit();
+    await root.reviewsStore.createThread({ path: "src/app.ts", view: "diff", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" }, "Why this value?");
 
-    expect(desktop.client.submitReviewThreads).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", sessionId: "session-1", threadIds: ["review-1"], commentCount: 1, instruction: undefined, thinkingLevel: "off" }));
+    expect(desktop.client.submitReviewThread).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", sessionId: "session-1", threadId: "review-1", thinkingLevel: "off" }));
     expect(desktop.client.submit).not.toHaveBeenCalled();
-    expect(root.reviewsStore.pendingThreads).toHaveLength(0);
-    expect(root.reviewsStore.chatCommentCount).toBe(0);
-    expect(root.reviewsStore.openThreads).toHaveLength(1);
-    const operationId = vi.mocked(desktop.client.submitReviewThreads).mock.calls[0]![0].operationId;
-    desktop.emit({ type: "operation-completed", operationId });
-    expect(root.reviewsStore.openThreads).toHaveLength(1);
-    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([]);
-    root[Symbol.dispose]();
-  });
+    expect(store.activeSession!.chatStore.draft).toBe("saved");
 
-  it("keeps the change explorer open while pending review comments run", async () => {
-    const desktop = createDesktopClient();
-    const { root, store } = mountTestStore(desktop.client);
-    await flush();
-    await openSnapshot(store, desktop, snapshot, [
-      { path: "src/app.ts", status: "modified", additions: 1, deletions: 0, diff: "+value" }
-    ]);
-    const now = new Date(0).toISOString();
+    const firstOperationId = vi.mocked(desktop.client.submitReviewThread).mock.calls[0]![0].operationId;
+    desktop.emit({ type: "operation-completed", operationId: firstOperationId });
     desktop.emit({ type: "review-thread-updated", thread: {
       id: "review-1", workspacePath: "/project", sessionId: "session-1", status: "open", createdAt: now, updatedAt: now,
-      anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 1 }, end: { diffLine: 1, newLine: 1 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
-      parts: [{ id: "comment-1", kind: "text", role: "user", text: "Explain this", status: "complete", deliveryState: "sending" }]
-    } });
-    await store.openSessionChanges("review-1");
-
-    await root.reviewsStore.submitPending();
-
-    expect(store.changesStore.path).toBe("src/app.ts");
-    expect(root.reviewsStore.activeThreadId).toBe("review-1");
-    expect(desktop.client.submitReviewThreads).toHaveBeenCalledWith(expect.objectContaining({ threadIds: ["review-1"] }));
-    root[Symbol.dispose]();
-  });
-
-  it("excludes assistant-ended review threads from the chat comment count", async () => {
-    const desktop = createDesktopClient();
-    const { root, store } = mountTestStore(desktop.client);
-    await flush();
-    desktop.emit({ type: "pi-state-changed", state: "ready" });
-    await openSnapshot(store, desktop);
-    const now = new Date(0).toISOString();
-    desktop.emit({ type: "review-thread-updated", thread: {
-      id: "review-1", workspacePath: "/project", sessionId: "session-1", status: "open", createdAt: now, updatedAt: now,
-      anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
+      anchor: { path: "src/app.ts", view: "diff", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
       parts: [
-        { id: "comment-1", kind: "text", role: "user", text: "Rename this", status: "complete" },
-        { id: "reply-1", kind: "text", role: "assistant", text: "Renamed it.", status: "complete" }
+        { id: "comment-1", kind: "text", role: "user", text: "Why this value?", status: "complete", deliveryState: undefined },
+        { id: "answer-1", kind: "text", role: "assistant", text: "It carries the state.", status: "complete" }
       ]
     } });
-
-    expect(root.reviewsStore.openThreads).toHaveLength(1);
-    expect(root.reviewsStore.chatThreads).toHaveLength(0);
-    expect(root.reviewsStore.chatCommentCount).toBe(0);
-    expect(root.reviewsStore.chatCommentCountForSession("/project", "session-1")).toBe(0);
-    root[Symbol.dispose]();
-  });
-
-  it("derives inactive-session and active-chat counts from the same review model", async () => {
-    const desktop = createDesktopClient();
-    const now = new Date(0).toISOString();
-    const thread = {
-      id: "review-shared", workspacePath: "/other", sessionId: "session-2", status: "open" as const, createdAt: now, updatedAt: now,
-      anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
-      parts: [{ id: "comment-shared", kind: "text" as const, role: "user" as const, text: "Rename this", status: "complete" as const, deliveryState: "sending" as const }]
-    };
-    desktop.client.listSessions = vi.fn(async () => ({
-      sessions: [{ id: "session-2", title: "Review", created: now, modified: now, messageCount: 1, archived: false, workspacePath: "/other", workspaceName: "Other" }],
-      reviewThreads: [thread]
-    }));
-    const { root } = mountTestStore(desktop.client);
-    await flush();
-
-    const model = root.sessionRegistry.findModel("session-2", "/other")!.reviewThreads[0]!;
-    expect(root.reviewsStore.chatCommentCountForSession("/other", "session-2")).toBe(1);
-    expect("reviewCount" in root.sidebarStore.sessions[0]!).toBe(false);
-    const observedCounts: number[] = [];
-    const stop = reaction(() => root.reviewsStore.chatCommentCountForSession("/other", "session-2"), (count) => observedCounts.push(count));
-
-    desktop.emit({ type: "review-thread-updated", thread: {
-      ...thread,
-      parts: [
-        { ...thread.parts[0]!, deliveryState: undefined },
-        { id: "reply-shared", kind: "text", role: "assistant", text: "Renamed it.", status: "complete" }
-      ]
-    } });
-
-    expect(root.sessionRegistry.findModel("session-2", "/other")!.reviewThreads[0]).toBe(model);
-    expect(root.reviewsStore.chatCommentCountForSession("/other", "session-2")).toBe(0);
-    expect(observedCounts).toEqual([0]);
-    stop();
-    root[Symbol.dispose]();
-  });
-
-  it("sends composer text to the primary conversation while also dispatching pending review comments", async () => {
-    const desktop = createDesktopClient();
-    const { root, store } = mountTestStore(desktop.client);
-    await flush();
-    desktop.emit({ type: "pi-state-changed", state: "ready" });
-    await openSnapshot(store, desktop);
-    await flush();
-    const now = new Date(0).toISOString();
-    desktop.emit({ type: "review-thread-updated", thread: {
+    vi.mocked(desktop.client.replyReviewThread).mockResolvedValue({
       id: "review-1", workspacePath: "/project", sessionId: "session-1", status: "open", createdAt: now, updatedAt: now,
-      anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
-      parts: [{ id: "comment-1", kind: "text", role: "user", text: "Rename this", status: "complete", deliveryState: "sending" }]
-    } });
-    store.activeSession!.chatStore.setDraft("Also explain the overall change");
+      anchor: { path: "src/app.ts", view: "diff", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
+      parts: [
+        { id: "comment-1", kind: "text", role: "user", text: "Why this value?", status: "complete" },
+        { id: "answer-1", kind: "text", role: "assistant", text: "It carries the state.", status: "complete" },
+        { id: "comment-2", kind: "text", role: "user", text: "What reads it?", status: "complete", deliveryState: "sending" }
+      ]
+    });
 
-    await root.projectWorkbenchStore.activeSession!.composerStore.submit();
+    const codeChat = root.reviewsStore.chatStore("review-1")!;
+    expect(Object.keys(root.reviewsStore.submissionsByOperation)).toHaveLength(0);
+    expect(codeChat.canSubmitDraft("What reads it?")).toBe(true);
+    await codeChat.submit("What reads it?");
 
-    expect(desktop.client.submit).toHaveBeenCalledWith(expect.objectContaining({ text: "Also explain the overall change", delivery: "prompt" }));
-    expect(desktop.client.submitReviewThreads).toHaveBeenCalledWith(expect.objectContaining({ threadIds: ["review-1"], instruction: "Also explain the overall change" }));
-    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([expect.objectContaining({ role: "user", text: "Also explain the overall change" })]);
-    expect(root.reviewsStore.pendingThreads).toHaveLength(0);
+    expect(desktop.client.replyReviewThread).toHaveBeenCalledWith(expect.objectContaining({ threadId: "review-1", body: "What reads it?" }));
+    expect(desktop.client.submitReviewThread).toHaveBeenCalledTimes(2);
+    expect(desktop.client.submitReviewThread).toHaveBeenLastCalledWith(expect.objectContaining({ threadId: "review-1" }));
     root[Symbol.dispose]();
   });
 

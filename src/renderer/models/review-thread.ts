@@ -18,10 +18,8 @@ export class ReviewThreadModel extends Model {
 
   get uiParts() { return this.parts.map((part) => part.value); }
   get textParts() { return this.parts.filter((part) => part.kind === "text"); }
-  get latestTextPart() { return this.textParts.at(-1); }
   get pendingUserParts() { return this.textParts.filter((part) => part.role === "user" && part.deliveryState === "sending"); }
   get pending() { return this.status === "open" && this.pendingUserParts.length > 0; }
-  get actionableCommentCount() { return this.status === "open" && this.latestTextPart?.role === "user" ? this.pendingUserParts.length : 0; }
   get messageCount() { return this.textParts.length; }
 
   upsertPart(part: UiPart) {

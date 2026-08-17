@@ -57,7 +57,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return this.props.canSubmit() && Boolean(
       this.chatStore.draft.trim()
       || this.composerStore.attachments.length > 0
-      || this.props.reviews().pendingThreads.length > 0
     );
   }
 
@@ -147,7 +146,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   @child
   get messageCommentsStore(): MessageCommentsStore {
     return createStore(MessageCommentsStore, {
-      client: this.props.client,
       sessionRegistry: this.props.registry,
       reviews: this.props.reviews,
       draftChatStore: () => this.messageCommentChatStore,

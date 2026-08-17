@@ -160,7 +160,7 @@ describe("Sidebar projects", () => {
     expect(container.querySelector(".session-time")?.getAttribute("datetime")).toBe(modified);
   });
 
-  it("uses the canonical actionable-comment selector for session badges", () => {
+  it("does not surface sidecar chat work as parent-session badges", () => {
     const store = {
       recentProjectPaths: ["/work/cake"], projectPath: "/work/cake", projects: [{ path: "/work/cake", name: "Cake" }], session: { sessionId: "pending" },
       projectSessions: () => [{ id: "pending", title: "Needs review" }, { id: "answered", title: "Already answered" }], sessionLimit: () => 8,
@@ -171,7 +171,7 @@ describe("Sidebar projects", () => {
 
     act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
 
-    expect(container.querySelector('[data-session-id="pending"]')?.textContent).toContain("1 comment");
+    expect(container.querySelector('[data-session-id="pending"]')?.textContent).not.toContain("comment");
     expect(container.querySelector('[data-session-id="answered"]')?.textContent).not.toContain("comments");
   });
 

@@ -121,10 +121,8 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     if (!workspacePath || !sessionId) return;
     const delivery = deliveryOverride ?? (this.props.isStreaming() ? "follow-up" : "prompt");
     const attachments = this.attachments.slice();
-    const threadIds = this.props.reviews().pendingThreads.map((thread) => thread.id);
     this.props.setDraft("");
     const submissions: Promise<void>[] = [];
-    if (threadIds.length > 0) submissions.push(this.props.reviews().submitThreads(threadIds, text || undefined));
     if (text || attachments.length > 0) {
       const operationId = this.props.operations.start(this.props.operationOwner);
       this.attachments.splice(0);

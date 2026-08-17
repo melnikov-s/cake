@@ -376,7 +376,7 @@ describe("ChangeExplorer", () => {
     expect(replyReviewThread).toHaveBeenLastCalledWith("review-1", "Second reply");
   });
 
-  it("sends pending comments without closing Changes", () => {
+  it("does not expose the removed pending-comment batch action", () => {
     const sendPendingReviewComments = vi.fn(async () => undefined);
     const closeChangeExplorer = vi.fn();
     const store = {
@@ -387,12 +387,10 @@ describe("ChangeExplorer", () => {
     } as unknown as ProjectWorkbenchStore;
     act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
 
-    act(() => container.querySelector<HTMLButtonElement>(".change-explorer-actions button")!.click());
-
-    expect(sendPendingReviewComments).toHaveBeenCalledOnce();
+    expect(container.querySelector(".change-explorer-actions")?.textContent).not.toContain("Send");
+    expect(sendPendingReviewComments).not.toHaveBeenCalled();
     expect(closeChangeExplorer).not.toHaveBeenCalled();
     expect(container.querySelector(".change-explorer")).not.toBeNull();
-    expect(container.querySelector(".change-explorer-actions")?.textContent).toContain("Send (2)");
   });
 
   it("lists review threads in the sidebar and links each one to its inline thread", () => {

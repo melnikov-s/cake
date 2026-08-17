@@ -14,7 +14,7 @@ import { captureWorkspaceCheckpoint, collectCheckpointChanges, collectWorkingTre
 import { compileInlineWidget, extractRepairedWidget } from "./inline-widget-service";
 
 type ArtifactRepositoryPort = Pick<ArtifactRepository, "upsert" | "get" | "listSession" | "linkSession">;
-type ReviewRepositoryPort = Pick<ReviewRepository, "claimPending" | "completeRun" | "failRun" | "recoverRunning" | "agentSessionDirectory"> & Partial<Pick<ReviewRepository, "get" | "reviewContextPath">>;
+type ReviewRepositoryPort = Pick<ReviewRepository, "claimPending" | "completeRun" | "failRun" | "recoverRunning" | "agentSessionDirectory"> & Partial<Pick<ReviewRepository, "reviewContextPath">>;
 
 type PiCommandType =
   | "open-workspace"
@@ -24,7 +24,7 @@ type PiCommandType =
   | "inspect-changes"
   | "get-changelog"
   | "prompt"
-  | "submit-review-threads"
+  | "submit-review-thread"
   | "abort"
   | "set-model"
   | "set-thinking"
@@ -133,7 +133,6 @@ export class PiWorkspaceDriver {
       ,async linkSession() { return undefined; }
     };
     this.reviewRepository = options.reviewRepository ?? {
-      async get() { return undefined; },
       async claimPending() { return undefined; },
       async completeRun() { throw new Error("Review persistence is unavailable"); },
       async failRun() { throw new Error("Review persistence is unavailable"); },
@@ -182,8 +181,8 @@ export class PiWorkspaceDriver {
       }, command.sessionId);
       return;
     }
-    if (command.type === "submit-review-threads") {
-      void this.run(command.requestId, () => this.runReviewThreads(command), command.sessionId);
+    if (command.type === "submit-review-thread") {
+      void this.run(command.requestId, () => this.runReviewThread(command), command.sessionId);
       return;
     }
     void this.run(command.requestId, async () => {
@@ -459,73 +458,50 @@ export class PiWorkspaceDriver {
     }
   }
 
-  private async runReviewThreads(command: Extract<PiWorkspaceCommand, { type: "submit-review-threads" }>) {
+  private async runReviewThread(command: Extract<PiWorkspaceCommand, { type: "submit-review-thread" }>) {
     const parentRuntime = this.runtimeFor(command.sessionId);
-    const parent = parentRuntime.getReviewParentContext?.();
-    const records = this.reviewRepository.get
-      ? await Promise.all(command.threadIds.map((threadId) => this.reviewRepository.get!(this.workspacePath, command.sessionId, threadId)))
-      : undefined;
-    const codeThreadIds = records
-      ? command.threadIds.filter((_threadId, index) => records[index]?.anchor.view !== "message")
-      : command.threadIds;
-    const codeCommentCount = records
-      ? records.reduce((count, thread) => !thread || thread.anchor.view === "message" ? count : count + thread.pendingComments.length, 0)
-      : command.commentCount;
-    const transcriptRun = codeThreadIds.length > 0
-      ? { operationId: command.requestId, threadIds: codeThreadIds, commentCount: codeCommentCount }
-      : undefined;
-    if (transcriptRun) parentRuntime.recordReviewRun({ ...transcriptRun, status: "running" });
+    await this.reviewRecovery;
+    const runId = crypto.randomUUID();
+    const thread = await this.reviewRepository.claimPending(this.workspacePath, command.sessionId, command.threadId, runId);
+    if (!thread) return;
+    const controller = new AbortController();
+    let persistedFailure: string | undefined;
+    this.activeReviewRuns.set(runId, controller);
+    this.emit({ type: "review-thread-streaming", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId: command.threadId, streaming: true });
     try {
-      await this.reviewRecovery;
-      const failures: string[] = [];
-      for (const threadId of command.threadIds) {
-        const runId = crypto.randomUUID();
-        const thread = await this.reviewRepository.claimPending(this.workspacePath, command.sessionId, threadId, runId);
-        if (!thread) continue;
-        const controller = new AbortController();
-        this.activeReviewRuns.set(runId, controller);
-        this.emit({ type: "review-thread-streaming", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId, streaming: true });
-        try {
-          const agent = await this.runReviewTurnImpl({
-            cwd: this.workspacePath,
-            agentDir: this.agentDir,
-            trusted: this.trusted,
-            thread,
-            sessionDir: this.reviewRepository.agentSessionDirectory(this.workspacePath, command.sessionId, threadId),
-            parentSessionRoot: this.sessionDir,
-            signal: controller.signal,
-            instruction: command.instruction,
-            model: command.model,
-            thinkingLevel: command.thinkingLevel,
-            parent,
-            onEvent: (event) => this.emit(event.type === "part-updated"
-              ? { type: "review-thread-part-updated", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId, part: event.part }
-              : { type: "review-thread-usage-updated", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId, usage: event.usage })
-          });
-          if (agent.error) {
-            const updated = await this.reviewRepository.failRun(this.workspacePath, command.sessionId, threadId, runId, agent.error);
-            if (updated) this.emit({ type: "review-thread-updated", thread: updated });
-            failures.push(agent.error);
-          } else {
-            const updated = await this.reviewRepository.completeRun(this.workspacePath, command.sessionId, threadId, runId, agent);
-            if (updated) this.emit({ type: "review-thread-updated", thread: updated });
-          }
-        } catch (error) {
-          const message = errorMessage(error);
-          const updated = await this.reviewRepository.failRun(this.workspacePath, command.sessionId, threadId, runId, message);
-          if (updated) this.emit({ type: "review-thread-updated", thread: updated });
-          failures.push(message);
-        } finally {
-          this.activeReviewRuns.delete(runId);
-          this.emit({ type: "review-thread-streaming", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId, streaming: false });
-        }
+      const agent = await this.runReviewTurnImpl({
+        cwd: this.workspacePath,
+        agentDir: this.agentDir,
+        trusted: this.trusted,
+        thread,
+        sessionDir: this.reviewRepository.agentSessionDirectory(this.workspacePath, command.sessionId, command.threadId),
+        parentSessionRoot: this.sessionDir,
+        signal: controller.signal,
+        model: command.model,
+        thinkingLevel: command.thinkingLevel,
+        parent: parentRuntime.getReviewParentContext?.(),
+        onEvent: (event) => this.emit(event.type === "part-updated"
+          ? { type: "review-thread-part-updated", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId: command.threadId, part: event.part }
+          : { type: "review-thread-usage-updated", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId: command.threadId, usage: event.usage })
+      });
+      const updated = agent.error
+        ? await this.reviewRepository.failRun(this.workspacePath, command.sessionId, command.threadId, runId, agent.error)
+        : await this.reviewRepository.completeRun(this.workspacePath, command.sessionId, command.threadId, runId, agent);
+      if (updated) this.emit({ type: "review-thread-updated", thread: updated });
+      if (agent.error) {
+        persistedFailure = agent.error;
+        throw new Error(agent.error);
       }
-      if (transcriptRun) await parentRuntime.captureLatestGitCheckpoint?.();
-      if (failures.length > 0) throw new Error(`Review thread${failures.length === 1 ? "" : "s"} failed: ${failures.join("; ")}`);
-      if (transcriptRun) parentRuntime.recordReviewRun({ ...transcriptRun, status: "complete" });
     } catch (error) {
-      if (transcriptRun) parentRuntime.recordReviewRun({ ...transcriptRun, status: "error" });
+      const message = errorMessage(error);
+      if (message !== persistedFailure) {
+        const updated = await this.reviewRepository.failRun(this.workspacePath, command.sessionId, command.threadId, runId, message);
+        if (updated) this.emit({ type: "review-thread-updated", thread: updated });
+      }
       throw error;
+    } finally {
+      this.activeReviewRuns.delete(runId);
+      this.emit({ type: "review-thread-streaming", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId: command.threadId, streaming: false });
     }
   }
 }

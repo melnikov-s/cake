@@ -9,7 +9,7 @@ import type { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { ChatStore } from "./ChatStore";
 
 export interface ReviewsStoreProps {
-  client: Pick<DesktopClient, "createReviewThread" | "replyReviewThread" | "resolveReviewThread" | "listReviewThreads" | "submitReviewThreads">;
+  client: Pick<DesktopClient, "createReviewThread" | "replyReviewThread" | "resolveReviewThread" | "listReviewThreads" | "submitReviewThread">;
   sessionRegistry: SessionRegistryStore;
   context(): { workspacePath: string; sessionId: string } | undefined;
   model(): { provider: string; id: string } | undefined;
@@ -49,37 +49,8 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     return new Set(Object.values(this.submissionsByOperation).flat());
   }
 
-  pendingThreadsForSession(workspacePath: string, sessionId: string) {
-    const submitting = this.submittedThreadIds();
-    return this.codeThreadsForSession(workspacePath, sessionId).filter((thread) => thread.pending && !submitting.has(thread.id));
-  }
-
-  chatThreadsForSession(workspacePath: string, sessionId: string) {
-    const submitting = this.submittedThreadIds();
-    return this.codeThreadsForSession(workspacePath, sessionId).filter((thread) => thread.actionableCommentCount > 0 && !submitting.has(thread.id));
-  }
-
-  chatCommentCountForSession(workspacePath: string, sessionId: string) {
-    return this.chatThreadsForSession(workspacePath, sessionId).reduce((count, thread) => count + thread.actionableCommentCount, 0);
-  }
-
   get codeThreads() { return this.threads.filter((thread) => thread.anchor.view !== "message"); }
   get openThreads() { return this.codeThreads.filter((thread) => thread.status === "open"); }
-  get pendingThreads() {
-    const context = this.props.context();
-    return context ? this.pendingThreadsForSession(context.workspacePath, context.sessionId) : [];
-  }
-  get pendingCommentCount() {
-    return this.pendingThreads.reduce((count, thread) => count + thread.pendingUserParts.length, 0);
-  }
-  get chatThreads() {
-    const context = this.props.context();
-    return context ? this.chatThreadsForSession(context.workspacePath, context.sessionId) : [];
-  }
-  get chatCommentCount() {
-    const context = this.props.context();
-    return context ? this.chatCommentCountForSession(context.workspacePath, context.sessionId) : 0;
-  }
   get activeThread() { return this.threads.find((thread) => thread.id === this.activeThreadId) ?? this.openThreads[0]; }
   get configuration() { return this.props.configuration(); }
   threadStreaming(threadId: string) { return this.streamingThreadIds.includes(threadId); }
@@ -90,7 +61,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
       key: thread.id,
       id: () => thread.id,
       parts: () => [
-        ...(thread.anchor.view === "message" ? [{ id: `selection:${thread.id}`, kind: "text" as const, role: "user" as const, text: thread.anchor.selectedText, status: "complete" as const }] : []),
+        { id: `anchor:${thread.id}`, kind: "text" as const, role: "user" as const, text: thread.anchor.selectedText, status: "complete" as const },
         ...thread.uiParts
       ],
       streaming: () => this.threadStreaming(thread.id),
@@ -98,14 +69,14 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
       configuration: () => this.props.configuration(),
       commands: () => [],
       placeholder: () => "Ask a follow-up…",
-      inputLabel: () => thread.anchor.view === "message" ? "Reply to selection chat" : "Reply to review thread",
-      canSubmit: (draft) => Boolean(draft.trim()) && (thread.anchor.view === "message" || thread.status === "open") && !thread.pending && !this.threadStreaming(thread.id),
+      inputLabel: () => thread.anchor.view === "message" ? "Reply to selection chat" : "Reply to code chat",
+      canSubmit: (draft) => Boolean(draft.trim()) && thread.status === "open" && !thread.pending && !this.threadStreaming(thread.id),
       submit: async (draft) => {
         const saved = await this.replyThread(thread.id, draft);
-        if (saved && thread.anchor.view === "message") await this.submitThreads([thread.id]);
+        if (saved) await this.submitThread(thread.id);
         return saved;
       },
-      composerVisible: () => thread.anchor.view === "message" || (thread.status === "open" && !thread.pending && !this.threadStreaming(thread.id)),
+      composerVisible: () => thread.status === "open" && !thread.pending && !this.threadStreaming(thread.id),
       error: () => ({ message: this.error, details: this.errorDetails }),
       usage: () => thread.usage
     }));
@@ -115,14 +86,15 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
 
   async createThread(anchor: ReviewAnchor, body: string) {
     const context = this.props.context();
-    if (!context || !body.trim()) return false;
+    if (!context || !body.trim()) return undefined;
     this.clearError();
     try {
       const thread = await this.props.client.createReviewThread({ ...context, anchor, body: body.trim() });
-      if (this.signal.aborted) return false;
+      if (this.signal.aborted) return undefined;
       this.props.sessionRegistry.upsertReviewThread(thread);
-      return true;
-    } catch (error) { this.reportError(error); return false; }
+      await this.submitThread(thread.id);
+      return thread.id;
+    } catch (error) { this.reportError(error); return undefined; }
   }
 
   async replyThread(threadId: string, body: string) {
@@ -157,20 +129,14 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     } catch (error) { if (!this.signal.aborted) this.reportError(error); }
   }
 
-  async submitPending(instruction?: string) {
-    await this.submitThreads(this.pendingThreads.map((thread) => thread.id), instruction);
-  }
-
-  async submitThreads(threadIds: string[], instruction?: string) {
+  async submitThread(threadId: string) {
     const context = this.props.context();
-    if (!context || threadIds.length === 0) return;
+    if (!context || this.submittedThreadIds().has(threadId)) return;
     this.clearError();
     const operationId = this.props.operations.start();
-    this.submissionsByOperation[operationId] = threadIds;
-    const commentCount = this.threads.filter((thread) => threadIds.includes(thread.id))
-      .reduce((count, thread) => count + thread.pendingUserParts.length, 0);
+    this.submissionsByOperation[operationId] = [threadId];
     try {
-      await this.props.client.submitReviewThreads({ operationId, ...context, threadIds, commentCount: Math.max(commentCount, threadIds.length), instruction, model: this.props.model(), thinkingLevel: this.props.thinkingLevel() });
+      await this.props.client.submitReviewThread({ operationId, ...context, threadId, model: this.props.model(), thinkingLevel: this.props.thinkingLevel() });
     } catch (error) {
       delete this.submissionsByOperation[operationId];
       this.reportError(error);

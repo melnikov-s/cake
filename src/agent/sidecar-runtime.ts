@@ -19,7 +19,6 @@ export interface ReviewTurnOptions {
   sessionDir: string;
   parentSessionRoot: string;
   signal?: AbortSignal;
-  instruction?: string;
   model?: { provider: string; id: string };
   thinkingLevel?: ThinkingLevel;
   parent?: ReviewParentContext;
@@ -87,7 +86,6 @@ function openReviewSession(options: ReviewTurnOptions) {
 }
 
 export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewTurnResult> {
-  const messageComment = options.thread.anchor.view === "message";
   const sessionManager = openReviewSession(options);
   const parentTranscriptPath = await writeReviewParentContext(options);
   const isolatedSessionOptions = {
@@ -95,7 +93,7 @@ export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewT
     agentDir: options.agentDir,
     sessionManager,
     projectTrusted: options.trusted,
-    systemPrompt: reviewSidecarSystemPrompt(options.thread, parentTranscriptPath, options.instruction),
+    systemPrompt: reviewSidecarSystemPrompt(options.thread, parentTranscriptPath),
     prompt: options.thread.pendingComments.map((comment) => comment.body).join("\n\n"),
     signal: options.signal,
     model: options.model,
@@ -106,11 +104,7 @@ export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewT
     capturePromptError: true,
     onEvent: options.onEvent,
   };
-  const result = await runIsolatedSession(
-    messageComment
-      ? { ...isolatedSessionOptions, tools: ["read", "grep", "find", "ls"] }
-      : isolatedSessionOptions,
-  );
+  const result = await runIsolatedSession({ ...isolatedSessionOptions, tools: ["read", "grep", "find", "ls"] });
   return { sessionId: result.sessionId, sessionFile: result.sessionFile, error: result.error, usage: result.usage };
 }
 
@@ -198,15 +192,15 @@ function renderParentTranscript(sessionId: string, entries: SessionEntry[]) {
   return `# Live parent session\n\nSession: ${sessionId}\n\nThis read-only projection follows the parent session's currently active branch and is regenerated before every review-thread reply.\n\n${sections.join("\n\n---\n\n")}\n`;
 }
 
-function reviewSidecarSystemPrompt(thread: ReviewThreadRecord, parentTranscriptPath: string, instruction?: string) {
+function reviewSidecarSystemPrompt(thread: ReviewThreadRecord, parentTranscriptPath: string) {
   const common = [
-    "You are replying in a lightweight Cake review-thread session. The parent conversation is live and may contain later corrections or decisions.",
+    "You are replying in an independent lightweight Cake sidecar chat. Its history is separate from the parent conversation, which may contain later corrections or decisions.",
     `A read-only projection of the parent conversation is available at ${parentTranscriptPath}. Read or search it only when the anchor and local context are insufficient. Never modify this projection or any Cake session files.`,
-    "The user's immediately preceding message is the review-thread comment to address."
+    "The user's immediately preceding message is the sidecar-chat question to address. You have read-only file tools and must not modify the workspace."
   ];
   if (thread.anchor.view === "message") return [
     ...common,
-    "This discussion is attached to an earlier assistant message. Answer the user's question directly and concisely; when relevant, distinguish the passage's original meaning from later changes. You have read-only file tools and must not modify the workspace.",
+    "This discussion is attached to an earlier assistant message. Answer the user's question directly and concisely; when relevant, distinguish the passage's original meaning from later changes.",
     thread.anchor.entryId ? `Anchored Pi entry: ${thread.anchor.entryId}` : "",
     `Selected passage:\n\n> ${thread.anchor.selectedText.replaceAll("\n", "\n> ")}`,
     thread.anchor.contextBefore ? `Nearby text before:\n${thread.anchor.contextBefore}` : "",
@@ -216,9 +210,8 @@ function reviewSidecarSystemPrompt(thread: ReviewThreadRecord, parentTranscriptP
   const point = (value: ReviewThreadRecord["anchor"]["start"]) => `diff row ${value.diffLine}${value.oldLine ? `, old line ${value.oldLine}` : ""}${value.newLine ? `, new line ${value.newLine}` : ""}${value.column === undefined ? "" : `, column ${value.column}`}`;
   return [
     ...common,
-    "You are replying inside an inline code-review thread in Cake. This is an auxiliary review turn: do not discuss routing or the main chat. Address the review comment directly. You may inspect and edit the workspace when that is the clearest way to address it. Finish with a concise response suitable for the inline thread.",
-    "Before editing, inspect applicable workspace instructions and the relevant current code. The live parent projection is supporting context, not a substitute for reading the files you change.",
-    instruction?.trim() ? `Shared instruction from the reviewer:\n${instruction.trim()}` : "",
+    "This discussion is anchored to code shown in Cake. Answer the user's question directly and concisely. Inspect the relevant current code when needed, but do not edit it.",
+    "The live parent projection is supporting context, not part of this chat's own history.",
     `File: ${thread.anchor.path}\nRange: ${point(thread.anchor.start)} through ${point(thread.anchor.end)}`,
     thread.anchor.selectedText ? `Selected code:\n\`\`\`\n${thread.anchor.selectedText}\n\`\`\`` : "",
     `Context before:\n\`\`\`\n${thread.anchor.contextBefore}\n\`\`\`\nContext after:\n\`\`\`\n${thread.anchor.contextAfter}\n\`\`\``,

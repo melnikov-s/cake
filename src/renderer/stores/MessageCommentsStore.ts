@@ -1,13 +1,10 @@
 import { Store, createStore } from "r-state-tree";
 import type { ReviewAnchor } from "../../ipc/review-contract";
-import type { DesktopClient } from "../desktop-client";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { ReviewsStore } from "./ReviewsStore";
-import { describeError } from "../error-details";
 import { ChatStore } from "./ChatStore";
 
 export interface MessageCommentsStoreProps {
-  client: Pick<DesktopClient, "createReviewThread">;
   sessionRegistry: SessionRegistryStore;
   reviews(): ReviewsStore;
   draftChatStore(): ChatStore;
@@ -26,17 +23,10 @@ export interface MessageSelectionAnchor {
 
 /** Owns assistant-message annotation creation, replies, and thread visibility. */
 export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
-  error: string | undefined;
-  errorDetails: string | undefined;
   draftSelection: MessageSelectionAnchor | undefined;
   createdThreadId: string | undefined;
   draftFocusRequestRevision = 0;
 
-  private reportError(error: unknown) {
-    const described = describeError(error);
-    this.error = described.message;
-    this.errorDetails = described.details;
-  }
   get threads() {
     const context = this.props.context();
     if (!context) return [];
@@ -95,10 +85,10 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
         }
         const reviews = this.props.reviews();
         const saved = await reviews.replyThread(this.createdThreadId, draft);
-        if (saved) await reviews.submitThreads([this.createdThreadId]);
+        if (saved) await reviews.submitThread(this.createdThreadId);
         return saved;
       },
-      error: () => ({ message: this.error, details: this.errorDetails }),
+      error: () => ({ message: this.props.reviews().error, details: this.props.reviews().errorDetails }),
       usage: () => this.draftThread?.usage
     });
   }
@@ -120,16 +110,7 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
       startOffset: selection.startOffset,
       endOffset: selection.endOffset
     };
-    try {
-      const thread = await this.props.client.createReviewThread({ ...context, anchor, body: body.trim() });
-      if (this.signal.aborted) return undefined;
-      this.props.sessionRegistry.upsertReviewThread(thread);
-      await this.props.reviews().submitThreads([thread.id]);
-      return thread.id;
-    } catch (error) {
-      if (!this.signal.aborted) this.reportError(error);
-      return undefined;
-    }
+    return this.props.reviews().createThread(anchor, body);
   }
 
 }
