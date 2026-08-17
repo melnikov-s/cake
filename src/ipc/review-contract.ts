@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sessionUsageSchema, uiPartSchema, type SessionSnapshot, type UiPart } from "./session-contract";
 
 export const REVIEW_TEXT_MAX_LENGTH = 262_144;
 const boundedReviewText = z.string().max(REVIEW_TEXT_MAX_LENGTH);
@@ -25,15 +26,6 @@ export const reviewAnchorSchema = z.object({
   endOffset: z.number().int().nonnegative().optional()
 });
 
-export const reviewMessageSchema = z.object({
-  id: z.string().min(1).max(256),
-  role: z.enum(["user", "assistant"]),
-  body: boundedReviewText,
-  createdAt: z.string().datetime(),
-  delivered: z.boolean().default(false),
-  status: z.enum(["complete", "error"]).default("complete")
-});
-
 export const pendingReviewCommentSchema = z.object({
   id: z.string().min(1).max(256),
   body: boundedReviewText,
@@ -52,6 +44,7 @@ export const reviewThreadRecordSchema = z.object({
   sessionId: z.string().min(1).max(256),
   agentSessionId: z.string().min(1).max(256).optional(),
   agentSessionFile: z.string().min(1).max(8_192).optional(),
+  usage: sessionUsageSchema.optional(),
   anchor: reviewAnchorSchema,
   pendingComments: z.array(pendingReviewCommentSchema).max(10_000),
   submission: reviewSubmissionSchema.optional(),
@@ -67,7 +60,8 @@ export const reviewThreadSchema = z.object({
   sessionId: z.string().min(1).max(256),
   agentSessionId: z.string().min(1).max(256).optional(),
   anchor: reviewAnchorSchema,
-  messages: z.array(reviewMessageSchema).max(10_000),
+  parts: z.array(uiPartSchema).max(50_000),
+  usage: sessionUsageSchema.optional(),
   status: z.enum(["open", "resolved"]),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -76,23 +70,28 @@ export const reviewThreadSchema = z.object({
 
 export type ReviewPoint = z.infer<typeof reviewPointSchema>;
 export type ReviewAnchor = z.infer<typeof reviewAnchorSchema>;
-export type ReviewMessage = z.infer<typeof reviewMessageSchema>;
 export type PendingReviewComment = z.infer<typeof pendingReviewCommentSchema>;
 export type ReviewSubmission = z.infer<typeof reviewSubmissionSchema>;
 export type ReviewThreadRecord = z.infer<typeof reviewThreadRecordSchema>;
 export type ReviewThread = z.infer<typeof reviewThreadSchema>;
 
-export function projectReviewThread(record: ReviewThreadRecord, messages: ReviewMessage[] = []): ReviewThread {
+export interface ReviewSessionProjection {
+  parts: UiPart[];
+  usage?: SessionSnapshot["usage"];
+}
+
+export function projectReviewThread(record: ReviewThreadRecord, projection: ReviewSessionProjection = { parts: [] }): ReviewThread {
   return reviewThreadSchema.parse({
     id: record.id,
     workspacePath: record.workspacePath,
     sessionId: record.sessionId,
     agentSessionId: record.agentSessionId,
     anchor: record.anchor,
-    messages: [
-      ...messages,
-      ...record.pendingComments.map((comment) => ({ ...comment, role: "user" as const, delivered: false, status: "complete" as const }))
-    ].slice(-10_000),
+    parts: [
+      ...projection.parts,
+      ...record.pendingComments.map((comment) => ({ id: comment.id, kind: "text" as const, role: "user" as const, text: comment.body, status: "complete" as const, deliveryState: "sending" as const }))
+    ].slice(-50_000),
+    usage: projection.usage ?? record.usage,
     status: record.status,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,

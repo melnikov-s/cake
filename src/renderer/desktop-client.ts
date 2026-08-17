@@ -46,6 +46,8 @@ export type DesktopClientEvent =
   | { type: "review-threads-received"; workspacePath: string; sessionId: string; threads: ReviewThread[] }
   | { type: "review-thread-updated"; thread: ReviewThread }
   | { type: "review-thread-streaming"; workspacePath: string; sessionId: string; threadId: string; streaming: boolean }
+  | { type: "review-thread-part-updated"; workspacePath: string; sessionId: string; threadId: string; part: UiPart }
+  | { type: "review-thread-usage-updated"; workspacePath: string; sessionId: string; threadId: string; usage: NonNullable<SessionSnapshot["usage"]> }
   | {
       type: "ui-requested";
       operationId: string;
@@ -146,7 +148,7 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
   if (event.type === "artifact-updated") return event;
   if (event.type === "artifact-requested") return { type: "artifact-requested", operationId: event.requestId, artifactRequestId: event.artifactRequestId, record: event.record };
   if (event.type === "review-threads-snapshot") return { type: "review-threads-received", workspacePath: event.workspacePath, sessionId: event.sessionId, threads: event.threads };
-  if (event.type === "review-thread-updated" || event.type === "review-thread-streaming") return event;
+  if (event.type === "review-thread-updated" || event.type === "review-thread-streaming" || event.type === "review-thread-part-updated" || event.type === "review-thread-usage-updated") return event;
   if (event.type === "changes-snapshot") return { type: "changes-received", operationId: event.requestId, workspacePath: event.workspacePath, sessionId: event.sessionId, source: event.source, selectedTurnId: event.selectedTurnId, turns: event.turns, files: event.files };
   if (event.type === "changelog-snapshot") return { type: "changelog-received", operationId: event.requestId, workspacePath: event.workspacePath, sessionId: event.sessionId, markdown: event.markdown };
   if (event.type === "ui-request") return { type: "ui-requested", operationId: event.requestId, uiRequestId: event.uiRequestId, kind: event.kind, title: event.title, message: event.message, placeholder: event.placeholder, initialValue: event.initialValue, multiline: event.multiline, options: event.options };

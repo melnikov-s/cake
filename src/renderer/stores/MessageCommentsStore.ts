@@ -75,7 +75,7 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
         if (!selection) return [];
         return [
           { id: `selection:${selection.messageId}:${selection.startOffset}:${selection.endOffset}`, kind: "text" as const, role: "user" as const, text: selection.selectedText, status: "complete" as const },
-          ...(this.draftThread?.messages.map((message) => ({ id: message.id, kind: "text" as const, role: message.role, text: message.body, status: message.status })) ?? [])
+          ...(this.draftThread?.uiParts ?? [])
         ];
       },
       streaming: () => Boolean(this.createdThreadId && this.threadStreaming(this.createdThreadId)),
@@ -98,7 +98,8 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
         if (saved) await reviews.submitThreads([this.createdThreadId]);
         return saved;
       },
-      error: () => ({ message: this.error, details: this.errorDetails })
+      error: () => ({ message: this.error, details: this.errorDetails }),
+      usage: () => this.draftThread?.usage
     });
   }
 

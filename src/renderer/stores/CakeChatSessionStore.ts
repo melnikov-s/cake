@@ -90,6 +90,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       attachments: () => this.attachments,
       addPastedImages: (files) => this.addPastedImages(files),
       removeAttachment: (index) => this.removeAttachment(index),
+      usage: () => this.model?.usage,
       hideThinking: () => Boolean(this.model?.piSettings?.hideThinkingBlock),
       error: () => ({ message: this.configurationStore.error ?? this.error, details: this.configurationStore.errorDetails ?? this.errorDetails, title: "Cake Chat failed" })
     });

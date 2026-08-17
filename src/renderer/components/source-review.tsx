@@ -102,7 +102,7 @@ export const ReviewThreadCard = observer(function ReviewThreadCard({ thread, sto
   const [expanded, setExpanded] = useState(thread.status === "open");
   const chat = store.chatStore(thread.id);
   const focus = () => onFocus ? onFocus() : store.activeThreadId = thread.id;
-  if (!expanded) return <button className={`review-thread-resolved ${store.activeThread?.id === thread.id ? "active" : ""}`} data-review-thread-id={thread.id} onClick={() => { focus(); setExpanded(true); }}>✓ Resolved thread · {thread.messages.length} messages</button>;
+  if (!expanded) return <button className={`review-thread-resolved ${store.activeThread?.id === thread.id ? "active" : ""}`} data-review-thread-id={thread.id} onClick={() => { focus(); setExpanded(true); }}>✓ Resolved thread · {thread.messageCount} messages</button>;
   return <article className={`review-thread ${thread.status} ${store.activeThread?.id === thread.id ? "active" : ""}`} data-review-thread-id={thread.id} aria-label={`Review thread on ${thread.anchor.path}`} onClick={focus}>
     <header><span><i />{thread.status === "resolved" ? "Resolved" : store.threadStreaming(thread.id) ? "Working" : thread.pending ? "Pending review" : "Review thread"}</span><div onClick={(event) => event.stopPropagation()}>{thread.status === "resolved" && <button onClick={() => void store.resolveThread(thread.id, false)}>Reopen</button>}<button onClick={() => {
       if (thread.status === "resolved") setExpanded(false);
@@ -153,6 +153,6 @@ export const SourceReview = observer(function SourceReview({ path, view, lines, 
 });
 
 export function reviewThreadPreview(thread: ReviewThreadModel, fallback: string) {
-  const body = thread.messages.find((message) => message.role === "user")?.body ?? fallback;
+  const body = thread.textParts.find((message) => message.role === "user")?.text ?? fallback;
   return body.length > 72 ? `${body.slice(0, 72)}…` : body;
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CakeRuntime, CakeRuntimeOptions } from "../../../src/agent/cake-runtime";
+import type { ReviewTurnOptions } from "../../../src/agent/sidecar-runtime";
 import type { DesktopEvent } from "../../../src/ipc/desktop-ipc";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
 import { NotGitRepositoryError } from "../../../src/main/git-changes";
@@ -104,7 +105,7 @@ describe("PiWorkspaceDriver", () => {
     };
     const now = new Date(0).toISOString();
     const thread = { id: "review-1", workspacePath: "/project", sessionId: snapshot.sessionId, status: "open" as const, createdAt: now, updatedAt: now, anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" }, pendingComments: [{ id: "message-1", body: "Rename this", createdAt: now }] };
-    const projected = { ...thread, agentSessionId: "review-session", messages: [{ id: "message-1", role: "user" as const, body: "Rename this", createdAt: now, delivered: true, status: "complete" as const }, { id: "message-2", role: "assistant" as const, body: "Renamed.", createdAt: now, delivered: true, status: "complete" as const }] };
+    const projected = { ...thread, agentSessionId: "review-session", parts: [{ id: "message-1", kind: "text" as const, role: "user" as const, text: "Rename this", status: "complete" as const }, { id: "message-2", kind: "text" as const, role: "assistant" as const, text: "Renamed.", status: "complete" as const }] };
     const reviewRepository = {
       recoverRunning: vi.fn(async () => undefined),
       claimPending: vi.fn(async (_workspacePath: string, _sessionId: string, _threadId: string, runId: string) => ({ ...thread, submission: { status: "running" as const, runId, commentIds: ["message-1"], startedAt: now } })),
@@ -112,7 +113,12 @@ describe("PiWorkspaceDriver", () => {
       completeRun: vi.fn(async () => projected),
       failRun: vi.fn(async () => projected)
     };
-    const runReview = vi.fn(async () => ({ sessionId: "review-session", sessionFile: "/cake/pi/review-sessions/review-1/session.jsonl" }));
+    const usage = { tokens: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, total: 15 }, cost: 0.012, context: { tokens: 20, contextWindow: 1_000, percent: 2 } };
+    const runReview = vi.fn(async (options: ReviewTurnOptions) => {
+      options.onEvent?.({ type: "part-updated", part: { id: "reasoning-1", kind: "reasoning", text: "Inspecting", status: "streaming" } });
+      options.onEvent?.({ type: "usage-updated", usage });
+      return { sessionId: "review-session", sessionFile: "/cake/pi/review-sessions/review-1/session.jsonl", usage };
+    });
     const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime), reviewRepository, runReviewTurn: runReview, isTrusted: () => true });
     const openId = crypto.randomUUID();
     driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
@@ -132,6 +138,8 @@ describe("PiWorkspaceDriver", () => {
     expect(runtime.recordReviewRun).toHaveBeenNthCalledWith(1, { operationId: requestId, threadIds: [thread.id], commentCount: 1, status: "running" });
     expect(runtime.recordReviewRun).toHaveBeenNthCalledWith(2, { operationId: requestId, threadIds: [thread.id], commentCount: 1, status: "complete" });
     expect(events).toContainEqual(expect.objectContaining({ type: "review-thread-updated", thread: expect.objectContaining({ id: thread.id }) }));
+    expect(events).toContainEqual(expect.objectContaining({ type: "review-thread-part-updated", threadId: thread.id, part: expect.objectContaining({ kind: "reasoning" }) }));
+    expect(events).toContainEqual(expect.objectContaining({ type: "review-thread-usage-updated", threadId: thread.id, usage }));
     expect(events.some((event) => event.type === "session-snapshot")).toBe(false);
     expect(runtime.prompt).not.toHaveBeenCalled();
     driver[Symbol.dispose]();

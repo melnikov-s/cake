@@ -36,7 +36,7 @@ function explorerProps(store: ProjectWorkbenchStore) {
     if (current) return current;
     const chat = mount(createStore(ChatStore, {
       id: () => threadId,
-      parts: () => (fixture.reviewThreads ?? []).find((thread: { id: string }) => thread.id === threadId)?.messages.map((message: { id: string; role: "user" | "assistant"; body: string; status: "complete" | "streaming" }) => ({ id: message.id, kind: "text" as const, role: message.role, text: message.body, status: message.status })) ?? [],
+      parts: () => (fixture.reviewThreads ?? []).find((thread: { id: string }) => thread.id === threadId)?.uiParts ?? [],
       streaming: () => fixture.reviewThreadStreaming?.(threadId) ?? false,
       submitting: () => false,
       configuration: () => undefined,
@@ -82,6 +82,11 @@ function explorerProps(store: ProjectWorkbenchStore) {
     browse: { readFile: fixture.readWorkspaceFile } as any,
     chat: { sessionTitle: fixture.sessionTitle } as any
   };
+}
+
+function mockReviewThread(input: { id: string; status: "open" | "resolved"; pending: boolean; anchor: { path: string; start: { diffLine: number; newLine: number }; end: { diffLine: number; newLine: number } }; messages: Array<{ id: string; role: "user" | "assistant"; body: string; status: "complete" }> }) {
+  const uiParts = input.messages.map((message) => ({ id: message.id, kind: "text" as const, role: message.role, text: message.body, status: message.status }));
+  return { ...input, uiParts, textParts: uiParts, messageCount: uiParts.length };
 }
 
 describe("ChangeExplorer", () => {
@@ -307,13 +312,13 @@ describe("ChangeExplorer", () => {
   });
 
   it("minimizes a review thread when it is resolved", () => {
-    const thread = {
+    const thread = mockReviewThread({
       id: "review-1",
       status: "open",
       pending: false,
       anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 1 }, end: { diffLine: 1, newLine: 1 } },
       messages: [{ id: "message-1", role: "user", body: "Please simplify this", status: "complete" }]
-    };
+    });
     const resolveReviewThread = vi.fn(async () => undefined);
     const store = {
       workspaceChanges: changes, selectedWorkspaceChange: changes[0], sessionTitle: "Review", reviewThreads: [thread],
@@ -330,7 +335,7 @@ describe("ChangeExplorer", () => {
   });
 
   it("submits a thread reply from the button or Enter and keeps Shift+Enter for a newline", async () => {
-    const thread = {
+    const thread = mockReviewThread({
       id: "review-1",
       status: "open",
       pending: false,
@@ -339,7 +344,7 @@ describe("ChangeExplorer", () => {
         { id: "message-1", role: "user", body: "Please simplify this", status: "complete" },
         { id: "message-2", role: "assistant", body: "Done.", status: "complete" }
       ]
-    };
+    });
     const replyReviewThread = vi.fn(async () => true);
     const store = {
       workspaceChanges: changes, selectedWorkspaceChange: changes[0], sessionTitle: "Review", reviewThreads: [thread],
@@ -392,11 +397,11 @@ describe("ChangeExplorer", () => {
 
   it("lists review threads in the sidebar and links each one to its inline thread", () => {
     const focusReviewThread = vi.fn();
-    const thread = {
+    const thread = mockReviewThread({
       id: "review-1", status: "open", pending: true,
       anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 1 }, end: { diffLine: 1, newLine: 1 } },
       messages: [{ id: "message-1", role: "user", body: "Can you explain this?", status: "complete" }]
-    };
+    });
     const store = {
       workspaceChanges: changes, selectedWorkspaceChange: changes[0], sessionTitle: "Review", reviewThreads: [thread], pendingReviewThreads: [thread], pendingReviewCommentCount: 1,
       reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
@@ -417,7 +422,7 @@ describe("ChangeExplorer", () => {
   });
 
   it("puts resolved threads last and renders them in the muted state", () => {
-    const makeThread = (id: string, status: "open" | "resolved", body: string) => ({
+    const makeThread = (id: string, status: "open" | "resolved", body: string) => mockReviewThread({
       id, status, pending: false,
       anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 1 }, end: { diffLine: 1, newLine: 1 } },
       messages: [{ id: `${id}-message`, role: "user", body, status: "complete" }]

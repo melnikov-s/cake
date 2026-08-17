@@ -70,7 +70,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     return context ? this.pendingThreadsForSession(context.workspacePath, context.sessionId) : [];
   }
   get pendingCommentCount() {
-    return this.pendingThreads.reduce((count, thread) => count + thread.messages.filter((message) => message.role === "user" && !message.delivered).length, 0);
+    return this.pendingThreads.reduce((count, thread) => count + thread.pendingUserParts.length, 0);
   }
   get chatThreads() {
     const context = this.props.context();
@@ -91,7 +91,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
       id: () => thread.id,
       parts: () => [
         ...(thread.anchor.view === "message" ? [{ id: `selection:${thread.id}`, kind: "text" as const, role: "user" as const, text: thread.anchor.selectedText, status: "complete" as const }] : []),
-        ...thread.messages.map((message) => ({ id: message.id, kind: "text" as const, role: message.role, text: message.body, status: message.status }))
+        ...thread.uiParts
       ],
       streaming: () => this.threadStreaming(thread.id),
       submitting: () => false,
@@ -106,7 +106,8 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
         return saved;
       },
       composerVisible: () => thread.anchor.view === "message" || (thread.status === "open" && !thread.pending && !this.threadStreaming(thread.id)),
-      error: () => ({ message: this.error, details: this.errorDetails })
+      error: () => ({ message: this.error, details: this.errorDetails }),
+      usage: () => thread.usage
     }));
   }
 
@@ -167,7 +168,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     const operationId = this.props.operations.start();
     this.submissionsByOperation[operationId] = threadIds;
     const commentCount = this.threads.filter((thread) => threadIds.includes(thread.id))
-      .reduce((count, thread) => count + thread.messages.filter((message) => message.role === "user" && !message.delivered).length, 0);
+      .reduce((count, thread) => count + thread.pendingUserParts.length, 0);
     try {
       await this.props.client.submitReviewThreads({ operationId, ...context, threadIds, commentCount: Math.max(commentCount, threadIds.length), instruction, model: this.props.model(), thinkingLevel: this.props.thinkingLevel() });
     } catch (error) {
@@ -182,6 +183,11 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
       const index = this.streamingThreadIds.indexOf(event.threadId);
       if (event.streaming && index < 0) this.streamingThreadIds.push(event.threadId);
       if (!event.streaming && index >= 0) this.streamingThreadIds.splice(index, 1);
+    } else if (event.type === "review-thread-part-updated") {
+      this.props.sessionRegistry.findModel(event.sessionId, event.workspacePath)?.reviewThreads.find((thread) => thread.id === event.threadId)?.upsertPart(event.part);
+    } else if (event.type === "review-thread-usage-updated") {
+      const thread = this.props.sessionRegistry.findModel(event.sessionId, event.workspacePath)?.reviewThreads.find((item) => item.id === event.threadId);
+      if (thread) thread.usage = event.usage;
     } else if (event.type === "operation-completed") {
       const threadIds = this.submissionsByOperation[event.operationId];
       if (!threadIds) return;

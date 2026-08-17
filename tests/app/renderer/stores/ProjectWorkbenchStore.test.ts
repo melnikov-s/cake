@@ -705,8 +705,14 @@ describe("ProjectWorkbenchStore", () => {
     desktop.emit({ type: "review-thread-updated", thread: {
       id: "review-1", workspacePath: "/project", sessionId: "session-1", status: "open", createdAt: now, updatedAt: now,
       anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
-      messages: [{ id: "comment-1", role: "user", body: "Rename this", createdAt: now, delivered: false, status: "complete" }]
+      parts: [{ id: "comment-1", kind: "text", role: "user", text: "Rename this", status: "complete", deliveryState: "sending" }]
     } });
+    const reviewUsage = { tokens: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, total: 15 }, cost: 0.012, context: { tokens: 20, contextWindow: 1_000, percent: 2 } };
+    desktop.emit({ type: "review-thread-part-updated", workspacePath: "/project", sessionId: "session-1", threadId: "review-1", part: { id: "reasoning-1", kind: "reasoning", text: "Inspecting", status: "streaming" } });
+    desktop.emit({ type: "review-thread-part-updated", workspacePath: "/project", sessionId: "session-1", threadId: "review-1", part: { id: "tool-1", kind: "tool", name: "read", input: "src/app.ts", state: "running" } });
+    desktop.emit({ type: "review-thread-usage-updated", workspacePath: "/project", sessionId: "session-1", threadId: "review-1", usage: reviewUsage });
+    expect(root.reviewsStore.chatStore("review-1")?.parts).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "reasoning" }), expect.objectContaining({ kind: "tool" })]));
+    expect(root.reviewsStore.chatStore("review-1")?.usage).toEqual(reviewUsage);
     store.activeSession!.chatStore.setDraft("");
 
     expect(store.activeSession!.canSubmit).toBe(true);
@@ -735,7 +741,7 @@ describe("ProjectWorkbenchStore", () => {
     desktop.emit({ type: "review-thread-updated", thread: {
       id: "review-1", workspacePath: "/project", sessionId: "session-1", status: "open", createdAt: now, updatedAt: now,
       anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 1 }, end: { diffLine: 1, newLine: 1 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
-      messages: [{ id: "comment-1", role: "user", body: "Explain this", createdAt: now, delivered: false, status: "complete" }]
+      parts: [{ id: "comment-1", kind: "text", role: "user", text: "Explain this", status: "complete", deliveryState: "sending" }]
     } });
     await store.openSessionChanges("review-1");
 
@@ -757,9 +763,9 @@ describe("ProjectWorkbenchStore", () => {
     desktop.emit({ type: "review-thread-updated", thread: {
       id: "review-1", workspacePath: "/project", sessionId: "session-1", status: "open", createdAt: now, updatedAt: now,
       anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
-      messages: [
-        { id: "comment-1", role: "user", body: "Rename this", createdAt: now, delivered: true, status: "complete" },
-        { id: "reply-1", role: "assistant", body: "Renamed it.", createdAt: now, delivered: true, status: "complete" }
+      parts: [
+        { id: "comment-1", kind: "text", role: "user", text: "Rename this", status: "complete" },
+        { id: "reply-1", kind: "text", role: "assistant", text: "Renamed it.", status: "complete" }
       ]
     } });
 
@@ -776,7 +782,7 @@ describe("ProjectWorkbenchStore", () => {
     const thread = {
       id: "review-shared", workspacePath: "/other", sessionId: "session-2", status: "open" as const, createdAt: now, updatedAt: now,
       anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
-      messages: [{ id: "comment-shared", role: "user" as const, body: "Rename this", createdAt: now, delivered: false, status: "complete" as const }]
+      parts: [{ id: "comment-shared", kind: "text" as const, role: "user" as const, text: "Rename this", status: "complete" as const, deliveryState: "sending" as const }]
     };
     desktop.client.listSessions = vi.fn(async () => ({
       sessions: [{ id: "session-2", title: "Review", created: now, modified: now, messageCount: 1, archived: false, workspacePath: "/other", workspaceName: "Other" }],
@@ -793,9 +799,9 @@ describe("ProjectWorkbenchStore", () => {
 
     desktop.emit({ type: "review-thread-updated", thread: {
       ...thread,
-      messages: [
-        { ...thread.messages[0]!, delivered: true },
-        { id: "reply-shared", role: "assistant", body: "Renamed it.", createdAt: now, delivered: true, status: "complete" }
+      parts: [
+        { ...thread.parts[0]!, deliveryState: undefined },
+        { id: "reply-shared", kind: "text", role: "assistant", text: "Renamed it.", status: "complete" }
       ]
     } });
 
@@ -817,7 +823,7 @@ describe("ProjectWorkbenchStore", () => {
     desktop.emit({ type: "review-thread-updated", thread: {
       id: "review-1", workspacePath: "/project", sessionId: "session-1", status: "open", createdAt: now, updatedAt: now,
       anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
-      messages: [{ id: "comment-1", role: "user", body: "Rename this", createdAt: now, delivered: false, status: "complete" }]
+      parts: [{ id: "comment-1", kind: "text", role: "user", text: "Rename this", status: "complete", deliveryState: "sending" }]
     } });
     store.activeSession!.chatStore.setDraft("Also explain the overall change");
 

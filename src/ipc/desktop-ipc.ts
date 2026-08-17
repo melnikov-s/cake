@@ -17,6 +17,7 @@ import {
   piSettingUpdateSchema,
   sessionPreviewSchema,
   sessionSnapshotSchema,
+  sessionUsageSchema,
   thinkingLevelSchema,
   utilityModelSchema,
   uiPartSchema,
@@ -45,6 +46,8 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("review-threads-snapshot"), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), threads: ipcProjectionArray(reviewThreadSchema, 10_000) }),
   z.object({ type: z.literal("review-thread-updated"), thread: reviewThreadSchema }),
   z.object({ type: z.literal("review-thread-streaming"), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), threadId: z.string().max(256), streaming: z.boolean() }),
+  z.object({ type: z.literal("review-thread-part-updated"), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), threadId: z.string().max(256), part: uiPartSchema }),
+  z.object({ type: z.literal("review-thread-usage-updated"), workspacePath: z.string().max(4_096), sessionId: z.string().max(256), threadId: z.string().max(256), usage: sessionUsageSchema }),
   z.object({
     type: z.literal("ui-request"),
     requestId: z.uuid(),

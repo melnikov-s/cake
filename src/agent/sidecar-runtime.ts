@@ -1,11 +1,12 @@
 import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { chmod, mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { REVIEW_TEXT_MAX_LENGTH, type ReviewMessage, type ReviewThreadRecord } from "../ipc/review-contract";
+import { type ReviewSessionProjection, type ReviewThreadRecord } from "../ipc/review-contract";
 import { runIsolatedSession } from "./isolated-session-runner";
 import { assertSessionPath } from "./session-path";
 import { AtomicFileWriter } from "../main/atomic-file-writer";
-import type { ThinkingLevel } from "../ipc/session-contract";
+import type { SessionSnapshot, ThinkingLevel, UiPart } from "../ipc/session-contract";
+import { projectSessionEntries } from "./session-projection";
 
 const atomicFileWriter = new AtomicFileWriter();
 
@@ -23,7 +24,12 @@ export interface ReviewTurnOptions {
   thinkingLevel?: ThinkingLevel;
   parent?: ReviewParentContext;
   agentDir: string;
+  onEvent?(event: ReviewTurnEvent): void;
 }
+
+export type ReviewTurnEvent =
+  | { type: "part-updated"; part: UiPart }
+  | { type: "usage-updated"; usage: NonNullable<SessionSnapshot["usage"]> };
 
 export interface ReviewParentContext {
   sessionId: string;
@@ -38,6 +44,7 @@ export interface ReviewTurnResult {
   sessionId: string;
   sessionFile: string;
   error?: string;
+  usage?: SessionSnapshot["usage"];
 }
 
 export interface InlineWidgetRepairOptions {
@@ -97,13 +104,14 @@ export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewT
     cancellationMessage: "The review run was cancelled",
     bindExtensions: true,
     capturePromptError: true,
+    onEvent: options.onEvent,
   };
   const result = await runIsolatedSession(
     messageComment
       ? { ...isolatedSessionOptions, tools: ["read", "grep", "find", "ls"] }
       : isolatedSessionOptions,
   );
-  return { sessionId: result.sessionId, sessionFile: result.sessionFile, error: result.error };
+  return { sessionId: result.sessionId, sessionFile: result.sessionFile, error: result.error, usage: result.usage };
 }
 
 export async function runInlineWidgetRepair(options: InlineWidgetRepairOptions): Promise<InlineWidgetRepairResult> {
@@ -217,27 +225,12 @@ function reviewSidecarSystemPrompt(thread: ReviewThreadRecord, parentTranscriptP
   ].filter(Boolean).join("\n\n");
 }
 
-export async function loadReviewSessionMessages(record: ReviewThreadRecord, sessionRoot: string): Promise<ReviewMessage[]> {
-  if (!record.agentSessionFile) return [];
+export async function loadReviewSessionProjection(record: ReviewThreadRecord, sessionRoot: string): Promise<ReviewSessionProjection> {
+  if (!record.agentSessionFile) return { parts: [], usage: record.usage };
   assertSessionPath(record.agentSessionFile, sessionRoot, "Review session file");
   const targetDirectory = resolve(dirname(record.agentSessionFile));
   const manager = SessionManager.open(record.agentSessionFile, targetDirectory, record.workspacePath);
-  const branch = manager.getBranch();
-  return branch.flatMap((entry): ReviewMessage[] => {
-    if (entry.type !== "message") return [];
-    const message = entry.message;
-    if (message.role !== "user" && message.role !== "assistant") return [];
-    const body = textFromContent(message.content).trim().slice(0, REVIEW_TEXT_MAX_LENGTH);
-    if (!body) return [];
-    return [{
-      id: entry.id,
-      role: message.role,
-      body,
-      createdAt: entry.timestamp,
-      delivered: true,
-      status: message.role === "assistant" && message.errorMessage ? "error" : "complete"
-    }];
-  });
+  return { parts: projectSessionEntries(manager.getBranch()), usage: record.usage };
 }
 
 function textFromContent(content: unknown): string {

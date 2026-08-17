@@ -7,7 +7,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell, type WebContents } from "el
 import { desktopRequestSchema, desktopResponseSchema, type DesktopEvent } from "../ipc/desktop-ipc";
 import { windowViewStateSchema, type Attachment, type WindowViewState } from "../ipc/session-contract";
 import { inspectWorkspace, listWorkspaceSessions, loadWorkspaceSessionPreview, suggestProjectFiles } from "../agent/session-discovery";
-import { loadReviewSessionMessages, runInlineWidgetRepair } from "../agent/sidecar-runtime";
+import { loadReviewSessionProjection, runInlineWidgetRepair } from "../agent/sidecar-runtime";
 import { ApplicationModel } from "./application-model";
 import { shouldAllowNavigation } from "./navigation-policy";
 import { PiWorkspaceDriver, type PiWorkspaceCommand } from "./pi-workspace-driver";
@@ -76,7 +76,7 @@ const artifactRepository = new ArtifactRepository(join(app.getPath("userData"), 
 const reviewRepository = new ReviewRepository(
   join(app.getPath("userData"), "reviews"),
   cakePaths.piReviewSessions,
-  (record) => loadReviewSessionMessages(record, cakePaths.piReviewSessions)
+  (record) => loadReviewSessionProjection(record, cakePaths.piReviewSessions)
 );
 let globalChatController: WebContents | undefined;
 const globalChatDriver = new GlobalChatDriver({

@@ -49,7 +49,7 @@ describe("MessageCommentsStore", () => {
     const now = new Date(0).toISOString();
     const createReviewThread = vi.fn(async (input: { anchor: ReviewThread["anchor"] }) => ({
       id: "thread-1", workspacePath: "/project", sessionId: "session-1", anchor: input.anchor,
-      messages: [{ id: "question-1", role: "user" as const, body: "Why?", createdAt: now, delivered: false, status: "complete" as const }],
+      parts: [{ id: "question-1", kind: "text" as const, role: "user" as const, text: "Why?", status: "complete" as const, deliveryState: "sending" as const }],
       status: "open" as const, createdAt: now, updatedAt: now
     }));
     const submitThreads = vi.fn(async () => undefined);

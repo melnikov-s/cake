@@ -15,7 +15,7 @@ import {
   suggestProjectFiles
 } from "../../../src/agent/session-discovery";
 import { createLiveMessageProjector, projectQueuedMessages } from "../../../src/agent/session-projection";
-import { runReviewTurn } from "../../../src/agent/sidecar-runtime";
+import { loadReviewSessionProjection, runReviewTurn } from "../../../src/agent/sidecar-runtime";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { CakeArtifactV1 } from "../../../src/ipc/artifact-contract";
 import { sessionSnapshotSchema } from "../../../src/ipc/session-contract";
@@ -252,6 +252,34 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(projection).toContain("Draft a plan");
     expect(projection).toContain("The original plan");
     expect((await readdir(reviewDir)).filter((name) => name.endsWith(".jsonl"))).toHaveLength(0);
+  });
+
+  it("reopens review sidecars as complete chat parts with persisted usage", async () => {
+    const directory = await createTemporaryDirectory();
+    const reviewDir = join(directory, "reviews");
+    await mkdir(reviewDir, { recursive: true });
+    const timestamp = new Date(0).toISOString();
+    const sessionFile = join(reviewDir, "review.jsonl");
+    await writeFile(sessionFile, [
+      { type: "session", version: 3, id: "review-session", timestamp, cwd: directory },
+      { type: "message", id: "user-1", parentId: null, timestamp, message: { role: "user", content: "Explain this", timestamp: 0 } },
+      { type: "message", id: "assistant-1", parentId: "user-1", timestamp, message: { role: "assistant", content: [{ type: "thinking", thinking: "Inspect the file" }, { type: "toolCall", id: "call-1", name: "read", arguments: { path: "src/app.ts" } }], timestamp: 0, usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15, cost: { total: 0.01 } }, stopReason: "toolUse" } },
+      { type: "message", id: "tool-1", parentId: "assistant-1", timestamp, message: { role: "toolResult", toolCallId: "call-1", toolName: "read", content: [{ type: "text", text: "const value = true;" }], details: {}, isError: false, timestamp: 0 } },
+      { type: "message", id: "assistant-2", parentId: "tool-1", timestamp, message: { role: "assistant", content: [{ type: "text", text: "It enables the feature." }], timestamp: 0, usage: { input: 20, output: 6, cacheRead: 0, cacheWrite: 0, totalTokens: 26, cost: { total: 0.02 } }, stopReason: "stop" } }
+    ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    const usage = { tokens: { input: 30, output: 11, cacheRead: 0, cacheWrite: 0, total: 41 }, cost: 0.03 };
+    const projection = await loadReviewSessionProjection({
+      id: "thread-1", workspacePath: directory, sessionId: "parent", agentSessionId: "review-session", agentSessionFile: sessionFile, usage,
+      anchor: { path: "src/app.ts", start: { diffLine: 1 }, end: { diffLine: 1 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "" },
+      pendingComments: [], status: "open", createdAt: timestamp, updatedAt: timestamp
+    }, reviewDir);
+
+    expect(projection.parts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "reasoning", text: "Inspect the file" }),
+      expect.objectContaining({ kind: "tool", name: "read", state: "success" }),
+      expect.objectContaining({ kind: "text", role: "assistant", text: "It enables the feature." })
+    ]));
+    expect(projection.usage).toEqual(usage);
   });
 
   it("gives assistant messages on either side of a tool call distinct live positions", () => {

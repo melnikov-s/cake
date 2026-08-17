@@ -146,13 +146,13 @@ describe("SessionModel", () => {
     model[Symbol.dispose]();
   });
 
-  it("keeps one review model instance and derives actionable comments from its messages", () => {
+  it("keeps one review model instance and derives actionable comments from its chat parts", () => {
     const model = SessionModel.create({ workspacePath: "/project", sessionId: "session-1" });
     const now = new Date(0).toISOString();
     const thread = {
       id: "review-1", workspacePath: "/project", sessionId: "session-1", status: "open" as const, createdAt: now, updatedAt: now,
       anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" },
-      messages: [{ id: "comment-1", role: "user" as const, body: "Rename this", createdAt: now, delivered: false, status: "complete" as const }]
+      parts: [{ id: "comment-1", kind: "text" as const, role: "user" as const, text: "Rename this", status: "complete" as const, deliveryState: "sending" as const }]
     };
     model.applyReviewThreads([thread]);
     const review = model.reviewThreads[0]!;
@@ -160,9 +160,9 @@ describe("SessionModel", () => {
     expect(review).toBeInstanceOf(ReviewThreadModel);
     expect(review.actionableCommentCount).toBe(1);
 
-    model.upsertReviewThread({ ...thread, updatedAt: new Date(1).toISOString(), messages: [
-      { ...thread.messages[0]!, delivered: true },
-      { id: "reply-1", role: "assistant", body: "Renamed it.", createdAt: new Date(1).toISOString(), delivered: true, status: "complete" }
+    model.upsertReviewThread({ ...thread, updatedAt: new Date(1).toISOString(), parts: [
+      { ...thread.parts[0]!, deliveryState: undefined },
+      { id: "reply-1", kind: "text", role: "assistant", text: "Renamed it.", status: "complete" }
     ] });
 
     expect(model.reviewThreads[0]).toBe(review);

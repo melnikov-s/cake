@@ -23,13 +23,13 @@ describe("ReviewRepository", () => {
     expect(context).toContain(`${created.id} · resolved`);
   });
 
-  it("persists only review metadata and projects messages from the referenced Pi session", async () => {
+  it("persists only review metadata and projects chat parts from the referenced Pi session", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-reviews-")); directories.push(root);
-    const projectedMessages = [{ id: "pi-user", role: "user" as const, body: "Use a clearer name", createdAt: new Date(0).toISOString(), delivered: true, status: "complete" as const }, { id: "pi-assistant", role: "assistant" as const, body: "Renamed it.", createdAt: new Date(1).toISOString(), delivered: true, status: "complete" as const }];
-    const repository = new ReviewRepository(root, join(root, "pi-sessions"), async () => projectedMessages);
+    const projectedParts = [{ id: "pi-user", kind: "text" as const, role: "user" as const, text: "Use a clearer name", status: "complete" as const }, { id: "tool-1", kind: "tool" as const, name: "read", input: "src/app.ts", output: "source", state: "success" as const }, { id: "pi-assistant", kind: "text" as const, role: "assistant" as const, text: "Renamed it.", status: "complete" as const }];
+    const repository = new ReviewRepository(root, join(root, "pi-sessions"), async () => ({ parts: projectedParts }));
     const anchor = { path: "src/app.ts", start: { diffLine: 2, newLine: 10, column: 3 }, end: { diffLine: 3, newLine: 11, column: 8 }, selectedText: "const value", contextBefore: "before", contextAfter: "after", diff: "@@" };
     const created = await repository.create("/project", "session", anchor, "Use a clearer name");
-    expect(created.messages[0]).toMatchObject({ role: "user", delivered: false });
+    expect(created.parts[0]).toMatchObject({ role: "user", deliveryState: "sending" });
     expect(await readFile(repository.reviewContextPath("/project", "session"), "utf8")).toContain("Code: src/app.ts · diff rows 2-3");
     expect((await repository.listSession("/project", "session")).filter((thread) => thread.status === "open")).toHaveLength(1);
 
@@ -39,15 +39,15 @@ describe("ReviewRepository", () => {
     const answered = await repository.completeRun("/project", "session", created.id, runId, { sessionId: "pi-review", sessionFile: "/reviews/pi-review.jsonl" });
     expect(answered).toBeDefined();
     expect(answered!.agentSessionId).toBe("pi-review");
-    expect(answered!.messages).toEqual(projectedMessages);
+    expect(answered!.parts).toEqual(projectedParts);
     const record = await repository.get("/project", "session", created.id);
     expect(record).toMatchObject({ agentSessionId: "pi-review", agentSessionFile: "/reviews/pi-review.jsonl", pendingComments: [] });
-    expect(record).not.toHaveProperty("messages");
+    expect(record).not.toHaveProperty("parts");
     const replied = await repository.reply("/project", "session", created.id, "One more thing");
-    expect(replied.messages.at(-1)).toMatchObject({ role: "user", body: "One more thing", delivered: false });
+    expect(replied.parts.at(-1)).toMatchObject({ role: "user", text: "One more thing", deliveryState: "sending" });
     await repository.resolve("/project", "session", created.id, true);
     expect((await repository.listSession("/project", "session")).filter((thread) => thread.status === "open")).toHaveLength(0);
-    expect((await new ReviewRepository(root, join(root, "pi-sessions"), async () => projectedMessages).listSession("/project", "session"))[0]?.status).toBe("resolved");
+    expect((await new ReviewRepository(root, join(root, "pi-sessions"), async () => ({ parts: projectedParts })).listSession("/project", "session"))[0]?.status).toBe("resolved");
   });
 
   it("atomically claims pending comments and rejects stale completion", async () => {
@@ -92,9 +92,8 @@ describe("ReviewRepository", () => {
 
   it("keeps a failed comment pending without projecting its failed Pi-session copy", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-reviews-")); directories.push(root);
-    const now = new Date(0).toISOString();
-    const projectedMessages = [{ id: "pi-user", role: "user" as const, body: "Are you sure?", createdAt: now, delivered: true, status: "complete" as const }];
-    const repository = new ReviewRepository(root, join(root, "pi-sessions"), async () => projectedMessages);
+    const projectedParts = [{ id: "pi-user", kind: "text" as const, role: "user" as const, text: "Are you sure?", status: "complete" as const }];
+    const repository = new ReviewRepository(root, join(root, "pi-sessions"), async () => ({ parts: projectedParts }));
     const anchor = { path: "src/app.ts", start: { diffLine: 1 }, end: { diffLine: 1 }, selectedText: "", contextBefore: "", contextAfter: "", diff: "" };
     const created = await repository.create("/project", "session", anchor, "Are you sure?");
     const runId = crypto.randomUUID();
@@ -102,7 +101,7 @@ describe("ReviewRepository", () => {
 
     const failed = await repository.failRun("/project", "session", created.id, runId, "Unsupported parameter: prompt_cache_options");
 
-    expect(failed?.messages).toEqual([expect.objectContaining({ body: "Are you sure?", delivered: false })]);
+    expect(failed?.parts).toEqual([expect.objectContaining({ text: "Are you sure?", deliveryState: "sending" })]);
     const record = await repository.get("/project", "session", created.id);
     expect(record).toMatchObject({
       pendingComments: [expect.objectContaining({ body: "Are you sure?" })],

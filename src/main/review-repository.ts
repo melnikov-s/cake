@@ -5,14 +5,14 @@ import {
   projectReviewThread,
   reviewThreadRecordSchema,
   type ReviewAnchor,
-  type ReviewMessage,
+  type ReviewSessionProjection,
   type ReviewThread,
   type ReviewThreadRecord
 } from "../ipc/review-contract";
 import { AtomicFileWriter } from "./atomic-file-writer";
 import { KeyedSerialExecutor } from "./keyed-serial-executor";
 
-export type ReviewMessageLoader = (record: ReviewThreadRecord) => Promise<ReviewMessage[]>;
+export type ReviewSessionLoader = (record: ReviewThreadRecord) => Promise<ReviewSessionProjection>;
 export class ReviewRepository {
   private readonly updates = new KeyedSerialExecutor<string>();
   private readonly contextUpdates = new KeyedSerialExecutor<string>();
@@ -21,7 +21,7 @@ export class ReviewRepository {
   constructor(
     private readonly root: string,
     private readonly piSessionRoot: string,
-    private readonly loadMessages: ReviewMessageLoader = async () => []
+    private readonly loadSession: ReviewSessionLoader = async () => ({ parts: [] })
   ) {}
 
   agentSessionDirectory(workspacePath: string, sessionId: string, threadId: string) {
@@ -113,12 +113,13 @@ export class ReviewRepository {
     return this.project(record);
   }
 
-  async completeRun(workspacePath: string, sessionId: string, threadId: string, runId: string, agent: { sessionId: string; sessionFile: string }): Promise<ReviewThread | undefined> {
+  async completeRun(workspacePath: string, sessionId: string, threadId: string, runId: string, agent: { sessionId: string; sessionFile: string; usage?: ReviewThreadRecord["usage"] }): Promise<ReviewThread | undefined> {
     let completed = false;
     const record = await this.update(workspacePath, sessionId, threadId, (thread) => {
       if (thread.submission?.status !== "running" || thread.submission.runId !== runId) return thread;
       thread.agentSessionId = agent.sessionId;
       thread.agentSessionFile = agent.sessionFile;
+      thread.usage = agent.usage;
       const now = new Date().toISOString();
       const claimed = new Set(thread.submission.commentIds);
       thread.pendingComments.splice(0, thread.pendingComments.length, ...thread.pendingComments.filter((comment) => !claimed.has(comment.id)));
@@ -158,7 +159,7 @@ export class ReviewRepository {
           ? `Assistant message: ${thread.anchor.messageId ?? "unknown"}${thread.anchor.entryId ? ` · Pi entry ${thread.anchor.entryId}` : ""}`
           : `Code: ${thread.anchor.path} · diff rows ${thread.anchor.start.diffLine}-${thread.anchor.end.diffLine}`,
         `> ${thread.anchor.selectedText.replaceAll("\n", "\n> ")}`,
-        ...thread.messages.map((message) => `### ${message.role === "user" ? "User" : "Assistant"}\n\n${message.body}`)
+        ...thread.parts.flatMap((part) => part.kind === "text" ? [`### ${part.role === "user" ? "User" : "Assistant"}\n\n${part.text}`] : [])
       ].join("\n\n"));
       await mkdir(this.sessionDirectory(workspacePath, sessionId), { recursive: true, mode: 0o700 });
       await this.writer.write(target, `# Review threads\n\nParent session: ${sessionId}\n\nThis is a derived index of inline code reviews and assistant-message discussions.\n\n${sections.join("\n\n---\n\n")}\n`);
@@ -166,7 +167,7 @@ export class ReviewRepository {
   }
 
   private async project(record: ReviewThreadRecord) {
-    return projectReviewThread(record, record.agentSessionFile ? await this.loadMessages(record) : []);
+    return projectReviewThread(record, record.agentSessionFile ? await this.loadSession(record) : { parts: [], usage: record.usage });
   }
 
   private async listRecords(workspacePath: string, sessionId: string): Promise<ReviewThreadRecord[]> {

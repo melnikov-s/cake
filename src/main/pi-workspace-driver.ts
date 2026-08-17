@@ -497,7 +497,10 @@ export class PiWorkspaceDriver {
             instruction: command.instruction,
             model: command.model,
             thinkingLevel: command.thinkingLevel,
-            parent
+            parent,
+            onEvent: (event) => this.emit(event.type === "part-updated"
+              ? { type: "review-thread-part-updated", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId, part: event.part }
+              : { type: "review-thread-usage-updated", workspacePath: this.workspacePath, sessionId: command.sessionId, threadId, usage: event.usage })
           });
           if (agent.error) {
             const updated = await this.reviewRepository.failRun(this.workspacePath, command.sessionId, threadId, runId, agent.error);

@@ -3,9 +3,19 @@ import {
   ModelRuntime,
   SettingsManager,
   createAgentSession,
+  type AgentSession,
   type SessionManager
 } from "@earendil-works/pi-coding-agent";
-import type { ThinkingLevel } from "../ipc/session-contract";
+import type { SessionSnapshot, ThinkingLevel, UiPart } from "../ipc/session-contract";
+import {
+  boundedProjectionKey,
+  createLiveMessageProjector,
+  formatToolInput,
+  formatUnknown,
+  toolArtifactId,
+  toolFilePath,
+  toolResultDiff
+} from "./session-projection";
 
 export interface IsolatedSessionOptions {
   cwd: string;
@@ -23,6 +33,7 @@ export interface IsolatedSessionOptions {
   noTools?: "all";
   bindExtensions?: boolean;
   capturePromptError?: boolean;
+  onEvent?(event: { type: "part-updated"; part: UiPart } | { type: "usage-updated"; usage: NonNullable<SessionSnapshot["usage"]> }): void;
 }
 
 export interface IsolatedSessionResult {
@@ -30,6 +41,16 @@ export interface IsolatedSessionResult {
   sessionFile: string;
   response: string;
   error?: string;
+  usage?: SessionSnapshot["usage"];
+}
+
+function sessionUsage(session: Pick<AgentSession, "getSessionStats">): NonNullable<SessionSnapshot["usage"]> {
+  const stats = session.getSessionStats();
+  return {
+    tokens: stats.tokens,
+    cost: stats.cost,
+    context: stats.contextUsage ? { tokens: stats.contextUsage.tokens, contextWindow: stats.contextUsage.contextWindow, percent: stats.contextUsage.percent } : undefined
+  };
 }
 
 function textFromContent(content: unknown) {
@@ -94,10 +115,32 @@ export async function runIsolatedSession(options: IsolatedSessionOptions): Promi
 
       let response = "";
       let failure = "";
+      const projectLiveMessage = createLiveMessageProjector();
+      const activeToolCalls = new Map<string, { input: string; artifactId?: string; filePath?: string }>();
       const unsubscribe = session.subscribe((event) => {
-        if (event.type !== "message_end" || event.message.role !== "assistant") return;
-        response = textFromContent(event.message.content).trim();
-        if (event.message.errorMessage) failure = event.message.errorMessage;
+        for (const part of projectLiveMessage(event)) {
+          if (part.kind !== "text" || part.role !== "user") options.onEvent?.({ type: "part-updated", part });
+        }
+        if (event.type === "tool_execution_start") {
+          const call = { input: formatToolInput(event.toolName, event.args), artifactId: toolArtifactId(event.args), filePath: toolFilePath(event.toolName, event.args) };
+          activeToolCalls.set(event.toolCallId, call);
+          options.onEvent?.({ type: "part-updated", part: { id: boundedProjectionKey(`tool-${event.toolCallId}`), kind: "tool", name: event.toolName, ...call, state: "running" } });
+        }
+        if (event.type === "tool_execution_update") {
+          const call = activeToolCalls.get(event.toolCallId) ?? { input: formatToolInput(event.toolName, event.args), artifactId: toolArtifactId(event.args), filePath: toolFilePath(event.toolName, event.args) };
+          activeToolCalls.set(event.toolCallId, call);
+          options.onEvent?.({ type: "part-updated", part: { id: boundedProjectionKey(`tool-${event.toolCallId}`), kind: "tool", name: event.toolName, ...call, output: formatUnknown(event.partialResult), state: "running" } });
+        }
+        if (event.type === "tool_execution_end") {
+          const call = activeToolCalls.get(event.toolCallId);
+          activeToolCalls.delete(event.toolCallId);
+          options.onEvent?.({ type: "part-updated", part: { id: boundedProjectionKey(`tool-${event.toolCallId}`), kind: "tool", name: event.toolName, input: call?.input ?? "", output: formatUnknown(event.result), artifactId: toolArtifactId(event.result) ?? call?.artifactId, filePath: call?.filePath, diff: toolResultDiff(event.toolName, event.result), state: event.isError ? "error" : "success" } });
+        }
+        if (event.type === "message_end" && event.message.role === "assistant") {
+          response = textFromContent(event.message.content).trim();
+          if (event.message.errorMessage) failure = event.message.errorMessage;
+          options.onEvent?.({ type: "usage-updated", usage: sessionUsage(session) });
+        }
       });
       try {
         await session.prompt(options.prompt, { source: "interactive" });
@@ -112,7 +155,8 @@ export async function runIsolatedSession(options: IsolatedSessionOptions): Promi
         sessionId: session.sessionManager.getSessionId(),
         sessionFile: session.sessionFile,
         response,
-        error: failure || undefined
+        error: failure || undefined,
+        usage: sessionUsage(session)
       };
     } finally {
       options.signal?.removeEventListener("abort", abort);
