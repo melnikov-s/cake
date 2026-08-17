@@ -150,7 +150,13 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       client: this.props.client,
       sessionRegistry: this.props.registry,
       reviews: this.props.reviews,
+      draftChatStore: () => this.messageCommentChatStore,
       context: () => this.target
     });
+  }
+
+  @child
+  get messageCommentChatStore(): ChatStore {
+    return this.messageCommentsStore.draftChatStoreElement;
   }
 }

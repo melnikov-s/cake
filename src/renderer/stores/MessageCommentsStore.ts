@@ -1,4 +1,4 @@
-import { Store, child, createStore } from "r-state-tree";
+import { Store, createStore } from "r-state-tree";
 import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { DesktopClient } from "../desktop-client";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
@@ -10,6 +10,7 @@ export interface MessageCommentsStoreProps {
   client: Pick<DesktopClient, "createReviewThread">;
   sessionRegistry: SessionRegistryStore;
   reviews(): ReviewsStore;
+  draftChatStore(): ChatStore;
   context(): { workspacePath: string; sessionId: string } | undefined;
 }
 
@@ -51,33 +52,51 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
     return this.props.reviews().threadStreaming(threadId);
   }
 
+  private get draftThread() {
+    return this.createdThreadId ? this.threads.find((thread) => thread.id === this.createdThreadId) : undefined;
+  }
+
   chatStore(threadId: string) { return this.props.reviews().chatStore(threadId); }
 
   prepareDraft(selection: MessageSelectionAnchor) {
+    this.draftChatStore.setDraft("");
     this.draftSelection = selection;
     this.createdThreadId = undefined;
     this.draftFocusRequestRevision += 1;
   }
 
-  @child
-  get draftChatStore(): ChatStore {
+  get draftChatStore() { return this.props.draftChatStore(); }
+
+  get draftChatStoreElement() {
     return createStore(ChatStore, {
-      key: `message-comment-draft:${this.draftFocusRequestRevision}`,
       id: () => "message-comment-draft",
-      parts: () => [],
-      streaming: () => false,
+      parts: () => {
+        const selection = this.draftSelection;
+        if (!selection) return [];
+        return [
+          { id: `selection:${selection.messageId}:${selection.startOffset}:${selection.endOffset}`, kind: "text" as const, role: "user" as const, text: selection.selectedText, status: "complete" as const },
+          ...(this.draftThread?.messages.map((message) => ({ id: message.id, kind: "text" as const, role: message.role, text: message.body, status: message.status })) ?? [])
+        ];
+      },
+      streaming: () => Boolean(this.createdThreadId && this.threadStreaming(this.createdThreadId)),
       submitting: () => false,
       configuration: () => this.props.reviews().configuration,
       commands: () => [],
       placeholder: () => "Ask Cake about this passage…",
       inputLabel: () => "Message about selected text",
       focusRequestRevision: () => this.draftFocusRequestRevision,
-      canSubmit: (draft) => Boolean(this.draftSelection && draft.trim()),
+      canSubmit: (draft) => Boolean(this.draftSelection && draft.trim()) && !this.draftThread?.pending && (!this.createdThreadId || !this.threadStreaming(this.createdThreadId)),
       submit: async (draft) => {
         if (!this.draftSelection) return false;
-        const threadId = await this.createThread(this.draftSelection, draft);
-        this.createdThreadId = threadId;
-        return Boolean(threadId);
+        if (!this.createdThreadId) {
+          const threadId = await this.createThread(this.draftSelection, draft);
+          this.createdThreadId = threadId;
+          return Boolean(threadId);
+        }
+        const reviews = this.props.reviews();
+        const saved = await reviews.replyThread(this.createdThreadId, draft);
+        if (saved) await reviews.submitThreads([this.createdThreadId]);
+        return saved;
       },
       error: () => ({ message: this.error, details: this.errorDetails })
     });

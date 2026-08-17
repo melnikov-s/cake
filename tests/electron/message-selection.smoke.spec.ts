@@ -6,7 +6,7 @@ import { cakeWorkspaceSessionDirectory } from "../../src/agent/session-discovery
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("selects rendered TypeScript and opens a compact, editable selection chat", async () => {
+test("selects rendered TypeScript and opens a continuous, resizable selection chat", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-message-selection-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -89,7 +89,9 @@ test("selects rendered TypeScript and opens a compact, editable selection chat",
     const dialog = page.getByRole("dialog", { name: "Chat about this" });
     const input = page.getByLabel("Message about selected text");
     await expect(dialog).toBeVisible();
-    await expect(dialog.locator(".message-comment-selection .user-message")).toHaveText("UtilityModePreferences");
+    await expect(dialog.locator(".transcript .user-message").first()).toHaveText("UtilityModePreferences");
+    await expect(dialog.locator(".transcript article > div:first-child").first()).toHaveText("You");
+    await expect(dialog.locator(".chat-layout-compact")).toBeVisible();
     await expect(input).toBeFocused();
     await input.fill("Why is this interface shaped this way?");
     await expect(input).toHaveValue("Why is this interface shaped this way?");
@@ -101,12 +103,21 @@ test("selects rendered TypeScript and opens a compact, editable selection chat",
       return {
         width: dialogRect.width,
         height: dialogRect.height,
-        bottomSpace: composerRect ? dialogRect.bottom - composerRect.bottom : Number.POSITIVE_INFINITY
+        bottomSpace: composerRect ? dialogRect.bottom - composerRect.bottom : Number.POSITIVE_INFINITY,
+        resize: getComputedStyle(element).resize
       };
     });
-    expect(dimensions.width).toBe(480);
-    expect(dimensions.height).toBeLessThan(330);
-    expect(dimensions.bottomSpace).toBeLessThanOrEqual(12);
+    expect(dimensions.width).toBe(520);
+    expect(dimensions.height).toBe(520);
+    expect(dimensions.bottomSpace).toBeLessThanOrEqual(14);
+    expect(dimensions.resize).toBe("both");
+
+    await dialog.getByRole("button", { name: "Send" }).click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator(".chat-embedded-workbench-composer")).toBeVisible();
+    await expect(input).toBeVisible();
+    await expect(dialog.locator(".transcript .user-message")).toHaveCount(2);
+    await expect(dialog.locator(".transcript .user-message").nth(1)).toHaveText("Why is this interface shaped this way?");
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

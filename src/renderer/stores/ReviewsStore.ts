@@ -89,7 +89,10 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     return this.threads.map((thread) => createStore(ChatStore, {
       key: thread.id,
       id: () => thread.id,
-      parts: () => thread.messages.map((message) => ({ id: message.id, kind: "text" as const, role: message.role, text: message.body, status: message.status })),
+      parts: () => [
+        ...(thread.anchor.view === "message" ? [{ id: `selection:${thread.id}`, kind: "text" as const, role: "user" as const, text: thread.anchor.selectedText, status: "complete" as const }] : []),
+        ...thread.messages.map((message) => ({ id: message.id, kind: "text" as const, role: message.role, text: message.body, status: message.status }))
+      ],
       streaming: () => this.threadStreaming(thread.id),
       submitting: () => false,
       configuration: () => this.props.configuration(),
@@ -102,7 +105,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
         if (saved && thread.anchor.view === "message") await this.submitThreads([thread.id]);
         return saved;
       },
-      composerVisible: () => (thread.anchor.view === "message" || thread.status === "open") && !thread.pending && !this.threadStreaming(thread.id),
+      composerVisible: () => thread.anchor.view === "message" || (thread.status === "open" && !thread.pending && !this.threadStreaming(thread.id)),
       error: () => ({ message: this.error, details: this.errorDetails })
     }));
   }

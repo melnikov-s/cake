@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { Button } from "@/components/ui/button";
 import { ChatComposer } from "@/components/chat-composer";
@@ -23,7 +23,7 @@ function Usage({ store }: { store: ChatStore }) {
   return <div className="session-usage" aria-label={`${contextLabel}, session cost $${usage.cost.toFixed(3)}`} title={`${contextTitle} · ${usage.tokens.total.toLocaleString()} billed tokens`}><svg className="context-gauge" viewBox="0 0 36 36" aria-hidden="true"><circle className="context-gauge-track" cx="18" cy="18" r="15.5" pathLength="100" /><circle className="context-gauge-value" cx="18" cy="18" r="15.5" pathLength="100" strokeDasharray={`${Math.min(100, percent ?? 0)} 100`} /><text x="18" y="18">{percent === undefined ? "—" : `${percent}%`}</text></svg><span className="session-cost">${usage.cost.toFixed(3)}</span></div>;
 }
 
-export const Chat = observer(function Chat({ store, transcriptBehavior, empty, footer, error, status, composerContent, pluginActions, className = "", embedded = false, composerOnly = false, composerDraft, onSubmitted }: {
+export const Chat = observer(function Chat({ store, transcriptBehavior, empty, footer, error, status, composerContent, pluginActions, className = "", embedded = false, compact = false }: {
   store: ChatStore;
   transcriptBehavior?: ChatTranscriptBehavior;
   empty?: ReactNode;
@@ -34,18 +34,16 @@ export const Chat = observer(function Chat({ store, transcriptBehavior, empty, f
   pluginActions?: ReactNode;
   className?: string;
   embedded?: boolean;
-  composerOnly?: boolean;
-  composerDraft?: { value: string; onChange(value: string): void };
-  onSubmitted?(): void;
+  compact?: boolean;
 }) {
-  const visibleDraft = composerDraft?.value ?? store.draft;
+  const [draftValue, setDraftValue] = useState(store.draft);
+  useEffect(() => setDraftValue(store.draft), [store, store.draft]);
   const submit = async (value?: string, mode: "send" | "steer" = "send") => {
-    const submitted = await store.submit(value ?? visibleDraft, mode);
-    if (!submitted) return;
-    onSubmitted?.();
+    const submitted = await store.submit(value ?? draftValue, mode);
+    if (submitted) setDraftValue(store.draft);
   };
   const composer = store.composerVisible && <div className={embedded ? "chat-embedded-composer" : "composer-dock"}>
-    <ChatComposer className={embedded ? "chat-embedded-workbench-composer" : undefined} configuration={store.configuration} onSubmit={(event) => { event.preventDefault(); void submit(); }} input={<SlashCommandCombobox autoFocus aria-label={store.inputLabel} commands={store.commands} focusRequestRevision={store.focusRequestRevision} suggestFiles={store.canSuggestFiles ? (prefix) => store.suggestFiles(prefix) : undefined} placeholder={store.placeholder} value={visibleDraft} disabled={store.submittingLocally} onValueChange={(value) => { composerDraft?.onChange(value); store.setDraft(value); }} onPaste={(event) => {
+    <ChatComposer className={embedded ? "chat-embedded-workbench-composer" : undefined} configuration={store.configuration} onSubmit={(event) => { event.preventDefault(); void submit(); }} input={<SlashCommandCombobox autoFocus aria-label={store.inputLabel} commands={store.commands} focusRequestRevision={store.focusRequestRevision} suggestFiles={store.canSuggestFiles ? (prefix) => store.suggestFiles(prefix) : undefined} placeholder={store.placeholder} value={draftValue} disabled={store.submittingLocally} onValueChange={(value) => { setDraftValue(value); store.setDraft(value); }} onPaste={(event) => {
       if (!store.canPasteImages) return;
       const images = [...event.clipboardData.files].filter((file) => file.type.startsWith("image/"));
       if (images.length === 0) for (const item of event.clipboardData.items) {
@@ -61,7 +59,7 @@ export const Chat = observer(function Chat({ store, transcriptBehavior, empty, f
       {pluginActions}
       {store.streaming && store.canAbort && <Button variant="ghost" size="sm" type="button" onClick={() => void store.abort()}>Stop</Button>}
       {store.streaming && store.allowSteer && <Button variant="outline" size="sm" type="button" disabled={!store.canSubmit} onClick={() => void submit(undefined, "steer")}>Steer</Button>}
-      <Button className="send-button" size="sm" type="submit" disabled={!store.canSubmitDraft(visibleDraft)}>{store.submitting ? "Sending…" : store.streaming ? "Queue" : "Send"}<SendIcon /></Button>
+      <Button className="send-button" size="sm" type="submit" disabled={!store.canSubmitDraft(draftValue)}>{store.submitting ? "Sending…" : store.streaming ? "Queue" : "Send"}<SendIcon /></Button>
     </>}>
       {composerContent}
       {store.attachments.length > 0 && <div className="attachment-list">{store.attachments.map((attachment, index) => attachment.kind === "image"
@@ -70,9 +68,8 @@ export const Chat = observer(function Chat({ store, transcriptBehavior, empty, f
     </ChatComposer>
     {status}
   </div>;
-  if (composerOnly) return composer;
-  return <div className={`chat-layout${embedded ? " chat-layout-embedded" : ""} ${className}`.trim()}>
-    <ChatTranscript store={store} behavior={transcriptBehavior} empty={empty} footer={footer} error={error} renderChat={(nestedStore, nestedOnSubmitted, options) => <Chat store={nestedStore} embedded composerOnly={options?.composerOnly} composerDraft={options?.draftValue === undefined || !options.onDraftValueChange ? undefined : { value: options.draftValue, onChange: options.onDraftValueChange }} onSubmitted={nestedOnSubmitted} />} />
+  return <div className={`chat-layout${embedded ? " chat-layout-embedded" : ""}${compact ? " chat-layout-compact" : ""} ${className}`.trim()}>
+    <ChatTranscript store={store} behavior={transcriptBehavior} empty={empty} footer={footer} error={error} renderChat={(nestedStore) => <Chat store={nestedStore} embedded compact />} />
     {composer}
   </div>;
 });

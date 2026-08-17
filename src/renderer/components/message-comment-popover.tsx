@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { observer } from "r-state-tree/react";
-import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
 import type { ReviewThreadModel } from "../models/review-thread";
 import type { ChatStore } from "../stores/ChatStore";
-import type { MessageCommentsStore, MessageSelectionAnchor } from "../stores/MessageCommentsStore";
+import type { MessageCommentsStore } from "../stores/MessageCommentsStore";
 
 export interface MessageCommentAnchorRect {
   top: number;
@@ -123,16 +122,12 @@ function useDismissablePopover(surfaceRef: RefObject<HTMLDivElement | null>, onC
   }, [onClose, surfaceRef]);
 }
 
-function PopoverShell({ anchor, title, selectedText, className, onClose, children }: { anchor: HTMLElement | MessageCommentAnchorRect; title: string; selectedText: string; className?: string; onClose(): void; children: ReactNode }) {
+function PopoverShell({ anchor, title, onClose, children }: { anchor: HTMLElement | MessageCommentAnchorRect; title: string; onClose(): void; children: ReactNode }) {
   const { surfaceRef, position, startDrag } = useAnchoredPosition(anchor);
   useDismissablePopover(surfaceRef, onClose);
   return createPortal(
-    <div ref={surfaceRef} className={`message-comment-popover${className ? ` ${className}` : ""}`} style={position} role="dialog" aria-label={title}>
+    <div ref={surfaceRef} className="message-comment-popover" style={position} role="dialog" aria-label={title}>
       <header className="message-comment-titlebar" onPointerDown={startDrag}><div><span>Selection</span><strong>{title}</strong></div><button type="button" aria-label={`Close ${title.toLowerCase()}`} onClick={onClose}><CloseIcon /></button></header>
-      <Message className="message-comment-selection ml-auto w-[min(88%,42rem)]">
-        <MessageLabel>You · selected</MessageLabel>
-        <MessageContent className="user-message whitespace-pre-wrap">{selectedText}</MessageContent>
-      </Message>
       {children}
     </div>,
     document.body
@@ -147,16 +142,15 @@ export function MessageSelectionAction({ rect, onChat }: { rect: MessageCommentA
   return createPortal(<button className="message-selection-action" type="button" style={style} onPointerDown={(event) => event.preventDefault()} onClick={(event) => onChat(event.currentTarget.getBoundingClientRect())}>Chat about this</button>, document.body);
 }
 
-export const MessageCommentDraftPopover = observer(function MessageCommentDraftPopover({ anchor, selection, store, chatStore, renderChat, onCreated, onClose }: { anchor: MessageCommentAnchorRect; selection: MessageSelectionAnchor; store: MessageCommentsStore; chatStore: ChatStore; renderChat(store: ChatStore, onSubmitted?: () => void, options?: { composerOnly?: boolean; draftValue?: string; onDraftValueChange?(value: string): void }): ReactNode; onCreated(threadId: string): void; onClose(): void }) {
-  const [draftValue, setDraftValue] = useState(chatStore.draft);
-  return <PopoverShell anchor={anchor} title="Chat about this" selectedText={selection.selectedText} className="message-comment-draft-popover" onClose={onClose}>
-    {renderChat(chatStore, () => { if (store.createdThreadId) onCreated(store.createdThreadId); }, { composerOnly: true, draftValue, onDraftValueChange: setDraftValue })}
+export const MessageCommentDraftPopover = observer(function MessageCommentDraftPopover({ anchor, chatStore, renderChat, onClose }: { anchor: MessageCommentAnchorRect; chatStore: ChatStore; renderChat(store: ChatStore): ReactNode; onClose(): void }) {
+  return <PopoverShell anchor={anchor} title="Chat about this" onClose={onClose}>
+    {renderChat(chatStore)}
   </PopoverShell>;
 });
 
 export const MessageCommentThreadPopover = observer(function MessageCommentThreadPopover({ anchor, thread, store, renderChat, onClose }: { anchor: HTMLElement | MessageCommentAnchorRect; thread: ReviewThreadModel; store: MessageCommentsStore; renderChat(store: ChatStore): ReactNode; onClose(): void }) {
   const chat = store.chatStore(thread.id);
-  return <PopoverShell anchor={anchor} title="Selection chat" selectedText={thread.anchor.selectedText} className="message-comment-thread-popover" onClose={onClose}>
+  return <PopoverShell anchor={anchor} title="Selection chat" onClose={onClose}>
     {chat && renderChat(chat)}
   </PopoverShell>;
 });

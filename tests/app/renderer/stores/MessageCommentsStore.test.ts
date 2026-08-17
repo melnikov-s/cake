@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ReviewThread } from "../../../../src/ipc/review-contract";
 import type { DesktopClient } from "../../../../src/renderer/desktop-client";
 import { MessageCommentsStore } from "../../../../src/renderer/stores/MessageCommentsStore";
+import type { ChatStore } from "../../../../src/renderer/stores/ChatStore";
 import { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
 import type { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
 import type { SessionOperationCoordinator } from "../../../../src/renderer/stores/SessionOperationCoordinator";
@@ -26,17 +27,21 @@ describe("MessageCommentsStore", () => {
       client: {} as DesktopClient,
       sessionRegistry: cache,
       reviews: () => ({ configuration: undefined }) as unknown as ReviewsStore,
+      draftChatStore: () => popupChat,
       context: () => ({ workspacePath: "/project", sessionId: "session-1" })
     }));
+    const popupChat: ChatStore = mount(store.draftChatStoreElement);
     store.prepareDraft({ messageId: "assistant-1", selectedText: "value", startOffset: 0, endOffset: 5, contextBefore: "", contextAfter: "" });
     const draftChat = store.draftChatStore;
 
     draftChat.setDraft("Why this value?");
 
     expect(store.draftChatStore).toBe(draftChat);
+    expect(draftChat.parts).toEqual([expect.objectContaining({ role: "user", text: "value" })]);
     expect(store.draftChatStore.draft).toBe("Why this value?");
     expect(store.draftChatStore.focusRequestRevision).toBe(1);
     store[Symbol.dispose]();
+    popupChat[Symbol.dispose]();
     cache[Symbol.dispose]();
   });
 
@@ -64,11 +69,15 @@ describe("MessageCommentsStore", () => {
       client: { createReviewThread } as unknown as DesktopClient,
       sessionRegistry: cache,
       reviews: () => ({ submitThreads, threadStreaming: () => false, resolveThread: vi.fn() }) as unknown as ReviewsStore,
+      draftChatStore: () => popupChat,
       context: () => ({ workspacePath: "/project", sessionId: "session-1" }),
       reportError: vi.fn()
     }));
+    const popupChat: ChatStore = mount(store.draftChatStoreElement);
 
-    await expect(store.createThread({ messageId: "assistant-1", entryId: "entry-1", selectedText: "important", startOffset: 6, endOffset: 15, contextBefore: "Alpha ", contextAfter: " detail" }, "Why?")).resolves.toBe("thread-1");
+    store.prepareDraft({ messageId: "assistant-1", entryId: "entry-1", selectedText: "important", startOffset: 6, endOffset: 15, contextBefore: "Alpha ", contextAfter: " detail" });
+    const chat = store.draftChatStore;
+    await expect(chat.submit("Why?")).resolves.toBe(true);
 
     expect(createReviewThread).toHaveBeenCalledWith(expect.objectContaining({
       workspacePath: "/project",
@@ -77,8 +86,12 @@ describe("MessageCommentsStore", () => {
     }));
     expect(submitThreads).toHaveBeenCalledWith(["thread-1"]);
     expect(store.threadsForMessage("assistant-1")).toHaveLength(1);
+    expect(store.draftChatStore).toBe(chat);
+    expect(chat.composerVisible).toBe(true);
+    expect(chat.parts.map((part) => part.kind === "text" ? part.text : "")).toEqual(["important", "Why?"]);
 
     store[Symbol.dispose]();
+    popupChat[Symbol.dispose]();
     cache[Symbol.dispose]();
   });
 });

@@ -151,7 +151,7 @@ export interface ChatTranscriptBehavior {
 interface CanonicalTranscriptBehavior extends ChatTranscriptBehavior {
   thinkingExpanded: boolean;
   onToggleThinking(): void;
-  renderChat(store: ChatStore, onSubmitted?: () => void, options?: { composerOnly?: boolean; draftValue?: string; onDraftValueChange?(value: string): void }): ReactNode;
+  renderChat(store: ChatStore): ReactNode;
 }
 
 const AssistantTextMessage = observer(function AssistantTextMessage({ part, behavior }: { part: Extract<UiPart, { kind: "text" }>; behavior: CanonicalTranscriptBehavior }) {
@@ -243,6 +243,8 @@ const AssistantTextMessage = observer(function AssistantTextMessage({ part, beha
     const contentNode = contentRef.current;
     if (!message || !contentNode || !behavior.messageComments || part.status === "streaming") return;
     const settleSelection = () => {
+      const activeElement = document.activeElement;
+      if (activeElement instanceof HTMLTextAreaElement || activeElement instanceof HTMLInputElement || activeElement instanceof HTMLSelectElement || activeElement instanceof HTMLElement && activeElement.isContentEditable) return;
       window.clearTimeout(selectionTimer.current);
       if (selectionFrame.current !== undefined) cancelAnimationFrame(selectionFrame.current);
       const selection = window.getSelection();
@@ -284,11 +286,7 @@ const AssistantTextMessage = observer(function AssistantTextMessage({ part, beha
     <FullscreenButton className="assistant-message-expand" label="View response fullscreen" onClick={() => setFullscreen(true)} />
     {commentThreads.map((thread, index) => markerPositions[thread.id] && <button key={thread.id} className="message-comment-marker" style={markerPositions[thread.id]} type="button" aria-label={`Open selection chat ${index + 1}`} title={thread.anchor.selectedText} onClick={(event) => setOpenThread({ id: thread.id, anchor: event.currentTarget })}><ChatIcon /><b>{thread.messages.length}</b></button>)}
     {selectionAction && <MessageSelectionAction rect={selectionAction.rect} onChat={(anchor) => { behavior.messageComments?.prepareDraft(selectionAction.selection); setDraft({ selection: selectionAction.selection, anchor }); setSelectionAction(undefined); }} />}
-    {draft && behavior.messageComments && draftChatStore && <MessageCommentDraftPopover anchor={draft.anchor} selection={draft.selection} store={behavior.messageComments} chatStore={draftChatStore} renderChat={behavior.renderChat} onClose={() => setDraft(undefined)} onCreated={(threadId) => {
-      setOpenThread({ id: threadId, anchor: draft.anchor });
-      setDraft(undefined);
-      window.getSelection()?.removeAllRanges();
-    }} />}
+    {draft && behavior.messageComments && draftChatStore && <MessageCommentDraftPopover anchor={draft.anchor} chatStore={draftChatStore} renderChat={behavior.renderChat} onClose={() => setDraft(undefined)} />}
     {activeThread && behavior.messageComments && <MessageCommentThreadPopover anchor={openThread!.anchor} thread={activeThread} store={behavior.messageComments} renderChat={behavior.renderChat} onClose={() => setOpenThread(undefined)} />}
     {part.status !== "streaming" && <div className="assistant-message-actions" aria-label="Message actions">
       <button type="button" aria-label={copied ? "Copied response" : "Copy response"} title={copied ? "Copied" : "Copy response"} onClick={() => void navigator.clipboard.writeText(part.text).then(() => setCopied(true))}>{copied ? <CheckIcon /> : <CopyIcon />}</button>
@@ -384,7 +382,7 @@ function ErrorNotice({ title, message, details = message }: { title: string; mes
   return <div className="notice notice-error" role="alert"><strong>{title}</strong><span>{message}</span><CopyErrorDetailsButton details={details} /></div>;
 }
 
-export const ChatTranscript = observer(function ChatTranscript({ store, behavior = {}, empty, footer, error: errorOverride, renderChat }: { store: ChatStore; behavior?: ChatTranscriptBehavior; empty?: ReactNode; footer?: ReactNode; error?: { message: string; details?: string; title?: string }; renderChat(store: ChatStore, onSubmitted?: () => void, options?: { composerOnly?: boolean; draftValue?: string; onDraftValueChange?(value: string): void }): ReactNode }) {
+export const ChatTranscript = observer(function ChatTranscript({ store, behavior = {}, empty, footer, error: errorOverride, renderChat }: { store: ChatStore; behavior?: ChatTranscriptBehavior; empty?: ReactNode; footer?: ReactNode; error?: { message: string; details?: string; title?: string }; renderChat(store: ChatStore): ReactNode }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const visibleParts = store.hideThinking ? store.parts.filter((part) => part.kind !== "reasoning") : store.parts;
   const showAssistantLoading = chatWorkIsActive(store.parts, store.streaming, store.submitting);

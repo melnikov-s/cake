@@ -75,7 +75,7 @@ function Transcript({ parts, sessionId, isStreaming, isSubmitting = false, hideT
     toggleThinking: onToggleThinking,
     error: undefined
   } as unknown as ChatStore;
-  return <ChatTranscript store={store} behavior={transcriptBehavior} empty={empty} footer={footer} error={error ? { message: error, details: errorDetails, title: errorTitle } : undefined} renderChat={(nestedStore, onSubmitted, options) => <Chat store={nestedStore} embedded composerOnly={options?.composerOnly} onSubmitted={onSubmitted} />} />;
+  return <ChatTranscript store={store} behavior={transcriptBehavior} empty={empty} footer={footer} error={error ? { message: error, details: errorDetails, title: errorTitle } : undefined} renderChat={(nestedStore) => <Chat store={nestedStore} embedded compact />} />;
 }
 
 function TestTranscript({ store, sessionId }: { store: TranscriptHarness; sessionId: string }) {
@@ -353,12 +353,14 @@ describe("Transcript scrolling", () => {
 
   it("offers a chat immediately when text selection finishes", () => {
     vi.useFakeTimers();
-    const comments = mount(createStore(MessageCommentsStore, {
+    const comments: MessageCommentsStore = mount(createStore(MessageCommentsStore, {
       client: { createReviewThread: vi.fn() } as never,
       sessionRegistry: { findModel: () => undefined } as never,
       reviews: () => ({ configuration: undefined }) as never,
+      draftChatStore: (): ChatStore => popupChat,
       context: () => ({ workspacePath: "/project", sessionId: "session-1" })
     }));
+    const popupChat: ChatStore = mount(comments.draftChatStoreElement);
     act(() => root.render(<Transcript
       parts={[{ id: "assistant-1", kind: "text", role: "assistant", entryId: "entry-1", text: "Alpha important detail.", status: "complete" }]}
       sessionId="session-1"
@@ -384,8 +386,9 @@ describe("Transcript scrolling", () => {
     act(() => document.body.querySelector<HTMLButtonElement>(".message-selection-action")!.click());
     const dialog = document.body.querySelector<HTMLElement>('[role="dialog"][aria-label="Chat about this"]')!;
     expect(dialog).not.toBeNull();
-    expect(dialog.querySelector(".message-comment-selection .user-message")?.textContent).toBe("important");
-    expect(dialog.querySelector(".transcript")).toBeNull();
+    expect(dialog.querySelector(".transcript .user-message")?.textContent).toBe("important");
+    expect(dialog.querySelector(".transcript article > div:first-child")?.textContent).toBe("You");
+    expect(dialog.querySelector(".chat-layout-compact")).not.toBeNull();
     const input = dialog.querySelector<HTMLTextAreaElement>('[aria-label="Message about selected text"]')!;
     expect(input).toBe(document.activeElement);
     act(() => {
@@ -397,6 +400,7 @@ describe("Transcript scrolling", () => {
     expect(input).toBe(document.activeElement);
     browserSelection.removeAllRanges();
     comments[Symbol.dispose]();
+    popupChat[Symbol.dispose]();
     vi.useRealTimers();
   });
 

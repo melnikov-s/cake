@@ -1,10 +1,11 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type KeyboardEvent } from "react";
+import { flushSync } from "react-dom";
 import type { FileSuggestion, SessionSnapshot } from "../../ipc/session-contract";
 import { ComposerInput } from "./ai-elements/composer";
 
 type SlashCommand = SessionSnapshot["commands"][number];
 
-interface SlashCommandComboboxProps extends Omit<ComponentProps<typeof ComposerInput>, "onChange" | "onKeyDown" | "onSubmit" | "value"> {
+interface SlashCommandComboboxProps extends Omit<ComponentProps<typeof ComposerInput>, "onChange" | "onInput" | "onKeyDown" | "onSubmit" | "value"> {
   commands: SlashCommand[];
   focusRequestRevision?: number;
   value: string;
@@ -62,6 +63,7 @@ export function findFileMention(text: string, cursor: number): FileMention | und
 export function SlashCommandCombobox({ commands, focusRequestRevision, value, suggestFiles, onValueChange, onSubmit, ...inputProps }: SlashCommandComboboxProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const suggestFilesRef = useRef(suggestFiles);
+  const onValueChangeRef = useRef(onValueChange);
   const requestRevision = useRef(0);
   const pendingCursor = useRef<number | undefined>(undefined);
   const listboxId = useId();
@@ -85,6 +87,24 @@ export function SlashCommandCombobox({ commands, focusRequestRevision, value, su
   useEffect(() => {
     suggestFilesRef.current = suggestFiles;
   }, [suggestFiles]);
+
+  useEffect(() => {
+    onValueChangeRef.current = onValueChange;
+  }, [onValueChange]);
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    const handleInput = () => {
+      setActiveIndex(0);
+      setDismissedValue(undefined);
+      setDismissedMention(undefined);
+      setCursor(input.selectionStart ?? input.value.length);
+      flushSync(() => onValueChangeRef.current(input.value));
+    };
+    input.addEventListener("input", handleInput);
+    return () => input.removeEventListener("input", handleInput);
+  }, []);
 
   useEffect(() => {
     if (!focusRequestRevision) return;
@@ -211,13 +231,7 @@ export function SlashCommandCombobox({ commands, focusRequestRevision, value, su
       aria-controls={open ? listboxId : undefined}
       aria-activedescendant={open ? `${listboxId}-option-${selectedIndex}` : undefined}
       value={value}
-      onChange={(event) => {
-        setActiveIndex(0);
-        setDismissedValue(undefined);
-        setDismissedMention(undefined);
-        setCursor(event.target.selectionStart ?? event.target.value.length);
-        onValueChange(event.target.value);
-      }}
+      onChange={() => undefined}
       onSelect={(event) => {
         setActiveIndex(0);
         setCursor(event.currentTarget.selectionStart ?? event.currentTarget.value.length);
