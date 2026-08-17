@@ -4,7 +4,6 @@ export interface NormalizedSourceSelection {
   selectedText: string;
   startColumn?: number;
   endColumn?: number;
-  position: { left: number; top: number };
 }
 
 function elementForNode(node: Node | null) {
@@ -36,16 +35,11 @@ export function extractSourceSelection(container: HTMLElement, rowSelector: stri
   const startCode = elementForNode(startNode)?.closest<HTMLElement>("code");
   const endCode = elementForNode(endNode)?.closest<HTMLElement>("code");
   if (!startCode || !endCode) return undefined;
-  const rect = selection.getRangeAt(0).getBoundingClientRect();
   return {
     startIndex: Math.min(anchorIndex, focusIndex),
     endIndex: Math.max(anchorIndex, focusIndex),
     selectedText: selection.toString(),
     startColumn: selectionColumn(startCode, startNode, forward ? selection.anchorOffset : selection.focusOffset),
-    endColumn: selectionColumn(endCode, endNode, forward ? selection.focusOffset : selection.anchorOffset),
-    position: {
-      left: Math.min(window.innerWidth - 390, Math.max(16, rect.left)),
-      top: Math.min(window.innerHeight - 250, rect.bottom + 8)
-    }
+    endColumn: selectionColumn(endCode, endNode, forward ? selection.focusOffset : selection.anchorOffset)
   };
 }

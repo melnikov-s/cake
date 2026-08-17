@@ -31,6 +31,19 @@ const changes: ChangedFile[] = [
 function explorerProps(store: ProjectWorkbenchStore) {
   const fixture = store as unknown as Record<string, any>;
   const chats = new Map<string, ChatStore>();
+  let draftAnchor: any;
+  const draftChat = mount(createStore(ChatStore, {
+    id: () => "code-review-draft",
+    parts: () => draftAnchor ? [{ id: "code-context", kind: "text" as const, role: "user" as const, text: draftAnchor.selectedText, status: "complete" as const }] : [],
+    streaming: () => false,
+    submitting: () => false,
+    configuration: () => undefined,
+    commands: () => [],
+    placeholder: () => "Ask Cake about this code…",
+    inputLabel: () => "Message code chat",
+    canSubmit: (draft) => Boolean(draftAnchor && draft.trim()),
+    submit: async (draft) => Boolean(await fixture.createReviewThread(draftAnchor, draft))
+  }));
   const chatStore = (threadId: string) => {
     const current = chats.get(threadId);
     if (current) return current;
@@ -49,6 +62,23 @@ function explorerProps(store: ProjectWorkbenchStore) {
     chats.set(threadId, chat);
     return chat;
   };
+  const reviews = {
+    get threads() { return fixture.reviewThreads ?? []; },
+    get activeThreadId() { return fixture.activeReviewThreadId; },
+    set activeThreadId(value) { fixture.activeReviewThreadId = value; fixture.focusReviewThread?.(value); },
+    get activeThread() { return fixture.activeReviewThread; },
+    get pendingCommentCount() { return fixture.pendingReviewCommentCount ?? fixture.pendingReviewThreads?.length ?? 0; },
+    get draftAnchor() { return draftAnchor; },
+    draftChatStore: draftChat,
+    prepareDraft: (anchor: any) => { draftAnchor = anchor; draftChat.setDraft(""); },
+    cancelDraft: () => { draftAnchor = undefined; draftChat.setDraft(""); },
+    threadStreaming: fixture.reviewThreadStreaming ?? (() => false),
+    chatStore,
+    createThread: fixture.createReviewThread,
+    replyThread: fixture.replyReviewThread,
+    resolveThread: fixture.resolveReviewThread,
+    submitPending: fixture.sendPendingReviewComments
+  };
   return {
     store: {
       get changes() { return fixture.workspaceChanges; },
@@ -66,19 +96,7 @@ function explorerProps(store: ProjectWorkbenchStore) {
       focusPath: fixture.selectChangeExplorerFile,
       close: fixture.closeChangeExplorer
     } as any,
-    reviews: {
-      get threads() { return fixture.reviewThreads ?? []; },
-      get activeThreadId() { return fixture.activeReviewThreadId; },
-      set activeThreadId(value) { fixture.activeReviewThreadId = value; fixture.focusReviewThread?.(value); },
-      get activeThread() { return fixture.activeReviewThread; },
-      get pendingCommentCount() { return fixture.pendingReviewCommentCount ?? fixture.pendingReviewThreads?.length ?? 0; },
-      threadStreaming: fixture.reviewThreadStreaming ?? (() => false),
-      chatStore,
-      createThread: fixture.createReviewThread,
-      replyThread: fixture.replyReviewThread,
-      resolveThread: fixture.resolveReviewThread,
-      submitPending: fixture.sendPendingReviewComments
-    } as any,
+    reviews: reviews as any,
     browse: { readFile: fixture.readWorkspaceFile } as any,
     chat: { sessionTitle: fixture.sessionTitle } as any
   };
@@ -87,6 +105,21 @@ function explorerProps(store: ProjectWorkbenchStore) {
 function mockReviewThread(input: { id: string; status: "open" | "resolved"; pending: boolean; anchor: { path: string; start: { diffLine: number; newLine: number }; end: { diffLine: number; newLine: number } }; messages: Array<{ id: string; role: "user" | "assistant"; body: string; status: "complete" }> }) {
   const uiParts = input.messages.map((message) => ({ id: message.id, kind: "text" as const, role: message.role, text: message.body, status: message.status }));
   return { ...input, uiParts, textParts: uiParts, messageCount: uiParts.length };
+}
+
+function selectText(element: HTMLElement, text: string) {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const start = node.textContent?.indexOf(text) ?? -1;
+    if (start < 0) continue;
+    const range = document.createRange();
+    range.setStart(node, start);
+    range.setEnd(node, start + text.length);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    return;
+  }
+  throw new Error(`Could not select ${text}`);
 }
 
 describe("ChangeExplorer", () => {
@@ -228,12 +261,12 @@ describe("ChangeExplorer", () => {
     await act(async () => container.querySelector<HTMLButtonElement>('.change-explorer-view-toggle button:last-child')!.click());
 
     act(() => container.querySelector<HTMLButtonElement>('.change-explorer-full-file .review-gutter button[aria-label="Comment on line 2"]')!.click());
-    const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Review comment"]')!;
+    const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message code chat"]')!;
     act(() => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, "Explain this line");
       textarea.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await act(async () => container.querySelector<HTMLButtonElement>(".review-composer button[type=submit]")!.click());
+    await act(async () => container.querySelector<HTMLButtonElement>(".review-thread-draft button[type=submit]")!.click());
 
     expect(createReviewThread).toHaveBeenCalledWith(expect.objectContaining({
       path: "src/app.ts",
@@ -253,8 +286,27 @@ describe("ChangeExplorer", () => {
     act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
     const add = container.querySelector<HTMLButtonElement>('.review-gutter button[aria-label="Comment on line 1"]')!;
     act(() => add.click());
-    expect(container.querySelector(".review-composer.inline")).not.toBeNull();
-    expect(container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Review comment"]')?.placeholder).toBe("Leave a comment");
+    expect(container.querySelector(".review-thread-draft")).not.toBeNull();
+    expect(container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message code chat"]')?.placeholder).toBe("Ask Cake about this code…");
+    expect(container.querySelector(".review-thread-draft .user-message")?.textContent).toContain("const old = true;");
+  });
+
+  it("waits for the plus button and uses the current selection as the first message", () => {
+    const store = {
+      workspaceChanges: changes, selectedWorkspaceChange: changes[0], sessionTitle: "Review", reviewThreads: [],
+      reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread: vi.fn(async () => undefined),
+      selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn()
+    } as unknown as ProjectWorkbenchStore;
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
+    const row = [...container.querySelectorAll<HTMLElement>(".change-explorer-line")].find((item) => item.textContent?.includes("const fresh = true;"))!;
+
+    selectText(row, "fresh");
+    act(() => row.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })));
+    expect(container.querySelector(".review-thread-draft")).toBeNull();
+
+    act(() => row.querySelector<HTMLButtonElement>(".review-gutter button")!.click());
+    expect(container.querySelector(".review-thread-draft .user-message")?.textContent).toContain("fresh");
+    expect(container.querySelector(".review-thread-draft .user-message")?.textContent).not.toContain("const fresh = true;");
   });
 
   it("uses the first Escape to close a comment composer without escaping the changes view", () => {
@@ -268,9 +320,9 @@ describe("ChangeExplorer", () => {
     act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
     act(() => container.querySelector<HTMLButtonElement>('.review-gutter button[aria-label="Comment on line 1"]')!.click());
 
-    act(() => container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Review comment"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    act(() => container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message code chat"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
 
-    expect(container.querySelector(".review-composer")).toBeNull();
+    expect(container.querySelector(".review-thread-draft")).toBeNull();
     expect(escaped).not.toHaveBeenCalled();
     expect(container.querySelector(".change-explorer")).not.toBeNull();
     window.removeEventListener("keydown", escaped);
@@ -285,7 +337,7 @@ describe("ChangeExplorer", () => {
     } as unknown as ProjectWorkbenchStore;
     act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
     act(() => container.querySelector<HTMLButtonElement>('.review-gutter button[aria-label="Comment on line 1"]')!.click());
-    const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Review comment"]')!;
+    const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message code chat"]')!;
     act(() => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, "Ship it");
       textarea.dispatchEvent(new Event("input", { bubbles: true }));
@@ -302,12 +354,12 @@ describe("ChangeExplorer", () => {
 
     createReviewThread.mockClear();
     act(() => container.querySelector<HTMLButtonElement>('.review-gutter button[aria-label="Comment on line 1"]')!.click());
-    const buttonTextarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Review comment"]')!;
+    const buttonTextarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message code chat"]')!;
     act(() => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(buttonTextarea, "Button save");
       buttonTextarea.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await act(async () => container.querySelector<HTMLButtonElement>(".review-composer button[type=submit]")!.click());
+    await act(async () => container.querySelector<HTMLButtonElement>(".review-thread-draft button[type=submit]")!.click());
     expect(createReviewThread).toHaveBeenCalledWith(expect.objectContaining({ path: "src/app.ts" }), "Button save");
   });
 
@@ -327,11 +379,40 @@ describe("ChangeExplorer", () => {
     } as unknown as ProjectWorkbenchStore;
     act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
 
-    act(() => container.querySelector<HTMLButtonElement>(".review-thread header button")!.click());
+    const resolve = [...container.querySelectorAll<HTMLButtonElement>(".review-thread header button")].find((button) => button.textContent === "Resolve")!;
+    act(() => resolve.click());
 
     expect(resolveReviewThread).toHaveBeenCalledWith("review-1");
     expect(container.querySelector(".review-thread")).toBeNull();
-    expect(container.querySelector(".review-thread-resolved")?.textContent).toContain("Resolved thread");
+    expect(container.querySelector(".review-thread-collapsed")?.textContent).toContain("Review thread");
+  });
+
+  it("toggles an unresolved review thread from its header without resolving it", () => {
+    const thread = mockReviewThread({
+      id: "review-1",
+      status: "open",
+      pending: false,
+      anchor: { path: "src/app.ts", start: { diffLine: 1, newLine: 1 }, end: { diffLine: 1, newLine: 1 } },
+      messages: [{ id: "message-1", role: "user", body: "Please simplify this", status: "complete" }]
+    });
+    const resolveReviewThread = vi.fn(async () => undefined);
+    const store = {
+      workspaceChanges: changes, selectedWorkspaceChange: changes[0], sessionTitle: "Review", reviewThreads: [thread],
+      reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => undefined), replyReviewThread: vi.fn(async () => undefined), resolveReviewThread,
+      selectChangeExplorerFile: vi.fn(), closeChangeExplorer: vi.fn()
+    } as unknown as ProjectWorkbenchStore;
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
+
+    expect([...container.querySelectorAll<HTMLButtonElement>(".review-thread header button")].some((button) => button.textContent === "Minimize")).toBe(false);
+    act(() => container.querySelector<HTMLButtonElement>(".review-thread-header-toggle")!.click());
+
+    expect(resolveReviewThread).not.toHaveBeenCalled();
+    expect(container.querySelector(".review-thread")).toBeNull();
+    const collapsed = container.querySelector<HTMLButtonElement>(".review-thread-collapsed.open")!;
+    expect(collapsed.textContent).toContain("Review thread");
+    act(() => collapsed.click());
+    expect(container.querySelector(".review-thread")).not.toBeNull();
+    expect(resolveReviewThread).not.toHaveBeenCalled();
   });
 
   it("submits a thread reply from the button or Enter and keeps Shift+Enter for a newline", async () => {

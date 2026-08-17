@@ -712,11 +712,15 @@ describe("ProjectWorkbenchStore", () => {
       parts: [{ id: "comment-1", kind: "text", role: "user", text: "Why this value?", status: "complete", deliveryState: "sending" }]
     });
 
-    await root.reviewsStore.createThread({ path: "src/app.ts", view: "diff", start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" }, "Why this value?");
+    const anchor = { path: "src/app.ts", view: "diff" as const, start: { diffLine: 1, newLine: 2 }, end: { diffLine: 1, newLine: 2 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" };
+    root.reviewsStore.prepareDraft(anchor);
+    expect(root.reviewsStore.draftChatStore.parts).toEqual([expect.objectContaining({ role: "user", text: "value" })]);
+    await root.reviewsStore.draftChatStore.submit("Why this value?");
 
     expect(desktop.client.submitReviewThread).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", sessionId: "session-1", threadId: "review-1", thinkingLevel: "off" }));
     expect(desktop.client.submit).not.toHaveBeenCalled();
     expect(store.activeSession!.chatStore.draft).toBe("saved");
+    expect(root.reviewsStore.draftAnchor).toBeUndefined();
 
     const firstOperationId = vi.mocked(desktop.client.submitReviewThread).mock.calls[0]![0].operationId;
     desktop.emit({ type: "operation-completed", operationId: firstOperationId });

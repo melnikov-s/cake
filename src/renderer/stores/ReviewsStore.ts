@@ -23,6 +23,8 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   streamingThreadIds: string[] = observable([]);
   submissionsByOperation: Record<string, string[]> = observable({});
   activeThreadId: string | undefined;
+  draftAnchor: ReviewAnchor | undefined;
+  draftFocusRequestRevision = 0;
   error: string | undefined;
   errorDetails: string | undefined;
 
@@ -54,6 +56,47 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   get activeThread() { return this.threads.find((thread) => thread.id === this.activeThreadId) ?? this.openThreads[0]; }
   get configuration() { return this.props.configuration(); }
   threadStreaming(threadId: string) { return this.streamingThreadIds.includes(threadId); }
+
+  prepareDraft(anchor: ReviewAnchor) {
+    this.draftChatStore.setDraft("");
+    this.draftAnchor = anchor;
+    this.draftFocusRequestRevision += 1;
+  }
+
+  cancelDraft() {
+    this.draftAnchor = undefined;
+    this.draftChatStore.setDraft("");
+  }
+
+  @child
+  get draftChatStore(): ChatStore {
+    return createStore(ChatStore, {
+      id: () => "code-review-draft",
+      parts: () => this.draftAnchor ? [{
+        id: `code-review-draft:${this.draftFocusRequestRevision}`,
+        kind: "text" as const,
+        role: "user" as const,
+        text: this.draftAnchor.selectedText,
+        status: "complete" as const
+      }] : [],
+      streaming: () => false,
+      submitting: () => false,
+      configuration: () => this.props.configuration(),
+      commands: () => [],
+      placeholder: () => "Ask Cake about this code…",
+      inputLabel: () => "Message code chat",
+      focusRequestRevision: () => this.draftFocusRequestRevision,
+      canSubmit: (draft) => Boolean(this.draftAnchor && draft.trim()),
+      submit: async (draft) => {
+        const anchor = this.draftAnchor;
+        if (!anchor) return false;
+        const threadId = await this.createThread(anchor, draft);
+        if (threadId && this.draftAnchor === anchor) this.cancelDraft();
+        return Boolean(threadId);
+      },
+      error: () => ({ message: this.error, details: this.errorDetails })
+    });
+  }
 
   @child
   get chatStores(): ChatStore[] {

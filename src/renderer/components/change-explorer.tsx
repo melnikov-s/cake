@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
+import { Fragment, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { observer } from "r-state-tree/react";
 import type { ChangedFile } from "../../ipc/session-contract";
 import type { ReviewAnchor, ReviewPoint } from "../../ipc/review-contract";
@@ -10,7 +10,7 @@ import type { ChangesStore } from "../stores/ChangesStore";
 import type { ReviewsStore } from "../stores/ReviewsStore";
 import type { BrowseStore } from "../stores/BrowseStore";
 import type { ReviewThreadModel } from "../models/review-thread";
-import { ReviewComposer, ReviewThreadCard, SourceReview, reviewThreadPreview, useFileContent, useHighlightedSource } from "./source-review";
+import { ReviewDraftCard, ReviewThreadCard, SourceReview, reviewThreadPreview, useFileContent, useHighlightedSource } from "./source-review";
 import { extractSourceSelection } from "./source-selection";
 import { SourceExplorerLayout, SourceTree, sourceTree } from "./source-explorer";
 import { PanelResizeHandle } from "./panel-resize-handle";
@@ -47,25 +47,26 @@ const HighlightedDiff = observer(function HighlightedDiff({ change, reviews, sto
   const lines = useMemo(() => parseDiff(change.diff), [change.diff]);
   const source = useMemo(() => lines.map((line) => line.kind === "meta" ? "" : line.content).join("\n"), [lines]);
   const tokens = useHighlightedSource(change.path, source);
-  const [composer, setComposer] = useState<{ anchor: ReviewAnchor; floating: boolean; position?: { left: number; top: number } }>();
+  const [composer, setComposer] = useState<{ anchor: ReviewAnchor }>();
   const threads = reviewable ? reviews.threads.filter((thread) => thread.anchor.view !== "file" && thread.anchor.view !== "full" && thread.anchor.view !== "message" && store.changeMatchesPath(change, thread.anchor.path)) : [];
-
-  const selectText = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (!reviewable) return;
-    if (event.target instanceof Element && event.target.closest("button, textarea, .review-thread, .review-composer")) return;
-    const selected = extractSourceSelection(event.currentTarget, ".change-explorer-line[data-diff-index]", "data-diff-index");
-    if (!selected) return;
-    setComposer({ anchor: reviewAnchor(change, lines, selected.startIndex, selected.endIndex, selected.selectedText, selected.startColumn, selected.endColumn), floating: true, position: selected.position });
+  useEffect(() => () => reviews.cancelDraft(), [change.path, reviews]);
+  const openComposer = (anchor: ReviewAnchor) => { reviews.prepareDraft(anchor); setComposer({ anchor }); };
+  const cancelComposer = () => { reviews.cancelDraft(); setComposer(undefined); };
+  const openFromLineAction = (button: HTMLButtonElement, index: number, line: string) => {
+    const container = button.closest<HTMLElement>('[role="table"]');
+    const selected = container && extractSourceSelection(container, ".change-explorer-line[data-diff-index]", "data-diff-index");
+    openComposer(selected && selected.selectedText
+      ? reviewAnchor(change, lines, selected.startIndex, selected.endIndex, selected.selectedText, selected.startColumn, selected.endColumn)
+      : reviewAnchor(change, lines, index, index, line, 0, line.length));
   };
 
-  return <div className="change-explorer-diff" role="table" aria-label={`Changes to ${change.path}`} onMouseUp={selectText}>{lines.map((line, index) => line.kind === "meta"
+  return <div className="change-explorer-diff" role="table" aria-label={`Changes to ${change.path}`}>{lines.map((line, index) => line.kind === "meta"
     ? <div className="change-explorer-line meta" role="row" key={line.key}><span /><span /><code>{line.content}</code></div>
     : <Fragment key={line.key}><div className={`change-explorer-line ${line.kind}`} data-diff-index={index} role="row">
-        <span className={reviewable ? "review-gutter" : undefined}>{reviewable && <button aria-label={`Comment on line ${line.newNumber ?? line.oldNumber}`} onClick={() => setComposer({ anchor: reviewAnchor(change, lines, index, index, line.content, 0, line.content.length), floating: false })}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5" /></svg></button>}{line.oldNumber}</span><span>{line.newNumber}</span><code><b data-review-prefix>{line.kind === "add" ? "+" : line.kind === "remove" ? "−" : " "}</b>{(tokens?.[index] ?? []).length > 0
+        <span className={reviewable ? "review-gutter" : undefined}>{reviewable && <button aria-label={`Comment on line ${line.newNumber ?? line.oldNumber}`} onMouseDown={(event) => event.preventDefault()} onClick={(event) => openFromLineAction(event.currentTarget, index, line.content)}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5" /></svg></button>}{line.oldNumber}</span><span>{line.newNumber}</span><code><b data-review-prefix>{line.kind === "add" ? "+" : line.kind === "remove" ? "−" : " "}</b>{(tokens?.[index] ?? []).length > 0
           ? tokens![index]!.map((token, tokenIndex) => <i className="syntax-token" style={token.htmlStyle} key={`${tokenIndex}-${token.content}`}>{token.content}</i>)
           : line.content || " "}</code>
-      </div>{composer && !composer.floating && composer.anchor.end.diffLine === index && <ReviewComposer anchor={composer.anchor} onSave={(body) => reviews.createThread(composer.anchor, body)} onCancel={() => setComposer(undefined)} />}{threads.filter((thread) => thread.anchor.end.diffLine === index).map((thread) => <ReviewThreadCard key={`${thread.id}:${thread.status}`} thread={thread} store={reviews} />)}</Fragment>)}
-    {composer?.floating && <ReviewComposer anchor={composer.anchor} floating position={composer.position} onSave={(body) => reviews.createThread(composer.anchor, body)} onCancel={() => { setComposer(undefined); window.getSelection()?.removeAllRanges(); }} />}</div>;
+      </div>{composer && composer.anchor.end.diffLine === index && <ReviewDraftCard anchor={composer.anchor} store={reviews} onCancel={cancelComposer} />}{threads.filter((thread) => thread.anchor.end.diffLine === index).map((thread) => <ReviewThreadCard key={`${thread.id}:${thread.status}`} thread={thread} store={reviews} />)}</Fragment>)}</div>;
 });
 
 function FullFile({ change, reviews, browse, store }: { change: ChangedFile; reviews: ReviewsStore; browse: BrowseStore; store: ChangesStore }) {

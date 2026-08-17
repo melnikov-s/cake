@@ -5,7 +5,9 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createStore, mount } from "r-state-tree";
 import type { ProjectWorkbenchStore } from "../../../src/renderer/stores/ProjectWorkbenchStore";
+import { ChatStore } from "../../../src/renderer/stores/ChatStore";
 
 vi.mock("@streamdown/code", () => ({
   code: {
@@ -22,9 +24,22 @@ import { WorkspaceBrowser } from "../../../src/renderer/components/workspace-bro
 
 function browserProps(store: ProjectWorkbenchStore) {
   const fixture = store as unknown as Record<string, any>;
+  let draftAnchor: any;
+  const draftChatStore = mount(createStore(ChatStore, {
+    id: () => "code-review-draft",
+    parts: () => draftAnchor ? [{ id: "code-context", kind: "text" as const, role: "user" as const, text: draftAnchor.selectedText, status: "complete" as const }] : [],
+    streaming: () => false,
+    submitting: () => false,
+    configuration: () => undefined,
+    commands: () => [],
+    placeholder: () => "Ask Cake about this code…",
+    inputLabel: () => "Message code chat",
+    canSubmit: (draft) => Boolean(draftAnchor && draft.trim()),
+    submit: async (draft) => Boolean(await fixture.createReviewThread(draftAnchor, draft))
+  }));
   return {
     store: { files: fixture.workspaceFiles, path: fixture.workspaceBrowserPath, loading: fixture.workspaceFilesLoading, readFile: fixture.readWorkspaceFile, select: fixture.selectWorkspaceFile, focusPath: fixture.focusWorkspaceReviewThread, close: fixture.closeWorkspaceBrowser } as any,
-    reviews: { threads: fixture.reviewThreads ?? [], pendingCommentCount: fixture.pendingReviewCommentCount ?? 0, activeThread: fixture.activeReviewThread, createThread: fixture.createReviewThread, replyThread: fixture.replyReviewThread, resolveThread: fixture.resolveReviewThread, threadStreaming: fixture.reviewThreadStreaming ?? (() => false), submitPending: fixture.sendPendingReviewComments } as any,
+    reviews: { threads: fixture.reviewThreads ?? [], pendingCommentCount: fixture.pendingReviewCommentCount ?? 0, activeThread: fixture.activeReviewThread, get draftAnchor() { return draftAnchor; }, draftChatStore, prepareDraft: (anchor: any) => { draftAnchor = anchor; draftChatStore.setDraft(""); }, cancelDraft: () => { draftAnchor = undefined; draftChatStore.setDraft(""); }, createThread: fixture.createReviewThread, replyThread: fixture.replyReviewThread, resolveThread: fixture.resolveReviewThread, threadStreaming: fixture.reviewThreadStreaming ?? (() => false), submitPending: fixture.sendPendingReviewComments } as any,
     chat: { projectName: fixture.projectName } as any
   };
 }
@@ -71,12 +86,13 @@ describe("WorkspaceBrowser", () => {
     } as unknown as ProjectWorkbenchStore;
     await act(async () => root.render(<WorkspaceBrowser {...browserProps(store)} />));
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="Ask about line 1"]')!.click());
-    const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Review comment"]')!;
+    expect(container.querySelector(".review-thread-draft .user-message")?.textContent).toContain("const cake = true;");
+    const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message code chat"]')!;
     act(() => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, "What does this do?");
       textarea.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await act(async () => container.querySelector<HTMLButtonElement>('.review-composer button[type="submit"]')!.click());
+    await act(async () => container.querySelector<HTMLButtonElement>('.review-thread-draft button[type="submit"]')!.click());
     expect(createReviewThread).toHaveBeenCalledWith(expect.objectContaining({ path: "src/app.ts", view: "file", start: expect.objectContaining({ newLine: 1 }), diff: "" }), "What does this do?");
   });
 });

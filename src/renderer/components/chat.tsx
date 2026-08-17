@@ -69,7 +69,7 @@ export const Chat = observer(function Chat({ store, transcriptBehavior, empty, f
     {status}
   </div>;
   return <div className={`chat-layout${embedded ? " chat-layout-embedded" : ""}${compact ? " chat-layout-compact" : ""} ${className}`.trim()}>
-    <ChatTranscript store={store} behavior={transcriptBehavior} empty={empty} footer={footer} error={error} renderChat={(nestedStore) => <Chat store={nestedStore} embedded compact />} />
+    <ChatTranscript store={store} behavior={transcriptBehavior} empty={empty} footer={footer} error={error} virtualized={!compact} renderChat={(nestedStore) => <Chat store={nestedStore} embedded compact />} />
     {composer}
   </div>;
 });

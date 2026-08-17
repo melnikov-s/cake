@@ -382,8 +382,9 @@ function ErrorNotice({ title, message, details = message }: { title: string; mes
   return <div className="notice notice-error" role="alert"><strong>{title}</strong><span>{message}</span><CopyErrorDetailsButton details={details} /></div>;
 }
 
-export const ChatTranscript = observer(function ChatTranscript({ store, behavior = {}, empty, footer, error: errorOverride, renderChat }: { store: ChatStore; behavior?: ChatTranscriptBehavior; empty?: ReactNode; footer?: ReactNode; error?: { message: string; details?: string; title?: string }; renderChat(store: ChatStore): ReactNode }) {
+export const ChatTranscript = observer(function ChatTranscript({ store, behavior = {}, empty, footer, error: errorOverride, virtualized = true, renderChat }: { store: ChatStore; behavior?: ChatTranscriptBehavior; empty?: ReactNode; footer?: ReactNode; error?: { message: string; details?: string; title?: string }; virtualized?: boolean; renderChat(store: ChatStore): ReactNode }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
+  const staticTranscriptRef = useRef<HTMLDivElement>(null);
   const visibleParts = store.hideThinking ? store.parts.filter((part) => part.kind !== "reasoning") : store.parts;
   const showAssistantLoading = chatWorkIsActive(store.parts, store.streaming, store.submitting);
   const items: TranscriptItem[] = [...groupTranscriptParts(visibleParts), ...(showAssistantLoading ? [{ kind: "loading-state" as const, id: "loading-state" }] : [])];
@@ -398,6 +399,7 @@ export const ChatTranscript = observer(function ChatTranscript({ store, behavior
   };
   const scrollToLatest = useCallback(() => {
     if (itemCountRef.current > 0) virtuosoRef.current?.scrollToIndex({ index: itemCountRef.current - 1, align: "end", behavior: "auto" });
+    if (staticTranscriptRef.current) staticTranscriptRef.current.scrollTop = staticTranscriptRef.current.scrollHeight;
   }, []);
   useLayoutEffect(scrollToLatest, [store.id, scrollToLatest]);
   useEffect(() => {
@@ -407,7 +409,9 @@ export const ChatTranscript = observer(function ChatTranscript({ store, behavior
     return () => cancelAnimationFrame(frame);
   }, [latestUserPartId, scrollToLatest]);
   const error = errorOverride ?? store.error;
+  const renderItem = (item: TranscriptItem, index: number) => <div key={item.id} className={`transcript-item${errorNoticeFollowsUser(items, index) ? " transcript-item-error-after-user" : ""}`}>{item.kind === "activity-group" ? <ActivityGroup parts={item.parts} behavior={transcriptBehavior} isStreaming={store.streaming} /> : item.kind === "loading-state" ? <LoadingState /> : item.kind === "review-run" ? <ReviewRunMessage run={item} onOpen={transcriptBehavior.onOpenReviewRun} /> : <TranscriptPart part={item} behavior={transcriptBehavior} />}</div>;
   if (visibleParts.length === 0) return <div className="transcript transcript-empty"><Conversation>{empty}{showAssistantLoading && <LoadingState />}{footer}{error?.message && <ErrorNotice title={error.title ?? "Operation failed"} message={error.message} details={error.details} />}</Conversation></div>;
+  if (!virtualized) return <div ref={staticTranscriptRef} className="transcript"><TranscriptList>{items.map(renderItem)}<div className="transcript-footer">{footer}{error?.message && <ErrorNotice title={error.title ?? "Operation failed"} message={error.message} details={error.details} />}</div></TranscriptList></div>;
   return <VirtualizedConversation
     ref={virtuosoRef}
     className="transcript"
@@ -416,6 +420,6 @@ export const ChatTranscript = observer(function ChatTranscript({ store, behavior
     initialTopMostItemIndex={{ index: items.length - 1, align: "end" }}
     followOutput={(isAtBottom) => isAtBottom ? "auto" : false}
     components={{ List: TranscriptList, Footer: () => <div className="transcript-footer">{footer}{error?.message && <ErrorNotice title={error.title ?? "Operation failed"} message={error.message} details={error.details} />}</div> }}
-    itemContent={(index, item) => <div className={`transcript-item${errorNoticeFollowsUser(items, index) ? " transcript-item-error-after-user" : ""}`}>{item.kind === "activity-group" ? <ActivityGroup parts={item.parts} behavior={transcriptBehavior} isStreaming={store.streaming} /> : item.kind === "loading-state" ? <LoadingState /> : item.kind === "review-run" ? <ReviewRunMessage run={item} onOpen={transcriptBehavior.onOpenReviewRun} /> : <TranscriptPart part={item} behavior={transcriptBehavior} />}</div>}
+    itemContent={(index, item) => renderItem(item, index)}
   />;
 });
