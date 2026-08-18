@@ -200,6 +200,21 @@ describe("Sidebar projects", () => {
     expect(switchProject).not.toHaveBeenCalled();
   });
 
+  it("starts the same new session flow from the project folder", () => {
+    const startNewSession = vi.fn();
+    const store = {
+      recentProjectPaths: ["/work/cake"], projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [], sessionLimit: () => 8, sessionActivity: vi.fn(),
+      nameFromPath: () => "cake", startNewSession, showMoreSessions: vi.fn()
+    } as unknown as ProjectWorkbenchStore;
+    const props = sidebarProps(store);
+    act(() => root.render(<Sidebar {...props} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
+
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Start new chat in cake"]')!.click());
+
+    expect(startNewSession).toHaveBeenCalledWith("/work/cake");
+  });
+
   it("lists Cake Chat sessions and creates another without clearing history", () => {
     const store = {
       recentProjectPaths: [], projects: [], projectSessions: vi.fn(() => []), sessionLimit: vi.fn(() => 8),
