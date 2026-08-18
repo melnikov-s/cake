@@ -6,7 +6,7 @@ import { describeError } from "../error-details";
 
 export interface SettingsStoreProps {
   client: Pick<DesktopClient, "setPiSetting" | "reloadPi" | "login" | "logout" | "setUtilityModel">;
-  sessionContext(): { workspacePath: string; sessionId: string } | undefined;
+  sessionContext(): { sessionId: string } | undefined;
   operations: SessionOperationCoordinator;
 }
 
@@ -58,11 +58,11 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   }
 
   async setPiSetting(update: PiSettingUpdate) {
-    await this.run((operationId, context) => this.props.client.setPiSetting({ operationId, ...context, update }));
+    await this.run((operationId, sessionId) => this.props.client.setPiSetting({ operationId, sessionId, update }));
   }
 
   async reloadPi() {
-    await this.run((operationId, context) => this.props.client.reloadPi({ operationId, ...context }));
+    await this.run((operationId, sessionId) => this.props.client.reloadPi({ operationId, sessionId }));
   }
 
   async authenticate(provider: string, authType: "api_key" | "oauth") {
@@ -71,8 +71,8 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     const operationId = this.props.operations.start("settings");
     this.providerOperations[operationId] = { provider, kind: "login" };
     try {
-      const context = this.requireContext();
-      await this.props.client.login({ operationId, ...context, provider, authType });
+      const sessionId = this.requireSessionId();
+      await this.props.client.login({ operationId, sessionId, provider, authType });
     } catch (error) {
       delete this.providerOperations[operationId];
       this.reportError(error);
@@ -86,8 +86,8 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     const operationId = this.props.operations.start("settings");
     this.providerOperations[operationId] = { provider, kind: "logout" };
     try {
-      const context = this.requireContext();
-      await this.props.client.logout({ operationId, ...context, provider });
+      const sessionId = this.requireSessionId();
+      await this.props.client.logout({ operationId, sessionId, provider });
     } catch (error) {
       delete this.providerOperations[operationId];
       this.reportError(error);
@@ -143,17 +143,17 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     return save;
   }
 
-  private requireContext() {
+  private requireSessionId() {
     const context = this.props.sessionContext();
     if (!context) throw new Error("No active session");
-    return context;
+    return context.sessionId;
   }
 
-  private async run(command: (operationId: string, context: { workspacePath: string; sessionId: string }) => Promise<void>) {
+  private async run(command: (operationId: string, sessionId: string) => Promise<void>) {
     this.error = undefined; this.errorDetails = undefined;
     const operationId = this.props.operations.start("settings");
     try {
-      await command(operationId, this.requireContext());
+      await command(operationId, this.requireSessionId());
     } catch (error) {
       this.reportError(error);
       this.finish(operationId);

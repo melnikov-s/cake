@@ -379,13 +379,13 @@ export const projectRecordSchema = z.object({
   path: z.string().min(1).max(4_096),
   name: z.string().min(1).max(512),
   addedAt: z.string().datetime(),
-  lastOpenedAt: z.string().datetime(),
-  resolvedSessionIds: z.array(z.string().max(256)).max(10_000).default([])
+  lastOpenedAt: z.string().datetime()
 });
 
 export const applicationStateSchema = z.object({
   schemaVersion: z.literal(1).default(1),
   projects: z.array(projectRecordSchema).max(200).default([]),
+  resolvedSessionIds: z.array(z.string().max(256)).max(10_000).default([]),
   resolvedCakeChatSessionIds: z.array(z.string().max(256)).max(10_000).default([]),
   trustedProjectPaths: z.array(z.string().max(4_096)).max(200).default([]),
   utilityModel: utilityModelSchema.optional()

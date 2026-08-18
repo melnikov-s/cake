@@ -69,7 +69,7 @@ describe("PiWorkspaceDriver", () => {
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
 
     const inspectId = crypto.randomUUID();
-    driver.dispatch({ type: "inspect-changes", requestId: inspectId, workspacePath: "/project", sessionId: snapshot.sessionId, source: "working-tree" });
+    driver.dispatch({ type: "inspect-changes", requestId: inspectId, sessionId: snapshot.sessionId, source: "working-tree" });
 
     await vi.waitFor(() => expect(events).toContainEqual({
       type: "changes-snapshot",
@@ -105,7 +105,7 @@ describe("PiWorkspaceDriver", () => {
     driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
     const inspectId = crypto.randomUUID();
-    driver.dispatch({ type: "inspect-changes", requestId: inspectId, workspacePath: "/project", sessionId: snapshot.sessionId, source: "conversation-turn" });
+    driver.dispatch({ type: "inspect-changes", requestId: inspectId, sessionId: snapshot.sessionId, source: "conversation-turn" });
     await vi.waitFor(() => expect(events).toContainEqual(expect.objectContaining({ type: "fatal", requestId: inspectId })));
 
     expect(captureLatestGitCheckpoint).not.toHaveBeenCalled();
@@ -143,7 +143,7 @@ describe("PiWorkspaceDriver", () => {
     events.splice(0);
 
     const requestId = crypto.randomUUID();
-    driver.dispatch({ type: "submit-review-thread", requestId, workspacePath: "/project", sessionId: snapshot.sessionId, threadId: thread.id, thinkingLevel: "high" });
+    driver.dispatch({ type: "submit-review-thread", requestId, sessionId: snapshot.sessionId, threadId: thread.id, thinkingLevel: "high" });
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId }));
 
     expect(runReview).toHaveBeenCalledWith(expect.objectContaining({ thread: expect.objectContaining({ id: thread.id, submission: expect.objectContaining({ status: "running" }) }) }));
@@ -185,7 +185,7 @@ describe("PiWorkspaceDriver", () => {
     const openId = crypto.randomUUID();
     driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
-    driver.dispatch({ type: "submit-review-thread", requestId: crypto.randomUUID(), workspacePath: "/project", sessionId: snapshot.sessionId, threadId: thread.id });
+    driver.dispatch({ type: "submit-review-thread", requestId: crypto.randomUUID(), sessionId: snapshot.sessionId, threadId: thread.id });
     await vi.waitFor(() => expect(runReview).toHaveBeenCalledOnce());
 
     driver[Symbol.dispose]();
@@ -216,7 +216,7 @@ describe("PiWorkspaceDriver", () => {
     const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", emit: (event) => events.push(event), createRuntime });
     const operationId = crypto.randomUUID();
 
-    driver.dispatch({ type: "rename-session", requestId: operationId, workspacePath: "/project", sessionId: "session-2", name: "Renamed" });
+    driver.dispatch({ type: "rename-session", requestId: operationId, sessionId: "session-2", name: "Renamed" });
 
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: operationId }));
     expect(createRuntime).toHaveBeenCalledWith(expect.objectContaining({ newSession: false, sessionId: "session-2" }));
@@ -246,7 +246,7 @@ describe("PiWorkspaceDriver", () => {
     const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", emit: (event) => events.push(event), createRuntime });
     const operationId = crypto.randomUUID();
 
-    driver.dispatch({ type: "prompt", requestId: operationId, workspacePath: "/project", sessionId: "session-2", text: "Commit the work", delivery: "prompt", attachments: [] });
+    driver.dispatch({ type: "prompt", requestId: operationId, sessionId: "session-2", text: "Commit the work", delivery: "prompt", attachments: [] });
 
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: operationId }));
     expect(createRuntime).toHaveBeenCalledWith(expect.objectContaining({ newSession: false, sessionId: "session-2" }));
@@ -276,7 +276,7 @@ describe("PiWorkspaceDriver", () => {
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
 
     const forkId = crypto.randomUUID();
-    driver.dispatch({ type: "fork-session", requestId: forkId, workspacePath: "/project", sessionId: "session-1", entryId: "entry" });
+    driver.dispatch({ type: "fork-session", requestId: forkId, sessionId: "session-1", entryId: "entry" });
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: forkId }));
 
     expect(parent.fork).toHaveBeenCalledWith("entry");
@@ -326,7 +326,7 @@ describe("PiWorkspaceDriver", () => {
     expect(events).toContainEqual({ type: "session-snapshot", requestId: openId, snapshot });
 
     const changelogId = crypto.randomUUID();
-    driver.dispatch({ type: "get-changelog", requestId: changelogId, workspacePath: "/project", sessionId: snapshot.sessionId });
+    driver.dispatch({ type: "get-changelog", requestId: changelogId, sessionId: snapshot.sessionId });
     await vi.waitFor(() => expect(events.some((event) => event.type === "complete" && event.requestId === changelogId)).toBe(true));
     expect(events).toContainEqual(expect.objectContaining({
       type: "changelog-snapshot",
@@ -337,22 +337,22 @@ describe("PiWorkspaceDriver", () => {
     }));
 
     const settingId = crypto.randomUUID();
-    driver.dispatch({ type: "set-pi-setting", requestId: settingId, workspacePath: "/project", sessionId: snapshot.sessionId, update: { key: "autoCompact", value: false } });
+    driver.dispatch({ type: "set-pi-setting", requestId: settingId, sessionId: snapshot.sessionId, update: { key: "autoCompact", value: false } });
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: settingId }));
     expect(runtime.setPiSetting).toHaveBeenCalledWith({ key: "autoCompact", value: false });
 
     const promptId = crypto.randomUUID();
-    driver.dispatch({ type: "prompt", requestId: promptId, workspacePath: "/project", sessionId: snapshot.sessionId, text: "hello", delivery: "prompt", attachments: [] });
+    driver.dispatch({ type: "prompt", requestId: promptId, sessionId: snapshot.sessionId, text: "hello", delivery: "prompt", attachments: [] });
     await vi.waitFor(() => expect(events.some((event) => event.type === "ui-request" && event.requestId === promptId)).toBe(true));
     await vi.waitFor(() => expect(events.some((event) => event.type === "session-snapshot" && event.requestId === undefined)).toBe(true));
     expect(promptSettled).toBe(0);
     expect(events).toContainEqual({ type: "extension-ui", sessionId: snapshot.sessionId, event: { kind: "status", key: "fixture", text: "running" } });
     const request = events.find((event): event is Extract<DesktopEvent, { type: "ui-request" }> => event.type === "ui-request" && event.requestId === promptId)!;
-    driver.dispatch({ type: "respond-ui", requestId: promptId, workspacePath: "/project", sessionId: snapshot.sessionId, uiRequestId: request.uiRequestId, value: "true", cancelled: false });
+    driver.dispatch({ type: "respond-ui", requestId: promptId, sessionId: snapshot.sessionId, uiRequestId: request.uiRequestId, value: "true", cancelled: false });
     await vi.waitFor(() => expect(events.some((event) => event.type === "complete" && event.requestId === promptId)).toBe(true));
 
     const pendingId = crypto.randomUUID();
-    driver.dispatch({ type: "prompt", requestId: pendingId, workspacePath: "/project", sessionId: snapshot.sessionId, text: "pending", delivery: "prompt", attachments: [] });
+    driver.dispatch({ type: "prompt", requestId: pendingId, sessionId: snapshot.sessionId, text: "pending", delivery: "prompt", attachments: [] });
     await vi.waitFor(() => expect(events.some((event) => event.type === "ui-request" && event.requestId === pendingId)).toBe(true));
     driver[Symbol.dispose]();
     await vi.waitFor(() => expect(promptSettled).toBe(2));
@@ -412,13 +412,13 @@ describe("PiWorkspaceDriver", () => {
     const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", artifactRepository: repository, emit: (event) => events.push(event), createRuntime: vi.fn(async (next) => { options = next; return runtime; }), isTrusted: () => true });
     const openId = crypto.randomUUID(); driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
     await vi.waitFor(() => expect(events.some((event) => event.type === "complete" && event.requestId === openId)).toBe(true));
-    const operationId = crypto.randomUUID(); driver.dispatch({ type: "prompt", requestId: operationId, workspacePath: "/project", sessionId: snapshot.sessionId, text: "request", delivery: "prompt", attachments: [] });
+    const operationId = crypto.randomUUID(); driver.dispatch({ type: "prompt", requestId: operationId, sessionId: snapshot.sessionId, text: "request", delivery: "prompt", attachments: [] });
     await vi.waitFor(() => expect(events.some((event) => event.type === "artifact-requested")).toBe(true));
     const request = events.find((event): event is Extract<DesktopEvent, { type: "artifact-requested" }> => event.type === "artifact-requested")!;
     expect(events.some((event) => event.type === "artifact-updated")).toBe(true);
-    driver.dispatch({ type: "respond-artifact", requestId: operationId, workspacePath: "/project", sessionId: snapshot.sessionId, artifactRequestId: request.artifactRequestId, value: { answer: "yes" }, cancelled: false });
+    driver.dispatch({ type: "respond-artifact", requestId: operationId, sessionId: snapshot.sessionId, artifactRequestId: request.artifactRequestId, value: { answer: "yes" }, cancelled: false });
     await vi.waitFor(() => expect(response).toEqual({ answer: "yes" }));
-    driver.dispatch({ type: "respond-artifact", requestId: operationId, workspacePath: "/project", sessionId: snapshot.sessionId, artifactRequestId: request.artifactRequestId, value: { answer: "late" }, cancelled: false });
+    driver.dispatch({ type: "respond-artifact", requestId: operationId, sessionId: snapshot.sessionId, artifactRequestId: request.artifactRequestId, value: { answer: "late" }, cancelled: false });
     expect(response).toEqual({ answer: "yes" });
     driver[Symbol.dispose]();
   });

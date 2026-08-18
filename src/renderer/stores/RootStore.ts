@@ -32,21 +32,30 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     return this.props.client;
   }
 
-  async openSession(workspacePath: string, sessionId: string) {
+  private projectSession(sessionId: string) {
+    const catalogSession = this.sessionCatalogStore.find(sessionId);
+    if (catalogSession) return catalogSession;
+    const loadedSession = this.sessionRegistry.findSession(sessionId);
+    if (loadedSession) return { workspacePath: loadedSession.workspacePath };
+    throw new Error("Cake could not find that session");
+  }
+
+  async openSession(sessionId: string) {
+    this.projectSession(sessionId);
     this.showEmptyWorkbench();
-    const opening = this.projectWorkbenchStore.openSession(workspacePath, sessionId);
-    if (this.projectWorkbenchStore.isActiveSession(workspacePath, sessionId)) {
-      this.appShellStore.selectProjectSession(workspacePath, sessionId);
+    const opening = this.projectWorkbenchStore.openSession(sessionId);
+    if (this.projectWorkbenchStore.isActiveSession(sessionId)) {
+      this.appShellStore.selectProjectSession(sessionId);
     }
     await opening;
   }
 
-  async openSessionChanges(workspacePath: string, sessionId: string) {
+  async openSessionChanges(sessionId: string) {
+    this.projectSession(sessionId);
     const selection = this.appShellStore.selection;
     if (selection.kind !== "project-session"
-      || selection.workspacePath !== workspacePath
       || selection.sessionId !== sessionId
-      || !this.projectWorkbenchStore.isActiveSession(workspacePath, sessionId)) {
+      || !this.projectWorkbenchStore.isActiveSession(sessionId)) {
       throw new Error("The project session is no longer selected");
     }
     await this.projectWorkbenchStore.openSessionChanges();
@@ -70,7 +79,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   showWorkbench() {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     const context = this.projectWorkbenchStore.sessionContext();
-    if (context) this.appShellStore.selectProjectSession(context.workspacePath, context.sessionId);
+    if (context) this.appShellStore.selectProjectSession(context.sessionId);
     else this.appShellStore.showWorkbench();
   }
   showGlobalChat(sessionId = this.globalChatStore.sessionId) {
@@ -103,11 +112,12 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   get sessionRegistry(): SessionRegistryStore {
     return createStore(SessionRegistryStore, {
       client: this.client,
+      catalog: this.sessionCatalogStore,
       operations: this.sessionOperationCoordinator,
       reviews: () => this.reviewsStore,
       pluginCommands: () => this.pluginCommandStore,
-      canSubmit: (target) => this.projectWorkbenchStore.canSubmitSession(target),
-      isActive: (target) => this.projectWorkbenchStore.isActiveSession(target.workspacePath, target.sessionId),
+      canSubmit: (sessionId) => this.projectWorkbenchStore.canSubmitSession(sessionId),
+      isActive: (sessionId) => this.projectWorkbenchStore.isActiveSession(sessionId),
       openCommandPane: (pane) => this.projectWorkbenchStore.openCommandPane(pane),
       persist: () => this.windowPersistence.schedule(),
       projectName: (workspacePath) => this.projectCatalogStore.nameForPath(workspacePath),
@@ -142,7 +152,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       catalog: this.sessionCatalogStore,
       sessions: this.sessionRegistry,
       cakeChat: () => this.globalChatStore,
-      setProjectSessionResolved: (workspacePath, sessionId, resolved) => this.projectWorkbenchStore.resolveSession(workspacePath, sessionId, resolved),
+      setSessionResolved: (sessionId, resolved) => this.projectWorkbenchStore.resolveSession(sessionId, resolved),
       setCakeChatSessionResolved: (sessionId, resolved) => this.globalChatStore.resolveSession(sessionId, resolved)
     });
   }
@@ -233,7 +243,9 @@ export class RootStore extends Store<{ client: DesktopClient }> {
 
   @child
   get appShellStore(): AppShellStore {
-    return createStore(AppShellStore);
+    return createStore(AppShellStore, {
+      sessionWorkspacePath: (sessionId) => this.sessionCatalogStore.find(sessionId)?.workspacePath ?? this.sessionRegistry.findSession(sessionId)?.workspacePath
+    });
   }
 
   constructor(props: RootStore["props"]) {
@@ -244,27 +256,24 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         : undefined,
       projects: () => this.projectCatalogStore.projects,
       sessions: () => this.sessionCatalogStore.sessions,
-      sessionActivity: (workspacePath, sessionId) => this.sidebarStore.sessionActivity(workspacePath, sessionId),
-      readSession: async (workspacePath, sessionId) => {
-        const cached = this.sessionRegistry.findModel(sessionId, workspacePath);
+      sessionActivity: (sessionId) => this.sidebarStore.sessionActivity(sessionId),
+      readSession: async (sessionId) => {
+        const cached = this.sessionRegistry.findModel(sessionId);
         if (cached?.sessionFile) return cached.uiParts;
-        return (await this.client.loadSession(workspacePath, sessionId))?.parts;
+        return (await this.client.loadSession(sessionId))?.parts;
       },
-      openSession: async (workspacePath, sessionId) => {
-        await this.openSession(workspacePath, sessionId);
+      openSession: async (sessionId) => {
+        await this.openSession(sessionId);
       },
       createSession: async (workspacePath) => {
         await this.createSession(workspacePath);
       },
-      sendSessionMessage: (workspacePath, sessionId, text, delivery) => this.appControlOperationStore.run((operationId) =>
-        this.client.submit({ operationId, workspacePath, sessionId, text, delivery, attachments: [] })),
-      abortSession: (workspacePath, sessionId) => this.appControlOperationStore.run((operationId) =>
-        this.client.abort({ operationId, workspacePath, sessionId })),
-      renameSession: (workspacePath, sessionId, title) => this.projectWorkbenchStore.renameSession(workspacePath, sessionId, title),
-      setSessionResolved: (workspacePath, sessionId, resolved) => this.projectWorkbenchStore.resolveSession(workspacePath, sessionId, resolved),
-      setProjectSessionsResolved: (workspacePath, resolved) => this.projectWorkbenchStore.resolveProjectSessions(workspacePath, resolved),
-      setSessionModel: (workspacePath, sessionId, provider, modelId) => this.appControlOperationStore.run((operationId) =>
-        this.client.setModel({ operationId, workspacePath, sessionId, provider, modelId })),
+      sendSessionMessage: (sessionId, text, delivery) => this.appControlOperationStore.run((operationId) => this.client.submit({ operationId, sessionId, text, delivery, attachments: [] })),
+      abortSession: (sessionId) => this.appControlOperationStore.run((operationId) => this.client.abort({ operationId, sessionId })),
+      renameSession: (sessionId, title) => this.projectWorkbenchStore.renameSession(sessionId, title),
+      setSessionResolved: (sessionId, resolved) => this.projectWorkbenchStore.resolveSession(sessionId, resolved),
+      setSessionsResolved: (sessionIds, resolved) => this.projectWorkbenchStore.resolveSessionsById(sessionIds, resolved),
+      setSessionModel: (sessionId, provider, modelId) => this.appControlOperationStore.run((operationId) => this.client.setModel({ operationId, sessionId, provider, modelId })),
       customizationState: () => this.customizationStore.state,
       plugins: () => this.customizationStore.plugins,
       getPluginAuthoringReference: () => this.client.getPluginAuthoringReference(),
@@ -335,16 +344,16 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     if (event.type === "session-snapshot-received") {
       const previousSessionId = this.projectWorkbenchStore.session?.sessionId;
       if (event.operationId && !this.projectWorkbenchStore.acceptSessionSnapshot(event)) return;
-      const previous = this.sessionRegistry.findModel(event.snapshot.sessionId, event.snapshot.workspacePath);
+      const previous = this.sessionRegistry.findModel(event.snapshot.sessionId);
       const wasStreaming = previous?.streaming ?? false;
       this.sessionRegistry.upsert(event.snapshot);
-      const session = this.sessionRegistry.findSession(event.snapshot.sessionId, event.snapshot.workspacePath)!;
+      const session = this.sessionRegistry.findSession(event.snapshot.sessionId)!;
       session.updateActivity(event.snapshot.streaming, wasStreaming);
       session.composerStore.reconcile(event.snapshot.sessionId);
-      if (event.operationId || this.projectWorkbenchStore.isActiveSession(event.snapshot.workspacePath, event.snapshot.sessionId)) {
+      if (event.operationId || this.projectWorkbenchStore.isActiveSession(event.snapshot.sessionId)) {
         this.projectWorkbenchStore.applySessionSnapshot(event.snapshot, event.operationId ? previousSessionId : undefined, Boolean(event.operationId));
         if (this.appShellStore.surface === "workbench") {
-          this.appShellStore.selectProjectSession(event.snapshot.workspacePath, event.snapshot.sessionId);
+          this.appShellStore.selectProjectSession(event.snapshot.sessionId);
         }
         void this.projectWorkbenchStore.changesStore.refresh();
       }
@@ -370,11 +379,11 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       return;
     }
     if (event.type === "artifact-updated" || event.type === "artifact-requested") {
-      this.sessionRegistry.findModel(event.record.artifact.sessionId, event.record.workspacePath)?.upsertArtifact(event.record);
+      this.sessionRegistry.findModel(event.record.artifact.sessionId)?.upsertArtifact(event.record);
       if (event.type === "artifact-updated") return;
     }
     if (event.type === "review-threads-received") {
-      this.sessionRegistry.applyReviewThreads(event.workspacePath, event.sessionId, event.threads);
+      this.sessionRegistry.applyReviewThreads(event.sessionId, event.threads);
       this.projectWorkbenchStore.receive(event);
       return;
     }

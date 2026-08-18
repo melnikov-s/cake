@@ -145,7 +145,7 @@ export interface ChatTranscriptBehavior {
   onFork?(entryId: string): void;
   onOpenReviewRun?(threadId?: string): void;
   waitingForUser?: boolean;
-  inlineWidgets?: { store: InlineWidgetStore; workspacePath: string; sessionId: string; model?: { provider: string; id: string } };
+  inlineWidgets?: InlineWidgetStore;
   artifacts?: { records: ArtifactRecord[]; interaction: ArtifactInteractionStore };
   messageComments?: MessageCommentsStore;
 }
@@ -305,7 +305,7 @@ function TranscriptPart({ part, behavior }: { part: UiPart; behavior: CanonicalT
     const record = part.artifactId ? behavior.artifacts?.records.find((candidate) => candidate.artifact.id === part.artifactId) : undefined;
     if (record && behavior.artifacts) {
       const request = behavior.artifacts.interaction.request?.record.artifact.id === record.artifact.id ? behavior.artifacts.interaction.request : undefined;
-      return <ArtifactHost record={record} requested={Boolean(request)} onSubmit={(value) => void behavior.artifacts!.interaction.respond(value)} onCancel={() => void behavior.artifacts!.interaction.respond(undefined, true)} inlineWidgets={behavior.inlineWidgets?.store} />;
+      return <ArtifactHost record={record} requested={Boolean(request)} onSubmit={(value) => void behavior.artifacts!.interaction.respond(value)} onCancel={() => void behavior.artifacts!.interaction.respond(undefined, true)} inlineWidgets={behavior.inlineWidgets} />;
     }
     return <Tool part={part} />;
   }

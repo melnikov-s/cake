@@ -10,7 +10,7 @@ export interface SidebarStoreProps {
   catalog: SessionCatalogStore;
   sessions: SessionRegistryStore;
   cakeChat(): GlobalChatStore;
-  setProjectSessionResolved(workspacePath: string, sessionId: string, resolved: boolean): Promise<void>;
+  setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
   setCakeChatSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
 }
 
@@ -31,8 +31,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   get sessions() { return this.props.catalog.sessions; }
 
   projectSessions(workspacePath: string, resolved = false) {
-    const resolvedIds = new Set(this.props.projects.find(workspacePath)?.resolvedSessionIds ?? []);
-    return this.sessions.filter((item) => item.workspacePath === workspacePath && resolvedIds.has(item.id) === resolved);
+    return this.props.catalog.projectSessions(workspacePath).filter((item) => item.resolved === resolved);
   }
 
   cakeChatSessions(resolved = false) {
@@ -44,8 +43,8 @@ export class SidebarStore extends Store<SidebarStoreProps> {
       || this.props.projects.recentProjectPaths.some((path) => this.projectSessions(path, true).length > 0);
   }
 
-  sessionActivity(workspacePath: string, sessionId: string) {
-    return this.props.sessions.findSession(sessionId, workspacePath)?.activity;
+  sessionActivity(sessionId: string) {
+    return this.props.sessions.findSession(sessionId)?.activity;
   }
 
   sessionLimit(workspacePath: string, resolved = false) {
@@ -57,8 +56,8 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     this.limitsByProject[key] = this.sessionLimit(workspacePath, resolved) + 10;
   }
 
-  setProjectSessionResolved(workspacePath: string, sessionId: string, resolved: boolean) {
-    return this.props.setProjectSessionResolved(workspacePath, sessionId, resolved);
+  setSessionResolved(sessionId: string, resolved: boolean) {
+    return this.props.setSessionResolved(sessionId, resolved);
   }
 
   setCakeChatSessionResolved(sessionId: string, resolved: boolean) {

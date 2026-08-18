@@ -33,7 +33,7 @@ function createTestStore() {
     abort: vi.fn(async (input: Parameters<GlobalChatPort["abort"]>[0]) => { void input; }),
     setModel: vi.fn(async (input: Parameters<GlobalChatPort["setModel"]>[0]) => { void input; }),
     setThinkingLevel: vi.fn(async (input: Parameters<GlobalChatPort["setThinkingLevel"]>[0]) => { void input; }),
-    resolveSession: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] }))
+    resolveSession: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedSessionIds: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] }))
   };
   const sessions = mount(createStore(SessionRegistryStore, {
     client: {} as DesktopClient,
@@ -97,14 +97,14 @@ describe("GlobalChatStore", () => {
     const { store, port, sessions, operations } = createTestStore();
     await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
     const now = new Date().toISOString();
-    store.applyApplicationState({ schemaVersion: 1, projects: [], resolvedCakeChatSessionIds: ["global-1"], trustedProjectPaths: [] });
+    store.applyApplicationState({ schemaVersion: 1, projects: [], resolvedSessionIds: [], resolvedCakeChatSessionIds: ["global-1"], trustedProjectPaths: [] });
     store.receive({
       type: "global-chat-snapshot-received",
       snapshot: { ...snapshot, sessions: [{ id: "global-1", title: "Resolved work", created: now, modified: now, messageCount: 1, resolved: false }] }
     });
 
     expect(store.summaries[0]?.resolved).toBe(true);
-    port.resolveSession.mockResolvedValueOnce({ schemaVersion: 1, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] });
+    port.resolveSession.mockResolvedValueOnce({ schemaVersion: 1, projects: [], resolvedSessionIds: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] });
     await store.resolveSession("global-1", false);
     expect(port.resolveSession).toHaveBeenCalledWith("global-1", false);
     expect(store.summaries[0]?.resolved).toBe(false);

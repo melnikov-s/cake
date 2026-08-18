@@ -46,21 +46,22 @@ export const ArtifactHost = observer(function ArtifactHost({ record, requested =
         {artifact.kind === "media" ? <MediaArtifact artifact={artifact} /> : null}
         {artifact.kind === "diff" ? <pre className="artifact-diff">{artifact.payload.diff}</pre> : null}
         {artifact.kind === "html" ? <HtmlArtifact artifact={artifact} /> : null}
-        {artifact.kind === "widget" ? <WidgetArtifact artifact={artifact} workspacePath={record.workspacePath} inlineWidgets={inlineWidgets} fullscreen={fullscreen} onCloseFullscreen={() => setFullscreen(false)} /> : null}
-        {artifact.kind === "request" ? <RequestArtifact artifact={artifact} workspacePath={record.workspacePath} requested={requested} onSubmit={onSubmit} onCancel={onCancel} inlineWidgets={inlineWidgets} fullscreen={fullscreen} onCloseFullscreen={() => setFullscreen(false)} /> : null}
+        {artifact.kind === "widget" ? <WidgetArtifact artifact={artifact} inlineWidgets={inlineWidgets} fullscreen={fullscreen} onCloseFullscreen={() => setFullscreen(false)} /> : null}
+        {artifact.kind === "request" ? <RequestArtifact artifact={artifact} requested={requested} onSubmit={onSubmit} onCancel={onCancel} inlineWidgets={inlineWidgets} fullscreen={fullscreen} onCloseFullscreen={() => setFullscreen(false)} /> : null}
       </div>
       <details className="artifact-fallback"><summary>Readable fallback</summary><Markdown>{artifact.fallback.markdown}</Markdown></details>
     </article>
   );
 });
 
-const WidgetArtifact = observer(function WidgetArtifact({ artifact, workspacePath, inlineWidgets, fullscreen, onCloseFullscreen }: { artifact: Extract<CakeArtifactV1, { kind: "widget" }>; workspacePath: string; inlineWidgets?: InlineWidgetStore; fullscreen: boolean; onCloseFullscreen(): void }) {
+const WidgetArtifact = observer(function WidgetArtifact({ artifact, inlineWidgets, fullscreen, onCloseFullscreen }: { artifact: Extract<CakeArtifactV1, { kind: "widget" }>; inlineWidgets?: InlineWidgetStore; fullscreen: boolean; onCloseFullscreen(): void }) {
   const id = `${artifact.sessionId}:widget:${artifact.id}:${artifact.revision}`;
   const state = inlineWidgets?.state(id);
   const iframe = useRef<HTMLIFrameElement>(null);
   const fullscreenIframe = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(220);
   const [sourceOpen, setSourceOpen] = useState(false);
+  const [repairPromptOpen, setRepairPromptOpen] = useState(false);
   useEffect(() => {
     if (inlineWidgets) inlineWidgets.prepare(id, artifact.payload.language, artifact.payload.source);
   }, [artifact.payload.language, artifact.payload.source, id, inlineWidgets]);
@@ -77,8 +78,13 @@ const WidgetArtifact = observer(function WidgetArtifact({ artifact, workspacePat
   }, [id, inlineWidgets, state?.compiled]);
   if (!inlineWidgets) return <div className="notice notice-error"><strong>Widget unavailable</strong><span>Cake could not access its widget compiler.</span></div>;
   const status = state?.status ?? "building";
+  const submitRepair = (instructions: string) => {
+    setRepairPromptOpen(false);
+    void inlineWidgets.repair({ id, sessionId: artifact.sessionId, context: repairContext(artifact.payload.brief, instructions) });
+  };
   return <section className={`inline-widget inline-widget-${status}`} aria-label={`Delegated ${artifact.payload.language} widget`}>
-    <div className="inline-widget-rail"><span className="inline-widget-notch" aria-hidden="true" /><span>Delegated {artifact.payload.language === "react" ? "React" : "HTML"} widget</span><span className="inline-widget-status">{status === "repairing" ? "Repairing…" : status === "building" ? "Building…" : status === "error" ? "Needs attention" : state?.repairSessionId ? "Repaired" : "Ready"}</span><span className="inline-widget-actions"><button type="button" onClick={() => setSourceOpen((open) => !open)}>{sourceOpen ? "Hide source" : "Source"}</button><button type="button" disabled={status === "repairing" || status === "building"} onClick={() => void inlineWidgets.repair({ id, workspacePath, sessionId: artifact.sessionId, context: artifact.payload.brief })}>Repair</button></span></div>
+    <div className="inline-widget-rail"><span className="inline-widget-notch" aria-hidden="true" /><span>Delegated {artifact.payload.language === "react" ? "React" : "HTML"} widget</span><span className="inline-widget-status">{status === "repairing" ? "Repairing…" : status === "building" ? "Building…" : status === "error" ? "Needs attention" : state?.repairSessionId ? "Repaired" : "Ready"}</span><span className="inline-widget-actions"><button type="button" onClick={() => setSourceOpen((open) => !open)}>{sourceOpen ? "Hide source" : "Source"}</button><button type="button" disabled={status === "repairing" || status === "building"} onClick={() => setRepairPromptOpen((open) => !open)}>{repairPromptOpen ? "Close" : "Repair"}</button></span></div>
+    {repairPromptOpen && <InlineWidgetRepairPrompt onCancel={() => setRepairPromptOpen(false)} onSubmit={submitRepair} />}
     {status === "error" && <div className="inline-widget-diagnostic" role="alert"><strong>Widget could not render</strong><pre>{state?.diagnostic}</pre></div>}
     {state?.compiled && <iframe ref={iframe} title={artifact.title ?? artifact.id} sandbox="allow-scripts" referrerPolicy="no-referrer" src={state.compiled.url} style={{ height }} />}
     {sourceOpen && <Markdown className="inline-widget-source">{fencedCode(state?.source ?? artifact.payload.source, artifact.payload.language === "react" ? "tsx" : "html")}</Markdown>}
@@ -86,13 +92,13 @@ const WidgetArtifact = observer(function WidgetArtifact({ artifact, workspacePat
   </section>;
 });
 
-function RequestArtifact({ artifact, workspacePath, requested, onSubmit, onCancel, inlineWidgets, fullscreen, onCloseFullscreen }: { artifact: Extract<CakeArtifactV1, { kind: "request" }>; workspacePath: string; requested: boolean; onSubmit?: (value: JsonValue) => void; onCancel?: () => void; inlineWidgets?: InlineWidgetStore; fullscreen: boolean; onCloseFullscreen(): void }) {
+function RequestArtifact({ artifact, requested, onSubmit, onCancel, inlineWidgets, fullscreen, onCloseFullscreen }: { artifact: Extract<CakeArtifactV1, { kind: "request" }>; requested: boolean; onSubmit?: (value: JsonValue) => void; onCancel?: () => void; inlineWidgets?: InlineWidgetStore; fullscreen: boolean; onCloseFullscreen(): void }) {
   const parsed = cakeRequestV1Schema.safeParse(artifact.payload.request);
   if (!parsed.success) return <div className="notice notice-error"><strong>Request could not render</strong><span>{parsed.error.message}</span></div>;
   const request = parsed.data;
   if (request.view.type === "form") return <RequestForm view={request.view} requested={requested} onSubmit={onSubmit} onCancel={onCancel} />;
   if (!inlineWidgets) return <div className="notice notice-error"><strong>Request widget unavailable</strong><span>Cake could not access its widget compiler.</span></div>;
-  return <RequestWidget artifact={artifact} workspacePath={workspacePath} view={request.view} title={request.title} requested={requested} fallback={request.fallback.markdown} onSubmit={onSubmit} onCancel={onCancel} store={inlineWidgets} fullscreen={fullscreen} onCloseFullscreen={onCloseFullscreen} />;
+  return <RequestWidget artifact={artifact} view={request.view} title={request.title} requested={requested} fallback={request.fallback.markdown} onSubmit={onSubmit} onCancel={onCancel} store={inlineWidgets} fullscreen={fullscreen} onCloseFullscreen={onCloseFullscreen} />;
 }
 
 function RequestForm({ view, requested, onSubmit, onCancel }: { view: Extract<CakeRequestView, { type: "form" }>; requested: boolean; onSubmit?: (value: JsonValue) => void; onCancel?: () => void }) {
@@ -101,13 +107,14 @@ function RequestForm({ view, requested, onSubmit, onCancel }: { view: Extract<Ca
   return <form className="artifact-form" onSubmit={submit}>{view.fields.map((field) => <label key={field.id}><span>{field.label}{field.required ? " *" : ""}</span>{field.type === "textarea" ? <textarea required={field.required} placeholder={field.placeholder} value={String(values[field.id] ?? "")} onChange={(event) => setValues({ ...values, [field.id]: event.target.value })} /> : field.type === "select" ? <select required={field.required} value={String(values[field.id] ?? "")} onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}><option value="">Select…</option>{field.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : field.type === "checkbox" ? <input type="checkbox" checked={Boolean(values[field.id])} onChange={(event) => setValues({ ...values, [field.id]: event.target.checked })} /> : <input type={field.type} required={field.required} placeholder={field.placeholder} value={String(values[field.id] ?? "")} onChange={(event) => setValues({ ...values, [field.id]: field.type === "number" ? event.target.valueAsNumber : event.target.value })} />}</label>)}{requested && <div className="artifact-actions"><Button type="button" variant="outline" onClick={onCancel}>Cancel</Button><Button type="submit">{view.submitLabel}</Button></div>}</form>;
 }
 
-const RequestWidget = observer(function RequestWidget({ artifact, workspacePath, view, title, requested, fallback, onSubmit, onCancel, store, fullscreen, onCloseFullscreen }: { artifact: Extract<CakeArtifactV1, { kind: "request" }>; workspacePath: string; view: Extract<CakeRequestView, { type: "widget" }>; title: string; requested: boolean; fallback: string; onSubmit?: (value: JsonValue) => void; onCancel?: () => void; store: InlineWidgetStore; fullscreen: boolean; onCloseFullscreen(): void }) {
+const RequestWidget = observer(function RequestWidget({ artifact, view, title, requested, fallback, onSubmit, onCancel, store, fullscreen, onCloseFullscreen }: { artifact: Extract<CakeArtifactV1, { kind: "request" }>; view: Extract<CakeRequestView, { type: "widget" }>; title: string; requested: boolean; fallback: string; onSubmit?: (value: JsonValue) => void; onCancel?: () => void; store: InlineWidgetStore; fullscreen: boolean; onCloseFullscreen(): void }) {
   const id = `${artifact.sessionId}:request:${artifact.id}:${artifact.revision}`;
   const state = store.state(id);
   const iframe = useRef<HTMLIFrameElement>(null);
   const fullscreenIframe = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(220);
   const [sourceOpen, setSourceOpen] = useState(false);
+  const [repairPromptOpen, setRepairPromptOpen] = useState(false);
   useEffect(() => store.prepare(id, view.language, view.source, "request"), [id, store, view.language, view.source]);
   useEffect(() => {
     const receive = (event: MessageEvent) => {
@@ -122,14 +129,36 @@ const RequestWidget = observer(function RequestWidget({ artifact, workspacePath,
     return () => window.removeEventListener("message", receive);
   }, [id, onCancel, onSubmit, requested, state?.compiled, store]);
   const status = state?.status ?? "building";
+  const submitRepair = (instructions: string) => {
+    setRepairPromptOpen(false);
+    void store.repair({ id, sessionId: artifact.sessionId, context: repairContext(fallback, instructions) });
+  };
   return <section className={`inline-widget inline-widget-${status}`} aria-label={`Custom ${view.language} request`}>
-    <div className="inline-widget-rail"><span className="inline-widget-notch" aria-hidden="true" /><span>{view.language === "react" ? "React request" : "HTML request"}</span><span className="inline-widget-status">{status === "repairing" ? "Repairing…" : status === "building" ? "Building…" : status === "error" ? "Needs attention" : requested ? "Waiting for you" : "Completed"}</span><span className="inline-widget-actions"><button type="button" onClick={() => setSourceOpen((open) => !open)}>{sourceOpen ? "Hide source" : "Source"}</button><button type="button" disabled={status === "repairing" || status === "building"} onClick={() => void store.repair({ id, workspacePath, sessionId: artifact.sessionId, context: fallback })}>Repair</button></span></div>
+    <div className="inline-widget-rail"><span className="inline-widget-notch" aria-hidden="true" /><span>{view.language === "react" ? "React request" : "HTML request"}</span><span className="inline-widget-status">{status === "repairing" ? "Repairing…" : status === "building" ? "Building…" : status === "error" ? "Needs attention" : requested ? "Waiting for you" : "Completed"}</span><span className="inline-widget-actions"><button type="button" onClick={() => setSourceOpen((open) => !open)}>{sourceOpen ? "Hide source" : "Source"}</button><button type="button" disabled={status === "repairing" || status === "building"} onClick={() => setRepairPromptOpen((open) => !open)}>{repairPromptOpen ? "Close" : "Repair"}</button></span></div>
+    {repairPromptOpen && <InlineWidgetRepairPrompt onCancel={() => setRepairPromptOpen(false)} onSubmit={submitRepair} />}
     {status === "error" && <div className="inline-widget-diagnostic" role="alert"><strong>Request widget could not render</strong><pre>{state?.diagnostic}</pre></div>}
     {state?.compiled && <iframe ref={iframe} title={artifact.title ?? artifact.id} sandbox="allow-scripts" referrerPolicy="no-referrer" src={state.compiled.url} style={{ height }} />}
     {sourceOpen && <Markdown className="inline-widget-source">{fencedCode(state?.source ?? view.source, view.language === "react" ? "tsx" : "html")}</Markdown>}
     {fullscreen && state?.compiled && <FullscreenSurface mode="canvas" eyebrow={`${view.language === "react" ? "React" : "HTML"} request`} title={title} onClose={onCloseFullscreen}><iframe ref={fullscreenIframe} title={`${title} fullscreen`} sandbox="allow-scripts" referrerPolicy="no-referrer" src={state.compiled.url} /></FullscreenSurface>}
   </section>;
 });
+
+function InlineWidgetRepairPrompt({ onCancel, onSubmit }: { onCancel(): void; onSubmit(instructions: string): void }) {
+  const [instructions, setInstructions] = useState("");
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const value = instructions.trim();
+    if (value) onSubmit(value);
+  };
+  return <form className="inline-widget-repair-form" onSubmit={submit}>
+    <label><span>What should be repaired?</span><textarea autoFocus required rows={3} placeholder="Describe the problem or change you want…" value={instructions} onChange={(event) => setInstructions(event.target.value)} /></label>
+    <div className="inline-widget-repair-actions"><Button type="button" variant="outline" onClick={onCancel}>Cancel</Button><Button type="submit" disabled={!instructions.trim()}>Submit</Button></div>
+  </form>;
+}
+
+function repairContext(context: string, instructions: string) {
+  return `${context}\n\nUser's requested repair:\n${instructions}`;
+}
 
 function TableArtifact({ artifact }: { artifact: Extract<CakeArtifactV1, { kind: "table" }> }) {
   const [query, setQuery] = useState("");

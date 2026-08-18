@@ -10,10 +10,7 @@ import {
   type PluginStatus
 } from "../plugin/plugin-contract";
 
-const sessionTargetSchema = z.object({
-  workspacePath: z.string().min(1).max(4_096),
-  sessionId: z.string().min(1).max(256)
-});
+const sessionIdTargetSchema = z.object({ sessionId: z.string().min(1).max(256) });
 
 const sessionPageSchema = z.object({
   workspacePath: z.string().min(1).max(4_096).optional(),
@@ -22,7 +19,7 @@ const sessionPageSchema = z.object({
   limit: z.number().int().min(1).max(200).default(100)
 });
 
-const sessionReadSchema = sessionTargetSchema.extend({
+const sessionReadSchema = sessionIdTargetSchema.extend({
   cursor: z.number().int().nonnegative().default(0),
   limit: z.number().int().min(1).max(50).default(20)
 });
@@ -51,18 +48,18 @@ const appControlArgumentSchemas = {
   use_factory_customization: emptyArgumentsSchema,
   set_plugin_enabled: z.object({ pluginId: pluginIdSchema, enabled: z.boolean() }),
   set_active_scene: z.object({ pluginId: pluginIdSchema.optional() }),
-  get_session_status: sessionTargetSchema,
-  open_session: sessionTargetSchema,
+  get_session_status: sessionIdTargetSchema,
+  open_session: sessionIdTargetSchema,
   list_sessions: sessionPageSchema,
   read_session: sessionReadSchema,
   search_sessions: searchSessionsSchema,
   create_session: z.object({ workspacePath: z.string().min(1).max(4_096) }),
-  send_session_message: sessionTargetSchema.extend({ text: z.string().trim().min(1).max(100_000), delivery: z.enum(["prompt", "follow-up", "steer"]).optional() }),
-  abort_session: sessionTargetSchema,
-  rename_session: sessionTargetSchema.extend({ title: z.string().trim().min(1).max(500) }),
-  set_session_resolved: sessionTargetSchema.extend({ resolved: z.boolean() }),
-  set_project_sessions_resolved: z.object({ workspacePath: z.string().min(1).max(4_096), resolved: z.boolean() }),
-  set_session_model: sessionTargetSchema.extend({ provider: z.string().trim().min(1).max(100), modelId: z.string().trim().min(1).max(200) })
+  send_session_message: sessionIdTargetSchema.extend({ text: z.string().trim().min(1).max(100_000), delivery: z.enum(["prompt", "follow-up", "steer"]).optional() }),
+  abort_session: sessionIdTargetSchema,
+  rename_session: sessionIdTargetSchema.extend({ title: z.string().trim().min(1).max(500) }),
+  set_session_resolved: sessionIdTargetSchema.extend({ resolved: z.boolean() }),
+  set_sessions_resolved: z.object({ sessionIds: z.array(z.string().min(1).max(256)).min(1).max(10_000), resolved: z.boolean() }),
+  set_session_model: sessionIdTargetSchema.extend({ provider: z.string().trim().min(1).max(100), modelId: z.string().trim().min(1).max(200) })
 } as const;
 
 function invocation<Name extends keyof typeof appControlArgumentSchemas>(name: Name) {
@@ -76,7 +73,7 @@ export const appControlInvocationSchema = z.discriminatedUnion("name", [
   invocation("use_factory_customization"), invocation("set_plugin_enabled"), invocation("set_active_scene"),
   invocation("get_session_status"), invocation("open_session"), invocation("list_sessions"), invocation("read_session"),
   invocation("search_sessions"), invocation("create_session"), invocation("send_session_message"), invocation("abort_session"),
-  invocation("rename_session"), invocation("set_session_resolved"), invocation("set_project_sessions_resolved"), invocation("set_session_model")
+  invocation("rename_session"), invocation("set_session_resolved"), invocation("set_sessions_resolved"), invocation("set_session_model")
 ]);
 
 export type AppControlInvocation = z.infer<typeof appControlInvocationSchema>;
@@ -105,7 +102,7 @@ export const appControlToolCatalog = [
   tool("abort_session", "Stop a known session that is currently running.", appControlArgumentSchemas.abort_session),
   tool("rename_session", "Rename a known session.", appControlArgumentSchemas.rename_session),
   tool("set_session_resolved", "Resolve or restore a known session.", appControlArgumentSchemas.set_session_resolved),
-  tool("set_project_sessions_resolved", "Resolve or restore every session in one registered project. Use resolved=true to move all of the project's sessions into Resolved, or resolved=false to restore them.", appControlArgumentSchemas.set_project_sessions_resolved),
+  tool("set_sessions_resolved", "Resolve or restore an explicit set of known sessions by ID. Use list_sessions with a project filter first when changing every session in a project.", appControlArgumentSchemas.set_sessions_resolved),
   tool("set_session_model", "Change the model for one known session. Use provider and model IDs returned by Cake settings.", appControlArgumentSchemas.set_session_model)
 ] as const;
 
@@ -113,16 +110,16 @@ export interface AppControlHost {
   currentSession(): { workspacePath: string; sessionId: string } | undefined;
   projects(): readonly ProjectRecord[];
   sessions(): readonly GlobalSessionSummary[];
-  sessionActivity(workspacePath: string, sessionId: string): "running" | "unread" | undefined;
-  readSession(workspacePath: string, sessionId: string): Promise<readonly UiPart[] | undefined>;
-  openSession(workspacePath: string, sessionId: string): Promise<void>;
+  sessionActivity(sessionId: string): "running" | "unread" | undefined;
+  readSession(sessionId: string): Promise<readonly UiPart[] | undefined>;
+  openSession(sessionId: string): Promise<void>;
   createSession(workspacePath: string): Promise<void>;
-  sendSessionMessage(workspacePath: string, sessionId: string, text: string, delivery: "prompt" | "follow-up" | "steer"): Promise<void>;
-  abortSession(workspacePath: string, sessionId: string): Promise<void>;
-  renameSession(workspacePath: string, sessionId: string, title: string): Promise<void>;
-  setSessionResolved(workspacePath: string, sessionId: string, resolved: boolean): Promise<void>;
-  setProjectSessionsResolved(workspacePath: string, resolved: boolean): Promise<number>;
-  setSessionModel(workspacePath: string, sessionId: string, provider: string, modelId: string): Promise<void>;
+  sendSessionMessage(sessionId: string, text: string, delivery: "prompt" | "follow-up" | "steer"): Promise<void>;
+  abortSession(sessionId: string): Promise<void>;
+  renameSession(sessionId: string, title: string): Promise<void>;
+  setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
+  setSessionsResolved(sessionIds: readonly string[], resolved: boolean): Promise<number>;
+  setSessionModel(sessionId: string, provider: string, modelId: string): Promise<void>;
   customizationState(): CustomizationState | undefined;
   plugins(): readonly PluginStatus[];
   getPluginAuthoringReference(): Promise<string>;
@@ -192,7 +189,7 @@ export type AppControlResult =
   | { ok: true; name: "abort_session"; target: SessionTarget; status: "stopping" }
   | { ok: true; name: "rename_session"; target: SessionTarget; title: string }
   | { ok: true; name: "set_session_resolved"; target: SessionTarget; resolved: boolean }
-  | { ok: true; name: "set_project_sessions_resolved"; workspacePath: string; resolved: boolean; sessionCount: number }
+  | { ok: true; name: "set_sessions_resolved"; sessionIds: string[]; resolved: boolean; sessionCount: number }
   | { ok: true; name: "set_session_model"; target: SessionTarget; provider: string; modelId: string; status: "changing" }
   | { ok: false; name: AppControlInvocation["name"]; error: string };
 
@@ -220,7 +217,7 @@ export class AppControlBridge {
         name: project.name,
         sessionCount: sessions.filter((session) => session.workspacePath === project.path).length
       })),
-      attentionSessions: sessions.filter((session) => this.host.sessionActivity(session.workspacePath, session.id)).map((session) => this.toControlSession(session)),
+      attentionSessions: sessions.filter((session) => this.host.sessionActivity(session.id)).map((session) => this.toControlSession(session)),
       recentSessions: sessions.slice(0, recentSessionLimit).map((session) => this.toControlSession(session))
     };
     const currentSession = this.host.currentSession();
@@ -253,15 +250,16 @@ export class AppControlBridge {
     if (invocation.name === "list_sessions") return this.listSessions(invocation.arguments);
     if (invocation.name === "search_sessions") return this.searchSessions(invocation.arguments);
     if (invocation.name === "create_session") return this.createSession(invocation.arguments.workspacePath);
-    if (invocation.name === "set_project_sessions_resolved") return this.setProjectSessionsResolved(invocation.arguments);
+    if (invocation.name === "set_sessions_resolved") return this.setSessionsResolved(invocation.arguments);
 
-    const { workspacePath, sessionId } = invocation.arguments;
-    const known = this.knownSession(workspacePath, sessionId);
+    const { sessionId } = invocation.arguments;
+    const known = this.knownSession(sessionId);
     if (!known) return { ok: false, name: invocation.name, error: "Cake could not find that session." };
+    const { workspacePath } = known;
     const target = { workspacePath, sessionId };
 
     if (invocation.name === "get_session_status") {
-      const activity = this.host.sessionActivity(workspacePath, sessionId);
+      const activity = this.host.sessionActivity(sessionId);
       const current = this.host.currentSession();
       return {
         ok: true,
@@ -273,30 +271,30 @@ export class AppControlBridge {
     }
     if (invocation.name === "read_session") return this.readSession(known, invocation.arguments);
     if (invocation.name === "open_session") {
-      await this.host.openSession(workspacePath, sessionId);
+      await this.host.openSession(sessionId);
       return { ok: true, name: invocation.name, opened: target };
     }
     if (invocation.name === "send_session_message") {
-      const delivery = invocation.arguments.delivery ?? (this.host.sessionActivity(workspacePath, sessionId) === "running" ? "follow-up" : "prompt");
-      await this.host.sendSessionMessage(workspacePath, sessionId, invocation.arguments.text, delivery);
+      const delivery = invocation.arguments.delivery ?? (this.host.sessionActivity(sessionId) === "running" ? "follow-up" : "prompt");
+      await this.host.sendSessionMessage(sessionId, invocation.arguments.text, delivery);
       return { ok: true, name: invocation.name, target, delivery, status: "sent" };
     }
     if (invocation.name === "abort_session") {
-      if (this.host.sessionActivity(workspacePath, sessionId) !== "running") {
+      if (this.host.sessionActivity(sessionId) !== "running") {
         return { ok: false, name: invocation.name, error: "That session is not currently running." };
       }
-      await this.host.abortSession(workspacePath, sessionId);
+      await this.host.abortSession(sessionId);
       return { ok: true, name: invocation.name, target, status: "stopping" };
     }
     if (invocation.name === "rename_session") {
-      await this.host.renameSession(workspacePath, sessionId, invocation.arguments.title);
+      await this.host.renameSession(sessionId, invocation.arguments.title);
       return { ok: true, name: invocation.name, target, title: invocation.arguments.title };
     }
     if (invocation.name === "set_session_resolved") {
-      await this.host.setSessionResolved(workspacePath, sessionId, invocation.arguments.resolved);
+      await this.host.setSessionResolved(sessionId, invocation.arguments.resolved);
       return { ok: true, name: invocation.name, target, resolved: invocation.arguments.resolved };
     }
-    await this.host.setSessionModel(workspacePath, sessionId, invocation.arguments.provider, invocation.arguments.modelId);
+    await this.host.setSessionModel(sessionId, invocation.arguments.provider, invocation.arguments.modelId);
     return { ok: true, name: invocation.name, target, provider: invocation.arguments.provider, modelId: invocation.arguments.modelId, status: "changing" };
   }
 
@@ -304,8 +302,8 @@ export class AppControlBridge {
     return [...this.host.sessions()].sort((left, right) => right.modified.localeCompare(left.modified));
   }
 
-  private knownSession(workspacePath: string, sessionId: string) {
-    return this.host.sessions().find((session) => session.workspacePath === workspacePath && session.id === sessionId);
+  private knownSession(sessionId: string) {
+    return this.host.sessions().find((session) => session.id === sessionId);
   }
 
   private listSessions({ workspacePath, includeResolved, cursor, limit }: z.infer<typeof sessionPageSchema>): AppControlResult {
@@ -316,8 +314,8 @@ export class AppControlBridge {
     return nextCursor === undefined ? result : { ...result, nextCursor };
   }
 
-  private async readSession(known: GlobalSessionSummary, { workspacePath, sessionId, cursor, limit }: z.infer<typeof sessionReadSchema>): Promise<AppControlResult> {
-    const parts = await this.host.readSession(workspacePath, sessionId);
+  private async readSession(known: GlobalSessionSummary, { sessionId, cursor, limit }: z.infer<typeof sessionReadSchema>): Promise<AppControlResult> {
+    const parts = await this.host.readSession(sessionId);
     if (!parts) return { ok: false, name: "read_session", error: "Cake could not read that session." };
     const page = parts.slice(cursor, cursor + limit).map((part, offset) => this.toReadablePart(part, cursor + offset));
     const nextCursor = cursor + page.length < parts.length ? cursor + page.length : undefined;
@@ -341,7 +339,7 @@ export class AppControlBridge {
       const matches: AppControlSearchMatch["matches"] = [];
       const titleIndex = session.title.toLocaleLowerCase().indexOf(needle);
       if (titleIndex >= 0) matches.push({ location: "title", snippet: matchingSnippet(session.title, titleIndex, query.length) });
-      const parts = await this.host.readSession(session.workspacePath, session.id);
+      const parts = await this.host.readSession(session.id);
       for (let index = 0; index < (parts?.length ?? 0) && matches.length < 3; index += 1) {
         const part = parts?.[index];
         if (!part) continue;
@@ -363,16 +361,16 @@ export class AppControlBridge {
     return { ok: true, name: "create_session", workspacePath, status: "creating" };
   }
 
-  private async setProjectSessionsResolved({ workspacePath, resolved }: z.infer<typeof appControlArgumentSchemas.set_project_sessions_resolved>): Promise<AppControlResult> {
-    if (!this.host.projects().some((project) => project.path === workspacePath)) {
-      return { ok: false, name: "set_project_sessions_resolved", error: "Cake could not find that project." };
-    }
-    const sessionCount = await this.host.setProjectSessionsResolved(workspacePath, resolved);
-    return { ok: true, name: "set_project_sessions_resolved", workspacePath, resolved, sessionCount };
+  private async setSessionsResolved({ sessionIds, resolved }: z.infer<typeof appControlArgumentSchemas.set_sessions_resolved>): Promise<AppControlResult> {
+    const unknown = sessionIds.find((sessionId) => !this.knownSession(sessionId));
+    if (unknown) return { ok: false, name: "set_sessions_resolved", error: `Cake could not find session ${unknown}.` };
+    const uniqueSessionIds = [...new Set(sessionIds)];
+    const sessionCount = await this.host.setSessionsResolved(uniqueSessionIds, resolved);
+    return { ok: true, name: "set_sessions_resolved", sessionIds: uniqueSessionIds, resolved, sessionCount };
   }
 
   private toControlSession(session: GlobalSessionSummary): AppControlSession {
-    const activity = this.host.sessionActivity(session.workspacePath, session.id);
+    const activity = this.host.sessionActivity(session.id);
     const result = {
       workspacePath: session.workspacePath,
       workspaceName: session.workspaceName,

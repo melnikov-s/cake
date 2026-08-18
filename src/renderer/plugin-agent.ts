@@ -15,7 +15,7 @@ import { useCurrentPluginId } from "./plugin-runtime";
 function implicitSession(root: RootStore): SessionRef | undefined {
   const selection = root.appShellStore.selection;
   return selection.kind === "project-session"
-    ? { kind: "cake.session-ref", id: JSON.stringify({ workspacePath: selection.workspacePath, sessionId: selection.sessionId }) }
+    ? { kind: "cake.session-ref", id: JSON.stringify({ sessionId: selection.sessionId }) }
     : undefined;
 }
 
@@ -105,7 +105,7 @@ export function usePluginSessionActivity(): PluginSessionActivity {
   const root = useStore(RootStore);
   const selection = root.appShellStore.selection;
   if (selection.kind !== "project-session") throw new Error("usePluginSessionActivity() requires a selected project session");
-  const model = root.sessionRegistry.findModel(selection.sessionId, selection.workspacePath);
+  const model = root.sessionRegistry.findModel(selection.sessionId);
   const initial = (): PluginSessionActivity => {
     const parts = model?.uiParts ?? [];
     const messages = parts.filter((part): part is Extract<UiPart, { kind: "text" }> => part.kind === "text" && Boolean(part.entryId));

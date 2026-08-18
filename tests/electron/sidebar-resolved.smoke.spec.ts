@@ -27,7 +27,8 @@ test("resolves and restores the selected project session in the desktop sidebar"
   }));
   await writeFile(join(userData, "application.json"), JSON.stringify({
     schemaVersion: 1,
-    projects: [{ path: project, name: "project", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString(), resolvedSessionIds: [] }],
+    projects: [{ path: project, name: "project", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString() }],
+    resolvedSessionIds: [],
     resolvedCakeChatSessionIds: [],
     trustedProjectPaths: []
   }));

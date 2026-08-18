@@ -14,7 +14,7 @@ test("keeps window state independent across Pi sessions", async () => {
   await Promise.all([
     writeFile(join(userData, "window-state.json"), JSON.stringify({ ...base, draft: "first window draft" })),
     writeFile(join(userData, "window-state-1.json"), JSON.stringify({ ...base, draft: "second window draft" })),
-    writeFile(join(userData, "application.json"), JSON.stringify({ schemaVersion: 1, projects: [{ path: project, name: "project", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString(), resolvedSessionIds: [] }], trustedProjectPaths: [] }))
+    writeFile(join(userData, "application.json"), JSON.stringify({ schemaVersion: 1, projects: [{ path: project, name: "project", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString() }], resolvedSessionIds: [], trustedProjectPaths: [] }))
   ]);
   const application = await electron.launch({ args: [repositoryRoot], cwd: repositoryRoot, env: { ...process.env, CAKE_ELECTRON_SMOKE: "1", CAKE_ELECTRON_USER_DATA: userData, CAKE_HOME: join(temporaryRoot, "cake-home") } });
   try {

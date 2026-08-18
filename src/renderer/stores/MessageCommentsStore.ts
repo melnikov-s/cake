@@ -8,7 +8,7 @@ export interface MessageCommentsStoreProps {
   sessionRegistry: SessionRegistryStore;
   reviews(): ReviewsStore;
   draftChatStore(): ChatStore;
-  context(): { workspacePath: string; sessionId: string } | undefined;
+  context(): { sessionId: string } | undefined;
 }
 
 export interface MessageSelectionAnchor {
@@ -30,7 +30,7 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
   get threads() {
     const context = this.props.context();
     if (!context) return [];
-    return this.props.sessionRegistry.findModel(context.sessionId, context.workspacePath)?.reviewThreads
+    return this.props.sessionRegistry.findModel(context.sessionId)?.reviewThreads
       .filter((thread) => thread.anchor.view === "message") ?? [];
   }
 

@@ -21,7 +21,7 @@ import { describeError } from "../error-details";
 export interface ProjectWorkbenchStoreProps {
   client: Pick<DesktopClient,
     | "abort"
-    | "resolveProjectSessions"
+    | "resolveSessions"
     | "resolveSession"
     | "chooseProject"
     | "createWindow"
@@ -68,7 +68,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   changelogLoading = false;
   error: string | undefined;
   errorDetails: string | undefined;
-  private pendingRenames: Record<string, { workspacePath: string; sessionId: string; previousTitle: string }> = observable({});
+  private pendingRenames: Record<string, { sessionId: string; previousTitle: string }> = observable({});
   private openRevision = 0;
   private reopenAfterAgentRestart = false;
   private draftAfterAgentRestart: string | undefined;
@@ -108,9 +108,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   get activeSession() {
-    return this.selectedSessionId && this.projectPath
-      ? this.sessionRegistry.findSession(this.selectedSessionId, this.projectPath)
-      : undefined;
+    return this.selectedSessionId ? this.sessionRegistry.findSession(this.selectedSessionId) : undefined;
   }
 
   get session() {
@@ -119,7 +117,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   get sessionTitle() {
     const context = this.sessionContext();
-    const title = context ? this.props.catalog.find(context.workspacePath, context.sessionId)?.title : undefined;
+    const title = context ? this.props.catalog.find(context.sessionId)?.title : undefined;
     return title ?? "New chat";
   }
 
@@ -129,9 +127,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return command === "/tree" || command === "/resources" || command === "/changelog" || this.props.pluginCommands().matches(draft);
   }
 
-  canSubmitSession(target: { workspacePath: string; sessionId: string }) {
-    if (!this.isActiveSession(target.workspacePath, target.sessionId) || this.activeOpenOperationId) return false;
-    const session = this.sessionRegistry.findSession(target.sessionId, target.workspacePath);
+  canSubmitSession(sessionId: string) {
+    if (!this.isActiveSession(sessionId) || this.activeOpenOperationId) return false;
+    const session = this.sessionRegistry.findSession(sessionId);
     if (!session) return false;
     const command = session.chatStore.draft.trim().toLocaleLowerCase();
     const local = command === "/tree" || command === "/resources" || command === "/changelog" || this.props.pluginCommands().matches(session.chatStore.draft);
@@ -144,8 +142,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return this.projectPath ? this.props.projects.nameForPath(this.projectPath) : "No workspace";
   }
 
-  private markSessionRead(workspacePath: string, sessionId: string) {
-    this.sessionRegistry.findSession(sessionId, workspacePath)?.markRead();
+  private markSessionRead(sessionId: string) {
+    this.sessionRegistry.findSession(sessionId)?.markRead();
   }
 
   private applyApplicationState(state: ApplicationState) {
@@ -153,12 +151,11 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   async restoreSelection(state: WindowViewState, sessions: readonly GlobalSessionSummary[]) {
-    this.projectPath = state.projectPath;
-    if (!state.projectPath) return;
-    const selectedSession = state.selectedSessionId
-      ? sessions.find((session) => session.workspacePath === state.projectPath && session.id === state.selectedSessionId)
-      : undefined;
-    await this.inspectPath(state.projectPath, Boolean(state.selectedSessionId && !selectedSession), selectedSession?.id);
+    const selectedSession = state.selectedSessionId ? sessions.find((session) => session.id === state.selectedSessionId) : undefined;
+    const projectPath = selectedSession?.workspacePath ?? state.projectPath;
+    this.projectPath = projectPath;
+    if (!projectPath) return;
+    await this.inspectPath(projectPath, Boolean(state.selectedSessionId && !selectedSession), selectedSession?.id);
   }
 
   startOperation() {
@@ -227,36 +224,38 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     else await this.inspectPath(path, true);
   }
 
-  async openSession(workspacePath: string, sessionId: string) {
-    this.markSessionRead(workspacePath, sessionId);
+  async openSession(sessionId: string) {
+    const workspacePath = this.props.catalog.find(sessionId)?.workspacePath ?? this.sessionRegistry.findSession(sessionId)?.workspacePath;
+    if (!workspacePath) throw new Error(`Cake could not find session ${sessionId}`);
+    this.markSessionRead(sessionId);
     if (workspacePath === this.projectPath && sessionId === this.session?.sessionId) return;
     const sameWorkspace = workspacePath === this.projectPath;
-    const cached = this.showCachedSession(workspacePath, sessionId);
-    if (!cached) void this.loadSessionPreview(workspacePath, sessionId);
+    const cached = this.showCachedSession(sessionId);
+    if (!cached) void this.loadSessionPreview(sessionId);
     if (sameWorkspace) await this.openPath(workspacePath, false, sessionId);
     else await this.inspectPath(workspacePath, false, sessionId);
   }
 
-  private async loadSessionPreview(workspacePath: string, sessionId: string) {
+  private async loadSessionPreview(sessionId: string) {
     try {
-      const preview = await this.client.loadSession(workspacePath, sessionId);
+      const preview = await this.client.loadSession(sessionId);
       if (!preview || this.signal.aborted) return;
-      const pendingMatches = this.pendingOpen?.path === workspacePath && this.pendingOpen.sessionId === sessionId;
-      const activeMatches = this.activeOpenTarget?.path === workspacePath && this.activeOpenTarget.sessionId === sessionId;
+      const pendingMatches = this.pendingOpen?.sessionId === sessionId;
+      const activeMatches = this.activeOpenTarget?.sessionId === sessionId;
       if (!pendingMatches && !activeMatches) return;
       this.sessionRegistry.hydratePreview(preview);
-      this.showCachedSession(workspacePath, sessionId);
+      this.showCachedSession(sessionId);
     } catch {
       // Runtime activation remains authoritative when the fast disk preview is unavailable.
     }
   }
 
-  private showCachedSession(workspacePath: string, sessionId: string) {
-    const session = this.sessionRegistry.findSession(sessionId, workspacePath);
+  private showCachedSession(sessionId: string) {
+    const session = this.sessionRegistry.findSession(sessionId);
     if (!session) return false;
-    this.projectPath = workspacePath;
+    this.projectPath = session.workspacePath;
     this.selectedSessionId = sessionId;
-    this.markSessionRead(workspacePath, sessionId);
+    this.markSessionRead(sessionId);
     this.extensionUi.clear();
     this.commandPane = undefined;
     this.changesStore.reset();
@@ -365,8 +364,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return { workspacePath: this.projectPath, sessionId: this.session.sessionId };
   }
 
-  openingSession(workspacePath: string, sessionId: string) {
-    return this.activeOpenTarget?.path === workspacePath && this.activeOpenTarget.sessionId === sessionId;
+  openingSession(sessionId: string) {
+    return this.activeOpenTarget?.sessionId === sessionId;
   }
 
   async refreshChangelog() {
@@ -374,24 +373,24 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (!context || this.changelogLoading) return;
     const operationId = this.startOperation();
     this.changelogLoading = true;
-    try { await this.client.getChangelog({ operationId, ...context }); }
+    try { await this.client.getChangelog({ operationId, sessionId: context.sessionId }); }
     catch (error) { this.changelogLoading = false; this.finishOperation(operationId); this.setError(error); }
   }
 
   async renameCurrentSession(name: string) {
     const context = this.sessionContext(); if (!context || !name.trim()) return;
-    await this.renameSession(context.workspacePath, context.sessionId, name);
+    await this.renameSession(context.sessionId, name);
   }
 
-  async renameSession(workspacePath: string, sessionId: string, name: string) {
+  async renameSession(sessionId: string, name: string) {
     if (!name.trim()) return;
     const operationId = this.startOperation();
     try {
       const title = name.trim();
-      const previousTitle = this.props.catalog.rename(workspacePath, sessionId, title);
-      if (previousTitle !== undefined) this.pendingRenames[operationId] = { workspacePath, sessionId, previousTitle };
+      const previousTitle = this.props.catalog.rename(sessionId, title);
+      if (previousTitle !== undefined) this.pendingRenames[operationId] = { sessionId, previousTitle };
       try {
-        await this.client.renameSession({ operationId, workspacePath, sessionId, name: title });
+        await this.client.renameSession({ operationId, sessionId, name: title });
       } catch (error) {
         this.rollbackRename(operationId);
         throw error;
@@ -400,15 +399,16 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     catch (error) { this.finishOperation(operationId); this.setError(error); }
   }
 
-  async resolveSession(workspacePath: string, sessionId: string, resolved: boolean) {
-    try { this.applyApplicationState(await this.client.resolveSession(workspacePath, sessionId, resolved)); }
+  async resolveSession(sessionId: string, resolved: boolean) {
+    if (!this.props.catalog.find(sessionId)) return;
+    try { this.applyApplicationState(await this.client.resolveSession(sessionId, resolved)); }
     catch (error) { this.setError(error); }
   }
 
-  async resolveProjectSessions(workspacePath: string, resolved: boolean) {
-    const sessionCount = this.props.catalog.sessions.filter((session) => session.workspacePath === workspacePath).length;
+  async resolveSessions(sessionIds: readonly string[], resolved: boolean) {
+    const sessionCount = sessionIds.length;
     try {
-      this.applyApplicationState(await this.client.resolveProjectSessions(workspacePath, resolved));
+      this.applyApplicationState(await this.client.resolveSessions(sessionIds, resolved));
       return sessionCount;
     } catch (error) {
       this.setError(error);
@@ -416,11 +416,18 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     }
   }
 
+  async resolveSessionsById(sessionIds: readonly string[], resolved: boolean) {
+    for (const sessionId of sessionIds) {
+      if (!this.props.catalog.find(sessionId)) throw new Error(`Cake could not find session ${sessionId}`);
+    }
+    return this.resolveSessions(sessionIds, resolved);
+  }
+
   async forkAt(entryId: string) {
     const context = this.sessionContext(); if (!context) return;
     this.closeCommandPane();
     const operationId = this.startOperation(); this.activeOpenOperationId = operationId;
-    try { await this.client.forkSession({ operationId, ...context, entryId }); }
+    try { await this.client.forkSession({ operationId, sessionId: context.sessionId, entryId }); }
     catch (error) { this.finishOperation(operationId); this.setError(error); }
   }
 
@@ -430,7 +437,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.closeCommandPane();
     const operationId = this.startOperation();
     try {
-      await this.client.navigateSession({ operationId, ...context, entryId });
+      await this.client.navigateSession({ operationId, sessionId: context.sessionId, entryId });
       if (editorText !== undefined) this.activeSession?.chatStore.setDraft(editorText);
     }
     catch (error) { this.finishOperation(operationId); this.setError(error); }
@@ -446,7 +453,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const operationId = this.startOperation();
     try {
       const context = this.sessionContext(); if (!context) throw new Error("No active session");
-      await this.client.abort({ operationId, ...context });
+      await this.client.abort({ operationId, sessionId: context.sessionId });
     } catch (error) {
       this.setError(error);
       this.finishOperation(operationId);
@@ -457,8 +464,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const restartDraft = this.draftAfterAgentRestart;
     this.projectPath = snapshot.workspacePath;
     this.selectedSessionId = snapshot.sessionId;
-    const activeSession = this.sessionRegistry.ensure(snapshot.sessionId, snapshot.workspacePath);
-    this.markSessionRead(snapshot.workspacePath, snapshot.sessionId);
+    const activeSession = this.sessionRegistry.ensure(snapshot.sessionId);
+    this.markSessionRead(snapshot.sessionId);
     this.props.persistence().applySessionRestore(activeSession, previousSessionId, restartDraft);
     this.draftAfterAgentRestart = undefined;
     if (previousSessionId !== undefined) this.extensionUi.clear();
@@ -468,12 +475,12 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.props.catalog.applyWorkspace(snapshot.workspacePath, workspaceName, snapshot.sessions);
     this.props.projects.recordOpened(snapshot.workspacePath);
     this.props.persistence().schedule();
-    void this.reviews.loadThreads(snapshot.workspacePath, snapshot.sessionId);
+    void this.reviews.loadThreads(snapshot.sessionId);
     if (focusComposer) activeSession.composerStore.requestFocus();
   }
 
-  isActiveSession(workspacePath: string, sessionId: string) {
-    return this.projectPath === workspacePath && this.selectedSessionId === sessionId;
+  isActiveSession(sessionId: string) {
+    return this.selectedSessionId === sessionId;
   }
 
   acceptSessionSnapshot(event: Extract<DesktopClientEvent, { type: "session-snapshot-received" }>) {
@@ -493,7 +500,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       this.activeOpenOperationId = undefined;
       this.activeOpenTarget = undefined;
       this.activeOpenExpectsEmpty = false;
-    } else if (!this.session || event.snapshot.sessionId !== this.session.sessionId || event.snapshot.workspacePath !== this.session.workspacePath) {
+    } else if (!this.session || event.snapshot.sessionId !== this.session.sessionId) {
       return false;
     }
     if (event.operationId) this.finishOperation(event.operationId);
@@ -543,7 +550,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (event.type === "changelog-received") {
       this.finishOperation(event.operationId);
       this.changelogLoading = false;
-      if (!this.isActiveSession(event.workspacePath, event.sessionId)) return;
+      if (!this.isActiveSession(event.sessionId)) return;
       this.changelogMarkdown = event.markdown;
       return;
     }
@@ -571,7 +578,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   private rollbackRename(operationId: string) {
     const pending = this.pendingRenames[operationId];
     if (!pending) return;
-    this.props.catalog.rename(pending.workspacePath, pending.sessionId, pending.previousTitle);
+    this.props.catalog.rename(pending.sessionId, pending.previousTitle);
     delete this.pendingRenames[operationId];
   }
 }

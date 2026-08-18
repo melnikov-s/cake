@@ -38,7 +38,9 @@ type PiCommandType =
   | "respond-ui"
   | "respond-artifact";
 
-export type PiWorkspaceCommand = Extract<DesktopRequest, { type: PiCommandType }>;
+type PiCommandRequest = Extract<DesktopRequest, { type: PiCommandType }>;
+export type PiWorkspaceCommand =
+  PiCommandRequest;
 
 interface PendingUi {
   operationId: string;
@@ -163,12 +165,6 @@ export class PiWorkspaceDriver {
 
   dispatch(command: PiWorkspaceCommand) {
     if (this.disposed) throw new Error("The Pi workspace driver has been disposed");
-    const routedPath = command.type === "open-workspace"
-      ? command.path
-      : command.workspacePath;
-    if (routedPath !== this.workspacePath) {
-      throw new Error("Workspace driver routing mismatch");
-    }
     if (command.type === "respond-ui") {
       const pending = this.pendingUi.get(command.uiRequestId);
       if (pending?.operationId === command.requestId) pending.settle(command.cancelled ? undefined : command.value);

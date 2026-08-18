@@ -26,6 +26,6 @@ describe("plugin agent model resolution", () => {
   });
 
   it("round-trips opaque host session references", () => {
-    expect(resolveSessionRef(sessionRef("/project/with spaces", "session-1"))).toEqual({ workspacePath: "/project/with spaces", sessionId: "session-1" });
+    expect(resolveSessionRef(sessionRef("session-1"))).toBe("session-1");
   });
 });

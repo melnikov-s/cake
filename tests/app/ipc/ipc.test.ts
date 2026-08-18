@@ -7,16 +7,16 @@ describe("process IPC", () => {
     const requestId = crypto.randomUUID();
     expect(desktopRequestSchema.parse({ type: "open-workspace", requestId, path: "/project", newSession: true })).toMatchObject({ type: "open-workspace", requestId, newSession: true });
     expect(desktopRequestSchema.parse({ type: "respond-workspace-trust", requestId, path: "/project", approved: true })).toMatchObject({ approved: true });
-    expect(desktopRequestSchema.parse({ type: "prompt", requestId, workspacePath: "/project", sessionId: "session", text: "hello", delivery: "prompt", attachments: [] })).toMatchObject({ text: "hello" });
-    expect(desktopRequestSchema.parse({ type: "prompt", requestId, workspacePath: "/project", sessionId: "session", text: "", delivery: "prompt", attachments: [{ kind: "image", name: "paste.png", mimeType: "image/png", data: "aW1hZ2U=" }] })).toMatchObject({ text: "", attachments: [{ kind: "image" }] });
-    expect(() => desktopRequestSchema.parse({ type: "prompt", requestId, workspacePath: "/project", sessionId: "session", text: "", delivery: "prompt", attachments: [] })).toThrow();
+    expect(desktopRequestSchema.parse({ type: "prompt", requestId, sessionId: "session", text: "hello", delivery: "prompt", attachments: [] })).toMatchObject({ text: "hello" });
+    expect(desktopRequestSchema.parse({ type: "prompt", requestId, sessionId: "session", text: "", delivery: "prompt", attachments: [{ kind: "image", name: "paste.png", mimeType: "image/png", data: "aW1hZ2U=" }] })).toMatchObject({ text: "", attachments: [{ kind: "image" }] });
+    expect(() => desktopRequestSchema.parse({ type: "prompt", requestId, sessionId: "session", text: "", delivery: "prompt", attachments: [] })).toThrow();
     expect(desktopRequestSchema.parse({ type: "prompt-global-chat", requestId, sessionId: "cake-chat", text: "", attachments: [{ kind: "image", name: "paste.png", mimeType: "image/png", data: "aW1hZ2U=" }] })).toMatchObject({ text: "", attachments: [{ kind: "image" }] });
     expect(() => desktopRequestSchema.parse({ type: "prompt-global-chat", requestId, sessionId: "cake-chat", text: "", attachments: [] })).toThrow();
     expect(desktopRequestSchema.parse({ type: "list-sessions" })).toEqual({ type: "list-sessions" });
     expect(desktopRequestSchema.parse({ type: "set-utility-model", model: { provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "low" } })).toMatchObject({ type: "set-utility-model", model: { provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "low" } });
     expect(desktopRequestSchema.parse({ type: "set-utility-model" })).toEqual({ type: "set-utility-model" });
-    expect(desktopRequestSchema.parse({ type: "resolve-project-sessions", path: "/project", resolved: true })).toEqual({ type: "resolve-project-sessions", path: "/project", resolved: true });
-    expect(desktopRequestSchema.parse({ type: "load-session", workspacePath: "/project", sessionId: "session" })).toEqual({ type: "load-session", workspacePath: "/project", sessionId: "session" });
+    expect(desktopRequestSchema.parse({ type: "resolve-sessions", sessionIds: ["session"], resolved: true })).toEqual({ type: "resolve-sessions", sessionIds: ["session"], resolved: true });
+    expect(desktopRequestSchema.parse({ type: "load-session", sessionId: "session" })).toEqual({ type: "load-session", sessionId: "session" });
     expect(desktopRequestSchema.parse({ type: "suggest-files", workspacePath: "/project", prefix: "src/app" })).toEqual({ type: "suggest-files", workspacePath: "/project", prefix: "src/app" });
     expect(desktopRequestSchema.parse({ type: "list-workspace-files", workspacePath: "/project" })).toEqual({ type: "list-workspace-files", workspacePath: "/project" });
     expect(desktopRequestSchema.parse({ type: "read-workspace-file", workspacePath: "/project", path: "src/app.ts" })).toEqual({ type: "read-workspace-file", workspacePath: "/project", path: "src/app.ts" });
@@ -24,18 +24,18 @@ describe("process IPC", () => {
     const widgetToken = "00000000-0000-4000-8000-000000000001";
     expect(desktopResponseSchema.parse({ type: "inline-widget-compiled", widget: { token: widgetToken, url: `cake-widget://document/${widgetToken}` } })).toMatchObject({ widget: { token: widgetToken } });
     expect(desktopResponseSchema.safeParse({ type: "inline-widget-compiled", widget: { token: widgetToken, url: "cake-widget://document/00000000-0000-4000-8000-000000000002" } }).success).toBe(false);
-    expect(desktopRequestSchema.parse({ type: "repair-inline-widget", workspacePath: "/project", sessionId: "session", language: "html", capability: "display", source: "<strong>Broken</strong>", context: "Explain the result" })).toMatchObject({ type: "repair-inline-widget", language: "html", capability: "display" });
-    expect(desktopRequestSchema.parse({ type: "set-pi-setting", requestId, workspacePath: "/project", sessionId: "session", update: { key: "transport", value: "websocket" } })).toMatchObject({ update: { key: "transport", value: "websocket" } });
-    expect(desktopRequestSchema.parse({ type: "set-pi-setting", requestId, workspacePath: "/project", sessionId: "session", update: { key: "skills", value: ["skills", "!skills/excluded"] } })).toMatchObject({ update: { key: "skills" } });
-    expect(desktopRequestSchema.parse({ type: "reload-pi", requestId, workspacePath: "/project", sessionId: "session" })).toMatchObject({ type: "reload-pi", requestId });
-    expect(desktopRequestSchema.parse({ type: "get-changelog", requestId, workspacePath: "/project", sessionId: "session" })).toMatchObject({ type: "get-changelog", requestId });
-    expect(desktopRequestSchema.parse({ type: "inspect-changes", requestId, workspacePath: "/project", sessionId: "session", source: "working-tree" })).toMatchObject({ type: "inspect-changes", sessionId: "session" });
+    expect(desktopRequestSchema.parse({ type: "repair-inline-widget", sessionId: "session", language: "html", capability: "display", source: "<strong>Broken</strong>", context: "Explain the result" })).toMatchObject({ type: "repair-inline-widget", language: "html", capability: "display" });
+    expect(desktopRequestSchema.parse({ type: "set-pi-setting", requestId, sessionId: "session", update: { key: "transport", value: "websocket" } })).toMatchObject({ update: { key: "transport", value: "websocket" } });
+    expect(desktopRequestSchema.parse({ type: "set-pi-setting", requestId, sessionId: "session", update: { key: "skills", value: ["skills", "!skills/excluded"] } })).toMatchObject({ update: { key: "skills" } });
+    expect(desktopRequestSchema.parse({ type: "reload-pi", requestId, sessionId: "session" })).toMatchObject({ type: "reload-pi", requestId });
+    expect(desktopRequestSchema.parse({ type: "get-changelog", requestId, sessionId: "session" })).toMatchObject({ type: "get-changelog", requestId });
+    expect(desktopRequestSchema.parse({ type: "inspect-changes", requestId, sessionId: "session", source: "working-tree" })).toMatchObject({ type: "inspect-changes", sessionId: "session" });
     const anchor = { path: "src/app.ts", start: { diffLine: 1, newLine: 4 }, end: { diffLine: 1, newLine: 4 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" };
-    expect(desktopRequestSchema.parse({ type: "create-review-thread", workspacePath: "/project", sessionId: "session", anchor, body: "Why?" })).toMatchObject({ body: "Why?" });
-    expect(desktopRequestSchema.parse({ type: "submit-review-thread", requestId, workspacePath: "/project", sessionId: "session", threadId: crypto.randomUUID() })).toMatchObject({ type: "submit-review-thread" });
+    expect(desktopRequestSchema.parse({ type: "create-review-thread", sessionId: "session", anchor, body: "Why?" })).toMatchObject({ body: "Why?" });
+    expect(desktopRequestSchema.parse({ type: "submit-review-thread", requestId, sessionId: "session", threadId: crypto.randomUUID() })).toMatchObject({ type: "submit-review-thread" });
     expect(desktopEventSchema.parse({ type: "changelog-snapshot", requestId, workspacePath: "/project", sessionId: "session", markdown: "# Changelog" })).toMatchObject({ markdown: "# Changelog" });
     expect(desktopEventSchema.parse({ type: "changes-snapshot", requestId, workspacePath: "/project", sessionId: "session", source: "working-tree", turns: [], files: [] })).toMatchObject({ type: "changes-snapshot", sessionId: "session" });
-    expect(desktopRequestSchema.safeParse({ type: "set-pi-setting", requestId, workspacePath: "/project", sessionId: "session", update: { key: "transport", value: "invalid" } }).success).toBe(false);
+    expect(desktopRequestSchema.safeParse({ type: "set-pi-setting", requestId, sessionId: "session", update: { key: "transport", value: "invalid" } }).success).toBe(false);
   });
 
   it("clips oversized projected metadata instead of dropping the IPC payload", () => {
@@ -80,7 +80,7 @@ describe("process IPC", () => {
     const requestId = crypto.randomUUID();
     const uiRequestId = crypto.randomUUID();
     expect(desktopEventSchema.parse({ type: "ui-request", requestId, uiRequestId, kind: "secret", title: "Sign in", message: "API key" })).toMatchObject({ uiRequestId, kind: "secret" });
-    expect(desktopRequestSchema.parse({ type: "respond-ui", requestId, workspacePath: "/project", sessionId: "session", uiRequestId, value: "secret", cancelled: false })).toMatchObject({ value: "secret" });
+    expect(desktopRequestSchema.parse({ type: "respond-ui", requestId, sessionId: "session", uiRequestId, value: "secret", cancelled: false })).toMatchObject({ value: "secret" });
   });
 
   it("rejects malformed project and UI requests", () => {

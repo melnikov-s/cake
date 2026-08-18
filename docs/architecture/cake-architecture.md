@@ -162,7 +162,10 @@ The window Store hierarchy mirrors the product surfaces:
   from that selection. `SidebarStore` owns navigation presentation and
   filtering; neither Store opens sessions directly.
 - `ProjectCatalogStore` owns registered project records and their window-local
-  ordering. `SessionCatalogStore` owns lightweight session summaries.
+  ordering. `SessionCatalogStore` owns one flat, activity-sorted session
+  projection plus cached ID and project-group indexes. Session IDs are the
+  canonical identity; duplicate IDs are rejected. Resolved-session flags are
+  persisted as a global ID set and projected into those summaries.
 - `WindowPersistenceCoordinator` hydrates and saves view state that spans the
   shell, sidebar, workbench, settings, and loaded sessions. It coordinates
   those owners without absorbing their state.
@@ -171,8 +174,9 @@ The window Store hierarchy mirrors the product surfaces:
   command panes, and its `BrowseStore` and `ChangesStore` children. It
   coordinates project-level workflows without re-exporting session behavior.
 - The root-scoped `SessionRegistryStore` preserves one keyed
-  `ProjectSessionStore` for every loaded `(workspacePath, sessionId)` target so
-  background events, Cake Chat, and navigation share session identity.
+  `ProjectSessionStore` for every loaded session ID so background events, Cake
+  Chat, and navigation share session identity. The workspace path remains
+  routing/storage context for the Pi runtime, not part of session identity.
 - Each `ProjectSessionStore` owns that session's activity, `SessionModel`,
   message composer, chat configuration, artifacts, and message comments. Its
   `ChatStore` is the common conversation-facing state boundary: it presents the

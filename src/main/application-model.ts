@@ -10,9 +10,6 @@ export class ProjectModel extends Model {
   addedAt = "";
   @state
   lastOpenedAt = "";
-  @state
-  resolvedSessionIds: string[] = [];
-
   rename(name: string) {
     const next = name.trim();
     if (next) this.name = next.slice(0, 512);
@@ -21,12 +18,6 @@ export class ProjectModel extends Model {
   touch(at = new Date().toISOString()) {
     this.lastOpenedAt = at;
   }
-
-  setSessionResolved(sessionId: string, resolved: boolean) {
-    const index = this.resolvedSessionIds.indexOf(sessionId);
-    if (resolved && index === -1) this.resolvedSessionIds = [...this.resolvedSessionIds, sessionId];
-    else if (!resolved && index !== -1) this.resolvedSessionIds = this.resolvedSessionIds.filter((id) => id !== sessionId);
-  }
 }
 
 export class ApplicationModel extends Model {
@@ -34,6 +25,8 @@ export class ApplicationModel extends Model {
   schemaVersion = 1 as const;
   @child(ProjectModel)
   projects: ProjectModel[] = [];
+  @state
+  resolvedSessionIds: string[] = [];
   @state
   resolvedCakeChatSessionIds: string[] = [];
   @state
@@ -52,7 +45,7 @@ export class ApplicationModel extends Model {
       return existing;
     }
     const now = new Date().toISOString();
-    const project = ProjectModel.create({ path, name: defaultName, addedAt: now, lastOpenedAt: now, resolvedSessionIds: [] });
+    const project = ProjectModel.create({ path, name: defaultName, addedAt: now, lastOpenedAt: now });
     this.projects.unshift(project);
     return project;
   }
@@ -84,21 +77,13 @@ export class ApplicationModel extends Model {
     else if (!resolved && index !== -1) this.resolvedCakeChatSessionIds = this.resolvedCakeChatSessionIds.filter((id) => id !== sessionId);
   }
 
-  setProjectSessionResolved(path: string, sessionId: string, resolved: boolean) {
-    const project = this.projects.find((candidate) => candidate.path === path);
-    if (!project) throw new Error("Project is not registered");
-    project.setSessionResolved(sessionId, resolved);
-  }
-
-  setProjectSessionsResolved(path: string, sessionIds: readonly string[], resolved: boolean) {
-    const project = this.projects.find((candidate) => candidate.path === path);
-    if (!project) throw new Error("Project is not registered");
-    const next = new Set(project.resolvedSessionIds);
+  setSessionsResolved(sessionIds: readonly string[], resolved: boolean) {
+    const next = new Set(this.resolvedSessionIds);
     for (const sessionId of sessionIds) {
       if (resolved) next.add(sessionId);
       else next.delete(sessionId);
     }
-    project.resolvedSessionIds = [...next];
+    this.resolvedSessionIds = [...next];
   }
 
   isProjectTrusted(path: string) {
@@ -115,8 +100,7 @@ export class ApplicationModel extends Model {
       path: match.path,
       name: match.name,
       addedAt: match.addedAt,
-      lastOpenedAt: match.lastOpenedAt,
-      resolvedSessionIds: match.resolvedSessionIds.slice()
+      lastOpenedAt: match.lastOpenedAt
     } : undefined;
   }
 }

@@ -92,17 +92,16 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
 
       const reviewsBySession = new Map<string, typeof sessionIndex.reviewThreads>();
       for (const thread of sessionIndex.reviewThreads) {
-        const key = this.sessionKey(thread.workspacePath, thread.sessionId);
-        const threads = reviewsBySession.get(key) ?? [];
+        const threads = reviewsBySession.get(thread.sessionId) ?? [];
         threads.push(thread);
-        reviewsBySession.set(key, threads);
+        reviewsBySession.set(thread.sessionId, threads);
       }
       for (const session of sessionIndex.sessions) {
-        this.props.registry.applyReviewThreads(session.workspacePath, session.id, reviewsBySession.get(this.sessionKey(session.workspacePath, session.id)) ?? []);
+        this.props.registry.applyReviewThreads(session.id, reviewsBySession.get(session.id) ?? []);
       }
       for (const [sessionId, draft] of Object.entries(state.draftsBySession)) {
         const summary = sessionIndex.sessions.find((session) => session.id === sessionId);
-        if (summary) this.props.registry.ensure(sessionId, summary.workspacePath).chatStore.setDraft(draft);
+        if (summary) this.props.registry.ensure(sessionId).chatStore.setDraft(draft);
       }
 
       const activeConversation = state.activeConversation;
@@ -146,7 +145,4 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
     this.errorDetails = described.details;
   }
 
-  private sessionKey(workspacePath: string, sessionId: string) {
-    return `${workspacePath}\u0000${sessionId}`;
-  }
 }

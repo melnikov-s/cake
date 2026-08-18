@@ -16,10 +16,6 @@ export interface SessionTarget {
   sessionId: string;
 }
 
-export function sessionTargetKey(target: SessionTarget) {
-  return `${target.workspacePath}\u0000${target.sessionId}`;
-}
-
 export interface ProjectSessionStoreProps extends SessionTarget {
   client: DesktopClient;
   registry: SessionRegistryStore;
@@ -43,10 +39,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     super(props);
     this.model = SessionModel.create({ sessionId: props.sessionId, workspacePath: props.workspacePath });
     this.effect(() => () => this.model[Symbol.dispose]());
-  }
-
-  get target(): SessionTarget {
-    return { workspacePath: this.props.workspacePath, sessionId: this.props.sessionId };
   }
 
   get workspacePath() { return this.props.workspacePath; }
@@ -90,7 +82,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       matchesPluginCommand: (input) => this.props.pluginCommands().matches(input),
       runPluginCommand: (input) => this.props.pluginCommands().run(input),
       operations: this.props.operations,
-      operationOwner: `message-composer:${sessionTargetKey(this.target)}`
+      operationOwner: `message-composer:${this.sessionId}`
     });
   }
 
@@ -99,9 +91,9 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return createStore(ChatConfigurationStore, {
       session: () => this.model,
       operations: this.props.operations,
-      operationOwner: `chat-configuration:${sessionTargetKey(this.target)}`,
-      setModel: (operationId, provider, modelId) => this.props.client.setModel({ operationId, ...this.target, provider, modelId }),
-      setThinkingLevel: (operationId, level) => this.props.client.setThinkingLevel({ operationId, ...this.target, level })
+      operationOwner: `chat-configuration:${this.sessionId}`,
+      setModel: (operationId, provider, modelId) => this.props.client.setModel({ operationId, sessionId: this.sessionId, provider, modelId }),
+      setThinkingLevel: (operationId, level) => this.props.client.setThinkingLevel({ operationId, sessionId: this.sessionId, level })
     });
   }
 
@@ -137,8 +129,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   get artifactInteractionStore(): ArtifactInteractionStore {
     return createStore(ArtifactInteractionStore, {
       client: this.props.client,
-      sessionContext: () => this.target,
-      isActiveSession: (workspacePath, sessionId) => this.props.isActive() && workspacePath === this.workspacePath && sessionId === this.sessionId,
+      sessionContext: () => ({ sessionId: this.sessionId }),
+      isActiveSession: (sessionId) => this.props.isActive() && sessionId === this.sessionId,
       operationActive: (operationId) => this.props.operations.includes(operationId)
     });
   }
@@ -149,7 +141,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       sessionRegistry: this.props.registry,
       reviews: this.props.reviews,
       draftChatStore: () => this.messageCommentChatStore,
-      context: () => this.target
+      context: () => ({ sessionId: this.sessionId })
     });
   }
 

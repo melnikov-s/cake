@@ -41,8 +41,8 @@ export function workspaceRef(workspacePath: string): WorkspaceRef {
   return { kind: "cake.workspace-ref", id: encodeRef({ workspacePath }) };
 }
 
-export function sessionRef(workspacePath: string, sessionId: string): SessionRef {
-  return { kind: "cake.session-ref", id: encodeRef({ workspacePath, sessionId }) };
+export function sessionRef(sessionId: string): SessionRef {
+  return { kind: "cake.session-ref", id: encodeRef({ sessionId }) };
 }
 
 export function resolveWorkspaceRef(ref: WorkspaceRef) {
@@ -53,8 +53,8 @@ export function resolveWorkspaceRef(ref: WorkspaceRef) {
 
 export function resolveSessionRef(ref: SessionRef) {
   const value = decodeRef(ref.id);
-  if (!value || typeof value !== "object" || !("workspacePath" in value) || !("sessionId" in value) || typeof value.workspacePath !== "string" || typeof value.sessionId !== "string") throw new Error("Invalid Cake session reference");
-  return { workspacePath: value.workspacePath, sessionId: value.sessionId };
+  if (!value || typeof value !== "object" || Object.keys(value).length !== 1 || !("sessionId" in value) || typeof value.sessionId !== "string") throw new Error("Invalid Cake session reference");
+  return value.sessionId;
 }
 
 function fallbackReason(snapshot: SessionSnapshot, provider: string, modelId: string) {
@@ -126,11 +126,12 @@ export class PluginAgentHost {
     agentDir: string;
     utilityModel(): UtilityModel | undefined;
     driver(workspacePath: string): PiWorkspaceDriver;
+    resolveSessionWorkspacePath(sessionId: string): Promise<string>;
     emit(owner: WebContents, event: DesktopEvent): void;
   }) {}
 
   async open(owner: WebContents, pluginId: string, open: PluginAgentOpenOptions, implicit?: SessionRef): Promise<PluginAgentSnapshot> {
-    const implicitTarget = implicit ? this.resolveSession(pluginId, implicit) : undefined;
+    const implicitTarget = implicit ? await this.resolveSession(pluginId, implicit) : undefined;
     let workspacePath: string;
     let target: Parameters<PiWorkspaceDriver["openAgent"]>[0]["target"];
     if (open.session.kind === "new") {
@@ -138,12 +139,12 @@ export class PluginAgentHost {
       if (!workspacePath) throw new Error("A new plugin agent requires a workspace context");
       target = { kind: "new", visibility: open.session.visibility };
     } else if (open.session.kind === "attach") {
-      const resolved = open.session.target ? this.resolveSession(pluginId, open.session.target) : implicitTarget;
+      const resolved = open.session.target ? await this.resolveSession(pluginId, open.session.target) : implicitTarget;
       if (!resolved) throw new Error("Attaching a plugin agent requires a session context");
       workspacePath = resolved.workspacePath;
       target = { kind: "attach", sessionId: resolved.sessionId };
     } else {
-      const resolved = open.session.source ? this.resolveSession(pluginId, open.session.source) : implicitTarget;
+      const resolved = open.session.source ? await this.resolveSession(pluginId, open.session.source) : implicitTarget;
       if (!resolved) throw new Error("Forking a plugin agent requires a session context");
       workspacePath = resolved.workspacePath;
       target = { kind: "fork", sessionId: resolved.sessionId, entryId: open.session.entryId, visibility: open.session.visibility };
@@ -158,7 +159,7 @@ export class PluginAgentHost {
     }
     const handleId = crypto.randomUUID();
     const privateSession = (open.session.kind === "new" || open.session.kind === "fork") && open.session.visibility === "private";
-    const ref = privateSession ? { kind: "cake.session-ref" as const, id: crypto.randomUUID() } : sessionRef(workspacePath, snapshot.sessionId);
+    const ref = privateSession ? { kind: "cake.session-ref" as const, id: crypto.randomUUID() } : sessionRef(snapshot.sessionId);
     if (privateSession) this.privateRefs.set(ref.id, { pluginId, workspacePath, sessionId: snapshot.sessionId });
     const handle: Handle = { pluginId, ownerId: owner.id, handleId, workspacePath, sessionId: snapshot.sessionId, ref, driver, resolvedModel, status: snapshot.streaming ? "running" : "idle", settledRevision: activity(snapshot).settledRevision, unsubscribe: () => undefined };
     handle.unsubscribe = driver.subscribeAgent(snapshot.sessionId, (event) => this.receive(owner, handle, event));
@@ -194,7 +195,7 @@ export class PluginAgentHost {
   }
 
   async complete(pluginId: string, request: PluginCompletionRequest, implicit?: SessionRef, signal?: AbortSignal): Promise<PluginCompletionResult> {
-    const target = request.context.target ? this.resolveSession(pluginId, request.context.target) : implicit ? this.resolveSession(pluginId, implicit) : undefined;
+    const target = request.context.target ? await this.resolveSession(pluginId, request.context.target) : implicit ? await this.resolveSession(pluginId, implicit) : undefined;
     if (!target) throw new Error("A plugin completion requires a session context");
     const snapshot = await this.options.driver(target.workspacePath).agentSnapshot(target.sessionId);
     if (snapshot.streaming) throw new Error("Session context is still streaming; wait for settledRevision to change");
@@ -236,12 +237,13 @@ export class PluginAgentHost {
     void handle.driver.agentSnapshot(handle.sessionId).then((snapshot) => this.options.emit(owner, { type: "plugin-agent-event", pluginId: handle.pluginId, snapshot: this.project(handle, snapshot) })).catch(() => undefined);
   }
 
-  private resolveSession(pluginId: string, ref: SessionRef) {
+  private async resolveSession(pluginId: string, ref: SessionRef) {
     const privateTarget = this.privateRefs.get(ref.id);
     if (privateTarget) {
       if (privateTarget.pluginId !== pluginId) throw new Error("Private plugin session references are scoped to their owning plugin");
       return { workspacePath: privateTarget.workspacePath, sessionId: privateTarget.sessionId };
     }
-    return resolveSessionRef(ref);
+    const sessionId = resolveSessionRef(ref);
+    return { workspacePath: await this.options.resolveSessionWorkspacePath(sessionId), sessionId };
   }
 }

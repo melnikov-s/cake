@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { pluginAgentOpenOptionsSchema, pluginCompletionRequestSchema, sessionRefSchema } from "../../../src/ipc/plugin-agent-contract";
 
 describe("plugin agent contracts", () => {
-  const ref = { kind: "cake.session-ref" as const, id: JSON.stringify({ workspacePath: "/project", sessionId: "session" }) };
+  const ref = { kind: "cake.session-ref" as const, id: JSON.stringify({ sessionId: "session" }) };
 
   it("validates session-aware targets and bounded completion selectors", () => {
     expect(pluginAgentOpenOptionsSchema.parse({ session: { kind: "fork" }, model: { prefer: "utility" } })).toMatchObject({ session: { kind: "fork", visibility: "private" } });

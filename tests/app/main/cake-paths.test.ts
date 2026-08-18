@@ -9,6 +9,7 @@ describe("resolveCakePaths", () => {
       piSessions: "/Users/fixture/.cake/pi/sessions",
       piReviewSessions: "/Users/fixture/.cake/pi/review-sessions",
       piWidgetSessions: "/Users/fixture/.cake/pi/widget-sessions",
+      piPluginAgentSessions: "/Users/fixture/.cake/pi/plugin-agent-sessions",
       piGlobalChatSessions: "/Users/fixture/.cake/pi/global-chat/sessions",
       plugins: "/Users/fixture/.cake/plugins",
       recovery: "/Users/fixture/.cake/recovery",

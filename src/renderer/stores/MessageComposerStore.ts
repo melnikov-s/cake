@@ -9,7 +9,6 @@ import { pastedImageAttachments } from "../pasted-image-attachments";
 
 interface PendingUserMessage {
   operationId: string;
-  workspacePath: string;
   sessionId: string;
   canonicalPartCount: number;
   expectedOccurrence: number;
@@ -56,12 +55,11 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
 
   get parts() {
     const canonical = this.props.canonicalParts();
-    const workspacePath = this.props.projectPath();
     const sessionId = this.props.sessionId();
-    if (!workspacePath || !sessionId) return canonical;
+    if (!sessionId) return canonical;
     const pendingParts = this.pendingUserMessages
-      .filter((pending) => pending.workspacePath === workspacePath && pending.sessionId === sessionId)
-      .filter((pending) => this.userMessageOccurrenceCount(pending.workspacePath, pending.sessionId, pending.text, pending.parts) < pending.expectedOccurrence);
+      .filter((pending) => pending.sessionId === sessionId)
+      .filter((pending) => this.userMessageOccurrenceCount(pending.sessionId, pending.text, pending.parts) < pending.expectedOccurrence);
     if (pendingParts.length === 0) return canonical;
     const parts = [...canonical];
     let offset = 0;
@@ -116,9 +114,8 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       this.props.setDraft("");
       return;
     }
-    const workspacePath = this.props.projectPath();
     const sessionId = this.props.sessionId();
-    if (!workspacePath || !sessionId) return;
+    if (!sessionId) return;
     const delivery = deliveryOverride ?? (this.props.isStreaming() ? "follow-up" : "prompt");
     const attachments = this.attachments.slice();
     this.props.setDraft("");
@@ -126,8 +123,8 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     if (text || attachments.length > 0) {
       const operationId = this.props.operations.start(this.props.operationOwner);
       this.attachments.splice(0);
-      this.addPendingUserMessage(operationId, workspacePath, sessionId, text, attachments, delivery);
-      submissions.push(this.props.client.submit({ operationId, workspacePath, sessionId, text, delivery, attachments }).catch((error) => {
+      this.addPendingUserMessage(operationId, sessionId, text, attachments, delivery);
+      submissions.push(this.props.client.submit({ operationId, sessionId, text, delivery, attachments }).catch((error) => {
         this.removePendingUserMessage(operationId);
         this.reportError(error);
         if (!this.props.draft().trim()) this.props.setDraft(text);
@@ -141,7 +138,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   reconcile(sessionId: string) {
     for (let index = this.pendingUserMessages.length - 1; index >= 0; index -= 1) {
       const pending = this.pendingUserMessages[index]!;
-      if (pending.sessionId === sessionId && this.userMessageOccurrenceCount(pending.workspacePath, sessionId, pending.text, pending.parts) >= pending.expectedOccurrence) this.pendingUserMessages.splice(index, 1);
+      if (pending.sessionId === sessionId && this.userMessageOccurrenceCount(sessionId, pending.text, pending.parts) >= pending.expectedOccurrence) this.pendingUserMessages.splice(index, 1);
     }
   }
 
@@ -164,13 +161,13 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     this.props.operations.finish(operationId);
   }
 
-  private addPendingUserMessage(operationId: string, workspacePath: string, sessionId: string, text: string, attachments: Attachment[], delivery: "prompt" | "steer" | "follow-up") {
+  private addPendingUserMessage(operationId: string, sessionId: string, text: string, attachments: Attachment[], delivery: "prompt" | "steer" | "follow-up") {
     const imageParts: UiPart[] = attachments.flatMap((attachment, index) => attachment.kind === "image" ? [{ id: `optimistic-user-${operationId}-attachment-${index}`, kind: "attachment" as const, name: attachment.name, mediaType: attachment.mimeType, attachmentKind: "image" as const, data: attachment.data }] : []);
     const deliveryState = delivery === "steer" ? "steering" as const : delivery === "follow-up" ? "queued" as const : "sending" as const;
     const parts: UiPart[] = [...(text ? [{ id: `optimistic-user-${operationId}`, kind: "text" as const, role: "user" as const, text, status: "complete" as const, deliveryState }] : []), ...imageParts];
     const firstImageData = imageParts[0]?.kind === "attachment" ? imageParts[0].data : undefined;
-    const earlierPendingCount = this.pendingUserMessages.filter((pending) => pending.workspacePath === workspacePath && pending.sessionId === sessionId && pending.text === text && (Boolean(text) || pending.parts.some((part) => part.kind === "attachment" && part.data === firstImageData))).length;
-    this.pendingUserMessages.push({ operationId, workspacePath, sessionId, canonicalPartCount: this.props.sessionRegistry.findModel(sessionId, workspacePath)?.uiParts.length ?? 0, expectedOccurrence: this.userMessageOccurrenceCount(workspacePath, sessionId, text, parts) + earlierPendingCount + 1, text, parts });
+    const earlierPendingCount = this.pendingUserMessages.filter((pending) => pending.sessionId === sessionId && pending.text === text && (Boolean(text) || pending.parts.some((part) => part.kind === "attachment" && part.data === firstImageData))).length;
+    this.pendingUserMessages.push({ operationId, sessionId, canonicalPartCount: this.props.sessionRegistry.findModel(sessionId)?.uiParts.length ?? 0, expectedOccurrence: this.userMessageOccurrenceCount(sessionId, text, parts) + earlierPendingCount + 1, text, parts });
   }
 
   private removePendingUserMessage(operationId: string) {
@@ -178,8 +175,8 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     if (index >= 0) this.pendingUserMessages.splice(index, 1);
   }
 
-  private userMessageOccurrenceCount(workspacePath: string, sessionId: string, text: string, parts: UiPart[] = []) {
-    const canonical = this.props.sessionRegistry.findModel(sessionId, workspacePath)?.uiParts ?? [];
+  private userMessageOccurrenceCount(sessionId: string, text: string, parts: UiPart[] = []) {
+    const canonical = this.props.sessionRegistry.findModel(sessionId)?.uiParts ?? [];
     if (text) return canonical.filter((part) => part.kind === "text" && part.role === "user" && part.status === "complete" && part.text === text).length;
     const image = parts.find((part): part is Extract<UiPart, { kind: "attachment" }> => part.kind === "attachment" && part.attachmentKind === "image");
     return image?.data ? canonical.filter((part) => part.kind === "attachment" && part.data === image.data).length : 0;

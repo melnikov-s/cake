@@ -158,6 +158,12 @@ export function createCakeArtifactExtension(options: ArtifactExtensionOptions): 
           fallback: { markdown: "**Isolated HTML**" }, interaction: { mode: "present" }
         }, sessionId);
         appendPointer(html);
+        const widget = await persist({
+          protocol: "cake.artifact/v1", id: "cake-s4-widget", sessionId, revision: 1, kind: "widget", title: "S4 widget",
+          payload: { language: "html", source: "<strong>Repairable widget</strong>", brief: "A compact repairable artifact demo widget", generationSessionId: "s4-widget-generation" },
+          fallback: { markdown: "Repairable widget" }, interaction: { mode: "present" }
+        }, sessionId);
+        appendPointer(widget);
         const request = { protocol: "cake.request/v1" as const, id: "cake-s4-form", title: "S4 response", responseSchema: { type: "object" as const, required: ["answer"], properties: { answer: { type: "string" as const, minLength: 1 } } }, view: { type: "form" as const, fields: [{ id: "answer", label: "Answer", type: "text" as const, required: true }], submitLabel: "Send response" }, fallback: { markdown: "S4 response form: **Answer** (required)." } };
         const form = await persist({
           protocol: "cake.artifact/v1", id: request.id, sessionId, revision: 1, kind: "request", title: request.title,

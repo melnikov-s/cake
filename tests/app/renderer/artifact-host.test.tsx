@@ -72,7 +72,7 @@ describe("ArtifactHost", () => {
   it("compiles delegated widget artifacts without placing their source in transcript text", async () => {
     const token = "00000000-0000-4000-8000-000000000002";
     const source = "export default () => <strong>Generated</strong>";
-    const client = { compileInlineWidget: vi.fn(async () => ({ token, url: `cake-widget://document/${token}` })), repairInlineWidget: vi.fn() } as unknown as DesktopClient;
+    const client = { compileInlineWidget: vi.fn(async () => ({ token, url: `cake-widget://document/${token}` })), repairInlineWidget: vi.fn(async () => ({ source, repairSessionId: "repair-session" })) } as unknown as DesktopClient;
     widgets = mount(createStore(InlineWidgetStore, { client }));
     const artifact = record({
       protocol: "cake.artifact/v1", id: "comparison", sessionId: "session", revision: 1, kind: "widget", title: "Comparison",
@@ -99,9 +99,26 @@ describe("ArtifactHost", () => {
     expect(fullscreenFrame?.getAttribute("sandbox")).toBe("allow-scripts");
     act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     expect(document.body.querySelector(".fullscreen-surface")).toBeNull();
+
+    act(() => (container.querySelector('.inline-widget-actions button:last-child') as HTMLButtonElement).click());
+    expect(container.querySelector(".inline-widget-repair-form")).not.toBeNull();
+    const repairInput = container.querySelector(".inline-widget-repair-form textarea") as HTMLTextAreaElement;
+    act(() => setTextValue(repairInput, "Make the result easier to scan on a narrow window."));
+    await act(async () => {
+      (container.querySelector(".inline-widget-repair-form button[type='submit']") as HTMLButtonElement).click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(client.repairInlineWidget).toHaveBeenCalledWith(expect.objectContaining({
+      context: expect.stringContaining("Make the result easier to scan on a narrow window.")
+    }));
   });
 });
 
 function setInputValue(input: HTMLInputElement, value: string) {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+}
+
+function setTextValue(input: HTMLTextAreaElement, value: string) {
+  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
 }

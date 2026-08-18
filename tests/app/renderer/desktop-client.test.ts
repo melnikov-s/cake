@@ -33,24 +33,24 @@ describe("desktop client", () => {
 
     expect(await client.chooseProject()).toBe("/project");
     expect(await client.listSessions()).toEqual({ sessions: [], reviewThreads: [] });
-    expect(await client.loadSession("/project", "session")).toBeUndefined();
+    expect(await client.loadSession("session")).toBeUndefined();
     expect(await client.suggestFiles("/project", "app")).toEqual([{ value: "@src/app.ts", label: "app.ts", description: "src/app.ts" }]);
     expect(await client.listWorkspaceFiles("/project")).toEqual(["PLAN.md", "src/app.ts"]);
     expect(await client.deletePlugin("example.calendar")).toEqual([]);
     await client.respondToWorkspaceTrust({ operationId, path: "/project", approved: true });
     await client.openWorkspace({ operationId, path: "/project" });
-    await client.inspectChanges({ operationId, workspacePath: "/project", sessionId: "session", source: "working-tree" });
-    await client.getChangelog({ operationId, workspacePath: "/project", sessionId: "session" });
-    await client.reloadPi({ operationId, workspacePath: "/project", sessionId: "session" });
+    await client.inspectChanges({ operationId, sessionId: "session", source: "working-tree" });
+    await client.getChangelog({ operationId, sessionId: "session" });
+    await client.reloadPi({ operationId, sessionId: "session" });
     await client.promptGlobalChat({ operationId, sessionId: "cake-chat", text: "", attachments: [{ kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" }] });
 
     expect(desktop.request).toHaveBeenCalledWith({ type: "respond-workspace-trust", requestId: operationId, path: "/project", approved: true });
     expect(desktop.request).toHaveBeenCalledWith({ type: "open-workspace", requestId: operationId, path: "/project", newSession: false, sessionId: undefined });
-    expect(desktop.request).toHaveBeenCalledWith({ type: "inspect-changes", requestId: operationId, workspacePath: "/project", sessionId: "session", source: "working-tree", turnId: undefined });
-    expect(desktop.request).toHaveBeenCalledWith({ type: "get-changelog", requestId: operationId, workspacePath: "/project", sessionId: "session" });
-    expect(desktop.request).toHaveBeenCalledWith({ type: "reload-pi", requestId: operationId, workspacePath: "/project", sessionId: "session" });
+    expect(desktop.request).toHaveBeenCalledWith({ type: "inspect-changes", requestId: operationId, sessionId: "session", source: "working-tree", turnId: undefined });
+    expect(desktop.request).toHaveBeenCalledWith({ type: "get-changelog", requestId: operationId, sessionId: "session" });
+    expect(desktop.request).toHaveBeenCalledWith({ type: "reload-pi", requestId: operationId, sessionId: "session" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "prompt-global-chat", requestId: operationId, sessionId: "cake-chat", text: "", attachments: [{ kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" }] });
-    expect(desktop.request).toHaveBeenCalledWith({ type: "load-session", workspacePath: "/project", sessionId: "session" });
+    expect(desktop.request).toHaveBeenCalledWith({ type: "load-session", sessionId: "session" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "suggest-files", workspacePath: "/project", prefix: "app" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "list-workspace-files", workspacePath: "/project" });
     expect(desktop.request).toHaveBeenCalledWith({ type: "delete-plugin", pluginId: "example.calendar" });

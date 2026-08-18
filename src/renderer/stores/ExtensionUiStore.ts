@@ -24,7 +24,7 @@ export interface ExtensionNotification {
 export interface ExtensionUiStoreProps {
   client: Pick<DesktopClient, "respondToUi">;
   activeSessionId(): string | undefined;
-  sessionContext(): { workspacePath: string; sessionId: string } | undefined;
+  sessionContext(): { sessionId: string } | undefined;
   operationActive(operationId: string): boolean;
   setDraft(value: string | ((current: string) => string)): void;
   requestComposerFocus(): void;
@@ -49,7 +49,7 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
     try {
       const context = this.props.sessionContext();
       if (!context) throw new Error("No active session");
-      await this.props.client.respondToUi({ operationId: request.operationId, ...context, uiRequestId: request.uiRequestId, value, cancelled });
+      await this.props.client.respondToUi({ operationId: request.operationId, sessionId: context.sessionId, uiRequestId: request.uiRequestId, value, cancelled });
     } catch (error) {
       const described = describeError(error);
       this.error = described.message;

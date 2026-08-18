@@ -91,10 +91,14 @@ pointer and fallback to Pi. The tool result contains the artifact ID, allowing
 the renderer to place the widget at the tool-call position.
 
 React source is bundled as TSX, must default-export one component, and may
-import React only. It runs in an `allow-scripts` iframe without same-origin
-privilege, with a CSP that blocks network access, forms, navigation, and Cake,
-Node, Electron, and filesystem access. Runtime errors and frame height cross a
-token-tagged `postMessage` channel; no general bridge is exposed.
+import React plus Cake's approved, bundled D3 modules (`d3` or `d3-*`) only.
+Prefer submodule imports for smaller bundles; `import * as d3 from "d3"` is
+supported for convenience. D3's network-oriented helpers remain unable to
+reach the network because the widget CSP blocks network access. The widget runs
+in an `allow-scripts` iframe without same-origin privilege, with a CSP that
+blocks network access, forms, navigation, and Cake, Node, Electron, and
+filesystem access. Runtime errors and frame height cross a token-tagged
+`postMessage` channel; no general bridge is exposed.
 
 Each widget shows Source and Repair controls. Repair starts another isolated Pi
 session with the stored source, stored brief, and diagnostic as untrusted data.

@@ -94,51 +94,51 @@ export interface DesktopClient {
   listWorkspaceFiles(workspacePath: string): Promise<string[]>;
   readWorkspaceFile(workspacePath: string, path: string): Promise<string>;
   compileInlineWidget(language: InlineWidgetLanguage, source: string, capability: InlineWidgetCapability): Promise<CompiledInlineWidget>;
-  repairInlineWidget(input: { workspacePath: string; sessionId: string; language: InlineWidgetLanguage; capability: InlineWidgetCapability; source: string; context: string; diagnostic?: string; model?: { provider: string; id: string } }): Promise<RepairedInlineWidget>;
+  repairInlineWidget(input: { sessionId: string; language: InlineWidgetLanguage; capability: InlineWidgetCapability; source: string; context: string; diagnostic?: string; model?: { provider: string; id: string } }): Promise<RepairedInlineWidget>;
   loadWindowState(): Promise<WindowViewState>;
   saveWindowState(state: WindowViewState): Promise<void>;
   loadApplicationState(): Promise<ApplicationState>;
   setUtilityModel(model: UtilityModel | undefined): Promise<ApplicationState>;
   listSessions(): Promise<{ sessions: GlobalSessionSummary[]; reviewThreads: ReviewThread[] }>;
-  loadSession(workspacePath: string, sessionId: string): Promise<SessionPreview | undefined>;
+  loadSession(sessionId: string): Promise<SessionPreview | undefined>;
   openGlobalChat(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: JsonObject }>; newSession?: boolean; sessionId?: string; initialPrompt?: string }): Promise<void>;
   promptGlobalChat(input: { operationId: string; sessionId: string; text: string; attachments: Attachment[] }): Promise<void>;
   abortGlobalChat(input: { operationId: string; sessionId: string }): Promise<void>;
   setGlobalChatModel(input: { operationId: string; sessionId: string; provider: string; modelId: string }): Promise<void>;
   setGlobalChatThinkingLevel(input: { operationId: string; sessionId: string; level: ThinkingLevel }): Promise<void>;
   respondToGlobalChatControl(controlRequestId: string, result: JsonValue): Promise<void>;
-  listReviewThreads(workspacePath: string, sessionId: string): Promise<ReviewThread[]>;
-  createReviewThread(input: { workspacePath: string; sessionId: string; anchor: ReviewAnchor; body: string }): Promise<ReviewThread>;
-  replyReviewThread(input: { workspacePath: string; sessionId: string; threadId: string; body: string }): Promise<ReviewThread>;
-  resolveReviewThread(input: { workspacePath: string; sessionId: string; threadId: string; resolved: boolean }): Promise<ReviewThread>;
-  submitReviewThread(input: { operationId: string; workspacePath: string; sessionId: string; threadId: string; model?: { provider: string; id: string }; thinkingLevel?: ThinkingLevel }): Promise<void>;
+  listReviewThreads(sessionId: string): Promise<ReviewThread[]>;
+  createReviewThread(input: { sessionId: string; anchor: ReviewAnchor; body: string }): Promise<ReviewThread>;
+  replyReviewThread(input: { sessionId: string; threadId: string; body: string }): Promise<ReviewThread>;
+  resolveReviewThread(input: { sessionId: string; threadId: string; resolved: boolean }): Promise<ReviewThread>;
+  submitReviewThread(input: { operationId: string; sessionId: string; threadId: string; model?: { provider: string; id: string }; thinkingLevel?: ThinkingLevel }): Promise<void>;
   registerProject(path: string, name: string): Promise<ApplicationState>;
   renameProject(path: string, name: string): Promise<ApplicationState>;
   removeProject(path: string): Promise<ApplicationState>;
-  resolveSession(path: string, sessionId: string, resolved: boolean): Promise<ApplicationState>;
-  resolveProjectSessions(path: string, resolved: boolean): Promise<ApplicationState>;
+  resolveSession(sessionId: string, resolved: boolean): Promise<ApplicationState>;
+  resolveSessions(sessionIds: readonly string[], resolved: boolean): Promise<ApplicationState>;
   resolveCakeChatSession(sessionId: string, resolved: boolean): Promise<ApplicationState>;
   createWindow(): Promise<void>;
   restartPi(path: string): Promise<void>;
   inspectWorkspace(input: { operationId: string; path: string }): Promise<void>;
   respondToWorkspaceTrust(input: { operationId: string; path: string; approved: boolean }): Promise<void>;
   openWorkspace(input: { operationId: string; path: string; newSession?: boolean; sessionId?: string }): Promise<void>;
-  submit(input: { operationId: string; workspacePath: string; sessionId: string; text: string; delivery: "prompt" | "steer" | "follow-up"; attachments: Attachment[] }): Promise<void>;
-  abort(input: { operationId: string; workspacePath: string; sessionId: string }): Promise<void>;
-  setModel(input: { operationId: string; workspacePath: string; sessionId: string; provider: string; modelId: string }): Promise<void>;
-  setThinkingLevel(input: { operationId: string; workspacePath: string; sessionId: string; level: ThinkingLevel }): Promise<void>;
-  setPiSetting(input: { operationId: string; workspacePath: string; sessionId: string; update: PiSettingUpdate }): Promise<void>;
-  reloadPi(input: { operationId: string; workspacePath: string; sessionId: string }): Promise<void>;
-  login(input: { operationId: string; workspacePath: string; sessionId: string; provider: string; authType: "api_key" | "oauth" }): Promise<void>;
-  logout(input: { operationId: string; workspacePath: string; sessionId: string; provider: string }): Promise<void>;
-  renameSession(input: { operationId: string; workspacePath: string; sessionId: string; name: string }): Promise<void>;
-  forkSession(input: { operationId: string; workspacePath: string; sessionId: string; entryId: string }): Promise<void>;
-  navigateSession(input: { operationId: string; workspacePath: string; sessionId: string; entryId: string }): Promise<void>;
-  inspectChanges(input: { operationId: string; workspacePath: string; sessionId: string; source: ChangeSource; turnId?: string }): Promise<void>;
-  getChangelog(input: { operationId: string; workspacePath: string; sessionId: string }): Promise<void>;
-  respondToUi(input: { operationId: string; workspacePath: string; sessionId: string; uiRequestId: string; value?: string; cancelled: boolean }): Promise<void>;
-  respondToArtifact(input: { operationId: string; workspacePath: string; sessionId: string; artifactRequestId: string; value?: JsonValue; cancelled: boolean }): Promise<void>;
-  exportArtifacts(workspacePath: string, sessionId: string): Promise<string>;
+  submit(input: { operationId: string; sessionId: string; text: string; delivery: "prompt" | "steer" | "follow-up"; attachments: Attachment[] }): Promise<void>;
+  abort(input: { operationId: string; sessionId: string }): Promise<void>;
+  setModel(input: { operationId: string; sessionId: string; provider: string; modelId: string }): Promise<void>;
+  setThinkingLevel(input: { operationId: string; sessionId: string; level: ThinkingLevel }): Promise<void>;
+  setPiSetting(input: { operationId: string; sessionId: string; update: PiSettingUpdate }): Promise<void>;
+  reloadPi(input: { operationId: string; sessionId: string }): Promise<void>;
+  login(input: { operationId: string; sessionId: string; provider: string; authType: "api_key" | "oauth" }): Promise<void>;
+  logout(input: { operationId: string; sessionId: string; provider: string }): Promise<void>;
+  renameSession(input: { operationId: string; sessionId: string; name: string }): Promise<void>;
+  forkSession(input: { operationId: string; sessionId: string; entryId: string }): Promise<void>;
+  navigateSession(input: { operationId: string; sessionId: string; entryId: string }): Promise<void>;
+  inspectChanges(input: { operationId: string; sessionId: string; source: ChangeSource; turnId?: string }): Promise<void>;
+  getChangelog(input: { operationId: string; sessionId: string }): Promise<void>;
+  respondToUi(input: { operationId: string; sessionId: string; uiRequestId: string; value?: string; cancelled: boolean }): Promise<void>;
+  respondToArtifact(input: { operationId: string; sessionId: string; artifactRequestId: string; value?: JsonValue; cancelled: boolean }): Promise<void>;
+  exportArtifacts(sessionId: string): Promise<string>;
   subscribe(listener: (event: DesktopClientEvent) => void): () => void;
 }
 
@@ -337,8 +337,8 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       if (response.type !== "sessions-listed") throw new Error("Cake received an invalid session index");
       return { sessions: response.sessions, reviewThreads: response.reviewThreads };
     },
-    async loadSession(workspacePath, sessionId) {
-      const response = await bridge.request({ type: "load-session", workspacePath, sessionId });
+    async loadSession(sessionId) {
+      const response = await bridge.request({ type: "load-session", sessionId });
       if (response.type !== "session-loaded") throw new Error("Cake received invalid session content");
       return response.session;
     },
@@ -351,8 +351,8 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       const response = await bridge.request({ type: "respond-global-chat-control", controlRequestId, result });
       if (response.type !== "accepted" || response.requestId !== controlRequestId) throw new Error("Cake received a mismatched global control response");
     },
-    async listReviewThreads(workspacePath, sessionId) {
-      const response = await bridge.request({ type: "list-review-threads", workspacePath, sessionId });
+    async listReviewThreads(sessionId) {
+      const response = await bridge.request({ type: "list-review-threads", sessionId });
       if (response.type !== "review-threads-loaded") throw new Error("Cake received invalid review threads");
       return response.threads;
     },
@@ -386,14 +386,14 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       if (response.type !== "application-state-updated") throw new Error("Cake could not remove the project");
       return response.state;
     },
-    async resolveSession(path, sessionId, resolved) {
-      const response = await bridge.request({ type: "resolve-session", path, sessionId, resolved });
+    async resolveSession(sessionId, resolved) {
+      const response = await bridge.request({ type: "resolve-session", sessionId, resolved });
       if (response.type !== "application-state-updated") throw new Error("Cake could not resolve the session");
       return response.state;
     },
-    async resolveProjectSessions(path, resolved) {
-      const response = await bridge.request({ type: "resolve-project-sessions", path, resolved });
-      if (response.type !== "application-state-updated") throw new Error("Cake could not resolve the project sessions");
+    async resolveSessions(sessionIds, resolved) {
+      const response = await bridge.request({ type: "resolve-sessions", sessionIds: [...sessionIds], resolved });
+      if (response.type !== "application-state-updated") throw new Error("Cake could not resolve the sessions");
       return response.state;
     },
     async resolveCakeChatSession(sessionId, resolved) {
@@ -409,30 +409,30 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
     inspectWorkspace: (input) => accept(bridge, { type: "inspect-workspace", requestId: input.operationId, path: input.path }),
     respondToWorkspaceTrust: (input) => accept(bridge, { type: "respond-workspace-trust", requestId: input.operationId, path: input.path, approved: input.approved }),
     openWorkspace: (input) => accept(bridge, { type: "open-workspace", requestId: input.operationId, path: input.path, newSession: input.newSession ?? false, sessionId: input.sessionId }),
-    submit: (input) => accept(bridge, { type: "prompt", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, text: input.text, delivery: input.delivery, attachments: input.attachments }),
-    submitReviewThread: (input) => accept(bridge, { type: "submit-review-thread", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, threadId: input.threadId, model: input.model, thinkingLevel: input.thinkingLevel }),
-    abort: (input) => accept(bridge, { type: "abort", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId }),
-    setModel: (input) => accept(bridge, { type: "set-model", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, provider: input.provider, modelId: input.modelId }),
-    setThinkingLevel: (input) => accept(bridge, { type: "set-thinking", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, level: input.level }),
-    setPiSetting: (input) => accept(bridge, { type: "set-pi-setting", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, update: input.update }),
-    reloadPi: (input) => accept(bridge, { type: "reload-pi", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId }),
-    login: (input) => accept(bridge, { type: "login", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, provider: input.provider, authType: input.authType }),
-    logout: (input) => accept(bridge, { type: "logout", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, provider: input.provider }),
-    renameSession: (input) => accept(bridge, { type: "rename-session", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, name: input.name }),
-    forkSession: (input) => accept(bridge, { type: "fork-session", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, entryId: input.entryId }),
-    navigateSession: (input) => accept(bridge, { type: "navigate-session", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, entryId: input.entryId }),
-    inspectChanges: (input) => accept(bridge, { type: "inspect-changes", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, source: input.source, turnId: input.turnId }),
-    getChangelog: (input) => accept(bridge, { type: "get-changelog", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId }),
+    submit: (input) => accept(bridge, { type: "prompt", requestId: input.operationId, sessionId: input.sessionId, text: input.text, delivery: input.delivery, attachments: input.attachments }),
+    submitReviewThread: (input) => accept(bridge, { type: "submit-review-thread", requestId: input.operationId, sessionId: input.sessionId, threadId: input.threadId, model: input.model, thinkingLevel: input.thinkingLevel }),
+    abort: (input) => accept(bridge, { type: "abort", requestId: input.operationId, sessionId: input.sessionId }),
+    setModel: (input) => accept(bridge, { type: "set-model", requestId: input.operationId, sessionId: input.sessionId, provider: input.provider, modelId: input.modelId }),
+    setThinkingLevel: (input) => accept(bridge, { type: "set-thinking", requestId: input.operationId, sessionId: input.sessionId, level: input.level }),
+    setPiSetting: (input) => accept(bridge, { type: "set-pi-setting", requestId: input.operationId, sessionId: input.sessionId, update: input.update }),
+    reloadPi: (input) => accept(bridge, { type: "reload-pi", requestId: input.operationId, sessionId: input.sessionId }),
+    login: (input) => accept(bridge, { type: "login", requestId: input.operationId, sessionId: input.sessionId, provider: input.provider, authType: input.authType }),
+    logout: (input) => accept(bridge, { type: "logout", requestId: input.operationId, sessionId: input.sessionId, provider: input.provider }),
+    renameSession: (input) => accept(bridge, { type: "rename-session", requestId: input.operationId, sessionId: input.sessionId, name: input.name }),
+    forkSession: (input) => accept(bridge, { type: "fork-session", requestId: input.operationId, sessionId: input.sessionId, entryId: input.entryId }),
+    navigateSession: (input) => accept(bridge, { type: "navigate-session", requestId: input.operationId, sessionId: input.sessionId, entryId: input.entryId }),
+    inspectChanges: (input) => accept(bridge, { type: "inspect-changes", requestId: input.operationId, sessionId: input.sessionId, source: input.source, turnId: input.turnId }),
+    getChangelog: (input) => accept(bridge, { type: "get-changelog", requestId: input.operationId, sessionId: input.sessionId }),
     async respondToUi(input) {
-      const response = await bridge.request({ type: "respond-ui", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, uiRequestId: input.uiRequestId, value: input.value, cancelled: input.cancelled });
+      const response = await bridge.request({ type: "respond-ui", requestId: input.operationId, sessionId: input.sessionId, uiRequestId: input.uiRequestId, value: input.value, cancelled: input.cancelled });
       if (response.type !== "ui-response-accepted" || response.uiRequestId !== input.uiRequestId) throw new Error("Cake received a mismatched UI response");
     },
     async respondToArtifact(input) {
-      const response = await bridge.request({ type: "respond-artifact", requestId: input.operationId, workspacePath: input.workspacePath, sessionId: input.sessionId, artifactRequestId: input.artifactRequestId, value: input.value, cancelled: input.cancelled });
+      const response = await bridge.request({ type: "respond-artifact", requestId: input.operationId, sessionId: input.sessionId, artifactRequestId: input.artifactRequestId, value: input.value, cancelled: input.cancelled });
       if (response.type !== "artifact-response-accepted" || response.artifactRequestId !== input.artifactRequestId) throw new Error("Cake received a mismatched artifact response");
     },
-    async exportArtifacts(workspacePath, sessionId) {
-      const response = await bridge.request({ type: "export-artifacts", workspacePath, sessionId });
+    async exportArtifacts(sessionId) {
+      const response = await bridge.request({ type: "export-artifacts", sessionId });
       if (response.type !== "artifacts-exported") throw new Error("Cake could not export artifacts");
       return response.markdown;
     },

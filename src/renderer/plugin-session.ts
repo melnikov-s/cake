@@ -19,10 +19,10 @@ export function usePluginSession(): CakePluginSession {
   }
   const { workspacePath, sessionId } = selection;
   return {
-    ref: { kind: "cake.session-ref", id: JSON.stringify({ workspacePath, sessionId }) },
+    ref: { kind: "cake.session-ref", id: JSON.stringify({ sessionId }) },
     workspace: { kind: "cake.workspace-ref", id: JSON.stringify({ workspacePath }) },
     workspacePath,
     sessionId,
-    openChanges: () => root.openSessionChanges(workspacePath, sessionId)
+    openChanges: () => root.openSessionChanges(sessionId)
   };
 }

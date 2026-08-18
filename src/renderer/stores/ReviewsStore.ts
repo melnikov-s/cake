@@ -11,7 +11,7 @@ import { ChatStore } from "./ChatStore";
 export interface ReviewsStoreProps {
   client: Pick<DesktopClient, "createReviewThread" | "replyReviewThread" | "resolveReviewThread" | "listReviewThreads" | "submitReviewThread">;
   sessionRegistry: SessionRegistryStore;
-  context(): { workspacePath: string; sessionId: string } | undefined;
+  context(): { sessionId: string } | undefined;
   model(): { provider: string; id: string } | undefined;
   thinkingLevel(): ThinkingLevel | undefined;
   configuration(): ChatConfigurationStore | undefined;
@@ -36,15 +36,15 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
 
   get threads() {
     const context = this.props.context();
-    return context ? this.threadsForSession(context.workspacePath, context.sessionId) : [];
+    return context ? this.threadsForSession(context.sessionId) : [];
   }
 
-  threadsForSession(workspacePath: string, sessionId: string) {
-    return this.props.sessionRegistry.findModel(sessionId, workspacePath)?.reviewThreads ?? [];
+  threadsForSession(sessionId: string) {
+    return this.props.sessionRegistry.findModel(sessionId)?.reviewThreads ?? [];
   }
 
-  codeThreadsForSession(workspacePath: string, sessionId: string) {
-    return this.threadsForSession(workspacePath, sessionId).filter((thread) => thread.anchor.view !== "message");
+  codeThreadsForSession(sessionId: string) {
+    return this.threadsForSession(sessionId).filter((thread) => thread.anchor.view !== "message");
   }
 
   private submittedThreadIds() {
@@ -132,7 +132,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     if (!context || !body.trim()) return undefined;
     this.clearError();
     try {
-      const thread = await this.props.client.createReviewThread({ ...context, anchor, body: body.trim() });
+      const thread = await this.props.client.createReviewThread({ sessionId: context.sessionId, anchor, body: body.trim() });
       if (this.signal.aborted) return undefined;
       this.props.sessionRegistry.upsertReviewThread(thread);
       await this.submitThread(thread.id);
@@ -145,7 +145,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     if (!context || !body.trim()) return false;
     this.clearError();
     try {
-      const thread = await this.props.client.replyReviewThread({ ...context, threadId, body: body.trim() });
+      const thread = await this.props.client.replyReviewThread({ sessionId: context.sessionId, threadId, body: body.trim() });
       if (this.signal.aborted) return false;
       this.props.sessionRegistry.upsertReviewThread(thread);
       return true;
@@ -157,18 +157,18 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     if (!context) return false;
     this.clearError();
     try {
-      const thread = await this.props.client.resolveReviewThread({ ...context, threadId, resolved });
+      const thread = await this.props.client.resolveReviewThread({ sessionId: context.sessionId, threadId, resolved });
       if (this.signal.aborted) return false;
       this.props.sessionRegistry.upsertReviewThread(thread);
       return true;
     } catch (error) { this.reportError(error); return false; }
   }
 
-  async loadThreads(workspacePath: string, sessionId: string) {
+  async loadThreads(sessionId: string) {
     this.clearError();
     try {
-      const threads = await this.props.client.listReviewThreads(workspacePath, sessionId);
-      if (!this.signal.aborted) this.props.sessionRegistry.applyReviewThreads(workspacePath, sessionId, threads);
+      const threads = await this.props.client.listReviewThreads(sessionId);
+      if (!this.signal.aborted) this.props.sessionRegistry.applyReviewThreads(sessionId, threads);
     } catch (error) { if (!this.signal.aborted) this.reportError(error); }
   }
 
@@ -179,7 +179,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     const operationId = this.props.operations.start();
     this.submissionsByOperation[operationId] = [threadId];
     try {
-      await this.props.client.submitReviewThread({ operationId, ...context, threadId, model: this.props.model(), thinkingLevel: this.props.thinkingLevel() });
+      await this.props.client.submitReviewThread({ operationId, sessionId: context.sessionId, threadId, model: this.props.model(), thinkingLevel: this.props.thinkingLevel() });
     } catch (error) {
       delete this.submissionsByOperation[operationId];
       this.reportError(error);
@@ -193,9 +193,9 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
       if (event.streaming && index < 0) this.streamingThreadIds.push(event.threadId);
       if (!event.streaming && index >= 0) this.streamingThreadIds.splice(index, 1);
     } else if (event.type === "review-thread-part-updated") {
-      this.props.sessionRegistry.findModel(event.sessionId, event.workspacePath)?.reviewThreads.find((thread) => thread.id === event.threadId)?.upsertPart(event.part);
+      this.props.sessionRegistry.findModel(event.sessionId)?.reviewThreads.find((thread) => thread.id === event.threadId)?.upsertPart(event.part);
     } else if (event.type === "review-thread-usage-updated") {
-      const thread = this.props.sessionRegistry.findModel(event.sessionId, event.workspacePath)?.reviewThreads.find((item) => item.id === event.threadId);
+      const thread = this.props.sessionRegistry.findModel(event.sessionId)?.reviewThreads.find((item) => item.id === event.threadId);
       if (thread) thread.usage = event.usage;
     } else if (event.type === "operation-completed") {
       const threadIds = this.submissionsByOperation[event.operationId];

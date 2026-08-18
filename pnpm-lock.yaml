@@ -50,6 +50,9 @@ importers:
       clsx:
         specifier: 2.1.1
         version: 2.1.1
+      d3:
+        specifier: 7.9.0
+        version: 7.9.0
       esbuild:
         specifier: 0.28.1
         version: 0.28.1

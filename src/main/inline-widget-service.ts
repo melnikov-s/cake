@@ -10,7 +10,54 @@ export interface CompiledInlineWidgetDocument {
 }
 
 const require = createRequire(import.meta.url);
+const d3Require = createRequire(require.resolve("d3"));
 const maximumSourceBytes = 1_048_576;
+
+/**
+ * Inline widgets are generated code, so keep their dependency surface explicit.
+ * D3 is useful for local SVG/canvas/DOM visualizations; the widget CSP still
+ * blocks network access even when a D3 module exposes fetch helpers.
+ */
+const inlineWidgetSharedModules = new Set([
+  "react",
+  "react/jsx-runtime",
+  "react/jsx-dev-runtime",
+  "d3",
+  "d3-array",
+  "d3-axis",
+  "d3-brush",
+  "d3-chord",
+  "d3-color",
+  "d3-contour",
+  "d3-delaunay",
+  "d3-dispatch",
+  "d3-drag",
+  "d3-dsv",
+  "d3-ease",
+  "d3-fetch",
+  "d3-force",
+  "d3-format",
+  "d3-geo",
+  "d3-hierarchy",
+  "d3-interpolate",
+  "d3-path",
+  "d3-polygon",
+  "d3-quadtree",
+  "d3-random",
+  "d3-scale",
+  "d3-scale-chromatic",
+  "d3-selection",
+  "d3-shape",
+  "d3-time",
+  "d3-time-format",
+  "d3-timer",
+  "d3-transition",
+  "d3-zoom"
+]);
+
+function resolveInlineWidgetModule(specifier: string) {
+  return specifier === "d3" || specifier.startsWith("d3-") ? d3Require.resolve(specifier) : require.resolve(specifier);
+}
 
 function diagnostics(messages: Message[]) {
   return messages.map((message) => {
@@ -42,15 +89,14 @@ function documentShell(token: string, body: string, capability: InlineWidgetCapa
 }
 
 function widgetModulePlugin(source: string): Plugin {
-  const allowed = new Set(["react", "react/jsx-runtime", "react/jsx-dev-runtime"]);
   return {
     name: "cake-inline-widget",
     setup(builder) {
       builder.onResolve({ filter: /^cake:inline-widget$/ }, () => ({ path: "widget.tsx", namespace: "cake-widget" }));
       builder.onLoad({ filter: /.*/, namespace: "cake-widget" }, () => ({ contents: source, loader: "tsx", resolveDir: process.cwd() }));
       builder.onResolve({ filter: /.*/, namespace: "cake-widget" }, (args) => {
-        if (allowed.has(args.path)) return { path: require.resolve(args.path) };
-        return { errors: [{ text: `Inline React widgets may import React only; received ${JSON.stringify(args.path)}` }] };
+        if (inlineWidgetSharedModules.has(args.path)) return { path: resolveInlineWidgetModule(args.path) };
+        return { errors: [{ text: `Inline React widgets may import React or approved D3 modules only; received ${JSON.stringify(args.path)}` }] };
       });
     }
   };

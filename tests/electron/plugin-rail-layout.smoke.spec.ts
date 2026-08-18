@@ -14,7 +14,7 @@ test("keeps session plugin rails beside the chat and bounds plugin-authored widt
   await Promise.all([mkdir(userData, { recursive: true }), mkdir(project, { recursive: true })]);
   await Promise.all([
     writeFile(join(userData, "window-state.json"), JSON.stringify({ projectPath: project, recentProjectPaths: [project], draft: "", theme: "system", thinkingExpanded: false })),
-    writeFile(join(userData, "application.json"), JSON.stringify({ schemaVersion: 1, projects: [{ path: project, name: "project", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString(), resolvedSessionIds: [] }], trustedProjectPaths: [] }))
+    writeFile(join(userData, "application.json"), JSON.stringify({ schemaVersion: 1, projects: [{ path: project, name: "project", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString() }], resolvedSessionIds: [], trustedProjectPaths: [] }))
   ]);
 
   const application = await electron.launch({ args: [repositoryRoot], cwd: repositoryRoot, env: { ...process.env, CAKE_ELECTRON_SMOKE: "1", CAKE_ELECTRON_USER_DATA: userData, CAKE_HOME: cakeHome } });

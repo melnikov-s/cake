@@ -10,7 +10,11 @@ export type AppSelection =
   | { kind: "settings" };
 
 /** Owns the one active application selection in this window. */
-export class AppShellStore extends Store<Record<string, never>> {
+export interface AppShellStoreProps {
+  sessionWorkspacePath(sessionId: string): string | undefined;
+}
+
+export class AppShellStore extends Store<AppShellStoreProps> {
   selection: AppSelection = { kind: "workbench" };
   activeConversation: WindowConversationSelection | undefined;
 
@@ -24,7 +28,9 @@ export class AppShellStore extends Store<Record<string, never>> {
     this.selection = { kind: "workbench" };
     this.activeConversation = undefined;
   }
-  selectProjectSession(workspacePath: string, sessionId: string) {
+  selectProjectSession(sessionId: string) {
+    const workspacePath = this.props.sessionWorkspacePath(sessionId);
+    if (!workspacePath) throw new Error(`Cake could not find session ${sessionId}`);
     this.selection = { kind: "project-session", workspacePath, sessionId };
     this.activeConversation = this.selection;
   }

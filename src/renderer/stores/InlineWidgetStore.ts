@@ -14,7 +14,6 @@ export interface InlineWidgetState {
 
 export interface InlineWidgetRepairInput {
   id: string;
-  workspacePath: string;
   sessionId: string;
   context: string;
   model?: { provider: string; id: string };
@@ -54,7 +53,6 @@ export class InlineWidgetStore extends Store<{ client: InlineWidgetClient }> {
     this.revisions.set(input.id, revision);
     try {
       const repaired = await this.props.client.repairInlineWidget({
-        workspacePath: input.workspacePath,
         sessionId: input.sessionId,
         language: state.language,
         capability: state.capability,

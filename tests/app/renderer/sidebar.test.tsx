@@ -17,7 +17,7 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       hasResolvedSessions: fixture.hasResolvedSessions ?? false,
       sessionLimit: fixture.sessionLimit,
       showMoreSessions: fixture.showMoreSessions,
-      setProjectSessionResolved: fixture.setProjectSessionResolved ?? vi.fn(),
+      setSessionResolved: fixture.setSessionResolved ?? vi.fn(),
       setCakeChatSessionResolved: fixture.setCakeChatSessionResolved ?? vi.fn(),
       resolvedLaneExpanded: fixture.resolvedLaneExpanded ?? true,
       toggleResolvedLane: fixture.toggleResolvedLane ?? vi.fn(),
@@ -130,7 +130,7 @@ describe("Sidebar projects", () => {
         { id: "ready", title: "Finished in background" }
       ],
       sessionLimit: () => 8,
-      sessionActivity: (_path: string, id: string) => id === "running" ? "running" : "unread",
+      sessionActivity: (id: string) => id === "running" ? "running" : "unread",
       sessionDisplayTitle,
       chatReviewCommentCountForSession: vi.fn(() => 0),
       nameFromPath: () => "cake",
@@ -284,7 +284,7 @@ describe("Sidebar projects", () => {
   });
 
   it("moves the selected project session through resolve and restore actions", () => {
-    const setProjectSessionResolved = vi.fn();
+    const setSessionResolved = vi.fn();
     const modified = new Date(0).toISOString();
     const store = {
       recentProjectPaths: ["/work/cake"], projects: [{ path: "/work/cake", name: "Cake" }],
@@ -293,7 +293,7 @@ describe("Sidebar projects", () => {
         : [{ id: "active", title: "Current work", modified }],
       sessionLimit: () => 8, sessionActivity: vi.fn(), sessionActivityTime: vi.fn(() => "Today"), nameFromPath: () => "cake",
       startOneOffChat: vi.fn(), chooseProject: vi.fn(), showMoreSessions: vi.fn(), renameSession: vi.fn(),
-      hasResolvedSessions: true, setProjectSessionResolved
+      hasResolvedSessions: true, setSessionResolved
     } as unknown as ProjectWorkbenchStore;
     const props = sidebarProps(store);
 
@@ -302,12 +302,12 @@ describe("Sidebar projects", () => {
     expect(resolve).not.toBeNull();
     expect(container.querySelector('[data-session-id="active"] .session-time')).toBeNull();
     act(() => resolve.click());
-    expect(setProjectSessionResolved).toHaveBeenCalledWith("/work/cake", "active", true);
+    expect(setSessionResolved).toHaveBeenCalledWith("active", true);
 
     act(() => root.render(<Sidebar {...props} selection={{ kind: "project-session", workspacePath: "/work/cake", sessionId: "resolved" }} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
     const restore = container.querySelector<HTMLButtonElement>('[aria-label="Restore Finished work"]')!;
     act(() => restore.click());
-    expect(setProjectSessionResolved).toHaveBeenLastCalledWith("/work/cake", "resolved", false);
+    expect(setSessionResolved).toHaveBeenLastCalledWith("resolved", false);
   });
 
   it("resolves selected Cake Chat into the shared resolved lane", () => {

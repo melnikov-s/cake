@@ -38,6 +38,7 @@ const windows = new Map<number, BrowserWindow>();
 const windowSlots = new Map<number, number>();
 const windowWorkspaces = new Map<number, string>();
 const piHosts = new Map<string, PiHost>();
+const sessionWorkspacePaths = new Map<string, string>();
 const allowedProjectPaths = new Set<string>();
 const pendingTrustRequests = new Map<string, string>();
 const windowCustomizationRevisions = new Map<number, string>();
@@ -98,15 +99,42 @@ const pluginAgents = new PluginAgentHost({
   agentDir: cakePaths.piAgent,
   utilityModel: () => applicationModel.utilityModel,
   driver: (workspacePath) => launchPi(workspacePath).driver,
+  resolveSessionWorkspacePath,
   emit: sendTo
 });
 
 function sendTo(target: WebContents, event: DesktopEvent) {
+  if (event.type === "session-snapshot") rememberSessionLocation(event.snapshot.workspacePath, event.snapshot.sessionId);
   if (!target.isDestroyed()) target.send("cake:event", event);
 }
 
 function broadcast(event: DesktopEvent) {
+  if (event.type === "session-snapshot") rememberSessionLocation(event.snapshot.workspacePath, event.snapshot.sessionId);
   for (const window of windows.values()) sendTo(window.webContents, event);
+}
+
+function rememberSessionLocation(workspacePath: string, sessionId: string) {
+  const existing = sessionWorkspacePaths.get(sessionId);
+  if (existing && existing !== workspacePath) throw new Error(`Session ID collision detected: ${sessionId}`);
+  sessionWorkspacePaths.set(sessionId, workspacePath);
+}
+
+async function resolveSessionWorkspacePath(sessionId: string) {
+  const cached = sessionWorkspacePaths.get(sessionId);
+  if (cached && allowedProjectPaths.has(cached)) return cached;
+  const matches = (await Promise.all(applicationModel.projects.map(async (project) => {
+    if (!allowedProjectPaths.has(project.path)) return undefined;
+    try {
+      const sessions = await listWorkspaceSessions(project.path, cakePaths.piSessions);
+      return sessions.some((session) => session.id === sessionId) ? project.path : undefined;
+    } catch {
+      return undefined;
+    }
+  }))).filter((path): path is string => path !== undefined);
+  if (matches.length === 0) throw new Error(`Cake could not find session ${sessionId}`);
+  if (new Set(matches).size > 1) throw new Error(`Session ID collision detected: ${sessionId}`);
+  rememberSessionLocation(matches[0]!, sessionId);
+  return matches[0]!;
 }
 
 function appStatePath() {
@@ -591,10 +619,13 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
     return desktopResponseSchema.parse({ type: "application-state-updated", state: applicationModel.snapshot() });
   }
   if (request.type === "list-sessions") {
+    const resolvedSessionIds = new Set(applicationModel.resolvedSessionIds);
     const sessions = (await Promise.all(applicationModel.projects.map(async (project) => {
       try {
-        const resolvedSessionIds = new Set(project.resolvedSessionIds);
-        return (await listWorkspaceSessions(project.path, cakePaths.piSessions)).map((session) => ({ ...session, resolved: resolvedSessionIds.has(session.id), workspacePath: project.path, workspaceName: project.name }));
+        return (await listWorkspaceSessions(project.path, cakePaths.piSessions)).map((session) => {
+          rememberSessionLocation(project.path, session.id);
+          return { ...session, resolved: resolvedSessionIds.has(session.id), workspacePath: project.path, workspaceName: project.name };
+        });
       } catch {
         return [];
       }
@@ -618,6 +649,7 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
     if (!allowedProjectPaths.has(request.path)) throw new Error("Project path was not selected by the user");
     applicationModel.removeProject(request.path);
     allowedProjectPaths.delete(request.path);
+    for (const [sessionId, workspacePath] of sessionWorkspacePaths) if (workspacePath === request.path) sessionWorkspacePaths.delete(sessionId);
     const host = piHosts.get(request.path);
     if (host) {
       piHosts.delete(request.path);
@@ -629,15 +661,12 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
     return desktopResponseSchema.parse({ type: "application-state-updated", state: applicationModel.snapshot() });
   }
   if (request.type === "resolve-session") {
-    if (!allowedProjectPaths.has(request.path)) throw new Error("Project path was not selected by the user");
-    applicationModel.setProjectSessionResolved(request.path, request.sessionId, request.resolved);
+    applicationModel.setSessionsResolved([request.sessionId], request.resolved);
     await persistApplicationState();
     return desktopResponseSchema.parse({ type: "application-state-updated", state: applicationModel.snapshot() });
   }
-  if (request.type === "resolve-project-sessions") {
-    if (!allowedProjectPaths.has(request.path)) throw new Error("Project path was not selected by the user");
-    const sessions = await listWorkspaceSessions(request.path, cakePaths.piSessions);
-    applicationModel.setProjectSessionsResolved(request.path, sessions.map((session) => session.id), request.resolved);
+  if (request.type === "resolve-sessions") {
+    applicationModel.setSessionsResolved(request.sessionIds, request.resolved);
     await persistApplicationState();
     return desktopResponseSchema.parse({ type: "application-state-updated", state: applicationModel.snapshot() });
   }
@@ -672,11 +701,11 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
     }
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
-  const path = request.type === "open-workspace" || request.type === "inspect-workspace" ? request.path : request.workspacePath;
+  const path = request.type === "open-workspace" || request.type === "inspect-workspace" ? request.path : await resolveSessionWorkspacePath(request.sessionId);
   if (!allowedProjectPaths.has(path)) throw new Error("Project path was not selected by the user");
   if (request.type === "repair-inline-widget") {
     const repaired = await runInlineWidgetRepair({
-      cwd: request.workspacePath,
+      cwd: path,
       agentDir: cakePaths.piAgent,
       sessionDir: cakePaths.piWidgetSessions,
       language: request.language,
@@ -701,23 +730,23 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "load-session") {
-    return desktopResponseSchema.parse({ type: "session-loaded", session: await loadWorkspaceSessionPreview(request.workspacePath, request.sessionId, cakePaths.piSessions) });
+    return desktopResponseSchema.parse({ type: "session-loaded", session: await loadWorkspaceSessionPreview(path, request.sessionId, cakePaths.piSessions) });
   }
   if (request.type === "list-review-threads") {
-    return desktopResponseSchema.parse({ type: "review-threads-loaded", threads: await reviewRepository.listSession(request.workspacePath, request.sessionId) });
+    return desktopResponseSchema.parse({ type: "review-threads-loaded", threads: await reviewRepository.listSession(path, request.sessionId) });
   }
   if (request.type === "create-review-thread") {
-    const thread = await reviewRepository.create(request.workspacePath, request.sessionId, request.anchor, request.body);
+    const thread = await reviewRepository.create(path, request.sessionId, request.anchor, request.body);
     broadcast({ type: "review-thread-updated", thread });
     return desktopResponseSchema.parse({ type: "review-thread-saved", thread });
   }
   if (request.type === "reply-review-thread") {
-    const thread = await reviewRepository.reply(request.workspacePath, request.sessionId, request.threadId, request.body);
+    const thread = await reviewRepository.reply(path, request.sessionId, request.threadId, request.body);
     broadcast({ type: "review-thread-updated", thread });
     return desktopResponseSchema.parse({ type: "review-thread-saved", thread });
   }
   if (request.type === "resolve-review-thread") {
-    const thread = await reviewRepository.resolve(request.workspacePath, request.sessionId, request.threadId, request.resolved);
+    const thread = await reviewRepository.resolve(path, request.sessionId, request.threadId, request.resolved);
     broadcast({ type: "review-thread-updated", thread });
     return desktopResponseSchema.parse({ type: "review-thread-saved", thread });
   }
@@ -739,9 +768,9 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
     return desktopResponseSchema.parse({ type: "artifact-response-accepted", artifactRequestId: request.artifactRequestId });
   }
   if (request.type === "export-artifacts") {
-    return desktopResponseSchema.parse({ type: "artifacts-exported", markdown: await artifactRepository.exportMarkdown(request.workspacePath, request.sessionId) });
+    return desktopResponseSchema.parse({ type: "artifacts-exported", markdown: await artifactRepository.exportMarkdown(path, request.sessionId) });
   }
-  dispatchToPi(path, request satisfies PiWorkspaceCommand);
+  dispatchToPi(path, request);
   return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
 });
 

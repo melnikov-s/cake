@@ -59,8 +59,8 @@ function createDesktopClient(restoredPath?: string) {
     repairInlineWidget: vi.fn(async (input) => ({ source: input.source, repairSessionId: "repair-session" })),
     loadWindowState: vi.fn(async () => ({ projectPath: restoredPath, recentProjectPaths: restoredPath ? [restoredPath] : [], draft: "saved", theme: "system" as const, thinkingExpanded: false, draftsBySession: {} })),
     saveWindowState: vi.fn(async () => undefined),
-    loadApplicationState: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
-    setUtilityModel: vi.fn(async (model) => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [], utilityModel: model })),
+    loadApplicationState: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedSessionIds: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
+    setUtilityModel: vi.fn(async (model) => ({ schemaVersion: 1 as const, projects: [], resolvedSessionIds: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [], utilityModel: model })),
     listSessions: vi.fn(async () => ({ sessions: [], reviewThreads: [] })),
     loadSession: vi.fn(async () => undefined),
     openGlobalChat: vi.fn(async () => undefined),
@@ -74,12 +74,12 @@ function createDesktopClient(restoredPath?: string) {
     replyReviewThread: vi.fn(async () => { throw new Error("not mocked"); }),
     resolveReviewThread: vi.fn(async () => { throw new Error("not mocked"); }),
     submitReviewThread: vi.fn(async () => undefined),
-    registerProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
-    renameProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
-    removeProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
-    resolveSession: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
-    resolveProjectSessions: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
-    resolveCakeChatSession: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
+    registerProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedSessionIds: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
+    renameProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedSessionIds: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
+    removeProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedSessionIds: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
+    resolveSession: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedSessionIds: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
+    resolveSessions: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedSessionIds: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
+    resolveCakeChatSession: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedSessionIds: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
     createWindow: vi.fn(async () => undefined),
     restartPi: vi.fn(async () => undefined),
     inspectWorkspace: vi.fn(async () => undefined),
@@ -122,7 +122,7 @@ async function openSnapshot(store: ProjectWorkbenchStore, desktop: ReturnType<ty
   const openId = store.activeOperations.at(-1)!;
   desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot: nextSnapshot });
   const changesRequest = vi.mocked(desktop.client.inspectChanges).mock.calls.at(-1)?.[0];
-  if (changesRequest) desktop.emit({ type: "changes-received", ...changesRequest, turns: [], files: changes });
+  if (changesRequest) desktop.emit({ type: "changes-received", ...changesRequest, workspacePath: nextSnapshot.workspacePath, turns: [], files: changes });
 }
 
 describe("ProjectWorkbenchStore", () => {
@@ -176,7 +176,7 @@ describe("ProjectWorkbenchStore", () => {
     await openSnapshot(store, desktop);
     root.showGlobalChat();
 
-    await root.openSession("/project", "session-1");
+    await root.openSession("session-1");
 
     expect(root.appShellStore.surface).toBe("workbench");
     expect(root.appShellStore.selection).toEqual({ kind: "project-session", workspacePath: "/project", sessionId: "session-1" });
@@ -201,7 +201,7 @@ describe("ProjectWorkbenchStore", () => {
     expect(markup).toContain("/project");
     expect(pluginSession).toMatchObject({ workspacePath: "/project", sessionId: "session-1" });
     await pluginSession!.openChanges();
-    expect(desktop.client.inspectChanges).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", sessionId: "session-1" }));
+    expect(desktop.client.inspectChanges).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "session-1" }));
     root.showGlobalChat();
     await expect(pluginSession!.openChanges()).rejects.toThrow("no longer selected");
     root[Symbol.dispose]();
@@ -339,13 +339,13 @@ describe("ProjectWorkbenchStore", () => {
     await root.settingsStore.setPiSetting({ key: "autoCompact", value: false });
     const operationId = root.settingsStore.activeOperations.at(-1)!;
     expect(store.isBusy).toBe(false);
-    expect(desktop.client.setPiSetting).toHaveBeenCalledWith({ operationId, workspacePath: "/project", sessionId: "session-1", update: { key: "autoCompact", value: false } });
+    expect(desktop.client.setPiSetting).toHaveBeenCalledWith({ operationId, sessionId: "session-1", update: { key: "autoCompact", value: false } });
     desktop.emit({ type: "operation-completed", operationId });
     expect(root.settingsStore.activeOperations).not.toContain(operationId);
 
     await root.settingsStore.reloadPi();
     const reloadOperationId = root.settingsStore.activeOperations.at(-1)!;
-    expect(desktop.client.reloadPi).toHaveBeenCalledWith({ operationId: reloadOperationId, workspacePath: "/project", sessionId: "session-1" });
+    expect(desktop.client.reloadPi).toHaveBeenCalledWith({ operationId: reloadOperationId, sessionId: "session-1" });
     desktop.emit({ type: "operation-completed", operationId: reloadOperationId });
     root[Symbol.dispose]();
   });
@@ -521,7 +521,7 @@ describe("ProjectWorkbenchStore", () => {
     await root.extensionUiStore.respond("true");
 
     expect(root.projectWorkbenchStore.activeSession!.composerStore.parts.map((part) => part.id)).toEqual(["live"]);
-    expect(desktop.client.respondToUi).toHaveBeenCalledWith({ operationId, workspacePath: "/project", sessionId: "session-1", uiRequestId, value: "true", cancelled: false });
+    expect(desktop.client.respondToUi).toHaveBeenCalledWith({ operationId, sessionId: "session-1", uiRequestId, value: "true", cancelled: false });
     expect(root.projectWorkbenchStore.activeSession!.composerStore.focusRequestRevision).toBe(focusRevision + 1);
     root[Symbol.dispose]();
   });
@@ -570,7 +570,7 @@ describe("ProjectWorkbenchStore", () => {
       { id: "turn-2", label: "Update the explorer", capturedAt: "2026-08-16T12:00:00.000Z", fileCount: 1, additions: 2, deletions: 1 },
       { id: "turn-1", label: "Create the explorer", capturedAt: "2026-08-16T11:00:00.000Z", fileCount: 1, additions: 4, deletions: 0 }
     ];
-    desktop.emit({ type: "changes-received", operationId: firstRequest.operationId, workspacePath: firstRequest.workspacePath, sessionId: firstRequest.sessionId, source: firstRequest.source, selectedTurnId: "turn-2", turns, files: [{ path: "latest.ts", status: "modified", additions: 2, deletions: 1, diff: "-old\n+new" }] });
+    desktop.emit({ type: "changes-received", operationId: firstRequest.operationId, workspacePath: snapshot.workspacePath, sessionId: firstRequest.sessionId, source: firstRequest.source, selectedTurnId: "turn-2", turns, files: [{ path: "latest.ts", status: "modified", additions: 2, deletions: 1, diff: "-old\n+new" }] });
 
     expect(store.changesStore.selectedTurn?.label).toBe("Update the explorer");
     expect(store.changesStore.selected?.path).toBe("latest.ts");
@@ -579,7 +579,7 @@ describe("ProjectWorkbenchStore", () => {
     await store.changesStore.selectTurn("turn-1");
     const secondRequest = vi.mocked(desktop.client.inspectChanges).mock.calls.at(-1)![0];
     expect(secondRequest).toMatchObject({ source: "conversation-turn", turnId: "turn-1" });
-    desktop.emit({ type: "changes-received", operationId: secondRequest.operationId, workspacePath: secondRequest.workspacePath, sessionId: secondRequest.sessionId, source: secondRequest.source, selectedTurnId: "turn-1", turns, files: [{ path: "initial.ts", status: "added", additions: 4, deletions: 0, diff: "+initial" }] });
+    desktop.emit({ type: "changes-received", operationId: secondRequest.operationId, workspacePath: snapshot.workspacePath, sessionId: secondRequest.sessionId, source: secondRequest.source, selectedTurnId: "turn-1", turns, files: [{ path: "initial.ts", status: "added", additions: 4, deletions: 0, diff: "+initial" }] });
 
     expect(store.changesStore.selectedTurn?.label).toBe("Create the explorer");
     expect(store.changesStore.selected?.path).toBe("initial.ts");
@@ -613,7 +613,7 @@ describe("ProjectWorkbenchStore", () => {
 
     await store.openSessionChanges();
     expect(store.changesStore.path).toBe("PLAN.md");
-    expect(desktop.client.inspectChanges).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project" }));
+    expect(desktop.client.inspectChanges).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "session-1" }));
 
     store.changesStore.close();
     expect(store.changesStore.path).toBeUndefined();
@@ -719,7 +719,7 @@ describe("ProjectWorkbenchStore", () => {
     expect(root.reviewsStore.draftChatStore.parts).toEqual([expect.objectContaining({ role: "user", text: "value" })]);
     await root.reviewsStore.draftChatStore.submit("Why this value?");
 
-    expect(desktop.client.submitReviewThread).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", sessionId: "session-1", threadId: "review-1", thinkingLevel: "off" }));
+    expect(desktop.client.submitReviewThread).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "session-1", threadId: "review-1", thinkingLevel: "off" }));
     expect(desktop.client.submit).not.toHaveBeenCalled();
     expect(store.activeSession!.chatStore.draft).toBe("saved");
     expect(root.reviewsStore.draftAnchor).toBeUndefined();
@@ -832,7 +832,7 @@ describe("ProjectWorkbenchStore", () => {
     desktop.emit({ type: "session-snapshot-received", snapshot: { ...snapshot, streaming: false } });
 
     expect(store.activeSession!.chatStore.draft).toBe("");
-    expect(store.sessionRegistry.findSession("session-1", store.projectPath)!.chatStore.draft).toBe("");
+    expect(store.sessionRegistry.findSession("session-1")!.chatStore.draft).toBe("");
     root[Symbol.dispose]();
   });
 
@@ -887,11 +887,12 @@ describe("ProjectWorkbenchStore", () => {
     const desktop = createDesktopClient();
     const applicationState = {
       schemaVersion: 1 as const,
+      resolvedSessionIds: ["session-2"],
       resolvedCakeChatSessionIds: [],
       trustedProjectPaths: [],
       projects: [
-        { path: "/project", name: "Project", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString(), resolvedSessionIds: ["session-2"] },
-        { path: "/other", name: "Other", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString(), resolvedSessionIds: [] }
+        { path: "/project", name: "Project", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString() },
+        { path: "/other", name: "Other", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString() }
       ]
     };
     desktop.client.loadApplicationState = vi.fn(async () => applicationState);
@@ -909,7 +910,7 @@ describe("ProjectWorkbenchStore", () => {
     await openSnapshot(store, desktop, { ...snapshot, sessions });
     const firstSession = store.activeSession;
     store.activeSession!.chatStore.setDraft("alpha draft");
-    await store.openSession("/project", "session-2");
+    await store.openSession("session-2");
     const openId = store.activeOperations.at(-1)!;
     desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot: { ...snapshot, sessionId: "session-2", sessions } });
     const secondSession = store.activeSession;
@@ -917,14 +918,14 @@ describe("ProjectWorkbenchStore", () => {
     expect(secondSession).not.toBe(firstSession);
     expect(secondSession!.composerStore).not.toBe(firstSession!.composerStore);
     expect(secondSession!.configurationStore).not.toBe(firstSession!.configurationStore);
-    expect(store.sessionRegistry.findSession("session-1", "/project")).toBe(firstSession);
-    expect(store.sessionRegistry.findSession("session-1", store.projectPath)!.chatStore.draft).toBe("alpha draft");
+    expect(store.sessionRegistry.findSession("session-1")).toBe(firstSession);
+    expect(store.sessionRegistry.findSession("session-1")!.chatStore.draft).toBe("alpha draft");
     expect(root.sidebarStore.projectSessions(store.projectPath!).map((item) => item.id)).toEqual(["session-1"]);
     expect(root.sidebarStore.projectSessions(store.projectPath!, true).map((item) => item.id)).toEqual(["session-2"]);
-    await store.openSession("/project", "session-1");
+    await store.openSession("session-1");
     expect(store.session?.sessionId).toBe("session-1");
     expect(store.activeSession!.chatStore.draft).toBe("alpha draft");
-    await store.openSession("/other", "session-3");
+    await store.openSession("session-3");
     expect(desktop.client.inspectWorkspace).toHaveBeenLastCalledWith(expect.objectContaining({ path: "/other" }));
     root[Symbol.dispose]();
   });
@@ -936,9 +937,8 @@ describe("ProjectWorkbenchStore", () => {
       name: path.slice(1),
       addedAt: new Date(0).toISOString(),
       lastOpenedAt: new Date(0).toISOString(),
-      resolvedSessionIds: []
     }));
-    const applicationState = { schemaVersion: 1 as const, projects, resolvedCakeChatSessionIds: [], trustedProjectPaths: [] };
+    const applicationState = { schemaVersion: 1 as const, projects, resolvedSessionIds: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] };
     desktop.client.loadApplicationState = vi.fn(async () => applicationState);
     desktop.client.loadWindowState = vi.fn(async () => ({
       projectPath: "/first",
@@ -973,13 +973,14 @@ describe("ProjectWorkbenchStore", () => {
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop, { ...snapshot, parts: [{ id: "one", kind: "text", role: "assistant", text: "One", status: "complete" }] });
+    root.sessionCatalogStore.replace([{ id: "session-2", title: "Session two", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 0, resolved: false, workspacePath: "/project", workspaceName: "Project" }]);
 
-    await store.openSession("/project", "session-2");
+    await store.openSession("session-2");
     const secondOpenId = store.activeOperations.at(-1)!;
     desktop.emit({ type: "session-snapshot-received", operationId: secondOpenId, snapshot: { ...snapshot, sessionId: "session-2", sessionFile: "/sessions/two.jsonl", parts: [{ id: "two", kind: "text", role: "assistant", text: "Two", status: "complete" }] } });
     desktop.emit({ type: "part-updated", sessionId: "session-1", part: { id: "late-one", kind: "text", role: "assistant", text: "Still live", status: "complete" } });
 
-    await store.openSession("/project", "session-1");
+    await store.openSession("session-1");
 
     expect(store.session?.sessionId).toBe("session-1");
     expect(root.projectWorkbenchStore.activeSession!.composerStore.parts.map((part) => part.id)).toEqual(["one", "late-one"]);
@@ -993,19 +994,20 @@ describe("ProjectWorkbenchStore", () => {
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop);
+    root.sessionCatalogStore.replace([{ id: "session-2", title: "Session two", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 0, resolved: false, workspacePath: "/project", workspaceName: "Project" }]);
 
-    await store.openSession("/project", "session-2");
+    await store.openSession("session-2");
     const secondOpenId = store.activeOperations.at(-1)!;
     desktop.emit({ type: "session-snapshot-received", operationId: secondOpenId, snapshot: { ...snapshot, sessionId: "session-2", sessionFile: "/sessions/two.jsonl" } });
 
     desktop.emit({ type: "streaming-changed", sessionId: "session-1", streaming: true });
-    expect(root.sidebarStore.sessionActivity("/project", "session-1")).toBe("running");
+    expect(root.sidebarStore.sessionActivity("session-1")).toBe("running");
 
     desktop.emit({ type: "streaming-changed", sessionId: "session-1", streaming: false });
-    expect(root.sidebarStore.sessionActivity("/project", "session-1")).toBe("unread");
+    expect(root.sidebarStore.sessionActivity("session-1")).toBe("unread");
 
-    await store.openSession("/project", "session-1");
-    expect(root.sidebarStore.sessionActivity("/project", "session-1")).toBeUndefined();
+    await store.openSession("session-1");
+    expect(root.sidebarStore.sessionActivity("session-1")).toBeUndefined();
     root[Symbol.dispose]();
   });
 
@@ -1015,6 +1017,7 @@ describe("ProjectWorkbenchStore", () => {
     await flush();
     desktop.emit({ type: "pi-state-changed", state: "ready" });
     await openSnapshot(store, desktop);
+    root.sessionCatalogStore.replace([{ id: "session-2", title: "Session two", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 0, resolved: false, workspacePath: "/project", workspaceName: "Project" }]);
     desktop.client.loadSession = vi.fn(async () => ({
       workspacePath: "/project",
       sessionId: "session-2",
@@ -1022,7 +1025,7 @@ describe("ProjectWorkbenchStore", () => {
       parts: [{ id: "preview", kind: "text", role: "assistant", text: "From disk", status: "complete" }]
     } satisfies SessionPreview));
 
-    await store.openSession("/project", "session-2");
+    await store.openSession("session-2");
     await flush();
 
     expect(store.session?.sessionId).toBe("session-2");
@@ -1079,9 +1082,9 @@ describe("ProjectWorkbenchStore", () => {
     const { root, store } = mountTestStore(desktop.client);
     await flush();
 
-    await store.renameSession("/other", "session-2", " New title ");
+    await store.renameSession("session-2", " New title ");
 
-    expect(desktop.client.renameSession).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/other", sessionId: "session-2", name: "New title" }));
+    expect(desktop.client.renameSession).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "session-2", name: "New title" }));
     expect(root.sidebarStore.projectSessions("/other")[0]?.title).toBe("New title");
     root[Symbol.dispose]();
   });
@@ -1122,7 +1125,7 @@ describe("ProjectWorkbenchStore", () => {
     await root.projectWorkbenchStore.activeSession!.composerStore.submit();
 
     expect(store.commandPane).toBe("changelog");
-    expect(desktop.client.getChangelog).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/project", sessionId: "session-1" }));
+    expect(desktop.client.getChangelog).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "session-1" }));
     expect(desktop.client.submit).not.toHaveBeenCalled();
     const changelogId = store.activeOperations.at(-1)!;
     desktop.emit({ type: "changelog-received", operationId: changelogId, workspacePath: "/project", sessionId: "session-1", markdown: "# Changelog\n\n## 0.84.0" });
@@ -1161,7 +1164,7 @@ describe("ProjectWorkbenchStore", () => {
     widgets.prepare("widget-1", "html", "<strong>Broken</strong>");
     await flush();
     widgets.reportRuntimeError("widget-1", "ReferenceError: missing is not defined");
-    await widgets.repair({ id: "widget-1", workspacePath: "/project", sessionId: "session-1", context: "Show the result" });
+    await widgets.repair({ id: "widget-1", sessionId: "session-1", context: "Show the result" });
 
     expect(desktop.client.repairInlineWidget).toHaveBeenCalledWith(expect.objectContaining({
       language: "html",

@@ -43,7 +43,8 @@ test("selects rendered TypeScript and opens a continuous, resizable selection ch
   }));
   await writeFile(join(userData, "application.json"), JSON.stringify({
     schemaVersion: 1,
-    projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp, resolvedSessionIds: [] }],
+    projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
+    resolvedSessionIds: [],
     trustedProjectPaths: []
   }));
   await writeFile(join(sessionDirectory, `${sessionId}.jsonl`), [

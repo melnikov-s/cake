@@ -11,18 +11,19 @@ describe("ProjectCatalogStore", () => {
 
     projects.applyApplicationState({
       schemaVersion: 1,
+      resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
       trustedProjectPaths: [],
       projects: [
-        { path: "/first", name: "First", addedAt: "", lastOpenedAt: "", resolvedSessionIds: [] },
-        { path: "/second", name: "Second", addedAt: "", lastOpenedAt: "", resolvedSessionIds: [] }
+        { path: "/first", name: "First", addedAt: "", lastOpenedAt: "" },
+        { path: "/second", name: "Second", addedAt: "", lastOpenedAt: "" }
       ]
     });
     projects.restoreRecentPaths(["/second", "/first"]);
 
     expect(projects.recentProjectPaths).toEqual(["/second", "/first"]);
     expect(projects.nameForPath("/second")).toBe("Second");
-    expect(sessions.find("/second", "session-1")?.workspaceName).toBe("Second");
+    expect(sessions.find("session-1")?.workspaceName).toBe("Second");
     projects[Symbol.dispose]();
     sessions[Symbol.dispose]();
   });

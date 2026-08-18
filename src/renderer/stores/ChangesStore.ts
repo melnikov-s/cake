@@ -48,7 +48,7 @@ export class ChangesStore extends Store<ChangesStoreProps> {
     this.loading = true;
     this.error = undefined;
     try {
-      await this.props.client.inspectChanges({ operationId, workspacePath, sessionId, source: this.source, turnId: this.source === "conversation-turn" ? this.selectedTurnId : undefined });
+      await this.props.client.inspectChanges({ operationId, sessionId, source: this.source, turnId: this.source === "conversation-turn" ? this.selectedTurnId : undefined });
     } catch (error) {
       if (this.activeOperationId !== operationId) return;
       this.error = errorMessage(error);

@@ -14,7 +14,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     mkdir(project, { recursive: true })
   ]));
   await writeFile(join(userData, "window-state.json"), JSON.stringify({ projectPath: project, recentProjectPaths: [project], draft: "", theme: "system", thinkingExpanded: false }));
-  await writeFile(join(userData, "application.json"), JSON.stringify({ schemaVersion: 1, projects: [{ path: project, name: "project", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString(), resolvedSessionIds: [] }], trustedProjectPaths: [] }));
+  await writeFile(join(userData, "application.json"), JSON.stringify({ schemaVersion: 1, projects: [{ path: project, name: "project", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString() }], resolvedSessionIds: [], trustedProjectPaths: [] }));
 
   const application = await electron.launch({
     args: [repositoryRoot],
