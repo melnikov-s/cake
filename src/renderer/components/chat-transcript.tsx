@@ -29,7 +29,8 @@ const CopyIcon = () => <Icon><rect x="8" y="8" width="11" height="11" rx="2" /><
 const ForkIcon = () => <Icon><circle cx="6" cy="5" r="2" /><circle cx="18" cy="5" r="2" /><circle cx="12" cy="19" r="2" /><path d="M6 7v2a4 4 0 0 0 4 4h2M18 7v2a4 4 0 0 1-4 4h-2v4" /></Icon>;
 const CheckIcon = () => <Icon><path d="m5 12 4 4L19 6" /></Icon>;
 
-export function chatWorkIsActive(parts: UiPart[], streaming: boolean, submitting: boolean) {
+export function chatWorkIsActive(parts: UiPart[], streaming: boolean, submitting: boolean, waitingForUser = false) {
+  if (waitingForUser) return false;
   if (streaming) return true;
   if (!submitting) return false;
   const latestUserIndex = parts.findLastIndex((part) => (part.kind === "text" && part.role === "user") || (part.kind === "attachment" && part.attachmentKind === "image"));
@@ -143,6 +144,7 @@ function selectionEndRect(range: Range) {
 export interface ChatTranscriptBehavior {
   onFork?(entryId: string): void;
   onOpenReviewRun?(threadId?: string): void;
+  waitingForUser?: boolean;
   inlineWidgets?: { store: InlineWidgetStore; workspacePath: string; sessionId: string; model?: { provider: string; id: string } };
   artifacts?: { records: ArtifactRecord[]; interaction: ArtifactInteractionStore };
   messageComments?: MessageCommentsStore;
@@ -386,7 +388,7 @@ export const ChatTranscript = observer(function ChatTranscript({ store, behavior
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const staticTranscriptRef = useRef<HTMLDivElement>(null);
   const visibleParts = store.hideThinking ? store.parts.filter((part) => part.kind !== "reasoning") : store.parts;
-  const showAssistantLoading = chatWorkIsActive(store.parts, store.streaming, store.submitting);
+  const showAssistantLoading = chatWorkIsActive(store.parts, store.streaming, store.submitting, Boolean(behavior.waitingForUser || behavior.artifacts?.interaction.request));
   const items: TranscriptItem[] = [...groupTranscriptParts(visibleParts), ...(showAssistantLoading ? [{ kind: "loading-state" as const, id: "loading-state" }] : [])];
   const latestUserPartId = store.parts.findLast((part) => (part.kind === "text" && part.role === "user") || (part.kind === "attachment" && part.attachmentKind === "image"))?.id;
   const itemCountRef = useRef(items.length);

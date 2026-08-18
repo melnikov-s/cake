@@ -30,6 +30,7 @@ test("presents durable artifacts, sorts a table, resolves a form, and isolates H
     await expect(table.locator(".artifact-table tbody td").allTextContents()).resolves.toEqual(["", "Beta", "1", "", "Alpha", "2"]);
 
     const form = page.locator('[data-artifact-id="cake-s4-form"]');
+    await expect(page.getByRole("status", { name: "Churning in progress" })).toHaveCount(0);
     await form.getByLabel("Answer *").fill("structured answer");
     await form.getByRole("button", { name: "Send response" }).click();
     await expect(form.getByRole("button", { name: "Send response" })).not.toBeAttached();

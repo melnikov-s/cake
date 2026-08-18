@@ -34,7 +34,7 @@ vi.mock("@/components/ai-elements/conversation", () => ({
 }));
 
 import { Chat } from "../../../src/renderer/components/chat";
-import { captureMessageSelection, ChatTranscript, MESSAGE_COMMENT_SELECTION_SETTLE_MS, type ChatTranscriptBehavior } from "../../../src/renderer/components/chat-transcript";
+import { captureMessageSelection, chatWorkIsActive, ChatTranscript, MESSAGE_COMMENT_SELECTION_SETTLE_MS, type ChatTranscriptBehavior } from "../../../src/renderer/components/chat-transcript";
 import { MessageCommentsStore } from "../../../src/renderer/stores/MessageCommentsStore";
 import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
@@ -185,6 +185,15 @@ describe("Transcript scrolling", () => {
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user, reasoning], true)} />));
     expect(container.querySelector(".loading-state")).not.toBeNull();
     expect(container.querySelector(".activity-group")).not.toBeNull();
+  });
+
+  it("does not show assistant loading while the turn is waiting for user input", () => {
+    const user: UiPart = { id: "user-1", kind: "text", role: "user", text: "Quiz me", status: "complete" };
+
+    expect(chatWorkIsActive([user], true, true, true)).toBe(false);
+    act(() => root.render(<Transcript parts={[user]} sessionId="session-1" isStreaming behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, waitingForUser: true }} empty={<div />} />));
+
+    expect(container.querySelector(".loading-state")).toBeNull();
   });
 
   it("keeps the streaming work log scrolled to its latest entry", () => {

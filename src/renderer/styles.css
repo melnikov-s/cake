@@ -407,10 +407,6 @@
 .compaction-message summary span { color: var(--muted-foreground); font: 10px var(--font-mono); }
 .compaction-message details > div { max-height: 28rem; overflow: auto; padding: 0 14px 14px; border-top: 1px solid color-mix(in oklab, var(--border) 72%, transparent); }
 .artifacts-panel { display: grid; gap: 12px; margin: 8px 0 24px; }
-.artifacts-index { color: var(--muted-foreground); font: 11px var(--font-mono); }
-.artifacts-index summary { width: fit-content; cursor: pointer; }
-.artifacts-index > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 8px; }
-.artifacts-index span { display: inline-flex; gap: 6px; }.artifacts-index small { color: var(--muted-foreground); }
 .artifacts-panel > header, .artifact > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .artifacts-panel > header > strong { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
 .artifact { display: grid; gap: 12px; min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); box-shadow: 0 12px 40px -32px hsl(var(--shadow) / .35); }
