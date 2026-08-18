@@ -83,6 +83,16 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     }
   }
 
+  async resolveSessions(sessionIds: readonly string[], resolved: boolean) {
+    try {
+      for (const sessionId of sessionIds) this.applyApplicationState(await this.port.resolveSession(sessionId, resolved));
+      return sessionIds.length;
+    } catch (error) {
+      this.reportError(error);
+      throw error;
+    }
+  }
+
   openSession(sessionId: string) {
     if (sessionId === this.selectedSessionId) return Promise.resolve();
     return this.open(sessionId);

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { jsonObjectSchema, jsonValueSchema } from "../ipc/json-contract";
-import type { GlobalSessionSummary, ProjectRecord, UiPart } from "../ipc/session-contract";
+import type { GlobalSessionSummary, ProjectRecord, SessionSummary, UiPart } from "../ipc/session-contract";
 import {
   customizationStateSchema,
   pluginIdSchema,
@@ -51,6 +51,7 @@ const appControlArgumentSchemas = {
   get_session_status: sessionIdTargetSchema,
   open_session: sessionIdTargetSchema,
   list_sessions: sessionPageSchema,
+  list_cake_chat_sessions: sessionPageSchema.omit({ workspacePath: true }),
   read_session: sessionReadSchema,
   search_sessions: searchSessionsSchema,
   create_session: z.object({ workspacePath: z.string().min(1).max(4_096) }),
@@ -59,6 +60,7 @@ const appControlArgumentSchemas = {
   rename_session: sessionIdTargetSchema.extend({ title: z.string().trim().min(1).max(500) }),
   set_session_resolved: sessionIdTargetSchema.extend({ resolved: z.boolean() }),
   set_sessions_resolved: z.object({ sessionIds: z.array(z.string().min(1).max(256)).min(1).max(10_000), resolved: z.boolean() }),
+  set_cake_chat_sessions_resolved: z.object({ sessionIds: z.array(z.string().min(1).max(256)).min(1).max(10_000), resolved: z.boolean() }),
   set_session_model: sessionIdTargetSchema.extend({ provider: z.string().trim().min(1).max(100), modelId: z.string().trim().min(1).max(200) })
 } as const;
 
@@ -71,9 +73,9 @@ export const appControlInvocationSchema = z.discriminatedUnion("name", [
   invocation("list_plugin_files"), invocation("create_plugin"), invocation("read_plugin_file"), invocation("write_plugin_file"),
   invocation("validate_customization"), invocation("activate_customization"), invocation("rollback_customization"),
   invocation("use_factory_customization"), invocation("set_plugin_enabled"), invocation("set_active_scene"),
-  invocation("get_session_status"), invocation("open_session"), invocation("list_sessions"), invocation("read_session"),
+  invocation("get_session_status"), invocation("open_session"), invocation("list_sessions"), invocation("list_cake_chat_sessions"), invocation("read_session"),
   invocation("search_sessions"), invocation("create_session"), invocation("send_session_message"), invocation("abort_session"),
-  invocation("rename_session"), invocation("set_session_resolved"), invocation("set_sessions_resolved"), invocation("set_session_model")
+  invocation("rename_session"), invocation("set_session_resolved"), invocation("set_sessions_resolved"), invocation("set_cake_chat_sessions_resolved"), invocation("set_session_model")
 ]);
 
 export type AppControlInvocation = z.infer<typeof appControlInvocationSchema>;
@@ -95,6 +97,7 @@ export const appControlToolCatalog = [
   tool("get_session_status", "Inspect whether a known session is selected, running, unread, or idle.", appControlArgumentSchemas.get_session_status),
   tool("open_session", "Open a known Cake session in its project.", appControlArgumentSchemas.open_session),
   tool("list_sessions", "List Cake sessions by recency, optionally limited to one project or including resolved sessions.", appControlArgumentSchemas.list_sessions),
+  tool("list_cake_chat_sessions", "List global Cake Chat sessions by recency, optionally including resolved sessions.", appControlArgumentSchemas.list_cake_chat_sessions),
   tool("read_session", "Read a bounded page of displayable parts from a known Cake session without opening it.", appControlArgumentSchemas.read_session),
   tool("search_sessions", "Search session titles and transcript contents without opening sessions.", appControlArgumentSchemas.search_sessions),
   tool("create_session", "Start a new session in a known Cake project and open it.", appControlArgumentSchemas.create_session),
@@ -103,6 +106,7 @@ export const appControlToolCatalog = [
   tool("rename_session", "Rename a known session.", appControlArgumentSchemas.rename_session),
   tool("set_session_resolved", "Resolve or restore a known session.", appControlArgumentSchemas.set_session_resolved),
   tool("set_sessions_resolved", "Resolve or restore an explicit set of known sessions by ID. Use list_sessions with a project filter first when changing every session in a project.", appControlArgumentSchemas.set_sessions_resolved),
+  tool("set_cake_chat_sessions_resolved", "Resolve or restore an explicit set of known global Cake Chat sessions by ID. Use list_cake_chat_sessions first when changing multiple chats.", appControlArgumentSchemas.set_cake_chat_sessions_resolved),
   tool("set_session_model", "Change the model for one known session. Use provider and model IDs returned by Cake settings.", appControlArgumentSchemas.set_session_model)
 ] as const;
 
@@ -110,6 +114,7 @@ export interface AppControlHost {
   currentSession(): { workspacePath: string; sessionId: string } | undefined;
   projects(): readonly ProjectRecord[];
   sessions(): readonly GlobalSessionSummary[];
+  cakeChatSessions(): readonly SessionSummary[];
   sessionActivity(sessionId: string): "running" | "unread" | undefined;
   readSession(sessionId: string): Promise<readonly UiPart[] | undefined>;
   openSession(sessionId: string): Promise<void>;
@@ -119,6 +124,7 @@ export interface AppControlHost {
   renameSession(sessionId: string, title: string): Promise<void>;
   setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
   setSessionsResolved(sessionIds: readonly string[], resolved: boolean): Promise<number>;
+  setCakeChatSessionsResolved(sessionIds: readonly string[], resolved: boolean): Promise<number>;
   setSessionModel(sessionId: string, provider: string, modelId: string): Promise<void>;
   customizationState(): CustomizationState | undefined;
   plugins(): readonly PluginStatus[];
@@ -144,6 +150,14 @@ export interface AppControlSession {
   messageCount: number;
   resolved: boolean;
   activity?: "running" | "unread";
+}
+
+export interface AppControlCakeChatSession {
+  sessionId: string;
+  title: string;
+  modified: string;
+  messageCount: number;
+  resolved: boolean;
 }
 
 export interface AppControlState {
@@ -182,6 +196,7 @@ export type AppControlResult =
   | { ok: true; name: "get_session_status"; session: AppControlSession; selected: boolean; status: "running" | "unread" | "idle" }
   | { ok: true; name: "open_session"; opened: SessionTarget }
   | { ok: true; name: "list_sessions"; sessions: AppControlSession[]; total: number; nextCursor?: number }
+  | { ok: true; name: "list_cake_chat_sessions"; sessions: AppControlCakeChatSession[]; total: number; nextCursor?: number }
   | { ok: true; name: "read_session"; session: AppControlSession; parts: AppControlReadablePart[]; totalParts: number; nextCursor?: number }
   | { ok: true; name: "search_sessions"; query: string; results: AppControlSearchMatch[]; searchedSessions: number }
   | { ok: true; name: "create_session"; workspacePath: string; status: "creating" }
@@ -190,6 +205,7 @@ export type AppControlResult =
   | { ok: true; name: "rename_session"; target: SessionTarget; title: string }
   | { ok: true; name: "set_session_resolved"; target: SessionTarget; resolved: boolean }
   | { ok: true; name: "set_sessions_resolved"; sessionIds: string[]; resolved: boolean; sessionCount: number }
+  | { ok: true; name: "set_cake_chat_sessions_resolved"; sessionIds: string[]; resolved: boolean; sessionCount: number }
   | { ok: true; name: "set_session_model"; target: SessionTarget; provider: string; modelId: string; status: "changing" }
   | { ok: false; name: AppControlInvocation["name"]; error: string };
 
@@ -248,9 +264,11 @@ export class AppControlBridge {
     if (invocation.name === "set_plugin_enabled") return { ok: true, name: invocation.name, plugins: toStrictJson(pluginStatusesSchema.parse(await this.host.setPluginEnabled(invocation.arguments.pluginId, invocation.arguments.enabled))) };
     if (invocation.name === "set_active_scene") return { ok: true, name: invocation.name, plugins: toStrictJson(pluginStatusesSchema.parse(await this.host.setActiveScene(invocation.arguments.pluginId))) };
     if (invocation.name === "list_sessions") return this.listSessions(invocation.arguments);
+    if (invocation.name === "list_cake_chat_sessions") return this.listCakeChatSessions(invocation.arguments);
     if (invocation.name === "search_sessions") return this.searchSessions(invocation.arguments);
     if (invocation.name === "create_session") return this.createSession(invocation.arguments.workspacePath);
     if (invocation.name === "set_sessions_resolved") return this.setSessionsResolved(invocation.arguments);
+    if (invocation.name === "set_cake_chat_sessions_resolved") return this.setCakeChatSessionsResolved(invocation.arguments);
 
     const { sessionId } = invocation.arguments;
     const known = this.knownSession(sessionId);
@@ -314,6 +332,16 @@ export class AppControlBridge {
     return nextCursor === undefined ? result : { ...result, nextCursor };
   }
 
+  private listCakeChatSessions({ includeResolved, cursor, limit }: z.infer<typeof appControlArgumentSchemas.list_cake_chat_sessions>): AppControlResult {
+    const matching = [...this.host.cakeChatSessions()]
+      .sort((left, right) => right.modified.localeCompare(left.modified))
+      .filter((session) => includeResolved || !session.resolved);
+    const sessions = matching.slice(cursor, cursor + limit).map(({ id, title, modified, messageCount, resolved }) => ({ sessionId: id, title, modified, messageCount, resolved }));
+    const nextCursor = cursor + sessions.length < matching.length ? cursor + sessions.length : undefined;
+    const result = { ok: true, name: "list_cake_chat_sessions", sessions, total: matching.length } as const;
+    return nextCursor === undefined ? result : { ...result, nextCursor };
+  }
+
   private async readSession(known: GlobalSessionSummary, { sessionId, cursor, limit }: z.infer<typeof sessionReadSchema>): Promise<AppControlResult> {
     const parts = await this.host.readSession(sessionId);
     if (!parts) return { ok: false, name: "read_session", error: "Cake could not read that session." };
@@ -367,6 +395,15 @@ export class AppControlBridge {
     const uniqueSessionIds = [...new Set(sessionIds)];
     const sessionCount = await this.host.setSessionsResolved(uniqueSessionIds, resolved);
     return { ok: true, name: "set_sessions_resolved", sessionIds: uniqueSessionIds, resolved, sessionCount };
+  }
+
+  private async setCakeChatSessionsResolved({ sessionIds, resolved }: z.infer<typeof appControlArgumentSchemas.set_cake_chat_sessions_resolved>): Promise<AppControlResult> {
+    const knownIds = new Set(this.host.cakeChatSessions().map((session) => session.id));
+    const unknown = sessionIds.find((sessionId) => !knownIds.has(sessionId));
+    if (unknown) return { ok: false, name: "set_cake_chat_sessions_resolved", error: `Cake could not find Cake Chat session ${unknown}.` };
+    const uniqueSessionIds = [...new Set(sessionIds)];
+    const sessionCount = await this.host.setCakeChatSessionsResolved(uniqueSessionIds, resolved);
+    return { ok: true, name: "set_cake_chat_sessions_resolved", sessionIds: uniqueSessionIds, resolved, sessionCount };
   }
 
   private toControlSession(session: GlobalSessionSummary): AppControlSession {

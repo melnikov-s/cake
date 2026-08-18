@@ -256,6 +256,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         : undefined,
       projects: () => this.projectCatalogStore.projects,
       sessions: () => this.sessionCatalogStore.sessions,
+      cakeChatSessions: () => this.globalChatStore.summaries,
       sessionActivity: (sessionId) => this.sidebarStore.sessionActivity(sessionId),
       readSession: async (sessionId) => {
         const cached = this.sessionRegistry.findModel(sessionId);
@@ -273,6 +274,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       renameSession: (sessionId, title) => this.projectWorkbenchStore.renameSession(sessionId, title),
       setSessionResolved: (sessionId, resolved) => this.projectWorkbenchStore.resolveSession(sessionId, resolved),
       setSessionsResolved: (sessionIds, resolved) => this.projectWorkbenchStore.resolveSessionsById(sessionIds, resolved),
+      setCakeChatSessionsResolved: (sessionIds, resolved) => this.globalChatStore.resolveSessions(sessionIds, resolved),
       setSessionModel: (sessionId, provider, modelId) => this.appControlOperationStore.run((operationId) => this.client.setModel({ operationId, sessionId, provider, modelId })),
       customizationState: () => this.customizationStore.state,
       plugins: () => this.customizationStore.plugins,

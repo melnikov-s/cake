@@ -35,11 +35,22 @@ export class ChatStore extends Store<ChatStoreProps> {
   draft = "";
   thinkingExpanded = false;
   submittingLocally = false;
+  loadingStartedAt: number | undefined;
+
+  constructor(props: ChatStore["props"]) {
+    super(props);
+    this.loadingStartedAt = this.loading ? Date.now() : undefined;
+    this.reaction(
+      () => this.loading,
+      (loading) => { this.loadingStartedAt = loading ? Date.now() : undefined; }
+    );
+  }
 
   get id() { return this.props.id(); }
   get parts() { return this.props.parts(); }
   get streaming() { return this.props.streaming(); }
   get submitting() { return this.submittingLocally || this.props.submitting(); }
+  get loading() { return this.streaming || this.submitting; }
   get configuration() { return this.props.configuration(); }
   get commands() { return this.props.commands(); }
   get placeholder() { return this.props.placeholder(); }

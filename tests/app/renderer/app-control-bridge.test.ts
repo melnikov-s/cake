@@ -15,6 +15,10 @@ const sessions: GlobalSessionSummary[] = [
   { id: "current", title: "Current work", created: "2026-08-02T00:00:00.000Z", modified: "2026-08-12T00:00:00.000Z", messageCount: 8, resolved: false, workspacePath: "/cake", workspaceName: "Cake" },
   { id: "running", title: "Background work", created: "2026-08-03T00:00:00.000Z", modified: "2026-08-11T00:00:00.000Z", messageCount: 2, resolved: false, workspacePath: "/cake", workspaceName: "Cake" }
 ];
+const cakeChatSessions = [
+  { id: "cake-chat-current", title: "Cake-wide work", created: "2026-08-04T00:00:00.000Z", modified: "2026-08-13T00:00:00.000Z", messageCount: 6, resolved: false },
+  { id: "cake-chat-resolved", title: "Finished Cake work", created: "2026-08-01T00:00:00.000Z", modified: "2026-08-09T00:00:00.000Z", messageCount: 3, resolved: true }
+];
 
 function createBridge(customization: Partial<Pick<AppControlHost, "currentSession" | "customizationState" | "plugins" | "setPluginEnabled" | "setActiveScene">> = {}) {
   const openSession = vi.fn(async () => undefined);
@@ -24,6 +28,7 @@ function createBridge(customization: Partial<Pick<AppControlHost, "currentSessio
   const renameSession = vi.fn(async () => undefined);
   const setSessionResolved = vi.fn(async () => undefined);
   const setSessionsResolved = vi.fn(async () => 2);
+  const setCakeChatSessionsResolved = vi.fn(async () => 1);
   const setSessionModel = vi.fn(async () => undefined);
   const readSession = vi.fn(async () => [
     { id: "user-1", kind: "text" as const, role: "user" as const, text: "Find the PDF session", status: "complete" as const },
@@ -34,6 +39,7 @@ function createBridge(customization: Partial<Pick<AppControlHost, "currentSessio
     currentSession: customization.currentSession ?? (() => ({ workspacePath: "/cake", sessionId: "current" })),
     projects: () => projects,
     sessions: () => sessions,
+    cakeChatSessions: () => cakeChatSessions,
     sessionActivity: (sessionId) => sessionId === "running" ? "running" : undefined,
     readSession,
     openSession,
@@ -43,6 +49,7 @@ function createBridge(customization: Partial<Pick<AppControlHost, "currentSessio
     renameSession,
     setSessionResolved,
     setSessionsResolved,
+    setCakeChatSessionsResolved,
     setSessionModel,
     customizationState: customization.customizationState ?? (() => undefined),
     plugins: customization.plugins ?? (() => []),
@@ -58,7 +65,7 @@ function createBridge(customization: Partial<Pick<AppControlHost, "currentSessio
     setPluginEnabled: customization.setPluginEnabled ?? vi.fn(async () => []),
     setActiveScene: customization.setActiveScene ?? vi.fn(async () => [])
   });
-  return { bridge, openSession, readSession, createSession, sendSessionMessage, abortSession, renameSession, setSessionResolved, setSessionsResolved, setSessionModel };
+  return { bridge, openSession, readSession, createSession, sendSessionMessage, abortSession, renameSession, setSessionResolved, setSessionsResolved, setCakeChatSessionsResolved, setSessionModel };
 }
 
 describe("AppControlBridge", () => {
@@ -80,6 +87,7 @@ describe("AppControlBridge", () => {
       "get_session_status",
       "open_session",
       "list_sessions",
+      "list_cake_chat_sessions",
       "read_session",
       "search_sessions",
       "create_session",
@@ -88,6 +96,7 @@ describe("AppControlBridge", () => {
       "rename_session",
       "set_session_resolved",
       "set_sessions_resolved",
+      "set_cake_chat_sessions_resolved",
       "set_session_model"
     ]);
     expect(appControlToolCatalog.find((tool) => tool.name === "list_sessions")?.parameters).toMatchObject({
@@ -109,6 +118,23 @@ describe("AppControlBridge", () => {
         nextCursor: 1,
         sessions: [{ sessionId: "current", workspacePath: "/cake" }]
       });
+  });
+
+  it("lists and resolves global Cake Chat sessions", async () => {
+    const { bridge, setCakeChatSessionsResolved } = createBridge();
+
+    await expect(bridge.invoke({ name: "list_cake_chat_sessions", arguments: {} }))
+      .resolves.toEqual({
+        ok: true,
+        name: "list_cake_chat_sessions",
+        total: 1,
+        sessions: [{ sessionId: "cake-chat-current", title: "Cake-wide work", modified: "2026-08-13T00:00:00.000Z", messageCount: 6, resolved: false }]
+      });
+    await expect(bridge.invoke({ name: "set_cake_chat_sessions_resolved", arguments: { sessionIds: ["cake-chat-current"], resolved: true } }))
+      .resolves.toEqual({ ok: true, name: "set_cake_chat_sessions_resolved", sessionIds: ["cake-chat-current"], resolved: true, sessionCount: 1 });
+    expect(setCakeChatSessionsResolved).toHaveBeenCalledWith(["cake-chat-current"], true);
+    await expect(bridge.invoke({ name: "set_cake_chat_sessions_resolved", arguments: { sessionIds: ["missing"], resolved: true } }))
+      .resolves.toEqual({ ok: false, name: "set_cake_chat_sessions_resolved", error: "Cake could not find Cake Chat session missing." });
   });
 
   it("reads a session without opening it", async () => {

@@ -26,9 +26,10 @@ function formatElapsed(milliseconds: number) {
   return `${Math.floor(total / 60)}m ${(total % 60).toFixed(1)}s`;
 }
 
-export function LoadingState({ label = "Churning", variant = "Drive" }: { label?: string; variant?: LoadingStateVariant }) {
-  const [startedAt] = useState(() => Date.now());
-  const [now, setNow] = useState(startedAt);
+export function LoadingState({ label = "Churning", variant = "Drive", startedAt }: { label?: string; variant?: LoadingStateVariant; startedAt?: number }) {
+  const [localStartedAt] = useState(() => Date.now());
+  const effectiveStartedAt = startedAt ?? localStartedAt;
+  const [now, setNow] = useState(() => Date.now());
   const { delays, duration, round } = patterns[variant];
 
   useEffect(() => {
@@ -60,7 +61,7 @@ export function LoadingState({ label = "Churning", variant = "Drive" }: { label?
       >
         {label}
       </span>
-      <span className="font-mono text-[12px] text-muted-foreground tabular-nums">{formatElapsed(now - startedAt)}</span>
+      <span className="font-mono text-[12px] text-muted-foreground tabular-nums">{formatElapsed(now - effectiveStartedAt)}</span>
     </div>
   );
 }

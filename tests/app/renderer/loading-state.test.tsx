@@ -36,4 +36,17 @@ describe("LoadingState", () => {
     act(() => root.render(<div>Complete</div>));
     expect(container.querySelector(".loading-state")).toBeNull();
   });
+
+  it("continues from a supplied start time after remounting", () => {
+    const startedAt = Date.now();
+    act(() => root.render(<LoadingState startedAt={startedAt} />));
+    act(() => vi.advanceTimersByTime(1_300));
+    expect(container.textContent).toBe("Churning1.3s");
+
+    act(() => root.render(<div>Another session</div>));
+    act(() => vi.advanceTimersByTime(700));
+    act(() => root.render(<LoadingState startedAt={startedAt} />));
+
+    expect(container.textContent).toBe("Churning2.0s");
+  });
 });
