@@ -51,8 +51,10 @@ describe("ApplicationModel", () => {
     });
 
     model.upsertProject("/work/cake", "Cake");
-    model.setProjectSessionResolved("/work/cake", "session-1", true);
+    model.setProjectSessionsResolved("/work/cake", ["session-1", "session-2"], true);
 
-    expect(model.snapshot().projects[0]?.resolvedSessionIds).toEqual(["session-1"]);
+    expect(model.snapshot().projects[0]?.resolvedSessionIds).toEqual(["session-1", "session-2"]);
+    model.setProjectSessionsResolved("/work/cake", ["session-1", "session-2"], false);
+    expect(model.snapshot().projects[0]?.resolvedSessionIds).toEqual([]);
   });
 });

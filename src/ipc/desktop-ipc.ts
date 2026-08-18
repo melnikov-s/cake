@@ -124,6 +124,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("rename-project"), path: z.string().max(4_096), name: z.string().min(1).max(512) }),
   z.object({ type: z.literal("remove-project"), path: z.string().max(4_096) }),
   z.object({ type: z.literal("resolve-session"), path: z.string().max(4_096), sessionId: z.string().max(256), resolved: z.boolean() }),
+  z.object({ type: z.literal("resolve-project-sessions"), path: z.string().max(4_096), resolved: z.boolean() }),
   z.object({ type: z.literal("resolve-cake-chat-session"), sessionId: z.string().max(256), resolved: z.boolean() }),
   z.object({ type: z.literal("new-window") }),
   z.object({ type: z.literal("restart-pi"), path: z.string().max(4_096) }),

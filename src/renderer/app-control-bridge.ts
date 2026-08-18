@@ -61,6 +61,7 @@ const appControlArgumentSchemas = {
   abort_session: sessionTargetSchema,
   rename_session: sessionTargetSchema.extend({ title: z.string().trim().min(1).max(500) }),
   set_session_resolved: sessionTargetSchema.extend({ resolved: z.boolean() }),
+  set_project_sessions_resolved: z.object({ workspacePath: z.string().min(1).max(4_096), resolved: z.boolean() }),
   set_session_model: sessionTargetSchema.extend({ provider: z.string().trim().min(1).max(100), modelId: z.string().trim().min(1).max(200) })
 } as const;
 
@@ -75,7 +76,7 @@ export const appControlInvocationSchema = z.discriminatedUnion("name", [
   invocation("use_factory_customization"), invocation("set_plugin_enabled"), invocation("set_active_scene"),
   invocation("get_session_status"), invocation("open_session"), invocation("list_sessions"), invocation("read_session"),
   invocation("search_sessions"), invocation("create_session"), invocation("send_session_message"), invocation("abort_session"),
-  invocation("rename_session"), invocation("set_session_resolved"), invocation("set_session_model")
+  invocation("rename_session"), invocation("set_session_resolved"), invocation("set_project_sessions_resolved"), invocation("set_session_model")
 ]);
 
 export type AppControlInvocation = z.infer<typeof appControlInvocationSchema>;
@@ -104,6 +105,7 @@ export const appControlToolCatalog = [
   tool("abort_session", "Stop a known session that is currently running.", appControlArgumentSchemas.abort_session),
   tool("rename_session", "Rename a known session.", appControlArgumentSchemas.rename_session),
   tool("set_session_resolved", "Resolve or restore a known session.", appControlArgumentSchemas.set_session_resolved),
+  tool("set_project_sessions_resolved", "Resolve or restore every session in one registered project. Use resolved=true to move all of the project's sessions into Resolved, or resolved=false to restore them.", appControlArgumentSchemas.set_project_sessions_resolved),
   tool("set_session_model", "Change the model for one known session. Use provider and model IDs returned by Cake settings.", appControlArgumentSchemas.set_session_model)
 ] as const;
 
@@ -119,6 +121,7 @@ export interface AppControlHost {
   abortSession(workspacePath: string, sessionId: string): Promise<void>;
   renameSession(workspacePath: string, sessionId: string, title: string): Promise<void>;
   setSessionResolved(workspacePath: string, sessionId: string, resolved: boolean): Promise<void>;
+  setProjectSessionsResolved(workspacePath: string, resolved: boolean): Promise<number>;
   setSessionModel(workspacePath: string, sessionId: string, provider: string, modelId: string): Promise<void>;
   customizationState(): CustomizationState | undefined;
   plugins(): readonly PluginStatus[];
@@ -189,6 +192,7 @@ export type AppControlResult =
   | { ok: true; name: "abort_session"; target: SessionTarget; status: "stopping" }
   | { ok: true; name: "rename_session"; target: SessionTarget; title: string }
   | { ok: true; name: "set_session_resolved"; target: SessionTarget; resolved: boolean }
+  | { ok: true; name: "set_project_sessions_resolved"; workspacePath: string; resolved: boolean; sessionCount: number }
   | { ok: true; name: "set_session_model"; target: SessionTarget; provider: string; modelId: string; status: "changing" }
   | { ok: false; name: AppControlInvocation["name"]; error: string };
 
@@ -249,6 +253,7 @@ export class AppControlBridge {
     if (invocation.name === "list_sessions") return this.listSessions(invocation.arguments);
     if (invocation.name === "search_sessions") return this.searchSessions(invocation.arguments);
     if (invocation.name === "create_session") return this.createSession(invocation.arguments.workspacePath);
+    if (invocation.name === "set_project_sessions_resolved") return this.setProjectSessionsResolved(invocation.arguments);
 
     const { workspacePath, sessionId } = invocation.arguments;
     const known = this.knownSession(workspacePath, sessionId);
@@ -356,6 +361,14 @@ export class AppControlBridge {
     }
     await this.host.createSession(workspacePath);
     return { ok: true, name: "create_session", workspacePath, status: "creating" };
+  }
+
+  private async setProjectSessionsResolved({ workspacePath, resolved }: z.infer<typeof appControlArgumentSchemas.set_project_sessions_resolved>): Promise<AppControlResult> {
+    if (!this.host.projects().some((project) => project.path === workspacePath)) {
+      return { ok: false, name: "set_project_sessions_resolved", error: "Cake could not find that project." };
+    }
+    const sessionCount = await this.host.setProjectSessionsResolved(workspacePath, resolved);
+    return { ok: true, name: "set_project_sessions_resolved", workspacePath, resolved, sessionCount };
   }
 
   private toControlSession(session: GlobalSessionSummary): AppControlSession {

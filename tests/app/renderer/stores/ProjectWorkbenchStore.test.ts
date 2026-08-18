@@ -78,6 +78,7 @@ function createDesktopClient(restoredPath?: string) {
     renameProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
     removeProject: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
     resolveSession: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
+    resolveProjectSessions: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
     resolveCakeChatSession: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
     createWindow: vi.fn(async () => undefined),
     restartPi: vi.fn(async () => undefined),

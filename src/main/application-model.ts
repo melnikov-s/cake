@@ -90,6 +90,17 @@ export class ApplicationModel extends Model {
     project.setSessionResolved(sessionId, resolved);
   }
 
+  setProjectSessionsResolved(path: string, sessionIds: readonly string[], resolved: boolean) {
+    const project = this.projects.find((candidate) => candidate.path === path);
+    if (!project) throw new Error("Project is not registered");
+    const next = new Set(project.resolvedSessionIds);
+    for (const sessionId of sessionIds) {
+      if (resolved) next.add(sessionId);
+      else next.delete(sessionId);
+    }
+    project.resolvedSessionIds = [...next];
+  }
+
   isProjectTrusted(path: string) {
     return this.trustedProjectPaths.includes(path);
   }

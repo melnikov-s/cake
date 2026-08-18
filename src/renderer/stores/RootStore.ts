@@ -262,6 +262,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         this.client.abort({ operationId, workspacePath, sessionId })),
       renameSession: (workspacePath, sessionId, title) => this.projectWorkbenchStore.renameSession(workspacePath, sessionId, title),
       setSessionResolved: (workspacePath, sessionId, resolved) => this.projectWorkbenchStore.resolveSession(workspacePath, sessionId, resolved),
+      setProjectSessionsResolved: (workspacePath, resolved) => this.projectWorkbenchStore.resolveProjectSessions(workspacePath, resolved),
       setSessionModel: (workspacePath, sessionId, provider, modelId) => this.appControlOperationStore.run((operationId) =>
         this.client.setModel({ operationId, workspacePath, sessionId, provider, modelId })),
       customizationState: () => this.customizationStore.state,

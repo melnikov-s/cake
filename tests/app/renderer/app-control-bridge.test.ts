@@ -23,6 +23,7 @@ function createBridge(customization: Partial<Pick<AppControlHost, "currentSessio
   const abortSession = vi.fn(async () => undefined);
   const renameSession = vi.fn(async () => undefined);
   const setSessionResolved = vi.fn(async () => undefined);
+  const setProjectSessionsResolved = vi.fn(async () => 2);
   const setSessionModel = vi.fn(async () => undefined);
   const readSession = vi.fn(async () => [
     { id: "user-1", kind: "text" as const, role: "user" as const, text: "Find the PDF session", status: "complete" as const },
@@ -41,6 +42,7 @@ function createBridge(customization: Partial<Pick<AppControlHost, "currentSessio
     abortSession,
     renameSession,
     setSessionResolved,
+    setProjectSessionsResolved,
     setSessionModel,
     customizationState: customization.customizationState ?? (() => undefined),
     plugins: customization.plugins ?? (() => []),
@@ -56,7 +58,7 @@ function createBridge(customization: Partial<Pick<AppControlHost, "currentSessio
     setPluginEnabled: customization.setPluginEnabled ?? vi.fn(async () => []),
     setActiveScene: customization.setActiveScene ?? vi.fn(async () => [])
   });
-  return { bridge, openSession, readSession, createSession, sendSessionMessage, abortSession, renameSession, setSessionResolved, setSessionModel };
+  return { bridge, openSession, readSession, createSession, sendSessionMessage, abortSession, renameSession, setSessionResolved, setProjectSessionsResolved, setSessionModel };
 }
 
 describe("AppControlBridge", () => {
@@ -85,6 +87,7 @@ describe("AppControlBridge", () => {
       "abort_session",
       "rename_session",
       "set_session_resolved",
+      "set_project_sessions_resolved",
       "set_session_model"
     ]);
     expect(appControlToolCatalog.find((tool) => tool.name === "list_sessions")?.parameters).toMatchObject({
@@ -282,7 +285,7 @@ describe("AppControlBridge", () => {
   });
 
   it("creates and organizes sessions only through known targets", async () => {
-    const { bridge, createSession, renameSession, setSessionResolved, setSessionModel } = createBridge();
+    const { bridge, createSession, renameSession, setSessionResolved, setProjectSessionsResolved, setSessionModel } = createBridge();
 
     await expect(bridge.invoke({ name: "create_session", arguments: { workspacePath: "/cake" } }))
       .resolves.toEqual({ ok: true, name: "create_session", workspacePath: "/cake", status: "creating" });
@@ -290,11 +293,16 @@ describe("AppControlBridge", () => {
       .resolves.toEqual({ ok: false, name: "create_session", error: "Cake could not find that project." });
     await bridge.invoke({ name: "rename_session", arguments: { workspacePath: "/cake", sessionId: "current", title: "Global controls" } });
     await bridge.invoke({ name: "set_session_resolved", arguments: { workspacePath: "/cake", sessionId: "current", resolved: true } });
+    await expect(bridge.invoke({ name: "set_project_sessions_resolved", arguments: { workspacePath: "/cake", resolved: false } }))
+      .resolves.toEqual({ ok: true, name: "set_project_sessions_resolved", workspacePath: "/cake", resolved: false, sessionCount: 2 });
+    await expect(bridge.invoke({ name: "set_project_sessions_resolved", arguments: { workspacePath: "/missing", resolved: true } }))
+      .resolves.toEqual({ ok: false, name: "set_project_sessions_resolved", error: "Cake could not find that project." });
     await bridge.invoke({ name: "set_session_model", arguments: { workspacePath: "/cake", sessionId: "current", provider: "openai", modelId: "gpt-5" } });
 
     expect(createSession).toHaveBeenCalledOnce();
     expect(renameSession).toHaveBeenCalledWith("/cake", "current", "Global controls");
     expect(setSessionResolved).toHaveBeenCalledWith("/cake", "current", true);
+    expect(setProjectSessionsResolved).toHaveBeenCalledWith("/cake", false);
     expect(setSessionModel).toHaveBeenCalledWith("/cake", "current", "openai", "gpt-5");
   });
 });

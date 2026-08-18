@@ -21,6 +21,7 @@ import { describeError } from "../error-details";
 export interface ProjectWorkbenchStoreProps {
   client: Pick<DesktopClient,
     | "abort"
+    | "resolveProjectSessions"
     | "resolveSession"
     | "chooseProject"
     | "createWindow"
@@ -402,6 +403,17 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   async resolveSession(workspacePath: string, sessionId: string, resolved: boolean) {
     try { this.applyApplicationState(await this.client.resolveSession(workspacePath, sessionId, resolved)); }
     catch (error) { this.setError(error); }
+  }
+
+  async resolveProjectSessions(workspacePath: string, resolved: boolean) {
+    const sessionCount = this.props.catalog.sessions.filter((session) => session.workspacePath === workspacePath).length;
+    try {
+      this.applyApplicationState(await this.client.resolveProjectSessions(workspacePath, resolved));
+      return sessionCount;
+    } catch (error) {
+      this.setError(error);
+      throw error;
+    }
   }
 
   async forkAt(entryId: string) {

@@ -634,6 +634,13 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
     await persistApplicationState();
     return desktopResponseSchema.parse({ type: "application-state-updated", state: applicationModel.snapshot() });
   }
+  if (request.type === "resolve-project-sessions") {
+    if (!allowedProjectPaths.has(request.path)) throw new Error("Project path was not selected by the user");
+    const sessions = await listWorkspaceSessions(request.path, cakePaths.piSessions);
+    applicationModel.setProjectSessionsResolved(request.path, sessions.map((session) => session.id), request.resolved);
+    await persistApplicationState();
+    return desktopResponseSchema.parse({ type: "application-state-updated", state: applicationModel.snapshot() });
+  }
   if (request.type === "resolve-cake-chat-session") {
     applicationModel.setCakeChatSessionResolved(request.sessionId, request.resolved);
     await persistApplicationState();
