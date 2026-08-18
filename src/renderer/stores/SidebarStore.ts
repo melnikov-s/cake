@@ -17,6 +17,7 @@ export interface SidebarStoreProps {
 /** Owns project navigation, session pagination, and activity badges. */
 export class SidebarStore extends Store<SidebarStoreProps> {
   limitsByProject: Record<string, number> = observable({});
+  resolvedLaneExpanded = true;
   now = Date.now();
 
   constructor(props: SidebarStore["props"]) {
@@ -62,6 +63,10 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   setCakeChatSessionResolved(sessionId: string, resolved: boolean) {
     return this.props.setCakeChatSessionResolved(sessionId, resolved);
+  }
+
+  toggleResolvedLane() {
+    this.resolvedLaneExpanded = !this.resolvedLaneExpanded;
   }
 
   sessionActivityTime(modified: string) {

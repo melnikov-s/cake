@@ -19,6 +19,8 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       showMoreSessions: fixture.showMoreSessions,
       setProjectSessionResolved: fixture.setProjectSessionResolved ?? vi.fn(),
       setCakeChatSessionResolved: fixture.setCakeChatSessionResolved ?? vi.fn(),
+      resolvedLaneExpanded: fixture.resolvedLaneExpanded ?? true,
+      toggleResolvedLane: fixture.toggleResolvedLane ?? vi.fn(),
       sessionActivity: fixture.sessionActivity,
       sessionActivityTime: fixture.sessionActivityTime ?? (() => "")
     } as any,
@@ -254,6 +256,33 @@ describe("Sidebar projects", () => {
     expect(container.textContent).not.toContain("Resolved");
   });
 
+  it("removes the active lane labels and collapses the resolved lane", () => {
+    let resolvedLaneExpanded = true;
+    const toggleResolvedLane = vi.fn(() => { resolvedLaneExpanded = !resolvedLaneExpanded; });
+    const store = {
+      recentProjectPaths: ["/work/cake"], projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: (_path: string, resolved = false) => resolved ? [{ id: "resolved", title: "Finished work", modified: new Date(0).toISOString() }] : [],
+      sessionLimit: () => 8, sessionActivity: vi.fn(), sessionActivityTime: vi.fn(() => "Today"), nameFromPath: () => "cake",
+      startOneOffChat: vi.fn(), chooseProject: vi.fn(), showMoreSessions: vi.fn(), renameSession: vi.fn(), hasResolvedSessions: true,
+      resolvedLaneExpanded, toggleResolvedLane
+    } as unknown as ProjectWorkbenchStore;
+    const props = () => sidebarProps({ ...store, resolvedLaneExpanded, toggleResolvedLane } as unknown as ProjectWorkbenchStore);
+
+    act(() => root.render(<Sidebar {...props()} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
+
+    expect(container.textContent).not.toContain("Active");
+    expect(container.textContent).not.toContain("Cake Chats");
+    const toggle = container.querySelector<HTMLButtonElement>('[aria-label="Collapse Resolved"]')!;
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(container.querySelector("#resolved-lane-content")).not.toBeNull();
+
+    act(() => toggle.click());
+    expect(toggleResolvedLane).toHaveBeenCalledOnce();
+    act(() => root.render(<Sidebar {...props()} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
+    expect(container.querySelector('[aria-label="Expand Resolved"]')?.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector("#resolved-lane-content")).toBeNull();
+  });
+
   it("moves the selected project session through resolve and restore actions", () => {
     const setProjectSessionResolved = vi.fn();
     const modified = new Date(0).toISOString();
@@ -281,7 +310,7 @@ describe("Sidebar projects", () => {
     expect(setProjectSessionResolved).toHaveBeenLastCalledWith("/work/cake", "resolved", false);
   });
 
-  it("resolves selected Cake Chats into the shared resolved lane", () => {
+  it("resolves selected Cake Chat into the shared resolved lane", () => {
     const setCakeChatSessionResolved = vi.fn();
     const modified = new Date(0).toISOString();
     const store = {

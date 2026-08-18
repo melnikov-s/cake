@@ -165,8 +165,6 @@ export const Sidebar = observer(function Sidebar({ store, projects, chat, cakeCh
       <div className="sidebar-brand"><details className="brand-menu"><summary><span>🍰 Cake Chat</span><ChevronIcon /></summary><div className="brand-dropdown"><button type="button" disabled={!chat.session || !onReloadPi} onClick={(event) => { onReloadPi?.(); event.currentTarget.closest("details")?.removeAttribute("open"); }}>Reload Pi<span>{chat.session?.piSettings?.reloadPending ? "Queued" : "Settings and resources"}</span></button></div></details><div className="brand-actions"><button aria-label="New Cake Chat" onClick={onCreateCakeChat}><PlusIcon /></button></div></div>
       <div className="plugin-slot plugin-slot-sidebar-header"><Slot name="global.sidebar.header" /></div>
       <div className="sidebar-scroll">
-        <div className="section-heading lane-heading"><span>Active</span></div>
-        <div className="section-heading conversation-group-heading"><span>Cake Chats</span></div>
         <div className="project-group cake-chat-sessions">
           {activeCakeChats.map((session) => renderCakeChatSession(session, false))}
           {activeCakeChats.length === 0 && <button className={`new-chat cake-chat-link${cakeChatSelected() ? " active" : ""}`} aria-current={cakeChatSelected() ? "page" : undefined} onClick={() => onOpenCakeChat()}><span className="cake-mini-mark">C</span><span>Open Cake Chat</span></button>}
@@ -175,9 +173,11 @@ export const Sidebar = observer(function Sidebar({ store, projects, chat, cakeCh
         <div className="section-heading projects-heading"><span>Projects</span><div><span className="project-options" aria-hidden="true"><MoreIcon /></span><button aria-label="Add project" onClick={onChooseProject}><PlusIcon /></button></div></div>
         {projects.recentProjectPaths.length === 0 ? <p className="sidebar-empty">Add a folder to start a project.</p> : projects.recentProjectPaths.map((path) => renderProjectGroup(path, false))}
         {store.hasResolvedSessions && <section className="resolved-lane" aria-labelledby="resolved-lane-heading">
-          <div className="section-heading lane-heading" id="resolved-lane-heading"><span>Resolved</span></div>
-          {resolvedCakeChats.length > 0 && <><div className="section-heading conversation-group-heading"><span>Cake Chats</span></div><div className="project-group cake-chat-sessions">{resolvedCakeChats.map((session) => renderCakeChatSession(session, true))}</div></>}
-          {projects.recentProjectPaths.map((path) => renderProjectGroup(path, true))}
+          <div className="section-heading lane-heading" id="resolved-lane-heading"><button className="lane-toggle" type="button" aria-expanded={store.resolvedLaneExpanded} aria-controls="resolved-lane-content" aria-label={`${store.resolvedLaneExpanded ? "Collapse" : "Expand"} Resolved`} onClick={() => store.toggleResolvedLane()}><span className={`lane-disclosure ${store.resolvedLaneExpanded ? "" : "collapsed"}`}><ChevronIcon /></span><span>Resolved</span></button></div>
+          {store.resolvedLaneExpanded && <div id="resolved-lane-content" className="resolved-lane-content">
+            {resolvedCakeChats.length > 0 && <div className="project-group cake-chat-sessions">{resolvedCakeChats.map((session) => renderCakeChatSession(session, true))}</div>}
+            {projects.recentProjectPaths.map((path) => renderProjectGroup(path, true))}
+          </div>}
         </section>}
       </div>
       <div className="sidebar-footer">

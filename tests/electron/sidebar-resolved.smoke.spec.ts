@@ -54,6 +54,12 @@ test("resolves and restores the selected project session in the desktop sidebar"
 
     await expect(page.locator(".resolved-lane")).toBeVisible();
     await expect(page.locator(".resolved-lane .session-item.active .session-resolve-action")).toHaveAttribute("title", "Restore");
+    const resolvedToggle = page.getByRole("button", { name: "Collapse Resolved" });
+    await expect(resolvedToggle).toHaveAttribute("aria-expanded", "true");
+    await resolvedToggle.click();
+    await expect(page.getByRole("button", { name: "Expand Resolved" })).toHaveAttribute("aria-expanded", "false");
+    await expect(page.locator("#resolved-lane-content")).toHaveCount(0);
+    await page.getByRole("button", { name: "Expand Resolved" }).click();
     await page.locator(".resolved-lane .session-item.active .session-resolve-action").click();
     await expect(page.locator(".resolved-lane")).toHaveCount(0);
   } finally {
