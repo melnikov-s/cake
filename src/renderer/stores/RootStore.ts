@@ -1,4 +1,4 @@
-import { Store, child, createStore, mount } from "r-state-tree";
+import { Store, child, createStore } from "r-state-tree";
 import { jsonValueSchema } from "../../ipc/json-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import { SessionRegistryStore } from "./SessionRegistryStore";
@@ -14,10 +14,11 @@ import { CustomizationStore } from "./CustomizationStore";
 import { PluginCommandStore } from "./PluginCommandStore";
 import { InlineWidgetStore } from "./InlineWidgetStore";
 import { SessionCatalogStore } from "./SessionCatalogStore";
-import { SessionOperationCoordinator } from "./SessionOperationCoordinator";
+import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { AppControlOperationStore } from "./AppControlOperationStore";
 import { ProjectCatalogStore } from "./ProjectCatalogStore";
-import { WindowPersistenceCoordinator } from "./WindowPersistenceCoordinator";
+import { WindowPersistenceCoordinatorStore } from "./WindowPersistenceCoordinatorStore";
+import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
 
 export class RootStore extends Store<{ client: DesktopClient }> {
   readonly appControl: AppControlBridge;
@@ -145,8 +146,8 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   }
 
   @child
-  get sessionOperationCoordinator(): SessionOperationCoordinator {
-    return createStore(SessionOperationCoordinator);
+  get sessionOperationCoordinator(): SessionOperationCoordinatorStore {
+    return createStore(SessionOperationCoordinatorStore);
   }
 
   @child
@@ -222,8 +223,8 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   }
 
   @child
-  get windowPersistence(): WindowPersistenceCoordinator {
-    return createStore(WindowPersistenceCoordinator, {
+  get windowPersistence(): WindowPersistenceCoordinatorStore {
+    return createStore(WindowPersistenceCoordinatorStore, {
       client: this.client,
       projects: this.projectCatalogStore,
       sessions: this.sessionCatalogStore,
@@ -473,20 +474,4 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     }
     this.projectWorkbenchStore.receive(event);
   }
-}
-
-function resolveDraftUpdate(value: string | ((current: string) => string), current: string) {
-  return isDraftUpdater(value) ? value(current) : value;
-}
-
-function isDraftUpdater(
-  value: string | ((current: string) => string),
-): value is (current: string) => string {
-  return typeof value === "function";
-}
-
-export function mountRootStore(client: DesktopClient) {
-  const root = mount(createStore(RootStore, { client }));
-  void root.windowPersistence.hydrate();
-  return root;
 }

@@ -1,7 +1,7 @@
 import { Store, observable } from "r-state-tree";
 
 /** Correlates runtime operation ids with session-scoped UI/artifact events. */
-export class SessionOperationCoordinator extends Store<Record<string, never>> {
+export class SessionOperationCoordinatorStore extends Store<Record<string, never>> {
   private readonly operations: Array<{ id: string; owner: string }> = observable([]);
 
   start(owner = "shared") {

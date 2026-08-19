@@ -1,21 +1,23 @@
 import { Model, applySnapshot, child, id, observable, state, type Snapshot } from "r-state-tree";
-import type { SessionSnapshot, ThinkingLevel, UiPart } from "../../ipc/session-contract";
-import { MessageModel } from "./message";
-import { ModelOptionModel } from "./model-option";
-import { SessionTreeEntryModel } from "./session-tree-entry";
-import { CompatibilityResourceModel, ResourceDiagnosticModel } from "./compatibility-resource";
-import { ArtifactModel, toArtifactSnapshot } from "./artifact";
-import type { ArtifactRecord } from "../../ipc/artifact-contract";
-import type { ReviewThread } from "../../ipc/review-contract";
-import { ReviewThreadModel } from "./review-thread";
+import type { ArtifactRecord } from "../ipc/artifact-contract";
+import type { ReviewThread as ReviewThreadRecord } from "../ipc/review-contract";
+import type { SessionSnapshot, ThinkingLevel, UiPart } from "../ipc/session-contract";
+import { toArtifactSnapshot } from "../utils/artifact-snapshot";
+import { Artifact } from "./Artifact";
+import { CompatibilityResource } from "./CompatibilityResource";
+import { Message } from "./Message";
+import { ModelOption } from "./ModelOption";
+import { ReviewThread } from "./ReviewThread";
+import { ResourceDiagnostic } from "./ResourceDiagnostic";
+import { SessionTreeEntry } from "./SessionTreeEntry";
 
-export class SessionModel extends Model {
+export class Session extends Model {
   @state workspacePath = "";
   @id sessionId = "";
   @state sessionFile = "";
-  @child(MessageModel) parts: MessageModel[] = observable([]);
+  @child(Message) parts: Message[] = observable([]);
   @state model: SessionSnapshot["model"] = undefined;
-  @child(ModelOptionModel) models: ModelOptionModel[] = observable([]);
+  @child(ModelOption) models: ModelOption[] = observable([]);
   @state thinkingLevel: ThinkingLevel = "off";
   @state availableThinkingLevels: ThinkingLevel[] = observable([]);
   @state piSettings: SessionSnapshot["piSettings"] = undefined;
@@ -23,11 +25,11 @@ export class SessionModel extends Model {
   @state diagnostics: string[] = observable([]);
   @state commands: SessionSnapshot["commands"] = observable([]);
   @state usage: SessionSnapshot["usage"] = undefined;
-  @child(CompatibilityResourceModel) resources: CompatibilityResourceModel[] = observable([]);
-  @child(ResourceDiagnosticModel) resourceDiagnostics: ResourceDiagnosticModel[] = observable([]);
-  @child(SessionTreeEntryModel) tree: SessionTreeEntryModel[] = observable([]);
-  @child(ArtifactModel) artifacts: ArtifactModel[] = observable([]);
-  @child(ReviewThreadModel) reviewThreads: ReviewThreadModel[] = observable([]);
+  @child(CompatibilityResource) resources: CompatibilityResource[] = observable([]);
+  @child(ResourceDiagnostic) resourceDiagnostics: ResourceDiagnostic[] = observable([]);
+  @child(SessionTreeEntry) tree: SessionTreeEntry[] = observable([]);
+  @child(Artifact) artifacts: Artifact[] = observable([]);
+  @child(ReviewThread) reviewThreads: ReviewThread[] = observable([]);
 
   get loaded() {
     return Boolean(this.sessionId);
@@ -45,14 +47,14 @@ export class SessionModel extends Model {
   }
 
   upsertPart(part: UiPart) {
-    // SAFETY: MessageModel's persisted fields are the UiPart discriminated union.
-    const partSnapshot = part as Snapshot<MessageModel>;
+    // SAFETY: Message's persisted fields are the UiPart discriminated union.
+    const partSnapshot = part as Snapshot<Message>;
     const existing = this.parts.find((current) => current.id === part.id);
     if (existing) {
       applySnapshot(existing, partSnapshot);
       return;
     }
-    this.parts.push(MessageModel.create(partSnapshot));
+    this.parts.push(Message.create(partSnapshot));
   }
 
   removePart(partId: string) {
@@ -71,21 +73,21 @@ export class SessionModel extends Model {
       applySnapshot(existing, artifactSnapshot);
       return;
     }
-    this.artifacts.push(ArtifactModel.create(artifactSnapshot));
+    this.artifacts.push(Artifact.create(artifactSnapshot));
   }
 
-  applyReviewThreads(threads: ReviewThread[]) {
+  applyReviewThreads(threads: ReviewThreadRecord[]) {
     for (const thread of threads) this.upsertReviewThread(thread);
   }
 
-  upsertReviewThread(thread: ReviewThread) {
-    // SAFETY: ReviewThreadModel mirrors the validated ReviewThread IPC contract.
-    const threadSnapshot = thread as Snapshot<ReviewThreadModel>;
+  upsertReviewThread(thread: ReviewThreadRecord) {
+    // SAFETY: ReviewThread mirrors the validated ReviewThread IPC contract.
+    const threadSnapshot = thread as Snapshot<ReviewThread>;
     const existing = this.reviewThreads.find((item) => item.id === thread.id);
     if (existing) {
       if (existing.updatedAt <= thread.updatedAt) applySnapshot(existing, threadSnapshot);
       return;
     }
-    this.reviewThreads.push(ReviewThreadModel.create(threadSnapshot));
+    this.reviewThreads.push(ReviewThread.create(threadSnapshot));
   }
 }

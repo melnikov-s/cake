@@ -10,7 +10,7 @@ import type {
 } from "../../../../src/ipc/session-contract";
 import { type CakePluginSession, usePluginSession } from "../../../../src/renderer/cake";
 import type { DesktopClient, DesktopClientEvent } from "../../../../src/renderer/desktop-client";
-import { mountRootStore } from "../../../../src/renderer/stores/RootStore";
+import { mountRootStore } from "../../../../src/renderer/mount-root-store";
 import type { ProjectWorkbenchStore } from "../../../../src/renderer/stores/ProjectWorkbenchStore";
 
 const snapshot: SessionSnapshot = {

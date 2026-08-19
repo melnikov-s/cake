@@ -242,8 +242,7 @@ describe("Transcript scrolling", () => {
   it("copies preserved stack details from an operation error", async () => {
     const writeText = vi.fn<(value: string) => Promise<void>>(async () => undefined);
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
-    const details =
-      "Error: Identity collision\n    at SessionModel.applySnapshot (session.ts:50:7)";
+    const details = "Error: Identity collision\n    at Session.applySnapshot (session.ts:50:7)";
 
     await act(async () =>
       root.render(

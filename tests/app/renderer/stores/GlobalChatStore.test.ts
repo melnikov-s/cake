@@ -9,7 +9,7 @@ import type { SessionSnapshot } from "../../../../src/ipc/session-contract";
 import type { DesktopClient } from "../../../../src/renderer/desktop-client";
 import type { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
 import type { PluginCommandStore } from "../../../../src/renderer/stores/PluginCommandStore";
-import { SessionOperationCoordinator } from "../../../../src/renderer/stores/SessionOperationCoordinator";
+import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
 
 const snapshot: SessionSnapshot = {
   workspacePath: "/home/user",
@@ -76,7 +76,7 @@ function createTestStore() {
   const sessions = mount(
     createStore(SessionRegistryStore, {
       client: {} as DesktopClient,
-      operations: {} as SessionOperationCoordinator,
+      operations: {} as SessionOperationCoordinatorStore,
       reviews: () => ({}) as ReviewsStore,
       pluginCommands: () => ({}) as PluginCommandStore,
       canSubmit: () => false,
@@ -87,7 +87,7 @@ function createTestStore() {
       abort: async () => undefined,
     }),
   );
-  const operations = mount(createStore(SessionOperationCoordinator));
+  const operations = mount(createStore(SessionOperationCoordinatorStore));
   const store = mount(
     createStore(GlobalChatStore, {
       port,

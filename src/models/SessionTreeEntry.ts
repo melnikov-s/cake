@@ -1,6 +1,6 @@
 import { Model, id, state } from "r-state-tree";
 
-export class SessionTreeEntryModel extends Model {
+export class SessionTreeEntry extends Model {
   @id id = "";
   @state parentId: string | undefined;
   @state type = "";

@@ -1,4 +1,5 @@
-import { Model, child, id, state, toSnapshot } from "r-state-tree";
+import { Model, child, state, toSnapshot } from "r-state-tree";
+import { Project } from "./Project";
 import {
   applicationStateSchema,
   utilityModelSchema,
@@ -7,30 +8,11 @@ import {
   type UtilityModel,
 } from "../ipc/session-contract";
 
-export class ProjectModel extends Model {
-  @id
-  path = "";
-  @state
-  name = "";
-  @state
-  addedAt = "";
-  @state
-  lastOpenedAt = "";
-  rename(name: string) {
-    const next = name.trim();
-    if (next) this.name = next.slice(0, 512);
-  }
-
-  touch(at = new Date().toISOString()) {
-    this.lastOpenedAt = at;
-  }
-}
-
-export class ApplicationModel extends Model {
+export class Application extends Model {
   @state
   schemaVersion = 1 as const;
-  @child(ProjectModel)
-  projects: ProjectModel[] = [];
+  @child(Project)
+  projects: Project[] = [];
   @state
   resolvedSessionIds: string[] = [];
   @state
@@ -41,7 +23,7 @@ export class ApplicationModel extends Model {
   utilityModel: UtilityModel | undefined;
 
   static from(untrustedInput: unknown) {
-    return ApplicationModel.create(applicationStateSchema.parse(untrustedInput));
+    return Application.create(applicationStateSchema.parse(untrustedInput));
   }
 
   upsertProject(path: string, defaultName: string) {
@@ -51,7 +33,7 @@ export class ApplicationModel extends Model {
       return existing;
     }
     const now = new Date().toISOString();
-    const project = ProjectModel.create({
+    const project = Project.create({
       path,
       name: defaultName,
       addedAt: now,

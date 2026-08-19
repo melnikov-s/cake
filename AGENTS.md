@@ -89,6 +89,13 @@ state, and development boundaries behind these principles.
 
 Before adding state, identify its authority, cohesive owner, lifetime, persistence boundary, and concurrency policy. If the proposed owner cannot be described without saying "everything in this window" or listing unrelated surfaces, introduce or use a focused Store instead.
 
+## Strict model and Store organization
+
+- Every r-state-tree model and every Store must live in its own file. Never colocate multiple models or Stores, or mix them with utilities or unrelated code.
+- All r-state-tree models must live under the source-root `/models` directory (`src/models/`), and that directory must contain nothing except r-state-tree model files. Model names and filenames must be PascalCase and must never end in `Model`.
+- All Stores must live under the source-root `/renderer/stores` directory (`src/renderer/stores/`), and that directory must contain nothing except Store files. Store names and filenames must be PascalCase and must end in `Store`.
+- Relocate utilities and other supporting code to `/utils` (`src/utils/`) or the appropriate domain directory; do not place them in `/models` or `/renderer/stores`.
+
 ## Verification
 
 Format changed supported files with Oxfmt before final verification. Use

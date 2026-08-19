@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { ApplicationModel } from "../../../src/main/application-model";
+import { Application } from "../../../src/models/Application";
 
-describe("ApplicationModel", () => {
+describe("Application", () => {
   it("owns project metadata and Cake-only session resolve state", () => {
-    const model = ApplicationModel.from({});
+    const model = Application.from({});
     const projects = model.projects;
     const trustedProjectPaths = model.trustedProjectPaths;
     const project = model.upsertProject("/work/cake", "cake");
@@ -33,7 +33,7 @@ describe("ApplicationModel", () => {
   });
 
   it("persists an explicitly configured utility model without inventing a default", () => {
-    const model = ApplicationModel.from({});
+    const model = Application.from({});
     expect(model.snapshot().utilityModel).toBeUndefined();
 
     model.setUtilityModel({ provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "low" });
@@ -48,7 +48,7 @@ describe("ApplicationModel", () => {
   });
 
   it("updates resolve state on projects restored from persistence", () => {
-    const model = ApplicationModel.from({
+    const model = Application.from({
       schemaVersion: 1,
       projects: [
         {

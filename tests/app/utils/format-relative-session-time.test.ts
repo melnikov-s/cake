@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatRelativeSessionTime } from "../../../../src/renderer/models/session-activity-time";
+import { formatRelativeSessionTime } from "../../../src/utils/format-relative-session-time";
 
 describe("formatRelativeSessionTime", () => {
   const now = Date.parse("2026-08-16T12:00:00.000Z");

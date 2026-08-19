@@ -6,13 +6,13 @@ import type {
   UtilityModel,
 } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
-import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
+import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { describeError } from "../error-details";
 
 export interface SettingsStoreProps {
   client: Pick<DesktopClient, "setPiSetting" | "reloadPi" | "login" | "logout" | "setUtilityModel">;
   sessionContext(): { sessionId: string } | undefined;
-  operations: SessionOperationCoordinator;
+  operations: SessionOperationCoordinatorStore;
 }
 
 /** Owns model, reasoning, Pi preference, and provider-authentication workflows. */

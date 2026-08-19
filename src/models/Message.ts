@@ -1,5 +1,5 @@
 import { Model, id, state } from "r-state-tree";
-import { uiPartSchema, type UiPart } from "../../ipc/session-contract";
+import { uiPartSchema, type UiPart } from "../ipc/session-contract";
 
 type TextRole = Extract<UiPart, { kind: "text" }>["role"];
 type PartStatus = Extract<UiPart, { kind: "text" }>["status"];
@@ -8,7 +8,7 @@ type AttachmentKind = Extract<UiPart, { kind: "attachment" }>["attachmentKind"];
 type NoticeTone = Extract<UiPart, { kind: "notice" }>["tone"];
 type DeliveryState = Extract<UiPart, { kind: "text" }>["deliveryState"];
 
-export class MessageModel extends Model {
+export class Message extends Model {
   @id id = "";
   @state kind: UiPart["kind"] = "notice";
   @state role: TextRole | undefined;

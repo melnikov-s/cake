@@ -191,7 +191,7 @@ The window Store hierarchy mirrors the product surfaces:
   projection plus cached ID and project-group indexes. Session IDs are the
   canonical identity; duplicate IDs are rejected. Resolved-session flags are
   persisted as a global ID set and projected into those summaries.
-- `WindowPersistenceCoordinator` hydrates and saves view state that spans the
+- `WindowPersistenceCoordinatorStore` hydrates and saves view state that spans the
   shell, sidebar, workbench, settings, and loaded sessions. It coordinates
   those owners without absorbing their state.
 - `ProjectWorkbenchStore` owns project inspection, its collection-local
@@ -202,7 +202,7 @@ The window Store hierarchy mirrors the product surfaces:
   `ProjectSessionStore` for every loaded session ID so background events, Cake
   Chat, and navigation share session identity. The workspace path remains
   routing/storage context for the Pi runtime, not part of session identity.
-- Each `ProjectSessionStore` owns that session's activity, `SessionModel`,
+- Each `ProjectSessionStore` owns that session's activity, `Session`,
   message composer, chat configuration, artifacts, and message comments. Its
   `ChatStore` is the common conversation-facing state boundary: it presents the
   draft, transcript parts, streaming state, configuration, and composer actions
@@ -237,12 +237,12 @@ flowchart TD
   CakeChat --> CakeSession["CakeChatSessionStore per loaded meta-session"]
   CakeSession --> MetaChat["ChatStore"]
   Root --> Settings["SettingsStore"]
-  Root --> Persistence["WindowPersistenceCoordinator"]
+  Root --> Persistence["WindowPersistenceCoordinatorStore"]
   Workbench -. selects from .-> Registry
   Workbench --> Browse["BrowseStore"]
   Workbench --> Changes["ChangesStore"]
   Registry --> Session["ProjectSessionStore (one per loaded target)"]
-  Session --> Model["SessionModel"]
+  Session --> Model["Session"]
   Session --> Composer["MessageComposerStore"]
   Session --> Config["ChatConfigurationStore"]
   Session --> Chat["ChatStore"]

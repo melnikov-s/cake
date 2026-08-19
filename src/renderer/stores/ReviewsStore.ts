@@ -2,7 +2,7 @@ import { Store, child, createStore, observable } from "r-state-tree";
 import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
-import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
+import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { describeError } from "../error-details";
 import type { ThinkingLevel } from "../../ipc/session-contract";
 import type { ChatConfigurationStore } from "./ChatConfigurationStore";
@@ -22,7 +22,7 @@ export interface ReviewsStoreProps {
   model(): { provider: string; id: string } | undefined;
   thinkingLevel(): ThinkingLevel | undefined;
   configuration(): ChatConfigurationStore | undefined;
-  operations: SessionOperationCoordinator;
+  operations: SessionOperationCoordinatorStore;
 }
 
 /** Shared review workflow used by chat, Changes, and Browse. */

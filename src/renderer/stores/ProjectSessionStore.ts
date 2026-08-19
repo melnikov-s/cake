@@ -1,8 +1,8 @@
 import { Store, child, createStore } from "r-state-tree";
 import type { DesktopClient } from "../desktop-client";
-import { SessionModel } from "../models/session";
+import { Session } from "../../models/Session";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
-import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
+import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { PluginCommandStore } from "./PluginCommandStore";
 import { MessageComposerStore } from "./MessageComposerStore";
@@ -19,7 +19,7 @@ export interface SessionTarget {
 export interface ProjectSessionStoreProps extends SessionTarget {
   client: DesktopClient;
   registry: SessionRegistryStore;
-  operations: SessionOperationCoordinator;
+  operations: SessionOperationCoordinatorStore;
   reviews(): ReviewsStore;
   pluginCommands(): PluginCommandStore;
   canSubmit(): boolean;
@@ -32,12 +32,12 @@ export interface ProjectSessionStoreProps extends SessionTarget {
 
 /** Owns the view and interaction workflow for one project Pi session. */
 export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
-  readonly model: SessionModel;
+  readonly model: Session;
   activity: "running" | "unread" | undefined;
 
   constructor(props: ProjectSessionStore["props"]) {
     super(props);
-    this.model = SessionModel.create({
+    this.model = Session.create({
       sessionId: props.sessionId,
       workspacePath: props.workspacePath,
     });

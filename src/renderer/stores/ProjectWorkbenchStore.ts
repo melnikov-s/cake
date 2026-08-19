@@ -14,8 +14,8 @@ import type { PluginCommandStore } from "./PluginCommandStore";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
-import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
-import type { WindowPersistenceCoordinator } from "./WindowPersistenceCoordinator";
+import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
+import type { WindowPersistenceCoordinatorStore } from "./WindowPersistenceCoordinatorStore";
 import { describeError } from "../error-details";
 
 export interface ProjectWorkbenchStoreProps {
@@ -44,12 +44,12 @@ export interface ProjectWorkbenchStoreProps {
     | "restartPi"
   >;
   sessionRegistry: SessionRegistryStore;
-  operations: SessionOperationCoordinator;
+  operations: SessionOperationCoordinatorStore;
   projects: ProjectCatalogStore;
   reviews(): ReviewsStore;
   extensionUi(): ExtensionUiStore;
   pluginCommands(): PluginCommandStore;
-  persistence(): WindowPersistenceCoordinator;
+  persistence(): WindowPersistenceCoordinatorStore;
   catalog: SessionCatalogStore;
 }
 

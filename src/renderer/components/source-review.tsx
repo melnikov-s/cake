@@ -2,7 +2,7 @@ import { code } from "@streamdown/code";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import type { ReviewAnchor } from "../../ipc/review-contract";
-import type { ReviewThreadModel } from "../models/review-thread";
+import type { ReviewThread } from "../../models/ReviewThread";
 import type { ReviewsStore } from "../stores/ReviewsStore";
 import { extractSourceSelection } from "./source-selection";
 import { Chat } from "./chat";
@@ -176,7 +176,7 @@ export const ReviewThreadCard = observer(function ReviewThreadCard({
   store,
   onFocus,
 }: {
-  thread: ReviewThreadModel;
+  thread: ReviewThread;
   store: ReviewsStore;
   onFocus?: () => void;
 }) {
@@ -253,7 +253,7 @@ interface SourceReviewProps {
   tokens?: HighlightTokens;
   diff: string;
   reviews: ReviewsStore;
-  threads: ReviewThreadModel[];
+  threads: ReviewThread[];
   ariaLabel: string;
   className?: string;
   actionLabel?: string;
@@ -261,7 +261,7 @@ interface SourceReviewProps {
   prefix?(line: string, index: number): ReactNode;
   beforeLine?(index: number): ReactNode;
   afterLines?: ReactNode;
-  onFocusThread?(thread: ReviewThreadModel): void;
+  onFocusThread?(thread: ReviewThread): void;
 }
 
 export const SourceReview = observer(function SourceReview({
@@ -391,7 +391,7 @@ export const SourceReview = observer(function SourceReview({
   );
 });
 
-export function reviewThreadPreview(thread: ReviewThreadModel, fallback: string) {
+export function reviewThreadPreview(thread: ReviewThread, fallback: string) {
   const body = thread.textParts.find((message) => message.role === "user")?.text ?? fallback;
   return body.length > 72 ? `${body.slice(0, 72)}…` : body;
 }

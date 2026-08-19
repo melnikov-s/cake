@@ -8,7 +8,7 @@ import type {
   ThinkingLevel,
 } from "../../ipc/session-contract";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
-import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
+import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { CakeChatSessionStore } from "./CakeChatSessionStore";
 import { describeError } from "../error-details";
 
@@ -45,7 +45,7 @@ export interface GlobalChatStoreProps {
   port: GlobalChatPort;
   tools(): ReadonlyArray<{ name: string; description: string; parameters: JsonObject }>;
   sessions(): SessionRegistryStore;
-  operations: SessionOperationCoordinator;
+  operations: SessionOperationCoordinatorStore;
 }
 
 /** Owns the Cake Chat session collection, selection, and per-session Store instances. */

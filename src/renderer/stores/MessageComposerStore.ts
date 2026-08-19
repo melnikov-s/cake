@@ -3,7 +3,7 @@ import type { Attachment, FileSuggestion, UiPart } from "../../ipc/session-contr
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { ReviewsStore } from "./ReviewsStore";
-import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
+import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { describeError } from "../error-details";
 import { pastedImageAttachments } from "../pasted-image-attachments";
 
@@ -30,7 +30,7 @@ export interface MessageComposerStoreProps {
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
   matchesPluginCommand(input: string): boolean;
   runPluginCommand(input: string): Promise<boolean>;
-  operations: SessionOperationCoordinator;
+  operations: SessionOperationCoordinatorStore;
   operationOwner: string;
 }
 

@@ -8,7 +8,7 @@ import { CustomizationRecovery } from "./components/customization-recovery";
 import { LoadingState } from "./components/ui/loading-state";
 import { createDesktopClient } from "./desktop-client";
 import { installStaleAssetRecovery } from "./stale-asset-recovery";
-import { mountRootStore } from "./stores/RootStore";
+import { mountRootStore } from "./mount-root-store";
 import "katex/dist/katex.min.css";
 import "streamdown/styles.css";
 import "./styles.css";

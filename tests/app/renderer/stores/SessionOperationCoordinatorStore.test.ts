@@ -1,10 +1,10 @@
 import { createStore, mount } from "r-state-tree";
 import { describe, expect, it } from "vitest";
-import { SessionOperationCoordinator } from "../../../../src/renderer/stores/SessionOperationCoordinator";
+import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
 
-describe("SessionOperationCoordinator", () => {
+describe("SessionOperationCoordinatorStore", () => {
   it("owns workflow membership without synchronized Store-local id lists", () => {
-    const operations = mount(createStore(SessionOperationCoordinator));
+    const operations = mount(createStore(SessionOperationCoordinatorStore));
     const main = operations.start("main-chat");
     const settings = operations.start("settings");
 

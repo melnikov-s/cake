@@ -1,13 +1,14 @@
 import { Store, observable } from "r-state-tree";
 import type { ChangedFile } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
-import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
+import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
+import { errorMessage } from "../../utils/error-message";
 
 export interface ChangesStoreProps {
   client: Pick<DesktopClient, "inspectChanges">;
   projectPath(): string | undefined;
   sessionId(): string | undefined;
-  operations: SessionOperationCoordinator;
+  operations: SessionOperationCoordinatorStore;
 }
 
 /** Owns the Git-backed workspace-changes surface and its refresh policy. */
@@ -135,8 +136,4 @@ export class ChangesStore extends Store<ChangesStoreProps> {
     this.refreshPending = false;
     void this.refresh();
   }
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }

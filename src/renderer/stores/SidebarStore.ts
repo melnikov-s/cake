@@ -1,5 +1,5 @@
 import { Store, observable } from "r-state-tree";
-import { formatRelativeSessionTime } from "../models/session-activity-time";
+import { formatRelativeSessionTime } from "../../utils/format-relative-session-time";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";

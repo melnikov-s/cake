@@ -1,9 +1,11 @@
 import { Store } from "r-state-tree";
 import type { DesktopClientEvent } from "../desktop-client";
-import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
+import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
 /** Owns operation correlation initiated by global Cake controls. */
-export class AppControlOperationStore extends Store<{ operations: SessionOperationCoordinator }> {
+export class AppControlOperationStore extends Store<{
+  operations: SessionOperationCoordinatorStore;
+}> {
   async run(action: (operationId: string) => Promise<void>) {
     const operationId = this.props.operations.start("app-control");
     try {

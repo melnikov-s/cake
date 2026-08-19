@@ -6,7 +6,7 @@ import { MessageCommentsStore } from "../../../../src/renderer/stores/MessageCom
 import type { ChatStore } from "../../../../src/renderer/stores/ChatStore";
 import { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
 import type { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
-import type { SessionOperationCoordinator } from "../../../../src/renderer/stores/SessionOperationCoordinator";
+import type { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
 import type { PluginCommandStore } from "../../../../src/renderer/stores/PluginCommandStore";
 
 describe("MessageCommentsStore", () => {
@@ -14,7 +14,7 @@ describe("MessageCommentsStore", () => {
     const cache = mount(
       createStore(SessionRegistryStore, {
         client: {} as DesktopClient,
-        operations: {} as SessionOperationCoordinator,
+        operations: {} as SessionOperationCoordinatorStore,
         reviews: () => ({}) as ReviewsStore,
         pluginCommands: () => ({}) as PluginCommandStore,
         canSubmit: () => false,
@@ -60,7 +60,7 @@ describe("MessageCommentsStore", () => {
     const cache = mount(
       createStore(SessionRegistryStore, {
         client: {} as DesktopClient,
-        operations: {} as SessionOperationCoordinator,
+        operations: {} as SessionOperationCoordinatorStore,
         reviews: () => ({}) as ReviewsStore,
         pluginCommands: () => ({}) as PluginCommandStore,
         canSubmit: () => false,

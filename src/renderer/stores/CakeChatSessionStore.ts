@@ -5,14 +5,14 @@ import { describeError } from "../error-details";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { ChatStore } from "./ChatStore";
 import type { GlobalChatStore } from "./GlobalChatStore";
-import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
+import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 
 export interface CakeChatSessionStoreProps {
   sessionId: string;
   collection: GlobalChatStore;
   sessions: SessionRegistryStore;
-  operations: SessionOperationCoordinator;
+  operations: SessionOperationCoordinatorStore;
 }
 
 /** Owns the independent draft, attachments, configuration, and turn policy for one Cake Chat session. */

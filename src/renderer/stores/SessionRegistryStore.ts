@@ -2,17 +2,17 @@ import { Store, applySnapshot, child, createStore, observable } from "r-state-tr
 import type { SessionPreview, SessionSnapshot } from "../../ipc/session-contract";
 import type { ReviewThread } from "../../ipc/review-contract";
 import type { DesktopClient } from "../desktop-client";
-import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
+import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { PluginCommandStore } from "./PluginCommandStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import { ProjectSessionStore, type SessionTarget } from "./ProjectSessionStore";
-import { toSessionModelSnapshot, toSessionPreviewSnapshot } from "../models/session-snapshot";
+import { toSessionPreviewSnapshot, toSessionSnapshot } from "../../utils/session-snapshot";
 
 export interface SessionRegistryStoreProps {
   client: DesktopClient;
   catalog?: SessionCatalogStore;
-  operations: SessionOperationCoordinator;
+  operations: SessionOperationCoordinatorStore;
   reviews(): ReviewsStore;
   pluginCommands(): PluginCommandStore;
   canSubmit(sessionId: string): boolean;
@@ -97,7 +97,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   upsert(snapshot: SessionSnapshot) {
     this.rememberSessionLocation(snapshot.sessionId, snapshot.workspacePath);
     const session = this.ensure(snapshot.sessionId);
-    applySnapshot(session.model, toSessionModelSnapshot(snapshot));
+    applySnapshot(session.model, toSessionSnapshot(snapshot));
     if (
       snapshot.parts.length > 0 &&
       this.pendingNewSessionIdsByWorkspace[snapshot.workspacePath] === snapshot.sessionId

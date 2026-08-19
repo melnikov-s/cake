@@ -17,7 +17,7 @@ import {
   suggestProjectFiles,
 } from "../agent/session-discovery";
 import { loadReviewSessionProjection, runInlineWidgetRepair } from "../agent/sidecar-runtime";
-import { ApplicationModel } from "./application-model";
+import { Application } from "../models/Application";
 import { shouldAllowNavigation } from "./navigation-policy";
 import { PiWorkspaceDriver, type PiWorkspaceCommand } from "./pi-workspace-driver";
 import { ArtifactRepository } from "./artifact-repository";
@@ -57,7 +57,7 @@ const pendingTrustRequests = new Map<string, string>();
 const windowCustomizationRevisions = new Map<number, string>();
 const customizationHealthTimers = new Map<number, ReturnType<typeof setTimeout>>();
 let nextWindowSlot = 0;
-let applicationModel = ApplicationModel.from({});
+let applicationModel = Application.from({});
 const stateFileWriter = new AtomicFileWriter();
 
 function clearPendingTrustRequests(webContentsId: number) {
@@ -194,9 +194,9 @@ function appStatePath() {
 
 async function loadApplicationState() {
   try {
-    applicationModel = ApplicationModel.from(JSON.parse(await readFile(appStatePath(), "utf8")));
+    applicationModel = Application.from(JSON.parse(await readFile(appStatePath(), "utf8")));
   } catch {
-    applicationModel = ApplicationModel.from({});
+    applicationModel = Application.from({});
   }
   for (const project of applicationModel.projects) allowedProjectPaths.add(project.path);
 }

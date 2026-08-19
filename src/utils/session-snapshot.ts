@@ -1,13 +1,13 @@
 import type { Snapshot } from "r-state-tree";
-import type { SessionPreview, SessionSnapshot } from "../../ipc/session-contract";
-import { toArtifactSnapshot } from "./artifact";
-import { modelOptionKey } from "./model-option";
-import type { SessionModel } from "./session";
+import type { SessionPreview, SessionSnapshot } from "../ipc/session-contract";
+import { toArtifactSnapshot } from "./artifact-snapshot";
+import { modelOptionKey } from "./model-option-key";
+import type { Session } from "../models/Session";
 
-/** Converts the validated IPC projection into SessionModel's canonical snapshot shape. */
-export function toSessionModelSnapshot(snapshot: SessionSnapshot): Snapshot<SessionModel> {
+/** Converts the validated IPC projection into Session's canonical snapshot shape. */
+export function toSessionSnapshot(snapshot: SessionSnapshot): Snapshot<Session> {
   // SAFETY: Every field is sourced from the validated IPC projection and paired with
-  // the SessionModel field that mirrors it. The cast contains Snapshot's distributive
+  // the Session field that mirrors it. The cast contains Snapshot's distributive
   // array typing at this transport boundary.
   return {
     workspacePath: snapshot.workspacePath,
@@ -27,15 +27,15 @@ export function toSessionModelSnapshot(snapshot: SessionSnapshot): Snapshot<Sess
     resourceDiagnostics: snapshot.compatibility.diagnostics,
     tree: snapshot.tree,
     artifacts: (snapshot.artifacts ?? []).map(toArtifactSnapshot),
-  } as Snapshot<SessionModel>;
+  } as Snapshot<Session>;
 }
 
-export function toSessionPreviewSnapshot(preview: SessionPreview): Snapshot<SessionModel> {
-  // SAFETY: Session previews are validated partial SessionModel snapshots.
+export function toSessionPreviewSnapshot(preview: SessionPreview): Snapshot<Session> {
+  // SAFETY: Session previews are validated partial Session snapshots.
   return {
     workspacePath: preview.workspacePath,
     sessionId: preview.sessionId,
     sessionFile: preview.sessionFile,
     parts: preview.parts,
-  } as Snapshot<SessionModel>;
+  } as Snapshot<Session>;
 }

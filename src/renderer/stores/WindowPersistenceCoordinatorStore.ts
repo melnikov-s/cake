@@ -12,7 +12,7 @@ import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SettingsStore } from "./SettingsStore";
 import type { SidebarStore } from "./SidebarStore";
 
-export interface WindowPersistenceCoordinatorProps {
+export interface WindowPersistenceCoordinatorStoreProps {
   client: Pick<
     DesktopClient,
     "listSessions" | "loadApplicationState" | "loadWindowState" | "saveWindowState"
@@ -28,7 +28,7 @@ export interface WindowPersistenceCoordinatorProps {
 }
 
 /** Hydrates and persists state that spans multiple renderer workflow owners. */
-export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordinatorProps> {
+export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCoordinatorStoreProps> {
   hydrated = false;
   error: string | undefined;
   errorDetails: string | undefined;
@@ -39,7 +39,7 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
   private hydration: Promise<void> | undefined;
   private saveQueue: Promise<void> = Promise.resolve();
 
-  constructor(props: WindowPersistenceCoordinator["props"]) {
+  constructor(props: WindowPersistenceCoordinatorStore["props"]) {
     super(props);
     this.effect(() => {
       return () => {

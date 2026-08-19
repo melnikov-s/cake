@@ -1,11 +1,11 @@
-import { Model, id, state, type Snapshot } from "r-state-tree";
+import { Model, id, state } from "r-state-tree";
 import {
   cakeArtifactV1Schema,
   type ArtifactRecord,
   type CakeArtifactV1,
-} from "../../ipc/artifact-contract";
+} from "../ipc/artifact-contract";
 
-export class ArtifactModel extends Model {
+export class Artifact extends Model {
   @id id = "";
   @state protocol: CakeArtifactV1["protocol"] = "cake.artifact/v1";
   @state sessionId = "";
@@ -39,15 +39,4 @@ export class ArtifactModel extends Model {
       updatedAt: this.updatedAt,
     };
   }
-}
-
-export function toArtifactSnapshot(record: ArtifactRecord): Snapshot<ArtifactModel> {
-  // SAFETY: ArtifactModel mirrors the validated artifact record after its envelope is flattened.
-  return {
-    ...record.artifact,
-    workspacePath: record.workspacePath,
-    digest: record.digest,
-    createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
-  } as Snapshot<ArtifactModel>;
 }

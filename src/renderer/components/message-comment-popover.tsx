@@ -11,7 +11,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { observer } from "r-state-tree/react";
-import type { ReviewThreadModel } from "../models/review-thread";
+import type { ReviewThread } from "../../models/ReviewThread";
 import type { ChatStore } from "../stores/ChatStore";
 import type { MessageCommentsStore } from "../stores/MessageCommentsStore";
 
@@ -258,7 +258,7 @@ export const MessageCommentThreadPopover = observer(function MessageCommentThrea
   onClose,
 }: {
   anchor: HTMLElement | MessageCommentAnchorRect;
-  thread: ReviewThreadModel;
+  thread: ReviewThread;
   store: MessageCommentsStore;
   renderChat(store: ChatStore): ReactNode;
   onClose(): void;

@@ -9,7 +9,7 @@ import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { ChangesStore } from "../stores/ChangesStore";
 import type { ReviewsStore } from "../stores/ReviewsStore";
 import type { BrowseStore } from "../stores/BrowseStore";
-import type { ReviewThreadModel } from "../models/review-thread";
+import type { ReviewThread } from "../../models/ReviewThread";
 import {
   ReviewDraftCard,
   ReviewThreadCard,
@@ -59,7 +59,7 @@ function reviewAnchor(
   };
 }
 
-function threadLocation(thread: ReviewThreadModel) {
+function threadLocation(thread: ReviewThread) {
   const start = thread.anchor.start.newLine ?? thread.anchor.start.oldLine;
   const end = thread.anchor.end.newLine ?? thread.anchor.end.oldLine;
   return start && end && start !== end

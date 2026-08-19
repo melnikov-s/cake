@@ -1,9 +1,9 @@
 import { Model, applySnapshot, child, id, state, type Snapshot } from "r-state-tree";
-import type { ReviewAnchor, ReviewThread } from "../../ipc/review-contract";
-import type { UiPart } from "../../ipc/session-contract";
-import { MessageModel } from "./message";
+import type { ReviewAnchor, ReviewThread as ReviewThreadRecord } from "../ipc/review-contract";
+import type { UiPart } from "../ipc/session-contract";
+import { Message } from "./Message";
 
-export class ReviewThreadModel extends Model {
+export class ReviewThread extends Model {
   @id id = "";
   @state workspacePath = "";
   @state sessionId = "";
@@ -17,9 +17,9 @@ export class ReviewThreadModel extends Model {
     contextAfter: "",
     diff: "",
   };
-  @child(MessageModel) parts: MessageModel[] = [];
-  @state usage: ReviewThread["usage"] = undefined;
-  @state status: ReviewThread["status"] = "open";
+  @child(Message) parts: Message[] = [];
+  @state usage: ReviewThreadRecord["usage"] = undefined;
+  @state status: ReviewThreadRecord["status"] = "open";
   @state createdAt = "";
   @state updatedAt = "";
   @state resolvedAt: string | undefined;
@@ -43,14 +43,14 @@ export class ReviewThreadModel extends Model {
   }
 
   upsertPart(part: UiPart) {
-    // SAFETY: MessageModel's persisted fields mirror the validated UiPart discriminated union.
-    const snapshot = part as Snapshot<MessageModel>;
+    // SAFETY: Message's persisted fields mirror the validated UiPart discriminated union.
+    const snapshot = part as Snapshot<Message>;
     const existing = this.parts.find((current) => current.id === part.id);
     if (existing) applySnapshot(existing, snapshot);
-    else this.parts.push(MessageModel.create(snapshot));
+    else this.parts.push(Message.create(snapshot));
   }
 
-  get value(): ReviewThread {
+  get value(): ReviewThreadRecord {
     return {
       id: this.id,
       workspacePath: this.workspacePath,

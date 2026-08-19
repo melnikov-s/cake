@@ -1,12 +1,12 @@
 import { applySnapshot, isObservable, reaction, toSnapshot } from "r-state-tree";
 import { describe, expect, it } from "vitest";
-import type { SessionSnapshot } from "../../../../src/ipc/session-contract";
-import { MessageModel } from "../../../../src/renderer/models/message";
-import { ModelOptionModel } from "../../../../src/renderer/models/model-option";
-import { SessionModel } from "../../../../src/renderer/models/session";
-import { toSessionModelSnapshot } from "../../../../src/renderer/models/session-snapshot";
-import { SessionTreeEntryModel } from "../../../../src/renderer/models/session-tree-entry";
-import { ReviewThreadModel } from "../../../../src/renderer/models/review-thread";
+import type { SessionSnapshot } from "../../../src/ipc/session-contract";
+import { Message } from "../../../src/models/Message";
+import { ModelOption } from "../../../src/models/ModelOption";
+import { ReviewThread } from "../../../src/models/ReviewThread";
+import { Session } from "../../../src/models/Session";
+import { SessionTreeEntry } from "../../../src/models/SessionTreeEntry";
+import { toSessionSnapshot } from "../../../src/utils/session-snapshot";
 
 const snapshot: SessionSnapshot = {
   workspacePath: "/project",
@@ -106,12 +106,12 @@ const snapshot: SessionSnapshot = {
   tree: [{ id: "entry-1", type: "message", preview: "Hello", active: true }],
 };
 
-describe("SessionModel", () => {
+describe("Session", () => {
   it("hydrates observable arrays and proper child models", () => {
-    const model = SessionModel.create();
+    const model = Session.create();
     const thinkingLevels = model.availableThinkingLevels;
     const diagnostics = model.diagnostics;
-    applySnapshot(model, toSessionModelSnapshot(snapshot));
+    applySnapshot(model, toSessionSnapshot(snapshot));
 
     expect(model.availableThinkingLevels).toBe(thinkingLevels);
     expect(model.diagnostics).toBe(diagnostics);
@@ -123,21 +123,21 @@ describe("SessionModel", () => {
     expect(isObservable(model.availableThinkingLevels)).toBe(true);
     expect(isObservable(model.diagnostics)).toBe(true);
     expect(isObservable(model.tree)).toBe(true);
-    expect(model.parts[0]).toBeInstanceOf(MessageModel);
-    expect(model.models[0]).toBeInstanceOf(ModelOptionModel);
-    expect(model.tree[0]).toBeInstanceOf(SessionTreeEntryModel);
+    expect(model.parts[0]).toBeInstanceOf(Message);
+    expect(model.models[0]).toBeInstanceOf(ModelOption);
+    expect(model.tree[0]).toBeInstanceOf(SessionTreeEntry);
     model[Symbol.dispose]();
   });
 
   it("applies a full session snapshot atomically", () => {
-    const model = SessionModel.create();
+    const model = Session.create();
     const updates: unknown[] = [];
     const stop = reaction(
       () => ({ sessionId: model.sessionId, text: model.parts[0]?.text }),
       (next) => updates.push(next),
     );
 
-    applySnapshot(model, toSessionModelSnapshot(snapshot));
+    applySnapshot(model, toSessionSnapshot(snapshot));
     expect(updates).toHaveLength(1);
     expect(model.uiParts[0]).toMatchObject({
       entryId: "assistant-entry-1",
@@ -149,8 +149,8 @@ describe("SessionModel", () => {
   });
 
   it("creates and updates message children without replacing the parts array", () => {
-    const model = SessionModel.create();
-    applySnapshot(model, toSessionModelSnapshot(snapshot));
+    const model = Session.create();
+    applySnapshot(model, toSessionSnapshot(snapshot));
     const parts = model.parts;
     const message = model.parts[0];
 
@@ -170,10 +170,10 @@ describe("SessionModel", () => {
   });
 
   it("creates and updates persisted review-run parts", () => {
-    const model = SessionModel.create();
+    const model = Session.create();
     applySnapshot(
       model,
-      toSessionModelSnapshot({
+      toSessionSnapshot({
         ...snapshot,
         parts: [
           {
@@ -208,10 +208,10 @@ describe("SessionModel", () => {
   });
 
   it("hydrates queued delivery and compaction transcript parts", () => {
-    const model = SessionModel.create();
+    const model = Session.create();
     applySnapshot(
       model,
-      toSessionModelSnapshot({
+      toSessionSnapshot({
         ...snapshot,
         parts: [
           {
@@ -245,8 +245,8 @@ describe("SessionModel", () => {
   });
 
   it("reconciles identified children through native snapshot hydration", () => {
-    const model = SessionModel.create();
-    applySnapshot(model, toSessionModelSnapshot(snapshot));
+    const model = Session.create();
+    applySnapshot(model, toSessionSnapshot(snapshot));
     const message = model.parts[0];
     const openAiModel = model.models[0];
     const gatewayModel = model.models[1];
@@ -256,7 +256,7 @@ describe("SessionModel", () => {
 
     applySnapshot(
       model,
-      toSessionModelSnapshot({
+      toSessionSnapshot({
         ...snapshot,
         parts: [
           {
@@ -290,7 +290,7 @@ describe("SessionModel", () => {
   });
 
   it("keeps one review model instance while its sidecar turn settles", () => {
-    const model = SessionModel.create({ workspacePath: "/project", sessionId: "session-1" });
+    const model = Session.create({ workspacePath: "/project", sessionId: "session-1" });
     const now = new Date(0).toISOString();
     const thread = {
       id: "review-1",
@@ -322,7 +322,7 @@ describe("SessionModel", () => {
     model.applyReviewThreads([thread]);
     const review = model.reviewThreads[0]!;
 
-    expect(review).toBeInstanceOf(ReviewThreadModel);
+    expect(review).toBeInstanceOf(ReviewThread);
     expect(review.pending).toBe(true);
 
     model.upsertReviewThread({

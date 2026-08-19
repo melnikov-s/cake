@@ -1,11 +1,11 @@
 import { Store } from "r-state-tree";
 import type { ModelOption, ThinkingLevel } from "../../ipc/session-contract";
-import type { SessionModel } from "../models/session";
+import type { Session } from "../../models/Session";
 import type { DesktopClientEvent } from "../desktop-client";
 import { describeError } from "../error-details";
 
 export interface ChatConfigurationStoreProps {
-  session(): SessionModel | undefined;
+  session(): Session | undefined;
   operations: {
     start(owner?: string): string;
     finish(operationId: string): void;

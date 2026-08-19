@@ -20,7 +20,7 @@ Markdown or carry compatibility behavior for superseded contracts.
 - Pi receives a `cake.artifact/v1` custom entry containing the artifact ID,
   session ID, revision, kind, digest, and Markdown fallback. It never receives
   a second Cake-owned transcript.
-- Renderer `ArtifactModel` instances are disposable projections of validated
+- Renderer `Artifact` instances are disposable projections of validated
   repository records. Pending response ownership, cancellation, and routing
   remain in a focused renderer artifact workflow Store and `PiWorkspaceDriver`.
 - Cake indexes the persisted Pi session reference in window state and records
