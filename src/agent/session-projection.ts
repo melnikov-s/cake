@@ -24,7 +24,7 @@ export function formatUnknown(value: unknown, limit = 48_000) {
   if (typeof value === "string") formatted = value;
   else {
     try {
-      formatted = JSON.stringify(value, null, 2);
+      formatted = JSON.stringify(value, null, 2) ?? String(value ?? "");
     } catch {
       formatted = String(value);
     }

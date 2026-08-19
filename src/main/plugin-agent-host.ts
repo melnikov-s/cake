@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { WebContents } from "electron";
-import { runBoundedCompletion } from "../agent/utility-model";
+import { z } from "zod";
+import { createUtilityModelRuntime, runBoundedCompletion } from "../agent/utility-model";
 import type { CakeRuntimeEvent } from "../agent/cake-runtime";
 import {
   PLUGIN_COMPLETION_INPUT_MAX,
@@ -31,30 +31,31 @@ interface Handle {
   status: "idle" | "running" | "error";
   settledRevision: string;
   error?: string;
+  privateSession: boolean;
+  latestSnapshot: SessionSnapshot;
+  emitTimer?: ReturnType<typeof setTimeout>;
   unsubscribe(): void;
 }
 
-const encodeRef = (value: unknown) => JSON.stringify(value);
-const decodeRef = (id: string): unknown => JSON.parse(id);
+const PLUGIN_AGENT_EVENT_INTERVAL_MS = 50;
+
+const workspaceRefValueSchema = z.object({ workspacePath: z.string().min(1) }).strict();
+const sessionRefValueSchema = z.object({ sessionId: z.string().min(1).max(256) }).strict();
 
 export function workspaceRef(workspacePath: string): WorkspaceRef {
-  return { kind: "cake.workspace-ref", id: encodeRef({ workspacePath }) };
+  return { kind: "cake.workspace-ref", id: JSON.stringify(workspaceRefValueSchema.parse({ workspacePath })) };
 }
 
 export function sessionRef(sessionId: string): SessionRef {
-  return { kind: "cake.session-ref", id: encodeRef({ sessionId }) };
+  return { kind: "cake.session-ref", id: JSON.stringify(sessionRefValueSchema.parse({ sessionId })) };
 }
 
 export function resolveWorkspaceRef(ref: WorkspaceRef) {
-  const value = decodeRef(ref.id);
-  if (!value || typeof value !== "object" || !("workspacePath" in value) || typeof value.workspacePath !== "string") throw new Error("Invalid Cake workspace reference");
-  return value.workspacePath;
+  return workspaceRefValueSchema.parse(JSON.parse(ref.id)).workspacePath;
 }
 
 export function resolveSessionRef(ref: SessionRef) {
-  const value = decodeRef(ref.id);
-  if (!value || typeof value !== "object" || Object.keys(value).length !== 1 || !("sessionId" in value) || typeof value.sessionId !== "string") throw new Error("Invalid Cake session reference");
-  return value.sessionId;
+  return sessionRefValueSchema.parse(JSON.parse(ref.id)).sessionId;
 }
 
 function fallbackReason(snapshot: SessionSnapshot, provider: string, modelId: string) {
@@ -112,7 +113,9 @@ function contextText(snapshot: SessionSnapshot, request: PluginCompletionRequest
   else if (selection === "last-assistant-message") selected = messages.filter((part) => part.role === "assistant").slice(-1);
   else if (selection.kind === "recent-messages") selected = messages.slice(-selection.count);
   else selected = messages;
-  const maximum = typeof selection === "object" && selection.kind === "current-branch" ? selection.maximumInputCharacters : PLUGIN_COMPLETION_INPUT_MAX;
+  const maximum = selection !== "last-message" && selection !== "last-user-message" && selection !== "last-assistant-message" && selection.kind === "current-branch"
+    ? selection.maximumInputCharacters
+    : PLUGIN_COMPLETION_INPUT_MAX;
   const text = selected.map((part) => `<${part.role}>\n${part.text}\n</${part.role}>`).join("\n\n");
   return text.length <= maximum ? text : text.slice(text.length - maximum);
 }
@@ -134,37 +137,46 @@ export class PluginAgentHost {
     const implicitTarget = implicit ? await this.resolveSession(pluginId, implicit) : undefined;
     let workspacePath: string;
     let target: Parameters<PiWorkspaceDriver["openAgent"]>[0]["target"];
+    let privateSession: boolean;
     if (open.session.kind === "new") {
       workspacePath = open.session.workspace ? resolveWorkspaceRef(open.session.workspace) : implicitTarget?.workspacePath ?? "";
       if (!workspacePath) throw new Error("A new plugin agent requires a workspace context");
       target = { kind: "new", visibility: open.session.visibility };
+      privateSession = open.session.visibility === "private";
     } else if (open.session.kind === "attach") {
       const resolved = open.session.target ? await this.resolveSession(pluginId, open.session.target) : implicitTarget;
       if (!resolved) throw new Error("Attaching a plugin agent requires a session context");
       workspacePath = resolved.workspacePath;
       target = { kind: "attach", sessionId: resolved.sessionId };
+      privateSession = resolved.privateSession;
     } else {
       const resolved = open.session.source ? await this.resolveSession(pluginId, open.session.source) : implicitTarget;
       if (!resolved) throw new Error("Forking a plugin agent requires a session context");
       workspacePath = resolved.workspacePath;
       target = { kind: "fork", sessionId: resolved.sessionId, entryId: open.session.entryId, visibility: open.session.visibility };
+      privateSession = open.session.visibility === "private";
     }
     const driver = this.options.driver(workspacePath);
-    let snapshot = await driver.openAgent({ target, instructions: open.instructions });
-    const resolvedModel = resolveAgentModel(open.model, snapshot, this.options.utilityModel());
-    const modelAlreadySelected = snapshot.model?.provider === resolvedModel.provider && snapshot.model.id === resolvedModel.modelId && snapshot.thinkingLevel === resolvedModel.thinkingLevel;
-    if (!modelAlreadySelected) {
-      if (snapshot.streaming) throw new Error("Cannot change the model profile while the attached agent is running");
-      snapshot = await driver.configureAgent(snapshot.sessionId, resolvedModel.provider, resolvedModel.modelId, resolvedModel.thinkingLevel);
+    let snapshot: SessionSnapshot | undefined;
+    try {
+      snapshot = await driver.openAgent({ target, instructions: open.instructions });
+      const resolvedModel = resolveAgentModel(open.model, snapshot, this.options.utilityModel());
+      const modelAlreadySelected = snapshot.model?.provider === resolvedModel.provider && snapshot.model.id === resolvedModel.modelId && snapshot.thinkingLevel === resolvedModel.thinkingLevel;
+      if (!modelAlreadySelected) {
+        if (snapshot.streaming) throw new Error("Cannot change the model profile while the attached agent is running");
+        snapshot = await driver.configureAgent(snapshot.sessionId, resolvedModel.provider, resolvedModel.modelId, resolvedModel.thinkingLevel);
+      }
+      const handleId = crypto.randomUUID();
+      const ref = privateSession ? { kind: "cake.session-ref" as const, id: crypto.randomUUID() } : sessionRef(snapshot.sessionId);
+      if (privateSession) this.privateRefs.set(ref.id, { pluginId, workspacePath, sessionId: snapshot.sessionId });
+      const handle: Handle = { pluginId, ownerId: owner.id, handleId, workspacePath, sessionId: snapshot.sessionId, ref, driver, resolvedModel, status: snapshot.streaming ? "running" : "idle", settledRevision: activity(snapshot).settledRevision, privateSession, latestSnapshot: snapshot, unsubscribe: () => undefined };
+      handle.unsubscribe = driver.subscribeAgent(snapshot.sessionId, (event) => this.receive(owner, handle, event));
+      this.handles.set(handleId, handle);
+      return this.project(handle, snapshot);
+    } catch (error) {
+      if (privateSession && snapshot) driver.releaseAgent(snapshot.sessionId);
+      throw error;
     }
-    const handleId = crypto.randomUUID();
-    const privateSession = (open.session.kind === "new" || open.session.kind === "fork") && open.session.visibility === "private";
-    const ref = privateSession ? { kind: "cake.session-ref" as const, id: crypto.randomUUID() } : sessionRef(snapshot.sessionId);
-    if (privateSession) this.privateRefs.set(ref.id, { pluginId, workspacePath, sessionId: snapshot.sessionId });
-    const handle: Handle = { pluginId, ownerId: owner.id, handleId, workspacePath, sessionId: snapshot.sessionId, ref, driver, resolvedModel, status: snapshot.streaming ? "running" : "idle", settledRevision: activity(snapshot).settledRevision, unsubscribe: () => undefined };
-    handle.unsubscribe = driver.subscribeAgent(snapshot.sessionId, (event) => this.receive(owner, handle, event));
-    this.handles.set(handleId, handle);
-    return this.project(handle, snapshot);
   }
 
   async command(owner: WebContents, pluginId: string, handleId: string, delivery: "prompt" | "steer" | "follow-up", text: string) {
@@ -172,6 +184,7 @@ export class PluginAgentHost {
     handle.status = "running";
     try {
       const snapshot = await handle.driver.agentPrompt(handle.sessionId, text, delivery);
+      handle.latestSnapshot = snapshot;
       handle.status = snapshot.streaming ? "running" : "idle";
       return this.project(handle, snapshot);
     } catch (error) {
@@ -184,14 +197,14 @@ export class PluginAgentHost {
   async abort(owner: WebContents, pluginId: string, handleId: string) {
     const handle = this.requireHandle(owner, pluginId, handleId);
     const snapshot = await handle.driver.agentAbort(handle.sessionId);
+    handle.latestSnapshot = snapshot;
     handle.status = "idle";
     return this.project(handle, snapshot);
   }
 
   detach(owner: WebContents, pluginId: string, handleId: string) {
     const handle = this.requireHandle(owner, pluginId, handleId);
-    handle.unsubscribe();
-    this.handles.delete(handleId);
+    this.disposeHandle(handleId, handle);
   }
 
   async complete(pluginId: string, request: PluginCompletionRequest, implicit?: SessionRef, signal?: AbortSignal): Promise<PluginCompletionResult> {
@@ -205,7 +218,7 @@ export class PluginAgentHost {
     const cached = this.completionCache.get(cacheKey);
     if (cached) return cached;
     const completionSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000);
-    const modelRuntime = await ModelRuntime.create({ authPath: `${this.options.agentDir}/auth.json`, modelsPath: `${this.options.agentDir}/models.json`, modelsStorePath: `${this.options.agentDir}/models-cache.json`, signal: completionSignal });
+    const modelRuntime = await createUtilityModelRuntime(this.options.agentDir, completionSignal);
     const text = await runBoundedCompletion({ modelRuntime, model: resolvedModel, instructions: request.instructions, context: contextText(snapshot, request), maximumOutputCharacters: request.maximumOutputCharacters, signal: completionSignal });
     const latest = await this.options.driver(target.workspacePath).agentSnapshot(target.sessionId);
     if (activity(latest).settledRevision !== sourceRevision) throw new Error("The session context changed while the plugin completion was running");
@@ -216,7 +229,7 @@ export class PluginAgentHost {
   }
 
   disposeOwner(ownerId: number) {
-    for (const [id, handle] of this.handles) if (handle.ownerId === ownerId) { handle.unsubscribe(); this.handles.delete(id); }
+    for (const [id, handle] of this.handles) if (handle.ownerId === ownerId) this.disposeHandle(id, handle);
   }
 
   private requireHandle(owner: WebContents, pluginId: string, handleId: string) {
@@ -233,17 +246,55 @@ export class PluginAgentHost {
   }
 
   private receive(owner: WebContents, handle: Handle, event: CakeRuntimeEvent) {
-    if (event.type === "streaming") handle.status = event.streaming ? "running" : "idle";
-    void handle.driver.agentSnapshot(handle.sessionId).then((snapshot) => this.options.emit(owner, { type: "plugin-agent-event", pluginId: handle.pluginId, snapshot: this.project(handle, snapshot) })).catch(() => undefined);
+    if (this.handles.get(handle.handleId) !== handle) return;
+    if (event.type === "snapshot") {
+      handle.latestSnapshot = event.snapshot;
+    } else if (event.type === "streaming") {
+      handle.status = event.streaming ? "running" : "idle";
+      handle.latestSnapshot = { ...handle.latestSnapshot, streaming: event.streaming };
+    } else if (event.type === "part-updated") {
+      const index = handle.latestSnapshot.parts.findIndex((part) => part.id === event.part.id);
+      const parts = [...handle.latestSnapshot.parts];
+      if (index === -1) parts.push(event.part);
+      else parts[index] = event.part;
+      handle.latestSnapshot = { ...handle.latestSnapshot, parts };
+    } else if (event.type === "part-removed") {
+      handle.latestSnapshot = { ...handle.latestSnapshot, parts: handle.latestSnapshot.parts.filter((part) => part.id !== event.partId) };
+    } else {
+      return;
+    }
+    this.scheduleEmit(owner, handle, event.type === "streaming" && !event.streaming);
+  }
+
+  private scheduleEmit(owner: WebContents, handle: Handle, immediate: boolean) {
+    if (handle.emitTimer && !immediate) return;
+    if (handle.emitTimer) clearTimeout(handle.emitTimer);
+    const emit = () => {
+      handle.emitTimer = undefined;
+      if (this.handles.get(handle.handleId) !== handle) return;
+      this.options.emit(owner, { type: "plugin-agent-event", pluginId: handle.pluginId, snapshot: this.project(handle, handle.latestSnapshot) });
+    };
+    if (immediate) emit();
+    else handle.emitTimer = setTimeout(emit, PLUGIN_AGENT_EVENT_INTERVAL_MS);
+  }
+
+  private disposeHandle(handleId: string, handle: Handle) {
+    if (handle.emitTimer) clearTimeout(handle.emitTimer);
+    handle.unsubscribe();
+    this.handles.delete(handleId);
+    if (handle.privateSession) {
+      this.privateRefs.delete(handle.ref.id);
+      handle.driver.releaseAgent(handle.sessionId);
+    }
   }
 
   private async resolveSession(pluginId: string, ref: SessionRef) {
     const privateTarget = this.privateRefs.get(ref.id);
     if (privateTarget) {
       if (privateTarget.pluginId !== pluginId) throw new Error("Private plugin session references are scoped to their owning plugin");
-      return { workspacePath: privateTarget.workspacePath, sessionId: privateTarget.sessionId };
+      return { workspacePath: privateTarget.workspacePath, sessionId: privateTarget.sessionId, privateSession: true };
     }
     const sessionId = resolveSessionRef(ref);
-    return { workspacePath: await this.options.resolveSessionWorkspacePath(sessionId), sessionId };
+    return { workspacePath: await this.options.resolveSessionWorkspacePath(sessionId), sessionId, privateSession: false };
   }
 }

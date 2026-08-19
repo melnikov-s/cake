@@ -43,6 +43,69 @@ describe("PiWorkspaceDriver", () => {
     driver[Symbol.dispose]();
   });
 
+  it("releases a private agent runtime after its final owning handle closes", async () => {
+    const runtime: CakeRuntime = {
+      sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile,
+      snapshot: vi.fn(async () => snapshot), prompt: vi.fn(async () => undefined), abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), recordReviewRun: vi.fn(), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
+    };
+    const createRuntime = vi.fn(async () => runtime);
+    const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", emit: vi.fn(), createRuntime });
+
+    await driver.openAgent({ target: { kind: "new", visibility: "private" } });
+    await driver.openAgent({ target: { kind: "attach", sessionId: snapshot.sessionId } });
+    driver.releaseAgent(snapshot.sessionId);
+    expect(runtime.dispose).not.toHaveBeenCalled();
+    driver.releaseAgent(snapshot.sessionId);
+
+    expect(runtime.dispose).toHaveBeenCalledOnce();
+    expect(createRuntime).toHaveBeenCalledOnce();
+    driver[Symbol.dispose]();
+  });
+
+  it("spawns a hidden parent-owned subagent and starts its task without exposing a session", async () => {
+    let finishTask!: () => void;
+    const taskGate = new Promise<void>((resolve) => { finishTask = resolve; });
+    const createdWith: CakeRuntimeOptions[] = [];
+    const runtime = (sessionId: string, prompt: CakeRuntime["prompt"]): CakeRuntime => ({
+      sessionId,
+      sessionFile: `/sessions/${sessionId}.jsonl`,
+      snapshot: vi.fn(async () => ({ ...snapshot, sessionId, sessionFile: `/sessions/${sessionId}.jsonl`, model: { provider: "test", id: "model", name: "Model" } })),
+      prompt,
+      abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), recordReviewRun: vi.fn(), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
+    });
+    const parent = runtime("parent", vi.fn(async () => undefined));
+    const childPrompt = vi.fn(async () => taskGate);
+    const child = runtime("child", childPrompt);
+    const driver = new PiWorkspaceDriver({
+      ...piPaths,
+      workspacePath: "/project",
+      emit: vi.fn(),
+      resolveAgentModel: () => ({ requested: "current", source: "current", provider: "test", modelId: "model", thinkingLevel: "off", fallbacks: [] }),
+      createRuntime: vi.fn(async (options) => {
+        createdWith.push(options);
+        return options.sessionDir.endsWith("plugin-agent-sessions") ? child : parent;
+      })
+    });
+    await driver.openAgent({ target: { kind: "new", visibility: "project" } });
+    const control = createdWith[0]?.agentControl;
+    if (!control) throw new Error("Expected subagent control");
+
+    const spawned = await control.spawn({ task: "Audit the IPC boundary", model: { prefer: "current" } }, parent.sessionId, new AbortController().signal);
+
+    expect(spawned).toMatchObject({ handleId: expect.any(String), running: true });
+    expect(JSON.stringify(spawned)).not.toContain('"sessionId"');
+    expect(createdWith[1]).toMatchObject({ newSession: true, sessionDir: "/cake/pi/plugin-agent-sessions" });
+    expect(childPrompt).toHaveBeenCalledWith("Audit the IPC boundary", "prompt", []);
+
+    finishTask();
+    if (typeof spawned !== "object" || spawned === null || Array.isArray(spawned)) throw new Error("Expected subagent spawn result");
+    const handleId = String(spawned.handleId);
+    await expect(control.wait(handleId, parent.sessionId, new AbortController().signal)).resolves.not.toHaveProperty("sessionId");
+    await control.close(handleId, parent.sessionId);
+    expect(child.dispose).toHaveBeenCalledOnce();
+    driver[Symbol.dispose]();
+  });
+
   it("treats a workspace outside Git as having no session changes", async () => {
     const events: DesktopEvent[] = [];
     const runtime: CakeRuntime = {

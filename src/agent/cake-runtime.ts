@@ -132,10 +132,11 @@ export interface CakeRuntimeOptions {
     invoke(input: { name: string; arguments: JsonValue }, signal: AbortSignal): Promise<JsonValue>;
   };
   agentControl?: {
-    open(input: { target: "new" | "attach" | "fork"; sessionId?: string; entryId?: string; visibility: "private" | "project"; model: z.infer<typeof agentModelPreferenceSchema>; instructions?: string }, parentSessionId: string, signal: AbortSignal): Promise<JsonValue>;
+    spawn(input: { task: string; model: z.infer<typeof agentModelPreferenceSchema>; instructions?: string }, parentSessionId: string, signal: AbortSignal): Promise<JsonValue>;
     prompt(input: { handleId: string; text: string; delivery: "prompt" | "follow-up" }, parentSessionId: string, signal: AbortSignal): Promise<JsonValue>;
     wait(handleId: string, parentSessionId: string, signal: AbortSignal): Promise<JsonValue>;
     abort(handleId: string, parentSessionId: string): Promise<JsonValue>;
+    close(handleId: string, parentSessionId: string): Promise<JsonValue>;
   };
   onEvent(event: CakeRuntimeEvent): void;
 }
@@ -166,36 +167,39 @@ function createGlobalControlExtension(control: NonNullable<CakeRuntimeOptions["g
 }
 
 function createAgentControlExtension(control: NonNullable<CakeRuntimeOptions["agentControl"]>, parentSessionId: () => string | undefined): InlineExtension {
-  const openSchema = z.object({
-    target: z.enum(["new", "attach", "fork"]),
-    sessionId: z.string().min(1).max(256).optional(),
-    entryId: z.string().min(1).max(256).optional(),
-    visibility: z.enum(["private", "project"]).default("private"),
+  const spawnSchema = z.object({
+    task: z.string().min(1).max(262_144),
     model: agentModelPreferenceSchema.default({ prefer: "current" }),
     instructions: z.string().max(32_768).optional()
   });
   const promptSchema = z.object({ handleId: z.uuid(), text: z.string().min(1).max(262_144) });
   const handleSchema = z.object({ handleId: z.uuid() });
   const tools = [
-    { name: "agent_open", description: "Create, attach to, or fork a coordinated Cake Pi agent session.", schema: openSchema, run: (value: z.infer<typeof openSchema>, parent: string, signal: AbortSignal) => control.open(value, parent, signal) },
-    { name: "agent_prompt", description: "Send a normal prompt to an idle child agent and wait for its turn.", schema: promptSchema, run: (value: z.infer<typeof promptSchema>, parent: string, signal: AbortSignal) => control.prompt({ ...value, delivery: "prompt" }, parent, signal) },
-    { name: "agent_follow_up", description: "Queue a follow-up for a child agent using Pi's normal queue policy.", schema: promptSchema, run: (value: z.infer<typeof promptSchema>, parent: string, signal: AbortSignal) => control.prompt({ ...value, delivery: "follow-up" }, parent, signal) },
-    { name: "agent_wait", description: "Read the latest state of a child agent.", schema: handleSchema, run: (value: z.infer<typeof handleSchema>, parent: string, signal: AbortSignal) => control.wait(value.handleId, parent, signal) },
-    { name: "agent_abort", description: "Abort active work in a child agent.", schema: handleSchema, run: (value: z.infer<typeof handleSchema>, parent: string) => control.abort(value.handleId, parent) }
+    { name: "subagent_spawn", description: "Start one hidden, parent-owned worker on a bounded task and return its handle immediately. The worker is not a project session; wait for its result, then close it.", schema: spawnSchema, run: (value: z.infer<typeof spawnSchema>, parent: string, signal: AbortSignal) => control.spawn(value, parent, signal) },
+    { name: "subagent_prompt", description: "Send a normal prompt to an idle subagent and wait for its turn.", schema: promptSchema, run: (value: z.infer<typeof promptSchema>, parent: string, signal: AbortSignal) => control.prompt({ ...value, delivery: "prompt" }, parent, signal) },
+    { name: "subagent_follow_up", description: "Queue a follow-up for a subagent using Pi's normal queue policy.", schema: promptSchema, run: (value: z.infer<typeof promptSchema>, parent: string, signal: AbortSignal) => control.prompt({ ...value, delivery: "follow-up" }, parent, signal) },
+    { name: "subagent_wait", description: "Read the latest state of a subagent.", schema: handleSchema, run: (value: z.infer<typeof handleSchema>, parent: string, signal: AbortSignal) => control.wait(value.handleId, parent, signal) },
+    { name: "subagent_abort", description: "Abort active work in a subagent.", schema: handleSchema, run: (value: z.infer<typeof handleSchema>, parent: string) => control.abort(value.handleId, parent) },
+    { name: "subagent_close", description: "Release a subagent handle and its hidden runtime when it is no longer needed.", schema: handleSchema, run: (value: z.infer<typeof handleSchema>, parent: string) => control.close(value.handleId, parent) }
   ];
   return (pi) => {
-    for (const tool of tools) pi.registerTool({
-      name: tool.name,
-      label: tool.name.replaceAll("_", " "),
-      description: tool.description,
-      parameters: z.toJSONSchema(tool.schema) as TSchema,
-      async execute(_toolCallId, params, signal) {
-        const parent = parentSessionId();
-        if (!parent) throw new Error("The parent Cake session is not ready");
-        const result = await tool.run(tool.schema.parse(params) as never, parent, signal ?? new AbortController().signal);
-        return { content: [{ type: "text", text: formatUnknown(result, 24_000) }], details: result };
-      }
-    });
+    for (const tool of tools) {
+      // SAFETY: Pi's TSchema input and Zod's JSON Schema output share the JSON Schema shape used by every Cake inline extension.
+      const parameters = z.toJSONSchema(tool.schema) as TSchema;
+      pi.registerTool({
+        name: tool.name,
+        label: tool.name.replaceAll("_", " "),
+        description: tool.description,
+        parameters,
+        async execute(_toolCallId, params, signal) {
+          const parent = parentSessionId();
+          if (!parent) throw new Error("The parent Cake session is not ready");
+          // SAFETY: Each run callback is paired with the schema that parsed this value in the local tools table above.
+          const result = await tool.run(tool.schema.parse(params) as never, parent, signal ?? new AbortController().signal);
+          return { content: [{ type: "text", text: formatUnknown(result, 24_000) }], details: result };
+        }
+      });
+    }
   };
 }
 
@@ -444,6 +448,10 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     options.onEvent({ type: "snapshot", requestId, snapshot });
   }
 
+  function emitSnapshotInBackground() {
+    void emitSnapshot().catch(() => undefined);
+  }
+
   async function drainReloads() {
     if (reloadInFlight) return reloadInFlight;
     if (reloadCompleted >= reloadRequested || session.isStreaming || session.isCompacting) return;
@@ -612,7 +620,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
         options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "active-compaction", kind: "notice", tone: "error", title: "Compaction failed", detail: event.errorMessage } });
       } else {
         options.onEvent({ type: "part-removed", sessionId: cakeSessionId, partId: "active-compaction" });
-        void emitSnapshot();
+        emitSnapshotInBackground();
       }
     }
     if (event.type === "queue_update") {
@@ -627,7 +635,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     if (event.type === "agent_settled") {
       options.onEvent({ type: "streaming", sessionId: cakeSessionId, streaming: false });
       void nameSessionFromFirstExchange();
-      void captureGitCheckpoint().catch(() => undefined).then(() => drainReloads()).catch(() => undefined).finally(() => emitSnapshot());
+      void captureGitCheckpoint().catch(() => undefined).then(() => drainReloads()).catch(() => undefined).finally(emitSnapshotInBackground);
     }
   });
 

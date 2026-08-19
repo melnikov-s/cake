@@ -14,7 +14,7 @@ import {
   listWorkspaceSessions,
   suggestProjectFiles
 } from "../../../src/agent/session-discovery";
-import { createLiveMessageProjector, projectQueuedMessages } from "../../../src/agent/session-projection";
+import { createLiveMessageProjector, formatUnknown, projectQueuedMessages, projectSessionEntries } from "../../../src/agent/session-projection";
 import { loadReviewSessionProjection, runReviewTurn } from "../../../src/agent/sidecar-runtime";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { CakeArtifactV1 } from "../../../src/ipc/artifact-contract";
@@ -325,6 +325,17 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(parts[0]).toMatchObject({ kind: "tool", name: "bash", input: "sleep 5" });
   });
 
+  it("projects a tool result with no text or details without failing later snapshots", () => {
+    expect(formatUnknown(undefined)).toBe("");
+    expect(projectSessionEntries([{
+      type: "message",
+      id: "tool-result",
+      parentId: null,
+      timestamp: new Date(0).toISOString(),
+      message: { role: "toolResult", toolCallId: "call-1", toolName: "read", content: [], isError: false, timestamp: 0 }
+    } as never])).toEqual([expect.objectContaining({ id: "tool-call-1", kind: "tool", output: "", state: "success" })]);
+  });
+
   it("loads Pi's bundled changelog through its public package directory", () => {
     expect(loadPiChangelog()).toContain("# Changelog");
     expect(loadPiChangelog()).toContain("0.84.0");
@@ -391,6 +402,31 @@ describe("Pi 0.84.0 foundation contract", () => {
 });
 
 describe("S1 Pi runtime", () => {
+  it("exposes delegation as hidden subagents rather than session construction", async () => {
+    const directory = await createTemporaryDirectory();
+    const runtime = await createCakeRuntime({
+      cwd: directory,
+      agentDir: join(directory, "agent"),
+      sessionDir: join(directory, "sessions"),
+      trusted: false,
+      newSession: true,
+      requestUi: async () => undefined,
+      agentControl: {
+        spawn: async () => ({ handleId: crypto.randomUUID(), running: true }),
+        prompt: async () => ({ streaming: false, parts: [] }),
+        wait: async () => ({ streaming: false, parts: [] }),
+        abort: async () => ({ streaming: false }),
+        close: async () => ({ closed: true })
+      },
+      onEvent: () => undefined
+    });
+    runtimes.push(runtime);
+
+    const tools = runtime.getReviewParentContext?.().activeTools ?? [];
+    expect(tools).toEqual(expect.arrayContaining(["subagent_spawn", "subagent_prompt", "subagent_follow_up", "subagent_wait", "subagent_abort", "subagent_close"]));
+    expect(tools).not.toEqual(expect.arrayContaining(["agent_open", "agent_prompt", "agent_wait"]));
+  });
+
   it("enables Cake application tools in global chat without enabling coding tools", async () => {
     const directory = await createTemporaryDirectory();
     const runtime = await createCakeRuntime({

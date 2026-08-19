@@ -1,4 +1,4 @@
-import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { UtilityModel } from "../ipc/session-contract";
 import type { ResolvedAgentModel } from "../ipc/plugin-agent-contract";
 import { textFromContent } from "./session-projection";
@@ -6,6 +6,15 @@ import { textFromContent } from "./session-projection";
 const USER_CONTEXT_LIMIT = 8_000;
 const ASSISTANT_CONTEXT_LIMIT = 2_000;
 const TITLE_CHARACTER_LIMIT = 40;
+
+export function createUtilityModelRuntime(agentDir: string, signal: AbortSignal) {
+  return ModelRuntime.create({
+    authPath: `${agentDir}/auth.json`,
+    modelsPath: `${agentDir}/models.json`,
+    modelsStorePath: `${agentDir}/models-cache.json`,
+    signal
+  });
+}
 
 export interface GenerateSessionTitleOptions {
   modelRuntime: Pick<ModelRuntime, "getModel" | "completeSimple">;

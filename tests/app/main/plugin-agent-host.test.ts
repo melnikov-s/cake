@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import type { WebContents } from "electron";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { CakeRuntimeEvent } from "../../../src/agent/cake-runtime";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
-import { resolveAgentModel, resolveSessionRef, sessionRef } from "../../../src/main/plugin-agent-host";
+import { PluginAgentHost, resolveAgentModel, resolveSessionRef, sessionRef, workspaceRef } from "../../../src/main/plugin-agent-host";
+import type { PiWorkspaceDriver } from "../../../src/main/pi-workspace-driver";
 
 const model = (provider: string, id: string, authenticated = true) => ({ provider, id, providerName: provider, name: id, reasoning: true, input: ["text" as const], authenticated, authTypes: [] });
 const base = {
@@ -10,6 +13,8 @@ const base = {
   thinkingLevel: "high", availableThinkingLevels: ["off", "high"], streaming: false, diagnostics: [], commands: [],
   compatibility: { resources: [], diagnostics: [] }, extensionUi: { statuses: [] }, sessions: [], tree: []
 } satisfies SessionSnapshot;
+
+afterEach(() => vi.useRealTimers());
 
 describe("plugin agent model resolution", () => {
   it("falls back from unavailable utility to Pi default with observable metadata", () => {
@@ -27,5 +32,41 @@ describe("plugin agent model resolution", () => {
 
   it("round-trips opaque host session references", () => {
     expect(resolveSessionRef(sessionRef("session-1"))).toBe("session-1");
+  });
+
+  it("coalesces live part events without launching a full snapshot for every token", async () => {
+    vi.useFakeTimers();
+    let listener: ((event: CakeRuntimeEvent) => void) | undefined;
+    const releaseAgent = vi.fn();
+    const agentSnapshot = vi.fn(async () => base);
+    const driver = {
+      openAgent: vi.fn(async () => base),
+      configureAgent: vi.fn(async () => base),
+      subscribeAgent: vi.fn((_sessionId: string, next: (event: CakeRuntimeEvent) => void) => { listener = next; return vi.fn(); }),
+      agentSnapshot,
+      releaseAgent
+    } as unknown as PiWorkspaceDriver;
+    const emitted: unknown[] = [];
+    const host = new PluginAgentHost({
+      agentDir: "/cake/pi",
+      utilityModel: () => undefined,
+      driver: () => driver,
+      resolveSessionWorkspacePath: async () => "/project",
+      emit: (_owner, event) => emitted.push(event)
+    });
+    const owner = { id: 1 } as WebContents;
+    const opened = await host.open(owner, "plugin.test", { session: { kind: "new", workspace: workspaceRef("/project"), visibility: "private" }, model: { prefer: "current" } });
+
+    for (let index = 1; index <= 100; index += 1) {
+      listener?.({ type: "part-updated", sessionId: base.sessionId, part: { id: "stream", kind: "text", role: "assistant", text: "x".repeat(index), status: "streaming" } });
+    }
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(agentSnapshot).not.toHaveBeenCalled();
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({ type: "plugin-agent-event", snapshot: { parts: [expect.objectContaining({ text: "x".repeat(100) })] } });
+
+    host.detach(owner, "plugin.test", opened.handleId);
+    expect(releaseAgent).toHaveBeenCalledWith(base.sessionId);
   });
 });

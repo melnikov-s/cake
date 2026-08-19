@@ -29,6 +29,11 @@ export function cakeWorkspaceSessionDirectory(cwd: string, sessionRoot: string) 
   return join(resolve(sessionRoot), safePath);
 }
 
+export function forkWorkspaceSession(sourceFile: string, cwd: string, sessionRoot: string) {
+  const manager = SessionManager.forkFrom(sourceFile, cwd, cakeWorkspaceSessionDirectory(cwd, sessionRoot));
+  return { sessionId: manager.getSessionId(), sessionFile: manager.getSessionFile() ?? undefined };
+}
+
 export async function suggestProjectFiles(options: { cwd: string; prefix: string; agentDir: string; fdPath?: string }): Promise<FileSuggestion[]> {
   const installedFd = join(options.agentDir, "bin", process.platform === "win32" ? "fd.exe" : "fd");
   const provider = new CombinedAutocompleteProvider([], options.cwd, options.fdPath ?? (existsSync(installedFd) ? installedFd : "fd"));
