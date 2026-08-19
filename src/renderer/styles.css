@@ -560,6 +560,16 @@ button.reasoning-summary { border: 0; background: transparent; }
 .tool-code-input [data-streamdown="code-block-body"] { max-width: 100%; overflow-x: auto; }
 .tool-code-input pre, .tool-code-input code { max-width: 100%; }
 .tool-bash-input pre, .tool-bash-input code { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+.subagent-call { display: grid; gap: 8px; }
+.subagent-header { display: flex; min-width: 0; align-items: center; gap: 8px; font: 600 11px var(--font-mono); }
+.subagent-title { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subagent-status, .subagent-usage { color: var(--muted-foreground); font: 10px var(--font-mono); }
+.subagent-task { margin: 0; overflow-wrap: anywhere; color: color-mix(in oklab, var(--foreground) 88%, var(--muted-foreground)); font-size: 12px; line-height: 1.45; }
+.subagent-activity { display: flex; flex-wrap: wrap; gap: 6px; }
+.subagent-activity > span { display: inline-flex; align-items: center; gap: 5px; border: 1px solid color-mix(in oklab, var(--border) 72%, transparent); border-radius: 999px; padding: 3px 7px; color: var(--muted-foreground); font: 10px var(--font-mono); }
+.subagent-activity .tool-state { width: 5px; height: 5px; margin: 0; }
+.subagent-result { border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent); padding-top: 8px; }
+.subagent-result > summary { cursor: pointer; color: var(--muted-foreground); font: 600 10px var(--font-mono); }
 .tool-edit { padding: 0 !important; overflow: hidden; }
 .tool-edit > .tool-summary { min-height: 38px; padding: 0 12px; }
 .tool-edit.tool-open > .tool-summary { padding-block: 11px; }

@@ -120,14 +120,22 @@ reasons are returned; a provider failure after execution begins never triggers
 fallback. Opportunistic internal utility work still skips when no utility model
 is configured.
 
-Pi agents receive focused `subagent_spawn`, `subagent_prompt`,
+Pi agents receive focused `subagent_spawn`, `subagent_parallel`, `subagent_prompt`,
 `subagent_follow_up`, `subagent_wait`, `subagent_abort`, and `subagent_close`
 tools backed by the same coordinator. Subagents are hidden, parent-owned
 workers, never project sessions: the tool contract cannot attach, fork, select
 visibility, or expose the backing Pi session identity. Handles are
-parent-scoped, cancellation reaches active child work, and private runtimes are
-bounded per workspace and released with their owning handle. Closing a private
-parent also releases its private descendants.
+parent-scoped and use isolated context. Every task chooses a capability profile:
+`scout`, `planner`, and `reviewer` receive only read/search tools, while `worker`
+receives the parent's non-delegation tools. Recursive delegation defaults to
+depth zero and is capped at one explicitly requested descendant level. Parallel
+delegation accepts at most eight tasks and runs at most four at once per
+workspace. Cancellation reaches active child work. One-shot handles release
+their private runtime automatically after capturing the result; multi-turn
+continuation requires `retain: true`. Closing a private parent also releases
+its private descendants. Cake projects live child tool activity, usage, cost,
+and the final answer through the parent tool call rather than exposing a second
+transcript.
 
 Automatic project-session naming is the first utility workflow. After a
 completed assistant turn, an unnamed session may send its original first user

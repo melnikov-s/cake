@@ -413,6 +413,7 @@ describe("S1 Pi runtime", () => {
       requestUi: async () => undefined,
       agentControl: {
         spawn: async () => ({ handleId: crypto.randomUUID(), running: true }),
+        parallel: async () => ({ mode: "parallel", completed: 0, total: 0, results: [] }),
         prompt: async () => ({ streaming: false, parts: [] }),
         wait: async () => ({ streaming: false, parts: [] }),
         abort: async () => ({ streaming: false }),
@@ -423,7 +424,7 @@ describe("S1 Pi runtime", () => {
     runtimes.push(runtime);
 
     const tools = runtime.getReviewParentContext?.().activeTools ?? [];
-    expect(tools).toEqual(expect.arrayContaining(["subagent_spawn", "subagent_prompt", "subagent_follow_up", "subagent_wait", "subagent_abort", "subagent_close"]));
+    expect(tools).toEqual(expect.arrayContaining(["subagent_spawn", "subagent_parallel", "subagent_prompt", "subagent_follow_up", "subagent_wait", "subagent_abort", "subagent_close"]));
     expect(tools).not.toEqual(expect.arrayContaining(["agent_open", "agent_prompt", "agent_wait"]));
   });
 

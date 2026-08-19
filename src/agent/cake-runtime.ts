@@ -26,7 +26,6 @@ import type {
 } from "../ipc/session-contract";
 import { SESSION_TITLE_MAX_LENGTH, piBuiltinSlashCommands, slashCommandSchema } from "../ipc/session-contract";
 import { jsonValueSchema, type JsonObject, type JsonValue } from "../ipc/json-contract";
-import { agentModelPreferenceSchema } from "../ipc/plugin-agent-contract";
 import { artifactRecordSchema, type ArtifactRecord, type ArtifactPointer, type CakeArtifactV1 } from "../ipc/artifact-contract";
 import type { TSchema } from "@earendil-works/pi-ai";
 import { createCakeArtifactExtension } from "./artifact-extension";
@@ -36,6 +35,7 @@ import { assertSessionPath } from "./session-path";
 import { applyPiSetting } from "./settings-translation";
 import { cakePluginAuthoringSkillPath, cakeWorkspaceSessionDirectory, listWorkspaceSessions } from "./session-discovery";
 import { generateSessionTitle } from "./utility-model";
+import { parallelSubagentSchema, subagentTaskSchema, type ParallelSubagentTasks, type ParallelSubagentTasksInput, type SubagentTask, type SubagentTaskInput } from "./subagent-contract";
 import {
   boundedProjectionKey,
   createLiveMessageProjector,
@@ -116,6 +116,7 @@ export interface CakeRuntimeOptions {
   sessionFile?: string;
   pluginResources?: { skills: string[]; prompts: string[]; extensions: string[] };
   additionalSystemPrompt?: string;
+  tools?: string[];
   requestUi(request: RuntimeUiRequest): Promise<string | undefined>;
   persistArtifact?(artifact: CakeArtifactV1): Promise<ArtifactRecord>;
   requestArtifact?(record: ArtifactRecord, signal: AbortSignal): Promise<JsonValue | undefined>;
@@ -132,9 +133,10 @@ export interface CakeRuntimeOptions {
     invoke(input: { name: string; arguments: JsonValue }, signal: AbortSignal): Promise<JsonValue>;
   };
   agentControl?: {
-    spawn(input: { task: string; model: z.infer<typeof agentModelPreferenceSchema>; instructions?: string }, parentSessionId: string, signal: AbortSignal): Promise<JsonValue>;
+    spawn(input: SubagentTaskInput, parentSessionId: string, signal: AbortSignal): Promise<JsonValue>;
+    parallel(input: ParallelSubagentTasksInput, parentSessionId: string, signal: AbortSignal, onUpdate?: (value: JsonValue) => void): Promise<JsonValue>;
     prompt(input: { handleId: string; text: string; delivery: "prompt" | "follow-up" }, parentSessionId: string, signal: AbortSignal): Promise<JsonValue>;
-    wait(handleId: string, parentSessionId: string, signal: AbortSignal): Promise<JsonValue>;
+    wait(handleId: string, parentSessionId: string, signal: AbortSignal, onUpdate?: (value: JsonValue) => void): Promise<JsonValue>;
     abort(handleId: string, parentSessionId: string): Promise<JsonValue>;
     close(handleId: string, parentSessionId: string): Promise<JsonValue>;
   };
@@ -167,18 +169,14 @@ function createGlobalControlExtension(control: NonNullable<CakeRuntimeOptions["g
 }
 
 function createAgentControlExtension(control: NonNullable<CakeRuntimeOptions["agentControl"]>, parentSessionId: () => string | undefined): InlineExtension {
-  const spawnSchema = z.object({
-    task: z.string().min(1).max(262_144),
-    model: agentModelPreferenceSchema.default({ prefer: "current" }),
-    instructions: z.string().max(32_768).optional()
-  });
   const promptSchema = z.object({ handleId: z.uuid(), text: z.string().min(1).max(262_144) });
   const handleSchema = z.object({ handleId: z.uuid() });
   const tools = [
-    { name: "subagent_spawn", description: "Start one hidden, parent-owned worker on a bounded task and return its handle immediately. The worker is not a project session; wait for its result, then close it.", schema: spawnSchema, run: (value: z.infer<typeof spawnSchema>, parent: string, signal: AbortSignal) => control.spawn(value, parent, signal) },
+    { name: "subagent_spawn", description: "Start one isolated, parent-owned subagent with an explicit capability profile. Delegation depth is zero and completed runtimes are released by default; set retain only for intentional multi-turn work.", schema: subagentTaskSchema, run: (value: SubagentTask, parent: string, signal: AbortSignal) => control.spawn(value, parent, signal) },
+    { name: "subagent_parallel", description: "Run up to eight bounded subagent tasks with a workspace-wide active concurrency limit and return all results.", schema: parallelSubagentSchema, run: (value: ParallelSubagentTasks, parent: string, signal: AbortSignal, onUpdate?: (value: JsonValue) => void) => control.parallel(value, parent, signal, onUpdate) },
     { name: "subagent_prompt", description: "Send a normal prompt to an idle subagent and wait for its turn.", schema: promptSchema, run: (value: z.infer<typeof promptSchema>, parent: string, signal: AbortSignal) => control.prompt({ ...value, delivery: "prompt" }, parent, signal) },
     { name: "subagent_follow_up", description: "Queue a follow-up for a subagent using Pi's normal queue policy.", schema: promptSchema, run: (value: z.infer<typeof promptSchema>, parent: string, signal: AbortSignal) => control.prompt({ ...value, delivery: "follow-up" }, parent, signal) },
-    { name: "subagent_wait", description: "Read the latest state of a subagent.", schema: handleSchema, run: (value: z.infer<typeof handleSchema>, parent: string, signal: AbortSignal) => control.wait(value.handleId, parent, signal) },
+    { name: "subagent_wait", description: "Wait for a subagent and stream its latest tool activity, usage, and final result.", schema: handleSchema, run: (value: z.infer<typeof handleSchema>, parent: string, signal: AbortSignal, onUpdate?: (value: JsonValue) => void) => control.wait(value.handleId, parent, signal, onUpdate) },
     { name: "subagent_abort", description: "Abort active work in a subagent.", schema: handleSchema, run: (value: z.infer<typeof handleSchema>, parent: string) => control.abort(value.handleId, parent) },
     { name: "subagent_close", description: "Release a subagent handle and its hidden runtime when it is no longer needed.", schema: handleSchema, run: (value: z.infer<typeof handleSchema>, parent: string) => control.close(value.handleId, parent) }
   ];
@@ -191,11 +189,12 @@ function createAgentControlExtension(control: NonNullable<CakeRuntimeOptions["ag
         label: tool.name.replaceAll("_", " "),
         description: tool.description,
         parameters,
-        async execute(_toolCallId, params, signal) {
+        async execute(_toolCallId, params, signal, onUpdate) {
           const parent = parentSessionId();
           if (!parent) throw new Error("The parent Cake session is not ready");
+          const update = (value: JsonValue) => onUpdate?.({ content: [{ type: "text", text: formatUnknown(value, 24_000) }], details: value });
           // SAFETY: Each run callback is paired with the schema that parsed this value in the local tools table above.
-          const result = await tool.run(tool.schema.parse(params) as never, parent, signal ?? new AbortController().signal);
+          const result = await tool.run(tool.schema.parse(params) as never, parent, signal ?? new AbortController().signal, update);
           return { content: [{ type: "text", text: formatUnknown(result, 24_000) }], details: result };
         }
       });
@@ -316,7 +315,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
   const { session, extensionsResult, modelFallbackMessage } = await createAgentSession(
     options.globalControl
       ? { ...agentSessionOptions, noTools: "builtin" as const }
-      : agentSessionOptions,
+      : options.tools ? { ...agentSessionOptions, tools: options.tools } : agentSessionOptions,
   );
   const cakeSessionId = session.sessionManager.getSessionId();
   runtimeIdentity.sessionId = cakeSessionId;

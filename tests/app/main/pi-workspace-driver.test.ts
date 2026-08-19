@@ -92,7 +92,7 @@ describe("PiWorkspaceDriver", () => {
 
     const spawned = await control.spawn({ task: "Audit the IPC boundary", model: { prefer: "current" } }, parent.sessionId, new AbortController().signal);
 
-    expect(spawned).toMatchObject({ handleId: expect.any(String), running: true });
+    expect(spawned).toMatchObject({ handleId: expect.any(String), task: "Audit the IPC boundary", profile: "worker", status: "running", retained: false, maxDepth: 0 });
     expect(JSON.stringify(spawned)).not.toContain('"sessionId"');
     expect(createdWith[1]).toMatchObject({ newSession: true, sessionDir: "/cake/pi/plugin-agent-sessions" });
     expect(childPrompt).toHaveBeenCalledWith("Audit the IPC boundary", "prompt", []);
@@ -101,7 +101,6 @@ describe("PiWorkspaceDriver", () => {
     if (typeof spawned !== "object" || spawned === null || Array.isArray(spawned)) throw new Error("Expected subagent spawn result");
     const handleId = String(spawned.handleId);
     await expect(control.wait(handleId, parent.sessionId, new AbortController().signal)).resolves.not.toHaveProperty("sessionId");
-    await control.close(handleId, parent.sessionId);
     expect(child.dispose).toHaveBeenCalledOnce();
     driver[Symbol.dispose]();
   });

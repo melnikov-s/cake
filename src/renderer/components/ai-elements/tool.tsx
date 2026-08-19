@@ -5,6 +5,7 @@ import { jsonObjectSchema, jsonValueSchema } from "../../../ipc/json-contract";
 import type { UiPart } from "../../../ipc/session-contract";
 import { DiffView } from "./diff-view";
 import { fencedCode, Markdown } from "./markdown";
+import { SubagentTool } from "./subagent-tool";
 
 function parseJson(value: string) {
   try {
@@ -64,6 +65,7 @@ function editPreview(part: Extract<UiPart, { kind: "tool" }>) {
 
 export function Tool({ part }: { part: Extract<UiPart, { kind: "tool" }> }) {
   const [open, setOpen] = useState(false);
+  if (part.name.startsWith("subagent_")) return <SubagentTool part={part} />;
   const diff = editPreview(part);
   const title = toolTitle(part);
   const bash = part.name === "bash" && part.input ? part.input : undefined;

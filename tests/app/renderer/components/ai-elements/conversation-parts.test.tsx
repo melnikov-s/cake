@@ -108,4 +108,29 @@ describe("Cake-owned conversation components", () => {
     expect(html).toContain("# Cake");
     expect(html).toContain("before:content-[counter(line)]");
   });
+
+  it("renders subagent work as a compact execution trace", () => {
+    const html = renderToStaticMarkup(<Tool part={{
+      id: "subagent-1",
+      kind: "tool",
+      name: "subagent_wait",
+      input: JSON.stringify({ handleId: crypto.randomUUID() }),
+      output: JSON.stringify({
+        task: "Inspect the session boundary",
+        profile: "reviewer",
+        status: "complete",
+        parts: [
+          { id: "child-tool", kind: "tool", name: "read", input: "src/main.ts", state: "success" },
+          { id: "child-text", kind: "text", role: "assistant", text: "The boundary is correctly isolated.", status: "complete" }
+        ],
+        usage: { tokens: { input: 100, output: 25, cacheRead: 0, cacheWrite: 0, total: 125 }, cost: 0.002 }
+      }),
+      state: "success"
+    }} />);
+    expect(html).toContain("reviewer subagent");
+    expect(html).toContain("Inspect the session boundary");
+    expect(html).toContain("Subagent activity");
+    expect(html).toContain("125 tokens");
+    expect(html).toContain("The boundary is correctly isolated.");
+  });
 });
