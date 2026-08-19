@@ -12,7 +12,7 @@ function createBridge() {
     if (input.type === "choose-attachments") return { type: "attachments-chosen", attachments: [] };
     if (input.type === "suggest-files") return { type: "file-suggestions", suggestions: [{ value: "@src/app.ts", label: "app.ts", description: "src/app.ts" }] };
     if (input.type === "list-workspace-files") return { type: "workspace-files", files: ["PLAN.md", "src/app.ts"] };
-    if (input.type === "load-window-state") return { type: "window-state-loaded", state: { draft: "", recentProjectPaths: [], theme: "system", thinkingExpanded: false, draftsBySession: {} } };
+    if (input.type === "load-window-state") return { type: "window-state-loaded", state: { draft: "", recentProjectPaths: [], theme: "system", thinkingExpanded: false, draftsBySession: {}, newSessionDraftsByProject: {} } };
     if (input.type === "list-sessions") return { type: "sessions-listed", sessions: [], reviewThreads: [] };
     if (input.type === "load-session") return { type: "session-loaded", session: undefined };
     if (input.type === "list-plugins" || input.type === "set-plugin-enabled" || input.type === "delete-plugin") return { type: "plugins-listed", plugins: [] };

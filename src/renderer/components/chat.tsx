@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { Button } from "@/components/ui/button";
 import { ChatComposer } from "@/components/chat-composer";
@@ -36,14 +36,11 @@ export const Chat = observer(function Chat({ store, transcriptBehavior, empty, f
   embedded?: boolean;
   compact?: boolean;
 }) {
-  const [draftValue, setDraftValue] = useState(store.draft);
-  useEffect(() => setDraftValue(store.draft), [store, store.draft]);
   const submit = async (value?: string, mode: "send" | "steer" = "send") => {
-    const submitted = await store.submit(value ?? draftValue, mode);
-    if (submitted) setDraftValue(store.draft);
+    await store.submit(value ?? store.draft, mode);
   };
   const composer = store.composerVisible && <div className={embedded ? "chat-embedded-composer" : "composer-dock"}>
-    <ChatComposer className={embedded ? "chat-embedded-workbench-composer" : undefined} configuration={store.configuration} onSubmit={(event) => { event.preventDefault(); void submit(); }} input={<SlashCommandCombobox autoFocus aria-label={store.inputLabel} commands={store.commands} focusRequestRevision={store.focusRequestRevision} suggestFiles={store.canSuggestFiles ? (prefix) => store.suggestFiles(prefix) : undefined} placeholder={store.placeholder} value={draftValue} disabled={store.submittingLocally} onValueChange={(value) => { setDraftValue(value); store.setDraft(value); }} onPaste={(event) => {
+    <ChatComposer className={embedded ? "chat-embedded-workbench-composer" : undefined} configuration={store.configuration} onSubmit={(event) => { event.preventDefault(); void submit(); }} input={<SlashCommandCombobox autoFocus aria-label={store.inputLabel} commands={store.commands} focusRequestRevision={store.focusRequestRevision} suggestFiles={store.canSuggestFiles ? (prefix) => store.suggestFiles(prefix) : undefined} placeholder={store.placeholder} value={store.draft} disabled={store.submittingLocally} onValueChange={(value) => { store.setDraft(value); }} onPaste={(event) => {
       if (!store.canPasteImages) return;
       const images = [...event.clipboardData.files].filter((file) => file.type.startsWith("image/"));
       if (images.length === 0) for (const item of event.clipboardData.items) {
@@ -59,7 +56,7 @@ export const Chat = observer(function Chat({ store, transcriptBehavior, empty, f
       {pluginActions}
       {store.streaming && store.canAbort && <Button variant="ghost" size="sm" type="button" onClick={() => void store.abort()}>Stop</Button>}
       {store.streaming && store.allowSteer && <Button variant="outline" size="sm" type="button" disabled={!store.canSubmit} onClick={() => void submit(undefined, "steer")}>Steer</Button>}
-      <Button className="send-button" size="sm" type="submit" disabled={!store.canSubmitDraft(draftValue)}>{store.submitting ? "Sending…" : store.streaming ? "Queue" : "Send"}<SendIcon /></Button>
+      <Button className="send-button" size="sm" type="submit" disabled={!store.canSubmitDraft(store.draft)}>{store.submitting ? "Sending…" : store.streaming ? "Queue" : "Send"}<SendIcon /></Button>
     </>}>
       {composerContent}
       {store.attachments.length > 0 && <div className="attachment-list">{store.attachments.map((attachment, index) => attachment.kind === "image"

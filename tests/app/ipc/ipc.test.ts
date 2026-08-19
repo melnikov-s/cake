@@ -99,7 +99,8 @@ describe("process IPC", () => {
       draft: "",
       theme: "system",
       thinkingExpanded: false,
-      draftsBySession: {}
+      draftsBySession: {},
+      newSessionDraftsByProject: {}
     });
   });
 

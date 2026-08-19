@@ -57,7 +57,7 @@ function createDesktopClient(restoredPath?: string) {
     readWorkspaceFile: vi.fn(async () => ""),
     compileInlineWidget: vi.fn(async () => ({ url: "cake-widget://document/00000000-0000-4000-8000-000000000001", token: "00000000-0000-4000-8000-000000000001" })),
     repairInlineWidget: vi.fn(async (input) => ({ source: input.source, repairSessionId: "repair-session" })),
-    loadWindowState: vi.fn(async () => ({ projectPath: restoredPath, recentProjectPaths: restoredPath ? [restoredPath] : [], draft: "saved", theme: "system" as const, thinkingExpanded: false, draftsBySession: {} })),
+    loadWindowState: vi.fn(async () => ({ projectPath: restoredPath, recentProjectPaths: restoredPath ? [restoredPath] : [], draft: "saved", theme: "system" as const, thinkingExpanded: false, draftsBySession: {}, newSessionDraftsByProject: {} })),
     saveWindowState: vi.fn(async () => undefined),
     loadApplicationState: vi.fn(async () => ({ schemaVersion: 1 as const, projects: [], resolvedSessionIds: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [] })),
     setUtilityModel: vi.fn(async (model) => ({ schemaVersion: 1 as const, projects: [], resolvedSessionIds: [], resolvedCakeChatSessionIds: [], trustedProjectPaths: [], utilityModel: model })),
@@ -396,7 +396,8 @@ describe("ProjectWorkbenchStore", () => {
       draft: "",
       theme: "system" as const,
       thinkingExpanded: false,
-      draftsBySession: {}
+      draftsBySession: {},
+      newSessionDraftsByProject: {}
     }));
     desktop.client.listSessions = vi.fn(async () => ({
       sessions: [{ id: "session-1", title: "Project work", created: new Date(0).toISOString(), modified: new Date(0).toISOString(), messageCount: 1, resolved: false, workspacePath: "/project", workspaceName: "Project" }],
@@ -420,7 +421,8 @@ describe("ProjectWorkbenchStore", () => {
       draft: "",
       theme: "system" as const,
       thinkingExpanded: false,
-      draftsBySession: { "unpersisted-session": "" }
+      draftsBySession: { "unpersisted-session": "" },
+      newSessionDraftsByProject: {}
     }));
     const { root, store } = mountTestStore(desktop.client);
     await flush();
@@ -883,6 +885,34 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("restores the pending new-session draft for each project", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+
+    await store.startNewSession("/project");
+    const firstOpenId = store.activeOperations.at(-1)!;
+    desktop.emit({ type: "session-snapshot-received", operationId: firstOpenId, snapshot: { ...snapshot, sessionId: "new-project", sessionFile: "" } });
+    store.activeSession!.chatStore.setDraft("draft for project");
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(vi.mocked(desktop.client.saveWindowState).mock.calls.at(-1)?.[0].newSessionDraftsByProject).toEqual({ "/project": "draft for project" });
+
+    await store.startNewSession("/other");
+    const inspectId = store.activeOperations.at(-1)!;
+    desktop.emit({ type: "workspace-inspected", operationId: inspectId, path: "/other", trustRequired: false });
+    const secondOpenId = store.activeOperations.at(-1)!;
+    desktop.emit({ type: "session-snapshot-received", operationId: secondOpenId, snapshot: { ...snapshot, workspacePath: "/other", sessionId: "new-other", sessionFile: "" } });
+    store.activeSession!.chatStore.setDraft("draft for other");
+
+    await store.startNewSession("/project");
+
+    expect(store.activeSession?.sessionId).toBe("new-project");
+    expect(store.activeSession?.chatStore.draft).toBe("draft for project");
+    expect(desktop.client.inspectWorkspace).toHaveBeenLastCalledWith(expect.objectContaining({ path: "/project" }));
+    root[Symbol.dispose]();
+  });
+
   it("keeps drafts per session across projects", async () => {
     const desktop = createDesktopClient();
     const applicationState = {
@@ -946,7 +976,8 @@ describe("ProjectWorkbenchStore", () => {
       draft: "",
       theme: "system" as const,
       thinkingExpanded: false,
-      draftsBySession: {}
+      draftsBySession: {},
+      newSessionDraftsByProject: {}
     }));
     desktop.client.registerProject = vi.fn(async () => applicationState);
     const { root, store } = mountTestStore(desktop.client);

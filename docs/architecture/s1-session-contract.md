@@ -14,7 +14,7 @@ selected workspace and emits only the schemas in `src/ipc/session-contract.ts`.
 | Active run, queued delivery, UI requests | Main-process Pi workspace runtime | One active session runtime; replaced with take-latest semantics when switching sessions |
 | Transcript projection | Renderer `SessionModel` tree | Window lifetime; `RootStore` applies validated desktop events |
 | Composer workflow | Renderer chat/composer Store | Window lifetime; the focused Store owns drafts, submission policy, and pending composer operations |
-| Project history, trusted paths, composer draft, theme, reasoning visibility | Cake main process | Atomic `window-state.json`, saved only after renderer hydration |
+| Project history, trusted paths, per-session composer drafts, pending new-session drafts by project, theme, reasoning visibility | Cake main process | Atomic `window-state.json`, saved only after renderer hydration |
 | Attachment selection | Renderer workflow | Cleared after accepted submission; images are bounded by IPC schemas |
 
 Renderer workflow Stores depend on the intent-level `DesktopClient`, not IPC

@@ -220,6 +220,17 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       await this.chooseProject();
       return;
     }
+    // Pi does not list an empty session until its first prompt. Keep one pending
+    // session per project so returning through the project + action reopens its draft.
+    const pending = this.sessionRegistry.pendingNewSession(path);
+    if (pending) {
+      if (path === this.projectPath && pending.sessionId === this.session?.sessionId) {
+        pending.composerStore.requestFocus();
+        return;
+      }
+      await this.openSession(pending.sessionId);
+      return;
+    }
     if (path === this.projectPath) await this.openPath(path, true);
     else await this.inspectPath(path, true);
   }
@@ -368,6 +379,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return this.activeOpenTarget?.sessionId === sessionId;
   }
 
+  isOpeningNewSession(operationId: string) {
+    return this.activeOpenOperationId === operationId && this.activeOpenTarget?.newSession === true;
+  }
+
   async refreshChangelog() {
     const context = this.sessionContext();
     if (!context || this.changelogLoading) return;
@@ -460,13 +475,14 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     }
   }
 
-  applySessionSnapshot(snapshot: SessionSnapshot, previousSessionId?: string, focusComposer = false) {
+  applySessionSnapshot(snapshot: SessionSnapshot, previousSessionId?: string, focusComposer = false, newSession = false) {
     const restartDraft = this.draftAfterAgentRestart;
     this.projectPath = snapshot.workspacePath;
     this.selectedSessionId = snapshot.sessionId;
     const activeSession = this.sessionRegistry.ensure(snapshot.sessionId);
+    if (newSession) this.sessionRegistry.rememberNewSession(snapshot.workspacePath, snapshot.sessionId);
     this.markSessionRead(snapshot.sessionId);
-    this.props.persistence().applySessionRestore(activeSession, previousSessionId, restartDraft);
+    this.props.persistence().applySessionRestore(activeSession, previousSessionId, restartDraft, newSession);
     this.draftAfterAgentRestart = undefined;
     if (previousSessionId !== undefined) this.extensionUi.clear();
     this.extensionUi.applyState(snapshot.extensionUi);

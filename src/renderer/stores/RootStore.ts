@@ -345,6 +345,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     this.extensionUiStore.receive(event);
     if (event.type === "session-snapshot-received") {
       const previousSessionId = this.projectWorkbenchStore.session?.sessionId;
+      const newSession = event.operationId ? this.projectWorkbenchStore.isOpeningNewSession(event.operationId) : false;
       if (event.operationId && !this.projectWorkbenchStore.acceptSessionSnapshot(event)) return;
       const previous = this.sessionRegistry.findModel(event.snapshot.sessionId);
       const wasStreaming = previous?.streaming ?? false;
@@ -353,7 +354,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       session.updateActivity(event.snapshot.streaming, wasStreaming);
       session.composerStore.reconcile(event.snapshot.sessionId);
       if (event.operationId || this.projectWorkbenchStore.isActiveSession(event.snapshot.sessionId)) {
-        this.projectWorkbenchStore.applySessionSnapshot(event.snapshot, event.operationId ? previousSessionId : undefined, Boolean(event.operationId));
+        this.projectWorkbenchStore.applySessionSnapshot(event.snapshot, event.operationId ? previousSessionId : undefined, Boolean(event.operationId), newSession);
         if (this.appShellStore.surface === "workbench") {
           this.appShellStore.selectProjectSession(event.snapshot.sessionId);
         }

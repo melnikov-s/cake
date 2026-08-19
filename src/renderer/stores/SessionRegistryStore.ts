@@ -26,6 +26,9 @@ export interface SessionRegistryStoreProps {
 /** Owns the keyed collection of loaded per-session Store instances for a window. */
 export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   readonly targets: SessionTarget[] = observable([]);
+  // Empty Pi sessions have no catalog entry, so retain their identity by project
+  // until the first persisted prompt makes them discoverable.
+  private readonly pendingNewSessionIdsByWorkspace: Record<string, string> = observable({});
   private readonly sessionWorkspacePaths = new Map<string, string>();
 
   @child
@@ -65,10 +68,38 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     return session;
   }
 
+  pendingNewSession(workspacePath: string) {
+    const sessionId = this.pendingNewSessionIdsByWorkspace[workspacePath];
+    if (!sessionId) return undefined;
+    const session = this.findSession(sessionId);
+    if (session) return session;
+    delete this.pendingNewSessionIdsByWorkspace[workspacePath];
+    return undefined;
+  }
+
+  rememberNewSession(workspacePath: string, sessionId: string) {
+    const current = this.pendingNewSessionIdsByWorkspace[workspacePath];
+    if (current && current !== sessionId) return;
+    this.pendingNewSessionIdsByWorkspace[workspacePath] = sessionId;
+  }
+
+  pendingNewSessionDrafts() {
+    const drafts: Record<string, string> = {};
+    for (const workspacePath of Object.keys(this.pendingNewSessionIdsByWorkspace)) {
+      const session = this.pendingNewSession(workspacePath);
+      if (session) drafts[workspacePath] = session.chatStore.draft;
+    }
+    return drafts;
+  }
+
   upsert(snapshot: SessionSnapshot) {
     this.rememberSessionLocation(snapshot.sessionId, snapshot.workspacePath);
     const session = this.ensure(snapshot.sessionId);
     applySnapshot(session.model, toSessionModelSnapshot(snapshot));
+    if (snapshot.parts.length > 0 && this.pendingNewSessionIdsByWorkspace[snapshot.workspacePath] === snapshot.sessionId) {
+      delete this.pendingNewSessionIdsByWorkspace[snapshot.workspacePath];
+      this.props.persist();
+    }
     return session.model;
   }
 

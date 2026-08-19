@@ -30,6 +30,7 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
   error: string | undefined;
   errorDetails: string | undefined;
   private restoredDraft = "";
+  private restoredNewSessionDraftsByProject: Record<string, string> = {};
   private restoredThinkingExpanded = false;
   private persistTimer: ReturnType<typeof setTimeout> | undefined;
   private hydration: Promise<void> | undefined;
@@ -65,10 +66,13 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
     }, 180);
   }
 
-  applySessionRestore(session: ProjectSessionStore, previousSessionId?: string, restartDraft?: string) {
+  applySessionRestore(session: ProjectSessionStore, previousSessionId?: string, restartDraft?: string, newSession = false) {
+    const restoredProjectDraft = newSession ? this.restoredNewSessionDraftsByProject[session.workspacePath] : undefined;
     if (restartDraft !== undefined) session.chatStore.setDraft(restartDraft);
+    else if (restoredProjectDraft !== undefined && !session.chatStore.draft) session.chatStore.setDraft(restoredProjectDraft);
     else if (!previousSessionId && !session.chatStore.draft) session.chatStore.setDraft(this.restoredDraft);
     session.chatStore.setThinkingExpanded(this.restoredThinkingExpanded);
+    if (newSession) delete this.restoredNewSessionDraftsByProject[session.workspacePath];
     this.restoredDraft = "";
     this.restoredThinkingExpanded = false;
   }
@@ -88,6 +92,7 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
       this.props.projects.restoreRecentPaths(state.recentProjectPaths);
       this.props.settings().theme = state.theme;
       this.restoredDraft = state.draft;
+      this.restoredNewSessionDraftsByProject = { ...state.newSessionDraftsByProject };
       this.restoredThinkingExpanded = state.thinkingExpanded;
 
       const reviewsBySession = new Map<string, typeof sessionIndex.reviewThreads>();
@@ -135,7 +140,11 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
       draft: activeSession?.chatStore.draft ?? "",
       theme: this.props.settings().theme,
       thinkingExpanded: activeSession?.chatStore.thinkingExpanded ?? false,
-      draftsBySession: Object.fromEntries(this.props.registry.sessions.map((session) => [session.sessionId, session.chatStore.draft]))
+      draftsBySession: Object.fromEntries(this.props.registry.sessions.map((session) => [session.sessionId, session.chatStore.draft])),
+      newSessionDraftsByProject: {
+        ...this.restoredNewSessionDraftsByProject,
+        ...this.props.registry.pendingNewSessionDrafts()
+      }
     };
   }
 
