@@ -24,7 +24,7 @@ import type {
   UiPart,
   UtilityModel
 } from "../ipc/session-contract";
-import { piBuiltinSlashCommands, slashCommandSchema } from "../ipc/session-contract";
+import { SESSION_TITLE_MAX_LENGTH, piBuiltinSlashCommands, slashCommandSchema } from "../ipc/session-contract";
 import { jsonValueSchema, type JsonObject, type JsonValue } from "../ipc/json-contract";
 import { agentModelPreferenceSchema } from "../ipc/plugin-agent-contract";
 import { artifactRecordSchema, type ArtifactRecord, type ArtifactPointer, type CakeArtifactV1 } from "../ipc/artifact-contract";
@@ -369,8 +369,11 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
   }
 
   async function makeSnapshot(): Promise<SessionSnapshot> {
-    const sessions = await listWorkspaceSessions(options.cwd, options.sessionDir, Boolean(options.globalControl));
     const stats = session.getSessionStats();
+    const listedSessions = await listWorkspaceSessions(options.cwd, options.sessionDir, Boolean(options.globalControl));
+    const sessions = listedSessions.some((item) => item.id === cakeSessionId)
+      ? listedSessions
+      : [activeSessionSummary(stats.totalMessages), ...listedSessions];
     const globalSettings = settingsManager.getGlobalSettings();
     const branchParts = projectSessionEntries(session.sessionManager.getBranch());
     const queuedParts = projectQueuedMessages(session.getSteeringMessages(), session.getFollowUpMessages());
@@ -438,6 +441,25 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       sessions,
       tree: projectTree(session.sessionManager),
       artifacts: await (options.listArtifacts?.(projectArtifactPointers(session.sessionManager)) ?? Promise.resolve([]))
+    };
+  }
+
+  function activeSessionSummary(messageCount: number): SessionSnapshot["sessions"][number] {
+    const header = session.sessionManager.getHeader();
+    const entries = session.sessionManager.getEntries();
+    const created = header?.timestamp ?? new Date().toISOString();
+    const firstUserMessage = entries.flatMap((entry) => {
+      if (entry.type !== "message" || entry.message.role !== "user" || !("content" in entry.message)) return [];
+      return [textFromContent(entry.message.content).trim()];
+    })
+      .find(Boolean);
+    return {
+      id: cakeSessionId,
+      title: (session.sessionManager.getSessionName() || firstUserMessage || "New chat").slice(0, SESSION_TITLE_MAX_LENGTH),
+      created,
+      modified: entries.at(-1)?.timestamp ?? created,
+      messageCount,
+      resolved: false
     };
   }
 

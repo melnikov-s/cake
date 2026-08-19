@@ -4,29 +4,23 @@ import type { GlobalSessionSummary, SessionSnapshot } from "../../ipc/session-co
 /** The single renderer-owned catalog of Pi session summaries. */
 export class SessionCatalogStore extends Store<Record<string, never>> {
   readonly sessions: GlobalSessionSummary[] = observable([]);
-  private indexRevision = 0;
-  private indexedRevision = -1;
   private indexedById = new Map<string, GlobalSessionSummary>();
   private indexedByProject = new Map<string, GlobalSessionSummary[]>();
   private resolvedSessionIds = new Set<string>();
 
   find(sessionId: string) {
-    this.ensureIndexes();
     return this.indexedById.get(sessionId);
   }
 
   get sessionsById(): ReadonlyMap<string, GlobalSessionSummary> {
-    this.ensureIndexes();
     return this.indexedById;
   }
 
   get sessionsByProject(): ReadonlyMap<string, readonly GlobalSessionSummary[]> {
-    this.ensureIndexes();
     return this.indexedByProject;
   }
 
   projectSessions(workspacePath: string) {
-    this.ensureIndexes();
     return this.indexedByProject.get(workspacePath) ?? [];
   }
 
@@ -34,7 +28,7 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
     this.assertUniqueIds(sessions);
     this.sessions.splice(0, this.sessions.length, ...sessions);
     this.sortByActivity();
-    this.invalidateIndexes();
+    this.rebuildIndexes();
   }
 
   applyWorkspace(workspacePath: string, workspaceName: string, sessions: SessionSnapshot["sessions"]) {
@@ -50,7 +44,7 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
     this.assertUniqueIds(next);
     this.sessions.splice(0, this.sessions.length, ...next);
     this.sortByActivity();
-    this.invalidateIndexes();
+    this.rebuildIndexes();
   }
 
   applyResolvedState(resolvedSessionIds: readonly string[]) {
@@ -60,7 +54,7 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
       const resolved = this.resolvedSessionIds.has(session.id);
       if (session.resolved !== resolved) this.sessions.splice(index, 1, { ...session, resolved });
     }
-    this.invalidateIndexes();
+    this.rebuildIndexes();
   }
 
   rename(sessionId: string, title: string) {
@@ -69,7 +63,7 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
     const session = this.sessions[index]!;
     const previousTitle = session.title;
     this.sessions.splice(index, 1, { ...session, title });
-    this.invalidateIndexes();
+    this.rebuildIndexes();
     return previousTitle;
   }
 
@@ -79,7 +73,7 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
       const workspaceName = names.get(session.workspacePath) ?? session.workspaceName;
       if (workspaceName !== session.workspaceName) this.sessions.splice(index, 1, { ...session, workspaceName });
     }
-    this.invalidateIndexes();
+    this.rebuildIndexes();
   }
 
   private sortByActivity() {
@@ -94,12 +88,7 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
     }
   }
 
-  private invalidateIndexes() {
-    this.indexRevision += 1;
-  }
-
-  private ensureIndexes() {
-    if (this.indexedRevision === this.indexRevision) return;
+  private rebuildIndexes() {
     const byId = new Map<string, GlobalSessionSummary>();
     const byProject = new Map<string, GlobalSessionSummary[]>();
     for (const session of this.sessions) {
@@ -110,6 +99,5 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
     }
     this.indexedById = byId;
     this.indexedByProject = byProject;
-    this.indexedRevision = this.indexRevision;
   }
 }

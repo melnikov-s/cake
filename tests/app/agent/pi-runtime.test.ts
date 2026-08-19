@@ -543,6 +543,11 @@ describe("S1 Pi runtime", () => {
     expect(first.sessionFile).toMatch(/\.jsonl$/);
     expect(firstSnapshot.sessionId).toBe(first.sessionId);
     expect(firstSnapshot.parts).toEqual([]);
+    expect(firstSnapshot.sessions).toEqual([expect.objectContaining({
+      id: first.sessionId,
+      title: "New chat",
+      messageCount: 0
+    })]);
     expect(firstSnapshot.piSettings).toMatchObject({ autoCompact: true, steeringMode: "one-at-a-time", transport: "auto" });
     await first.setPiSetting({ key: "autoCompact", value: false });
     await first.setPiSetting({ key: "steeringMode", value: "all" });
