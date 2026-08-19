@@ -133,7 +133,9 @@ receives the parent's non-delegation tools. Recursive delegation defaults to
 depth zero and is capped at one explicitly requested descendant level. Parallel
 delegation accepts at most eight tasks and runs at most four at once per
 workspace. A task acquires an active slot before Cake constructs its private Pi
-runtime. Private runtimes omit project-session catalogs, model menus, command
+runtime. Cake resolves and validates every requested model against the parent
+session before constructing any child; parallel batches preflight atomically.
+Private runtimes omit project-session catalogs, model menus, command
 menus, session trees, artifact indexes, and automatic naming. Live activity is
 coalesced from child part events rather than rebuilding full session snapshots.
 Cancellation reaches active child work. One-shot handles release

@@ -66,21 +66,22 @@ describe("PiWorkspaceDriver", () => {
     let finishTask!: () => void;
     const taskGate = new Promise<void>((resolve) => { finishTask = resolve; });
     const createdWith: CakeRuntimeOptions[] = [];
-    const runtime = (sessionId: string, prompt: CakeRuntime["prompt"]): CakeRuntime => ({
+    const runtime = (sessionId: string, prompt: CakeRuntime["prompt"], includeModel = true): CakeRuntime => ({
       sessionId,
       sessionFile: `/sessions/${sessionId}.jsonl`,
-      snapshot: vi.fn(async () => ({ ...snapshot, sessionId, sessionFile: `/sessions/${sessionId}.jsonl`, model: { provider: "test", id: "model", name: "Model" } })),
+      snapshot: vi.fn(async () => ({ ...snapshot, sessionId, sessionFile: `/sessions/${sessionId}.jsonl`, model: includeModel ? { provider: "test", id: "model", name: "Model" } : undefined })),
       prompt,
       abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), recordReviewRun: vi.fn(), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
     });
     const parent = runtime("parent", vi.fn(async () => undefined));
     const childPrompt = vi.fn(async () => taskGate);
-    const child = runtime("child", childPrompt);
+    const child = runtime("child", childPrompt, false);
+    const resolveAgentModel = vi.fn(() => ({ requested: "current" as const, source: "current" as const, provider: "test", modelId: "model", thinkingLevel: "off" as const, fallbacks: [] }));
     const driver = new PiWorkspaceDriver({
       ...piPaths,
       workspacePath: "/project",
       emit: vi.fn(),
-      resolveAgentModel: () => ({ requested: "current", source: "current", provider: "test", modelId: "model", thinkingLevel: "off", fallbacks: [] }),
+      resolveAgentModel,
       createRuntime: vi.fn(async (options) => {
         createdWith.push(options);
         return options.sessionDir.endsWith("plugin-agent-sessions") ? child : parent;
@@ -94,6 +95,7 @@ describe("PiWorkspaceDriver", () => {
 
     expect(spawned).toMatchObject({ handleId: expect.any(String), task: "Audit the IPC boundary", profile: "worker", status: "running", retained: false, maxDepth: 0 });
     expect(JSON.stringify(spawned)).not.toContain('"sessionId"');
+    expect(resolveAgentModel).toHaveBeenCalledWith({ prefer: "current" }, expect.objectContaining({ sessionId: parent.sessionId }));
     expect(createdWith[1]).toMatchObject({ newSession: true, sessionDir: "/cake/pi/plugin-agent-sessions", auxiliary: true, agentControl: undefined });
     await vi.waitFor(() => expect(childPrompt).toHaveBeenCalledWith("Audit the IPC boundary", "prompt", []));
 
@@ -109,6 +111,42 @@ describe("PiWorkspaceDriver", () => {
     finishTask();
     await expect(waiting).resolves.not.toHaveProperty("sessionId");
     expect(child.dispose).toHaveBeenCalledOnce();
+    driver[Symbol.dispose]();
+  });
+
+  it("preflights every parallel model before constructing a subagent runtime", async () => {
+    const createdWith: CakeRuntimeOptions[] = [];
+    const parent: CakeRuntime = {
+      sessionId: "parent",
+      sessionFile: "/sessions/parent.jsonl",
+      snapshot: vi.fn(async () => ({ ...snapshot, sessionId: "parent", sessionFile: "/sessions/parent.jsonl", model: { provider: "test", id: "model", name: "Model" } })),
+      prompt: vi.fn(async () => undefined), abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), recordReviewRun: vi.fn(), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
+    };
+    const resolveAgentModel = vi.fn((preference) => {
+      if (preference.prefer === "exact") throw new Error(`Requested model ${preference.provider}/${preference.modelId} is unknown`);
+      return { requested: "current" as const, source: "current" as const, provider: "test", modelId: "model", thinkingLevel: "off" as const, fallbacks: [] };
+    });
+    const driver = new PiWorkspaceDriver({
+      ...piPaths,
+      workspacePath: "/project",
+      emit: vi.fn(),
+      resolveAgentModel,
+      createRuntime: vi.fn(async (options) => {
+        createdWith.push(options);
+        return parent;
+      })
+    });
+    await driver.openAgent({ target: { kind: "new", visibility: "project" } });
+    const control = createdWith[0]?.agentControl;
+    if (!control) throw new Error("Expected subagent control");
+
+    await expect(control.parallel({ tasks: [
+      { task: "Valid task", model: { prefer: "current" } },
+      { task: "Invalid task", model: { prefer: "exact", provider: "missing", modelId: "unknown" } }
+    ] }, parent.sessionId, new AbortController().signal)).rejects.toThrow("Requested model missing/unknown is unknown");
+
+    expect(resolveAgentModel).toHaveBeenCalledTimes(2);
+    expect(createdWith.filter((options) => options.auxiliary)).toHaveLength(0);
     driver[Symbol.dispose]();
   });
 

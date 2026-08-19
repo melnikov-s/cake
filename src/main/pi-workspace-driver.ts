@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { createCakeRuntime, type CakeRuntime, type CakeRuntimeEvent, type RuntimeUiRequest } from "../agent/cake-runtime";
 import { forkWorkspaceSession, loadPiChangelog } from "../agent/session-discovery";
 import { runInlineWidgetGeneration, runInlineWidgetRepair, runReviewTurn, type InlineWidgetGenerationRequest } from "../agent/sidecar-runtime";
-import { parallelSubagentSchema, subagentSpawnReceiptSchema, subagentSystemPrompt, subagentTaskSchema, toolsForSubagentProfile, type ParallelSubagentTasksInput, type SubagentProfile, type SubagentTaskInput } from "../agent/subagent-contract";
+import { parallelSubagentSchema, subagentSpawnReceiptSchema, subagentSystemPrompt, subagentTaskSchema, toolsForSubagentProfile, type ParallelSubagentTasksInput, type SubagentProfile, type SubagentTask, type SubagentTaskInput } from "../agent/subagent-contract";
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
 import type { UiPart, UtilityModel } from "../ipc/session-contract";
 import type { JsonValue } from "../ipc/json-contract";
@@ -78,6 +78,13 @@ interface SubagentHandle {
   liveStreaming: boolean;
   unsubscribe?: () => void;
   observers: Set<() => void>;
+}
+
+interface PreparedSubagentTask {
+  input: SubagentTask;
+  resolvedModel: ResolvedAgentModel;
+  tools: string[];
+  remainingSubagentDepth: number;
 }
 
 export interface PiWorkspaceDriverOptions {
@@ -601,15 +608,12 @@ export class PiWorkspaceDriver {
   }
 
   private async spawnSubagent(rawInput: SubagentTaskInput, parentSessionId: string, signal: AbortSignal) {
-    const input = subagentTaskSchema.parse(rawInput);
-    if (signal.aborted) throw signal.reason;
-    if ([...this.subagentHandles.values()].filter((handle) => handle.parentSessionId === parentSessionId).length >= MAX_SUBAGENT_HANDLES_PER_PARENT) {
-      throw new Error(`An agent may own at most ${MAX_SUBAGENT_HANDLES_PER_PARENT} subagent handles. Close an unused subagent before spawning another.`);
-    }
-    const parentTools = this.runtimeFor(parentSessionId).getReviewParentContext?.().activeTools ?? ["read", "bash", "edit", "write", "grep", "find", "ls"];
-    const parentDepth = this.runtimeSubagentDepth.get(parentSessionId);
-    const remainingSubagentDepth = Math.min(input.maxDepth, parentDepth === undefined ? 1 : Math.max(0, parentDepth - 1));
-    const tools = toolsForSubagentProfile(input.profile, parentTools, remainingSubagentDepth > 0);
+    const [prepared] = await this.prepareSubagentTasks([subagentTaskSchema.parse(rawInput)], parentSessionId, signal);
+    if (!prepared) throw new Error("Subagent preflight did not produce a task");
+    return this.startSubagent(prepared, parentSessionId);
+  }
+
+  private startSubagent({ input, resolvedModel, tools, remainingSubagentDepth }: PreparedSubagentTask, parentSessionId: string) {
     const handleId = crypto.randomUUID();
     const handle: SubagentHandle = {
       parentSessionId,
@@ -635,7 +639,6 @@ export class PiWorkspaceDriver {
       handle.sessionId = snapshot.sessionId;
       handle.releaseRuntime = this.privateRuntimeIds.has(snapshot.sessionId);
       if (handle.controller.signal.aborted) throw handle.controller.signal.reason;
-      const resolvedModel = this.resolveAgentModel(input.model, snapshot);
       const modelAlreadySelected = snapshot.model?.provider === resolvedModel.provider && snapshot.model.id === resolvedModel.modelId && snapshot.thinkingLevel === resolvedModel.thinkingLevel;
       if (!modelAlreadySelected) snapshot = await this.configureAgent(snapshot.sessionId, resolvedModel.provider, resolvedModel.modelId, resolvedModel.thinkingLevel);
       handle.liveParts = new Map(snapshot.parts.map((part) => [part.id, part]));
@@ -661,12 +664,35 @@ export class PiWorkspaceDriver {
     return jsonValueSchema.parse({ handleId, task: input.task, profile: input.profile, status: handle.status, retained: input.retain, maxDepth: remainingSubagentDepth });
   }
 
+  private async prepareSubagentTasks(inputs: SubagentTask[], parentSessionId: string, signal: AbortSignal): Promise<PreparedSubagentTask[]> {
+    if (signal.aborted) throw signal.reason;
+    const existingHandles = [...this.subagentHandles.values()].filter((handle) => handle.parentSessionId === parentSessionId).length;
+    if (existingHandles + inputs.length > MAX_SUBAGENT_HANDLES_PER_PARENT) {
+      throw new Error(`An agent may own at most ${MAX_SUBAGENT_HANDLES_PER_PARENT} subagent handles. Close an unused subagent before spawning another.`);
+    }
+    const parentRuntime = this.runtimeFor(parentSessionId);
+    const parentSnapshot = await parentRuntime.snapshot();
+    if (signal.aborted) throw signal.reason;
+    const parentTools = parentRuntime.getReviewParentContext?.().activeTools ?? ["read", "bash", "edit", "write", "grep", "find", "ls"];
+    const parentDepth = this.runtimeSubagentDepth.get(parentSessionId);
+    return inputs.map((input) => {
+      const remainingSubagentDepth = Math.min(input.maxDepth, parentDepth === undefined ? 1 : Math.max(0, parentDepth - 1));
+      return {
+        input,
+        resolvedModel: this.resolveAgentModel(input.model, parentSnapshot),
+        tools: toolsForSubagentProfile(input.profile, parentTools, remainingSubagentDepth > 0),
+        remainingSubagentDepth
+      };
+    });
+  }
+
   private async parallelSubagents(input: ParallelSubagentTasksInput, parentSessionId: string, signal: AbortSignal, onUpdate?: (value: JsonValue) => void) {
     const parsedInput = parallelSubagentSchema.parse(input);
+    const preparedTasks = await this.prepareSubagentTasks(parsedInput.tasks, parentSessionId, signal);
     const handles: string[] = [];
     try {
-      for (const task of parsedInput.tasks) {
-        const spawned = await this.spawnSubagent(task, parentSessionId, signal);
+      for (const task of preparedTasks) {
+        const spawned = this.startSubagent(task, parentSessionId);
         handles.push(subagentSpawnReceiptSchema.parse(spawned).handleId);
       }
       const results = await Promise.all(handles.map((handleId) => this.waitSubagent(handleId, parentSessionId, signal, (update) => {
