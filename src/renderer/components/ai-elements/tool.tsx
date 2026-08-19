@@ -36,9 +36,11 @@ function toolTitle(part: Extract<UiPart, { kind: "tool" }>) {
   return summary ? `${part.name} ${summary}` : part.name;
 }
 
-function prettyJson(value: string) {
+function toolCode(value: string, className: string) {
   const parsed = parseJson(value);
-  return parsed === undefined ? value : JSON.stringify(parsed, null, 2);
+  const source = parsed === undefined ? value : JSON.stringify(parsed, null, 2);
+  const language = parsed === undefined ? "text" : "json";
+  return <Markdown className={className}>{fencedCode(source, language)}</Markdown>;
 }
 
 function editPreview(part: Extract<UiPart, { kind: "tool" }>) {
@@ -73,8 +75,8 @@ export function Tool({ part }: { part: Extract<UiPart, { kind: "tool" }> }) {
       </button>
       {/* Keep Streamdown mounted: mounting it during a Virtuoso resize can feed its passive update back into measurement. */}
       {hasDetails && <div className="tool-details" hidden={!open}>
-        {diff ? <DiffView diff={diff} filePath={part.filePath} label={part.state === "running" ? "Proposed edit" : "Applied edit"} /> : bash ? <Markdown className="tool-input tool-bash-input mt-3 text-xs">{fencedCode(bash, "bash")}</Markdown> : part.input && <pre className="tool-input mt-3 overflow-x-auto whitespace-pre-wrap text-xs text-muted-foreground">{prettyJson(part.input)}</pre>}
-        {!diff && part.output && <pre className="tool-output mt-3 overflow-x-auto whitespace-pre-wrap border-t border-border pt-3 text-xs">{prettyJson(part.output)}</pre>}
+        {diff ? <DiffView diff={diff} filePath={part.filePath} label={part.state === "running" ? "Proposed edit" : "Applied edit"} /> : bash ? <Markdown className="tool-input tool-bash-input mt-3 text-xs">{fencedCode(bash, "bash")}</Markdown> : part.input && toolCode(part.input, "tool-input tool-code-input mt-3 text-xs")}
+        {!diff && part.output && toolCode(part.output, "tool-output tool-code-input mt-3 border-t border-border pt-3 text-xs")}
       </div>}
     </div>
   );

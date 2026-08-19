@@ -93,9 +93,19 @@ describe("Cake-owned conversation components", () => {
     expect(html).not.toContain("&quot;command&quot;");
   });
 
-  it("includes a parsed file path in a read summary and pretty-prints compact JSON", () => {
+  it("renders structured tool arguments as highlighted JSON with line gutters", () => {
     const html = renderToStaticMarkup(<Tool part={{ id: "tool-read", kind: "tool", name: "read", input: '{"path":"Sources/QuickEyeApp/AnnotationInputView.swift","offset":12}', state: "success" }} />);
     expect(html).toContain('title="read Sources/QuickEyeApp/AnnotationInputView.swift"');
-    expect(html).toContain('{\n  &quot;path&quot;: &quot;Sources/QuickEyeApp/AnnotationInputView.swift&quot;,\n  &quot;offset&quot;: 12\n}');
+    expect(html).toContain('data-language="json"');
+    expect(html).toContain('data-streamdown="code-block-body"');
+    expect(html).toContain("before:content-[counter(line)]");
+    expect(html).toContain('&quot;path&quot;: &quot;Sources/QuickEyeApp/AnnotationInputView.swift&quot;');
+  });
+
+  it("uses the same editor surface for plain-text tool results", () => {
+    const html = renderToStaticMarkup(<Tool part={{ id: "tool-read", kind: "tool", name: "read", input: '{"path":"README.md"}', output: "# Cake\n\nA desktop app", state: "success" }} />);
+    expect(html).toContain('data-language="text"');
+    expect(html).toContain("# Cake");
+    expect(html).toContain("before:content-[counter(line)]");
   });
 });

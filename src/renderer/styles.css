@@ -556,8 +556,10 @@ button.reasoning-summary { border: 0; background: transparent; }
 .tool-open .tool-title { width: auto; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
 .tool-details { min-width: 0; }
 .tool-input, .tool-output { max-width: 100%; overflow-x: hidden !important; overflow-wrap: anywhere; word-break: break-word; }
-.tool-bash-input [data-streamdown="code-block"] { max-width: 100%; margin: 0; overflow: hidden; }
-.tool-bash-input pre, .tool-bash-input code { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+.tool-code-input [data-streamdown="code-block"] { max-width: 100%; margin: 0; overflow: hidden; }
+.tool-code-input [data-streamdown="code-block-body"] { max-width: 100%; overflow-x: auto; }
+.tool-code-input pre, .tool-code-input code { max-width: 100%; }
+.tool-bash-input pre, .tool-bash-input code { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
 .tool-edit { padding: 0 !important; overflow: hidden; }
 .tool-edit > .tool-summary { min-height: 38px; padding: 0 12px; }
 .tool-edit.tool-open > .tool-summary { padding-block: 11px; }
