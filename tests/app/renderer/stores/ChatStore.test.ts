@@ -3,18 +3,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatStore } from "../../../../src/renderer/stores/ChatStore";
 
 function createChatStore(submit: () => Promise<boolean>) {
-  return mount(createStore(ChatStore, {
-    id: () => "chat",
-    parts: () => [],
-    streaming: () => false,
-    submitting: () => false,
-    configuration: () => undefined,
-    commands: () => [],
-    placeholder: () => "Message Cake",
-    inputLabel: () => "Message",
-    canSubmit: () => true,
-    submit
-  }));
+  return mount(
+    createStore(ChatStore, {
+      id: () => "chat",
+      parts: () => [],
+      streaming: () => false,
+      submitting: () => false,
+      configuration: () => undefined,
+      commands: () => [],
+      placeholder: () => "Message Cake",
+      inputLabel: () => "Message",
+      canSubmit: () => true,
+      submit,
+    }),
+  );
 }
 
 describe("ChatStore loading timer", () => {
@@ -26,7 +28,12 @@ describe("ChatStore loading timer", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-18T12:00:00Z"));
     let finish!: (value: boolean) => void;
-    const store = createChatStore(() => new Promise<boolean>((resolve) => { finish = resolve; }));
+    const store = createChatStore(
+      () =>
+        new Promise<boolean>((resolve) => {
+          finish = resolve;
+        }),
+    );
 
     const submission = store.submit("Keep working");
     const startedAt = store.loadingStartedAt;

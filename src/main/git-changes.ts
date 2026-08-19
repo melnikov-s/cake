@@ -30,27 +30,45 @@ export async function collectWorkingTreeChanges(workspacePath: string): Promise<
   const base = await repositoryBaseTree(root);
   const pathspec = prefix || ".";
   const [tracked, untracked] = await Promise.all([
-    git(root, ["diff", "--name-status", "-z", "--find-renames", "--find-copies", base, "--", pathspec], maxStatusBuffer),
-    git(root, ["ls-files", "--others", "--exclude-standard", "-z", "--", pathspec], maxStatusBuffer)
+    git(
+      root,
+      ["diff", "--name-status", "-z", "--find-renames", "--find-copies", base, "--", pathspec],
+      maxStatusBuffer,
+    ),
+    git(
+      root,
+      ["ls-files", "--others", "--exclude-standard", "-z", "--", pathspec],
+      maxStatusBuffer,
+    ),
   ]);
   const entries = [
     ...parseNameStatus(tracked),
-    ...untracked.split("\0").filter(Boolean).map((path): ChangeEntry => ({ path, changeCode: "A", untracked: true }))
+    ...untracked
+      .split("\0")
+      .filter(Boolean)
+      .map((path): ChangeEntry => ({ path, changeCode: "A", untracked: true })),
   ].filter((entry) => withinWorkspace(entry.path, prefix));
   const files: ChangedFile[] = [];
   for (const entry of entries) {
     const paths = entry.previousPath ? [entry.previousPath, entry.path] : [entry.path];
     const diff = entry.untracked
       ? await untrackedDiff(root, entry.path)
-      : await git(root, ["diff", "--no-ext-diff", "--find-renames", "--find-copies", base, "--", ...paths], maxDiffBuffer);
+      : await git(
+          root,
+          ["diff", "--no-ext-diff", "--find-renames", "--find-copies", base, "--", ...paths],
+          maxDiffBuffer,
+        );
     const lines = diff.split("\n");
     files.push({
       path: fromRepositoryPath(entry.path, prefix),
-      previousPath: entry.previousPath && withinWorkspace(entry.previousPath, prefix) ? fromRepositoryPath(entry.previousPath, prefix) : undefined,
+      previousPath:
+        entry.previousPath && withinWorkspace(entry.previousPath, prefix)
+          ? fromRepositoryPath(entry.previousPath, prefix)
+          : undefined,
       status: changeStatus(entry),
       additions: lines.filter((line) => line.startsWith("+") && !line.startsWith("+++")).length,
       deletions: lines.filter((line) => line.startsWith("-") && !line.startsWith("---")).length,
-      diff: diff.slice(0, maxDiffLength)
+      diff: diff.slice(0, maxDiffLength),
     });
   }
   return files;
@@ -64,13 +82,17 @@ async function repositoryBaseTree(root: string) {
 
 const noIndexFailureSchema = z.object({
   stdout: z.union([z.string(), z.instanceof(Buffer)]),
-  code: z.union([z.number(), z.string()]).optional()
+  code: z.union([z.number(), z.string()]).optional(),
 });
 
 async function untrackedDiff(root: string, path: string) {
   const nullDevice = process.platform === "win32" ? "NUL" : "/dev/null";
   try {
-    return await git(root, ["diff", "--no-index", "--no-ext-diff", "--", nullDevice, path], maxDiffBuffer);
+    return await git(
+      root,
+      ["diff", "--no-index", "--no-ext-diff", "--", nullDevice, path],
+      maxDiffBuffer,
+    );
   } catch (error) {
     const parsed = noIndexFailureSchema.safeParse(error);
     if (parsed.success && parsed.data.code === 1) return String(parsed.data.stdout);
@@ -82,18 +104,23 @@ async function resolveRepository(workspacePath: string) {
   const canonicalWorkspace = await realpath(resolve(workspacePath));
   let repositoryRoot: string;
   try {
-    repositoryRoot = (await git(canonicalWorkspace, ["rev-parse", "--show-toplevel"], maxStatusBuffer)).trim();
+    repositoryRoot = (
+      await git(canonicalWorkspace, ["rev-parse", "--show-toplevel"], maxStatusBuffer)
+    ).trim();
   } catch (error) {
     if (isNotGitRepositoryFailure(error)) throw new NotGitRepositoryError(canonicalWorkspace);
     throw error;
   }
   const root = await realpath(repositoryRoot);
   const prefix = relative(root, canonicalWorkspace);
-  if (prefix === ".." || prefix.startsWith(`..${sep}`)) throw new Error("The workspace is outside its Git repository");
+  if (prefix === ".." || prefix.startsWith(`..${sep}`))
+    throw new Error("The workspace is outside its Git repository");
   return { root, prefix };
 }
 
-interface GitCommandFailure { stderr: string | Buffer }
+interface GitCommandFailure {
+  stderr: string | Buffer;
+}
 
 function isNotGitRepositoryFailure(error: unknown): error is GitCommandFailure {
   if (!error || typeof error !== "object" || !("stderr" in error)) return false;
@@ -110,7 +137,8 @@ export function parseNameStatus(output: string): ChangeEntry[] {
     if (changeCode === "R" || changeCode === "C") {
       const previousPath = records[index++];
       const path = records[index++];
-      if (previousPath !== undefined && path !== undefined) entries.push({ path, previousPath, changeCode });
+      if (previousPath !== undefined && path !== undefined)
+        entries.push({ path, previousPath, changeCode });
       continue;
     }
     const path = records[index++];

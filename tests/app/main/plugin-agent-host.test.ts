@@ -2,32 +2,80 @@ import type { WebContents } from "electron";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CakeRuntimeEvent } from "../../../src/agent/cake-runtime";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
-import { PluginAgentHost, resolveAgentModel, resolveSessionRef, sessionRef, workspaceRef } from "../../../src/main/plugin-agent-host";
+import {
+  PluginAgentHost,
+  resolveAgentModel,
+  resolveSessionRef,
+  sessionRef,
+  workspaceRef,
+} from "../../../src/main/plugin-agent-host";
 import type { PiWorkspaceDriver } from "../../../src/main/pi-workspace-driver";
 
-const model = (provider: string, id: string, authenticated = true) => ({ provider, id, providerName: provider, name: id, reasoning: true, input: ["text" as const], authenticated, authTypes: [] });
+const model = (provider: string, id: string, authenticated = true) => ({
+  provider,
+  id,
+  providerName: provider,
+  name: id,
+  reasoning: true,
+  input: ["text" as const],
+  authenticated,
+  authTypes: [],
+});
 const base = {
-  workspacePath: "/project", sessionId: "session", sessionFile: "/sessions/session.jsonl", parts: [],
+  workspacePath: "/project",
+  sessionId: "session",
+  sessionFile: "/sessions/session.jsonl",
+  parts: [],
   model: { provider: "current", id: "active", name: "Active" },
   models: [model("utility", "small"), model("default", "standard"), model("current", "active")],
-  thinkingLevel: "high", availableThinkingLevels: ["off", "high"], streaming: false, diagnostics: [], commands: [],
-  compatibility: { resources: [], diagnostics: [] }, extensionUi: { statuses: [] }, sessions: [], tree: []
+  thinkingLevel: "high",
+  availableThinkingLevels: ["off", "high"],
+  streaming: false,
+  diagnostics: [],
+  commands: [],
+  compatibility: { resources: [], diagnostics: [] },
+  extensionUi: { statuses: [] },
+  sessions: [],
+  tree: [],
 } satisfies SessionSnapshot;
 
 afterEach(() => vi.useRealTimers());
 
 describe("plugin agent model resolution", () => {
   it("falls back from unavailable utility to Pi default with observable metadata", () => {
-    const snapshot = { ...base, piSettings: { defaultProvider: "default", defaultModel: "standard", defaultThinkingLevel: "low" } } as unknown as SessionSnapshot;
-    expect(resolveAgentModel({ prefer: "utility" }, snapshot, { provider: "missing", modelId: "unknown", thinkingLevel: "minimal" })).toEqual({
-      requested: "utility", source: "default", provider: "default", modelId: "standard", thinkingLevel: "low",
-      fallbacks: [{ source: "utility", reason: "unknown-model" }]
+    const snapshot = {
+      ...base,
+      piSettings: {
+        defaultProvider: "default",
+        defaultModel: "standard",
+        defaultThinkingLevel: "low",
+      },
+    } as unknown as SessionSnapshot;
+    expect(
+      resolveAgentModel({ prefer: "utility" }, snapshot, {
+        provider: "missing",
+        modelId: "unknown",
+        thinkingLevel: "minimal",
+      }),
+    ).toEqual({
+      requested: "utility",
+      source: "default",
+      provider: "default",
+      modelId: "standard",
+      thinkingLevel: "low",
+      fallbacks: [{ source: "utility", reason: "unknown-model" }],
     });
   });
 
   it("requires exact models to pass preflight and preserves current reasoning", () => {
-    expect(() => resolveAgentModel({ prefer: "exact", provider: "missing", modelId: "nope" }, base, undefined)).toThrow(/unknown/);
-    expect(resolveAgentModel({ prefer: "current" }, base, undefined)).toMatchObject({ source: "current", thinkingLevel: "high", fallbacks: [] });
+    expect(() =>
+      resolveAgentModel({ prefer: "exact", provider: "missing", modelId: "nope" }, base, undefined),
+    ).toThrow(/unknown/);
+    expect(resolveAgentModel({ prefer: "current" }, base, undefined)).toMatchObject({
+      source: "current",
+      thinkingLevel: "high",
+      fallbacks: [],
+    });
   });
 
   it("round-trips opaque host session references", () => {
@@ -42,9 +90,12 @@ describe("plugin agent model resolution", () => {
     const driver = {
       openAgent: vi.fn(async () => base),
       configureAgent: vi.fn(async () => base),
-      subscribeAgent: vi.fn((_sessionId: string, next: (event: CakeRuntimeEvent) => void) => { listener = next; return vi.fn(); }),
+      subscribeAgent: vi.fn((_sessionId: string, next: (event: CakeRuntimeEvent) => void) => {
+        listener = next;
+        return vi.fn();
+      }),
       agentSnapshot,
-      releaseAgent
+      releaseAgent,
     } as unknown as PiWorkspaceDriver;
     const emitted: unknown[] = [];
     const host = new PluginAgentHost({
@@ -52,19 +103,35 @@ describe("plugin agent model resolution", () => {
       utilityModel: () => undefined,
       driver: () => driver,
       resolveSessionWorkspacePath: async () => "/project",
-      emit: (_owner, event) => emitted.push(event)
+      emit: (_owner, event) => emitted.push(event),
     });
     const owner = { id: 1 } as WebContents;
-    const opened = await host.open(owner, "plugin.test", { session: { kind: "new", workspace: workspaceRef("/project"), visibility: "private" }, model: { prefer: "current" } });
+    const opened = await host.open(owner, "plugin.test", {
+      session: { kind: "new", workspace: workspaceRef("/project"), visibility: "private" },
+      model: { prefer: "current" },
+    });
 
     for (let index = 1; index <= 100; index += 1) {
-      listener?.({ type: "part-updated", sessionId: base.sessionId, part: { id: "stream", kind: "text", role: "assistant", text: "x".repeat(index), status: "streaming" } });
+      listener?.({
+        type: "part-updated",
+        sessionId: base.sessionId,
+        part: {
+          id: "stream",
+          kind: "text",
+          role: "assistant",
+          text: "x".repeat(index),
+          status: "streaming",
+        },
+      });
     }
     await vi.advanceTimersByTimeAsync(50);
 
     expect(agentSnapshot).not.toHaveBeenCalled();
     expect(emitted).toHaveLength(1);
-    expect(emitted[0]).toMatchObject({ type: "plugin-agent-event", snapshot: { parts: [expect.objectContaining({ text: "x".repeat(100) })] } });
+    expect(emitted[0]).toMatchObject({
+      type: "plugin-agent-event",
+      snapshot: { parts: [expect.objectContaining({ text: "x".repeat(100) })] },
+    });
 
     host.detach(owner, "plugin.test", opened.handleId);
     expect(releaseAgent).toHaveBeenCalledWith(base.sessionId);

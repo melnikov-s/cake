@@ -1,8 +1,17 @@
-import { SessionManager, getPackageDir, hasTrustRequiringProjectResources } from "@earendil-works/pi-coding-agent";
+import {
+  SessionManager,
+  getPackageDir,
+  hasTrustRequiringProjectResources,
+} from "@earendil-works/pi-coding-agent";
 import { CombinedAutocompleteProvider } from "@earendil-works/pi-tui";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { SESSION_TITLE_MAX_LENGTH, type FileSuggestion, type SessionPreview, type SessionSummary } from "../ipc/session-contract";
+import {
+  SESSION_TITLE_MAX_LENGTH,
+  type FileSuggestion,
+  type SessionPreview,
+  type SessionSummary,
+} from "../ipc/session-contract";
 import { projectSessionEntries } from "./session-projection";
 
 export function loadPiChangelog() {
@@ -14,7 +23,9 @@ export function loadPiChangelog() {
 }
 
 /** Resolve the Cake source tree that matches the running authoring skill. */
-export function cakePluginAuthoringSkillPath(authoringRoot = process.env.CAKE_AUTHORING_ROOT ?? resolve(import.meta.dirname, "../..")) {
+export function cakePluginAuthoringSkillPath(
+  authoringRoot = process.env.CAKE_AUTHORING_ROOT ?? resolve(import.meta.dirname, "../.."),
+) {
   return join(authoringRoot, ".agents", "skills", "cake-plugin-authoring");
 }
 
@@ -30,20 +41,44 @@ export function cakeWorkspaceSessionDirectory(cwd: string, sessionRoot: string) 
 }
 
 export function forkWorkspaceSession(sourceFile: string, cwd: string, sessionRoot: string) {
-  const manager = SessionManager.forkFrom(sourceFile, cwd, cakeWorkspaceSessionDirectory(cwd, sessionRoot));
+  const manager = SessionManager.forkFrom(
+    sourceFile,
+    cwd,
+    cakeWorkspaceSessionDirectory(cwd, sessionRoot),
+  );
   return { sessionId: manager.getSessionId(), sessionFile: manager.getSessionFile() ?? undefined };
 }
 
-export async function suggestProjectFiles(options: { cwd: string; prefix: string; agentDir: string; fdPath?: string }): Promise<FileSuggestion[]> {
+export async function suggestProjectFiles(options: {
+  cwd: string;
+  prefix: string;
+  agentDir: string;
+  fdPath?: string;
+}): Promise<FileSuggestion[]> {
   const installedFd = join(options.agentDir, "bin", process.platform === "win32" ? "fd.exe" : "fd");
-  const provider = new CombinedAutocompleteProvider([], options.cwd, options.fdPath ?? (existsSync(installedFd) ? installedFd : "fd"));
+  const provider = new CombinedAutocompleteProvider(
+    [],
+    options.cwd,
+    options.fdPath ?? (existsSync(installedFd) ? installedFd : "fd"),
+  );
   const text = `@${options.prefix}`;
-  const suggestions = await provider.getSuggestions([text], 0, text.length, { signal: AbortSignal.timeout(5_000) });
-  return (suggestions?.items ?? []).slice(0, 20).map(({ value, label, description }) => ({ value, label, description }));
+  const suggestions = await provider.getSuggestions([text], 0, text.length, {
+    signal: AbortSignal.timeout(5_000),
+  });
+  return (suggestions?.items ?? [])
+    .slice(0, 20)
+    .map(({ value, label, description }) => ({ value, label, description }));
 }
 
-export async function listWorkspaceSessions(cwd: string, sessionDir: string, direct = false): Promise<SessionSummary[]> {
-  const sessions = await SessionManager.list(cwd, direct ? resolve(sessionDir) : cakeWorkspaceSessionDirectory(cwd, sessionDir));
+export async function listWorkspaceSessions(
+  cwd: string,
+  sessionDir: string,
+  direct = false,
+): Promise<SessionSummary[]> {
+  const sessions = await SessionManager.list(
+    cwd,
+    direct ? resolve(sessionDir) : cakeWorkspaceSessionDirectory(cwd, sessionDir),
+  );
   const idsByPath = new Map(sessions.map((item) => [item.path, item.id]));
   return sessions.map((item) => ({
     id: item.id,
@@ -52,11 +87,15 @@ export async function listWorkspaceSessions(cwd: string, sessionDir: string, dir
     modified: item.modified.toISOString(),
     messageCount: item.messageCount,
     parentSessionId: item.parentSessionPath ? idsByPath.get(item.parentSessionPath) : undefined,
-    resolved: false
+    resolved: false,
   }));
 }
 
-export async function loadWorkspaceSessionPreview(cwd: string, sessionId: string, sessionDir: string): Promise<SessionPreview | undefined> {
+export async function loadWorkspaceSessionPreview(
+  cwd: string,
+  sessionId: string,
+  sessionDir: string,
+): Promise<SessionPreview | undefined> {
   const workspaceSessionDir = cakeWorkspaceSessionDirectory(cwd, sessionDir);
   const sessions = await SessionManager.list(cwd, workspaceSessionDir);
   const target = sessions.find((session) => session.id === sessionId);
@@ -66,6 +105,6 @@ export async function loadWorkspaceSessionPreview(cwd: string, sessionId: string
     workspacePath: cwd,
     sessionId,
     sessionFile: target.path,
-    parts: projectSessionEntries(manager.getBranch())
+    parts: projectSessionEntries(manager.getBranch()),
   };
 }

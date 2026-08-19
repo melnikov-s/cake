@@ -1,13 +1,22 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { Composer, ComposerInput } from "../../../../../src/renderer/components/ai-elements/composer";
+import {
+  Composer,
+  ComposerInput,
+} from "../../../../../src/renderer/components/ai-elements/composer";
 import { Markdown } from "../../../../../src/renderer/components/ai-elements/markdown";
 import { Reasoning } from "../../../../../src/renderer/components/ai-elements/reasoning";
 import { Tool } from "../../../../../src/renderer/components/ai-elements/tool";
 
 describe("Cake-owned conversation components", () => {
   it("renders GFM tables, task lists, safe links, and code blocks", () => {
-    const html = renderToStaticMarkup(<Markdown>{"## Result\n\n**Ready** with `inline` code.\n\n- [x] Markdown\n\n| Feature | State |\n| --- | --- |\n| Tables | Ready |\n\n[Docs](https://example.com)\n\n<script>bad()</script>\n\n```ts\nconst cake = true\n```"}</Markdown>);
+    const html = renderToStaticMarkup(
+      <Markdown>
+        {
+          "## Result\n\n**Ready** with `inline` code.\n\n- [x] Markdown\n\n| Feature | State |\n| --- | --- |\n| Tables | Ready |\n\n[Docs](https://example.com)\n\n<script>bad()</script>\n\n```ts\nconst cake = true\n```"
+        }
+      </Markdown>,
+    );
     expect(html).toContain('data-streamdown="heading-2">Result</h2>');
     expect(html).toContain('data-streamdown="strong">Ready</span>');
     expect(html).toContain('type="checkbox"');
@@ -19,13 +28,34 @@ describe("Cake-owned conversation components", () => {
   });
 
   it("renders math and recognizes Mermaid diagrams through the shared Markdown path", () => {
-    const html = renderToStaticMarkup(<Markdown>{"$$\\nE = mc^2\\n$$\\n\\n```mermaid\\ngraph LR\\n  A --> B\\n```"}</Markdown>);
+    const html = renderToStaticMarkup(
+      <Markdown>{"$$\\nE = mc^2\\n$$\\n\\n```mermaid\\ngraph LR\\n  A --> B\\n```"}</Markdown>,
+    );
     expect(html).toContain("katex");
     expect(html).toContain("graph LR");
   });
 
   it("renders Cake reasoning, tool, and composer props without AI SDK types", () => {
-    const html = renderToStaticMarkup(<><Reasoning open onToggle={() => undefined}>trace</Reasoning><Tool part={{ id: "tool-1", kind: "tool", name: "read", input: "file", output: "contents", state: "success" }} /><Composer><ComposerInput defaultValue="prompt" /></Composer></>);
+    const html = renderToStaticMarkup(
+      <>
+        <Reasoning open onToggle={() => undefined}>
+          trace
+        </Reasoning>
+        <Tool
+          part={{
+            id: "tool-1",
+            kind: "tool",
+            name: "read",
+            input: "file",
+            output: "contents",
+            state: "success",
+          }}
+        />
+        <Composer>
+          <ComposerInput defaultValue="prompt" />
+        </Composer>
+      </>,
+    );
     expect(html).toContain("Reasoning");
     expect(html).toContain("read");
     expect(html).toContain("success");
@@ -33,28 +63,59 @@ describe("Cake-owned conversation components", () => {
   });
 
   it("does not offer an empty reasoning block as expandable content", () => {
-    const html = renderToStaticMarkup(<Reasoning open={false} onToggle={() => undefined} hasContent={false}> </Reasoning>);
+    const html = renderToStaticMarkup(
+      <Reasoning open={false} onToggle={() => undefined} hasContent={false}>
+        {" "}
+      </Reasoning>,
+    );
     expect(html).toContain("Reasoning details not exposed");
     expect(html).not.toContain("<button");
     expect(html).not.toContain("· show");
   });
 
   it("does not claim an empty streaming block is unavailable before it finishes", () => {
-    const html = renderToStaticMarkup(<Reasoning open={false} onToggle={() => undefined} hasContent={false} streaming> </Reasoning>);
+    const html = renderToStaticMarkup(
+      <Reasoning open={false} onToggle={() => undefined} hasContent={false} streaming>
+        {" "}
+      </Reasoning>,
+    );
     expect(html).toContain("Thinking…");
     expect(html).toContain('class="tool-state tool-running" aria-label="running"');
     expect(html).not.toContain("not exposed");
   });
 
   it("labels completed and active reasoning with the same state indicators as tools", () => {
-    const completed = renderToStaticMarkup(<Reasoning open={false} onToggle={() => undefined}>trace</Reasoning>);
-    const active = renderToStaticMarkup(<Reasoning open={false} onToggle={() => undefined} streaming>trace</Reasoning>);
+    const completed = renderToStaticMarkup(
+      <Reasoning open={false} onToggle={() => undefined}>
+        trace
+      </Reasoning>,
+    );
+    const active = renderToStaticMarkup(
+      <Reasoning open={false} onToggle={() => undefined} streaming>
+        trace
+      </Reasoning>,
+    );
     expect(completed).toContain('class="tool-state tool-success" aria-label="success"');
     expect(active).toContain('class="tool-state tool-running" aria-label="running"');
   });
 
   it("renders edit calls as a readable code diff", () => {
-    const html = renderToStaticMarkup(<Tool part={{ id: "tool-edit", kind: "tool", name: "edit", input: JSON.stringify({ path: "src/app.ts", edits: [{ oldText: "const old = true;", newText: "const fresh = true;" }] }), filePath: "src/app.ts", diff: "-4 const old = true;\n+4 const fresh = true;", state: "success" }} />);
+    const html = renderToStaticMarkup(
+      <Tool
+        part={{
+          id: "tool-edit",
+          kind: "tool",
+          name: "edit",
+          input: JSON.stringify({
+            path: "src/app.ts",
+            edits: [{ oldText: "const old = true;", newText: "const fresh = true;" }],
+          }),
+          filePath: "src/app.ts",
+          diff: "-4 const old = true;\n+4 const fresh = true;",
+          state: "success",
+        }}
+      />,
+    );
     expect(html).toContain("edit src/app.ts");
     expect(html).toContain("Old line 4");
     expect(html).toContain("New line 4");
@@ -65,8 +126,23 @@ describe("Cake-owned conversation components", () => {
   });
 
   it("does not automatically expand running or failed tool calls", () => {
-    const running = renderToStaticMarkup(<Tool part={{ id: "tool-running", kind: "tool", name: "edit", input: "", diff: "+new line", state: "running" }} />);
-    const failed = renderToStaticMarkup(<Tool part={{ id: "tool-error", kind: "tool", name: "bash", input: "exit 1", state: "error" }} />);
+    const running = renderToStaticMarkup(
+      <Tool
+        part={{
+          id: "tool-running",
+          kind: "tool",
+          name: "edit",
+          input: "",
+          diff: "+new line",
+          state: "running",
+        }}
+      />,
+    );
+    const failed = renderToStaticMarkup(
+      <Tool
+        part={{ id: "tool-error", kind: "tool", name: "bash", input: "exit 1", state: "error" }}
+      />,
+    );
     expect(running).toContain('aria-expanded="false"');
     expect(failed).toContain('aria-expanded="false"');
     expect(running).toMatch(/class="tool-details" hidden/);
@@ -74,9 +150,33 @@ describe("Cake-owned conversation components", () => {
   });
 
   it("uses state indicators without redundant visible state labels", () => {
-    const running = renderToStaticMarkup(<Tool part={{ id: "tool-running", kind: "tool", name: "bash", input: "sleep 1", state: "running" }} />);
-    const success = renderToStaticMarkup(<Tool part={{ id: "tool-success", kind: "tool", name: "read", input: "README.md", state: "success" }} />);
-    const error = renderToStaticMarkup(<Tool part={{ id: "tool-error", kind: "tool", name: "bash", input: "exit 1", state: "error" }} />);
+    const running = renderToStaticMarkup(
+      <Tool
+        part={{
+          id: "tool-running",
+          kind: "tool",
+          name: "bash",
+          input: "sleep 1",
+          state: "running",
+        }}
+      />,
+    );
+    const success = renderToStaticMarkup(
+      <Tool
+        part={{
+          id: "tool-success",
+          kind: "tool",
+          name: "read",
+          input: "README.md",
+          state: "success",
+        }}
+      />,
+    );
+    const error = renderToStaticMarkup(
+      <Tool
+        part={{ id: "tool-error", kind: "tool", name: "bash", input: "exit 1", state: "error" }}
+      />,
+    );
     expect(running).toContain('class="tool-state tool-running" aria-label="running"');
     expect(success).toContain('class="tool-state tool-success" aria-label="success"');
     expect(error).toContain('class="tool-state tool-error" aria-label="error"');
@@ -86,7 +186,17 @@ describe("Cake-owned conversation components", () => {
   });
 
   it("renders bash commands as highlighted shell code instead of JSON", () => {
-    const html = renderToStaticMarkup(<Tool part={{ id: "tool-bash", kind: "tool", name: "bash", input: "for file in *.ts; do\n  echo \"$file\"\ndone", state: "success" }} />);
+    const html = renderToStaticMarkup(
+      <Tool
+        part={{
+          id: "tool-bash",
+          kind: "tool",
+          name: "bash",
+          input: 'for file in *.ts; do\n  echo "$file"\ndone',
+          state: "success",
+        }}
+      />,
+    );
     expect(html).toContain('title="bash for file in *.ts; do echo &quot;$file&quot; done"');
     expect(html).toContain("for file in *.ts; do");
     expect(html).toContain("language-bash");
@@ -94,39 +204,81 @@ describe("Cake-owned conversation components", () => {
   });
 
   it("renders structured tool arguments as highlighted JSON with line gutters", () => {
-    const html = renderToStaticMarkup(<Tool part={{ id: "tool-read", kind: "tool", name: "read", input: '{"path":"Sources/QuickEyeApp/AnnotationInputView.swift","offset":12}', state: "success" }} />);
+    const html = renderToStaticMarkup(
+      <Tool
+        part={{
+          id: "tool-read",
+          kind: "tool",
+          name: "read",
+          input: '{"path":"Sources/QuickEyeApp/AnnotationInputView.swift","offset":12}',
+          state: "success",
+        }}
+      />,
+    );
     expect(html).toContain('title="read Sources/QuickEyeApp/AnnotationInputView.swift"');
     expect(html).toContain('data-language="json"');
     expect(html).toContain('data-streamdown="code-block-body"');
     expect(html).toContain("before:content-[counter(line)]");
-    expect(html).toContain('&quot;path&quot;: &quot;Sources/QuickEyeApp/AnnotationInputView.swift&quot;');
+    expect(html).toContain(
+      "&quot;path&quot;: &quot;Sources/QuickEyeApp/AnnotationInputView.swift&quot;",
+    );
   });
 
   it("uses the same editor surface for plain-text tool results", () => {
-    const html = renderToStaticMarkup(<Tool part={{ id: "tool-read", kind: "tool", name: "read", input: '{"path":"README.md"}', output: "# Cake\n\nA desktop app", state: "success" }} />);
+    const html = renderToStaticMarkup(
+      <Tool
+        part={{
+          id: "tool-read",
+          kind: "tool",
+          name: "read",
+          input: '{"path":"README.md"}',
+          output: "# Cake\n\nA desktop app",
+          state: "success",
+        }}
+      />,
+    );
     expect(html).toContain('data-language="text"');
     expect(html).toContain("# Cake");
     expect(html).toContain("before:content-[counter(line)]");
   });
 
   it("renders subagent work as a compact execution trace", () => {
-    const html = renderToStaticMarkup(<Tool part={{
-      id: "subagent-1",
-      kind: "tool",
-      name: "subagent_wait",
-      input: JSON.stringify({ handleId: crypto.randomUUID() }),
-      output: JSON.stringify({
-        task: "Inspect the session boundary",
-        profile: "reviewer",
-        status: "complete",
-        parts: [
-          { id: "child-tool", kind: "tool", name: "read", input: "src/main.ts", state: "success" },
-          { id: "child-text", kind: "text", role: "assistant", text: "The boundary is correctly isolated.", status: "complete" }
-        ],
-        usage: { tokens: { input: 100, output: 25, cacheRead: 0, cacheWrite: 0, total: 125 }, cost: 0.002 }
-      }),
-      state: "success"
-    }} />);
+    const html = renderToStaticMarkup(
+      <Tool
+        part={{
+          id: "subagent-1",
+          kind: "tool",
+          name: "subagent_wait",
+          input: JSON.stringify({ handleId: crypto.randomUUID() }),
+          output: JSON.stringify({
+            task: "Inspect the session boundary",
+            profile: "reviewer",
+            status: "complete",
+            parts: [
+              {
+                id: "child-tool",
+                kind: "tool",
+                name: "read",
+                input: "src/main.ts",
+                state: "success",
+              },
+              {
+                id: "child-text",
+                kind: "text",
+                role: "assistant",
+                text: "The boundary is correctly isolated.",
+                status: "complete",
+              },
+            ],
+            usage: {
+              tokens: { input: 100, output: 25, cacheRead: 0, cacheWrite: 0, total: 125 },
+              cost: 0.002,
+            },
+          }),
+          state: "success",
+        }}
+      />,
+    );
     expect(html).toContain("reviewer subagent");
     expect(html).toContain("Inspect the session boundary");
     expect(html).toContain("Subagent activity");

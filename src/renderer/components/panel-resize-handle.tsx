@@ -17,10 +17,22 @@ function clamp(value: number, min: number, max: number) {
 }
 
 /** A pointer- and keyboard-accessible separator for CSS-grid side panels. */
-export function PanelResizeHandle({ label, value, min, max, edge, className = "", onChange, onResizeStart, onResizeEnd }: PanelResizeHandleProps) {
+export function PanelResizeHandle({
+  label,
+  value,
+  min,
+  max,
+  edge,
+  className = "",
+  onChange,
+  onResizeStart,
+  onResizeEnd,
+}: PanelResizeHandleProps) {
   const horizontal = edge === "top" || edge === "bottom";
   const direction = edge === "left" || edge === "top" ? 1 : -1;
-  const drag = useRef<{ pointerId: number; position: number; value: number } | undefined>(undefined);
+  const drag = useRef<{ pointerId: number; position: number; value: number } | undefined>(
+    undefined,
+  );
   const finish = (event: PointerEvent<HTMLDivElement>) => {
     if (drag.current?.pointerId !== event.pointerId) return;
     drag.current = undefined;
@@ -40,29 +52,37 @@ export function PanelResizeHandle({ label, value, min, max, edge, className = ""
     event.preventDefault();
     onChange(clamp(next, min, max));
   };
-  return <div
-    className={`panel-resize-handle panel-resize-handle-${edge} ${className}`.trim()}
-    role="separator"
-    aria-label={label}
-    aria-orientation={horizontal ? "horizontal" : "vertical"}
-    aria-valuemin={min}
-    aria-valuemax={max}
-    aria-valuenow={Math.round(value)}
-    tabIndex={0}
-    onKeyDown={keyDown}
-    onPointerDown={(event) => {
-      if (event.button !== 0) return;
-      drag.current = { pointerId: event.pointerId, position: horizontal ? event.clientY : event.clientX, value };
-      event.currentTarget.setPointerCapture?.(event.pointerId);
-      onResizeStart?.();
-      event.preventDefault();
-    }}
-    onPointerMove={(event) => {
-      if (drag.current?.pointerId !== event.pointerId) return;
-      const position = horizontal ? event.clientY : event.clientX;
-      onChange(clamp(drag.current.value + (position - drag.current.position) * direction, min, max));
-    }}
-    onPointerUp={finish}
-    onPointerCancel={finish}
-  />;
+  return (
+    <div
+      className={`panel-resize-handle panel-resize-handle-${edge} ${className}`.trim()}
+      role="separator"
+      aria-label={label}
+      aria-orientation={horizontal ? "horizontal" : "vertical"}
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={Math.round(value)}
+      tabIndex={0}
+      onKeyDown={keyDown}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        drag.current = {
+          pointerId: event.pointerId,
+          position: horizontal ? event.clientY : event.clientX,
+          value,
+        };
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+        onResizeStart?.();
+        event.preventDefault();
+      }}
+      onPointerMove={(event) => {
+        if (drag.current?.pointerId !== event.pointerId) return;
+        const position = horizontal ? event.clientY : event.clientX;
+        onChange(
+          clamp(drag.current.value + (position - drag.current.position) * direction, min, max),
+        );
+      }}
+      onPointerUp={finish}
+      onPointerCancel={finish}
+    />
+  );
 }

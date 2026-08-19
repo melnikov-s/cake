@@ -6,6 +6,6 @@ export default defineConfig({
   workers: 1,
   timeout: 30_000,
   use: {
-    trace: "retain-on-failure"
-  }
+    trace: "retain-on-failure",
+  },
 });

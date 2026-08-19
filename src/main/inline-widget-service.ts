@@ -52,16 +52,20 @@ const inlineWidgetSharedModules = new Set([
   "d3-time-format",
   "d3-timer",
   "d3-transition",
-  "d3-zoom"
+  "d3-zoom",
 ]);
 
 function resolveInlineWidgetModule(specifier: string) {
-  return specifier === "d3" || specifier.startsWith("d3-") ? d3Require.resolve(specifier) : require.resolve(specifier);
+  return specifier === "d3" || specifier.startsWith("d3-")
+    ? d3Require.resolve(specifier)
+    : require.resolve(specifier);
 }
 
 function diagnostics(messages: Message[]) {
   return messages.map((message) => {
-    const location = message.location ? `${message.location.line}:${message.location.column + 1} ` : "";
+    const location = message.location
+      ? `${message.location.line}:${message.location.column + 1} `
+      : "";
     return `${location}${message.text}`;
   });
 }
@@ -92,18 +96,37 @@ function widgetModulePlugin(source: string): Plugin {
   return {
     name: "cake-inline-widget",
     setup(builder) {
-      builder.onResolve({ filter: /^cake:inline-widget$/ }, () => ({ path: "widget.tsx", namespace: "cake-widget" }));
-      builder.onLoad({ filter: /.*/, namespace: "cake-widget" }, () => ({ contents: source, loader: "tsx", resolveDir: process.cwd() }));
+      builder.onResolve({ filter: /^cake:inline-widget$/ }, () => ({
+        path: "widget.tsx",
+        namespace: "cake-widget",
+      }));
+      builder.onLoad({ filter: /.*/, namespace: "cake-widget" }, () => ({
+        contents: source,
+        loader: "tsx",
+        resolveDir: process.cwd(),
+      }));
       builder.onResolve({ filter: /.*/, namespace: "cake-widget" }, (args) => {
-        if (inlineWidgetSharedModules.has(args.path)) return { path: resolveInlineWidgetModule(args.path) };
-        return { errors: [{ text: `Inline React widgets may import React or approved D3 modules only; received ${JSON.stringify(args.path)}` }] };
+        if (inlineWidgetSharedModules.has(args.path))
+          return { path: resolveInlineWidgetModule(args.path) };
+        return {
+          errors: [
+            {
+              text: `Inline React widgets may import React or approved D3 modules only; received ${JSON.stringify(args.path)}`,
+            },
+          ],
+        };
       });
-    }
+    },
   };
 }
 
-export async function compileInlineWidget(language: InlineWidgetLanguage, source: string, capability: InlineWidgetCapability = "display"): Promise<CompiledInlineWidgetDocument> {
-  if (new TextEncoder().encode(source).byteLength > maximumSourceBytes) throw new Error("Inline widget source exceeds the 1 MB limit");
+export async function compileInlineWidget(
+  language: InlineWidgetLanguage,
+  source: string,
+  capability: InlineWidgetCapability = "display",
+): Promise<CompiledInlineWidgetDocument> {
+  if (new TextEncoder().encode(source).byteLength > maximumSourceBytes)
+    throw new Error("Inline widget source exceeds the 1 MB limit");
   const token = crypto.randomUUID();
   if (language === "html") return { token, document: documentShell(token, source, capability) };
 
@@ -118,7 +141,12 @@ if (typeof Widget !== "function") throw new Error("A cake-react widget must defa
 createRoot(host).render(React.createElement(Widget, ${capability === "request" ? "globalThis.cakeRequest" : "undefined"}));
 `;
   const result = await build({
-    stdin: { contents: entry, loader: "tsx", resolveDir: process.cwd(), sourcefile: "cake-widget-entry.tsx" },
+    stdin: {
+      contents: entry,
+      loader: "tsx",
+      resolveDir: process.cwd(),
+      sourcefile: "cake-widget-entry.tsx",
+    },
     bundle: true,
     write: false,
     format: "iife",
@@ -126,7 +154,7 @@ createRoot(host).render(React.createElement(Widget, ${capability === "request" ?
     target: "es2022",
     jsx: "automatic",
     plugins: [widgetModulePlugin(source)],
-    logLevel: "silent"
+    logLevel: "silent",
   }).catch((error: unknown) => {
     const messages = isBuildFailure(error)
       ? diagnostics(error.errors)
@@ -135,18 +163,31 @@ createRoot(host).render(React.createElement(Widget, ${capability === "request" ?
   });
   const javascript = result.outputFiles[0]?.text;
   if (!javascript) throw new Error("Cake did not produce an inline React widget bundle");
-  return { token, document: documentShell(token, `<div id="cake-widget-root"></div><script>${javascript.replaceAll("</script", "<\\/script")}</script>`, capability) };
+  return {
+    token,
+    document: documentShell(
+      token,
+      `<div id="cake-widget-root"></div><script>${javascript.replaceAll("</script", "<\\/script")}</script>`,
+      capability,
+    ),
+  };
 }
 
-interface InlineWidgetBuildFailure { errors: Message[] }
+interface InlineWidgetBuildFailure {
+  errors: Message[];
+}
 
 function isBuildFailure(error: unknown): error is InlineWidgetBuildFailure {
-  return typeof error === "object" && error !== null && "errors" in error && Array.isArray(error.errors);
+  return (
+    typeof error === "object" && error !== null && "errors" in error && Array.isArray(error.errors)
+  );
 }
 
 export function extractRepairedWidget(text: string, language: InlineWidgetLanguage) {
   const fence = language === "html" ? "cake-html" : "cake-react";
-  const match = new RegExp("(?:^|\\n)```" + fence + "[^\\S\\r\\n]*\\r?\\n([\\s\\S]*?)\\r?\\n```(?:\\n|$)").exec(text);
+  const match = new RegExp(
+    "(?:^|\\n)```" + fence + "[^\\S\\r\\n]*\\r?\\n([\\s\\S]*?)\\r?\\n```(?:\\n|$)",
+  ).exec(text);
   const source = (match?.[1] ?? text).trim();
   if (!source) throw new Error("The repair agent returned an empty widget");
   return source;

@@ -16,17 +16,22 @@ export class SessionOperationCoordinator extends Store<Record<string, never>> {
   }
 
   includes(operationId: string, owner?: string) {
-    return this.operations.some((operation) => operation.id === operationId && (!owner || operation.owner === owner));
+    return this.operations.some(
+      (operation) => operation.id === operationId && (!owner || operation.owner === owner),
+    );
   }
 
   active(owner?: string) {
-    return this.operations.filter((operation) => !owner || operation.owner === owner).map((operation) => operation.id);
+    return this.operations
+      .filter((operation) => !owner || operation.owner === owner)
+      .map((operation) => operation.id);
   }
 
   reset(owner?: string) {
     if (!owner) this.operations.splice(0);
-    else for (let index = this.operations.length - 1; index >= 0; index -= 1) {
-      if (this.operations[index]!.owner === owner) this.operations.splice(index, 1);
-    }
+    else
+      for (let index = this.operations.length - 1; index >= 0; index -= 1) {
+        if (this.operations[index]!.owner === owner) this.operations.splice(index, 1);
+      }
   }
 }

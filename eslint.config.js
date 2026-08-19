@@ -8,8 +8,8 @@ export default tseslint.config(
   {
     files: ["**/*.{ts,tsx}"],
     rules: {
-      "@typescript-eslint/consistent-type-imports": "error"
-    }
+      "@typescript-eslint/consistent-type-imports": "error",
+    },
   },
   {
     files: ["src/**/*.{ts,tsx}"],
@@ -21,12 +21,12 @@ export default tseslint.config(
           paths: [
             {
               name: "@earendil-works/pi-coding-agent",
-              message: "Only src/agent adapter modules may import Pi."
-            }
-          ]
-        }
-      ]
-    }
+              message: "Only src/agent adapter modules may import Pi.",
+            },
+          ],
+        },
+      ],
+    },
   },
   {
     files: ["src/renderer/**/*.{ts,tsx}"],
@@ -37,21 +37,21 @@ export default tseslint.config(
           paths: [
             {
               name: "@earendil-works/pi-coding-agent",
-              message: "Renderer code must use Cake-owned client contracts."
+              message: "Renderer code must use Cake-owned client contracts.",
             },
             {
               name: "electron",
-              message: "Renderer code must use the typed preload bridge."
-            }
+              message: "Renderer code must use the typed preload bridge.",
+            },
           ],
           patterns: [
             {
               group: ["node:*", "electron/*", "../agent/*", "../main/*", "../preload/*"],
-              message: "Renderer code cannot import privileged process modules."
-            }
-          ]
-        }
-      ]
-    }
-  }
+              message: "Renderer code cannot import privileged process modules.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

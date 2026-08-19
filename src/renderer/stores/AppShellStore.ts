@@ -38,7 +38,9 @@ export class AppShellStore extends Store<AppShellStoreProps> {
     this.selection = { kind: "cake-chat", sessionId };
     this.activeConversation = sessionId ? { kind: "cake-chat", sessionId } : undefined;
   }
-  showSettings() { this.selection = { kind: "settings" }; }
+  showSettings() {
+    this.selection = { kind: "settings" };
+  }
   restoreConversation(selection: WindowConversationSelection) {
     this.activeConversation = selection;
     this.selection = selection;

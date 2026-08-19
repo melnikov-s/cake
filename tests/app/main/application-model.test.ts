@@ -18,7 +18,7 @@ describe("ApplicationModel", () => {
       resolvedCakeChatSessionIds: ["cake-chat-1"],
       trustedProjectPaths: ["/work/cake"],
       projects: [{ path: "/work/cake", name: "Cake desktop" }],
-      resolvedSessionIds: ["session-1"]
+      resolvedSessionIds: ["session-1"],
     });
 
     model.setSessionsResolved(["session-1"], false);
@@ -37,7 +37,11 @@ describe("ApplicationModel", () => {
     expect(model.snapshot().utilityModel).toBeUndefined();
 
     model.setUtilityModel({ provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "low" });
-    expect(model.snapshot().utilityModel).toEqual({ provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "low" });
+    expect(model.snapshot().utilityModel).toEqual({
+      provider: "openai",
+      modelId: "gpt-5-mini",
+      thinkingLevel: "low",
+    });
 
     model.setUtilityModel(undefined);
     expect(model.snapshot().utilityModel).toBeUndefined();
@@ -46,10 +50,17 @@ describe("ApplicationModel", () => {
   it("updates resolve state on projects restored from persistence", () => {
     const model = ApplicationModel.from({
       schemaVersion: 1,
-      projects: [{ path: "/work/cake", name: "Cake", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString() }],
+      projects: [
+        {
+          path: "/work/cake",
+          name: "Cake",
+          addedAt: new Date(0).toISOString(),
+          lastOpenedAt: new Date(0).toISOString(),
+        },
+      ],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
-      trustedProjectPaths: []
+      trustedProjectPaths: [],
     });
 
     model.upsertProject("/work/cake", "Cake");

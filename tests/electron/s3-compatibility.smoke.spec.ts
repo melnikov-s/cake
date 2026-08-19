@@ -15,15 +15,61 @@ test("adapts extension dialogs and reports unsupported widgets", async () => {
     mkdir(join(project, ".pi"), { recursive: true }),
     mkdir(join(fixturePackage, "extensions"), { recursive: true }),
     mkdir(join(fixturePackage, "skills", "desktop-fixture"), { recursive: true }),
-    mkdir(join(fixturePackage, "prompts"), { recursive: true })
+    mkdir(join(fixturePackage, "prompts"), { recursive: true }),
   ]);
-  await writeFile(join(userData, "window-state.json"), JSON.stringify({ projectPath: project, recentProjectPaths: [project], draft: "", theme: "system", thinkingExpanded: false }));
-  await writeFile(join(userData, "application.json"), JSON.stringify({ schemaVersion: 1, projects: [{ path: project, name: "project", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString() }], resolvedSessionIds: [], trustedProjectPaths: [project] }));
-  await writeFile(join(project, ".pi", "settings.json"), JSON.stringify({ packages: ["../fixture-package"] }));
-  await writeFile(join(fixturePackage, "package.json"), JSON.stringify({ name: "desktop-fixture", version: "1.0.0", pi: { extensions: ["extensions/desktop-fixture.ts"], skills: ["skills"], prompts: ["prompts"] } }));
-  await writeFile(join(fixturePackage, "skills", "desktop-fixture", "SKILL.md"), "---\nname: desktop-fixture\ndescription: Desktop fixture skill\n---\nFixture.\n");
-  await writeFile(join(fixturePackage, "prompts", "desktop-fixture.md"), "---\ndescription: Desktop fixture prompt\n---\nFixture.\n");
-  await writeFile(join(fixturePackage, "extensions", "desktop-fixture.ts"), `
+  await writeFile(
+    join(userData, "window-state.json"),
+    JSON.stringify({
+      projectPath: project,
+      recentProjectPaths: [project],
+      draft: "",
+      theme: "system",
+      thinkingExpanded: false,
+    }),
+  );
+  await writeFile(
+    join(userData, "application.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      projects: [
+        {
+          path: project,
+          name: "project",
+          addedAt: new Date(0).toISOString(),
+          lastOpenedAt: new Date(0).toISOString(),
+        },
+      ],
+      resolvedSessionIds: [],
+      trustedProjectPaths: [project],
+    }),
+  );
+  await writeFile(
+    join(project, ".pi", "settings.json"),
+    JSON.stringify({ packages: ["../fixture-package"] }),
+  );
+  await writeFile(
+    join(fixturePackage, "package.json"),
+    JSON.stringify({
+      name: "desktop-fixture",
+      version: "1.0.0",
+      pi: {
+        extensions: ["extensions/desktop-fixture.ts"],
+        skills: ["skills"],
+        prompts: ["prompts"],
+      },
+    }),
+  );
+  await writeFile(
+    join(fixturePackage, "skills", "desktop-fixture", "SKILL.md"),
+    "---\nname: desktop-fixture\ndescription: Desktop fixture skill\n---\nFixture.\n",
+  );
+  await writeFile(
+    join(fixturePackage, "prompts", "desktop-fixture.md"),
+    "---\ndescription: Desktop fixture prompt\n---\nFixture.\n",
+  );
+  await writeFile(
+    join(fixturePackage, "extensions", "desktop-fixture.ts"),
+    `
 export default function (pi) {
   pi.registerCommand("desktop-fixture", { description: "Exercise Cake desktop UI", async handler(_args, ctx) {
     ctx.ui.notify("Extension connected", "info");
@@ -35,11 +81,18 @@ export default function (pi) {
     ctx.ui.setFooter(() => ({ render: () => [], invalidate() {} }));
   } });
 }
-`);
+`,
+  );
 
   const application = await electron.launch({
-    args: [repositoryRoot], cwd: repositoryRoot,
-    env: { ...process.env, CAKE_ELECTRON_SMOKE: "1", CAKE_ELECTRON_USER_DATA: userData, CAKE_HOME: join(temporaryRoot, "cake-home") }
+    args: [repositoryRoot],
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      CAKE_ELECTRON_SMOKE: "1",
+      CAKE_ELECTRON_USER_DATA: userData,
+      CAKE_HOME: join(temporaryRoot, "cake-home"),
+    },
   });
 
   try {

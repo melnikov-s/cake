@@ -22,12 +22,17 @@ test("renders all changed files in one scrollable diff and synchronizes file nav
   const timestamp = new Date(0).toISOString();
   const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
   const originalSource = "export const value = 0;\n";
-  const changedSource = ["export const values = [", ...Array.from({ length: 180 }, (_, index) => `  ${index},`), "];", ""].join("\n");
+  const changedSource = [
+    "export const values = [",
+    ...Array.from({ length: 180 }, (_, index) => `  ${index},`),
+    "];",
+    "",
+  ].join("\n");
 
   await Promise.all([
     mkdir(userData, { recursive: true }),
     mkdir(join(project, "src"), { recursive: true }),
-    mkdir(sessionDirectory, { recursive: true })
+    mkdir(sessionDirectory, { recursive: true }),
   ]);
   await writeFile(join(project, "src", "app.ts"), originalSource);
   await git(project, "-c", "init.defaultBranch=main", "init");
@@ -38,32 +43,80 @@ test("renders all changed files in one scrollable diff and synchronizes file nav
   await writeFile(join(project, "src", "app.ts"), changedSource);
   await writeFile(join(project, "PLAN.md"), "# Plan\n");
 
-  await writeFile(join(userData, "window-state.json"), JSON.stringify({
-    projectPath: project,
-    selectedSessionId: sessionId,
-    activeConversation: { kind: "project-session", workspacePath: project, sessionId },
-    recentProjectPaths: [project],
-    draft: "",
-    theme: "dark",
-    thinkingExpanded: false,
-    draftsBySession: {}
-  }));
-  await writeFile(join(userData, "application.json"), JSON.stringify({
-    schemaVersion: 1,
-    projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-    resolvedSessionIds: [],
-    trustedProjectPaths: []
-  }));
-  await writeFile(join(sessionDirectory, `${sessionId}.jsonl`), [
-    { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
-    { type: "message", id: "user-1", parentId: null, timestamp, message: { role: "user", content: [{ type: "text", text: "Review the project changes" }], timestamp: 0 } },
-    { type: "message", id: "assistant-1", parentId: "user-1", timestamp, message: { role: "assistant", content: [{ type: "text", text: "The workspace is ready for review." }], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: 1 } }
-  ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+  await writeFile(
+    join(userData, "window-state.json"),
+    JSON.stringify({
+      projectPath: project,
+      selectedSessionId: sessionId,
+      activeConversation: { kind: "project-session", workspacePath: project, sessionId },
+      recentProjectPaths: [project],
+      draft: "",
+      theme: "dark",
+      thinkingExpanded: false,
+      draftsBySession: {},
+    }),
+  );
+  await writeFile(
+    join(userData, "application.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
+      resolvedSessionIds: [],
+      trustedProjectPaths: [],
+    }),
+  );
+  await writeFile(
+    join(sessionDirectory, `${sessionId}.jsonl`),
+    [
+      { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+      {
+        type: "message",
+        id: "user-1",
+        parentId: null,
+        timestamp,
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Review the project changes" }],
+          timestamp: 0,
+        },
+      },
+      {
+        type: "message",
+        id: "assistant-1",
+        parentId: "user-1",
+        timestamp,
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "The workspace is ready for review." }],
+          api: "anthropic-messages",
+          provider: "anthropic",
+          model: "fixture",
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          },
+          stopReason: "stop",
+          timestamp: 1,
+        },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
+  );
 
   const application = await electron.launch({
     args: [repositoryRoot],
     cwd: repositoryRoot,
-    env: { ...process.env, CAKE_ELECTRON_SMOKE: "1", CAKE_ELECTRON_USER_DATA: userData, CAKE_HOME: cakeHome }
+    env: {
+      ...process.env,
+      CAKE_ELECTRON_SMOKE: "1",
+      CAKE_ELECTRON_USER_DATA: userData,
+      CAKE_HOME: cakeHome,
+    },
   });
 
   try {
@@ -77,11 +130,18 @@ test("renders all changed files in one scrollable diff and synchronizes file nav
     await expect(diff).toContainText("export const values");
     await expect(diff).toContainText("# Plan");
 
-    const firstButton = page.locator('nav[aria-label="Changed files"] button').filter({ hasText: "app.ts" });
-    const planButton = page.locator('nav[aria-label="Changed files"] button').filter({ hasText: "PLAN.md" });
+    const firstButton = page
+      .locator('nav[aria-label="Changed files"] button')
+      .filter({ hasText: "app.ts" });
+    const planButton = page
+      .locator('nav[aria-label="Changed files"] button')
+      .filter({ hasText: "PLAN.md" });
     await firstButton.click();
     await expect(firstButton).toHaveClass(/active/);
-    await diff.evaluate((element) => { element.scrollTop = element.scrollHeight; element.dispatchEvent(new Event("scroll")); });
+    await diff.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+      element.dispatchEvent(new Event("scroll"));
+    });
     await expect(planButton).toHaveClass(/active/);
 
     await planButton.click();

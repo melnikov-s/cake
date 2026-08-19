@@ -13,12 +13,15 @@ describe("resolveCakePaths", () => {
       piGlobalChatSessions: "/Users/fixture/.cake/pi/global-chat/sessions",
       plugins: "/Users/fixture/.cake/plugins",
       recovery: "/Users/fixture/.cake/recovery",
-      state: "/Users/fixture/.cake/state"
+      state: "/Users/fixture/.cake/state",
     });
   });
 
   it("honors CAKE_HOME", () => {
-    const paths = resolveCakePaths({ env: { CAKE_HOME: "/opt/cake-data" }, homeDirectory: "/Users/fixture" });
+    const paths = resolveCakePaths({
+      env: { CAKE_HOME: "/opt/cake-data" },
+      homeDirectory: "/Users/fixture",
+    });
     expect(paths.home).toBe("/opt/cake-data");
     expect(paths.piAgent).toBe("/opt/cake-data/pi");
     expect(paths.piSessions).toBe("/opt/cake-data/pi/sessions");

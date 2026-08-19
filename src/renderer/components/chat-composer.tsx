@@ -6,7 +6,15 @@ import { ThinkingLevelSelect } from "@/components/thinking-level-select";
 import type { ChatConfigurationStore } from "../stores/ChatConfigurationStore";
 
 /** The authoritative composer frame shared by every Cake chat surface. */
-export const ChatComposer = observer(function ChatComposer({ configuration, onSubmit, input, children, toolbarLeading, toolbarActions, className }: {
+export const ChatComposer = observer(function ChatComposer({
+  configuration,
+  onSubmit,
+  input,
+  children,
+  toolbarLeading,
+  toolbarActions,
+  className,
+}: {
   configuration?: ChatConfigurationStore;
   onSubmit(event: FormEvent): void;
   input: ReactNode;
@@ -17,18 +25,35 @@ export const ChatComposer = observer(function ChatComposer({ configuration, onSu
 }) {
   const session = configuration?.session;
   const selectedModel = session?.model;
-  return <Composer className={`workbench-composer${className ? ` ${className}` : ""}`} onSubmit={onSubmit}>
-    {children}
-    {input}
-    <ComposerToolbar className="composer-toolbar">
-      <div className="composer-context">
-        {toolbarLeading}
-        {configuration && <>
-          <ModelCombobox ariaLabel="Model" groups={configuration.connectedModelsByProvider} value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""} onSelect={(value) => void configuration.selectModel(value)} />
-          <ThinkingLevelSelect ariaLabel="Thinking level" value={session?.thinkingLevel ?? "off"} levels={session?.availableThinkingLevels ?? ["off"]} onSelect={(level) => void configuration.selectThinkingLevel(level)} />
-        </>}
-      </div>
-      <div className="composer-actions">{toolbarActions}</div>
-    </ComposerToolbar>
-  </Composer>;
+  return (
+    <Composer
+      className={`workbench-composer${className ? ` ${className}` : ""}`}
+      onSubmit={onSubmit}
+    >
+      {children}
+      {input}
+      <ComposerToolbar className="composer-toolbar">
+        <div className="composer-context">
+          {toolbarLeading}
+          {configuration && (
+            <>
+              <ModelCombobox
+                ariaLabel="Model"
+                groups={configuration.connectedModelsByProvider}
+                value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""}
+                onSelect={(value) => void configuration.selectModel(value)}
+              />
+              <ThinkingLevelSelect
+                ariaLabel="Thinking level"
+                value={session?.thinkingLevel ?? "off"}
+                levels={session?.availableThinkingLevels ?? ["off"]}
+                onSelect={(level) => void configuration.selectThinkingLevel(level)}
+              />
+            </>
+          )}
+        </div>
+        <div className="composer-actions">{toolbarActions}</div>
+      </ComposerToolbar>
+    </Composer>
+  );
 });

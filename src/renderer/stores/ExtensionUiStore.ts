@@ -1,5 +1,9 @@
 import { Store, observable } from "r-state-tree";
-import type { ExtensionUiEvent, ExtensionUiState, ResourceDiagnostic } from "../../ipc/session-contract";
+import type {
+  ExtensionUiEvent,
+  ExtensionUiState,
+  ResourceDiagnostic,
+} from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import { describeError } from "../error-details";
 
@@ -43,13 +47,20 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
   async respond(value?: string, cancelled = false) {
     const request = this.request;
     if (!request) return;
-    this.error = undefined; this.errorDetails = undefined;
+    this.error = undefined;
+    this.errorDetails = undefined;
     this.request = undefined;
     this.props.requestComposerFocus();
     try {
       const context = this.props.sessionContext();
       if (!context) throw new Error("No active session");
-      await this.props.client.respondToUi({ operationId: request.operationId, sessionId: context.sessionId, uiRequestId: request.uiRequestId, value, cancelled });
+      await this.props.client.respondToUi({
+        operationId: request.operationId,
+        sessionId: context.sessionId,
+        uiRequestId: request.uiRequestId,
+        value,
+        cancelled,
+      });
     } catch (error) {
       const described = describeError(error);
       this.error = described.message;
@@ -84,28 +95,40 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
       if (this.props.operationActive(event.operationId)) this.request = event;
       return;
     }
-    if (event.type === "pi-state-changed" && (event.state === "failed" || event.state === "stopped")) this.request = undefined;
+    if (
+      event.type === "pi-state-changed" &&
+      (event.state === "failed" || event.state === "stopped")
+    )
+      this.request = undefined;
   }
 
   private receiveExtensionEvent(event: ExtensionUiEvent) {
     if (event.kind === "notify") {
       this.notifications.push(event);
-      if (this.notifications.length > 8) this.notifications.splice(0, this.notifications.length - 8);
+      if (this.notifications.length > 8)
+        this.notifications.splice(0, this.notifications.length - 8);
       return;
     }
     if (event.kind === "status") {
       const index = this.statuses.findIndex((item) => item.key === event.key);
-      if (event.text === undefined) { if (index >= 0) this.statuses.splice(index, 1); }
-      else if (index >= 0) this.statuses.splice(index, 1, { key: event.key, text: event.text });
+      if (event.text === undefined) {
+        if (index >= 0) this.statuses.splice(index, 1);
+      } else if (index >= 0) this.statuses.splice(index, 1, { key: event.key, text: event.text });
       else this.statuses.push({ key: event.key, text: event.text });
       return;
     }
-    if (event.kind === "title") { this.title = event.title; return; }
+    if (event.kind === "title") {
+      this.title = event.title;
+      return;
+    }
     if (event.kind === "editor-text") {
-      this.props.setDraft(event.mode === "insert" ? (current) => `${current}${event.text}` : event.text);
+      this.props.setDraft(
+        event.mode === "insert" ? (current) => `${current}${event.text}` : event.text,
+      );
       this.props.requestComposerFocus();
       return;
     }
-    if (!this.compatibilityDiagnostics.some((item) => item.id === event.diagnostic.id)) this.compatibilityDiagnostics.push(event.diagnostic);
+    if (!this.compatibilityDiagnostics.some((item) => item.id === event.diagnostic.id))
+      this.compatibilityDiagnostics.push(event.diagnostic);
   }
 }

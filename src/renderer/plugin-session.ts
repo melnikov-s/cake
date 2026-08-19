@@ -23,6 +23,6 @@ export function usePluginSession(): CakePluginSession {
     workspace: { kind: "cake.workspace-ref", id: JSON.stringify({ workspacePath }) },
     workspacePath,
     sessionId,
-    openChanges: () => root.openSessionChanges(sessionId)
+    openChanges: () => root.openSessionChanges(sessionId),
   };
 }

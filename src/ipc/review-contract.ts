@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { sessionUsageSchema, uiPartSchema, type SessionSnapshot, type UiPart } from "./session-contract";
+import {
+  sessionUsageSchema,
+  uiPartSchema,
+  type SessionSnapshot,
+  type UiPart,
+} from "./session-contract";
 
 export const REVIEW_TEXT_MAX_LENGTH = 262_144;
 const boundedReviewText = z.string().max(REVIEW_TEXT_MAX_LENGTH);
@@ -8,7 +13,7 @@ export const reviewPointSchema = z.object({
   diffLine: z.number().int().nonnegative(),
   oldLine: z.number().int().positive().optional(),
   newLine: z.number().int().positive().optional(),
-  column: z.number().int().nonnegative().optional()
+  column: z.number().int().nonnegative().optional(),
 });
 
 export const reviewAnchorSchema = z.object({
@@ -23,19 +28,35 @@ export const reviewAnchorSchema = z.object({
   messageId: z.string().min(1).max(256).optional(),
   entryId: z.string().min(1).max(256).optional(),
   startOffset: z.number().int().nonnegative().optional(),
-  endOffset: z.number().int().nonnegative().optional()
+  endOffset: z.number().int().nonnegative().optional(),
 });
 
 export const pendingReviewCommentSchema = z.object({
   id: z.string().min(1).max(256),
   body: boundedReviewText,
-  createdAt: z.string().datetime()
+  createdAt: z.string().datetime(),
 });
 
 export const reviewSubmissionSchema = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("running"), runId: z.string().uuid(), commentIds: z.array(z.string().min(1).max(256)).min(1), startedAt: z.string().datetime() }),
-  z.object({ status: z.literal("answered"), runId: z.string().uuid(), commentIds: z.array(z.string().min(1).max(256)).min(1), completedAt: z.string().datetime() }),
-  z.object({ status: z.literal("failed"), runId: z.string().uuid(), commentIds: z.array(z.string().min(1).max(256)).min(1), failedAt: z.string().datetime(), error: boundedReviewText })
+  z.object({
+    status: z.literal("running"),
+    runId: z.string().uuid(),
+    commentIds: z.array(z.string().min(1).max(256)).min(1),
+    startedAt: z.string().datetime(),
+  }),
+  z.object({
+    status: z.literal("answered"),
+    runId: z.string().uuid(),
+    commentIds: z.array(z.string().min(1).max(256)).min(1),
+    completedAt: z.string().datetime(),
+  }),
+  z.object({
+    status: z.literal("failed"),
+    runId: z.string().uuid(),
+    commentIds: z.array(z.string().min(1).max(256)).min(1),
+    failedAt: z.string().datetime(),
+    error: boundedReviewText,
+  }),
 ]);
 
 export const reviewThreadRecordSchema = z.object({
@@ -51,7 +72,7 @@ export const reviewThreadRecordSchema = z.object({
   status: z.enum(["open", "resolved"]),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
-  resolvedAt: z.string().datetime().optional()
+  resolvedAt: z.string().datetime().optional(),
 });
 
 export const reviewThreadSchema = z.object({
@@ -65,7 +86,7 @@ export const reviewThreadSchema = z.object({
   status: z.enum(["open", "resolved"]),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
-  resolvedAt: z.string().datetime().optional()
+  resolvedAt: z.string().datetime().optional(),
 });
 
 export type ReviewPoint = z.infer<typeof reviewPointSchema>;
@@ -80,7 +101,10 @@ export interface ReviewSessionProjection {
   usage?: SessionSnapshot["usage"];
 }
 
-export function projectReviewThread(record: ReviewThreadRecord, projection: ReviewSessionProjection = { parts: [] }): ReviewThread {
+export function projectReviewThread(
+  record: ReviewThreadRecord,
+  projection: ReviewSessionProjection = { parts: [] },
+): ReviewThread {
   return reviewThreadSchema.parse({
     id: record.id,
     workspacePath: record.workspacePath,
@@ -89,12 +113,19 @@ export function projectReviewThread(record: ReviewThreadRecord, projection: Revi
     anchor: record.anchor,
     parts: [
       ...projection.parts,
-      ...record.pendingComments.map((comment) => ({ id: comment.id, kind: "text" as const, role: "user" as const, text: comment.body, status: "complete" as const, deliveryState: "sending" as const }))
+      ...record.pendingComments.map((comment) => ({
+        id: comment.id,
+        kind: "text" as const,
+        role: "user" as const,
+        text: comment.body,
+        status: "complete" as const,
+        deliveryState: "sending" as const,
+      })),
     ].slice(-50_000),
     usage: projection.usage ?? record.usage,
     status: record.status,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
-    resolvedAt: record.resolvedAt
+    resolvedAt: record.resolvedAt,
   });
 }

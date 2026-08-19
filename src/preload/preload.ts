@@ -3,7 +3,7 @@ import {
   desktopEventSchema,
   desktopRequestSchema,
   desktopResponseSchema,
-  type CakeDesktopBridge
+  type CakeDesktopBridge,
 } from "../ipc/desktop-ipc";
 
 const bridge: CakeDesktopBridge = {
@@ -18,7 +18,7 @@ const bridge: CakeDesktopBridge = {
     };
     ipcRenderer.on("cake:event", handler);
     return () => ipcRenderer.removeListener("cake:event", handler);
-  }
+  },
 };
 
 contextBridge.exposeInMainWorld("cake", Object.freeze(bridge));

@@ -64,25 +64,29 @@ import { Button, definePlugin, usePluginBackend, usePluginSession } from "cake";
 function BranchButton() {
   const backend = usePluginBackend("acme.calendar");
   const session = usePluginSession();
-  return <Button onClick={() => void backend.call("currentBranch", { workspacePath: session.workspacePath })}>Branch</Button>;
+  return (
+    <Button
+      onClick={() => void backend.call("currentBranch", { workspacePath: session.workspacePath })}
+    >
+      Branch
+    </Button>
+  );
 }
 
 export default definePlugin({
   id: "acme.calendar",
   contributions: { BranchButton },
   slots: {
-    "project-session.header.actions": [
-      { id: "branch", component: BranchButton, order: 20 }
-    ]
+    "project-session.header.actions": [{ id: "branch", component: BranchButton, order: 20 }],
   },
   commands: {
     open: {
       description: "Open the calendar",
       run(args, context) {
         context.reveal("acme.calendar.main", { query: args });
-      }
-    }
-  }
+      },
+    },
+  },
 });
 ```
 
@@ -180,8 +184,8 @@ export default definePluginBackend({
       const cwd = String((input as { cwd?: string } | null)?.cwd ?? process.cwd());
       const { stdout } = await exec("git", ["branch", "--show-current"], { cwd, signal });
       return stdout.trim();
-    }
-  }
+    },
+  },
 });
 ```
 

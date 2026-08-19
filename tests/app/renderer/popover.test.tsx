@@ -2,7 +2,12 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { Popover, PopoverContent, PopoverTrigger, calculatePopoverPosition } from "../../../src/renderer/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  calculatePopoverPosition,
+} from "../../../src/renderer/components/ui/popover";
 
 describe("Cake Popover", () => {
   let container: HTMLDivElement;
@@ -21,17 +26,25 @@ describe("Cake Popover", () => {
   });
 
   it("portals intentional overlap and dismisses it with Escape", () => {
-    act(() => root.render(<Popover>
-      <PopoverTrigger>Environment</PopoverTrigger>
-      <PopoverContent aria-label="Environment details"><button>Refresh</button></PopoverContent>
-    </Popover>));
+    act(() =>
+      root.render(
+        <Popover>
+          <PopoverTrigger>Environment</PopoverTrigger>
+          <PopoverContent aria-label="Environment details">
+            <button>Refresh</button>
+          </PopoverContent>
+        </Popover>,
+      ),
+    );
     const trigger = container.querySelector<HTMLButtonElement>("button")!;
 
     act(() => trigger.dispatchEvent(new MouseEvent("click", { bubbles: true })));
 
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     expect(document.body.querySelector('[aria-label="Environment details"]')).not.toBeNull();
-    act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    act(() =>
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
+    );
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(document.body.querySelector('[aria-label="Environment details"]')).toBeNull();
     expect(document.activeElement).toBe(trigger);
@@ -44,7 +57,7 @@ describe("Cake Popover", () => {
       { width: 200, height: 200 },
       "bottom",
       "end",
-      8
+      8,
     );
 
     expect(position).toEqual({ left: 70, top: 62 });

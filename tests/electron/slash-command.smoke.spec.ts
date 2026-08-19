@@ -9,17 +9,45 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-slash-command-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
-  await import("node:fs/promises").then(({ mkdir }) => Promise.all([
-    mkdir(userData, { recursive: true }),
-    mkdir(project, { recursive: true })
-  ]));
-  await writeFile(join(userData, "window-state.json"), JSON.stringify({ projectPath: project, recentProjectPaths: [project], draft: "", theme: "system", thinkingExpanded: false }));
-  await writeFile(join(userData, "application.json"), JSON.stringify({ schemaVersion: 1, projects: [{ path: project, name: "project", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString() }], resolvedSessionIds: [], trustedProjectPaths: [] }));
+  await import("node:fs/promises").then(({ mkdir }) =>
+    Promise.all([mkdir(userData, { recursive: true }), mkdir(project, { recursive: true })]),
+  );
+  await writeFile(
+    join(userData, "window-state.json"),
+    JSON.stringify({
+      projectPath: project,
+      recentProjectPaths: [project],
+      draft: "",
+      theme: "system",
+      thinkingExpanded: false,
+    }),
+  );
+  await writeFile(
+    join(userData, "application.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      projects: [
+        {
+          path: project,
+          name: "project",
+          addedAt: new Date(0).toISOString(),
+          lastOpenedAt: new Date(0).toISOString(),
+        },
+      ],
+      resolvedSessionIds: [],
+      trustedProjectPaths: [],
+    }),
+  );
 
   const application = await electron.launch({
     args: [repositoryRoot],
     cwd: repositoryRoot,
-    env: { ...process.env, CAKE_ELECTRON_SMOKE: "1", CAKE_ELECTRON_USER_DATA: userData, CAKE_HOME: join(temporaryRoot, "cake-home") }
+    env: {
+      ...process.env,
+      CAKE_ELECTRON_SMOKE: "1",
+      CAKE_ELECTRON_USER_DATA: userData,
+      CAKE_HOME: join(temporaryRoot, "cake-home"),
+    },
   });
 
   try {

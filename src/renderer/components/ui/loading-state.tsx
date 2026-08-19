@@ -15,7 +15,7 @@ const orbit = Array.from({ length: 9 }, (_, index) => {
 const patterns = {
   Drive: { delays: chevron, duration: 650, round: false },
   Dots: { delays: chevron, duration: 650, round: true },
-  Orbit: { delays: orbit, duration: 950, round: false }
+  Orbit: { delays: orbit, duration: 950, round: false },
 } as const;
 
 export type LoadingStateVariant = keyof typeof patterns;
@@ -26,7 +26,15 @@ function formatElapsed(milliseconds: number) {
   return `${Math.floor(total / 60)}m ${(total % 60).toFixed(1)}s`;
 }
 
-export function LoadingState({ label = "Churning", variant = "Drive", startedAt }: { label?: string; variant?: LoadingStateVariant; startedAt?: number }) {
+export function LoadingState({
+  label = "Churning",
+  variant = "Drive",
+  startedAt,
+}: {
+  label?: string;
+  variant?: LoadingStateVariant;
+  startedAt?: number;
+}) {
   const [localStartedAt] = useState(() => Date.now());
   const effectiveStartedAt = startedAt ?? localStartedAt;
   const [now, setNow] = useState(() => Date.now());
@@ -38,7 +46,11 @@ export function LoadingState({ label = "Churning", variant = "Drive", startedAt 
   }, []);
 
   return (
-    <div className="loading-state flex w-fit items-center gap-2.5" role="status" aria-label={`${label} in progress`}>
+    <div
+      className="loading-state flex w-fit items-center gap-2.5"
+      role="status"
+      aria-label={`${label} in progress`}
+    >
       <span aria-hidden="true" className="grid grid-cols-[repeat(3,4px)] gap-[1.5px]">
         {delays.map((delay, index) => (
           <span
@@ -46,7 +58,8 @@ export function LoadingState({ label = "Churning", variant = "Drive", startedAt 
             className={`loading-state-cell size-[4px] bg-foreground ${round ? "rounded-full" : "rounded-[1px]"}`}
             style={{
               opacity: delay === null ? 0.07 : 0.15,
-              animation: delay === null ? "none" : `pixel-on ${duration}ms ease-in-out ${delay}ms infinite`
+              animation:
+                delay === null ? "none" : `pixel-on ${duration}ms ease-in-out ${delay}ms infinite`,
             }}
           />
         ))}
@@ -54,14 +67,17 @@ export function LoadingState({ label = "Churning", variant = "Drive", startedAt 
       <span
         className="loading-state-label bg-clip-text text-[13px] font-medium text-transparent"
         style={{
-          backgroundImage: "linear-gradient(90deg, var(--muted-foreground) 35%, var(--foreground) 50%, var(--muted-foreground) 65%)",
+          backgroundImage:
+            "linear-gradient(90deg, var(--muted-foreground) 35%, var(--foreground) 50%, var(--muted-foreground) 65%)",
           backgroundSize: "200% 100%",
-          animation: "shimmer-text 1.4s linear infinite"
+          animation: "shimmer-text 1.4s linear infinite",
         }}
       >
         {label}
       </span>
-      <span className="font-mono text-[12px] text-muted-foreground tabular-nums">{formatElapsed(now - effectiveStartedAt)}</span>
+      <span className="font-mono text-[12px] text-muted-foreground tabular-nums">
+        {formatElapsed(now - effectiveStartedAt)}
+      </span>
     </div>
   );
 }

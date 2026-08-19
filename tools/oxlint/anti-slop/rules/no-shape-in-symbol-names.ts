@@ -26,7 +26,8 @@ export const noForbiddenTermInSymbolNamesRule = defineRule({
         node.parent.type === "MemberExpression" &&
         node.parent.property === node &&
         !node.parent.computed
-      ) return;
+      )
+        return;
       if (!containsForbiddenSymbolName(node.name)) return;
       context.report({
         node,

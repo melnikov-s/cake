@@ -13,6 +13,15 @@ export function CopyErrorDetailsButton({ details }: { details: string }) {
     }
   };
 
-  const label = status === "copied" ? "Copied full error details" : status === "failed" ? "Copy failed" : "Copy full error details";
-  return <Button className="copy-error-details" variant="outline" size="sm" onClick={() => void copy()}>{label}</Button>;
+  const label =
+    status === "copied"
+      ? "Copied full error details"
+      : status === "failed"
+        ? "Copy failed"
+        : "Copy full error details";
+  return (
+    <Button className="copy-error-details" variant="outline" size="sm" onClick={() => void copy()}>
+      {label}
+    </Button>
+  );
 }

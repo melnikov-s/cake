@@ -10,23 +10,40 @@ import {
   type Key,
   type ReactElement,
   type ReactNode,
-  type RefAttributes
+  type RefAttributes,
 } from "react";
 import {
   Virtuoso,
   type FollowOutput,
   type IndexLocationWithAlign,
   type VirtuosoHandle,
-  type VirtuosoProps
+  type VirtuosoProps,
 } from "react-virtuoso";
 import { cn } from "@/lib/utils";
 
 export function Conversation({ className, ...props }: ComponentProps<"section">) {
-  return <section className={cn("mx-auto flex min-w-0 w-full max-w-3xl flex-col gap-5 overflow-x-hidden", className)} aria-label="Conversation" {...props} />;
+  return (
+    <section
+      className={cn(
+        "mx-auto flex min-w-0 w-full max-w-3xl flex-col gap-5 overflow-x-hidden",
+        className,
+      )}
+      aria-label="Conversation"
+      {...props}
+    />
+  );
 }
 
 export function ConversationEmpty({ className, ...props }: ComponentProps<"div">) {
-  return <div className={cn("grid min-h-64 place-items-center rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground", className)} {...props} />;
+  return (
+    <div
+      className={cn(
+        "grid min-h-64 place-items-center rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
 }
 
 export type VirtualizedConversationHandle = VirtuosoHandle;
@@ -51,9 +68,9 @@ function VirtualizedConversationInner<Item>(
     components,
     atBottomStateChange,
     followOutput,
-    initialTopMostItemIndex
+    initialTopMostItemIndex,
   }: VirtualizedConversationProps<Item>,
-  ref: ForwardedRef<VirtualizedConversationHandle>
+  ref: ForwardedRef<VirtualizedConversationHandle>,
 ) {
   return (
     <Virtuoso
@@ -77,5 +94,5 @@ export const VirtualizedConversation =
   // SAFETY: React.forwardRef erases the inner component's generic Item parameter;
   // this restores the same props and ref contract exposed by the implementation.
   ForwardedVirtualizedConversation as <Item>(
-  props: VirtualizedConversationProps<Item> & RefAttributes<VirtualizedConversationHandle>
-) => ReactElement;
+    props: VirtualizedConversationProps<Item> & RefAttributes<VirtualizedConversationHandle>,
+  ) => ReactElement;

@@ -38,7 +38,10 @@ export class SessionModel extends Model {
   }
 
   get compatibility(): SessionSnapshot["compatibility"] {
-    return { resources: this.resources.map((item) => item.value), diagnostics: this.resourceDiagnostics.map((item) => item.value) };
+    return {
+      resources: this.resources.map((item) => item.value),
+      diagnostics: this.resourceDiagnostics.map((item) => item.value),
+    };
   }
 
   upsertPart(part: UiPart) {

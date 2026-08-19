@@ -3,24 +3,86 @@ import { observable } from "r-state-tree";
 import { jsonValueSchema } from "../../../src/ipc/json-contract";
 import type { GlobalSessionSummary, ProjectRecord } from "../../../src/ipc/session-contract";
 import type { CustomizationState, PluginStatus } from "../../../src/plugin/plugin-contract";
-import { AppControlBridge, appControlToolCatalog, type AppControlHost } from "../../../src/renderer/app-control-bridge";
+import {
+  AppControlBridge,
+  appControlToolCatalog,
+  type AppControlHost,
+} from "../../../src/renderer/app-control-bridge";
 
 const projects: ProjectRecord[] = [
-  { path: "/cake", name: "Cake", addedAt: "2026-08-01T00:00:00.000Z", lastOpenedAt: "2026-08-12T00:00:00.000Z" },
-  { path: "/pie", name: "Pie", addedAt: "2026-08-02T00:00:00.000Z", lastOpenedAt: "2026-08-11T00:00:00.000Z" }
+  {
+    path: "/cake",
+    name: "Cake",
+    addedAt: "2026-08-01T00:00:00.000Z",
+    lastOpenedAt: "2026-08-12T00:00:00.000Z",
+  },
+  {
+    path: "/pie",
+    name: "Pie",
+    addedAt: "2026-08-02T00:00:00.000Z",
+    lastOpenedAt: "2026-08-11T00:00:00.000Z",
+  },
 ];
 
 const sessions: GlobalSessionSummary[] = [
-  { id: "older", title: "Older work", created: "2026-08-01T00:00:00.000Z", modified: "2026-08-10T00:00:00.000Z", messageCount: 4, resolved: false, workspacePath: "/pie", workspaceName: "Pie" },
-  { id: "current", title: "Current work", created: "2026-08-02T00:00:00.000Z", modified: "2026-08-12T00:00:00.000Z", messageCount: 8, resolved: false, workspacePath: "/cake", workspaceName: "Cake" },
-  { id: "running", title: "Background work", created: "2026-08-03T00:00:00.000Z", modified: "2026-08-11T00:00:00.000Z", messageCount: 2, resolved: false, workspacePath: "/cake", workspaceName: "Cake" }
+  {
+    id: "older",
+    title: "Older work",
+    created: "2026-08-01T00:00:00.000Z",
+    modified: "2026-08-10T00:00:00.000Z",
+    messageCount: 4,
+    resolved: false,
+    workspacePath: "/pie",
+    workspaceName: "Pie",
+  },
+  {
+    id: "current",
+    title: "Current work",
+    created: "2026-08-02T00:00:00.000Z",
+    modified: "2026-08-12T00:00:00.000Z",
+    messageCount: 8,
+    resolved: false,
+    workspacePath: "/cake",
+    workspaceName: "Cake",
+  },
+  {
+    id: "running",
+    title: "Background work",
+    created: "2026-08-03T00:00:00.000Z",
+    modified: "2026-08-11T00:00:00.000Z",
+    messageCount: 2,
+    resolved: false,
+    workspacePath: "/cake",
+    workspaceName: "Cake",
+  },
 ];
 const cakeChatSessions = [
-  { id: "cake-chat-current", title: "Cake-wide work", created: "2026-08-04T00:00:00.000Z", modified: "2026-08-13T00:00:00.000Z", messageCount: 6, resolved: false },
-  { id: "cake-chat-resolved", title: "Finished Cake work", created: "2026-08-01T00:00:00.000Z", modified: "2026-08-09T00:00:00.000Z", messageCount: 3, resolved: true }
+  {
+    id: "cake-chat-current",
+    title: "Cake-wide work",
+    created: "2026-08-04T00:00:00.000Z",
+    modified: "2026-08-13T00:00:00.000Z",
+    messageCount: 6,
+    resolved: false,
+  },
+  {
+    id: "cake-chat-resolved",
+    title: "Finished Cake work",
+    created: "2026-08-01T00:00:00.000Z",
+    modified: "2026-08-09T00:00:00.000Z",
+    messageCount: 3,
+    resolved: true,
+  },
 ];
 
-function createBridge(customization: Partial<Pick<AppControlHost, "currentSession" | "customizationState" | "plugins" | "setPluginEnabled" | "setActiveScene">> = {}) {
+function createBridge(
+  customization: Partial<
+    Pick<
+      AppControlHost,
+      "currentSession" | "customizationState" | "plugins" | "setPluginEnabled" | "setActiveScene"
+    >
+  > = {},
+) {
   const openSession = vi.fn(async () => undefined);
   const createSession = vi.fn(async () => undefined);
   const sendSessionMessage = vi.fn(async () => undefined);
@@ -31,16 +93,37 @@ function createBridge(customization: Partial<Pick<AppControlHost, "currentSessio
   const setCakeChatSessionsResolved = vi.fn(async () => 1);
   const setSessionModel = vi.fn(async () => undefined);
   const readSession = vi.fn(async () => [
-    { id: "user-1", kind: "text" as const, role: "user" as const, text: "Find the PDF session", status: "complete" as const },
-    { id: "tool-1", kind: "tool" as const, name: "search", input: "PDF", output: "Found it", state: "success" as const },
-    { id: "assistant-1", kind: "text" as const, role: "assistant" as const, entryId: "entry-2", text: "Here it is", status: "complete" as const }
+    {
+      id: "user-1",
+      kind: "text" as const,
+      role: "user" as const,
+      text: "Find the PDF session",
+      status: "complete" as const,
+    },
+    {
+      id: "tool-1",
+      kind: "tool" as const,
+      name: "search",
+      input: "PDF",
+      output: "Found it",
+      state: "success" as const,
+    },
+    {
+      id: "assistant-1",
+      kind: "text" as const,
+      role: "assistant" as const,
+      entryId: "entry-2",
+      text: "Here it is",
+      status: "complete" as const,
+    },
   ]);
   const bridge = new AppControlBridge({
-    currentSession: customization.currentSession ?? (() => ({ workspacePath: "/cake", sessionId: "current" })),
+    currentSession:
+      customization.currentSession ?? (() => ({ workspacePath: "/cake", sessionId: "current" })),
     projects: () => projects,
     sessions: () => sessions,
     cakeChatSessions: () => cakeChatSessions,
-    sessionActivity: (sessionId) => sessionId === "running" ? "running" : undefined,
+    sessionActivity: (sessionId) => (sessionId === "running" ? "running" : undefined),
     readSession,
     openSession,
     createSession,
@@ -54,18 +137,60 @@ function createBridge(customization: Partial<Pick<AppControlHost, "currentSessio
     customizationState: customization.customizationState ?? (() => undefined),
     plugins: customization.plugins ?? (() => []),
     getPluginAuthoringReference: vi.fn(async () => "reference"),
-    listPluginFiles: vi.fn(async () => ({ workingRevision: "a".repeat(64), buildRevision: "a".repeat(64), files: [] })),
-    createPlugin: vi.fn(async () => ({ workingRevision: "b".repeat(64), buildRevision: "b".repeat(64), files: [] })),
+    listPluginFiles: vi.fn(async () => ({
+      workingRevision: "a".repeat(64),
+      buildRevision: "a".repeat(64),
+      files: [],
+    })),
+    createPlugin: vi.fn(async () => ({
+      workingRevision: "b".repeat(64),
+      buildRevision: "b".repeat(64),
+      files: [],
+    })),
     readPluginFile: vi.fn(async () => "source"),
-    writePluginFile: vi.fn(async () => ({ workingRevision: "b".repeat(64), buildRevision: "b".repeat(64), files: [] })),
-    validateCustomization: vi.fn(async () => ({ revision: "a".repeat(64), sourceRevision: "a".repeat(64), diagnostics: [], valid: true })),
-    activateCustomization: vi.fn(async () => ({ revision: "a".repeat(64), activating: true as const })),
-    rollbackCustomization: vi.fn(async () => ({ schemaVersion: 1 as const, recoveryRequired: false, diagnostics: [], updatedAt: new Date(0).toISOString() })),
-    useFactoryCustomization: vi.fn(async () => ({ schemaVersion: 1 as const, recoveryRequired: false, diagnostics: [], updatedAt: new Date(0).toISOString() })),
+    writePluginFile: vi.fn(async () => ({
+      workingRevision: "b".repeat(64),
+      buildRevision: "b".repeat(64),
+      files: [],
+    })),
+    validateCustomization: vi.fn(async () => ({
+      revision: "a".repeat(64),
+      sourceRevision: "a".repeat(64),
+      diagnostics: [],
+      valid: true,
+    })),
+    activateCustomization: vi.fn(async () => ({
+      revision: "a".repeat(64),
+      activating: true as const,
+    })),
+    rollbackCustomization: vi.fn(async () => ({
+      schemaVersion: 1 as const,
+      recoveryRequired: false,
+      diagnostics: [],
+      updatedAt: new Date(0).toISOString(),
+    })),
+    useFactoryCustomization: vi.fn(async () => ({
+      schemaVersion: 1 as const,
+      recoveryRequired: false,
+      diagnostics: [],
+      updatedAt: new Date(0).toISOString(),
+    })),
     setPluginEnabled: customization.setPluginEnabled ?? vi.fn(async () => []),
-    setActiveScene: customization.setActiveScene ?? vi.fn(async () => [])
+    setActiveScene: customization.setActiveScene ?? vi.fn(async () => []),
   });
-  return { bridge, openSession, readSession, createSession, sendSessionMessage, abortSession, renameSession, setSessionResolved, setSessionsResolved, setCakeChatSessionsResolved, setSessionModel };
+  return {
+    bridge,
+    openSession,
+    readSession,
+    createSession,
+    sendSessionMessage,
+    abortSession,
+    renameSession,
+    setSessionResolved,
+    setSessionsResolved,
+    setCakeChatSessionsResolved,
+    setSessionModel,
+  };
 }
 
 describe("AppControlBridge", () => {
@@ -97,61 +222,96 @@ describe("AppControlBridge", () => {
       "set_session_resolved",
       "set_sessions_resolved",
       "set_cake_chat_sessions_resolved",
-      "set_session_model"
+      "set_session_model",
     ]);
-    expect(appControlToolCatalog.find((tool) => tool.name === "list_sessions")?.parameters).toMatchObject({
-      properties: { cursor: { minimum: 0 }, limit: { minimum: 1, maximum: 200, default: 100 } }
+    expect(
+      appControlToolCatalog.find((tool) => tool.name === "list_sessions")?.parameters,
+    ).toMatchObject({
+      properties: { cursor: { minimum: 0 }, limit: { minimum: 1, maximum: 200, default: 100 } },
     });
-    expect(appControlToolCatalog.find((tool) => tool.name === "read_session")?.parameters).toMatchObject({
-      properties: { limit: { minimum: 1, maximum: 50, default: 20 } }
+    expect(
+      appControlToolCatalog.find((tool) => tool.name === "read_session")?.parameters,
+    ).toMatchObject({
+      properties: { limit: { minimum: 1, maximum: 50, default: 20 } },
     });
   });
 
   it("lists sessions with filtering and pagination", async () => {
     const { bridge } = createBridge();
 
-    await expect(bridge.invoke({ name: "list_sessions", arguments: { workspacePath: "/cake", limit: 1 } }))
-      .resolves.toMatchObject({
-        ok: true,
-        name: "list_sessions",
-        total: 2,
-        nextCursor: 1,
-        sessions: [{ sessionId: "current", workspacePath: "/cake" }]
-      });
+    await expect(
+      bridge.invoke({ name: "list_sessions", arguments: { workspacePath: "/cake", limit: 1 } }),
+    ).resolves.toMatchObject({
+      ok: true,
+      name: "list_sessions",
+      total: 2,
+      nextCursor: 1,
+      sessions: [{ sessionId: "current", workspacePath: "/cake" }],
+    });
   });
 
   it("lists and resolves global Cake Chat sessions", async () => {
     const { bridge, setCakeChatSessionsResolved } = createBridge();
 
-    await expect(bridge.invoke({ name: "list_cake_chat_sessions", arguments: {} }))
-      .resolves.toEqual({
-        ok: true,
-        name: "list_cake_chat_sessions",
-        total: 1,
-        sessions: [{ sessionId: "cake-chat-current", title: "Cake-wide work", modified: "2026-08-13T00:00:00.000Z", messageCount: 6, resolved: false }]
-      });
-    await expect(bridge.invoke({ name: "set_cake_chat_sessions_resolved", arguments: { sessionIds: ["cake-chat-current"], resolved: true } }))
-      .resolves.toEqual({ ok: true, name: "set_cake_chat_sessions_resolved", sessionIds: ["cake-chat-current"], resolved: true, sessionCount: 1 });
+    await expect(
+      bridge.invoke({ name: "list_cake_chat_sessions", arguments: {} }),
+    ).resolves.toEqual({
+      ok: true,
+      name: "list_cake_chat_sessions",
+      total: 1,
+      sessions: [
+        {
+          sessionId: "cake-chat-current",
+          title: "Cake-wide work",
+          modified: "2026-08-13T00:00:00.000Z",
+          messageCount: 6,
+          resolved: false,
+        },
+      ],
+    });
+    await expect(
+      bridge.invoke({
+        name: "set_cake_chat_sessions_resolved",
+        arguments: { sessionIds: ["cake-chat-current"], resolved: true },
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      name: "set_cake_chat_sessions_resolved",
+      sessionIds: ["cake-chat-current"],
+      resolved: true,
+      sessionCount: 1,
+    });
     expect(setCakeChatSessionsResolved).toHaveBeenCalledWith(["cake-chat-current"], true);
-    await expect(bridge.invoke({ name: "set_cake_chat_sessions_resolved", arguments: { sessionIds: ["missing"], resolved: true } }))
-      .resolves.toEqual({ ok: false, name: "set_cake_chat_sessions_resolved", error: "Cake could not find Cake Chat session missing." });
+    await expect(
+      bridge.invoke({
+        name: "set_cake_chat_sessions_resolved",
+        arguments: { sessionIds: ["missing"], resolved: true },
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      name: "set_cake_chat_sessions_resolved",
+      error: "Cake could not find Cake Chat session missing.",
+    });
   });
 
   it("reads a session without opening it", async () => {
     const { bridge, openSession, readSession } = createBridge();
 
-    const result = await bridge.invoke({ name: "read_session", arguments: { sessionId: "current", limit: 2 } });
+    const result = await bridge.invoke({
+      name: "read_session",
+      arguments: { sessionId: "current", limit: 2 },
+    });
 
     expect(result).toMatchObject({
-        ok: true,
-        name: "read_session",
-        totalParts: 3,
-        nextCursor: 2,
-        parts: [
-          { index: 0, id: "user-1", role: "user", text: "Find the PDF session" },
-          { index: 1, id: "tool-1", text: "Tool: search\nPDF\nFound it" }
-        ]
-      });
+      ok: true,
+      name: "read_session",
+      totalParts: 3,
+      nextCursor: 2,
+      parts: [
+        { index: 0, id: "user-1", role: "user", text: "Find the PDF session" },
+        { index: 1, id: "tool-1", text: "Tool: search\nPDF\nFound it" },
+      ],
+    });
     expect(jsonValueSchema.safeParse(result).success).toBe(true);
     expect(readSession).toHaveBeenCalledWith("current");
     expect(openSession).not.toHaveBeenCalled();
@@ -171,15 +331,15 @@ describe("AppControlBridge", () => {
         sessionCount: 3,
         projects: [
           { path: "/cake", name: "Cake", sessionCount: 2 },
-          { path: "/pie", name: "Pie", sessionCount: 1 }
+          { path: "/pie", name: "Pie", sessionCount: 1 },
         ],
         attentionSessions: [{ sessionId: "running", activity: "running" }],
         recentSessions: [
           { sessionId: "current" },
           { sessionId: "running" },
-          { sessionId: "older" }
-        ]
-      }
+          { sessionId: "older" },
+        ],
+      },
     });
   });
 
@@ -187,11 +347,14 @@ describe("AppControlBridge", () => {
     const { bridge } = createBridge({
       currentSession: () => undefined,
       customizationState: () => undefined,
-      plugins: () => []
+      plugins: () => [],
     });
 
     const appState = await bridge.invoke({ name: "get_app_state", arguments: {} });
-    const customizationState = await bridge.invoke({ name: "get_customization_state", arguments: {} });
+    const customizationState = await bridge.invoke({
+      name: "get_customization_state",
+      arguments: {},
+    });
 
     expect(appState).not.toHaveProperty("state.currentSession");
     expect(customizationState).not.toHaveProperty("state");
@@ -204,10 +367,17 @@ describe("AppControlBridge", () => {
       schemaVersion: 1,
       recoveryRequired: false,
       diagnostics: [],
-      updatedAt: new Date(0).toISOString()
+      updatedAt: new Date(0).toISOString(),
     });
     const plugins = observable<PluginStatus[]>([
-      { id: "example.widget", name: "Example Widget", enabled: true, renderer: "index.tsx", activeScene: false, diagnostics: [] }
+      {
+        id: "example.widget",
+        name: "Example Widget",
+        enabled: true,
+        renderer: "index.tsx",
+        activeScene: false,
+        diagnostics: [],
+      },
     ]);
     const { bridge } = createBridge({ customizationState: () => state, plugins: () => plugins });
 
@@ -215,7 +385,8 @@ describe("AppControlBridge", () => {
 
     expect(() => structuredClone(result)).not.toThrow();
     expect(result).toEqual({ ok: true, name: "get_customization_state", state, plugins });
-    if (!result.ok || result.name !== "get_customization_state") throw new Error("Expected customization state");
+    if (!result.ok || result.name !== "get_customization_state")
+      throw new Error("Expected customization state");
     expect(result.state).not.toBe(state);
     expect(result.plugins).not.toBe(plugins);
   });
@@ -229,52 +400,84 @@ describe("AppControlBridge", () => {
       backend: undefined,
       scene: undefined,
       activeScene: false,
-      diagnostics: []
+      diagnostics: [],
     };
     const { bridge } = createBridge({ setPluginEnabled: vi.fn(async () => [plugin]) });
 
-    const result = await bridge.invoke({ name: "set_plugin_enabled", arguments: { pluginId: plugin.id, enabled: false } });
+    const result = await bridge.invoke({
+      name: "set_plugin_enabled",
+      arguments: { pluginId: plugin.id, enabled: false },
+    });
 
     expect(jsonValueSchema.safeParse(result).success).toBe(true);
     expect(result).toEqual({
       ok: true,
       name: "set_plugin_enabled",
-      plugins: [{ id: plugin.id, name: plugin.name, enabled: false, renderer: "renderer.tsx", activeScene: false, diagnostics: [] }]
+      plugins: [
+        {
+          id: plugin.id,
+          name: plugin.name,
+          enabled: false,
+          renderer: "renderer.tsx",
+          activeScene: false,
+          diagnostics: [],
+        },
+      ],
     });
   });
 
   it("opens only a session from the live Cake catalog", async () => {
     const { bridge, openSession } = createBridge();
 
-    await expect(bridge.invoke({ name: "open_session", arguments: { sessionId: "current" } }))
-      .resolves.toEqual({ ok: true, name: "open_session", opened: { workspacePath: "/cake", sessionId: "current" } });
+    await expect(
+      bridge.invoke({ name: "open_session", arguments: { sessionId: "current" } }),
+    ).resolves.toEqual({
+      ok: true,
+      name: "open_session",
+      opened: { workspacePath: "/cake", sessionId: "current" },
+    });
     expect(openSession).toHaveBeenCalledWith("current");
 
-    await expect(bridge.invoke({ name: "open_session", arguments: { sessionId: "missing" } }))
-      .resolves.toEqual({ ok: false, name: "open_session", error: "Cake could not find that session." });
+    await expect(
+      bridge.invoke({ name: "open_session", arguments: { sessionId: "missing" } }),
+    ).resolves.toEqual({
+      ok: false,
+      name: "open_session",
+      error: "Cake could not find that session.",
+    });
     expect(openSession).toHaveBeenCalledTimes(1);
   });
 
   it("searches titles and transcript content without opening sessions", async () => {
     const { bridge, openSession, readSession } = createBridge();
 
-    await expect(bridge.invoke({ name: "search_sessions", arguments: { query: "PDF", workspacePath: "/cake", limit: 5 } }))
-      .resolves.toMatchObject({
-        ok: true,
+    await expect(
+      bridge.invoke({
         name: "search_sessions",
-        query: "PDF",
-        searchedSessions: 2,
-        results: [
-          { session: { sessionId: "current" }, matches: [
+        arguments: { query: "PDF", workspacePath: "/cake", limit: 5 },
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      name: "search_sessions",
+      query: "PDF",
+      searchedSessions: 2,
+      results: [
+        {
+          session: { sessionId: "current" },
+          matches: [
             { location: "transcript", partIndex: 0, snippet: "Find the PDF session" },
-            { location: "transcript", partIndex: 1, snippet: "Tool: search\nPDF\nFound it" }
-          ] },
-          { session: { sessionId: "running" }, matches: [
+            { location: "transcript", partIndex: 1, snippet: "Tool: search\nPDF\nFound it" },
+          ],
+        },
+        {
+          session: { sessionId: "running" },
+          matches: [
             { location: "transcript", partIndex: 0, snippet: "Find the PDF session" },
-            { location: "transcript", partIndex: 1, snippet: "Tool: search\nPDF\nFound it" }
-          ] }
-        ]
-      });
+            { location: "transcript", partIndex: 1, snippet: "Tool: search\nPDF\nFound it" },
+          ],
+        },
+      ],
+    });
     expect(readSession).toHaveBeenCalledTimes(2);
     expect(openSession).not.toHaveBeenCalled();
   });
@@ -282,48 +485,114 @@ describe("AppControlBridge", () => {
   it("reports live session status", async () => {
     const { bridge } = createBridge();
 
-    await expect(bridge.invoke({ name: "get_session_status", arguments: { sessionId: "current" } }))
-      .resolves.toMatchObject({ ok: true, selected: true, status: "idle" });
-    await expect(bridge.invoke({ name: "get_session_status", arguments: { sessionId: "running" } }))
-      .resolves.toMatchObject({ ok: true, selected: false, status: "running" });
+    await expect(
+      bridge.invoke({ name: "get_session_status", arguments: { sessionId: "current" } }),
+    ).resolves.toMatchObject({ ok: true, selected: true, status: "idle" });
+    await expect(
+      bridge.invoke({ name: "get_session_status", arguments: { sessionId: "running" } }),
+    ).resolves.toMatchObject({ ok: true, selected: false, status: "running" });
   });
 
   it("sends to idle and running sessions with an appropriate default delivery", async () => {
     const { bridge, sendSessionMessage } = createBridge();
 
-    await expect(bridge.invoke({ name: "send_session_message", arguments: { sessionId: "current", text: "Commit the work" } }))
-      .resolves.toMatchObject({ ok: true, delivery: "prompt", status: "sent" });
-    await expect(bridge.invoke({ name: "send_session_message", arguments: { sessionId: "running", text: "Also update the tests" } }))
-      .resolves.toMatchObject({ ok: true, delivery: "follow-up", status: "sent" });
+    await expect(
+      bridge.invoke({
+        name: "send_session_message",
+        arguments: { sessionId: "current", text: "Commit the work" },
+      }),
+    ).resolves.toMatchObject({ ok: true, delivery: "prompt", status: "sent" });
+    await expect(
+      bridge.invoke({
+        name: "send_session_message",
+        arguments: { sessionId: "running", text: "Also update the tests" },
+      }),
+    ).resolves.toMatchObject({ ok: true, delivery: "follow-up", status: "sent" });
 
     expect(sendSessionMessage).toHaveBeenNthCalledWith(1, "current", "Commit the work", "prompt");
-    expect(sendSessionMessage).toHaveBeenNthCalledWith(2, "running", "Also update the tests", "follow-up");
+    expect(sendSessionMessage).toHaveBeenNthCalledWith(
+      2,
+      "running",
+      "Also update the tests",
+      "follow-up",
+    );
   });
 
   it("refuses to abort an idle session", async () => {
     const { bridge, abortSession } = createBridge();
 
-    await expect(bridge.invoke({ name: "abort_session", arguments: { sessionId: "current" } }))
-      .resolves.toEqual({ ok: false, name: "abort_session", error: "That session is not currently running." });
-    await expect(bridge.invoke({ name: "abort_session", arguments: { sessionId: "running" } }))
-      .resolves.toMatchObject({ ok: true, status: "stopping" });
+    await expect(
+      bridge.invoke({ name: "abort_session", arguments: { sessionId: "current" } }),
+    ).resolves.toEqual({
+      ok: false,
+      name: "abort_session",
+      error: "That session is not currently running.",
+    });
+    await expect(
+      bridge.invoke({ name: "abort_session", arguments: { sessionId: "running" } }),
+    ).resolves.toMatchObject({ ok: true, status: "stopping" });
     expect(abortSession).toHaveBeenCalledOnce();
   });
 
   it("creates and organizes sessions only through known targets", async () => {
-    const { bridge, createSession, renameSession, setSessionResolved, setSessionsResolved, setSessionModel } = createBridge();
+    const {
+      bridge,
+      createSession,
+      renameSession,
+      setSessionResolved,
+      setSessionsResolved,
+      setSessionModel,
+    } = createBridge();
 
-    await expect(bridge.invoke({ name: "create_session", arguments: { workspacePath: "/cake" } }))
-      .resolves.toEqual({ ok: true, name: "create_session", workspacePath: "/cake", status: "creating" });
-    await expect(bridge.invoke({ name: "create_session", arguments: { workspacePath: "/missing" } }))
-      .resolves.toEqual({ ok: false, name: "create_session", error: "Cake could not find that project." });
-    await bridge.invoke({ name: "rename_session", arguments: { sessionId: "current", title: "Global controls" } });
-    await bridge.invoke({ name: "set_session_resolved", arguments: { sessionId: "current", resolved: true } });
-    await expect(bridge.invoke({ name: "set_sessions_resolved", arguments: { sessionIds: ["current", "running"], resolved: false } }))
-      .resolves.toEqual({ ok: true, name: "set_sessions_resolved", sessionIds: ["current", "running"], resolved: false, sessionCount: 2 });
-    await expect(bridge.invoke({ name: "set_sessions_resolved", arguments: { sessionIds: ["missing"], resolved: true } }))
-      .resolves.toEqual({ ok: false, name: "set_sessions_resolved", error: "Cake could not find session missing." });
-    await bridge.invoke({ name: "set_session_model", arguments: { sessionId: "current", provider: "openai", modelId: "gpt-5" } });
+    await expect(
+      bridge.invoke({ name: "create_session", arguments: { workspacePath: "/cake" } }),
+    ).resolves.toEqual({
+      ok: true,
+      name: "create_session",
+      workspacePath: "/cake",
+      status: "creating",
+    });
+    await expect(
+      bridge.invoke({ name: "create_session", arguments: { workspacePath: "/missing" } }),
+    ).resolves.toEqual({
+      ok: false,
+      name: "create_session",
+      error: "Cake could not find that project.",
+    });
+    await bridge.invoke({
+      name: "rename_session",
+      arguments: { sessionId: "current", title: "Global controls" },
+    });
+    await bridge.invoke({
+      name: "set_session_resolved",
+      arguments: { sessionId: "current", resolved: true },
+    });
+    await expect(
+      bridge.invoke({
+        name: "set_sessions_resolved",
+        arguments: { sessionIds: ["current", "running"], resolved: false },
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      name: "set_sessions_resolved",
+      sessionIds: ["current", "running"],
+      resolved: false,
+      sessionCount: 2,
+    });
+    await expect(
+      bridge.invoke({
+        name: "set_sessions_resolved",
+        arguments: { sessionIds: ["missing"], resolved: true },
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      name: "set_sessions_resolved",
+      error: "Cake could not find session missing.",
+    });
+    await bridge.invoke({
+      name: "set_session_model",
+      arguments: { sessionId: "current", provider: "openai", modelId: "gpt-5" },
+    });
 
     expect(createSession).toHaveBeenCalledOnce();
     expect(renameSession).toHaveBeenCalledWith("current", "Global controls");

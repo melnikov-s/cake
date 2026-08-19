@@ -3,11 +3,11 @@
 This document records Cake's foundational runtime boundaries. It is
 intentionally small and evolves alongside the process-safe schemas in `src/ipc`.
 
-| Process | Owns | May import | Must not expose |
-| --- | --- | --- | --- |
-| Renderer | React presentation, the preload-to-intent adapter, and a window-local `RootStore` tree of focused behavioral Stores | Cake protocol types only at the adapter boundary; Cake state elsewhere | Node globals or raw Electron IPC |
-| Preload | Validation and the frozen `window.cake` API | Electron IPC, Cake protocol schemas | `ipcRenderer` itself |
-| Main | Window lifecycle, persistence, Pi workspace runtimes, native services, and routing | Electron, Cake IPC contracts, and Pi only through focused `src/agent` adapter modules | Privileged objects or raw Pi objects crossing into preload/renderer |
+| Process  | Owns                                                                                                                | May import                                                                            | Must not expose                                                     |
+| -------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Renderer | React presentation, the preload-to-intent adapter, and a window-local `RootStore` tree of focused behavioral Stores | Cake protocol types only at the adapter boundary; Cake state elsewhere                | Node globals or raw Electron IPC                                    |
+| Preload  | Validation and the frozen `window.cake` API                                                                         | Electron IPC, Cake protocol schemas                                                   | `ipcRenderer` itself                                                |
+| Main     | Window lifecycle, persistence, Pi workspace runtimes, native services, and routing                                  | Electron, Cake IPC contracts, and Pi only through focused `src/agent` adapter modules | Privileged objects or raw Pi objects crossing into preload/renderer |
 
 Every message is parsed with the shared Zod schemas at the receiving boundary.
 The protocol carries correlated Pi operations, Pi-extension UI requests and

@@ -6,9 +6,11 @@ export class KeyedSerialExecutor<Key> {
     const previous = this.pending.get(key) ?? Promise.resolve();
     const result = previous.catch(() => undefined).then(operation);
     this.pending.set(key, result);
-    void result.finally(() => {
-      if (this.pending.get(key) === result) this.pending.delete(key);
-    }).catch(() => undefined);
+    void result
+      .finally(() => {
+        if (this.pending.get(key) === result) this.pending.delete(key);
+      })
+      .catch(() => undefined);
     return result;
   }
 }

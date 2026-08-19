@@ -22,8 +22,12 @@ export interface ChatConfigurationStoreProps {
 export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   error: string | undefined;
   errorDetails: string | undefined;
-  get session() { return this.props.session(); }
-  get activeOperations() { return this.props.operations.active(this.props.operationOwner); }
+  get session() {
+    return this.props.session();
+  }
+  get activeOperations() {
+    return this.props.operations.active(this.props.operationOwner);
+  }
 
   get modelsByProvider() {
     const groups = new Map<string, { name: string; models: ModelOption[] }>();
@@ -44,7 +48,9 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   async selectModel(value: string) {
     const separator = value.indexOf("/");
     if (separator < 1) return;
-    await this.run((operationId) => this.props.setModel(operationId, value.slice(0, separator), value.slice(separator + 1)));
+    await this.run((operationId) =>
+      this.props.setModel(operationId, value.slice(0, separator), value.slice(separator + 1)),
+    );
   }
 
   async selectThinkingLevel(level: ThinkingLevel) {
@@ -52,26 +58,39 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   }
 
   receive(event: DesktopClientEvent) {
-    if (event.type === "pi-state-changed" && (event.state === "failed" || event.state === "stopped")) {
+    if (
+      event.type === "pi-state-changed" &&
+      (event.state === "failed" || event.state === "stopped")
+    ) {
       this.props.operations.reset(this.props.operationOwner);
       return;
     }
-    if ((event.type === "operation-completed" || event.type === "operation-failed") && event.operationId && this.activeOperations.includes(event.operationId)) {
+    if (
+      (event.type === "operation-completed" || event.type === "operation-failed") &&
+      event.operationId &&
+      this.activeOperations.includes(event.operationId)
+    ) {
       if (event.type === "operation-failed") this.reportError(event.message);
       this.finish(event.operationId);
       return;
     }
-    if ((event.type === "global-chat-operation-completed" || event.type === "global-chat-operation-failed") && this.activeOperations.includes(event.operationId)) {
+    if (
+      (event.type === "global-chat-operation-completed" ||
+        event.type === "global-chat-operation-failed") &&
+      this.activeOperations.includes(event.operationId)
+    ) {
       if (event.type === "global-chat-operation-failed") this.reportError(event.message);
       this.finish(event.operationId);
     }
   }
 
   private async run(command: (operationId: string) => Promise<void>) {
-    this.error = undefined; this.errorDetails = undefined;
+    this.error = undefined;
+    this.errorDetails = undefined;
     const operationId = this.props.operations.start(this.props.operationOwner);
-    try { await command(operationId); }
-    catch (error) {
+    try {
+      await command(operationId);
+    } catch (error) {
       this.reportError(error);
       this.finish(operationId);
     }

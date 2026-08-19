@@ -13,7 +13,10 @@ import type { SettingsStore } from "./SettingsStore";
 import type { SidebarStore } from "./SidebarStore";
 
 export interface WindowPersistenceCoordinatorProps {
-  client: Pick<DesktopClient, "listSessions" | "loadApplicationState" | "loadWindowState" | "saveWindowState">;
+  client: Pick<
+    DesktopClient,
+    "listSessions" | "loadApplicationState" | "loadWindowState" | "saveWindowState"
+  >;
   projects: ProjectCatalogStore;
   sessions: SessionCatalogStore;
   registry: SessionRegistryStore;
@@ -66,11 +69,20 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
     }, 180);
   }
 
-  applySessionRestore(session: ProjectSessionStore, previousSessionId?: string, restartDraft?: string, newSession = false) {
-    const restoredProjectDraft = newSession ? this.restoredNewSessionDraftsByProject[session.workspacePath] : undefined;
+  applySessionRestore(
+    session: ProjectSessionStore,
+    previousSessionId?: string,
+    restartDraft?: string,
+    newSession = false,
+  ) {
+    const restoredProjectDraft = newSession
+      ? this.restoredNewSessionDraftsByProject[session.workspacePath]
+      : undefined;
     if (restartDraft !== undefined) session.chatStore.setDraft(restartDraft);
-    else if (restoredProjectDraft !== undefined && !session.chatStore.draft) session.chatStore.setDraft(restoredProjectDraft);
-    else if (!previousSessionId && !session.chatStore.draft) session.chatStore.setDraft(this.restoredDraft);
+    else if (restoredProjectDraft !== undefined && !session.chatStore.draft)
+      session.chatStore.setDraft(restoredProjectDraft);
+    else if (!previousSessionId && !session.chatStore.draft)
+      session.chatStore.setDraft(this.restoredDraft);
     session.chatStore.setThinkingExpanded(this.restoredThinkingExpanded);
     if (newSession) delete this.restoredNewSessionDraftsByProject[session.workspacePath];
     this.restoredDraft = "";
@@ -82,7 +94,7 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
       const [state, application, sessionIndex] = await Promise.all([
         this.props.client.loadWindowState(),
         this.props.client.loadApplicationState(),
-        this.props.client.listSessions()
+        this.props.client.listSessions(),
       ]);
       if (this.signal.aborted) return;
       this.props.sessions.replace(sessionIndex.sessions);
@@ -111,14 +123,24 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
 
       const activeConversation = state.activeConversation;
       if (activeConversation) this.props.shell().restoreConversation(activeConversation);
-      const projectState = activeConversation?.kind === "project-session"
-        ? { ...state, projectPath: activeConversation.workspacePath, selectedSessionId: activeConversation.sessionId }
-        : state;
+      const projectState =
+        activeConversation?.kind === "project-session"
+          ? {
+              ...state,
+              projectPath: activeConversation.workspacePath,
+              selectedSessionId: activeConversation.sessionId,
+            }
+          : state;
 
       this.hydrated = true;
-      const projectRestore = this.props.workbench().restoreSelection(projectState, sessionIndex.sessions);
+      const projectRestore = this.props
+        .workbench()
+        .restoreSelection(projectState, sessionIndex.sessions);
       if (activeConversation?.kind === "cake-chat") {
-        await Promise.all([projectRestore, this.props.globalChat().openSession(activeConversation.sessionId)]);
+        await Promise.all([
+          projectRestore,
+          this.props.globalChat().openSession(activeConversation.sessionId),
+        ]);
       } else {
         await projectRestore;
       }
@@ -140,11 +162,13 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
       draft: activeSession?.chatStore.draft ?? "",
       theme: this.props.settings().theme,
       thinkingExpanded: activeSession?.chatStore.thinkingExpanded ?? false,
-      draftsBySession: Object.fromEntries(this.props.registry.sessions.map((session) => [session.sessionId, session.chatStore.draft])),
+      draftsBySession: Object.fromEntries(
+        this.props.registry.sessions.map((session) => [session.sessionId, session.chatStore.draft]),
+      ),
       newSessionDraftsByProject: {
         ...this.restoredNewSessionDraftsByProject,
-        ...this.props.registry.pendingNewSessionDrafts()
-      }
+        ...this.props.registry.pendingNewSessionDrafts(),
+      },
     };
   }
 
@@ -153,5 +177,4 @@ export class WindowPersistenceCoordinator extends Store<WindowPersistenceCoordin
     this.error = described.message;
     this.errorDetails = described.details;
   }
-
 }

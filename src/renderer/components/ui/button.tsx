@@ -10,25 +10,34 @@ const buttonVariants = cva(
         default: "bg-primary text-primary-foreground hover:bg-primary/88",
         destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/88",
         outline: "border border-border bg-background text-foreground hover:bg-muted",
-        ghost: "text-muted-foreground hover:bg-muted hover:text-foreground"
+        ghost: "text-muted-foreground hover:bg-muted hover:text-foreground",
       },
       size: {
         default: "h-10 px-4",
         sm: "h-8 px-3 text-xs",
-        lg: "h-11 px-5"
-      }
+        lg: "h-11 px-5",
+      },
     },
     defaultVariants: {
       variant: "default",
-      size: "default"
-    }
-  }
+      size: "default",
+    },
+  },
 );
 
 export interface ButtonProps
-  extends ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {}
+  extends ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {}
 
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button({ className, variant, size, type = "button", ...props }, ref) {
-  return <button ref={ref} className={cn(buttonVariants({ variant, size }), className)} type={type} {...props} />;
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { className, variant, size, type = "button", ...props },
+  ref,
+) {
+  return (
+    <button
+      ref={ref}
+      className={cn(buttonVariants({ variant, size }), className)}
+      type={type}
+      {...props}
+    />
+  );
 });

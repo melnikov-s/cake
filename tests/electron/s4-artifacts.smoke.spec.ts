@@ -10,9 +10,43 @@ test("presents durable artifacts, sorts a table, resolves a form, and isolates H
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
   await Promise.all([mkdir(userData, { recursive: true }), mkdir(project, { recursive: true })]);
-  await writeFile(join(userData, "window-state.json"), JSON.stringify({ projectPath: project, recentProjectPaths: [project], draft: "", theme: "system", thinkingExpanded: false }));
-  await writeFile(join(userData, "application.json"), JSON.stringify({ schemaVersion: 1, projects: [{ path: project, name: "project", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString() }], resolvedSessionIds: [], trustedProjectPaths: [] }));
-  const launch = () => electron.launch({ args: [repositoryRoot], cwd: repositoryRoot, env: { ...process.env, CAKE_ELECTRON_SMOKE: "1", CAKE_ELECTRON_USER_DATA: userData, CAKE_HOME: join(temporaryRoot, "cake-home") } });
+  await writeFile(
+    join(userData, "window-state.json"),
+    JSON.stringify({
+      projectPath: project,
+      recentProjectPaths: [project],
+      draft: "",
+      theme: "system",
+      thinkingExpanded: false,
+    }),
+  );
+  await writeFile(
+    join(userData, "application.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      projects: [
+        {
+          path: project,
+          name: "project",
+          addedAt: new Date(0).toISOString(),
+          lastOpenedAt: new Date(0).toISOString(),
+        },
+      ],
+      resolvedSessionIds: [],
+      trustedProjectPaths: [],
+    }),
+  );
+  const launch = () =>
+    electron.launch({
+      args: [repositoryRoot],
+      cwd: repositoryRoot,
+      env: {
+        ...process.env,
+        CAKE_ELECTRON_SMOKE: "1",
+        CAKE_ELECTRON_USER_DATA: userData,
+        CAKE_HOME: join(temporaryRoot, "cake-home"),
+      },
+    });
   let application: ElectronApplication | undefined;
 
   try {
@@ -25,9 +59,23 @@ test("presents durable artifacts, sorts a table, resolves a form, and isolates H
 
     const table = page.locator('[data-artifact-id="cake-s4-table"]');
     await expect(table).toBeVisible();
-    await expect(table.locator(".artifact-table tbody td").allTextContents()).resolves.toEqual(["", "Alpha", "2", "", "Beta", "1"]);
+    await expect(table.locator(".artifact-table tbody td").allTextContents()).resolves.toEqual([
+      "",
+      "Alpha",
+      "2",
+      "",
+      "Beta",
+      "1",
+    ]);
     await table.getByRole("button", { name: "Score" }).click();
-    await expect(table.locator(".artifact-table tbody td").allTextContents()).resolves.toEqual(["", "Beta", "1", "", "Alpha", "2"]);
+    await expect(table.locator(".artifact-table tbody td").allTextContents()).resolves.toEqual([
+      "",
+      "Beta",
+      "1",
+      "",
+      "Alpha",
+      "2",
+    ]);
 
     const widget = page.locator('[data-artifact-id="cake-s4-widget"]');
     await expect(widget.locator("iframe")).toBeVisible();
@@ -35,7 +83,9 @@ test("presents durable artifacts, sorts a table, resolves a form, and isolates H
     const repairPrompt = widget.locator(".inline-widget-repair-form");
     await expect(repairPrompt).toBeVisible();
     await expect(repairPrompt.getByLabel("What should be repaired?")).toBeFocused();
-    await repairPrompt.getByLabel("What should be repaired?").fill("Make the widget easier to scan on a narrow window.");
+    await repairPrompt
+      .getByLabel("What should be repaired?")
+      .fill("Make the widget easier to scan on a narrow window.");
     await repairPrompt.getByRole("button", { name: "Submit" }).click();
     await expect(repairPrompt).not.toBeAttached();
 
@@ -51,16 +101,24 @@ test("presents durable artifacts, sorts a table, resolves a form, and isolates H
     await expect(html).toHaveAttribute("srcdoc", /default-src 'none'/);
     await expect(page.locator("body")).not.toContainText("compromised");
     await expect(page.locator('[data-artifact-id="cake-s4-diagram"] iframe')).toBeVisible();
-    await expect.poll(async () => {
-      const state = JSON.parse(await readFile(join(userData, "window-state.json"), "utf8")) as { selectedSessionId?: string; selectedSessionFile?: string };
-      return Boolean(state.selectedSessionId && !state.selectedSessionFile);
-    }).toBe(true);
+    await expect
+      .poll(async () => {
+        const state = JSON.parse(await readFile(join(userData, "window-state.json"), "utf8")) as {
+          selectedSessionId?: string;
+          selectedSessionFile?: string;
+        };
+        return Boolean(state.selectedSessionId && !state.selectedSessionFile);
+      })
+      .toBe(true);
 
-    await application.close(); application = undefined;
+    await application.close();
+    application = undefined;
     application = await launch();
     page = await application.firstWindow();
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('[data-artifact-id="cake-s4-table"]')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('[data-artifact-id="cake-s4-table"]')).toBeVisible({
+      timeout: 20_000,
+    });
     await expect(page.locator('[data-artifact-id="cake-s4-diagram"] iframe')).toBeVisible();
     await expect(page.getByText("Agent → Artifact → User", { exact: true })).toBeAttached();
   } finally {

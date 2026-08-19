@@ -13,7 +13,10 @@ function sidebarProps(store: ProjectWorkbenchStore) {
   return {
     store: {
       projectSessions: fixture.projectSessions,
-      cakeChatSessions: (resolved = false) => (fixture.cakeChatSummaries ?? []).filter((session: { resolved?: boolean }) => Boolean(session.resolved) === resolved),
+      cakeChatSessions: (resolved = false) =>
+        (fixture.cakeChatSummaries ?? []).filter(
+          (session: { resolved?: boolean }) => Boolean(session.resolved) === resolved,
+        ),
       hasResolvedSessions: fixture.hasResolvedSessions ?? false,
       sessionLimit: fixture.sessionLimit,
       showMoreSessions: fixture.showMoreSessions,
@@ -22,16 +25,22 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       resolvedLaneExpanded: fixture.resolvedLaneExpanded ?? true,
       toggleResolvedLane: fixture.toggleResolvedLane ?? vi.fn(),
       sessionActivity: fixture.sessionActivity,
-      sessionActivityTime: fixture.sessionActivityTime ?? (() => "")
+      sessionActivityTime: fixture.sessionActivityTime ?? (() => ""),
     } as any,
     projects: {
       recentProjectPaths: fixture.recentProjectPaths,
       projects: fixture.projects,
       nameFromPath: fixture.nameFromPath,
-      nameForPath: (path: string) => fixture.projects.find((project: { path: string; name: string }) => project.path === path)?.name ?? fixture.nameFromPath(path)
+      nameForPath: (path: string) =>
+        fixture.projects.find((project: { path: string; name: string }) => project.path === path)
+          ?.name ?? fixture.nameFromPath(path),
     } as any,
     chat: store,
-    cakeChat: { summaries: fixture.cakeChatSummaries ?? [], sessionId: undefined, findSession: vi.fn() } as any,
+    cakeChat: {
+      summaries: fixture.cakeChatSummaries ?? [],
+      sessionId: undefined,
+      findSession: vi.fn(),
+    } as any,
     reviews: { chatCommentCountForSession: fixture.chatReviewCommentCountForSession } as any,
     onOpenCakeChat: vi.fn(),
     onCreateCakeChat: vi.fn(),
@@ -39,20 +48,24 @@ function sidebarProps(store: ProjectWorkbenchStore) {
     onCreateSession: fixture.startNewSession ?? vi.fn(),
     onStartOneOffChat: fixture.startOneOffChat ?? vi.fn(),
     onChooseProject: fixture.chooseProject ?? vi.fn(),
-    selection: { kind: "workbench" } as const
+    selection: { kind: "workbench" } as const,
   };
 }
 
 describe("Sidebar projects", () => {
   let container: HTMLDivElement;
   let root: Root;
-  const sessionDisplayTitle = (title: string) => title.length > 40 ? `${title.slice(0, 39)}…` : title;
+  const sessionDisplayTitle = (title: string) =>
+    title.length > 40 ? `${title.slice(0, 39)}…` : title;
 
   beforeEach(() => {
     Object.assign(globalThis, {
       IS_REACT_ACT_ENVIRONMENT: true,
-      requestAnimationFrame: (callback: FrameRequestCallback) => { callback(0); return 1; },
-      cancelAnimationFrame: vi.fn()
+      requestAnimationFrame: (callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      },
+      cancelAnimationFrame: vi.fn(),
     });
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -83,12 +96,16 @@ describe("Sidebar projects", () => {
       switchProject: vi.fn(),
       openSession: vi.fn(),
       renameSession: vi.fn(),
-      showMoreSessions: vi.fn()
+      showMoreSessions: vi.fn(),
     } as unknown as ProjectWorkbenchStore;
 
-    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
 
-    const projectToggle = container.querySelector<HTMLButtonElement>('[aria-label="Collapse Cake"]')!;
+    const projectToggle = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Collapse Cake"]',
+    )!;
     expect(projectToggle.getAttribute("aria-expanded")).toBe("true");
     expect(container.textContent).toContain("Add project collapsing");
 
@@ -105,11 +122,29 @@ describe("Sidebar projects", () => {
   it("offers Pi reload from the Cake menu", () => {
     const reload = vi.fn();
     const store = {
-      recentProjectPaths: [], projects: [], session: { sessionId: "session-1", piSettings: { reloadPending: false } },
-      projectSessions: vi.fn(() => []), sessionLimit: vi.fn(() => 8), nameFromPath: vi.fn(() => "cake"), sessionActivity: vi.fn(), sessionDisplayTitle,
-      chatReviewCommentCountForSession: vi.fn(() => 0), startOneOffChat: vi.fn(), chooseProject: vi.fn(), showMoreSessions: vi.fn()
+      recentProjectPaths: [],
+      projects: [],
+      session: { sessionId: "session-1", piSettings: { reloadPending: false } },
+      projectSessions: vi.fn(() => []),
+      sessionLimit: vi.fn(() => 8),
+      nameFromPath: vi.fn(() => "cake"),
+      sessionActivity: vi.fn(),
+      sessionDisplayTitle,
+      chatReviewCommentCountForSession: vi.fn(() => 0),
+      startOneOffChat: vi.fn(),
+      chooseProject: vi.fn(),
+      showMoreSessions: vi.fn(),
     } as unknown as ProjectWorkbenchStore;
-    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} onReloadPi={reload} />));
+    act(() =>
+      root.render(
+        <Sidebar
+          {...sidebarProps(store)}
+          onOpenSettings={vi.fn()}
+          onToggle={vi.fn()}
+          onReloadPi={reload}
+        />,
+      ),
+    );
 
     const menu = container.querySelector("details.brand-menu")!;
     act(() => menu.setAttribute("open", ""));
@@ -127,10 +162,10 @@ describe("Sidebar projects", () => {
       session: { sessionId: "running" },
       projectSessions: () => [
         { id: "running", title: "Still working" },
-        { id: "ready", title: "Finished in background" }
+        { id: "ready", title: "Finished in background" },
       ],
       sessionLimit: () => 8,
-      sessionActivity: (id: string) => id === "running" ? "running" : "unread",
+      sessionActivity: (id: string) => (id === "running" ? "running" : "unread"),
       sessionDisplayTitle,
       chatReviewCommentCountForSession: vi.fn(() => 0),
       nameFromPath: () => "cake",
@@ -140,26 +175,99 @@ describe("Sidebar projects", () => {
       switchProject: vi.fn(),
       openSession: vi.fn(),
       renameSession: vi.fn(),
-      showMoreSessions: vi.fn()
+      showMoreSessions: vi.fn(),
     } as unknown as ProjectWorkbenchStore;
 
-    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
 
-    expect(container.querySelector('[data-session-id="running"] [aria-label="Running"]')).not.toBeNull();
-    expect(container.querySelector('[data-session-id="ready"] [aria-label="Ready, unread"]')).not.toBeNull();
+    expect(
+      container.querySelector('[data-session-id="running"] [aria-label="Running"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-session-id="ready"] [aria-label="Ready, unread"]'),
+    ).not.toBeNull();
+  });
+
+  it("hides time and resolve controls while a session is running", () => {
+    const modified = new Date(0).toISOString();
+    const setSessionResolved = vi.fn();
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [
+        { id: "running", title: "Still working", modified },
+        { id: "ready", title: "Finished work", modified },
+      ],
+      sessionLimit: () => 8,
+      sessionActivity: (id: string) => (id === "running" ? "running" : undefined),
+      sessionActivityTime: vi.fn(() => "Today"),
+      nameFromPath: () => "cake",
+      startOneOffChat: vi.fn(),
+      chooseProject: vi.fn(),
+      showMoreSessions: vi.fn(),
+      renameSession: vi.fn(),
+      setSessionResolved,
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(
+        <Sidebar
+          {...sidebarProps(store)}
+          selection={{ kind: "project-session", workspacePath: "/work/cake", sessionId: "ready" }}
+          onOpenSettings={vi.fn()}
+          onToggle={vi.fn()}
+        />,
+      ),
+    );
+
+    expect(
+      container.querySelector('[data-session-id="running"] [aria-label="Running"]'),
+    ).not.toBeNull();
+    expect(container.querySelector('[data-session-id="running"] .session-time')).toBeNull();
+    expect(container.querySelector('[data-session-id="ready"] .session-time')).toBeNull();
+    expect(
+      container.querySelector('[data-session-id="ready"] .session-resolve-action'),
+    ).not.toBeNull();
+
+    act(() =>
+      root.render(
+        <Sidebar
+          {...sidebarProps(store)}
+          selection={{ kind: "project-session", workspacePath: "/work/cake", sessionId: "running" }}
+          onOpenSettings={vi.fn()}
+          onToggle={vi.fn()}
+        />,
+      ),
+    );
+    expect(
+      container.querySelector('[data-session-id="running"] .session-resolve-action'),
+    ).toBeNull();
   });
 
   it("leaves long titles intact for CSS ellipsis and shows relative activity", () => {
-    const title = "A session title that is deliberately much longer than the old forty character display limit";
+    const title =
+      "A session title that is deliberately much longer than the old forty character display limit";
     const modified = new Date("2026-08-16T12:00:00.000Z").toISOString();
     const store = {
-      recentProjectPaths: ["/work/cake"], projects: [{ path: "/work/cake", name: "Cake" }],
-      projectSessions: () => [{ id: "session-1", title, modified }], sessionLimit: () => 8,
-      sessionActivity: vi.fn(), sessionActivityTime: vi.fn(() => "20 min ago"), chatReviewCommentCountForSession: vi.fn(() => 0),
-      nameFromPath: () => "cake", startOneOffChat: vi.fn(), chooseProject: vi.fn(), showMoreSessions: vi.fn(), renameSession: vi.fn()
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [{ id: "session-1", title, modified }],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      sessionActivityTime: vi.fn(() => "20 min ago"),
+      chatReviewCommentCountForSession: vi.fn(() => 0),
+      nameFromPath: () => "cake",
+      startOneOffChat: vi.fn(),
+      chooseProject: vi.fn(),
+      showMoreSessions: vi.fn(),
+      renameSession: vi.fn(),
     } as unknown as ProjectWorkbenchStore;
 
-    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
 
     expect(container.querySelector(".session-title")?.textContent).toBe(title);
     expect(container.querySelector(".session-time")?.textContent).toBe("20 min ago");
@@ -168,33 +276,72 @@ describe("Sidebar projects", () => {
 
   it("does not surface sidecar chat work as parent-session badges", () => {
     const store = {
-      recentProjectPaths: ["/work/cake"], projectPath: "/work/cake", projects: [{ path: "/work/cake", name: "Cake" }], session: { sessionId: "pending" },
-      projectSessions: () => [{ id: "pending", title: "Needs review" }, { id: "answered", title: "Already answered" }], sessionLimit: () => 8,
-      sessionActivity: vi.fn(() => undefined), chatReviewCommentCountForSession: (_path: string, id: string) => id === "pending" ? 1 : 0,
+      recentProjectPaths: ["/work/cake"],
+      projectPath: "/work/cake",
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      session: { sessionId: "pending" },
+      projectSessions: () => [
+        { id: "pending", title: "Needs review" },
+        { id: "answered", title: "Already answered" },
+      ],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(() => undefined),
+      chatReviewCommentCountForSession: (_path: string, id: string) => (id === "pending" ? 1 : 0),
       sessionDisplayTitle,
-      nameFromPath: () => "cake", startOneOffChat: vi.fn(), chooseProject: vi.fn(), startNewSession: vi.fn(), switchProject: vi.fn(), openSession: vi.fn(), renameSession: vi.fn(), showMoreSessions: vi.fn()
+      nameFromPath: () => "cake",
+      startOneOffChat: vi.fn(),
+      chooseProject: vi.fn(),
+      startNewSession: vi.fn(),
+      switchProject: vi.fn(),
+      openSession: vi.fn(),
+      renameSession: vi.fn(),
+      showMoreSessions: vi.fn(),
     } as unknown as ProjectWorkbenchStore;
 
-    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
 
-    expect(container.querySelector('[data-session-id="pending"]')?.textContent).not.toContain("comment");
-    expect(container.querySelector('[data-session-id="answered"]')?.textContent).not.toContain("comments");
+    expect(container.querySelector('[data-session-id="pending"]')?.textContent).not.toContain(
+      "comment",
+    );
+    expect(container.querySelector('[data-session-id="answered"]')?.textContent).not.toContain(
+      "comments",
+    );
   });
 
   it("starts a new session with the selected inactive project path", () => {
     const startNewSession = vi.fn();
     const switchProject = vi.fn();
     const store = {
-      recentProjectPaths: ["/work/first", "/work/second"], projectPath: "/work/first",
-      projects: [{ path: "/work/first", name: "First" }, { path: "/work/second", name: "Second" }], session: { sessionId: "session-1" },
-      projectSessions: () => [], sessionLimit: () => 8, sessionActivity: vi.fn(() => undefined), chatReviewCommentCountForSession: vi.fn(() => 0),
+      recentProjectPaths: ["/work/first", "/work/second"],
+      projectPath: "/work/first",
+      projects: [
+        { path: "/work/first", name: "First" },
+        { path: "/work/second", name: "Second" },
+      ],
+      session: { sessionId: "session-1" },
+      projectSessions: () => [],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(() => undefined),
+      chatReviewCommentCountForSession: vi.fn(() => 0),
       sessionDisplayTitle,
-      nameFromPath: (path: string) => path.split("/").at(-1)!, startOneOffChat: vi.fn(), chooseProject: vi.fn(),
-      startNewSession, switchProject, openSession: vi.fn(), renameSession: vi.fn(), showMoreSessions: vi.fn()
+      nameFromPath: (path: string) => path.split("/").at(-1)!,
+      startOneOffChat: vi.fn(),
+      chooseProject: vi.fn(),
+      startNewSession,
+      switchProject,
+      openSession: vi.fn(),
+      renameSession: vi.fn(),
+      showMoreSessions: vi.fn(),
     } as unknown as ProjectWorkbenchStore;
 
-    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
-    act(() => container.querySelector<HTMLButtonElement>('[aria-label="New chat in second"]')!.click());
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
+    act(() =>
+      container.querySelector<HTMLButtonElement>('[aria-label="New chat in second"]')!.click(),
+    );
 
     expect(startNewSession).toHaveBeenCalledWith("/work/second");
     expect(switchProject).not.toHaveBeenCalled();
@@ -203,29 +350,64 @@ describe("Sidebar projects", () => {
   it("starts the same new session flow from the project folder", () => {
     const startNewSession = vi.fn();
     const store = {
-      recentProjectPaths: ["/work/cake"], projects: [{ path: "/work/cake", name: "Cake" }],
-      projectSessions: () => [], sessionLimit: () => 8, sessionActivity: vi.fn(),
-      nameFromPath: () => "cake", startNewSession, showMoreSessions: vi.fn()
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      nameFromPath: () => "cake",
+      startNewSession,
+      showMoreSessions: vi.fn(),
     } as unknown as ProjectWorkbenchStore;
     const props = sidebarProps(store);
     act(() => root.render(<Sidebar {...props} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
 
-    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Start new chat in cake"]')!.click());
+    act(() =>
+      container.querySelector<HTMLButtonElement>('[aria-label="Start new chat in cake"]')!.click(),
+    );
 
     expect(startNewSession).toHaveBeenCalledWith("/work/cake");
   });
 
   it("lists Cake Chat sessions and creates another without clearing history", () => {
     const store = {
-      recentProjectPaths: [], projects: [], projectSessions: vi.fn(() => []), sessionLimit: vi.fn(() => 8),
-      sessionActivity: vi.fn(), sessionDisplayTitle, chatReviewCommentCountForSession: vi.fn(() => 0), nameFromPath: vi.fn(() => "cake"),
-      startOneOffChat: vi.fn(), chooseProject: vi.fn(), showMoreSessions: vi.fn(),
-      cakeChatSummaries: [{ id: "cake-chat-1", title: "Repair the sidebar", modified: new Date(0).toISOString(), resolved: false }]
+      recentProjectPaths: [],
+      projects: [],
+      projectSessions: vi.fn(() => []),
+      sessionLimit: vi.fn(() => 8),
+      sessionActivity: vi.fn(),
+      sessionDisplayTitle,
+      chatReviewCommentCountForSession: vi.fn(() => 0),
+      nameFromPath: vi.fn(() => "cake"),
+      startOneOffChat: vi.fn(),
+      chooseProject: vi.fn(),
+      showMoreSessions: vi.fn(),
+      cakeChatSummaries: [
+        {
+          id: "cake-chat-1",
+          title: "Repair the sidebar",
+          modified: new Date(0).toISOString(),
+          resolved: false,
+        },
+      ],
     } as unknown as ProjectWorkbenchStore;
     const props = sidebarProps(store);
-    props.cakeChat = { summaries: [{ id: "cake-chat-1", title: "Repair the sidebar" }], sessionId: "cake-chat-1", findSession: vi.fn() } as any;
+    props.cakeChat = {
+      summaries: [{ id: "cake-chat-1", title: "Repair the sidebar" }],
+      sessionId: "cake-chat-1",
+      findSession: vi.fn(),
+    } as any;
 
-    act(() => root.render(<Sidebar {...props} selection={{ kind: "cake-chat", sessionId: "cake-chat-1" }} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
+    act(() =>
+      root.render(
+        <Sidebar
+          {...props}
+          selection={{ kind: "cake-chat", sessionId: "cake-chat-1" }}
+          onOpenSettings={vi.fn()}
+          onToggle={vi.fn()}
+        />,
+      ),
+    );
     expect(container.querySelector(".brand-menu summary")?.textContent).toContain("🍰 Cake Chat");
     expect(container.querySelector(".sidebar input")).toBeNull();
     expect(container.textContent).toContain("Repair the sidebar");
@@ -235,37 +417,101 @@ describe("Sidebar projects", () => {
 
   it("derives exactly one active chat from the application selection", () => {
     const store = {
-      recentProjectPaths: ["/work/cake"], projectPath: "/work/cake", projects: [{ path: "/work/cake", name: "Cake" }],
-      session: { sessionId: "project-session" }, projectSessions: () => [{ id: "project-session", title: "Project work" }], sessionLimit: () => 8,
-      sessionActivity: vi.fn(), sessionDisplayTitle, chatReviewCommentCountForSession: vi.fn(() => 0), nameFromPath: vi.fn(() => "cake"),
-      startOneOffChat: vi.fn(), chooseProject: vi.fn(), showMoreSessions: vi.fn(), renameSession: vi.fn(),
-      cakeChatSummaries: [{ id: "cake-session", title: "Meta work", modified: new Date(0).toISOString(), resolved: false }]
+      recentProjectPaths: ["/work/cake"],
+      projectPath: "/work/cake",
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      session: { sessionId: "project-session" },
+      projectSessions: () => [{ id: "project-session", title: "Project work" }],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      sessionDisplayTitle,
+      chatReviewCommentCountForSession: vi.fn(() => 0),
+      nameFromPath: vi.fn(() => "cake"),
+      startOneOffChat: vi.fn(),
+      chooseProject: vi.fn(),
+      showMoreSessions: vi.fn(),
+      renameSession: vi.fn(),
+      cakeChatSummaries: [
+        {
+          id: "cake-session",
+          title: "Meta work",
+          modified: new Date(0).toISOString(),
+          resolved: false,
+        },
+      ],
     } as unknown as ProjectWorkbenchStore;
     const props = sidebarProps(store);
-    props.cakeChat = { summaries: [{ id: "cake-session", title: "Meta work" }], sessionId: "cake-session", findSession: vi.fn() } as any;
+    props.cakeChat = {
+      summaries: [{ id: "cake-session", title: "Meta work" }],
+      sessionId: "cake-session",
+      findSession: vi.fn(),
+    } as any;
 
-    act(() => root.render(<Sidebar {...props} selection={{ kind: "cake-chat", sessionId: "cake-session" }} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
+    act(() =>
+      root.render(
+        <Sidebar
+          {...props}
+          selection={{ kind: "cake-chat", sessionId: "cake-session" }}
+          onOpenSettings={vi.fn()}
+          onToggle={vi.fn()}
+        />,
+      ),
+    );
 
     expect(container.querySelectorAll(".session-item.active")).toHaveLength(1);
-    expect(container.querySelector('[data-session-id="cake-session"]')?.classList).toContain("active");
-    expect(container.querySelector('[data-session-id="project-session"]')?.classList).not.toContain("active");
+    expect(container.querySelector('[data-session-id="cake-session"]')?.classList).toContain(
+      "active",
+    );
+    expect(container.querySelector('[data-session-id="project-session"]')?.classList).not.toContain(
+      "active",
+    );
 
-    act(() => root.render(<Sidebar {...props} selection={{ kind: "project-session", workspacePath: "/work/cake", sessionId: "project-session" }} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
+    act(() =>
+      root.render(
+        <Sidebar
+          {...props}
+          selection={{
+            kind: "project-session",
+            workspacePath: "/work/cake",
+            sessionId: "project-session",
+          }}
+          onOpenSettings={vi.fn()}
+          onToggle={vi.fn()}
+        />,
+      ),
+    );
 
     expect(container.querySelectorAll(".session-item.active")).toHaveLength(1);
-    expect(container.querySelector('[data-session-id="cake-session"]')?.classList).not.toContain("active");
-    expect(container.querySelector('[data-session-id="project-session"]')?.classList).toContain("active");
+    expect(container.querySelector('[data-session-id="cake-session"]')?.classList).not.toContain(
+      "active",
+    );
+    expect(container.querySelector('[data-session-id="project-session"]')?.classList).toContain(
+      "active",
+    );
   });
 
   it("omits the resolved lane until at least one session is resolved", () => {
     const store = {
-      recentProjectPaths: ["/work/cake"], projects: [{ path: "/work/cake", name: "Cake" }],
-      projectSessions: (_path: string, resolved = false) => resolved ? [] : [{ id: "active", title: "Current work", modified: new Date(0).toISOString() }],
-      sessionLimit: () => 8, sessionActivity: vi.fn(), sessionActivityTime: vi.fn(() => "Today"), nameFromPath: () => "cake",
-      startOneOffChat: vi.fn(), chooseProject: vi.fn(), showMoreSessions: vi.fn(), renameSession: vi.fn(), hasResolvedSessions: false
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: (_path: string, resolved = false) =>
+        resolved
+          ? []
+          : [{ id: "active", title: "Current work", modified: new Date(0).toISOString() }],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      sessionActivityTime: vi.fn(() => "Today"),
+      nameFromPath: () => "cake",
+      startOneOffChat: vi.fn(),
+      chooseProject: vi.fn(),
+      showMoreSessions: vi.fn(),
+      renameSession: vi.fn(),
+      hasResolvedSessions: false,
     } as unknown as ProjectWorkbenchStore;
 
-    act(() => root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
 
     expect(container.querySelector(".resolved-lane")).toBeNull();
     expect(container.textContent).not.toContain("Resolved");
@@ -273,15 +519,34 @@ describe("Sidebar projects", () => {
 
   it("removes the active lane labels and collapses the resolved lane", () => {
     let resolvedLaneExpanded = true;
-    const toggleResolvedLane = vi.fn(() => { resolvedLaneExpanded = !resolvedLaneExpanded; });
+    const toggleResolvedLane = vi.fn(() => {
+      resolvedLaneExpanded = !resolvedLaneExpanded;
+    });
     const store = {
-      recentProjectPaths: ["/work/cake"], projects: [{ path: "/work/cake", name: "Cake" }],
-      projectSessions: (_path: string, resolved = false) => resolved ? [{ id: "resolved", title: "Finished work", modified: new Date(0).toISOString() }] : [],
-      sessionLimit: () => 8, sessionActivity: vi.fn(), sessionActivityTime: vi.fn(() => "Today"), nameFromPath: () => "cake",
-      startOneOffChat: vi.fn(), chooseProject: vi.fn(), showMoreSessions: vi.fn(), renameSession: vi.fn(), hasResolvedSessions: true,
-      resolvedLaneExpanded, toggleResolvedLane
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: (_path: string, resolved = false) =>
+        resolved
+          ? [{ id: "resolved", title: "Finished work", modified: new Date(0).toISOString() }]
+          : [],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      sessionActivityTime: vi.fn(() => "Today"),
+      nameFromPath: () => "cake",
+      startOneOffChat: vi.fn(),
+      chooseProject: vi.fn(),
+      showMoreSessions: vi.fn(),
+      renameSession: vi.fn(),
+      hasResolvedSessions: true,
+      resolvedLaneExpanded,
+      toggleResolvedLane,
     } as unknown as ProjectWorkbenchStore;
-    const props = () => sidebarProps({ ...store, resolvedLaneExpanded, toggleResolvedLane } as unknown as ProjectWorkbenchStore);
+    const props = () =>
+      sidebarProps({
+        ...store,
+        resolvedLaneExpanded,
+        toggleResolvedLane,
+      } as unknown as ProjectWorkbenchStore);
 
     act(() => root.render(<Sidebar {...props()} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
 
@@ -294,7 +559,9 @@ describe("Sidebar projects", () => {
     act(() => toggle.click());
     expect(toggleResolvedLane).toHaveBeenCalledOnce();
     act(() => root.render(<Sidebar {...props()} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
-    expect(container.querySelector('[aria-label="Expand Resolved"]')?.getAttribute("aria-expanded")).toBe("false");
+    expect(
+      container.querySelector('[aria-label="Expand Resolved"]')?.getAttribute("aria-expanded"),
+    ).toBe("false");
     expect(container.querySelector("#resolved-lane-content")).toBeNull();
   });
 
@@ -302,25 +569,60 @@ describe("Sidebar projects", () => {
     const setSessionResolved = vi.fn();
     const modified = new Date(0).toISOString();
     const store = {
-      recentProjectPaths: ["/work/cake"], projects: [{ path: "/work/cake", name: "Cake" }],
-      projectSessions: (_path: string, resolved = false) => resolved
-        ? [{ id: "resolved", title: "Finished work", modified }]
-        : [{ id: "active", title: "Current work", modified }],
-      sessionLimit: () => 8, sessionActivity: vi.fn(), sessionActivityTime: vi.fn(() => "Today"), nameFromPath: () => "cake",
-      startOneOffChat: vi.fn(), chooseProject: vi.fn(), showMoreSessions: vi.fn(), renameSession: vi.fn(),
-      hasResolvedSessions: true, setSessionResolved
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: (_path: string, resolved = false) =>
+        resolved
+          ? [{ id: "resolved", title: "Finished work", modified }]
+          : [{ id: "active", title: "Current work", modified }],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      sessionActivityTime: vi.fn(() => "Today"),
+      nameFromPath: () => "cake",
+      startOneOffChat: vi.fn(),
+      chooseProject: vi.fn(),
+      showMoreSessions: vi.fn(),
+      renameSession: vi.fn(),
+      hasResolvedSessions: true,
+      setSessionResolved,
     } as unknown as ProjectWorkbenchStore;
     const props = sidebarProps(store);
 
-    act(() => root.render(<Sidebar {...props} selection={{ kind: "project-session", workspacePath: "/work/cake", sessionId: "active" }} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
-    const resolve = container.querySelector<HTMLButtonElement>('[aria-label="Resolve Current work"]')!;
+    act(() =>
+      root.render(
+        <Sidebar
+          {...props}
+          selection={{ kind: "project-session", workspacePath: "/work/cake", sessionId: "active" }}
+          onOpenSettings={vi.fn()}
+          onToggle={vi.fn()}
+        />,
+      ),
+    );
+    const resolve = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Resolve Current work"]',
+    )!;
     expect(resolve).not.toBeNull();
     expect(container.querySelector('[data-session-id="active"] .session-time')).toBeNull();
     act(() => resolve.click());
     expect(setSessionResolved).toHaveBeenCalledWith("active", true);
 
-    act(() => root.render(<Sidebar {...props} selection={{ kind: "project-session", workspacePath: "/work/cake", sessionId: "resolved" }} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
-    const restore = container.querySelector<HTMLButtonElement>('[aria-label="Restore Finished work"]')!;
+    act(() =>
+      root.render(
+        <Sidebar
+          {...props}
+          selection={{
+            kind: "project-session",
+            workspacePath: "/work/cake",
+            sessionId: "resolved",
+          }}
+          onOpenSettings={vi.fn()}
+          onToggle={vi.fn()}
+        />,
+      ),
+    );
+    const restore = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Restore Finished work"]',
+    )!;
     act(() => restore.click());
     expect(setSessionResolved).toHaveBeenLastCalledWith("resolved", false);
   });
@@ -329,21 +631,41 @@ describe("Sidebar projects", () => {
     const setCakeChatSessionResolved = vi.fn();
     const modified = new Date(0).toISOString();
     const store = {
-      recentProjectPaths: [], projects: [], projectSessions: vi.fn(() => []), sessionLimit: () => 8,
-      sessionActivity: vi.fn(), sessionActivityTime: vi.fn(() => "Today"), nameFromPath: () => "cake",
-      startOneOffChat: vi.fn(), chooseProject: vi.fn(), showMoreSessions: vi.fn(), hasResolvedSessions: true,
+      recentProjectPaths: [],
+      projects: [],
+      projectSessions: vi.fn(() => []),
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      sessionActivityTime: vi.fn(() => "Today"),
+      nameFromPath: () => "cake",
+      startOneOffChat: vi.fn(),
+      chooseProject: vi.fn(),
+      showMoreSessions: vi.fn(),
+      hasResolvedSessions: true,
       cakeChatSummaries: [
         { id: "active-cake", title: "Active Cake Chat", modified, resolved: false },
-        { id: "resolved-cake", title: "Resolved Cake Chat", modified, resolved: true }
+        { id: "resolved-cake", title: "Resolved Cake Chat", modified, resolved: true },
       ],
-      setCakeChatSessionResolved
+      setCakeChatSessionResolved,
     } as unknown as ProjectWorkbenchStore;
     const props = sidebarProps(store);
 
-    act(() => root.render(<Sidebar {...props} selection={{ kind: "cake-chat", sessionId: "active-cake" }} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
-    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Resolve Active Cake Chat"]')!.click());
+    act(() =>
+      root.render(
+        <Sidebar
+          {...props}
+          selection={{ kind: "cake-chat", sessionId: "active-cake" }}
+          onOpenSettings={vi.fn()}
+          onToggle={vi.fn()}
+        />,
+      ),
+    );
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Resolve Active Cake Chat"]')!
+        .click(),
+    );
     expect(setCakeChatSessionResolved).toHaveBeenCalledWith("active-cake", true);
     expect(container.querySelector(".resolved-lane")?.textContent).toContain("Resolved Cake Chat");
   });
-
 });

@@ -1,5 +1,11 @@
 import { Model, child, id, state, toSnapshot } from "r-state-tree";
-import { applicationStateSchema, utilityModelSchema, type ApplicationState, type ProjectRecord, type UtilityModel } from "../ipc/session-contract";
+import {
+  applicationStateSchema,
+  utilityModelSchema,
+  type ApplicationState,
+  type ProjectRecord,
+  type UtilityModel,
+} from "../ipc/session-contract";
 
 export class ProjectModel extends Model {
   @id
@@ -45,7 +51,12 @@ export class ApplicationModel extends Model {
       return existing;
     }
     const now = new Date().toISOString();
-    const project = ProjectModel.create({ path, name: defaultName, addedAt: now, lastOpenedAt: now });
+    const project = ProjectModel.create({
+      path,
+      name: defaultName,
+      addedAt: now,
+      lastOpenedAt: now,
+    });
     this.projects.unshift(project);
     return project;
   }
@@ -73,8 +84,12 @@ export class ApplicationModel extends Model {
 
   setCakeChatSessionResolved(sessionId: string, resolved: boolean) {
     const index = this.resolvedCakeChatSessionIds.indexOf(sessionId);
-    if (resolved && index === -1) this.resolvedCakeChatSessionIds = [...this.resolvedCakeChatSessionIds, sessionId];
-    else if (!resolved && index !== -1) this.resolvedCakeChatSessionIds = this.resolvedCakeChatSessionIds.filter((id) => id !== sessionId);
+    if (resolved && index === -1)
+      this.resolvedCakeChatSessionIds = [...this.resolvedCakeChatSessionIds, sessionId];
+    else if (!resolved && index !== -1)
+      this.resolvedCakeChatSessionIds = this.resolvedCakeChatSessionIds.filter(
+        (id) => id !== sessionId,
+      );
   }
 
   setSessionsResolved(sessionIds: readonly string[], resolved: boolean) {
@@ -96,11 +111,13 @@ export class ApplicationModel extends Model {
 
   project(path: string): ProjectRecord | undefined {
     const match = this.projects.find((project) => project.path === path);
-    return match ? {
-      path: match.path,
-      name: match.name,
-      addedAt: match.addedAt,
-      lastOpenedAt: match.lastOpenedAt
-    } : undefined;
+    return match
+      ? {
+          path: match.path,
+          name: match.name,
+          addedAt: match.addedAt,
+          lastOpenedAt: match.lastOpenedAt,
+        }
+      : undefined;
   }
 }

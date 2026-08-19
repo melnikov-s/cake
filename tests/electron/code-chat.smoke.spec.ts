@@ -11,16 +11,45 @@ test("uses an intrinsic-height shared chat for code questions and toggles its he
   const project = join(temporaryRoot, "project");
   await Promise.all([
     mkdir(userData, { recursive: true }),
-    mkdir(join(project, "src"), { recursive: true })
+    mkdir(join(project, "src"), { recursive: true }),
   ]);
   await writeFile(join(project, "src/example.ts"), "export const answer = 42;\n");
-  await writeFile(join(userData, "window-state.json"), JSON.stringify({ projectPath: project, recentProjectPaths: [project], draft: "", theme: "system", thinkingExpanded: false }));
-  await writeFile(join(userData, "application.json"), JSON.stringify({ schemaVersion: 1, projects: [{ path: project, name: "project", addedAt: new Date(0).toISOString(), lastOpenedAt: new Date(0).toISOString() }], resolvedSessionIds: [], trustedProjectPaths: [] }));
+  await writeFile(
+    join(userData, "window-state.json"),
+    JSON.stringify({
+      projectPath: project,
+      recentProjectPaths: [project],
+      draft: "",
+      theme: "system",
+      thinkingExpanded: false,
+    }),
+  );
+  await writeFile(
+    join(userData, "application.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      projects: [
+        {
+          path: project,
+          name: "project",
+          addedAt: new Date(0).toISOString(),
+          lastOpenedAt: new Date(0).toISOString(),
+        },
+      ],
+      resolvedSessionIds: [],
+      trustedProjectPaths: [],
+    }),
+  );
 
   const application = await electron.launch({
     args: [repositoryRoot],
     cwd: repositoryRoot,
-    env: { ...process.env, CAKE_ELECTRON_SMOKE: "1", CAKE_ELECTRON_USER_DATA: userData, CAKE_HOME: join(temporaryRoot, "cake-home") }
+    env: {
+      ...process.env,
+      CAKE_ELECTRON_SMOKE: "1",
+      CAKE_ELECTRON_USER_DATA: userData,
+      CAKE_HOME: join(temporaryRoot, "cake-home"),
+    },
   });
 
   try {
@@ -60,12 +89,15 @@ test("uses an intrinsic-height shared chat for code questions and toggles its he
 
     const dimensions = await draft.evaluate((element) => {
       const card = element.getBoundingClientRect();
-      const lastMessage = Array.from(element.querySelectorAll(".transcript-item")).at(-1)?.getBoundingClientRect();
+      const lastMessage = Array.from(element.querySelectorAll(".transcript-item"))
+        .at(-1)
+        ?.getBoundingClientRect();
       const composer = element.querySelector(".workbench-composer")?.getBoundingClientRect();
       return {
         height: card.height,
-        transcriptGap: lastMessage && composer ? composer.top - lastMessage.bottom : Number.POSITIVE_INFINITY,
-        bottomGap: composer ? card.bottom - composer.bottom : Number.POSITIVE_INFINITY
+        transcriptGap:
+          lastMessage && composer ? composer.top - lastMessage.bottom : Number.POSITIVE_INFINITY,
+        bottomGap: composer ? card.bottom - composer.bottom : Number.POSITIVE_INFINITY,
       };
     });
     expect(dimensions.height).toBeLessThan(460);

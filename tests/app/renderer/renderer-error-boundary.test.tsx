@@ -35,13 +35,17 @@ describe("RendererErrorBoundary", () => {
   it("shows passive-effect crash details and reloads the renderer", () => {
     const onReload = vi.fn();
 
-    act(() => root.render(
-      <RendererErrorBoundary onReload={onReload}>
-        <CrashedView />
-      </RendererErrorBoundary>
-    ));
+    act(() =>
+      root.render(
+        <RendererErrorBoundary onReload={onReload}>
+          <CrashedView />
+        </RendererErrorBoundary>,
+      ),
+    );
 
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("The renderer crashed");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      "The renderer crashed",
+    );
     expect(container.querySelector("pre")?.textContent).toContain("Maximum update depth exceeded");
     expect(container.querySelector("pre")?.textContent).toContain("React component stack");
 
@@ -53,13 +57,17 @@ describe("RendererErrorBoundary", () => {
     const writeText = vi.fn<(value: string) => Promise<void>>(async () => undefined);
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
 
-    await act(async () => root.render(
-      <RendererErrorBoundary>
-        <CrashedView />
-      </RendererErrorBoundary>
-    ));
+    await act(async () =>
+      root.render(
+        <RendererErrorBoundary>
+          <CrashedView />
+        </RendererErrorBoundary>,
+      ),
+    );
 
-    const copy = [...container.querySelectorAll("button")].find((button) => button.textContent === "Copy full error details");
+    const copy = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent === "Copy full error details",
+    );
     await act(async () => copy?.click());
 
     expect(writeText).toHaveBeenCalledOnce();

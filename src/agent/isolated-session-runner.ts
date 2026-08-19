@@ -4,7 +4,7 @@ import {
   SettingsManager,
   createAgentSession,
   type AgentSession,
-  type SessionManager
+  type SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import type { SessionSnapshot, ThinkingLevel, UiPart } from "../ipc/session-contract";
 import {
@@ -14,7 +14,7 @@ import {
   formatUnknown,
   toolArtifactId,
   toolFilePath,
-  toolResultDiff
+  toolResultDiff,
 } from "./session-projection";
 
 export interface IsolatedSessionOptions {
@@ -33,7 +33,11 @@ export interface IsolatedSessionOptions {
   noTools?: "all";
   bindExtensions?: boolean;
   capturePromptError?: boolean;
-  onEvent?(event: { type: "part-updated"; part: UiPart } | { type: "usage-updated"; usage: NonNullable<SessionSnapshot["usage"]> }): void;
+  onEvent?(
+    event:
+      | { type: "part-updated"; part: UiPart }
+      | { type: "usage-updated"; usage: NonNullable<SessionSnapshot["usage"]> },
+  ): void;
 }
 
 export interface IsolatedSessionResult {
@@ -44,12 +48,20 @@ export interface IsolatedSessionResult {
   usage?: SessionSnapshot["usage"];
 }
 
-function sessionUsage(session: Pick<AgentSession, "getSessionStats">): NonNullable<SessionSnapshot["usage"]> {
+function sessionUsage(
+  session: Pick<AgentSession, "getSessionStats">,
+): NonNullable<SessionSnapshot["usage"]> {
   const stats = session.getSessionStats();
   return {
     tokens: stats.tokens,
     cost: stats.cost,
-    context: stats.contextUsage ? { tokens: stats.contextUsage.tokens, contextWindow: stats.contextUsage.contextWindow, percent: stats.contextUsage.percent } : undefined
+    context: stats.contextUsage
+      ? {
+          tokens: stats.contextUsage.tokens,
+          contextWindow: stats.contextUsage.contextWindow,
+          percent: stats.contextUsage.percent,
+        }
+      : undefined,
   };
 }
 
@@ -57,19 +69,28 @@ function textFromContent(content: unknown) {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content
-    .filter((item): item is { type: "text"; text: string } =>
-      typeof item === "object" && item !== null && Reflect.get(item, "type") === "text" && typeof Reflect.get(item, "text") === "string")
+    .filter(
+      (item): item is { type: "text"; text: string } =>
+        typeof item === "object" &&
+        item !== null &&
+        Reflect.get(item, "type") === "text" &&
+        typeof Reflect.get(item, "text") === "string",
+    )
     .map((item) => item.text)
     .join("\n");
 }
 
 /** Run one deliberately resource-restricted Pi sidecar session. */
-export async function runIsolatedSession(options: IsolatedSessionOptions): Promise<IsolatedSessionResult> {
-  const settingsManager = SettingsManager.create(options.cwd, options.agentDir, { projectTrusted: options.projectTrusted });
+export async function runIsolatedSession(
+  options: IsolatedSessionOptions,
+): Promise<IsolatedSessionResult> {
+  const settingsManager = SettingsManager.create(options.cwd, options.agentDir, {
+    projectTrusted: options.projectTrusted,
+  });
   const modelRuntime = await ModelRuntime.create({
     authPath: `${options.agentDir}/auth.json`,
     modelsPath: `${options.agentDir}/models.json`,
-    modelsStorePath: `${options.agentDir}/models-cache.json`
+    modelsStorePath: `${options.agentDir}/models-cache.json`,
   });
   const resourceLoader = new DefaultResourceLoader({
     cwd: options.cwd,
@@ -80,7 +101,7 @@ export async function runIsolatedSession(options: IsolatedSessionOptions): Promi
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
-    systemPrompt: options.systemPrompt
+    systemPrompt: options.systemPrompt,
   });
   await resourceLoader.reload({ resolveProjectTrust: async () => options.projectTrusted });
   const agentSessionOptions = {
@@ -95,20 +116,23 @@ export async function runIsolatedSession(options: IsolatedSessionOptions): Promi
     ? { ...agentSessionOptions, tools: options.tools }
     : agentSessionOptions;
   const { session } = await createAgentSession(
-    options.noTools
-      ? { ...optionsWithTools, noTools: options.noTools }
-      : optionsWithTools,
+    options.noTools ? { ...optionsWithTools, noTools: options.noTools } : optionsWithTools,
   );
 
   try {
     if (options.signal?.aborted) throw new Error(options.cancellationMessage);
-    const abort = () => { void session.abort(); };
+    const abort = () => {
+      void session.abort();
+    };
     options.signal?.addEventListener("abort", abort, { once: true });
     try {
       if (options.bindExtensions) await session.bindExtensions({ mode: "rpc" });
       if (options.model) {
         const model = modelRuntime.getModel(options.model.provider, options.model.id);
-        if (!model) throw new Error(`Unknown ${options.modelPurpose} model ${options.model.provider}/${options.model.id}`);
+        if (!model)
+          throw new Error(
+            `Unknown ${options.modelPurpose} model ${options.model.provider}/${options.model.id}`,
+          );
         await session.setModel(model);
       }
       if (options.thinkingLevel) session.setThinkingLevel(options.thinkingLevel);
@@ -116,25 +140,69 @@ export async function runIsolatedSession(options: IsolatedSessionOptions): Promi
       let response = "";
       let failure = "";
       const projectLiveMessage = createLiveMessageProjector();
-      const activeToolCalls = new Map<string, { input: string; artifactId?: string; filePath?: string }>();
+      const activeToolCalls = new Map<
+        string,
+        { input: string; artifactId?: string; filePath?: string }
+      >();
       const unsubscribe = session.subscribe((event) => {
         for (const part of projectLiveMessage(event)) {
-          if (part.kind !== "text" || part.role !== "user") options.onEvent?.({ type: "part-updated", part });
+          if (part.kind !== "text" || part.role !== "user")
+            options.onEvent?.({ type: "part-updated", part });
         }
         if (event.type === "tool_execution_start") {
-          const call = { input: formatToolInput(event.toolName, event.args), artifactId: toolArtifactId(event.args), filePath: toolFilePath(event.toolName, event.args) };
+          const call = {
+            input: formatToolInput(event.toolName, event.args),
+            artifactId: toolArtifactId(event.args),
+            filePath: toolFilePath(event.toolName, event.args),
+          };
           activeToolCalls.set(event.toolCallId, call);
-          options.onEvent?.({ type: "part-updated", part: { id: boundedProjectionKey(`tool-${event.toolCallId}`), kind: "tool", name: event.toolName, ...call, state: "running" } });
+          options.onEvent?.({
+            type: "part-updated",
+            part: {
+              id: boundedProjectionKey(`tool-${event.toolCallId}`),
+              kind: "tool",
+              name: event.toolName,
+              ...call,
+              state: "running",
+            },
+          });
         }
         if (event.type === "tool_execution_update") {
-          const call = activeToolCalls.get(event.toolCallId) ?? { input: formatToolInput(event.toolName, event.args), artifactId: toolArtifactId(event.args), filePath: toolFilePath(event.toolName, event.args) };
+          const call = activeToolCalls.get(event.toolCallId) ?? {
+            input: formatToolInput(event.toolName, event.args),
+            artifactId: toolArtifactId(event.args),
+            filePath: toolFilePath(event.toolName, event.args),
+          };
           activeToolCalls.set(event.toolCallId, call);
-          options.onEvent?.({ type: "part-updated", part: { id: boundedProjectionKey(`tool-${event.toolCallId}`), kind: "tool", name: event.toolName, ...call, output: formatUnknown(event.partialResult), state: "running" } });
+          options.onEvent?.({
+            type: "part-updated",
+            part: {
+              id: boundedProjectionKey(`tool-${event.toolCallId}`),
+              kind: "tool",
+              name: event.toolName,
+              ...call,
+              output: formatUnknown(event.partialResult),
+              state: "running",
+            },
+          });
         }
         if (event.type === "tool_execution_end") {
           const call = activeToolCalls.get(event.toolCallId);
           activeToolCalls.delete(event.toolCallId);
-          options.onEvent?.({ type: "part-updated", part: { id: boundedProjectionKey(`tool-${event.toolCallId}`), kind: "tool", name: event.toolName, input: call?.input ?? "", output: formatUnknown(event.result), artifactId: toolArtifactId(event.result) ?? call?.artifactId, filePath: call?.filePath, diff: toolResultDiff(event.toolName, event.result), state: event.isError ? "error" : "success" } });
+          options.onEvent?.({
+            type: "part-updated",
+            part: {
+              id: boundedProjectionKey(`tool-${event.toolCallId}`),
+              kind: "tool",
+              name: event.toolName,
+              input: call?.input ?? "",
+              output: formatUnknown(event.result),
+              artifactId: toolArtifactId(event.result) ?? call?.artifactId,
+              filePath: call?.filePath,
+              diff: toolResultDiff(event.toolName, event.result),
+              state: event.isError ? "error" : "success",
+            },
+          });
         }
         if (event.type === "message_end" && event.message.role === "assistant") {
           response = textFromContent(event.message.content).trim();
@@ -150,13 +218,14 @@ export async function runIsolatedSession(options: IsolatedSessionOptions): Promi
       } finally {
         unsubscribe();
       }
-      if (!session.sessionFile) throw new Error(`The ${options.modelPurpose} session was not persisted`);
+      if (!session.sessionFile)
+        throw new Error(`The ${options.modelPurpose} session was not persisted`);
       return {
         sessionId: session.sessionManager.getSessionId(),
         sessionFile: session.sessionFile,
         response,
         error: failure || undefined,
-        usage: sessionUsage(session)
+        usage: sessionUsage(session),
       };
     } finally {
       options.signal?.removeEventListener("abort", abort);

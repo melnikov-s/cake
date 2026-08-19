@@ -1,6 +1,11 @@
 import { Store, observable } from "r-state-tree";
 import type { SessionSnapshot } from "../../ipc/session-contract";
-import { dispatchPluginCommand, pluginCommandSnapshot, resolvePluginCommand, subscribePluginCommands } from "../plugin-runtime";
+import {
+  dispatchPluginCommand,
+  pluginCommandSnapshot,
+  resolvePluginCommand,
+  subscribePluginCommands,
+} from "../plugin-runtime";
 
 type SlashCommand = SessionSnapshot["commands"][number];
 
@@ -10,8 +15,13 @@ export class PluginCommandStore extends Store<Record<string, never>> {
   constructor(props: PluginCommandStore["props"]) {
     super(props);
     const refresh = () => this.commands.splice(0, this.commands.length, ...pluginCommandSnapshot());
-    refresh(); this.effect(() => subscribePluginCommands(refresh));
+    refresh();
+    this.effect(() => subscribePluginCommands(refresh));
   }
-  matches(input: string) { return Boolean(resolvePluginCommand(input)); }
-  run(input: string) { return dispatchPluginCommand(input); }
+  matches(input: string) {
+    return Boolean(resolvePluginCommand(input));
+  }
+  run(input: string) {
+    return dispatchPluginCommand(input);
+  }
 }

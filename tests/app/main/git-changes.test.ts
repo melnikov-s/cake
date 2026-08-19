@@ -4,13 +4,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { collectWorkingTreeChanges, NotGitRepositoryError, parseNameStatus } from "../../../src/main/git-changes";
+import {
+  collectWorkingTreeChanges,
+  NotGitRepositoryError,
+  parseNameStatus,
+} from "../../../src/main/git-changes";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+  await Promise.all(
+    directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
+  );
 });
 
 async function repository() {
@@ -26,14 +32,25 @@ async function git(cwd: string, ...args: string[]) {
 
 async function commit(cwd: string) {
   await git(cwd, "add", "-A");
-  await git(cwd, "-c", "user.name=Cake Test", "-c", "user.email=cake@example.test", "commit", "-m", "fixture");
+  await git(
+    cwd,
+    "-c",
+    "user.name=Cake Test",
+    "-c",
+    "user.email=cake@example.test",
+    "commit",
+    "-m",
+    "fixture",
+  );
 }
 
 describe("Git working-tree changes", () => {
   it("classifies a directory outside Git without exposing Git's command failure", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "cake-non-git-workspace-"));
     directories.push(workspace);
-    await expect(collectWorkingTreeChanges(workspace)).rejects.toBeInstanceOf(NotGitRepositoryError);
+    await expect(collectWorkingTreeChanges(workspace)).rejects.toBeInstanceOf(
+      NotGitRepositoryError,
+    );
   });
 
   it("reads staged, unstaged, untracked, deleted, and renamed files without changing the index or creating refs", async () => {
@@ -51,13 +68,28 @@ describe("Git working-tree changes", () => {
     await writeFile(join(root, "untracked.ts"), "new untracked\n");
     const indexBefore = (await git(root, "diff", "--cached")).stdout;
 
-    expect(await collectWorkingTreeChanges(root)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ path: "staged.ts", status: "modified", diff: expect.stringContaining("+new staged") }),
-      expect.objectContaining({ path: "unstaged.ts", status: "modified", diff: expect.stringContaining("+new unstaged") }),
-      expect.objectContaining({ path: "new.ts", previousPath: "old.ts", status: "renamed" }),
-      expect.objectContaining({ path: "deleted.ts", status: "deleted", deletions: 1 }),
-      expect.objectContaining({ path: "untracked.ts", status: "added", additions: 1, diff: expect.stringContaining("+new untracked") })
-    ]));
+    expect(await collectWorkingTreeChanges(root)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "staged.ts",
+          status: "modified",
+          diff: expect.stringContaining("+new staged"),
+        }),
+        expect.objectContaining({
+          path: "unstaged.ts",
+          status: "modified",
+          diff: expect.stringContaining("+new unstaged"),
+        }),
+        expect.objectContaining({ path: "new.ts", previousPath: "old.ts", status: "renamed" }),
+        expect.objectContaining({ path: "deleted.ts", status: "deleted", deletions: 1 }),
+        expect.objectContaining({
+          path: "untracked.ts",
+          status: "added",
+          additions: 1,
+          diff: expect.stringContaining("+new untracked"),
+        }),
+      ]),
+    );
     expect((await git(root, "diff", "--cached")).stdout).toBe(indexBefore);
     expect((await git(root, "show-ref")).stdout).not.toContain("refs/cake/");
   });
@@ -73,7 +105,7 @@ describe("Git working-tree changes", () => {
     await writeFile(join(root, "outside.ts"), "outside two\n");
 
     expect(await collectWorkingTreeChanges(workspace)).toEqual([
-      expect.objectContaining({ path: "index.ts", status: "modified" })
+      expect.objectContaining({ path: "index.ts", status: "modified" }),
     ]);
   });
 
@@ -81,7 +113,7 @@ describe("Git working-tree changes", () => {
     const root = await repository();
     await writeFile(join(root, "index.ts"), "export {};\n");
     expect(await collectWorkingTreeChanges(root)).toEqual([
-      expect.objectContaining({ path: "index.ts", status: "added", additions: 1 })
+      expect.objectContaining({ path: "index.ts", status: "added", additions: 1 }),
     ]);
   });
 });
@@ -90,7 +122,7 @@ describe("parseNameStatus", () => {
   it("parses ordinary and rename records", () => {
     expect(parseNameStatus("M\0src/app.ts\0R100\0old name.ts\0new name.ts\0")).toEqual([
       { path: "src/app.ts", changeCode: "M" },
-      { path: "new name.ts", previousPath: "old name.ts", changeCode: "R" }
+      { path: "new name.ts", previousPath: "old name.ts", changeCode: "R" },
     ]);
   });
 });

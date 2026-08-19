@@ -13,11 +13,15 @@ vi.mock("@streamdown/code", () => ({
   code: {
     getThemes: () => ["github-light", "github-dark"],
     highlight: ({ code }: { code: string }, callback: (result: unknown) => void) => {
-      const result = { tokens: code.split("\n").map((line) => [{ content: line, htmlStyle: { color: "#123456" } }]) };
+      const result = {
+        tokens: code
+          .split("\n")
+          .map((line) => [{ content: line, htmlStyle: { color: "#123456" } }]),
+      };
       callback(result);
       return result;
-    }
-  }
+    },
+  },
 }));
 
 import { WorkspaceBrowser } from "../../../src/renderer/components/workspace-browser";
@@ -25,22 +29,64 @@ import { WorkspaceBrowser } from "../../../src/renderer/components/workspace-bro
 function browserProps(store: ProjectWorkbenchStore) {
   const fixture = store as unknown as Record<string, any>;
   let draftAnchor: any;
-  const draftChatStore = mount(createStore(ChatStore, {
-    id: () => "code-review-draft",
-    parts: () => draftAnchor ? [{ id: "code-context", kind: "text" as const, role: "user" as const, text: draftAnchor.selectedText, status: "complete" as const }] : [],
-    streaming: () => false,
-    submitting: () => false,
-    configuration: () => undefined,
-    commands: () => [],
-    placeholder: () => "Ask Cake about this code…",
-    inputLabel: () => "Message code chat",
-    canSubmit: (draft) => Boolean(draftAnchor && draft.trim()),
-    submit: async (draft) => Boolean(await fixture.createReviewThread(draftAnchor, draft))
-  }));
+  const draftChatStore = mount(
+    createStore(ChatStore, {
+      id: () => "code-review-draft",
+      parts: () =>
+        draftAnchor
+          ? [
+              {
+                id: "code-context",
+                kind: "text" as const,
+                role: "user" as const,
+                text: draftAnchor.selectedText,
+                status: "complete" as const,
+              },
+            ]
+          : [],
+      streaming: () => false,
+      submitting: () => false,
+      configuration: () => undefined,
+      commands: () => [],
+      placeholder: () => "Ask Cake about this code…",
+      inputLabel: () => "Message code chat",
+      canSubmit: (draft) => Boolean(draftAnchor && draft.trim()),
+      submit: async (draft) => Boolean(await fixture.createReviewThread(draftAnchor, draft)),
+    }),
+  );
   return {
-    store: { files: fixture.workspaceFiles, path: fixture.workspaceBrowserPath, loading: fixture.workspaceFilesLoading, readFile: fixture.readWorkspaceFile, select: fixture.selectWorkspaceFile, focusPath: fixture.focusWorkspaceReviewThread, close: fixture.closeWorkspaceBrowser } as any,
-    reviews: { threads: fixture.reviewThreads ?? [], pendingCommentCount: fixture.pendingReviewCommentCount ?? 0, activeThread: fixture.activeReviewThread, get draftAnchor() { return draftAnchor; }, draftChatStore, prepareDraft: (anchor: any) => { draftAnchor = anchor; draftChatStore.setDraft(""); }, cancelDraft: () => { draftAnchor = undefined; draftChatStore.setDraft(""); }, createThread: fixture.createReviewThread, replyThread: fixture.replyReviewThread, resolveThread: fixture.resolveReviewThread, threadStreaming: fixture.reviewThreadStreaming ?? (() => false), submitPending: fixture.sendPendingReviewComments } as any,
-    chat: { projectName: fixture.projectName } as any
+    store: {
+      files: fixture.workspaceFiles,
+      path: fixture.workspaceBrowserPath,
+      loading: fixture.workspaceFilesLoading,
+      readFile: fixture.readWorkspaceFile,
+      select: fixture.selectWorkspaceFile,
+      focusPath: fixture.focusWorkspaceReviewThread,
+      close: fixture.closeWorkspaceBrowser,
+    } as any,
+    reviews: {
+      threads: fixture.reviewThreads ?? [],
+      pendingCommentCount: fixture.pendingReviewCommentCount ?? 0,
+      activeThread: fixture.activeReviewThread,
+      get draftAnchor() {
+        return draftAnchor;
+      },
+      draftChatStore,
+      prepareDraft: (anchor: any) => {
+        draftAnchor = anchor;
+        draftChatStore.setDraft("");
+      },
+      cancelDraft: () => {
+        draftAnchor = undefined;
+        draftChatStore.setDraft("");
+      },
+      createThread: fixture.createReviewThread,
+      replyThread: fixture.replyReviewThread,
+      resolveThread: fixture.resolveReviewThread,
+      threadStreaming: fixture.reviewThreadStreaming ?? (() => false),
+      submitPending: fixture.sendPendingReviewComments,
+    } as any,
+    chat: { projectName: fixture.projectName } as any,
   };
 }
 
@@ -55,44 +101,102 @@ describe("WorkspaceBrowser", () => {
     root = createRoot(container);
   });
 
-  afterEach(() => { act(() => root.unmount()); container.remove(); });
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+  });
 
   it("shows the entire project tree and syntax-highlighted selected file", async () => {
     const selectWorkspaceFile = vi.fn();
     const store = {
-      workspaceFiles: ["PLAN.md", "src/app.ts", "src/lib/util.ts"], workspaceBrowserPath: "src/app.ts", workspaceFilesLoading: false,
-      projectName: "cake", reviewThreads: [], pendingReviewCommentCount: 0, activeReviewThread: undefined,
-      readWorkspaceFile: vi.fn(async () => "const cake = true;\nexport { cake };") , selectWorkspaceFile, closeWorkspaceBrowser: vi.fn(),
-      reviewThreadStreaming: vi.fn(() => false), createReviewThread: vi.fn(async () => true), replyReviewThread: vi.fn(async () => true), resolveReviewThread: vi.fn(async () => true), focusWorkspaceReviewThread: vi.fn(), sendPendingReviewComments: vi.fn()
+      workspaceFiles: ["PLAN.md", "src/app.ts", "src/lib/util.ts"],
+      workspaceBrowserPath: "src/app.ts",
+      workspaceFilesLoading: false,
+      projectName: "cake",
+      reviewThreads: [],
+      pendingReviewCommentCount: 0,
+      activeReviewThread: undefined,
+      readWorkspaceFile: vi.fn(async () => "const cake = true;\nexport { cake };"),
+      selectWorkspaceFile,
+      closeWorkspaceBrowser: vi.fn(),
+      reviewThreadStreaming: vi.fn(() => false),
+      createReviewThread: vi.fn(async () => true),
+      replyReviewThread: vi.fn(async () => true),
+      resolveReviewThread: vi.fn(async () => true),
+      focusWorkspaceReviewThread: vi.fn(),
+      sendPendingReviewComments: vi.fn(),
     } as unknown as ProjectWorkbenchStore;
 
     await act(async () => root.render(<WorkspaceBrowser {...browserProps(store)} />));
 
-    expect(container.querySelector('[aria-label="Project files"]')?.textContent).toContain("PLAN.md");
-    expect(container.querySelector('[aria-label="Project files"]')?.textContent).toContain("util.ts");
-    expect(container.querySelector('[aria-label="Workspace file src/app.ts"]')?.textContent).toContain("export { cake };");
+    expect(container.querySelector('[aria-label="Project files"]')?.textContent).toContain(
+      "PLAN.md",
+    );
+    expect(container.querySelector('[aria-label="Project files"]')?.textContent).toContain(
+      "util.ts",
+    );
+    expect(
+      container.querySelector('[aria-label="Workspace file src/app.ts"]')?.textContent,
+    ).toContain("export { cake };");
     expect(container.querySelector(".syntax-token")).not.toBeNull();
-    act(() => [...container.querySelectorAll<HTMLButtonElement>('[aria-label="Project files"] li > button')].find((button) => button.textContent === "PLAN.md")!.click());
+    act(() =>
+      [...container.querySelectorAll<HTMLButtonElement>('[aria-label="Project files"] li > button')]
+        .find((button) => button.textContent === "PLAN.md")!
+        .click(),
+    );
     expect(selectWorkspaceFile).toHaveBeenCalledWith("PLAN.md");
   });
 
   it("anchors questions to ordinary source lines rather than a diff", async () => {
     const createReviewThread = vi.fn(async () => true);
     const store = {
-      workspaceFiles: ["src/app.ts"], workspaceBrowserPath: "src/app.ts", workspaceFilesLoading: false,
-      projectName: "cake", reviewThreads: [], pendingReviewCommentCount: 0, activeReviewThread: undefined,
-      readWorkspaceFile: vi.fn(async () => "const cake = true;"), selectWorkspaceFile: vi.fn(), closeWorkspaceBrowser: vi.fn(),
-      reviewThreadStreaming: vi.fn(() => false), createReviewThread, replyReviewThread: vi.fn(async () => true), resolveReviewThread: vi.fn(async () => true), focusWorkspaceReviewThread: vi.fn(), sendPendingReviewComments: vi.fn()
+      workspaceFiles: ["src/app.ts"],
+      workspaceBrowserPath: "src/app.ts",
+      workspaceFilesLoading: false,
+      projectName: "cake",
+      reviewThreads: [],
+      pendingReviewCommentCount: 0,
+      activeReviewThread: undefined,
+      readWorkspaceFile: vi.fn(async () => "const cake = true;"),
+      selectWorkspaceFile: vi.fn(),
+      closeWorkspaceBrowser: vi.fn(),
+      reviewThreadStreaming: vi.fn(() => false),
+      createReviewThread,
+      replyReviewThread: vi.fn(async () => true),
+      resolveReviewThread: vi.fn(async () => true),
+      focusWorkspaceReviewThread: vi.fn(),
+      sendPendingReviewComments: vi.fn(),
     } as unknown as ProjectWorkbenchStore;
     await act(async () => root.render(<WorkspaceBrowser {...browserProps(store)} />));
-    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Ask about line 1"]')!.click());
-    expect(container.querySelector(".review-thread-draft .user-message")?.textContent).toContain("const cake = true;");
-    const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message code chat"]')!;
+    act(() =>
+      container.querySelector<HTMLButtonElement>('[aria-label="Ask about line 1"]')!.click(),
+    );
+    expect(container.querySelector(".review-thread-draft .user-message")?.textContent).toContain(
+      "const cake = true;",
+    );
+    const textarea = container.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Message code chat"]',
+    )!;
     act(() => {
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, "What does this do?");
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
+        textarea,
+        "What does this do?",
+      );
       textarea.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await act(async () => container.querySelector<HTMLButtonElement>('.review-thread-draft button[type="submit"]')!.click());
-    expect(createReviewThread).toHaveBeenCalledWith(expect.objectContaining({ path: "src/app.ts", view: "file", start: expect.objectContaining({ newLine: 1 }), diff: "" }), "What does this do?");
+    await act(async () =>
+      container
+        .querySelector<HTMLButtonElement>('.review-thread-draft button[type="submit"]')!
+        .click(),
+    );
+    expect(createReviewThread).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "src/app.ts",
+        view: "file",
+        start: expect.objectContaining({ newLine: 1 }),
+        diff: "",
+      }),
+      "What does this do?",
+    );
   });
 });

@@ -33,21 +33,23 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
 
   @child
   get sessions(): ProjectSessionStore[] {
-    return this.targets.map((target) => createStore(ProjectSessionStore, {
-      key: target.sessionId,
-      ...target,
-      client: this.props.client,
-      registry: this,
-      operations: this.props.operations,
-      reviews: this.props.reviews,
-      pluginCommands: this.props.pluginCommands,
-      canSubmit: () => this.props.canSubmit(target.sessionId),
-      isActive: () => this.props.isActive(target.sessionId),
-      openCommandPane: (pane) => this.props.openCommandPane(pane),
-      persist: () => this.props.persist(),
-      projectName: () => this.props.projectName(target.workspacePath),
-      abort: () => this.props.abort()
-    }));
+    return this.targets.map((target) =>
+      createStore(ProjectSessionStore, {
+        key: target.sessionId,
+        ...target,
+        client: this.props.client,
+        registry: this,
+        operations: this.props.operations,
+        reviews: this.props.reviews,
+        pluginCommands: this.props.pluginCommands,
+        canSubmit: () => this.props.canSubmit(target.sessionId),
+        isActive: () => this.props.isActive(target.sessionId),
+        openCommandPane: (pane) => this.props.openCommandPane(pane),
+        persist: () => this.props.persist(),
+        projectName: () => this.props.projectName(target.workspacePath),
+        abort: () => this.props.abort(),
+      }),
+    );
   }
 
   findModel(sessionId: string) {
@@ -96,7 +98,10 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     this.rememberSessionLocation(snapshot.sessionId, snapshot.workspacePath);
     const session = this.ensure(snapshot.sessionId);
     applySnapshot(session.model, toSessionModelSnapshot(snapshot));
-    if (snapshot.parts.length > 0 && this.pendingNewSessionIdsByWorkspace[snapshot.workspacePath] === snapshot.sessionId) {
+    if (
+      snapshot.parts.length > 0 &&
+      this.pendingNewSessionIdsByWorkspace[snapshot.workspacePath] === snapshot.sessionId
+    ) {
       delete this.pendingNewSessionIdsByWorkspace[snapshot.workspacePath];
       this.props.persist();
     }
@@ -110,10 +115,11 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     return session.model;
   }
 
-
   applyReviewThreads(sessionId: string, threads: ReviewThread[]) {
-    if (!this.findSession(sessionId) && threads[0]) this.rememberSessionLocation(sessionId, threads[0].workspacePath);
-    const session = this.findSession(sessionId) ?? (threads.length > 0 ? this.ensure(sessionId) : undefined);
+    if (!this.findSession(sessionId) && threads[0])
+      this.rememberSessionLocation(sessionId, threads[0].workspacePath);
+    const session =
+      this.findSession(sessionId) ?? (threads.length > 0 ? this.ensure(sessionId) : undefined);
     if (!session) return undefined;
     session.model.applyReviewThreads(threads);
     return session.model;
@@ -127,14 +133,19 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   }
 
   private workspacePathFor(sessionId: string) {
-    const workspacePath = this.props.catalog?.find(sessionId)?.workspacePath ?? this.sessionWorkspacePaths.get(sessionId);
+    const workspacePath =
+      this.props.catalog?.find(sessionId)?.workspacePath ??
+      this.sessionWorkspacePaths.get(sessionId);
     if (!workspacePath) throw new Error(`Cake could not find session ${sessionId}`);
     return workspacePath;
   }
 
   private rememberSessionLocation(sessionId: string, workspacePath: string) {
-    const prior = this.sessionWorkspacePaths.get(sessionId) ?? this.props.catalog?.find(sessionId)?.workspacePath;
-    if (prior && prior !== workspacePath) throw new Error(`Session ID collision detected: ${sessionId}`);
+    const prior =
+      this.sessionWorkspacePaths.get(sessionId) ??
+      this.props.catalog?.find(sessionId)?.workspacePath;
+    if (prior && prior !== workspacePath)
+      throw new Error(`Session ID collision detected: ${sessionId}`);
     this.sessionWorkspacePaths.set(sessionId, workspacePath);
   }
 }

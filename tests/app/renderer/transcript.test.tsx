@@ -10,7 +10,7 @@ import type { UiPart } from "../../../src/ipc/session-contract";
 const { scrollToIndex, virtualizedLifecycle, virtualizedProps } = vi.hoisted(() => ({
   scrollToIndex: vi.fn(),
   virtualizedLifecycle: vi.fn(),
-  virtualizedProps: { current: undefined as undefined | Record<string, unknown> }
+  virtualizedProps: { current: undefined as undefined | Record<string, unknown> },
 }));
 
 vi.mock("@/components/ai-elements/conversation", () => ({
@@ -21,7 +21,7 @@ vi.mock("@/components/ai-elements/conversation", () => ({
       data: Array<{ id: string }>;
       itemContent: (index: number, item: { id: string }) => React.ReactNode;
     },
-    ref
+    ref,
   ) {
     virtualizedProps.current = props as unknown as Record<string, unknown>;
     useImperativeHandle(ref, () => ({ scrollToIndex }));
@@ -29,12 +29,24 @@ vi.mock("@/components/ai-elements/conversation", () => ({
       virtualizedLifecycle("mounted");
       return () => virtualizedLifecycle("unmounted");
     }, []);
-    return <div className={props.className}>{props.data.map((item, index) => <React.Fragment key={item.id}>{props.itemContent(index, item)}</React.Fragment>)}</div>;
-  })
+    return (
+      <div className={props.className}>
+        {props.data.map((item, index) => (
+          <React.Fragment key={item.id}>{props.itemContent(index, item)}</React.Fragment>
+        ))}
+      </div>
+    );
+  }),
 }));
 
 import { Chat } from "../../../src/renderer/components/chat";
-import { captureMessageSelection, chatWorkIsActive, ChatTranscript, MESSAGE_COMMENT_SELECTION_SETTLE_MS, type ChatTranscriptBehavior } from "../../../src/renderer/components/chat-transcript";
+import {
+  captureMessageSelection,
+  chatWorkIsActive,
+  ChatTranscript,
+  MESSAGE_COMMENT_SELECTION_SETTLE_MS,
+  type ChatTranscriptBehavior,
+} from "../../../src/renderer/components/chat-transcript";
 import { MessageCommentsStore } from "../../../src/renderer/stores/MessageCommentsStore";
 import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
@@ -47,11 +59,28 @@ interface TranscriptHarness {
   forkAt(entryId: string): void | Promise<void>;
 }
 
-function storeWith(parts: UiPart[], isStreaming = false, error?: string, errorDetails?: string): TranscriptHarness {
+function storeWith(
+  parts: UiPart[],
+  isStreaming = false,
+  error?: string,
+  errorDetails?: string,
+): TranscriptHarness {
   return { visibleParts: parts, error, errorDetails, isStreaming, forkAt: vi.fn() };
 }
 
-function Transcript({ parts, sessionId, isStreaming, isSubmitting = false, hideThinking = false, behavior, empty, footer, error, errorDetails, errorTitle }: {
+function Transcript({
+  parts,
+  sessionId,
+  isStreaming,
+  isSubmitting = false,
+  hideThinking = false,
+  behavior,
+  empty,
+  footer,
+  error,
+  errorDetails,
+  errorTitle,
+}: {
   parts: UiPart[];
   sessionId: string;
   isStreaming: boolean;
@@ -73,13 +102,38 @@ function Transcript({ parts, sessionId, isStreaming, isSubmitting = false, hideT
     hideThinking,
     thinkingExpanded,
     toggleThinking: onToggleThinking,
-    error: undefined
+    error: undefined,
   } as unknown as ChatStore;
-  return <ChatTranscript store={store} behavior={transcriptBehavior} empty={empty} footer={footer} error={error ? { message: error, details: errorDetails, title: errorTitle } : undefined} renderChat={(nestedStore) => <Chat store={nestedStore} embedded compact />} />;
+  return (
+    <ChatTranscript
+      store={store}
+      behavior={transcriptBehavior}
+      empty={empty}
+      footer={footer}
+      error={error ? { message: error, details: errorDetails, title: errorTitle } : undefined}
+      renderChat={(nestedStore) => <Chat store={nestedStore} embedded compact />}
+    />
+  );
 }
 
 function TestTranscript({ store, sessionId }: { store: TranscriptHarness; sessionId: string }) {
-  return <Transcript parts={store.visibleParts} sessionId={sessionId} isStreaming={store.isStreaming} behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, onFork: (entryId) => { void store.forkAt(entryId); } }} empty={<div />} error={store.error} errorDetails={store.errorDetails} />;
+  return (
+    <Transcript
+      parts={store.visibleParts}
+      sessionId={sessionId}
+      isStreaming={store.isStreaming}
+      behavior={{
+        thinkingExpanded: false,
+        onToggleThinking: () => undefined,
+        onFork: (entryId) => {
+          void store.forkAt(entryId);
+        },
+      }}
+      empty={<div />}
+      error={store.error}
+      errorDetails={store.errorDetails}
+    />
+  );
 }
 
 describe("Transcript scrolling", () => {
@@ -89,12 +143,31 @@ describe("Transcript scrolling", () => {
   beforeEach(() => {
     Object.assign(globalThis, {
       IS_REACT_ACT_ENVIRONMENT: true,
-      requestAnimationFrame: (callback: FrameRequestCallback) => { callback(0); return 1; },
-      cancelAnimationFrame: vi.fn()
+      requestAnimationFrame: (callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      },
+      cancelAnimationFrame: vi.fn(),
     });
-    const rangeRect = { top: 80, right: 220, bottom: 100, left: 120, width: 100, height: 20, x: 120, y: 80, toJSON: () => ({}) } as DOMRect;
-    Object.defineProperty(Range.prototype, "getBoundingClientRect", { configurable: true, value: () => rangeRect });
-    Object.defineProperty(Range.prototype, "getClientRects", { configurable: true, value: () => [rangeRect] });
+    const rangeRect = {
+      top: 80,
+      right: 220,
+      bottom: 100,
+      left: 120,
+      width: 100,
+      height: 20,
+      x: 120,
+      y: 80,
+      toJSON: () => ({}),
+    } as DOMRect;
+    Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: () => rangeRect,
+    });
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      configurable: true,
+      value: () => [rangeRect],
+    });
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -110,13 +183,15 @@ describe("Transcript scrolling", () => {
   it("starts a loaded session at the final transcript item", () => {
     const parts: UiPart[] = [
       { id: "assistant-1", kind: "text", role: "assistant", text: "First", status: "complete" },
-      { id: "assistant-2", kind: "text", role: "assistant", text: "Latest", status: "complete" }
+      { id: "assistant-2", kind: "text", role: "assistant", text: "Latest", status: "complete" },
     ];
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts)} />));
 
     expect(virtualizedProps.current?.initialTopMostItemIndex).toEqual({ index: 1, align: "end" });
-    const followOutput = virtualizedProps.current?.followOutput as (isAtBottom: boolean) => "auto" | false;
+    const followOutput = virtualizedProps.current?.followOutput as (
+      isAtBottom: boolean,
+    ) => "auto" | false;
     expect(followOutput(true)).toBe("auto");
     expect(followOutput(false)).toBe(false);
   });
@@ -124,8 +199,15 @@ describe("Transcript scrolling", () => {
   it("renders a review notification at its persisted transcript position", () => {
     const parts: UiPart[] = [
       { id: "user-1", kind: "text", role: "user", text: "Please fix this", status: "complete" },
-      { id: "review-run-1", kind: "review-run", operationId: "00000000-0000-4000-8000-000000000001", threadIds: ["review-1"], commentCount: 1, status: "complete" },
-      { id: "assistant-1", kind: "text", role: "assistant", text: "Done", status: "complete" }
+      {
+        id: "review-run-1",
+        kind: "review-run",
+        operationId: "00000000-0000-4000-8000-000000000001",
+        threadIds: ["review-1"],
+        commentCount: 1,
+        status: "complete",
+      },
+      { id: "assistant-1", kind: "text", role: "assistant", text: "Done", status: "complete" },
     ];
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts)} />));
@@ -134,14 +216,20 @@ describe("Transcript scrolling", () => {
     expect(transcriptItems.map((item) => item.textContent)).toEqual([
       expect.stringContaining("Please fix this"),
       expect.stringContaining("1 comment replied"),
-      expect.stringContaining("Done")
+      expect.stringContaining("Done"),
     ]);
   });
 
   it("adds separation when an error notice immediately follows a user message", () => {
     const parts: UiPart[] = [
       { id: "user-1", kind: "text", role: "user", text: "Hello?", status: "complete" },
-      { id: "error-1", kind: "notice", tone: "error", title: "Model request failed", detail: "No credits remain." }
+      {
+        id: "error-1",
+        kind: "notice",
+        tone: "error",
+        title: "Model request failed",
+        detail: "No credits remain.",
+      },
     ];
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts)} />));
@@ -154,9 +242,17 @@ describe("Transcript scrolling", () => {
   it("copies preserved stack details from an operation error", async () => {
     const writeText = vi.fn<(value: string) => Promise<void>>(async () => undefined);
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
-    const details = "Error: Identity collision\n    at SessionModel.applySnapshot (session.ts:50:7)";
+    const details =
+      "Error: Identity collision\n    at SessionModel.applySnapshot (session.ts:50:7)";
 
-    await act(async () => root.render(<TestTranscript sessionId="session-1" store={storeWith([], false, "Identity collision", details)} />));
+    await act(async () =>
+      root.render(
+        <TestTranscript
+          sessionId="session-1"
+          store={storeWith([], false, "Identity collision", details)}
+        />,
+      ),
+    );
     const copy = container.querySelector<HTMLButtonElement>(".copy-error-details");
     await act(async () => copy?.click());
 
@@ -165,78 +261,182 @@ describe("Transcript scrolling", () => {
   });
 
   it("scrolls to a newly rendered user message even when it was not following output", () => {
-    const assistant: UiPart = { id: "assistant-1", kind: "text", role: "assistant", text: "First", status: "complete" };
-    const user: UiPart = { id: "user-1", kind: "text", role: "user", text: "My message", status: "complete" };
+    const assistant: UiPart = {
+      id: "assistant-1",
+      kind: "text",
+      role: "assistant",
+      text: "First",
+      status: "complete",
+    };
+    const user: UiPart = {
+      id: "user-1",
+      kind: "text",
+      role: "user",
+      text: "My message",
+      status: "complete",
+    };
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([assistant])} />));
     scrollToIndex.mockClear();
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([assistant, user])} />));
+    act(() =>
+      root.render(<TestTranscript sessionId="session-1" store={storeWith([assistant, user])} />),
+    );
 
     expect(scrollToIndex).toHaveBeenCalledWith({ index: 1, align: "end", behavior: "auto" });
   });
 
   it("shows loading in the user message until the first model response arrives", () => {
-    const user: UiPart = { id: "user-1", kind: "text", role: "user", text: "My message", status: "complete" };
-    const reasoning: UiPart = { id: "reasoning-1", kind: "reasoning", text: "Working it out", status: "streaming" };
+    const user: UiPart = {
+      id: "user-1",
+      kind: "text",
+      role: "user",
+      text: "My message",
+      status: "complete",
+    };
+    const reasoning: UiPart = {
+      id: "reasoning-1",
+      kind: "reasoning",
+      text: "Working it out",
+      status: "streaming",
+    };
 
-    act(() => root.render(<Transcript parts={[user]} sessionId="session-1" isStreaming={false} isSubmitting behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined }} empty={<div />} />));
-    expect(container.querySelector('[role="status"][aria-label="Churning in progress"]')).not.toBeNull();
+    act(() =>
+      root.render(
+        <Transcript
+          parts={[user]}
+          sessionId="session-1"
+          isStreaming={false}
+          isSubmitting
+          behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined }}
+          empty={<div />}
+        />,
+      ),
+    );
+    expect(
+      container.querySelector('[role="status"][aria-label="Churning in progress"]'),
+    ).not.toBeNull();
 
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user, reasoning], true)} />));
+    act(() =>
+      root.render(
+        <TestTranscript sessionId="session-1" store={storeWith([user, reasoning], true)} />,
+      ),
+    );
     expect(container.querySelector(".loading-state")).not.toBeNull();
     expect(container.querySelector(".activity-group")).not.toBeNull();
   });
 
   it("does not show assistant loading while the turn is waiting for user input", () => {
-    const user: UiPart = { id: "user-1", kind: "text", role: "user", text: "Quiz me", status: "complete" };
+    const user: UiPart = {
+      id: "user-1",
+      kind: "text",
+      role: "user",
+      text: "Quiz me",
+      status: "complete",
+    };
 
     expect(chatWorkIsActive([user], true, true, true)).toBe(false);
-    act(() => root.render(<Transcript parts={[user]} sessionId="session-1" isStreaming behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, waitingForUser: true }} empty={<div />} />));
+    act(() =>
+      root.render(
+        <Transcript
+          parts={[user]}
+          sessionId="session-1"
+          isStreaming
+          behavior={{
+            thinkingExpanded: false,
+            onToggleThinking: () => undefined,
+            waitingForUser: true,
+          }}
+          empty={<div />}
+        />,
+      ),
+    );
 
     expect(container.querySelector(".loading-state")).toBeNull();
   });
 
   it("keeps the streaming work log scrolled to its latest entry", () => {
-    const first: UiPart = { id: "reasoning-1", kind: "reasoning", text: "First thought", status: "streaming" };
-    const second: UiPart = { id: "tool-1", kind: "tool", name: "read", input: "file", state: "running" };
+    const first: UiPart = {
+      id: "reasoning-1",
+      kind: "reasoning",
+      text: "First thought",
+      status: "streaming",
+    };
+    const second: UiPart = {
+      id: "tool-1",
+      kind: "tool",
+      name: "read",
+      input: "file",
+      state: "running",
+    };
 
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([first], true)} />));
+    act(() =>
+      root.render(<TestTranscript sessionId="session-1" store={storeWith([first], true)} />),
+    );
     const log = container.querySelector<HTMLDivElement>(".activity-group > div")!;
     Object.defineProperties(log, {
       clientHeight: { configurable: true, value: 120 },
-      scrollHeight: { configurable: true, value: 480 }
+      scrollHeight: { configurable: true, value: 480 },
     });
     log.scrollTop = 360;
     act(() => log.dispatchEvent(new Event("scroll", { bubbles: true })));
     Object.defineProperty(log, "scrollHeight", { configurable: true, value: 600 });
 
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([first, second], true)} />));
+    act(() =>
+      root.render(
+        <TestTranscript sessionId="session-1" store={storeWith([first, second], true)} />,
+      ),
+    );
 
     expect(log.scrollTop).toBe(600);
   });
 
   it("does not move a streaming work log after the user scrolls away from the bottom", () => {
-    const first: UiPart = { id: "reasoning-1", kind: "reasoning", text: "First thought", status: "streaming" };
-    const second: UiPart = { id: "tool-1", kind: "tool", name: "read", input: "file", state: "running" };
+    const first: UiPart = {
+      id: "reasoning-1",
+      kind: "reasoning",
+      text: "First thought",
+      status: "streaming",
+    };
+    const second: UiPart = {
+      id: "tool-1",
+      kind: "tool",
+      name: "read",
+      input: "file",
+      state: "running",
+    };
 
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([first], true)} />));
+    act(() =>
+      root.render(<TestTranscript sessionId="session-1" store={storeWith([first], true)} />),
+    );
     const log = container.querySelector<HTMLDivElement>(".activity-group > div")!;
     Object.defineProperties(log, {
       clientHeight: { configurable: true, value: 120 },
-      scrollHeight: { configurable: true, value: 480 }
+      scrollHeight: { configurable: true, value: 480 },
     });
     log.scrollTop = 100;
     act(() => log.dispatchEvent(new Event("scroll", { bubbles: true })));
 
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([first, second], true)} />));
+    act(() =>
+      root.render(
+        <TestTranscript sessionId="session-1" store={storeWith([first, second], true)} />,
+      ),
+    );
 
     expect(log.scrollTop).toBe(100);
   });
 
   it("leaves work log expansion under user control as streaming changes", () => {
-    const running: UiPart = { id: "tool-1", kind: "tool", name: "read", input: "file", state: "running" };
+    const running: UiPart = {
+      id: "tool-1",
+      kind: "tool",
+      name: "read",
+      input: "file",
+      state: "running",
+    };
 
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([running], true)} />));
+    act(() =>
+      root.render(<TestTranscript sessionId="session-1" store={storeWith([running], true)} />),
+    );
     const log = container.querySelector<HTMLDetailsElement>(".activity-group")!;
     const tool = container.querySelector<HTMLElement>(".tool-call")!;
     const toolToggle = tool.querySelector<HTMLButtonElement>(".tool-summary")!;
@@ -250,10 +450,19 @@ describe("Transcript scrolling", () => {
     expect(tool.classList.contains("tool-open")).toBe(true);
     expect(tool.querySelector(".tool-details")).not.toBeNull();
 
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([{ ...running, state: "success" }], false)} />));
+    act(() =>
+      root.render(
+        <TestTranscript
+          sessionId="session-1"
+          store={storeWith([{ ...running, state: "success" }], false)}
+        />,
+      ),
+    );
     expect(log.open).toBe(true);
     expect(toolToggle.getAttribute("aria-expanded")).toBe("true");
-    expect(log.querySelector(':scope > summary .work-log-state[aria-label="complete"]')).not.toBeNull();
+    expect(
+      log.querySelector(':scope > summary .work-log-state[aria-label="complete"]'),
+    ).not.toBeNull();
   });
 
   it("shows empty reasoning as a non-expandable status", () => {
@@ -271,47 +480,125 @@ describe("Transcript scrolling", () => {
   it("shows an empty in-progress reasoning block as thinking", () => {
     const empty: UiPart = { id: "reasoning-1", kind: "reasoning", text: "", status: "streaming" };
 
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([empty], true)} />));
+    act(() =>
+      root.render(<TestTranscript sessionId="session-1" store={storeWith([empty], true)} />),
+    );
 
     expect(container.querySelector(".activity-group-status")?.textContent).toContain("Thinking…");
-    expect(container.querySelector('.activity-group-status .work-log-running[aria-label="working"]')).not.toBeNull();
+    expect(
+      container.querySelector('.activity-group-status .work-log-running[aria-label="working"]'),
+    ).not.toBeNull();
     expect(container.querySelector(".loading-state")).not.toBeNull();
   });
 
   it("keeps the completed work log neutral when an individual call failed", () => {
-    const failed: UiPart = { id: "tool-1", kind: "tool", name: "bash", input: "exit 1", state: "error" };
+    const failed: UiPart = {
+      id: "tool-1",
+      kind: "tool",
+      name: "bash",
+      input: "exit 1",
+      state: "error",
+    };
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([failed])} />));
 
     const log = container.querySelector<HTMLElement>(".activity-group")!;
-    expect(log.querySelector(':scope > summary .work-log-state[aria-label="complete"]')).not.toBeNull();
-    expect(log.querySelector(':scope > summary .tool-error')).toBeNull();
+    expect(
+      log.querySelector(':scope > summary .work-log-state[aria-label="complete"]'),
+    ).not.toBeNull();
+    expect(log.querySelector(":scope > summary .tool-error")).toBeNull();
     expect(log.querySelector('.tool-call .tool-error[aria-label="error"]')).not.toBeNull();
   });
 
   it("keeps the elapsed loading state visible throughout reasoning, tools, and assistant output", () => {
-    const user: UiPart = { id: "user-1", kind: "text", role: "user", text: "My message", status: "complete" };
-    const reasoning: UiPart = { id: "reasoning-1", kind: "reasoning", text: "Working it out", status: "streaming" };
-    const tool: UiPart = { id: "tool-1", kind: "tool", name: "read", input: "file", state: "running" };
-    const assistant: UiPart = { id: "assistant-1", kind: "text", role: "assistant", text: "Writing the answer", status: "streaming" };
+    const user: UiPart = {
+      id: "user-1",
+      kind: "text",
+      role: "user",
+      text: "My message",
+      status: "complete",
+    };
+    const reasoning: UiPart = {
+      id: "reasoning-1",
+      kind: "reasoning",
+      text: "Working it out",
+      status: "streaming",
+    };
+    const tool: UiPart = {
+      id: "tool-1",
+      kind: "tool",
+      name: "read",
+      input: "file",
+      state: "running",
+    };
+    const assistant: UiPart = {
+      id: "assistant-1",
+      kind: "text",
+      role: "assistant",
+      text: "Writing the answer",
+      status: "streaming",
+    };
 
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user, reasoning], true)} />));
+    act(() =>
+      root.render(
+        <TestTranscript sessionId="session-1" store={storeWith([user, reasoning], true)} />,
+      ),
+    );
     const loadingState = container.querySelector(".loading-state");
     expect(loadingState).not.toBeNull();
 
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user, { ...reasoning, status: "complete" }, tool], true)} />));
+    act(() =>
+      root.render(
+        <TestTranscript
+          sessionId="session-1"
+          store={storeWith([user, { ...reasoning, status: "complete" }, tool], true)}
+        />,
+      ),
+    );
     expect(container.querySelector(".loading-state")).toBe(loadingState);
 
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user, { ...reasoning, status: "complete" }, { ...tool, state: "success" }], true)} />));
+    act(() =>
+      root.render(
+        <TestTranscript
+          sessionId="session-1"
+          store={storeWith(
+            [user, { ...reasoning, status: "complete" }, { ...tool, state: "success" }],
+            true,
+          )}
+        />,
+      ),
+    );
     expect(container.querySelector(".loading-state")).toBe(loadingState);
 
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user, { ...reasoning, status: "complete" }, { ...tool, state: "success" }, assistant], true)} />));
+    act(() =>
+      root.render(
+        <TestTranscript
+          sessionId="session-1"
+          store={storeWith(
+            [user, { ...reasoning, status: "complete" }, { ...tool, state: "success" }, assistant],
+            true,
+          )}
+        />,
+      ),
+    );
     expect(container.querySelector(".loading-state")).toBe(loadingState);
   });
 
   it("updates a selected session without remounting the virtualized transcript", () => {
-    const first: UiPart = { id: "assistant-1", kind: "text", role: "assistant", text: "First session", status: "complete" };
-    const second: UiPart = { id: "assistant-2", kind: "text", role: "assistant", text: "Second session", status: "complete" };
+    const first: UiPart = {
+      id: "assistant-1",
+      kind: "text",
+      role: "assistant",
+      text: "First session",
+      status: "complete",
+    };
+    const second: UiPart = {
+      id: "assistant-2",
+      kind: "text",
+      role: "assistant",
+      text: "Second session",
+      status: "complete",
+    };
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([first])} />));
     scrollToIndex.mockClear();
@@ -322,16 +609,45 @@ describe("Transcript scrolling", () => {
   });
 
   it("shows loading for the whole conversation turn and removes it at end-turn", () => {
-    const user: UiPart = { id: "user-1", kind: "text", role: "user", text: "My message", status: "complete" };
-    const assistant: UiPart = { id: "assistant-1", kind: "text", role: "assistant", text: "Working", status: "streaming" };
+    const user: UiPart = {
+      id: "user-1",
+      kind: "text",
+      role: "user",
+      text: "My message",
+      status: "complete",
+    };
+    const assistant: UiPart = {
+      id: "assistant-1",
+      kind: "text",
+      role: "assistant",
+      text: "Working",
+      status: "streaming",
+    };
 
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user], true)} />));
+    act(() =>
+      root.render(<TestTranscript sessionId="session-1" store={storeWith([user], true)} />),
+    );
     expect(container.querySelector(".loading-state")).not.toBeNull();
 
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([user, assistant], true)} />));
+    act(() =>
+      root.render(
+        <TestTranscript sessionId="session-1" store={storeWith([user, assistant], true)} />,
+      ),
+    );
     expect(container.querySelector(".loading-state")).not.toBeNull();
 
-    act(() => root.render(<Transcript parts={[user, { ...assistant, status: "complete" }]} sessionId="session-1" isStreaming={false} isSubmitting behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined }} empty={<div />} />));
+    act(() =>
+      root.render(
+        <Transcript
+          parts={[user, { ...assistant, status: "complete" }]}
+          sessionId="session-1"
+          isStreaming={false}
+          isSubmitting
+          behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined }}
+          empty={<div />}
+        />,
+      ),
+    );
     expect(container.querySelector(".loading-state")).toBeNull();
   });
 
@@ -339,8 +655,22 @@ describe("Transcript scrolling", () => {
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
     const parts: UiPart[] = [
-      { id: "user-1", kind: "text", role: "user", entryId: "user-entry", text: "Question", status: "complete" },
-      { id: "assistant-1", kind: "text", role: "assistant", entryId: "assistant-entry", text: "Answer", status: "complete" }
+      {
+        id: "user-1",
+        kind: "text",
+        role: "user",
+        entryId: "user-entry",
+        text: "Question",
+        status: "complete",
+      },
+      {
+        id: "assistant-1",
+        kind: "text",
+        role: "assistant",
+        entryId: "assistant-entry",
+        text: "Answer",
+        status: "complete",
+      },
     ];
     const store = storeWith(parts);
 
@@ -351,11 +681,17 @@ describe("Transcript scrolling", () => {
     const actions = message.querySelector<HTMLElement>('[aria-label="Message actions"]')!;
     expect(actions).not.toBeNull();
     expect(content.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Copy response"]')!.click());
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[aria-label="Copy response"]')!.click(),
+    );
     expect(writeText).toHaveBeenCalledWith("Answer");
     expect(container.querySelector('[aria-label="Copied response"]')).not.toBeNull();
 
-    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Fork response into new chat"]')!.click());
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Fork response into new chat"]')!
+        .click(),
+    );
     expect(store.forkAt).toHaveBeenCalledWith("assistant-entry");
   });
 
@@ -378,7 +714,7 @@ describe("Transcript scrolling", () => {
       startOffset: 6,
       endOffset: 15,
       contextBefore: "Alpha ",
-      contextAfter: " detail."
+      contextAfter: " detail.",
     });
     content.remove();
     browserSelection.removeAllRanges();
@@ -386,25 +722,48 @@ describe("Transcript scrolling", () => {
 
   it("offers a chat immediately when text selection finishes", () => {
     vi.useFakeTimers();
-    const comments: MessageCommentsStore = mount(createStore(MessageCommentsStore, {
-      client: { createReviewThread: vi.fn() } as never,
-      sessionRegistry: { findModel: () => undefined } as never,
-      reviews: () => ({ configuration: undefined }) as never,
-      draftChatStore: (): ChatStore => popupChat,
-      context: () => ({ workspacePath: "/project", sessionId: "session-1" })
-    }));
+    const comments: MessageCommentsStore = mount(
+      createStore(MessageCommentsStore, {
+        client: { createReviewThread: vi.fn() } as never,
+        sessionRegistry: { findModel: () => undefined } as never,
+        reviews: () => ({ configuration: undefined }) as never,
+        draftChatStore: (): ChatStore => popupChat,
+        context: () => ({ workspacePath: "/project", sessionId: "session-1" }),
+      }),
+    );
     const popupChat: ChatStore = mount(comments.draftChatStoreElement);
-    act(() => root.render(<Transcript
-      parts={[{ id: "assistant-1", kind: "text", role: "assistant", entryId: "entry-1", text: "Alpha important detail.", status: "complete" }]}
-      sessionId="session-1"
-      isStreaming={false}
-      behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, messageComments: comments }}
-      empty={<div />}
-    />));
+    act(() =>
+      root.render(
+        <Transcript
+          parts={[
+            {
+              id: "assistant-1",
+              kind: "text",
+              role: "assistant",
+              entryId: "entry-1",
+              text: "Alpha important detail.",
+              status: "complete",
+            },
+          ]}
+          sessionId="session-1"
+          isStreaming={false}
+          behavior={{
+            thinkingExpanded: false,
+            onToggleThinking: () => undefined,
+            messageComments: comments,
+          }}
+          empty={<div />}
+        />,
+      ),
+    );
 
-    const walker = document.createTreeWalker(container.querySelector<HTMLElement>(".assistant-message-content")!, NodeFilter.SHOW_TEXT);
+    const walker = document.createTreeWalker(
+      container.querySelector<HTMLElement>(".assistant-message-content")!,
+      NodeFilter.SHOW_TEXT,
+    );
     let important: Node | null = walker.nextNode();
-    while (important && !important.textContent?.includes("Alpha important detail")) important = walker.nextNode();
+    while (important && !important.textContent?.includes("Alpha important detail"))
+      important = walker.nextNode();
     expect(important).not.toBeNull();
     const range = document.createRange();
     range.setStart(important!, 6);
@@ -414,18 +773,27 @@ describe("Transcript scrolling", () => {
     browserSelection.addRange(range);
     act(() => document.dispatchEvent(new Event("selectionchange")));
     act(() => vi.advanceTimersByTime(MESSAGE_COMMENT_SELECTION_SETTLE_MS));
-    expect(document.body.querySelector<HTMLButtonElement>(".message-selection-action")?.textContent).toBe("Chat about this");
+    expect(
+      document.body.querySelector<HTMLButtonElement>(".message-selection-action")?.textContent,
+    ).toBe("Chat about this");
 
     act(() => document.body.querySelector<HTMLButtonElement>(".message-selection-action")!.click());
-    const dialog = document.body.querySelector<HTMLElement>('[role="dialog"][aria-label="Chat about this"]')!;
+    const dialog = document.body.querySelector<HTMLElement>(
+      '[role="dialog"][aria-label="Chat about this"]',
+    )!;
     expect(dialog).not.toBeNull();
     expect(dialog.querySelector(".transcript .user-message")?.textContent).toBe("important");
     expect(dialog.querySelector(".transcript article > div:first-child")?.textContent).toBe("You");
     expect(dialog.querySelector(".chat-layout-compact")).not.toBeNull();
-    const input = dialog.querySelector<HTMLTextAreaElement>('[aria-label="Message about selected text"]')!;
+    const input = dialog.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Message about selected text"]',
+    )!;
     expect(input).toBe(document.activeElement);
     act(() => {
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "Why is this important?");
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
+        input,
+        "Why is this important?",
+      );
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     expect(comments.draftChatStore.draft).toBe("Why is this important?");
@@ -439,31 +807,55 @@ describe("Transcript scrolling", () => {
 
   it("captures selections from fenced code at the assistant message boundary", () => {
     vi.useFakeTimers();
-    const draftChat = mount(createStore(ChatStore, {
-      id: () => "code-message-comment-draft",
-      parts: () => [],
-      streaming: () => false,
-      submitting: () => false,
-      configuration: () => undefined,
-      commands: () => [],
-      placeholder: () => "Ask Cake about this passage…",
-      inputLabel: () => "Message about selected code",
-      canSubmit: (draft) => Boolean(draft.trim()),
-      submit: async () => true
-    }));
-    const comments = { threadsForMessage: () => [], prepareDraft: vi.fn(), draftChatStore: draftChat } as unknown as MessageCommentsStore;
-    act(() => root.render(<Transcript
-      parts={[{ id: "assistant-code", kind: "text", role: "assistant", entryId: "entry-code", text: "```tsx\nconst value = 42;\n```", status: "complete" }]}
-      sessionId="session-1"
-      isStreaming={false}
-      behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, messageComments: comments }}
-      empty={<div />}
-    />));
+    const draftChat = mount(
+      createStore(ChatStore, {
+        id: () => "code-message-comment-draft",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Ask Cake about this passage…",
+        inputLabel: () => "Message about selected code",
+        canSubmit: (draft) => Boolean(draft.trim()),
+        submit: async () => true,
+      }),
+    );
+    const comments = {
+      threadsForMessage: () => [],
+      prepareDraft: vi.fn(),
+      draftChatStore: draftChat,
+    } as unknown as MessageCommentsStore;
+    act(() =>
+      root.render(
+        <Transcript
+          parts={[
+            {
+              id: "assistant-code",
+              kind: "text",
+              role: "assistant",
+              entryId: "entry-code",
+              text: "```tsx\nconst value = 42;\n```",
+              status: "complete",
+            },
+          ]}
+          sessionId="session-1"
+          isStreaming={false}
+          behavior={{
+            thinkingExpanded: false,
+            onToggleThinking: () => undefined,
+            messageComments: comments,
+          }}
+          empty={<div />}
+        />,
+      ),
+    );
 
     const content = container.querySelector<HTMLElement>(".assistant-message-content")!;
     const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
     let codeText: Node | null = walker.nextNode();
-    while (codeText && !codeText.textContent?.includes("const value = 42")) codeText = walker.nextNode();
+    while (codeText && !codeText.textContent?.includes("const value = 42"))
+      codeText = walker.nextNode();
     expect(codeText).not.toBeNull();
     const start = codeText!.textContent!.indexOf("value");
     const range = document.createRange();
@@ -472,12 +864,16 @@ describe("Transcript scrolling", () => {
     const browserSelection = window.getSelection()!;
     browserSelection.removeAllRanges();
     browserSelection.addRange(range);
-    const codeBlock = codeText!.parentElement!.closest("[data-streamdown='code-block'], pre, code")!;
+    const codeBlock = codeText!.parentElement!.closest(
+      "[data-streamdown='code-block'], pre, code",
+    )!;
     codeBlock.addEventListener("pointerup", (event) => event.stopPropagation());
     act(() => document.dispatchEvent(new Event("selectionchange")));
     act(() => vi.advanceTimersByTime(MESSAGE_COMMENT_SELECTION_SETTLE_MS));
 
-    expect(document.body.querySelector<HTMLButtonElement>(".message-selection-action")?.textContent).toBe("Chat about this");
+    expect(
+      document.body.querySelector<HTMLButtonElement>(".message-selection-action")?.textContent,
+    ).toBe("Chat about this");
     browserSelection.removeAllRanges();
     draftChat[Symbol.dispose]();
     vi.useRealTimers();
@@ -485,26 +881,48 @@ describe("Transcript scrolling", () => {
 
   it("detects native selection changes inside assistant Markdown", () => {
     vi.useFakeTimers();
-    const draftChat = mount(createStore(ChatStore, {
-      id: () => "keyboard-message-comment-draft",
-      parts: () => [],
-      streaming: () => false,
-      submitting: () => false,
-      configuration: () => undefined,
-      commands: () => [],
-      placeholder: () => "Ask Cake about this passage…",
-      inputLabel: () => "Message about selected text",
-      canSubmit: (draft) => Boolean(draft.trim()),
-      submit: async () => true
-    }));
-    const comments = { threadsForMessage: () => [], prepareDraft: vi.fn(), draftChatStore: draftChat } as unknown as MessageCommentsStore;
-    act(() => root.render(<Transcript
-      parts={[{ id: "assistant-keyboard", kind: "text", role: "assistant", text: "Keyboard selection works.", status: "complete" }]}
-      sessionId="session-1"
-      isStreaming={false}
-      behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, messageComments: comments }}
-      empty={<div />}
-    />));
+    const draftChat = mount(
+      createStore(ChatStore, {
+        id: () => "keyboard-message-comment-draft",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Ask Cake about this passage…",
+        inputLabel: () => "Message about selected text",
+        canSubmit: (draft) => Boolean(draft.trim()),
+        submit: async () => true,
+      }),
+    );
+    const comments = {
+      threadsForMessage: () => [],
+      prepareDraft: vi.fn(),
+      draftChatStore: draftChat,
+    } as unknown as MessageCommentsStore;
+    act(() =>
+      root.render(
+        <Transcript
+          parts={[
+            {
+              id: "assistant-keyboard",
+              kind: "text",
+              role: "assistant",
+              text: "Keyboard selection works.",
+              status: "complete",
+            },
+          ]}
+          sessionId="session-1"
+          isStreaming={false}
+          behavior={{
+            thinkingExpanded: false,
+            onToggleThinking: () => undefined,
+            messageComments: comments,
+          }}
+          empty={<div />}
+        />,
+      ),
+    );
 
     const content = container.querySelector<HTMLElement>(".assistant-message-content")!;
     const text = document.createTreeWalker(content, NodeFilter.SHOW_TEXT).nextNode()!;
@@ -517,7 +935,9 @@ describe("Transcript scrolling", () => {
     act(() => document.dispatchEvent(new Event("selectionchange")));
     act(() => vi.advanceTimersByTime(MESSAGE_COMMENT_SELECTION_SETTLE_MS));
 
-    expect(document.body.querySelector<HTMLButtonElement>(".message-selection-action")?.textContent).toBe("Chat about this");
+    expect(
+      document.body.querySelector<HTMLButtonElement>(".message-selection-action")?.textContent,
+    ).toBe("Chat about this");
     browserSelection.removeAllRanges();
     draftChat[Symbol.dispose]();
     vi.useRealTimers();
@@ -525,33 +945,61 @@ describe("Transcript scrolling", () => {
 
   it("offers the same selection chat above a fullscreen assistant response", () => {
     vi.useFakeTimers();
-    const draftChat = mount(createStore(ChatStore, {
-      id: () => "fullscreen-message-comment-draft",
-      parts: () => [],
-      streaming: () => false,
-      submitting: () => false,
-      configuration: () => undefined,
-      commands: () => [],
-      placeholder: () => "Ask Cake about this passage…",
-      inputLabel: () => "Message about selected fullscreen text",
-      canSubmit: (draft) => Boolean(draft.trim()),
-      submit: async () => true
-    }));
-    const comments = { threadsForMessage: () => [], prepareDraft: vi.fn(), draftChatStore: draftChat } as unknown as MessageCommentsStore;
-    act(() => root.render(<Transcript
-      parts={[{ id: "assistant-1", kind: "text", role: "assistant", entryId: "entry-1", text: "Alpha important detail.", status: "complete" }]}
-      sessionId="session-1"
-      isStreaming={false}
-      behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, messageComments: comments }}
-      empty={<div />}
-    />));
+    const draftChat = mount(
+      createStore(ChatStore, {
+        id: () => "fullscreen-message-comment-draft",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Ask Cake about this passage…",
+        inputLabel: () => "Message about selected fullscreen text",
+        canSubmit: (draft) => Boolean(draft.trim()),
+        submit: async () => true,
+      }),
+    );
+    const comments = {
+      threadsForMessage: () => [],
+      prepareDraft: vi.fn(),
+      draftChatStore: draftChat,
+    } as unknown as MessageCommentsStore;
+    act(() =>
+      root.render(
+        <Transcript
+          parts={[
+            {
+              id: "assistant-1",
+              kind: "text",
+              role: "assistant",
+              entryId: "entry-1",
+              text: "Alpha important detail.",
+              status: "complete",
+            },
+          ]}
+          sessionId="session-1"
+          isStreaming={false}
+          behavior={{
+            thinkingExpanded: false,
+            onToggleThinking: () => undefined,
+            messageComments: comments,
+          }}
+          empty={<div />}
+        />,
+      ),
+    );
 
-    act(() => container.querySelector<HTMLButtonElement>('[aria-label="View response fullscreen"]')!.click());
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="View response fullscreen"]')!
+        .click(),
+    );
     const fullscreen = document.body.querySelector<HTMLElement>(".fullscreen-surface")!;
     const content = fullscreen.querySelector<HTMLElement>(".fullscreen-surface-content")!;
     const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
     let important: Node | null = walker.nextNode();
-    while (important && !important.textContent?.includes("Alpha important detail")) important = walker.nextNode();
+    while (important && !important.textContent?.includes("Alpha important detail"))
+      important = walker.nextNode();
     const range = document.createRange();
     range.setStart(important!, 6);
     range.setEnd(important!, 15);
@@ -562,9 +1010,17 @@ describe("Transcript scrolling", () => {
 
     act(() => document.body.querySelector<HTMLButtonElement>(".message-selection-action")!.click());
     expect(document.body.querySelector(".fullscreen-surface")).toBe(fullscreen);
-    expect(document.body.querySelector('[role="dialog"][aria-label="Chat about this"]')).not.toBeNull();
-    expect(comments.prepareDraft).toHaveBeenCalledWith(expect.objectContaining({ selectedText: "important", startOffset: 6, endOffset: 15 }));
-    expect(document.body.querySelector<HTMLTextAreaElement>('[aria-label="Message about selected fullscreen text"]')).toBe(document.activeElement);
+    expect(
+      document.body.querySelector('[role="dialog"][aria-label="Chat about this"]'),
+    ).not.toBeNull();
+    expect(comments.prepareDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ selectedText: "important", startOffset: 6, endOffset: 15 }),
+    );
+    expect(
+      document.body.querySelector<HTMLTextAreaElement>(
+        '[aria-label="Message about selected fullscreen text"]',
+      ),
+    ).toBe(document.activeElement);
     browserSelection.removeAllRanges();
     draftChat[Symbol.dispose]();
     vi.useRealTimers();
@@ -577,49 +1033,87 @@ describe("Transcript scrolling", () => {
       anchor: { selectedText: "important", startOffset: 6, endOffset: 15 },
       messages: [
         { id: "question-1", role: "user", body: "Why this word?", status: "complete" },
-        { id: "answer-1", role: "assistant", body: "Because it carries the point.", status: "complete" }
+        {
+          id: "answer-1",
+          role: "assistant",
+          body: "Because it carries the point.",
+          status: "complete",
+        },
       ],
       status: "open",
-      updatedAt: now
+      updatedAt: now,
     };
     const configuration = {
       session: {
         model: { provider: "openai", id: "gpt" },
         thinkingLevel: "medium",
-        availableThinkingLevels: ["off", "medium"]
+        availableThinkingLevels: ["off", "medium"],
       },
-      connectedModelsByProvider: [{ id: "openai", name: "OpenAI", models: [{ provider: "openai", id: "gpt", name: "GPT", authenticated: true }] }],
+      connectedModelsByProvider: [
+        {
+          id: "openai",
+          name: "OpenAI",
+          models: [{ provider: "openai", id: "gpt", name: "GPT", authenticated: true }],
+        },
+      ],
       selectModel: vi.fn(),
-      selectThinkingLevel: vi.fn()
+      selectThinkingLevel: vi.fn(),
     } as unknown as ChatConfigurationStore;
-    const threadChat = mount(createStore(ChatStore, {
-      id: () => thread.id,
-      parts: () => thread.messages.map((message) => ({ id: message.id, kind: "text" as const, role: message.role as "user" | "assistant", text: message.body, status: message.status as "complete" })),
-      streaming: () => false,
-      submitting: () => false,
-      configuration: () => configuration,
-      commands: () => [],
-      placeholder: () => "Ask a follow-up…",
-      inputLabel: () => "Reply to selection chat",
-      canSubmit: (draft) => Boolean(draft.trim()),
-      submit: async () => true
-    }));
+    const threadChat = mount(
+      createStore(ChatStore, {
+        id: () => thread.id,
+        parts: () =>
+          thread.messages.map((message) => ({
+            id: message.id,
+            kind: "text" as const,
+            role: message.role as "user" | "assistant",
+            text: message.body,
+            status: message.status as "complete",
+          })),
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => configuration,
+        commands: () => [],
+        placeholder: () => "Ask a follow-up…",
+        inputLabel: () => "Reply to selection chat",
+        canSubmit: (draft) => Boolean(draft.trim()),
+        submit: async () => true,
+      }),
+    );
     const comments = {
       threadsForMessage: () => [thread],
       threadStreaming: () => false,
       chatStore: () => threadChat,
       replyThread: vi.fn(),
-      resolveThread: vi.fn()
+      resolveThread: vi.fn(),
     } as unknown as MessageCommentsStore;
-    act(() => root.render(<Transcript
-      parts={[{ id: "assistant-1", kind: "text", role: "assistant", text: "Alpha important detail.", status: "complete" }]}
-      sessionId="session-1"
-      isStreaming={false}
-      behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined, messageComments: comments }}
-      empty={<div />}
-    />));
+    act(() =>
+      root.render(
+        <Transcript
+          parts={[
+            {
+              id: "assistant-1",
+              kind: "text",
+              role: "assistant",
+              text: "Alpha important detail.",
+              status: "complete",
+            },
+          ]}
+          sessionId="session-1"
+          isStreaming={false}
+          behavior={{
+            thinkingExpanded: false,
+            onToggleThinking: () => undefined,
+            messageComments: comments,
+          }}
+          empty={<div />}
+        />,
+      ),
+    );
 
-    const marker = container.querySelector<HTMLButtonElement>('[aria-label="Open selection chat 1"]');
+    const marker = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Open selection chat 1"]',
+    );
     expect(marker).not.toBeNull();
     act(() => marker!.click());
     const chat = document.body.querySelector('[role="dialog"][aria-label="Selection chat"]');
@@ -631,13 +1125,36 @@ describe("Transcript scrolling", () => {
     expect(chat?.textContent).not.toContain("Reopen chat");
     expect(chat?.querySelector(".chat-embedded-workbench-composer")).not.toBeNull();
     expect(chat?.querySelector<HTMLInputElement>('[aria-label="Model"]')?.value).toBe("GPT");
-    expect(chat?.querySelector<HTMLSelectElement>('[aria-label="Thinking level"]')?.value).toBe("medium");
+    expect(chat?.querySelector<HTMLSelectElement>('[aria-label="Thinking level"]')?.value).toBe(
+      "medium",
+    );
 
     const titlebar = chat!.querySelector<HTMLElement>(".message-comment-titlebar")!;
-    Object.defineProperty(chat, "getBoundingClientRect", { configurable: true, value: () => ({ left: 100, top: 100, right: 620, bottom: 500, width: 520, height: 400, x: 100, y: 100, toJSON: () => ({}) }) });
+    Object.defineProperty(chat, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        left: 100,
+        top: 100,
+        right: 620,
+        bottom: 500,
+        width: 520,
+        height: 400,
+        x: 100,
+        y: 100,
+        toJSON: () => ({}),
+      }),
+    });
     titlebar.setPointerCapture = vi.fn();
-    act(() => titlebar.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 120, clientY: 120 })));
-    act(() => document.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 170, clientY: 190 })));
+    act(() =>
+      titlebar.dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 120, clientY: 120 }),
+      ),
+    );
+    act(() =>
+      document.dispatchEvent(
+        new MouseEvent("pointermove", { bubbles: true, clientX: 170, clientY: 190 }),
+      ),
+    );
     act(() => document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })));
     expect((chat as HTMLElement).style.left).toBe("150px");
     expect((chat as HTMLElement).style.top).toBe("170px");
@@ -645,12 +1162,33 @@ describe("Transcript scrolling", () => {
   });
 
   it("opens every assistant response in a fullscreen reader regardless of text length or streaming state", () => {
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([
-      { id: "short", kind: "text", role: "assistant", text: "Short answer", status: "complete" },
-      { id: "streaming", kind: "text", role: "assistant", text: "Working", status: "streaming" }
-    ])} />));
+    act(() =>
+      root.render(
+        <TestTranscript
+          sessionId="session-1"
+          store={storeWith([
+            {
+              id: "short",
+              kind: "text",
+              role: "assistant",
+              text: "Short answer",
+              status: "complete",
+            },
+            {
+              id: "streaming",
+              kind: "text",
+              role: "assistant",
+              text: "Working",
+              status: "streaming",
+            },
+          ])}
+        />,
+      ),
+    );
 
-    const expandButtons = container.querySelectorAll<HTMLButtonElement>('[aria-label="View response fullscreen"]');
+    const expandButtons = container.querySelectorAll<HTMLButtonElement>(
+      '[aria-label="View response fullscreen"]',
+    );
     expect(expandButtons).toHaveLength(2);
     act(() => expandButtons[0]!.click());
 
@@ -659,13 +1197,22 @@ describe("Transcript scrolling", () => {
     expect(dialog?.textContent).toContain("Short answer");
     expect(document.body.style.overflow).toBe("hidden");
 
-    act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    act(() =>
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
+    );
     expect(document.body.querySelector(".fullscreen-surface")).toBeNull();
     expect(document.body.style.overflow).toBe("");
   });
 
   it("renders submitted image attachments from Pi's persisted base64 block", () => {
-    const image: UiPart = { id: "image-1", kind: "attachment", name: "Image 1", mediaType: "image/png", attachmentKind: "image", data: "aW1hZ2U=" };
+    const image: UiPart = {
+      id: "image-1",
+      kind: "attachment",
+      name: "Image 1",
+      mediaType: "image/png",
+      attachmentKind: "image",
+      data: "aW1hZ2U=",
+    };
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([image])} />));
 

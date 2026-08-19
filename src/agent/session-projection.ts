@@ -1,4 +1,8 @@
-import { type AgentSessionEvent, type SessionEntry, type SessionManager } from "@earendil-works/pi-coding-agent";
+import {
+  type AgentSessionEvent,
+  type SessionEntry,
+  type SessionManager,
+} from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { artifactPointerSchema, type ArtifactPointer } from "../ipc/artifact-contract";
@@ -9,7 +13,7 @@ export const reviewRunEntrySchema = z.object({
   operationId: z.uuid(),
   threadIds: z.array(z.string().min(1).max(256)).min(1).max(100),
   commentCount: z.number().int().positive().max(1_000_000),
-  status: z.enum(["running", "complete", "error"])
+  status: z.enum(["running", "complete", "error"]),
 });
 export type ReviewRunEntry = z.infer<typeof reviewRunEntrySchema>;
 
@@ -59,13 +63,18 @@ export function toolArtifactId(value: unknown) {
   const direct = Reflect.get(value, "artifactId");
   if (typeof direct === "string") return direct;
   const details = Reflect.get(value, "details");
-  const detailedId = typeof details === "object" && details !== null ? Reflect.get(details, "artifactId") : undefined;
+  const detailedId =
+    typeof details === "object" && details !== null
+      ? Reflect.get(details, "artifactId")
+      : undefined;
   if (typeof detailedId === "string") return detailedId;
   const artifact = Reflect.get(value, "artifact");
-  const artifactId = typeof artifact === "object" && artifact !== null ? Reflect.get(artifact, "id") : undefined;
+  const artifactId =
+    typeof artifact === "object" && artifact !== null ? Reflect.get(artifact, "id") : undefined;
   if (typeof artifactId === "string") return artifactId;
   const request = Reflect.get(value, "request");
-  const requestId = typeof request === "object" && request !== null ? Reflect.get(request, "id") : undefined;
+  const requestId =
+    typeof request === "object" && request !== null ? Reflect.get(request, "id") : undefined;
   return typeof requestId === "string" ? requestId : undefined;
 }
 
@@ -73,13 +82,23 @@ export function textFromContent(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content
-    .filter((item): item is { type: "text"; text: string } =>
-      typeof item === "object" && item !== null && Reflect.get(item, "type") === "text" && typeof Reflect.get(item, "text") === "string")
+    .filter(
+      (item): item is { type: "text"; text: string } =>
+        typeof item === "object" &&
+        item !== null &&
+        Reflect.get(item, "type") === "text" &&
+        typeof Reflect.get(item, "text") === "string",
+    )
     .map((item) => item.text)
     .join("\n");
 }
 
-function partsFromMessage(message: unknown, baseId: string, streaming = false, entryId?: string): UiPart[] {
+function partsFromMessage(
+  message: unknown,
+  baseId: string,
+  streaming = false,
+  entryId?: string,
+): UiPart[] {
   if (typeof message !== "object" || message === null) return [];
   const role = Reflect.get(message, "role");
   const content = Reflect.get(message, "content");
@@ -87,12 +106,27 @@ function partsFromMessage(message: unknown, baseId: string, streaming = false, e
   if (role === "user") {
     const parts: UiPart[] = [];
     const text = textFromContent(content);
-    if (text) parts.push({ id: `${baseId}-text`, kind: "text", role: "user", entryId, text, status: "complete" });
+    if (text)
+      parts.push({
+        id: `${baseId}-text`,
+        kind: "text",
+        role: "user",
+        entryId,
+        text,
+        status: "complete",
+      });
     if (Array.isArray(content)) {
       content.forEach((item, index) => {
         if (typeof item === "object" && item !== null && Reflect.get(item, "type") === "image") {
           const data = Reflect.get(item, "data");
-          parts.push({ id: `${baseId}-attachment-${index}`, kind: "attachment", name: `Image ${index + 1}`, mediaType: String(Reflect.get(item, "mimeType") ?? "image").slice(0, 128), attachmentKind: "image", data: typeof data === "string" && data.length <= 20_000_000 ? data : undefined });
+          parts.push({
+            id: `${baseId}-attachment-${index}`,
+            kind: "attachment",
+            name: `Image ${index + 1}`,
+            mediaType: String(Reflect.get(item, "mimeType") ?? "image").slice(0, 128),
+            attachmentKind: "image",
+            data: typeof data === "string" && data.length <= 20_000_000 ? data : undefined,
+          });
         }
       });
     }
@@ -106,25 +140,70 @@ function partsFromMessage(message: unknown, baseId: string, streaming = false, e
       if (type === "text") {
         const text = String(Reflect.get(item, "text") ?? "");
         if (!text) return [];
-        const sources = [...new Set(text.match(/https?:\/\/[^\s)\]}>,]+/g) ?? [])].filter((url) => url.length <= 8_192).slice(0, 20);
+        const sources = [...new Set(text.match(/https?:\/\/[^\s)\]}>,]+/g) ?? [])]
+          .filter((url) => url.length <= 8_192)
+          .slice(0, 20);
         return [
-          { id: `${baseId}-text-${index}`, kind: "text", role: "assistant", entryId, text, status: streaming ? "streaming" : Reflect.get(message, "errorMessage") ? "error" : "complete" },
-          ...sources.map((url, sourceIndex): UiPart => ({ id: `${baseId}-source-${index}-${sourceIndex}`, kind: "source", title: sourceTitle(url), url }))
+          {
+            id: `${baseId}-text-${index}`,
+            kind: "text",
+            role: "assistant",
+            entryId,
+            text,
+            status: streaming
+              ? "streaming"
+              : Reflect.get(message, "errorMessage")
+                ? "error"
+                : "complete",
+          },
+          ...sources.map((url, sourceIndex): UiPart => ({
+            id: `${baseId}-source-${index}-${sourceIndex}`,
+            kind: "source",
+            title: sourceTitle(url),
+            url,
+          })),
         ];
       }
       if (type === "thinking") {
-        return [{ id: `${baseId}-reasoning-${index}`, kind: "reasoning", text: String(Reflect.get(item, "thinking") ?? ""), status: streaming ? "streaming" : "complete" }];
+        return [
+          {
+            id: `${baseId}-reasoning-${index}`,
+            kind: "reasoning",
+            text: String(Reflect.get(item, "thinking") ?? ""),
+            status: streaming ? "streaming" : "complete",
+          },
+        ];
       }
       if (type === "toolCall") {
         const name = String(Reflect.get(item, "name") ?? "tool");
         const args = Reflect.get(item, "arguments");
-        return [{ id: boundedProjectionKey(`tool-${String(Reflect.get(item, "id"))}`), kind: "tool", name, input: formatToolInput(name, args), artifactId: toolArtifactId(args), filePath: toolFilePath(name, args), state: "running" }];
+        return [
+          {
+            id: boundedProjectionKey(`tool-${String(Reflect.get(item, "id"))}`),
+            kind: "tool",
+            name,
+            input: formatToolInput(name, args),
+            artifactId: toolArtifactId(args),
+            filePath: toolFilePath(name, args),
+            state: "running",
+          },
+        ];
       }
       return [];
     });
     const errorMessage = Reflect.get(message, "errorMessage");
-    if (!parts.some((part) => part.kind === "text") && typeof errorMessage === "string" && errorMessage.trim()) {
-      parts.push({ id: `${baseId}-error`, kind: "notice", tone: "error", title: "Model request failed", detail: errorMessage.trim() });
+    if (
+      !parts.some((part) => part.kind === "text") &&
+      typeof errorMessage === "string" &&
+      errorMessage.trim()
+    ) {
+      parts.push({
+        id: `${baseId}-error`,
+        kind: "notice",
+        tone: "error",
+        title: "Model request failed",
+        detail: errorMessage.trim(),
+      });
     }
     return parts;
   }
@@ -132,20 +211,30 @@ function partsFromMessage(message: unknown, baseId: string, streaming = false, e
   if (role === "toolResult") {
     const name = String(Reflect.get(message, "toolName") ?? "tool");
     const details = Reflect.get(message, "details");
-    return [{
-      id: boundedProjectionKey(`tool-${String(Reflect.get(message, "toolCallId"))}`),
-      kind: "tool",
-      name,
-      input: "",
-      output: textFromContent(content) || formatUnknown(details),
-      artifactId: toolArtifactId({ details }),
-      diff: toolResultDiff(name, { details }),
-      state: Reflect.get(message, "isError") ? "error" : "success"
-    }];
+    return [
+      {
+        id: boundedProjectionKey(`tool-${String(Reflect.get(message, "toolCallId"))}`),
+        kind: "tool",
+        name,
+        input: "",
+        output: textFromContent(content) || formatUnknown(details),
+        artifactId: toolArtifactId({ details }),
+        diff: toolResultDiff(name, { details }),
+        state: Reflect.get(message, "isError") ? "error" : "success",
+      },
+    ];
   }
 
   if (role === "custom" && Reflect.get(message, "display") === true) {
-    return [{ id: `${baseId}-custom`, kind: "notice", tone: "info", title: String(Reflect.get(message, "customType") ?? "Extension"), detail: textFromContent(content) }];
+    return [
+      {
+        id: `${baseId}-custom`,
+        kind: "notice",
+        tone: "info",
+        title: String(Reflect.get(message, "customType") ?? "Extension"),
+        detail: textFromContent(content),
+      },
+    ];
   }
   return [];
 }
@@ -183,21 +272,39 @@ export function reviewRunPart(run: ReviewRunEntry): Extract<UiPart, { kind: "rev
   return { id: `review-run-${run.operationId}`, kind: "review-run", ...run };
 }
 
-export function projectQueuedMessages(steering: readonly string[], followUp: readonly string[]): UiPart[] {
+export function projectQueuedMessages(
+  steering: readonly string[],
+  followUp: readonly string[],
+): UiPart[] {
   const project = (deliveryState: "steering" | "queued", messages: readonly string[]) => {
     const occurrences = new Map<string, number>();
     return messages.flatMap((text): UiPart[] => {
       if (!text) return [];
       const occurrence = (occurrences.get(text) ?? 0) + 1;
       occurrences.set(text, occurrence);
-      const digest = createHash("sha256").update(`${deliveryState}\0${text}`).digest("hex").slice(0, 24);
-      return [{ id: `queued-${deliveryState}-${digest}-${occurrence}`, kind: "text", role: "user", text, status: "complete", deliveryState }];
+      const digest = createHash("sha256")
+        .update(`${deliveryState}\0${text}`)
+        .digest("hex")
+        .slice(0, 24);
+      return [
+        {
+          id: `queued-${deliveryState}-${digest}-${occurrence}`,
+          kind: "text",
+          role: "user",
+          text,
+          status: "complete",
+          deliveryState,
+        },
+      ];
     });
   };
   return [...project("steering", steering), ...project("queued", followUp)];
 }
 
-export function projectSessionEntries(entries: readonly SessionEntry[], branchEntries: readonly SessionEntry[] = entries) {
+export function projectSessionEntries(
+  entries: readonly SessionEntry[],
+  branchEntries: readonly SessionEntry[] = entries,
+) {
   const projected: UiPart[] = [];
   const indexes = new Map<string, number>();
   const append = (part: UiPart) => {
@@ -208,31 +315,47 @@ export function projectSessionEntries(entries: readonly SessionEntry[], branchEn
       return;
     }
     const existing = projected[existingIndex];
-    projected[existingIndex] = existing?.kind === "tool" && part.kind === "tool"
-      ? { ...existing, ...part, input: part.input || existing.input, filePath: part.filePath || existing.filePath }
-      : part;
+    projected[existingIndex] =
+      existing?.kind === "tool" && part.kind === "tool"
+        ? {
+            ...existing,
+            ...part,
+            input: part.input || existing.input,
+            filePath: part.filePath || existing.filePath,
+          }
+        : part;
   };
 
-  const visibleRunIds = new Set(entries.flatMap((entry) => {
-    if (entry.type !== "custom" || entry.customType !== reviewRunEntryType) return [];
-    const run = reviewRunEntrySchema.safeParse(entry.data);
-    return run.success ? [run.data.operationId] : [];
-  }));
+  const visibleRunIds = new Set(
+    entries.flatMap((entry) => {
+      if (entry.type !== "custom" || entry.customType !== reviewRunEntryType) return [];
+      const run = reviewRunEntrySchema.safeParse(entry.data);
+      return run.success ? [run.data.operationId] : [];
+    }),
+  );
   const compactedRuns = new Map<string, ReviewRunEntry>();
   for (const entry of branchEntries) {
     if (entry.type !== "custom" || entry.customType !== reviewRunEntryType) continue;
     const run = reviewRunEntrySchema.safeParse(entry.data);
-    if (run.success && !visibleRunIds.has(run.data.operationId)) compactedRuns.set(run.data.operationId, run.data);
+    if (run.success && !visibleRunIds.has(run.data.operationId))
+      compactedRuns.set(run.data.operationId, run.data);
   }
   for (const run of compactedRuns.values()) append(reviewRunPart(run));
 
   for (const entry of entries) {
     if (entry.type === "message") {
-      for (const part of partsFromMessage(entry.message, `entry-${entry.id}`, false, entry.id)) append(part);
+      for (const part of partsFromMessage(entry.message, `entry-${entry.id}`, false, entry.id))
+        append(part);
       continue;
     }
     if (entry.type === "compaction") {
-      append({ id: `entry-${entry.id}-compaction`, kind: "compaction", summary: entry.summary, tokensBefore: entry.tokensBefore, firstKeptEntryId: entry.firstKeptEntryId });
+      append({
+        id: `entry-${entry.id}-compaction`,
+        kind: "compaction",
+        summary: entry.summary,
+        tokensBefore: entry.tokensBefore,
+        firstKeptEntryId: entry.firstKeptEntryId,
+      });
       continue;
     }
     if (entry.type !== "custom" || entry.customType !== reviewRunEntryType) continue;
@@ -243,13 +366,17 @@ export function projectSessionEntries(entries: readonly SessionEntry[], branchEn
 }
 
 export function imageContent(attachments: Attachment[]) {
-  return attachments.flatMap((attachment) => attachment.kind === "image"
-    ? [{ type: "image" as const, data: attachment.data, mimeType: attachment.mimeType }]
-    : []);
+  return attachments.flatMap((attachment) =>
+    attachment.kind === "image"
+      ? [{ type: "image" as const, data: attachment.data, mimeType: attachment.mimeType }]
+      : [],
+  );
 }
 
 export function promptText(text: string, attachments: Attachment[]) {
-  const mentions = attachments.filter((item) => item.kind === "file").map((item) => `@${item.path}`);
+  const mentions = attachments
+    .filter((item) => item.kind === "file")
+    .map((item) => `@${item.path}`);
   return mentions.length ? `${text}\n\n${mentions.join("\n")}` : text;
 }
 
@@ -272,14 +399,19 @@ function entryPreview(entry: SessionEntry) {
     if (message.role === "assistant") {
       if (text) return text.slice(0, 2_048);
       if (message.stopReason === "aborted") return "(aborted)";
-      if (message.errorMessage) return message.errorMessage.replace(/[\n\t]+/g, " ").trim().slice(0, 2_048);
+      if (message.errorMessage)
+        return message.errorMessage
+          .replace(/[\n\t]+/g, " ")
+          .trim()
+          .slice(0, 2_048);
       return "";
     }
     if (message.role === "toolResult") return `[${message.toolName}]`;
     if (message.role === "bashExecution") return `[bash]: ${message.command}`.slice(0, 2_048);
     return `[${role}]`;
   }
-  if (entry.type === "compaction" || entry.type === "branch_summary") return entry.summary.slice(0, 2_048);
+  if (entry.type === "compaction" || entry.type === "branch_summary")
+    return entry.summary.slice(0, 2_048);
   if (entry.type === "session_info") return (entry.name ?? "Session renamed").slice(0, 2_048);
   if (entry.type === "model_change") return `${entry.provider}/${entry.modelId}`;
   return entry.type.replaceAll("_", " ");
@@ -296,14 +428,16 @@ export function projectTree(sessionManager: SessionManager): SessionTreeEntry[] 
       parentId: node.entry.parentId ?? undefined,
       type: node.entry.type,
       messageRole: node.entry.type === "message" ? node.entry.message.role : undefined,
-      editorText: node.entry.type === "message" && node.entry.message.role === "user"
-        ? textFromContent(node.entry.message.content)
-        : undefined,
+      editorText:
+        node.entry.type === "message" && node.entry.message.role === "user"
+          ? textFromContent(node.entry.message.content)
+          : undefined,
       label: node.label,
       preview: entryPreview(node.entry),
-      active: activeIds.has(node.entry.id)
+      active: activeIds.has(node.entry.id),
     });
-    for (let index = node.children.length - 1; index >= 0; index -= 1) stack.push(node.children[index]!);
+    for (let index = node.children.length - 1; index >= 0; index -= 1)
+      stack.push(node.children[index]!);
   }
   return entries;
 }
@@ -311,11 +445,13 @@ export function projectTree(sessionManager: SessionManager): SessionTreeEntry[] 
 export function projectArtifactPointers(sessionManager: SessionManager): ArtifactPointer[] {
   const pointers = new Map<string, ArtifactPointer>();
   for (const entry of sessionManager.getBranch()) {
-    if (entry.type !== "custom" || Reflect.get(entry, "customType") !== "cake.artifact/v1") continue;
+    if (entry.type !== "custom" || Reflect.get(entry, "customType") !== "cake.artifact/v1")
+      continue;
     const parsed = artifactPointerSchema.safeParse(Reflect.get(entry, "data"));
     if (!parsed.success) continue;
     const current = pointers.get(parsed.data.artifactId);
-    if (!current || parsed.data.revision > current.revision) pointers.set(parsed.data.artifactId, parsed.data);
+    if (!current || parsed.data.revision > current.revision)
+      pointers.set(parsed.data.artifactId, parsed.data);
   }
   return [...pointers.values()];
 }

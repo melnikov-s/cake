@@ -11,7 +11,7 @@ export const cakeSlotNames = [
   "project-session.transcript.after",
   "project-session.composer.before",
   "project-session.composer.actions",
-  "project-session.status"
+  "project-session.status",
 ] as const;
 
-export type CakeSlotName = typeof cakeSlotNames[number];
+export type CakeSlotName = (typeof cakeSlotNames)[number];

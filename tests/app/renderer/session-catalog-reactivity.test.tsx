@@ -16,7 +16,7 @@ const summary = (id: string) => ({
   messageCount: 1,
   resolved: false,
   workspacePath: "/project",
-  workspaceName: "Project"
+  workspaceName: "Project",
 });
 
 it("updates observed project indexes without mutating state during render", async () => {
@@ -24,7 +24,14 @@ it("updates observed project indexes without mutating state during render", asyn
   const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
   const store = mount(createStore(SessionCatalogStore));
   store.replace([summary("first")]);
-  const View = observer(() => <div>{store.projectSessions("/project").map((item) => item.id).join(",")}</div>);
+  const View = observer(() => (
+    <div>
+      {store
+        .projectSessions("/project")
+        .map((item) => item.id)
+        .join(",")}
+    </div>
+  ));
   const container = document.createElement("div");
   const root = createRoot(container);
 
@@ -33,7 +40,9 @@ it("updates observed project indexes without mutating state during render", asyn
     expect(container.textContent).toBe("first");
     expect(consoleError).not.toHaveBeenCalled();
 
-    await act(async () => store.applyWorkspace("/project", "Project", [summary("first"), summary("second")]));
+    await act(async () =>
+      store.applyWorkspace("/project", "Project", [summary("first"), summary("second")]),
+    );
     expect(container.textContent).toBe("first,second");
     expect(consoleError).not.toHaveBeenCalled();
   } finally {

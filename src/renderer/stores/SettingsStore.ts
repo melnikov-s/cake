@@ -1,5 +1,10 @@
 import { Store, observable } from "r-state-tree";
-import type { ApplicationState, PiSettingUpdate, ThinkingLevel, UtilityModel } from "../../ipc/session-contract";
+import type {
+  ApplicationState,
+  PiSettingUpdate,
+  ThinkingLevel,
+  UtilityModel,
+} from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
 import { describeError } from "../error-details";
@@ -13,7 +18,9 @@ export interface SettingsStoreProps {
 /** Owns model, reasoning, Pi preference, and provider-authentication workflows. */
 export class SettingsStore extends Store<SettingsStoreProps> {
   theme: "system" | "light" | "dark" = "system";
-  providerOperations: Record<string, { provider: string; kind: "login" | "logout" }> = observable({});
+  providerOperations: Record<string, { provider: string; kind: "login" | "logout" }> = observable(
+    {},
+  );
   utilityModel: UtilityModel | undefined;
   utilityModelSaving = false;
   error: string | undefined;
@@ -21,7 +28,9 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   private utilitySaveRevision = 0;
   private utilitySaveQueue: Promise<unknown> = Promise.resolve();
   private persistedUtilityModel: UtilityModel | undefined;
-  get activeOperations() { return this.props.operations.active("settings"); }
+  get activeOperations() {
+    return this.props.operations.active("settings");
+  }
 
   private reportError(error: unknown) {
     const described = describeError(error);
@@ -44,7 +53,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     return this.saveUtilityModel({
       provider: value.slice(0, separator),
       modelId: value.slice(separator + 1),
-      thinkingLevel: this.utilityModel?.thinkingLevel ?? "off"
+      thinkingLevel: this.utilityModel?.thinkingLevel ?? "off",
     });
   }
 
@@ -58,16 +67,21 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   }
 
   async setPiSetting(update: PiSettingUpdate) {
-    await this.run((operationId, sessionId) => this.props.client.setPiSetting({ operationId, sessionId, update }));
+    await this.run((operationId, sessionId) =>
+      this.props.client.setPiSetting({ operationId, sessionId, update }),
+    );
   }
 
   async reloadPi() {
-    await this.run((operationId, sessionId) => this.props.client.reloadPi({ operationId, sessionId }));
+    await this.run((operationId, sessionId) =>
+      this.props.client.reloadPi({ operationId, sessionId }),
+    );
   }
 
   async authenticate(provider: string, authType: "api_key" | "oauth") {
     if (this.providerOperation(provider)) return;
-    this.error = undefined; this.errorDetails = undefined;
+    this.error = undefined;
+    this.errorDetails = undefined;
     const operationId = this.props.operations.start("settings");
     this.providerOperations[operationId] = { provider, kind: "login" };
     try {
@@ -82,7 +96,8 @@ export class SettingsStore extends Store<SettingsStoreProps> {
 
   async logout(provider: string) {
     if (this.providerOperation(provider)) return;
-    this.error = undefined; this.errorDetails = undefined;
+    this.error = undefined;
+    this.errorDetails = undefined;
     const operationId = this.props.operations.start("settings");
     this.providerOperations[operationId] = { provider, kind: "logout" };
     try {
@@ -96,20 +111,31 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   }
 
   providerOperation(provider: string) {
-    return Object.values(this.providerOperations).find((operation) => operation.provider === provider)?.kind;
+    return Object.values(this.providerOperations).find(
+      (operation) => operation.provider === provider,
+    )?.kind;
   }
 
   receive(event: DesktopClientEvent) {
     if (event.type === "operation-completed" && this.activeOperations.includes(event.operationId)) {
-      if (this.providerOperations[event.operationId]) delete this.providerOperations[event.operationId];
+      if (this.providerOperations[event.operationId])
+        delete this.providerOperations[event.operationId];
       this.finish(event.operationId);
     }
-    if (event.type === "operation-failed" && event.operationId && this.activeOperations.includes(event.operationId)) {
-      if (this.providerOperations[event.operationId]) delete this.providerOperations[event.operationId];
+    if (
+      event.type === "operation-failed" &&
+      event.operationId &&
+      this.activeOperations.includes(event.operationId)
+    ) {
+      if (this.providerOperations[event.operationId])
+        delete this.providerOperations[event.operationId];
       this.finish(event.operationId);
       this.reportError(event.message);
     }
-    if (event.type === "pi-state-changed" && (event.state === "failed" || event.state === "stopped")) {
+    if (
+      event.type === "pi-state-changed" &&
+      (event.state === "failed" || event.state === "stopped")
+    ) {
       for (const operationId of this.activeOperations.slice()) {
         if (this.providerOperations[operationId]) delete this.providerOperations[operationId];
         this.finish(operationId);
@@ -150,7 +176,8 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   }
 
   private async run(command: (operationId: string, sessionId: string) => Promise<void>) {
-    this.error = undefined; this.errorDetails = undefined;
+    this.error = undefined;
+    this.errorDetails = undefined;
     const operationId = this.props.operations.start("settings");
     try {
       await command(operationId, this.requireSessionId());

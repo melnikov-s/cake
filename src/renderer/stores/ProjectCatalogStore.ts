@@ -23,7 +23,9 @@ export class ProjectCatalogStore extends Store<{ sessions: SessionCatalogStore }
   applyApplicationState(state: ApplicationState) {
     this.projects.splice(0, this.projects.length, ...state.projects);
     this.props.sessions.applyResolvedState(state.resolvedSessionIds);
-    this.props.sessions.updateWorkspaceNames(new Map(state.projects.map((project) => [project.path, project.name])));
+    this.props.sessions.updateWorkspaceNames(
+      new Map(state.projects.map((project) => [project.path, project.name])),
+    );
     this.reconcileRecentPaths();
   }
 
@@ -39,7 +41,8 @@ export class ProjectCatalogStore extends Store<{ sessions: SessionCatalogStore }
   private reconcileRecentPaths() {
     const registeredPaths = new Set(this.projects.map((project) => project.path));
     const paths = this.recentProjectPaths.filter((path) => registeredPaths.has(path));
-    for (const project of this.projects) if (!paths.includes(project.path)) paths.push(project.path);
+    for (const project of this.projects)
+      if (!paths.includes(project.path)) paths.push(project.path);
     this.recentProjectPaths.splice(0, this.recentProjectPaths.length, ...paths);
   }
 }

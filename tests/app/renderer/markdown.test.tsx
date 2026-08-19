@@ -8,7 +8,7 @@ import { Streamdown } from "streamdown";
 import { fencedCode, Markdown } from "../../../src/renderer/components/ai-elements/markdown";
 
 vi.mock("streamdown", () => ({
-  Streamdown: vi.fn(({ children }: { children: string }) => <div>{children}</div>)
+  Streamdown: vi.fn(({ children }: { children: string }) => <div>{children}</div>),
 }));
 
 describe("Markdown", () => {
@@ -44,6 +44,8 @@ describe("Markdown", () => {
   });
 
   it("creates a safe highlighted fence even when source contains backticks", () => {
-    expect(fencedCode("const sample = ```nested```;", "tsx")).toBe("````tsx\nconst sample = ```nested```;\n````");
+    expect(fencedCode("const sample = ```nested```;", "tsx")).toBe(
+      "````tsx\nconst sample = ```nested```;\n````",
+    );
   });
 });

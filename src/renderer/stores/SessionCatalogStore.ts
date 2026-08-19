@@ -31,14 +31,27 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
     this.rebuildIndexes();
   }
 
-  applyWorkspace(workspacePath: string, workspaceName: string, sessions: SessionSnapshot["sessions"]) {
-    const prior = new Map(this.sessions.filter((session) => session.workspacePath === workspacePath).map((session) => [session.id, session]));
-    const otherSessions = this.sessions.filter((session) => session.workspacePath !== workspacePath);
+  applyWorkspace(
+    workspacePath: string,
+    workspaceName: string,
+    sessions: SessionSnapshot["sessions"],
+  ) {
+    const prior = new Map(
+      this.sessions
+        .filter((session) => session.workspacePath === workspacePath)
+        .map((session) => [session.id, session]),
+    );
+    const otherSessions = this.sessions.filter(
+      (session) => session.workspacePath !== workspacePath,
+    );
     const workspaceSessions = sessions.map((session) => ({
       ...session,
-      resolved: this.resolvedSessionIds.has(session.id) || prior.get(session.id)?.resolved === true || session.resolved,
+      resolved:
+        this.resolvedSessionIds.has(session.id) ||
+        prior.get(session.id)?.resolved === true ||
+        session.resolved,
       workspacePath,
-      workspaceName
+      workspaceName,
     }));
     const next = [...otherSessions, ...workspaceSessions];
     this.assertUniqueIds(next);
@@ -71,7 +84,8 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
     for (let index = 0; index < this.sessions.length; index += 1) {
       const session = this.sessions[index]!;
       const workspaceName = names.get(session.workspacePath) ?? session.workspaceName;
-      if (workspaceName !== session.workspaceName) this.sessions.splice(index, 1, { ...session, workspaceName });
+      if (workspaceName !== session.workspaceName)
+        this.sessions.splice(index, 1, { ...session, workspaceName });
     }
     this.rebuildIndexes();
   }

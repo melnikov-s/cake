@@ -1,5 +1,9 @@
 import { Model, id, state, type Snapshot } from "r-state-tree";
-import { cakeArtifactV1Schema, type ArtifactRecord, type CakeArtifactV1 } from "../../ipc/artifact-contract";
+import {
+  cakeArtifactV1Schema,
+  type ArtifactRecord,
+  type CakeArtifactV1,
+} from "../../ipc/artifact-contract";
 
 export class ArtifactModel extends Model {
   @id id = "";
@@ -27,12 +31,12 @@ export class ArtifactModel extends Model {
         title: this.title,
         payload: this.payload,
         fallback: this.fallback,
-        interaction: this.interaction
+        interaction: this.interaction,
       }),
       workspacePath: this.workspacePath,
       digest: this.digest,
       createdAt: this.createdAt,
-      updatedAt: this.updatedAt
+      updatedAt: this.updatedAt,
     };
   }
 }
@@ -44,6 +48,6 @@ export function toArtifactSnapshot(record: ArtifactRecord): Snapshot<ArtifactMod
     workspacePath: record.workspacePath,
     digest: record.digest,
     createdAt: record.createdAt,
-    updatedAt: record.updatedAt
+    updatedAt: record.updatedAt,
   } as Snapshot<ArtifactModel>;
 }

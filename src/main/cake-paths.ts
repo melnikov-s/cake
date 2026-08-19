@@ -35,6 +35,6 @@ export function resolveCakePaths(options: ResolveCakePathsOptions = {}): CakePat
     piGlobalChatSessions: join(piAgent, "global-chat", "sessions"),
     plugins: join(home, "plugins"),
     recovery: join(home, "recovery"),
-    state: join(home, "state")
+    state: join(home, "state"),
   };
 }

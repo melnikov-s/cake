@@ -4,14 +4,12 @@
   "private": true,
   "type": "module",
   "main": "out/main/main.js",
-  "packageManager": "pnpm@10.17.1",
-  "engines": {
-    "node": ">=22.0.0"
-  },
   "scripts": {
     "build": "electron-vite build && node scripts/prepare-authoring-snapshot.mjs",
     "dev": "electron-vite dev --watch",
     "dev:agent": "electron-vite dev --watch --remoteDebuggingPort 9222",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
     "lint": "pnpm lint:oxlint && pnpm lint:eslint",
     "lint:eslint": "eslint .",
     "lint:oxlint": "oxlint src",
@@ -59,11 +57,16 @@
     "electron-vite": "5.0.0",
     "eslint": "10.8.0",
     "jsdom": "^26.1.0",
+    "oxfmt": "0.64.0",
     "oxlint": "1.78.0",
     "tailwindcss": "4.3.3",
     "typescript-eslint": "8.66.0",
     "vitest": "4.0.18"
   },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "packageManager": "pnpm@10.17.1",
   "pnpm": {
     "onlyBuiltDependencies": [
       "@google/genai",

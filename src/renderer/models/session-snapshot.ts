@@ -26,7 +26,7 @@ export function toSessionModelSnapshot(snapshot: SessionSnapshot): Snapshot<Sess
     resources: snapshot.compatibility.resources,
     resourceDiagnostics: snapshot.compatibility.diagnostics,
     tree: snapshot.tree,
-    artifacts: (snapshot.artifacts ?? []).map(toArtifactSnapshot)
+    artifacts: (snapshot.artifacts ?? []).map(toArtifactSnapshot),
   } as Snapshot<SessionModel>;
 }
 
@@ -36,6 +36,6 @@ export function toSessionPreviewSnapshot(preview: SessionPreview): Snapshot<Sess
     workspacePath: preview.workspacePath,
     sessionId: preview.sessionId,
     sessionFile: preview.sessionFile,
-    parts: preview.parts
+    parts: preview.parts,
   } as Snapshot<SessionModel>;
 }

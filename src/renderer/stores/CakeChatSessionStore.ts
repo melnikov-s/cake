@@ -1,5 +1,5 @@
 import { Store, child, createStore, observable } from "r-state-tree";
-import type { Attachment, UiPart } from "../../ipc/session-contract";
+import type { Attachment } from "../../ipc/session-contract";
 import { pastedImageAttachments } from "../pasted-image-attachments";
 import { describeError } from "../error-details";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
@@ -21,26 +21,38 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   error: string | undefined;
   errorDetails: string | undefined;
 
-  get sessionId() { return this.props.sessionId; }
-  get model() { return this.props.sessions.findModel(this.sessionId); }
-  get parts() { return this.model?.uiParts ?? []; }
-  get streaming() { return this.model?.streaming ?? false; }
-  get promptOwner() { return `cake-chat-prompt:${this.sessionId}`; }
-  get configurationOwner() { return `cake-chat-configuration:${this.sessionId}`; }
+  get sessionId() {
+    return this.props.sessionId;
+  }
+  get model() {
+    return this.props.sessions.findModel(this.sessionId);
+  }
+  get parts() {
+    return this.model?.uiParts ?? [];
+  }
+  get streaming() {
+    return this.model?.streaming ?? false;
+  }
+  get promptOwner() {
+    return `cake-chat-prompt:${this.sessionId}`;
+  }
+  get configurationOwner() {
+    return `cake-chat-configuration:${this.sessionId}`;
+  }
 
   async submit(text: string) {
     text = text.trim();
     const attachments = this.attachments.slice();
     if (!text && attachments.length === 0) return false;
     const operationId = this.props.operations.start(this.promptOwner);
-    const optimisticParts: UiPart[] = [
-      ...(text ? [{ id: `cake-chat-user-${operationId}`, kind: "text" as const, role: "user" as const, text, status: "complete" as const }] : []),
-      ...attachments.flatMap((attachment, index) => attachment.kind === "image" ? [{ id: `cake-chat-user-${operationId}-attachment-${index}`, kind: "attachment" as const, name: attachment.name, mediaType: attachment.mimeType, attachmentKind: "image" as const, data: attachment.data }] : [])
-    ];
-    for (const part of optimisticParts) this.model?.upsertPart(part);
     this.attachments.splice(0);
     try {
-      await this.props.collection.port.prompt({ operationId, sessionId: this.sessionId, text, attachments });
+      await this.props.collection.port.prompt({
+        operationId,
+        sessionId: this.sessionId,
+        text,
+        attachments,
+      });
       return true;
     } catch (error) {
       this.attachments.push(...attachments);
@@ -60,7 +72,9 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     }
   }
 
-  removeAttachment(index: number) { this.attachments.splice(index, 1); }
+  removeAttachment(index: number) {
+    this.attachments.splice(index, 1);
+  }
 
   @child
   get configurationStore(): ChatConfigurationStore {
@@ -68,8 +82,19 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       session: () => this.model,
       operations: this.props.operations,
       operationOwner: this.configurationOwner,
-      setModel: (operationId, provider, modelId) => this.props.collection.port.setModel({ operationId, sessionId: this.sessionId, provider, modelId }),
-      setThinkingLevel: (operationId, level) => this.props.collection.port.setThinkingLevel({ operationId, sessionId: this.sessionId, level })
+      setModel: (operationId, provider, modelId) =>
+        this.props.collection.port.setModel({
+          operationId,
+          sessionId: this.sessionId,
+          provider,
+          modelId,
+        }),
+      setThinkingLevel: (operationId, level) =>
+        this.props.collection.port.setThinkingLevel({
+          operationId,
+          sessionId: this.sessionId,
+          level,
+        }),
     });
   }
 
@@ -92,20 +117,31 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       removeAttachment: (index) => this.removeAttachment(index),
       usage: () => this.model?.usage,
       hideThinking: () => Boolean(this.model?.piSettings?.hideThinkingBlock),
-      error: () => ({ message: this.configurationStore.error ?? this.error, details: this.configurationStore.errorDetails ?? this.errorDetails, title: "Cake Chat failed" })
+      error: () => ({
+        message: this.configurationStore.error ?? this.error,
+        details: this.configurationStore.errorDetails ?? this.errorDetails,
+        title: "Cake Chat failed",
+      }),
     });
   }
 
   async abort() {
     if (!this.streaming) return;
     const operationId = this.props.operations.start(`cake-chat-abort:${this.sessionId}`);
-    try { await this.props.collection.port.abort({ operationId, sessionId: this.sessionId }); }
-    catch (error) { this.props.operations.finish(operationId); this.reportError(error); }
+    try {
+      await this.props.collection.port.abort({ operationId, sessionId: this.sessionId });
+    } catch (error) {
+      this.props.operations.finish(operationId);
+      this.reportError(error);
+    }
   }
 
   receiveOperationFailure(operationId: string, error: unknown) {
-    if (this.props.operations.includes(operationId, this.promptOwner)
-      || this.props.operations.includes(operationId, `cake-chat-abort:${this.sessionId}`)) this.reportError(error);
+    if (
+      this.props.operations.includes(operationId, this.promptOwner) ||
+      this.props.operations.includes(operationId, `cake-chat-abort:${this.sessionId}`)
+    )
+      this.reportError(error);
   }
 
   reportError(error: unknown, context?: string) {
@@ -114,5 +150,8 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     this.errorDetails = described.details;
   }
 
-  private clearError() { this.error = undefined; this.errorDetails = undefined; }
+  private clearError() {
+    this.error = undefined;
+    this.errorDetails = undefined;
+  }
 }

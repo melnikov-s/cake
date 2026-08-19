@@ -91,7 +91,15 @@ Before adding state, identify its authority, cohesive owner, lifetime, persisten
 
 ## Verification
 
-Run focused tests and the relevant typecheck or build for the files changed. Preserve unrelated worktree changes.
+Format changed supported files with Oxfmt before final verification. Use
+`pnpm format` to format the repository and `pnpm format:check` to verify that no
+formatting changes remain.
+
+Run Oxlint for every source-code change with `pnpm lint:oxlint`; do not rely on
+ESLint alone. Run `pnpm lint` for final lint verification when the task's scope
+permits, since it runs Oxlint first and then ESLint. Run focused tests and the
+relevant typecheck or build for the files changed. Preserve unrelated worktree
+changes.
 
 ### Electron UI verification
 

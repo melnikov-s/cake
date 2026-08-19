@@ -23,15 +23,21 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   constructor(props: SidebarStore["props"]) {
     super(props);
     this.effect(() => {
-      const timer = setInterval(() => { this.now = Date.now(); }, 60_000);
+      const timer = setInterval(() => {
+        this.now = Date.now();
+      }, 60_000);
       return () => clearInterval(timer);
     });
   }
 
-  get sessions() { return this.props.catalog.sessions; }
+  get sessions() {
+    return this.props.catalog.sessions;
+  }
 
   projectSessions(workspacePath: string, resolved = false) {
-    return this.props.catalog.projectSessions(workspacePath).filter((item) => item.resolved === resolved);
+    return this.props.catalog
+      .projectSessions(workspacePath)
+      .filter((item) => item.resolved === resolved);
   }
 
   cakeChatSessions(resolved = false) {
@@ -39,8 +45,12 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   }
 
   get hasResolvedSessions() {
-    return this.cakeChatSessions(true).length > 0
-      || this.props.projects.recentProjectPaths.some((path) => this.projectSessions(path, true).length > 0);
+    return (
+      this.cakeChatSessions(true).length > 0 ||
+      this.props.projects.recentProjectPaths.some(
+        (path) => this.projectSessions(path, true).length > 0,
+      )
+    );
   }
 
   sessionActivity(sessionId: string) {

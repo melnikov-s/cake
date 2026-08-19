@@ -7,13 +7,40 @@ describe("subagent contract", () => {
       profile: "worker",
       model: { prefer: "current" },
       maxDepth: 0,
-      retain: false
+      retain: false,
     });
   });
 
   it("enforces read-only profiles and removes every delegation tool", () => {
-    const parentTools = ["read", "grep", "find", "ls", "bash", "edit", "write", "ui_widget", "custom_tool", "subagent", "subagent_spawn", "agent_open"];
-    expect(toolsForSubagentProfile("reviewer", parentTools, false)).toEqual(["read", "grep", "find", "ls"]);
-    expect(toolsForSubagentProfile("worker", parentTools, false)).toEqual(["read", "grep", "find", "ls", "bash", "edit", "write", "ui_widget"]);
+    const parentTools = [
+      "read",
+      "grep",
+      "find",
+      "ls",
+      "bash",
+      "edit",
+      "write",
+      "ui_widget",
+      "custom_tool",
+      "subagent",
+      "subagent_spawn",
+      "agent_open",
+    ];
+    expect(toolsForSubagentProfile("reviewer", parentTools, false)).toEqual([
+      "read",
+      "grep",
+      "find",
+      "ls",
+    ]);
+    expect(toolsForSubagentProfile("worker", parentTools, false)).toEqual([
+      "read",
+      "grep",
+      "find",
+      "ls",
+      "bash",
+      "edit",
+      "write",
+      "ui_widget",
+    ]);
   });
 });

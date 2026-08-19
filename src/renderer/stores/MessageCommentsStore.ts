@@ -30,8 +30,11 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
   get threads() {
     const context = this.props.context();
     if (!context) return [];
-    return this.props.sessionRegistry.findModel(context.sessionId)?.reviewThreads
-      .filter((thread) => thread.anchor.view === "message") ?? [];
+    return (
+      this.props.sessionRegistry
+        .findModel(context.sessionId)
+        ?.reviewThreads.filter((thread) => thread.anchor.view === "message") ?? []
+    );
   }
 
   threadsForMessage(messageId: string) {
@@ -43,10 +46,14 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
   }
 
   private get draftThread() {
-    return this.createdThreadId ? this.threads.find((thread) => thread.id === this.createdThreadId) : undefined;
+    return this.createdThreadId
+      ? this.threads.find((thread) => thread.id === this.createdThreadId)
+      : undefined;
   }
 
-  chatStore(threadId: string) { return this.props.reviews().chatStore(threadId); }
+  chatStore(threadId: string) {
+    return this.props.reviews().chatStore(threadId);
+  }
 
   prepareDraft(selection: MessageSelectionAnchor) {
     this.draftChatStore.setDraft("");
@@ -55,7 +62,9 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
     this.draftFocusRequestRevision += 1;
   }
 
-  get draftChatStore() { return this.props.draftChatStore(); }
+  get draftChatStore() {
+    return this.props.draftChatStore();
+  }
 
   get draftChatStoreElement() {
     return createStore(ChatStore, {
@@ -64,8 +73,14 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
         const selection = this.draftSelection;
         if (!selection) return [];
         return [
-          { id: `selection:${selection.messageId}:${selection.startOffset}:${selection.endOffset}`, kind: "text" as const, role: "user" as const, text: selection.selectedText, status: "complete" as const },
-          ...(this.draftThread?.uiParts ?? [])
+          {
+            id: `selection:${selection.messageId}:${selection.startOffset}:${selection.endOffset}`,
+            kind: "text" as const,
+            role: "user" as const,
+            text: selection.selectedText,
+            status: "complete" as const,
+          },
+          ...(this.draftThread?.uiParts ?? []),
         ];
       },
       streaming: () => Boolean(this.createdThreadId && this.threadStreaming(this.createdThreadId)),
@@ -75,7 +90,10 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
       placeholder: () => "Ask Cake about this passage…",
       inputLabel: () => "Message about selected text",
       focusRequestRevision: () => this.draftFocusRequestRevision,
-      canSubmit: (draft) => Boolean(this.draftSelection && draft.trim()) && !this.draftThread?.pending && (!this.createdThreadId || !this.threadStreaming(this.createdThreadId)),
+      canSubmit: (draft) =>
+        Boolean(this.draftSelection && draft.trim()) &&
+        !this.draftThread?.pending &&
+        (!this.createdThreadId || !this.threadStreaming(this.createdThreadId)),
       submit: async (draft) => {
         if (!this.draftSelection) return false;
         if (!this.createdThreadId) {
@@ -88,8 +106,11 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
         if (saved) await reviews.submitThread(this.createdThreadId);
         return saved;
       },
-      error: () => ({ message: this.props.reviews().error, details: this.props.reviews().errorDetails }),
-      usage: () => this.draftThread?.usage
+      error: () => ({
+        message: this.props.reviews().error,
+        details: this.props.reviews().errorDetails,
+      }),
+      usage: () => this.draftThread?.usage,
     });
   }
 
@@ -108,9 +129,8 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
       messageId: selection.messageId,
       entryId: selection.entryId,
       startOffset: selection.startOffset,
-      endOffset: selection.endOffset
+      endOffset: selection.endOffset,
     };
     return this.props.reviews().createThread(anchor, body);
   }
-
 }

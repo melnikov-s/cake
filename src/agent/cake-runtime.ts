@@ -6,7 +6,7 @@ import {
   createAgentSession,
   type AgentSessionEvent,
   type InlineExtension,
-  type SlashCommandInfo
+  type SlashCommandInfo,
 } from "@earendil-works/pi-coding-agent";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -22,20 +22,44 @@ import type {
   SessionSnapshot,
   ThinkingLevel,
   UiPart,
-  UtilityModel
+  UtilityModel,
 } from "../ipc/session-contract";
-import { SESSION_TITLE_MAX_LENGTH, piBuiltinSlashCommands, slashCommandSchema } from "../ipc/session-contract";
+import {
+  SESSION_TITLE_MAX_LENGTH,
+  piBuiltinSlashCommands,
+  slashCommandSchema,
+} from "../ipc/session-contract";
 import { jsonValueSchema, type JsonObject, type JsonValue } from "../ipc/json-contract";
-import { artifactRecordSchema, type ArtifactRecord, type ArtifactPointer, type CakeArtifactV1 } from "../ipc/artifact-contract";
+import {
+  artifactRecordSchema,
+  type ArtifactRecord,
+  type ArtifactPointer,
+  type CakeArtifactV1,
+} from "../ipc/artifact-contract";
 import type { TSchema } from "@earendil-works/pi-ai";
 import { createCakeArtifactExtension } from "./artifact-extension";
 import { compatibilityCatalog, createCakeExtensionUiContext } from "./extension-compatibility";
-import type { InlineWidgetGenerationRequest, InlineWidgetGenerationResult, ReviewParentContext } from "./sidecar-runtime";
+import type {
+  InlineWidgetGenerationRequest,
+  InlineWidgetGenerationResult,
+  ReviewParentContext,
+} from "./sidecar-runtime";
 import { assertSessionPath } from "./session-path";
 import { applyPiSetting } from "./settings-translation";
-import { cakePluginAuthoringSkillPath, cakeWorkspaceSessionDirectory, listWorkspaceSessions } from "./session-discovery";
+import {
+  cakePluginAuthoringSkillPath,
+  cakeWorkspaceSessionDirectory,
+  listWorkspaceSessions,
+} from "./session-discovery";
 import { generateSessionTitle } from "./utility-model";
-import { parallelSubagentSchema, subagentTaskSchema, type ParallelSubagentTasks, type ParallelSubagentTasksInput, type SubagentTask, type SubagentTaskInput } from "./subagent-contract";
+import {
+  parallelSubagentSchema,
+  subagentTaskSchema,
+  type ParallelSubagentTasks,
+  type ParallelSubagentTasksInput,
+  type SubagentTask,
+  type SubagentTaskInput,
+} from "./subagent-contract";
 import {
   boundedProjectionKey,
   createLiveMessageProjector,
@@ -54,7 +78,7 @@ import {
   toolArtifactId,
   toolFilePath,
   toolResultDiff,
-  type ReviewRunEntry
+  type ReviewRunEntry,
 } from "./session-projection";
 
 export const piRuntimeVersion = "0.84.0" as const;
@@ -107,7 +131,9 @@ export interface CakeRuntimeOptions {
   requestUi(request: RuntimeUiRequest): Promise<string | undefined>;
   persistArtifact?(artifact: CakeArtifactV1): Promise<ArtifactRecord>;
   requestArtifact?(record: ArtifactRecord, signal: AbortSignal): Promise<JsonValue | undefined>;
-  generateInlineWidget?(input: InlineWidgetGenerationRequest): Promise<InlineWidgetGenerationResult>;
+  generateInlineWidget?(
+    input: InlineWidgetGenerationRequest,
+  ): Promise<InlineWidgetGenerationResult>;
   listArtifacts?(pointers: ArtifactPointer[]): Promise<ArtifactRecord[]>;
   openExternal?(url: string): Promise<void>;
   reviewContextPath?(sessionId: string): string;
@@ -119,10 +145,28 @@ export interface CakeRuntimeOptions {
     invoke(input: { name: string; arguments: JsonValue }, signal: AbortSignal): Promise<JsonValue>;
   };
   agentControl?: {
-    spawn(input: SubagentTaskInput, parentSessionId: string, signal: AbortSignal): Promise<JsonValue>;
-    parallel(input: ParallelSubagentTasksInput, parentSessionId: string, signal: AbortSignal, onUpdate?: (value: JsonValue) => void): Promise<JsonValue>;
-    prompt(input: { handleId: string; text: string; delivery: "prompt" | "follow-up" }, parentSessionId: string, signal: AbortSignal): Promise<JsonValue>;
-    wait(handleId: string, parentSessionId: string, signal: AbortSignal, onUpdate?: (value: JsonValue) => void): Promise<JsonValue>;
+    spawn(
+      input: SubagentTaskInput,
+      parentSessionId: string,
+      signal: AbortSignal,
+    ): Promise<JsonValue>;
+    parallel(
+      input: ParallelSubagentTasksInput,
+      parentSessionId: string,
+      signal: AbortSignal,
+      onUpdate?: (value: JsonValue) => void,
+    ): Promise<JsonValue>;
+    prompt(
+      input: { handleId: string; text: string; delivery: "prompt" | "follow-up" },
+      parentSessionId: string,
+      signal: AbortSignal,
+    ): Promise<JsonValue>;
+    wait(
+      handleId: string,
+      parentSessionId: string,
+      signal: AbortSignal,
+      onUpdate?: (value: JsonValue) => void,
+    ): Promise<JsonValue>;
     abort(handleId: string, parentSessionId: string): Promise<JsonValue>;
     close(handleId: string, parentSessionId: string): Promise<JsonValue>;
   };
@@ -135,7 +179,9 @@ export interface GlobalControlTool {
   parameters: JsonObject;
 }
 
-function createGlobalControlExtension(control: NonNullable<CakeRuntimeOptions["globalControl"]>): InlineExtension {
+function createGlobalControlExtension(
+  control: NonNullable<CakeRuntimeOptions["globalControl"]>,
+): InlineExtension {
   return (pi) => {
     for (const tool of control.tools) {
       pi.registerTool({
@@ -146,25 +192,87 @@ function createGlobalControlExtension(control: NonNullable<CakeRuntimeOptions["g
         // z.toJSONSchema; Pi's TSchema input consumes that same schema shape.
         parameters: tool.parameters as TSchema,
         async execute(_toolCallId, params, signal) {
-          const result = await control.invoke({ name: tool.name, arguments: jsonValueSchema.parse(params) }, signal ?? new AbortController().signal);
-          return { content: [{ type: "text", text: formatUnknown(result, 24_000) }], details: result };
-        }
+          const result = await control.invoke(
+            { name: tool.name, arguments: jsonValueSchema.parse(params) },
+            signal ?? new AbortController().signal,
+          );
+          return {
+            content: [{ type: "text", text: formatUnknown(result, 24_000) }],
+            details: result,
+          };
+        },
       });
     }
   };
 }
 
-function createAgentControlExtension(control: NonNullable<CakeRuntimeOptions["agentControl"]>, parentSessionId: () => string | undefined): InlineExtension {
+function createAgentControlExtension(
+  control: NonNullable<CakeRuntimeOptions["agentControl"]>,
+  parentSessionId: () => string | undefined,
+): InlineExtension {
   const promptSchema = z.object({ handleId: z.uuid(), text: z.string().min(1).max(262_144) });
   const handleSchema = z.object({ handleId: z.uuid() });
   const tools = [
-    { name: "subagent_spawn", description: "Use only when the user explicitly requested subagents or delegation. Start one isolated, parent-owned subagent with an explicit capability profile. Delegation depth is zero and completed runtimes are released by default; set retain only for intentional multi-turn work.", schema: subagentTaskSchema, run: (value: SubagentTask, parent: string, signal: AbortSignal) => control.spawn(value, parent, signal) },
-    { name: "subagent_parallel", description: "Use only when the user explicitly requested parallel agent work. Run up to eight bounded subagent tasks with a workspace-wide active concurrency limit and return all results.", schema: parallelSubagentSchema, run: (value: ParallelSubagentTasks, parent: string, signal: AbortSignal, onUpdate?: (value: JsonValue) => void) => control.parallel(value, parent, signal, onUpdate) },
-    { name: "subagent_prompt", description: "Send a normal prompt to an idle subagent and wait for its turn.", schema: promptSchema, run: (value: z.infer<typeof promptSchema>, parent: string, signal: AbortSignal) => control.prompt({ ...value, delivery: "prompt" }, parent, signal) },
-    { name: "subagent_follow_up", description: "Queue a follow-up for a subagent using Pi's normal queue policy.", schema: promptSchema, run: (value: z.infer<typeof promptSchema>, parent: string, signal: AbortSignal) => control.prompt({ ...value, delivery: "follow-up" }, parent, signal) },
-    { name: "subagent_wait", description: "Wait for a subagent and stream its latest tool activity, usage, and final result.", schema: handleSchema, run: (value: z.infer<typeof handleSchema>, parent: string, signal: AbortSignal, onUpdate?: (value: JsonValue) => void) => control.wait(value.handleId, parent, signal, onUpdate) },
-    { name: "subagent_abort", description: "Abort active work in a subagent.", schema: handleSchema, run: (value: z.infer<typeof handleSchema>, parent: string) => control.abort(value.handleId, parent) },
-    { name: "subagent_close", description: "Release a subagent handle and its hidden runtime when it is no longer needed.", schema: handleSchema, run: (value: z.infer<typeof handleSchema>, parent: string) => control.close(value.handleId, parent) }
+    {
+      name: "subagent_spawn",
+      description:
+        "Use only when the user explicitly requested subagents or delegation. Start one isolated, parent-owned subagent with an explicit capability profile. Delegation depth is zero and completed runtimes are released by default; set retain only for intentional multi-turn work.",
+      schema: subagentTaskSchema,
+      run: (value: SubagentTask, parent: string, signal: AbortSignal) =>
+        control.spawn(value, parent, signal),
+    },
+    {
+      name: "subagent_parallel",
+      description:
+        "Use only when the user explicitly requested parallel agent work. Run up to eight bounded subagent tasks with a workspace-wide active concurrency limit and return all results.",
+      schema: parallelSubagentSchema,
+      run: (
+        value: ParallelSubagentTasks,
+        parent: string,
+        signal: AbortSignal,
+        onUpdate?: (value: JsonValue) => void,
+      ) => control.parallel(value, parent, signal, onUpdate),
+    },
+    {
+      name: "subagent_prompt",
+      description: "Send a normal prompt to an idle subagent and wait for its turn.",
+      schema: promptSchema,
+      run: (value: z.infer<typeof promptSchema>, parent: string, signal: AbortSignal) =>
+        control.prompt({ ...value, delivery: "prompt" }, parent, signal),
+    },
+    {
+      name: "subagent_follow_up",
+      description: "Queue a follow-up for a subagent using Pi's normal queue policy.",
+      schema: promptSchema,
+      run: (value: z.infer<typeof promptSchema>, parent: string, signal: AbortSignal) =>
+        control.prompt({ ...value, delivery: "follow-up" }, parent, signal),
+    },
+    {
+      name: "subagent_wait",
+      description:
+        "Wait for a subagent and stream its latest tool activity, usage, and final result.",
+      schema: handleSchema,
+      run: (
+        value: z.infer<typeof handleSchema>,
+        parent: string,
+        signal: AbortSignal,
+        onUpdate?: (value: JsonValue) => void,
+      ) => control.wait(value.handleId, parent, signal, onUpdate),
+    },
+    {
+      name: "subagent_abort",
+      description: "Abort active work in a subagent.",
+      schema: handleSchema,
+      run: (value: z.infer<typeof handleSchema>, parent: string) =>
+        control.abort(value.handleId, parent),
+    },
+    {
+      name: "subagent_close",
+      description: "Release a subagent handle and its hidden runtime when it is no longer needed.",
+      schema: handleSchema,
+      run: (value: z.infer<typeof handleSchema>, parent: string) =>
+        control.close(value.handleId, parent),
+    },
   ];
   return (pi) => {
     for (const tool of tools) {
@@ -178,24 +286,45 @@ function createAgentControlExtension(control: NonNullable<CakeRuntimeOptions["ag
         async execute(_toolCallId, params, signal, onUpdate) {
           const parent = parentSessionId();
           if (!parent) throw new Error("The parent Cake session is not ready");
-          const update = (value: JsonValue) => onUpdate?.({ content: [{ type: "text", text: formatUnknown(value, 24_000) }], details: value });
+          const update = (value: JsonValue) =>
+            onUpdate?.({
+              content: [{ type: "text", text: formatUnknown(value, 24_000) }],
+              details: value,
+            });
           // SAFETY: Each run callback is paired with the schema that parsed this value in the local tools table above.
-          const result = await tool.run(tool.schema.parse(params) as never, parent, signal ?? new AbortController().signal, update);
-          return { content: [{ type: "text", text: formatUnknown(result, 24_000) }], details: result };
-        }
+          const result = await tool.run(
+            tool.schema.parse(params) as never,
+            parent,
+            signal ?? new AbortController().signal,
+            update,
+          );
+          return {
+            content: [{ type: "text", text: formatUnknown(result, 24_000) }],
+            details: result,
+          };
+        },
       });
     }
   };
 }
 
-function reviewContextExtension(pathForSession: (sessionId: string) => string, sessionId: () => string | undefined): InlineExtension {
+function reviewContextExtension(
+  pathForSession: (sessionId: string) => string,
+  sessionId: () => string | undefined,
+): InlineExtension {
   return (pi) => {
     pi.on("before_agent_start", () => {
       const id = sessionId();
       if (!id) return;
       const path = pathForSession(id);
       if (!existsSync(path)) return;
-      return { message: { customType: "cake.review-context", display: false, content: `Inline code reviews and assistant-message discussions for this session are indexed at ${path}. Read or search that file when the user asks you to incorporate, summarize, or reason about those threads; otherwise leave it alone.` } };
+      return {
+        message: {
+          customType: "cake.review-context",
+          display: false,
+          content: `Inline code reviews and assistant-message discussions for this session are indexed at ${path}. Read or search that file when the user asks you to incorporate, summarize, or reason about those threads; otherwise leave it alone.`,
+        },
+      };
     });
   };
 }
@@ -206,7 +335,11 @@ export interface CakeRuntime {
   getReviewParentContext?(): ReviewParentContext;
   recordReviewRun(run: ReviewRunEntry): void;
   snapshot(requestId?: string): Promise<SessionSnapshot>;
-  prompt(text: string, delivery: "prompt" | "steer" | "follow-up", attachments: Attachment[]): Promise<void>;
+  prompt(
+    text: string,
+    delivery: "prompt" | "steer" | "follow-up",
+    attachments: Attachment[],
+  ): Promise<void>;
   abort(): Promise<void>;
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: ThinkingLevel): Promise<void>;
@@ -220,60 +353,101 @@ export interface CakeRuntime {
   dispose(): void;
 }
 
-
 export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<CakeRuntime> {
   const agentDir = options.agentDir;
-  const settingsManager = SettingsManager.create(options.cwd, agentDir, { projectTrusted: options.trusted });
+  const settingsManager = SettingsManager.create(options.cwd, agentDir, {
+    projectTrusted: options.trusted,
+  });
   const modelRuntime = await ModelRuntime.create({
     authPath: `${agentDir}/auth.json`,
     modelsPath: `${agentDir}/models.json`,
-    modelsStorePath: `${agentDir}/models-cache.json`
+    modelsStorePath: `${agentDir}/models-cache.json`,
   });
-  const persistArtifact = options.persistArtifact ?? (async (artifact: CakeArtifactV1) => artifactRecordSchema.parse({ artifact, workspacePath: options.cwd, digest: "0".repeat(64), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }));
+  const persistArtifact =
+    options.persistArtifact ??
+    (async (artifact: CakeArtifactV1) =>
+      artifactRecordSchema.parse({
+        artifact,
+        workspacePath: options.cwd,
+        digest: "0".repeat(64),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }));
   const requestArtifact = options.requestArtifact ?? (async () => undefined);
   let getPiCommands: () => SlashCommandInfo[] = () => [];
-  interface RuntimeIdentity { sessionId?: string }
+  interface RuntimeIdentity {
+    sessionId?: string;
+  }
   const runtimeIdentity: RuntimeIdentity = {};
-  const commandCatalogExtension: InlineExtension = (pi) => { getPiCommands = () => pi.getCommands(); };
-  const resourceLoader = new DefaultResourceLoader(options.globalControl ? {
-    cwd: options.cwd,
-    agentDir,
-    settingsManager,
-    extensionFactories: [createGlobalControlExtension(options.globalControl), commandCatalogExtension],
-    noExtensions: true,
-    noSkills: true,
-    noPromptTemplates: true,
-    noThemes: true,
-    noContextFiles: true,
-    systemPrompt: `You are Cake Chat, Cake's application assistant. Help the user find, understand, navigate, and control their Cake sessions. Use the provided application tools instead of filesystem or shell tools. Earlier messages are part of the conversation; resolve follow-up references from them. Refresh live application state with tools when it may have changed. Never claim an action succeeded unless its tool result says it did.
+  const commandCatalogExtension: InlineExtension = (pi) => {
+    getPiCommands = () => pi.getCommands();
+  };
+  const resourceLoader = new DefaultResourceLoader(
+    options.globalControl
+      ? {
+          cwd: options.cwd,
+          agentDir,
+          settingsManager,
+          extensionFactories: [
+            createGlobalControlExtension(options.globalControl),
+            commandCatalogExtension,
+          ],
+          noExtensions: true,
+          noSkills: true,
+          noPromptTemplates: true,
+          noThemes: true,
+          noContextFiles: true,
+          systemPrompt: `You are Cake Chat, Cake's application assistant. Help the user find, understand, navigate, and control their Cake sessions. Use the provided application tools instead of filesystem or shell tools. Earlier messages are part of the conversation; resolve follow-up references from them. Refresh live application state with tools when it may have changed. Never claim an action succeeded unless its tool result says it did.
 
 For Cake customizations, choose the execution path deliberately: deterministic network, filesystem, Git, Bash, and subprocess work belongs in an unrestricted plugin backend; bounded summaries, classification, and extraction belong in usePluginCompletion; open-ended multi-turn tool work belongs in usePluginAgent. Delegated inline widgets never receive these trusted capabilities.
 
-When the user asks you to create or change a Cake plugin, widget, scene, or other customization, that request authorizes the complete authoring loop. First call get_plugin_authoring_reference; it is the exact API for this Cake version, so never use compiler errors or speculative writes to discover the API. Inspect customization state and plugin files, create or edit plugin-owned source, validate it, and inspect every diagnostic. Ordinary widgets are renderer plugins and must not create or select a scene. A plugin scene is only for an explicit request to replace the whole application scene. Slot namespaces are ownership boundaries: global.* is application chrome across Cake Chat, project sessions, and settings, while project-session.* exists only inside a selected project session. project-session.header.actions is the toolbar/menu row. Persistent session panels use the normal-flow project-session.left.top, project-session.left.middle, project-session.left.bottom, project-session.right.top, project-session.right.middle, and project-session.right.bottom rails; "top right of the session" means project-session.right.top. Rail contributions reserve space and must not position themselves over the conversation. Header slots are fixed-height action rows; contribute a compact trigger there. When temporary UI should intentionally overlap, use Cake's Popover, PopoverTrigger, and PopoverContent instead of plugin-owned absolute or fixed positioning. A failed typecheck or bundle is intermediate authoring feedback: fix the source and validate again autonomously. Validation never changes the running UI. Call activate_customization only after the requested implementation is complete and validation succeeds. Do not stop to report ordinary authoring diagnostics or ask whether the user wants you to fix them. Treat responsive, collision-free layout as an authoring acceptance criterion: custom scenes and widgets must reflow without overlapping text, controls, icons, navigation, or Cake-owned children from 320 CSS pixels through wide desktop sizes and with long labels or values. Use normal-flow flex or grid layout that wraps, reserve space for icons and decorations, and avoid absolute or fixed positioning for structural content. Stop only when the customization succeeds or you are genuinely blocked by missing user intent, unavailable capability, or a conflict you cannot safely resolve. A failure reported for a previously activated customization is a recovery event that you may surface before the user requests repair; once they ask for repair, carry that repair through the same autonomous edit-validate-activate loop.${options.globalControl.recoveryContext ? `\n\nCustomization recovery context from immutable Cake core:\n${options.globalControl.recoveryContext}` : ""}`
-  } : {
-    cwd: options.cwd,
-    agentDir,
-    settingsManager,
-    appendSystemPromptOverride: (base) => [...base, cakeProjectSystemPrompt, ...(options.additionalSystemPrompt ? [options.additionalSystemPrompt] : [])],
-    additionalSkillPaths: options.auxiliary ? [] : [cakePluginAuthoringSkillPath(), ...(options.pluginResources?.skills ?? [])],
-    additionalPromptTemplatePaths: options.auxiliary ? [] : options.pluginResources?.prompts ?? [],
-    additionalExtensionPaths: options.auxiliary ? [] : options.pluginResources?.extensions ?? [],
-    noExtensions: options.auxiliary,
-    noSkills: options.auxiliary,
-    noPromptTemplates: options.auxiliary,
-    noThemes: options.auxiliary,
-    extensionFactories: [
-      createCakeArtifactExtension({ persistArtifact, requestArtifact, generateInlineWidget: options.generateInlineWidget }),
-      ...(options.agentControl ? [createAgentControlExtension(options.agentControl, () => runtimeIdentity.sessionId)] : []),
-      ...(options.reviewContextPath ? [reviewContextExtension(options.reviewContextPath, () => runtimeIdentity.sessionId)] : []),
-      ...(options.auxiliary ? [] : [commandCatalogExtension])
-    ]
-  });
+When the user asks you to create or change a Cake plugin, widget, scene, or other customization, that request authorizes the complete authoring loop. First call get_plugin_authoring_reference; it is the exact API for this Cake version, so never use compiler errors or speculative writes to discover the API. Inspect customization state and plugin files, create or edit plugin-owned source, validate it, and inspect every diagnostic. Ordinary widgets are renderer plugins and must not create or select a scene. A plugin scene is only for an explicit request to replace the whole application scene. Slot namespaces are ownership boundaries: global.* is application chrome across Cake Chat, project sessions, and settings, while project-session.* exists only inside a selected project session. project-session.header.actions is the toolbar/menu row. Persistent session panels use the normal-flow project-session.left.top, project-session.left.middle, project-session.left.bottom, project-session.right.top, project-session.right.middle, and project-session.right.bottom rails; "top right of the session" means project-session.right.top. Rail contributions reserve space and must not position themselves over the conversation. Header slots are fixed-height action rows; contribute a compact trigger there. When temporary UI should intentionally overlap, use Cake's Popover, PopoverTrigger, and PopoverContent instead of plugin-owned absolute or fixed positioning. A failed typecheck or bundle is intermediate authoring feedback: fix the source and validate again autonomously. Validation never changes the running UI. Call activate_customization only after the requested implementation is complete and validation succeeds. Do not stop to report ordinary authoring diagnostics or ask whether the user wants you to fix them. Treat responsive, collision-free layout as an authoring acceptance criterion: custom scenes and widgets must reflow without overlapping text, controls, icons, navigation, or Cake-owned children from 320 CSS pixels through wide desktop sizes and with long labels or values. Use normal-flow flex or grid layout that wraps, reserve space for icons and decorations, and avoid absolute or fixed positioning for structural content. Stop only when the customization succeeds or you are genuinely blocked by missing user intent, unavailable capability, or a conflict you cannot safely resolve. A failure reported for a previously activated customization is a recovery event that you may surface before the user requests repair; once they ask for repair, carry that repair through the same autonomous edit-validate-activate loop.${options.globalControl.recoveryContext ? `\n\nCustomization recovery context from immutable Cake core:\n${options.globalControl.recoveryContext}` : ""}`,
+        }
+      : {
+          cwd: options.cwd,
+          agentDir,
+          settingsManager,
+          appendSystemPromptOverride: (base) => [
+            ...base,
+            cakeProjectSystemPrompt,
+            ...(options.additionalSystemPrompt ? [options.additionalSystemPrompt] : []),
+          ],
+          additionalSkillPaths: options.auxiliary
+            ? []
+            : [cakePluginAuthoringSkillPath(), ...(options.pluginResources?.skills ?? [])],
+          additionalPromptTemplatePaths: options.auxiliary
+            ? []
+            : (options.pluginResources?.prompts ?? []),
+          additionalExtensionPaths: options.auxiliary
+            ? []
+            : (options.pluginResources?.extensions ?? []),
+          noExtensions: options.auxiliary,
+          noSkills: options.auxiliary,
+          noPromptTemplates: options.auxiliary,
+          noThemes: options.auxiliary,
+          extensionFactories: [
+            createCakeArtifactExtension({
+              persistArtifact,
+              requestArtifact,
+              generateInlineWidget: options.generateInlineWidget,
+            }),
+            ...(options.agentControl
+              ? [createAgentControlExtension(options.agentControl, () => runtimeIdentity.sessionId)]
+              : []),
+            ...(options.reviewContextPath
+              ? [reviewContextExtension(options.reviewContextPath, () => runtimeIdentity.sessionId)]
+              : []),
+            ...(options.auxiliary ? [] : [commandCatalogExtension]),
+          ],
+        },
+  );
   await resourceLoader.reload({ resolveProjectTrust: async () => options.trusted });
   const sessionDir = options.globalControl
     ? resolve(options.sessionDir)
     : cakeWorkspaceSessionDirectory(options.cwd, options.sessionDir);
-  const availableSessions = options.newSession ? [] : await SessionManager.list(options.cwd, sessionDir);
+  const availableSessions = options.newSession
+    ? []
+    : await SessionManager.list(options.cwd, sessionDir);
   const allowedSessionRoot = sessionDir;
   let directSession: SessionManager | undefined;
   if (options.sessionFile) {
@@ -283,12 +457,14 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
   const requestedSession = options.sessionId
     ? availableSessions.find((item) => item.id === options.sessionId)
     : undefined;
-  if (options.sessionId && !requestedSession && !directSession) throw new Error("That session is no longer available");
+  if (options.sessionId && !requestedSession && !directSession)
+    throw new Error("That session is no longer available");
   const sessionManager = options.newSession
     ? SessionManager.create(options.cwd, sessionDir)
-    : directSession ?? (requestedSession
-      ? SessionManager.open(requestedSession.path, sessionDir, options.cwd)
-      : SessionManager.continueRecent(options.cwd, sessionDir));
+    : (directSession ??
+      (requestedSession
+        ? SessionManager.open(requestedSession.path, sessionDir, options.cwd)
+        : SessionManager.continueRecent(options.cwd, sessionDir)));
   const agentSessionOptions = {
     cwd: options.cwd,
     agentDir,
@@ -300,7 +476,9 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
   const { session, extensionsResult, modelFallbackMessage } = await createAgentSession(
     options.globalControl
       ? { ...agentSessionOptions, noTools: "builtin" as const }
-      : options.tools ? { ...agentSessionOptions, tools: options.tools } : agentSessionOptions,
+      : options.tools
+        ? { ...agentSessionOptions, tools: options.tools }
+        : agentSessionOptions,
   );
   const cakeSessionId = session.sessionManager.getSessionId();
   runtimeIdentity.sessionId = cakeSessionId;
@@ -314,58 +492,98 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
   const projectLiveMessage = createLiveMessageProjector();
   const catalog = compatibilityCatalog(resourceLoader, settingsManager, options.cwd, agentDir);
   const extensionUiState: ExtensionUiState = { statuses: [] };
-  const compatibilityDiagnosticKeys = new Set(catalog.diagnostics.map((item) => `${item.method ?? ""}:${item.message}`));
+  const compatibilityDiagnosticKeys = new Set(
+    catalog.diagnostics.map((item) => `${item.method ?? ""}:${item.message}`),
+  );
 
   const requestExtensionValue = async (request: RuntimeUiRequest) => options.requestUi(request);
   const extensionUi = createCakeExtensionUiContext({
     request: requestExtensionValue,
     state: extensionUiState,
-    emit: (event) => { if (!disposed) options.onEvent({ type: "extension-ui", sessionId: cakeSessionId, event }); },
+    emit: (event) => {
+      if (!disposed) options.onEvent({ type: "extension-ui", sessionId: cakeSessionId, event });
+    },
     addDiagnostic(method, message) {
       const key = `${method}:${message}`;
       if (compatibilityDiagnosticKeys.has(key)) return;
       compatibilityDiagnosticKeys.add(key);
-      const diagnostic: ResourceDiagnostic = { id: `compatibility:${method}:${compatibilityDiagnosticKeys.size}`, severity: "warning", source: "compatibility", method, message };
+      const diagnostic: ResourceDiagnostic = {
+        id: `compatibility:${method}:${compatibilityDiagnosticKeys.size}`,
+        severity: "warning",
+        source: "compatibility",
+        method,
+        message,
+      };
       catalog.diagnostics.push(diagnostic);
-      if (!disposed) options.onEvent({ type: "extension-ui", sessionId: cakeSessionId, event: { kind: "diagnostic", diagnostic } });
-    }
+      if (!disposed)
+        options.onEvent({
+          type: "extension-ui",
+          sessionId: cakeSessionId,
+          event: { kind: "diagnostic", diagnostic },
+        });
+    },
   });
   await session.bindExtensions({ mode: "rpc", uiContext: extensionUi });
 
   async function modelOptions(): Promise<ModelOption[]> {
     const providers = modelRuntime.getProviders();
-    const authentication = new Map(await Promise.all(providers.map(async (provider) => [provider.id, await modelRuntime.checkAuth(provider.id)] as const)));
-    return providers.flatMap((provider) => provider.getModels()
-      .filter((model) => provider.id.length <= 256 && model.id.length <= 512)
-      .map((model) => ({
-      provider: provider.id,
-      providerName: provider.name,
-      id: model.id,
-      name: model.name,
-      reasoning: model.reasoning,
-      input: model.input,
-      authenticated: Boolean(authentication.get(provider.id)),
-      authSource: modelRuntime.getProviderAuthStatus(provider.id).source,
-      authLabel: authentication.get(provider.id)?.source ?? modelRuntime.getProviderAuthStatus(provider.id).label,
-      authTypes: [provider.auth.apiKey ? "api_key" as const : undefined, provider.auth.oauth ? "oauth" as const : undefined].filter((type): type is "api_key" | "oauth" => Boolean(type))
-      })));
+    const authentication = new Map(
+      await Promise.all(
+        providers.map(
+          async (provider) => [provider.id, await modelRuntime.checkAuth(provider.id)] as const,
+        ),
+      ),
+    );
+    return providers.flatMap((provider) =>
+      provider
+        .getModels()
+        .filter((model) => provider.id.length <= 256 && model.id.length <= 512)
+        .map((model) => ({
+          provider: provider.id,
+          providerName: provider.name,
+          id: model.id,
+          name: model.name,
+          reasoning: model.reasoning,
+          input: model.input,
+          authenticated: Boolean(authentication.get(provider.id)),
+          authSource: modelRuntime.getProviderAuthStatus(provider.id).source,
+          authLabel:
+            authentication.get(provider.id)?.source ??
+            modelRuntime.getProviderAuthStatus(provider.id).label,
+          authTypes: [
+            provider.auth.apiKey ? ("api_key" as const) : undefined,
+            provider.auth.oauth ? ("oauth" as const) : undefined,
+          ].filter((type): type is "api_key" | "oauth" => Boolean(type)),
+        })),
+    );
   }
 
   async function makeSnapshot(): Promise<SessionSnapshot> {
     const stats = session.getSessionStats();
-    const listedSessions = options.auxiliary ? [] : await listWorkspaceSessions(options.cwd, options.sessionDir, Boolean(options.globalControl));
+    const listedSessions = options.auxiliary
+      ? []
+      : await listWorkspaceSessions(
+          options.cwd,
+          options.sessionDir,
+          Boolean(options.globalControl),
+        );
     const sessions = listedSessions.some((item) => item.id === cakeSessionId)
       ? listedSessions
       : [activeSessionSummary(stats.totalMessages), ...listedSessions];
     const globalSettings = settingsManager.getGlobalSettings();
     const branchParts = projectSessionEntries(session.sessionManager.getBranch());
-    const queuedParts = projectQueuedMessages(session.getSteeringMessages(), session.getFollowUpMessages());
+    const queuedParts = projectQueuedMessages(
+      session.getSteeringMessages(),
+      session.getFollowUpMessages(),
+    );
     return {
       workspacePath: options.cwd,
       sessionId: cakeSessionId,
       sessionFile: session.sessionFile ?? "",
       parts: [...branchParts, ...queuedParts],
-      model: session.model ? { provider: session.model.provider, id: session.model.id, name: session.model.name } : undefined,
+      model: session.model
+        ? { provider: session.model.provider, id: session.model.id, name: session.model.name }
+        : undefined,
       models: options.auxiliary ? [] : await modelOptions(),
       thinkingLevel: session.thinkingLevel,
       availableThinkingLevels: session.getAvailableThinkingLevels(),
@@ -399,31 +617,38 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
         extensions: globalSettings.extensions ?? [],
         skills: globalSettings.skills ?? [],
         prompts: globalSettings.prompts ?? [],
-        reloadPending: reloadCompleted < reloadRequested || Boolean(reloadInFlight)
+        reloadPending: reloadCompleted < reloadRequested || Boolean(reloadInFlight),
       } satisfies PiSettings,
       streaming: session.isStreaming,
       diagnostics: [
         ...extensionsResult.errors.map((error) => `${error.path}: ${error.error}`),
-        ...(modelFallbackMessage ? [modelFallbackMessage] : [])
+        ...(modelFallbackMessage ? [modelFallbackMessage] : []),
       ],
-      commands: options.auxiliary ? [] : [...piBuiltinSlashCommands, ...getPiCommands()].flatMap((command) => {
-        const parsed = slashCommandSchema.safeParse(command);
-        return parsed.success ? [parsed.data] : [];
-      }),
+      commands: options.auxiliary
+        ? []
+        : [...piBuiltinSlashCommands, ...getPiCommands()].flatMap((command) => {
+            const parsed = slashCommandSchema.safeParse(command);
+            return parsed.success ? [parsed.data] : [];
+          }),
       usage: {
         tokens: stats.tokens,
         cost: stats.cost,
-        context: stats.contextUsage ? {
-          tokens: stats.contextUsage.tokens,
-          contextWindow: stats.contextUsage.contextWindow,
-          percent: stats.contextUsage.percent
-        } : undefined
+        context: stats.contextUsage
+          ? {
+              tokens: stats.contextUsage.tokens,
+              contextWindow: stats.contextUsage.contextWindow,
+              percent: stats.contextUsage.percent,
+            }
+          : undefined,
       },
       compatibility: catalog,
       extensionUi: extensionUiState,
       sessions,
       tree: options.auxiliary ? [] : projectTree(session.sessionManager),
-      artifacts: options.auxiliary ? [] : await (options.listArtifacts?.(projectArtifactPointers(session.sessionManager)) ?? Promise.resolve([]))
+      artifacts: options.auxiliary
+        ? []
+        : await (options.listArtifacts?.(projectArtifactPointers(session.sessionManager)) ??
+            Promise.resolve([])),
     };
   }
 
@@ -431,18 +656,27 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     const header = session.sessionManager.getHeader();
     const entries = session.sessionManager.getEntries();
     const created = header?.timestamp ?? new Date().toISOString();
-    const firstUserMessage = entries.flatMap((entry) => {
-      if (entry.type !== "message" || entry.message.role !== "user" || !("content" in entry.message)) return [];
-      return [textFromContent(entry.message.content).trim()];
-    })
+    const firstUserMessage = entries
+      .flatMap((entry) => {
+        if (
+          entry.type !== "message" ||
+          entry.message.role !== "user" ||
+          !("content" in entry.message)
+        )
+          return [];
+        return [textFromContent(entry.message.content).trim()];
+      })
       .find(Boolean);
     return {
       id: cakeSessionId,
-      title: (session.sessionManager.getSessionName() || firstUserMessage || "New chat").slice(0, SESSION_TITLE_MAX_LENGTH),
+      title: (session.sessionManager.getSessionName() || firstUserMessage || "New chat").slice(
+        0,
+        SESSION_TITLE_MAX_LENGTH,
+      ),
       created,
       modified: entries.at(-1)?.timestamp ?? created,
       messageCount,
-      resolved: false
+      resolved: false,
     };
   }
 
@@ -462,16 +696,47 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     if (reloadCompleted >= reloadRequested || session.isStreaming || session.isCompacting) return;
     reloadInFlight = (async () => {
       try {
-        while (!disposed && reloadCompleted < reloadRequested && !session.isStreaming && !session.isCompacting) {
+        while (
+          !disposed &&
+          reloadCompleted < reloadRequested &&
+          !session.isStreaming &&
+          !session.isCompacting
+        ) {
           const target = reloadRequested;
-          options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "pi-reload-status", kind: "notice", tone: "info", title: "Reloading Pi", detail: "Refreshing settings, extensions, skills, prompts, and tools." } });
+          options.onEvent({
+            type: "part-updated",
+            sessionId: cakeSessionId,
+            part: {
+              id: "pi-reload-status",
+              kind: "notice",
+              tone: "info",
+              title: "Reloading Pi",
+              detail: "Refreshing settings, extensions, skills, prompts, and tools.",
+            },
+          });
           await session.reload();
           reloadCompleted = target;
         }
-        if (!disposed && reloadCompleted >= reloadRequested) options.onEvent({ type: "part-removed", sessionId: cakeSessionId, partId: "pi-reload-status" });
+        if (!disposed && reloadCompleted >= reloadRequested)
+          options.onEvent({
+            type: "part-removed",
+            sessionId: cakeSessionId,
+            partId: "pi-reload-status",
+          });
       } catch (error) {
         reloadCompleted = reloadRequested;
-        if (!disposed) options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "pi-reload-status", kind: "notice", tone: "error", title: "Pi reload failed", detail: error instanceof Error ? error.message : String(error) } });
+        if (!disposed)
+          options.onEvent({
+            type: "part-updated",
+            sessionId: cakeSessionId,
+            part: {
+              id: "pi-reload-status",
+              kind: "notice",
+              tone: "error",
+              title: "Pi reload failed",
+              detail: error instanceof Error ? error.message : String(error),
+            },
+          });
         throw error;
       } finally {
         reloadInFlight = undefined;
@@ -484,7 +749,17 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
   async function requestReload() {
     reloadRequested += 1;
     if (session.isStreaming || session.isCompacting) {
-      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "pi-reload-status", kind: "notice", tone: "info", title: "Pi reload queued", detail: "Cake will reload Pi after the current response settles." } });
+      options.onEvent({
+        type: "part-updated",
+        sessionId: cakeSessionId,
+        part: {
+          id: "pi-reload-status",
+          kind: "notice",
+          tone: "info",
+          title: "Pi reload queued",
+          detail: "Cake will reload Pi after the current response settles.",
+        },
+      });
       await emitSnapshot();
       return;
     }
@@ -495,7 +770,9 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     if (disposed || sessionNamingInFlight || session.sessionManager.getSessionName()) return;
     const utilityModel = options.utilityModel?.();
     if (!utilityModel) return;
-    const messages = session.sessionManager.getBranch().flatMap((entry) => entry.type === "message" ? [entry.message] : []);
+    const messages = session.sessionManager
+      .getBranch()
+      .flatMap((entry) => (entry.type === "message" ? [entry.message] : []));
     const userText = messages
       .filter((message) => message.role === "user")
       .map((message) => textFromContent(message.content).trim())
@@ -513,7 +790,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
         utilityModel,
         firstUserMessage: userText,
         firstAssistantMessage: assistantText,
-        signal: AbortSignal.any([sessionNamingController.signal, AbortSignal.timeout(15_000)])
+        signal: AbortSignal.any([sessionNamingController.signal, AbortSignal.timeout(15_000)]),
       });
       if (disposed || !title || session.sessionManager.getSessionName()) return;
       session.setSessionName(title);
@@ -525,8 +802,15 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     }
   }
 
-  const activeToolCalls = new Map<string, { input: string; artifactId?: string; filePath?: string }>();
-  let queuedPartIds = new Set(projectQueuedMessages(session.getSteeringMessages(), session.getFollowUpMessages()).map((part) => part.id));
+  const activeToolCalls = new Map<
+    string,
+    { input: string; artifactId?: string; filePath?: string }
+  >();
+  let queuedPartIds = new Set(
+    projectQueuedMessages(session.getSteeringMessages(), session.getFollowUpMessages()).map(
+      (part) => part.id,
+    ),
+  );
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     if (disposed) return;
     if (event.type === "agent_start") {
@@ -536,33 +820,120 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
     }
     if (event.type === "tool_execution_start") {
-      const call = { input: formatToolInput(event.toolName, event.args), artifactId: toolArtifactId(event.args), filePath: toolFilePath(event.toolName, event.args) };
+      const call = {
+        input: formatToolInput(event.toolName, event.args),
+        artifactId: toolArtifactId(event.args),
+        filePath: toolFilePath(event.toolName, event.args),
+      };
       activeToolCalls.set(event.toolCallId, call);
-      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: boundedProjectionKey(`tool-${event.toolCallId}`), kind: "tool", name: event.toolName, ...call, state: "running" } });
+      options.onEvent({
+        type: "part-updated",
+        sessionId: cakeSessionId,
+        part: {
+          id: boundedProjectionKey(`tool-${event.toolCallId}`),
+          kind: "tool",
+          name: event.toolName,
+          ...call,
+          state: "running",
+        },
+      });
     }
     if (event.type === "tool_execution_update") {
-      const call = activeToolCalls.get(event.toolCallId) ?? { input: formatToolInput(event.toolName, event.args), artifactId: toolArtifactId(event.args), filePath: toolFilePath(event.toolName, event.args) };
+      const call = activeToolCalls.get(event.toolCallId) ?? {
+        input: formatToolInput(event.toolName, event.args),
+        artifactId: toolArtifactId(event.args),
+        filePath: toolFilePath(event.toolName, event.args),
+      };
       activeToolCalls.set(event.toolCallId, call);
-      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: boundedProjectionKey(`tool-${event.toolCallId}`), kind: "tool", name: event.toolName, ...call, output: formatUnknown(event.partialResult), state: "running" } });
+      options.onEvent({
+        type: "part-updated",
+        sessionId: cakeSessionId,
+        part: {
+          id: boundedProjectionKey(`tool-${event.toolCallId}`),
+          kind: "tool",
+          name: event.toolName,
+          ...call,
+          output: formatUnknown(event.partialResult),
+          state: "running",
+        },
+      });
     }
     if (event.type === "tool_execution_end") {
       const call = activeToolCalls.get(event.toolCallId);
       activeToolCalls.delete(event.toolCallId);
-      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: boundedProjectionKey(`tool-${event.toolCallId}`), kind: "tool", name: event.toolName, input: call?.input ?? "", output: formatUnknown(event.result), artifactId: toolArtifactId(event.result) ?? call?.artifactId, filePath: call?.filePath, diff: toolResultDiff(event.toolName, event.result), state: event.isError ? "error" : "success" } });
+      options.onEvent({
+        type: "part-updated",
+        sessionId: cakeSessionId,
+        part: {
+          id: boundedProjectionKey(`tool-${event.toolCallId}`),
+          kind: "tool",
+          name: event.toolName,
+          input: call?.input ?? "",
+          output: formatUnknown(event.result),
+          artifactId: toolArtifactId(event.result) ?? call?.artifactId,
+          filePath: call?.filePath,
+          diff: toolResultDiff(event.toolName, event.result),
+          state: event.isError ? "error" : "success",
+        },
+      });
     }
     if (event.type === "auto_retry_start") {
-      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "active-retry", kind: "notice", tone: "warning", title: `Retry ${event.attempt}/${event.maxAttempts}`, detail: event.errorMessage } });
+      options.onEvent({
+        type: "part-updated",
+        sessionId: cakeSessionId,
+        part: {
+          id: "active-retry",
+          kind: "notice",
+          tone: "warning",
+          title: `Retry ${event.attempt}/${event.maxAttempts}`,
+          detail: event.errorMessage,
+        },
+      });
     }
     if (event.type === "compaction_start") {
-      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "active-compaction", kind: "notice", tone: "info", title: "Compacting context", detail: event.reason } });
+      options.onEvent({
+        type: "part-updated",
+        sessionId: cakeSessionId,
+        part: {
+          id: "active-compaction",
+          kind: "notice",
+          tone: "info",
+          title: "Compacting context",
+          detail: event.reason,
+        },
+      });
     }
     if (event.type === "compaction_end") {
       if (event.aborted) {
-        options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "active-compaction", kind: "notice", tone: "warning", title: "Compaction cancelled", detail: event.errorMessage } });
+        options.onEvent({
+          type: "part-updated",
+          sessionId: cakeSessionId,
+          part: {
+            id: "active-compaction",
+            kind: "notice",
+            tone: "warning",
+            title: "Compaction cancelled",
+            detail: event.errorMessage,
+          },
+        });
       } else if (event.errorMessage) {
-        options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "active-compaction", kind: "notice", tone: "error", title: "Compaction failed", detail: event.errorMessage } });
+        options.onEvent({
+          type: "part-updated",
+          sessionId: cakeSessionId,
+          part: {
+            id: "active-compaction",
+            kind: "notice",
+            tone: "error",
+            title: "Compaction failed",
+            detail: event.errorMessage,
+          },
+        });
       } else {
-        options.onEvent({ type: "part-removed", sessionId: cakeSessionId, partId: "active-compaction" });
+        options.onEvent({
+          type: "part-removed",
+          sessionId: cakeSessionId,
+          partId: "active-compaction",
+        });
         emitSnapshotInBackground();
       }
     }
@@ -570,21 +941,27 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       const queuedParts = projectQueuedMessages(event.steering, event.followUp);
       const nextIds = new Set(queuedParts.map((part) => part.id));
       for (const partId of queuedPartIds) {
-        if (!nextIds.has(partId)) options.onEvent({ type: "part-removed", sessionId: cakeSessionId, partId });
+        if (!nextIds.has(partId))
+          options.onEvent({ type: "part-removed", sessionId: cakeSessionId, partId });
       }
-      for (const part of queuedParts) options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
+      for (const part of queuedParts)
+        options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
       queuedPartIds = nextIds;
     }
     if (event.type === "agent_settled") {
       options.onEvent({ type: "streaming", sessionId: cakeSessionId, streaming: false });
       if (!options.auxiliary) void nameSessionFromFirstExchange();
-      void drainReloads().catch(() => undefined).finally(emitSnapshotInBackground);
+      void drainReloads()
+        .catch(() => undefined)
+        .finally(emitSnapshotInBackground);
     }
   });
 
   return {
     sessionId: cakeSessionId,
-    get sessionFile() { return session.sessionFile ?? ""; },
+    get sessionFile() {
+      return session.sessionFile ?? "";
+    },
     getReviewParentContext() {
       if (!session.sessionFile) throw new Error("The parent session is not persisted");
       const leafId = session.sessionManager.getLeafId() ?? undefined;
@@ -594,14 +971,20 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
         leafId,
         systemPrompt: session.systemPrompt,
         activeTools: session.getActiveToolNames(),
-        model: session.model ? { provider: session.model.provider, id: session.model.id } : undefined
+        model: session.model
+          ? { provider: session.model.provider, id: session.model.id }
+          : undefined,
       };
     },
     recordReviewRun(run) {
       if (disposed) throw new Error("The Cake runtime has been disposed");
       const parsed = reviewRunEntrySchema.parse(run);
       session.sessionManager.appendCustomEntry(reviewRunEntryType, parsed);
-      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: reviewRunPart(parsed) });
+      options.onEvent({
+        type: "part-updated",
+        sessionId: cakeSessionId,
+        part: reviewRunPart(parsed),
+      });
     },
     snapshot: makeSnapshot,
     async prompt(text, delivery, attachments) {
@@ -638,29 +1021,69 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
             title: "Provider authentication",
             message: prompt.message,
             placeholder: "placeholder" in prompt ? prompt.placeholder : undefined,
-            options: prompt.type === "select" ? prompt.options.map((option) => ({ id: option.id, label: option.label })) : undefined,
-            signal: prompt.signal
+            options:
+              prompt.type === "select"
+                ? prompt.options.map((option) => ({ id: option.id, label: option.label }))
+                : undefined,
+            signal: prompt.signal,
           });
           if (value === undefined) throw new Error("Authentication cancelled");
           return value;
         },
         notify(event) {
-          const detail = event.type === "auth_url" ? event.url : event.type === "device_code" ? `${event.verificationUri}\nCode: ${event.userCode}` : event.message;
-          options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "auth-status", kind: "notice", tone: "info", title: "Authentication", detail } });
-          const url = event.type === "auth_url" ? event.url : event.type === "device_code" ? event.verificationUri : undefined;
+          const detail =
+            event.type === "auth_url"
+              ? event.url
+              : event.type === "device_code"
+                ? `${event.verificationUri}\nCode: ${event.userCode}`
+                : event.message;
+          options.onEvent({
+            type: "part-updated",
+            sessionId: cakeSessionId,
+            part: {
+              id: "auth-status",
+              kind: "notice",
+              tone: "info",
+              title: "Authentication",
+              detail,
+            },
+          });
+          const url =
+            event.type === "auth_url"
+              ? event.url
+              : event.type === "device_code"
+                ? event.verificationUri
+                : undefined;
           if (url && options.openExternal) {
             void options.openExternal(url).catch((error) => {
-              options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part: { id: "auth-status", kind: "notice", tone: "error", title: "Could not open authentication", detail: `${error instanceof Error ? error.message : String(error)}\n${detail}` } });
+              options.onEvent({
+                type: "part-updated",
+                sessionId: cakeSessionId,
+                part: {
+                  id: "auth-status",
+                  kind: "notice",
+                  tone: "error",
+                  title: "Could not open authentication",
+                  detail: `${error instanceof Error ? error.message : String(error)}\n${detail}`,
+                },
+              });
             });
           }
-        }
+        },
       });
       await emitSnapshot();
     },
     async logout(provider) {
       const status = modelRuntime.getProviderAuthStatus(provider);
-      if (status.configured && status.source && status.source !== "stored" && status.source !== "runtime") {
-        throw new Error(`${status.label ?? provider} is managed outside Cake. Remove that credential source and restart Cake to disconnect it.`);
+      if (
+        status.configured &&
+        status.source &&
+        status.source !== "stored" &&
+        status.source !== "runtime"
+      ) {
+        throw new Error(
+          `${status.label ?? provider} is managed outside Cake. Remove that credential source and restart Cake to disconnect it.`,
+        );
       }
       await modelRuntime.logout(provider);
       await emitSnapshot();
@@ -687,6 +1110,6 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       unsubscribe();
       session.dispose();
       void settingsManager.flush();
-    }
+    },
   };
 }

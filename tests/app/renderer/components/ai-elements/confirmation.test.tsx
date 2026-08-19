@@ -4,7 +4,7 @@ import {
   Confirmation,
   ConfirmationAccepted,
   ConfirmationDeclined,
-  ConfirmationRequest
+  ConfirmationRequest,
 } from "../../../../../src/renderer/components/ai-elements/confirmation";
 
 describe("Cake confirmation presentation", () => {
@@ -14,7 +14,7 @@ describe("Cake confirmation presentation", () => {
         <ConfirmationRequest>Waiting for response</ConfirmationRequest>
         <ConfirmationAccepted>Accepted</ConfirmationAccepted>
         <ConfirmationDeclined>Declined</ConfirmationDeclined>
-      </Confirmation>
+      </Confirmation>,
     );
 
     expect(markup).toContain("Waiting for response");

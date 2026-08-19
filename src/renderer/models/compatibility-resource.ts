@@ -15,7 +15,19 @@ export class CompatibilityResourceModel extends Model {
   @state enabled = true;
 
   get value(): CompatibilityResource {
-    return { id: this.id, kind: this.kind, name: this.name, description: this.description, path: this.path, source: this.source, scope: this.scope, origin: this.origin, commands: this.commands.slice(), tools: this.tools.slice(), enabled: this.enabled };
+    return {
+      id: this.id,
+      kind: this.kind,
+      name: this.name,
+      description: this.description,
+      path: this.path,
+      source: this.source,
+      scope: this.scope,
+      origin: this.origin,
+      commands: this.commands.slice(),
+      tools: this.tools.slice(),
+      enabled: this.enabled,
+    };
   }
 }
 
@@ -28,6 +40,13 @@ export class ResourceDiagnosticModel extends Model {
   @state method: string | undefined;
 
   get value(): ResourceDiagnostic {
-    return { id: this.id, severity: this.severity, source: this.source, message: this.message, path: this.path, method: this.method };
+    return {
+      id: this.id,
+      severity: this.severity,
+      source: this.source,
+      message: this.message,
+      path: this.path,
+      method: this.method,
+    };
   }
 }

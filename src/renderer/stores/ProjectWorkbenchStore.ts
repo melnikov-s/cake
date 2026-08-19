@@ -3,7 +3,7 @@ import type {
   ApplicationState,
   GlobalSessionSummary,
   SessionSnapshot,
-  WindowViewState
+  WindowViewState,
 } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent, PiState } from "../desktop-client";
 import { BrowseStore } from "./BrowseStore";
@@ -19,7 +19,8 @@ import type { WindowPersistenceCoordinator } from "./WindowPersistenceCoordinato
 import { describeError } from "../error-details";
 
 export interface ProjectWorkbenchStoreProps {
-  client: Pick<DesktopClient,
+  client: Pick<
+    DesktopClient,
     | "abort"
     | "resolveSessions"
     | "resolveSession"
@@ -59,7 +60,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   projectPath: string | undefined;
   selectedSessionId: string | undefined;
   pendingTrustPath: string | undefined;
-  private pendingOpen: { inspectOperationId: string; path: string; newSession: boolean; sessionId?: string } | undefined;
+  private pendingOpen:
+    | { inspectOperationId: string; path: string; newSession: boolean; sessionId?: string }
+    | undefined;
   private activeOpenOperationId: string | undefined;
   private activeOpenTarget: { path: string; sessionId?: string; newSession: boolean } | undefined;
   private activeOpenExpectsEmpty = false;
@@ -68,19 +71,25 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   changelogLoading = false;
   error: string | undefined;
   errorDetails: string | undefined;
-  private pendingRenames: Record<string, { sessionId: string; previousTitle: string }> = observable({});
+  private pendingRenames: Record<string, { sessionId: string; previousTitle: string }> = observable(
+    {},
+  );
   private openRevision = 0;
   private reopenAfterAgentRestart = false;
   private draftAfterAgentRestart: string | undefined;
 
-  private get reviews() { return this.props.reviews(); }
-  private get extensionUi() { return this.props.extensionUi(); }
+  private get reviews() {
+    return this.props.reviews();
+  }
+  private get extensionUi() {
+    return this.props.extensionUi();
+  }
 
   @child
   get browseStore(): BrowseStore {
     return createStore(BrowseStore, {
       client: this.client,
-      projectPath: () => this.projectPath
+      projectPath: () => this.projectPath,
     });
   }
 
@@ -90,14 +99,16 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       client: this.client,
       projectPath: () => this.projectPath,
       sessionId: () => this.session?.sessionId,
-      operations: this.props.operations
+      operations: this.props.operations,
     });
   }
 
   get isBusy() {
     return this.activeOperations.length > 0;
   }
-  get activeOperations() { return this.props.operations.active("project-workbench"); }
+  get activeOperations() {
+    return this.props.operations.active("project-workbench");
+  }
 
   get client() {
     return this.props.client;
@@ -108,7 +119,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   get activeSession() {
-    return this.selectedSessionId ? this.sessionRegistry.findSession(this.selectedSessionId) : undefined;
+    return this.selectedSessionId
+      ? this.sessionRegistry.findSession(this.selectedSessionId)
+      : undefined;
   }
 
   get session() {
@@ -124,7 +137,12 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   get isLocalSlashCommand() {
     const draft = this.activeSession?.chatStore.draft ?? "";
     const command = draft.trim().toLocaleLowerCase();
-    return command === "/tree" || command === "/resources" || command === "/changelog" || this.props.pluginCommands().matches(draft);
+    return (
+      command === "/tree" ||
+      command === "/resources" ||
+      command === "/changelog" ||
+      this.props.pluginCommands().matches(draft)
+    );
   }
 
   canSubmitSession(sessionId: string) {
@@ -132,11 +150,17 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const session = this.sessionRegistry.findSession(sessionId);
     if (!session) return false;
     const command = session.chatStore.draft.trim().toLocaleLowerCase();
-    const local = command === "/tree" || command === "/resources" || command === "/changelog" || this.props.pluginCommands().matches(session.chatStore.draft);
+    const local =
+      command === "/tree" ||
+      command === "/resources" ||
+      command === "/changelog" ||
+      this.props.pluginCommands().matches(session.chatStore.draft);
     return local || this.piState === "ready";
   }
 
-  get pluginCommands() { return this.props.pluginCommands().commands; }
+  get pluginCommands() {
+    return this.props.pluginCommands().commands;
+  }
 
   get projectName() {
     return this.projectPath ? this.props.projects.nameForPath(this.projectPath) : "No workspace";
@@ -151,11 +175,17 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   async restoreSelection(state: WindowViewState, sessions: readonly GlobalSessionSummary[]) {
-    const selectedSession = state.selectedSessionId ? sessions.find((session) => session.id === state.selectedSessionId) : undefined;
+    const selectedSession = state.selectedSessionId
+      ? sessions.find((session) => session.id === state.selectedSessionId)
+      : undefined;
     const projectPath = selectedSession?.workspacePath ?? state.projectPath;
     this.projectPath = projectPath;
     if (!projectPath) return;
-    await this.inspectPath(projectPath, Boolean(state.selectedSessionId && !selectedSession), selectedSession?.id);
+    await this.inspectPath(
+      projectPath,
+      Boolean(state.selectedSessionId && !selectedSession),
+      selectedSession?.id,
+    );
   }
 
   startOperation() {
@@ -195,8 +225,11 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   async renameProject(path: string, name: string) {
-    try { this.applyApplicationState(await this.client.renameProject(path, name)); }
-    catch (error) { this.setError(error); }
+    try {
+      this.applyApplicationState(await this.client.renameProject(path, name));
+    } catch (error) {
+      this.setError(error);
+    }
   }
 
   async removeProject(path: string) {
@@ -207,12 +240,17 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         this.selectedSessionId = undefined;
       }
       this.props.persistence().schedule();
-    } catch (error) { this.setError(error); }
+    } catch (error) {
+      this.setError(error);
+    }
   }
 
   async createWindow() {
-    try { await this.client.createWindow(); }
-    catch (error) { this.setError(error); }
+    try {
+      await this.client.createWindow();
+    } catch (error) {
+      this.setError(error);
+    }
   }
 
   async startNewSession(path = this.projectPath) {
@@ -236,7 +274,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   async openSession(sessionId: string) {
-    const workspacePath = this.props.catalog.find(sessionId)?.workspacePath ?? this.sessionRegistry.findSession(sessionId)?.workspacePath;
+    const workspacePath =
+      this.props.catalog.find(sessionId)?.workspacePath ??
+      this.sessionRegistry.findSession(sessionId)?.workspacePath;
     if (!workspacePath) throw new Error(`Cake could not find session ${sessionId}`);
     this.markSessionRead(sessionId);
     if (workspacePath === this.projectPath && sessionId === this.session?.sessionId) return;
@@ -295,7 +335,11 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (!pending || !this.pendingTrustPath) return;
     this.pendingTrustPath = undefined;
     try {
-      await this.client.respondToWorkspaceTrust({ operationId: pending.inspectOperationId, path: pending.path, approved: trusted });
+      await this.client.respondToWorkspaceTrust({
+        operationId: pending.inspectOperationId,
+        path: pending.path,
+        approved: trusted,
+      });
     } catch (error) {
       this.pendingOpen = undefined;
       this.setError(error);
@@ -309,7 +353,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   private async openPath(path: string, newSession = false, sessionId?: string) {
-    if (this.activeSession?.artifactInteractionStore.request) await this.activeSession.artifactInteractionStore.respond(undefined, true);
+    if (this.activeSession?.artifactInteractionStore.request)
+      await this.activeSession.artifactInteractionStore.respond(undefined, true);
     const revision = ++this.openRevision;
     const operationId = this.startOperation();
     this.activeOpenOperationId = operationId;
@@ -322,7 +367,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.browseStore.close();
     try {
       await this.client.openWorkspace({ operationId, path, newSession, sessionId });
-      void this.client.registerProject(path, this.props.projects.nameFromPath(path)).then((state) => this.applyApplicationState(state)).catch((error) => this.setError(error));
+      void this.client
+        .registerProject(path, this.props.projects.nameFromPath(path))
+        .then((state) => this.applyApplicationState(state))
+        .catch((error) => this.setError(error));
     } catch (error) {
       if (revision === this.openRevision) this.setError(error);
       if (this.activeOpenOperationId === operationId) {
@@ -346,7 +394,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   async openSessionChanges(threadId?: string) {
     this.commandPane = undefined;
-    const thread = threadId ? this.reviews.threads.find((item) => item.id === threadId) : this.reviews.openThreads.find((item) => item.anchor.view !== "file");
+    const thread = threadId
+      ? this.reviews.threads.find((item) => item.id === threadId)
+      : this.reviews.openThreads.find((item) => item.anchor.view !== "file");
     if (thread?.anchor.view === "file") {
       await this.openWorkspaceBrowser(thread.anchor.path);
       this.reviews.activeThreadId = thread.id;
@@ -388,12 +438,18 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (!context || this.changelogLoading) return;
     const operationId = this.startOperation();
     this.changelogLoading = true;
-    try { await this.client.getChangelog({ operationId, sessionId: context.sessionId }); }
-    catch (error) { this.changelogLoading = false; this.finishOperation(operationId); this.setError(error); }
+    try {
+      await this.client.getChangelog({ operationId, sessionId: context.sessionId });
+    } catch (error) {
+      this.changelogLoading = false;
+      this.finishOperation(operationId);
+      this.setError(error);
+    }
   }
 
   async renameCurrentSession(name: string) {
-    const context = this.sessionContext(); if (!context || !name.trim()) return;
+    const context = this.sessionContext();
+    if (!context || !name.trim()) return;
     await this.renameSession(context.sessionId, name);
   }
 
@@ -403,21 +459,27 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     try {
       const title = name.trim();
       const previousTitle = this.props.catalog.rename(sessionId, title);
-      if (previousTitle !== undefined) this.pendingRenames[operationId] = { sessionId, previousTitle };
+      if (previousTitle !== undefined)
+        this.pendingRenames[operationId] = { sessionId, previousTitle };
       try {
         await this.client.renameSession({ operationId, sessionId, name: title });
       } catch (error) {
         this.rollbackRename(operationId);
         throw error;
       }
+    } catch (error) {
+      this.finishOperation(operationId);
+      this.setError(error);
     }
-    catch (error) { this.finishOperation(operationId); this.setError(error); }
   }
 
   async resolveSession(sessionId: string, resolved: boolean) {
     if (!this.props.catalog.find(sessionId)) return;
-    try { this.applyApplicationState(await this.client.resolveSession(sessionId, resolved)); }
-    catch (error) { this.setError(error); }
+    try {
+      this.applyApplicationState(await this.client.resolveSession(sessionId, resolved));
+    } catch (error) {
+      this.setError(error);
+    }
   }
 
   async resolveSessions(sessionIds: readonly string[], resolved: boolean) {
@@ -433,41 +495,55 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   async resolveSessionsById(sessionIds: readonly string[], resolved: boolean) {
     for (const sessionId of sessionIds) {
-      if (!this.props.catalog.find(sessionId)) throw new Error(`Cake could not find session ${sessionId}`);
+      if (!this.props.catalog.find(sessionId))
+        throw new Error(`Cake could not find session ${sessionId}`);
     }
     return this.resolveSessions(sessionIds, resolved);
   }
 
   async forkAt(entryId: string) {
-    const context = this.sessionContext(); if (!context) return;
+    const context = this.sessionContext();
+    if (!context) return;
     this.closeCommandPane();
-    const operationId = this.startOperation(); this.activeOpenOperationId = operationId;
-    try { await this.client.forkSession({ operationId, sessionId: context.sessionId, entryId }); }
-    catch (error) { this.finishOperation(operationId); this.setError(error); }
+    const operationId = this.startOperation();
+    this.activeOpenOperationId = operationId;
+    try {
+      await this.client.forkSession({ operationId, sessionId: context.sessionId, entryId });
+    } catch (error) {
+      this.finishOperation(operationId);
+      this.setError(error);
+    }
   }
 
   async navigateTo(entryId: string) {
-    const context = this.sessionContext(); if (!context) return;
+    const context = this.sessionContext();
+    if (!context) return;
     const editorText = this.session?.tree.find((entry) => entry.id === entryId)?.editorText;
     this.closeCommandPane();
     const operationId = this.startOperation();
     try {
       await this.client.navigateSession({ operationId, sessionId: context.sessionId, entryId });
       if (editorText !== undefined) this.activeSession?.chatStore.setDraft(editorText);
+    } catch (error) {
+      this.finishOperation(operationId);
+      this.setError(error);
     }
-    catch (error) { this.finishOperation(operationId); this.setError(error); }
   }
 
   async restartPi() {
     if (!this.projectPath) return;
-    try { await this.client.restartPi(this.projectPath); }
-    catch (error) { this.setError(error); }
+    try {
+      await this.client.restartPi(this.projectPath);
+    } catch (error) {
+      this.setError(error);
+    }
   }
 
   async abort() {
     const operationId = this.startOperation();
     try {
-      const context = this.sessionContext(); if (!context) throw new Error("No active session");
+      const context = this.sessionContext();
+      if (!context) throw new Error("No active session");
       await this.client.abort({ operationId, sessionId: context.sessionId });
     } catch (error) {
       this.setError(error);
@@ -475,14 +551,22 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     }
   }
 
-  applySessionSnapshot(snapshot: SessionSnapshot, previousSessionId?: string, focusComposer = false, newSession = false) {
+  applySessionSnapshot(
+    snapshot: SessionSnapshot,
+    previousSessionId?: string,
+    focusComposer = false,
+    newSession = false,
+  ) {
     const restartDraft = this.draftAfterAgentRestart;
     this.projectPath = snapshot.workspacePath;
     this.selectedSessionId = snapshot.sessionId;
     const activeSession = this.sessionRegistry.ensure(snapshot.sessionId);
-    if (newSession) this.sessionRegistry.rememberNewSession(snapshot.workspacePath, snapshot.sessionId);
+    if (newSession)
+      this.sessionRegistry.rememberNewSession(snapshot.workspacePath, snapshot.sessionId);
     this.markSessionRead(snapshot.sessionId);
-    this.props.persistence().applySessionRestore(activeSession, previousSessionId, restartDraft, newSession);
+    this.props
+      .persistence()
+      .applySessionRestore(activeSession, previousSessionId, restartDraft, newSession);
     this.draftAfterAgentRestart = undefined;
     if (previousSessionId !== undefined) this.extensionUi.clear();
     this.extensionUi.applyState(snapshot.extensionUi);
@@ -525,18 +609,30 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   receive(event: DesktopClientEvent) {
     if (event.type === "pi-state-changed") {
-      if (event.workspacePath && event.workspacePath !== this.projectPath && event.workspacePath !== this.pendingOpen?.path) return;
+      if (
+        event.workspacePath &&
+        event.workspacePath !== this.projectPath &&
+        event.workspacePath !== this.pendingOpen?.path
+      )
+        return;
       this.piState = event.state;
       if (event.state === "failed" || event.state === "stopped") {
         this.reopenAfterAgentRestart = Boolean(this.projectPath && this.session);
-        if (this.reopenAfterAgentRestart) this.draftAfterAgentRestart = this.activeSession?.chatStore.draft;
+        if (this.reopenAfterAgentRestart)
+          this.draftAfterAgentRestart = this.activeSession?.chatStore.draft;
         this.props.operations.reset();
-        for (const operationId of Object.keys(this.pendingRenames)) this.rollbackRename(operationId);
+        for (const operationId of Object.keys(this.pendingRenames))
+          this.rollbackRename(operationId);
         this.activeOpenOperationId = undefined;
         this.activeOpenTarget = undefined;
         this.activeOpenExpectsEmpty = false;
       }
-      if (event.state === "ready" && this.reopenAfterAgentRestart && this.projectPath && this.session) {
+      if (
+        event.state === "ready" &&
+        this.reopenAfterAgentRestart &&
+        this.projectPath &&
+        this.session
+      ) {
         this.reopenAfterAgentRestart = false;
         void this.inspectPath(this.projectPath, false, this.session.sessionId);
       }
@@ -552,7 +648,13 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       }
       return;
     }
-    if (event.type === "session-snapshot-received" || event.type === "part-updated" || event.type === "part-removed" || event.type === "streaming-changed") return;
+    if (
+      event.type === "session-snapshot-received" ||
+      event.type === "part-updated" ||
+      event.type === "part-removed" ||
+      event.type === "streaming-changed"
+    )
+      return;
     if (event.type === "artifact-updated") return;
     if (event.type === "review-threads-received") {
       return;

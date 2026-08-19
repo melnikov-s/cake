@@ -27,13 +27,21 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
   async respond(value?: JsonValue, cancelled = false) {
     const request = this.request;
     if (!request || this.responding) return;
-    this.error = undefined; this.errorDetails = undefined;
+    this.error = undefined;
+    this.errorDetails = undefined;
     try {
-      if (!cancelled) validateArtifactResponse(request.record.artifact.interaction?.responseSchema, value);
+      if (!cancelled)
+        validateArtifactResponse(request.record.artifact.interaction?.responseSchema, value);
       this.responding = true;
       const context = this.props.sessionContext();
       if (!context) throw new Error("No active session");
-      await this.props.client.respondToArtifact({ operationId: request.operationId, sessionId: context.sessionId, artifactRequestId: request.artifactRequestId, value, cancelled });
+      await this.props.client.respondToArtifact({
+        operationId: request.operationId,
+        sessionId: context.sessionId,
+        artifactRequestId: request.artifactRequestId,
+        value,
+        cancelled,
+      });
       if (this.request === request) this.request = undefined;
     } catch (error) {
       const described = describeError(error);
@@ -52,11 +60,18 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
 
   receive(event: DesktopClientEvent) {
     if (event.type === "artifact-requested") {
-      if (!this.props.operationActive(event.operationId) || !this.props.isActiveSession(event.record.artifact.sessionId)) return;
+      if (
+        !this.props.operationActive(event.operationId) ||
+        !this.props.isActiveSession(event.record.artifact.sessionId)
+      )
+        return;
       this.request = event;
       return;
     }
-    if (event.type === "pi-state-changed" && (event.state === "failed" || event.state === "stopped")) {
+    if (
+      event.type === "pi-state-changed" &&
+      (event.state === "failed" || event.state === "stopped")
+    ) {
       this.request = undefined;
       this.responding = false;
     }

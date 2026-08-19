@@ -7,14 +7,31 @@ import { createStore, mount } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/components/ai-elements/conversation", async () => {
-  const actual = await vi.importActual<Record<string, unknown>>("@/components/ai-elements/conversation");
+  const actual = await vi.importActual<Record<string, unknown>>(
+    "@/components/ai-elements/conversation",
+  );
   const ReactModule = await import("react");
   return {
     ...actual,
-    VirtualizedConversation: ReactModule.forwardRef(function TestVirtualizedConversation({ data, itemContent }: { data: Array<{ id: string }>; itemContent(index: number, item: { id: string }): React.ReactNode }, ref) {
+    VirtualizedConversation: ReactModule.forwardRef(function TestVirtualizedConversation(
+      {
+        data,
+        itemContent,
+      }: {
+        data: Array<{ id: string }>;
+        itemContent(index: number, item: { id: string }): React.ReactNode;
+      },
+      ref,
+    ) {
       ReactModule.useImperativeHandle(ref, () => ({ scrollToIndex: vi.fn() }));
-      return <div className="transcript">{data.map((item, index) => <React.Fragment key={item.id}>{itemContent(index, item)}</React.Fragment>)}</div>;
-    })
+      return (
+        <div className="transcript">
+          {data.map((item, index) => (
+            <React.Fragment key={item.id}>{itemContent(index, item)}</React.Fragment>
+          ))}
+        </div>
+      );
+    }),
   };
 });
 
@@ -46,24 +63,41 @@ describe("Chat", () => {
       session: {
         model: { provider: "openai", id: "gpt" },
         thinkingLevel: "medium",
-        availableThinkingLevels: ["off", "medium"]
+        availableThinkingLevels: ["off", "medium"],
       },
-      connectedModelsByProvider: [{ id: "openai", name: "OpenAI", models: [{ provider: "openai", id: "gpt", name: "GPT", authenticated: true }] }],
+      connectedModelsByProvider: [
+        {
+          id: "openai",
+          name: "OpenAI",
+          models: [{ provider: "openai", id: "gpt", name: "GPT", authenticated: true }],
+        },
+      ],
       selectModel: vi.fn(),
-      selectThinkingLevel: vi.fn()
+      selectThinkingLevel: vi.fn(),
     } as unknown as ChatConfigurationStore;
-    store = mount(createStore(ChatStore, {
-      id: () => "shared-chat",
-      parts: () => [{ id: "question", kind: "text", role: "user", text: "Can you check this?", status: "complete", deliveryState: "queued" }],
-      streaming: () => true,
-      submitting: () => false,
-      configuration: () => configuration,
-      commands: () => [],
-      placeholder: () => "Ask a follow-up…",
-      inputLabel: () => "Reply to chat",
-      canSubmit: (draft) => Boolean(draft.trim()),
-      submit
-    }));
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "shared-chat",
+        parts: () => [
+          {
+            id: "question",
+            kind: "text",
+            role: "user",
+            text: "Can you check this?",
+            status: "complete",
+            deliveryState: "queued",
+          },
+        ],
+        streaming: () => true,
+        submitting: () => false,
+        configuration: () => configuration,
+        commands: () => [],
+        placeholder: () => "Ask a follow-up…",
+        inputLabel: () => "Reply to chat",
+        canSubmit: (draft) => Boolean(draft.trim()),
+        submit,
+      }),
+    );
 
     act(() => root.render(<Chat store={store!} />));
 
@@ -71,14 +105,21 @@ describe("Chat", () => {
     expect(container.textContent).toContain("You · queued");
     expect(container.querySelector('[aria-label="Churning in progress"]')).not.toBeNull();
     expect(container.querySelector<HTMLInputElement>('[aria-label="Model"]')?.value).toBe("GPT");
-    expect(container.querySelector<HTMLSelectElement>('[aria-label="Thinking level"]')?.value).toBe("medium");
+    expect(container.querySelector<HTMLSelectElement>('[aria-label="Thinking level"]')?.value).toBe(
+      "medium",
+    );
 
     const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Reply to chat"]')!;
     act(() => {
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "Please continue");
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
+        input,
+        "Please continue",
+      );
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await act(async () => container.querySelector<HTMLButtonElement>('button[type="submit"]')!.click());
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('button[type="submit"]')!.click(),
+    );
 
     expect(submit).toHaveBeenCalledWith("Please continue", "send");
     expect(store.draft).toBe("");
@@ -86,26 +127,28 @@ describe("Chat", () => {
 
   it("attaches clipboard images pasted into the composer", async () => {
     const addPastedImages = vi.fn(async () => undefined);
-    store = mount(createStore(ChatStore, {
-      id: () => "image-paste-chat",
-      parts: () => [],
-      streaming: () => false,
-      submitting: () => false,
-      configuration: () => undefined,
-      commands: () => [],
-      placeholder: () => "Message Cake",
-      inputLabel: () => "Message",
-      canSubmit: () => false,
-      submit: async () => false,
-      addPastedImages
-    }));
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "image-paste-chat",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Message Cake",
+        inputLabel: () => "Message",
+        canSubmit: () => false,
+        submit: async () => false,
+        addPastedImages,
+      }),
+    );
 
     act(() => root.render(<Chat store={store!} />));
 
     const image = new File(["image bytes"], "clipboard.png", { type: "image/png" });
     const paste = new Event("paste", { bubbles: true, cancelable: true });
     Object.defineProperty(paste, "clipboardData", {
-      value: { files: [], items: [{ type: "image/png", getAsFile: () => image }] }
+      value: { files: [], items: [{ type: "image/png", getAsFile: () => image }] },
     });
 
     await act(async () => {

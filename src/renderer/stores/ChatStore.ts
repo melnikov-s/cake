@@ -1,5 +1,10 @@
 import { Store } from "r-state-tree";
-import type { Attachment, FileSuggestion, SessionSnapshot, UiPart } from "../../ipc/session-contract";
+import type {
+  Attachment,
+  FileSuggestion,
+  SessionSnapshot,
+  UiPart,
+} from "../../ipc/session-contract";
 import type { ChatConfigurationStore } from "./ChatConfigurationStore";
 
 type ChatSubmitMode = "send" | "steer";
@@ -42,32 +47,78 @@ export class ChatStore extends Store<ChatStoreProps> {
     this.loadingStartedAt = this.loading ? Date.now() : undefined;
     this.reaction(
       () => this.loading,
-      (loading) => { this.loadingStartedAt = loading ? Date.now() : undefined; }
+      (loading) => {
+        this.loadingStartedAt = loading ? Date.now() : undefined;
+      },
     );
   }
 
-  get id() { return this.props.id(); }
-  get parts() { return this.props.parts(); }
-  get streaming() { return this.props.streaming(); }
-  get submitting() { return this.submittingLocally || this.props.submitting(); }
-  get loading() { return this.streaming || this.submitting; }
-  get configuration() { return this.props.configuration(); }
-  get commands() { return this.props.commands(); }
-  get placeholder() { return this.props.placeholder(); }
-  get inputLabel() { return this.props.inputLabel(); }
-  get canSubmit() { return !this.submittingLocally && this.props.canSubmit(this.draft); }
-  get canAbort() { return Boolean(this.props.abort); }
-  get canAttach() { return Boolean(this.props.addAttachments); }
-  get canPasteImages() { return Boolean(this.props.addPastedImages); }
-  get canSuggestFiles() { return Boolean(this.props.suggestFiles); }
-  get allowSteer() { return Boolean(this.props.allowSteer); }
-  get composerVisible() { return this.props.composerVisible?.() ?? true; }
-  get hideThinking() { return this.props.hideThinking?.() ?? false; }
-  get attachments() { return this.props.attachments?.() ?? []; }
-  get focusRequestRevision() { return this.props.focusRequestRevision?.(); }
-  get usage() { return this.props.usage?.(); }
-  get error() { return this.props.error?.(); }
-  canSubmitDraft(value: string) { return !this.submittingLocally && this.props.canSubmit(value); }
+  get id() {
+    return this.props.id();
+  }
+  get parts() {
+    return this.props.parts();
+  }
+  get streaming() {
+    return this.props.streaming();
+  }
+  get submitting() {
+    return this.submittingLocally || this.props.submitting();
+  }
+  get loading() {
+    return this.streaming || this.submitting;
+  }
+  get configuration() {
+    return this.props.configuration();
+  }
+  get commands() {
+    return this.props.commands();
+  }
+  get placeholder() {
+    return this.props.placeholder();
+  }
+  get inputLabel() {
+    return this.props.inputLabel();
+  }
+  get canSubmit() {
+    return !this.submittingLocally && this.props.canSubmit(this.draft);
+  }
+  get canAbort() {
+    return Boolean(this.props.abort);
+  }
+  get canAttach() {
+    return Boolean(this.props.addAttachments);
+  }
+  get canPasteImages() {
+    return Boolean(this.props.addPastedImages);
+  }
+  get canSuggestFiles() {
+    return Boolean(this.props.suggestFiles);
+  }
+  get allowSteer() {
+    return Boolean(this.props.allowSteer);
+  }
+  get composerVisible() {
+    return this.props.composerVisible?.() ?? true;
+  }
+  get hideThinking() {
+    return this.props.hideThinking?.() ?? false;
+  }
+  get attachments() {
+    return this.props.attachments?.() ?? [];
+  }
+  get focusRequestRevision() {
+    return this.props.focusRequestRevision?.();
+  }
+  get usage() {
+    return this.props.usage?.();
+  }
+  get error() {
+    return this.props.error?.();
+  }
+  canSubmitDraft(value: string) {
+    return !this.submittingLocally && this.props.canSubmit(value);
+  }
 
   setDraft(value: string) {
     this.draft = value;
@@ -79,7 +130,9 @@ export class ChatStore extends Store<ChatStoreProps> {
     this.props.persist?.();
   }
 
-  toggleThinking() { this.setThinkingExpanded(!this.thinkingExpanded); }
+  toggleThinking() {
+    this.setThinkingExpanded(!this.thinkingExpanded);
+  }
 
   async submit(value = this.draft, mode: ChatSubmitMode = "send") {
     if (value !== this.draft) this.setDraft(value);
@@ -94,9 +147,19 @@ export class ChatStore extends Store<ChatStoreProps> {
     }
   }
 
-  abort() { return this.props.abort?.() ?? Promise.resolve(); }
-  addAttachments() { return this.props.addAttachments?.() ?? Promise.resolve(); }
-  addPastedImages(files: readonly File[]) { return this.props.addPastedImages?.(files) ?? Promise.resolve(); }
-  removeAttachment(index: number) { this.props.removeAttachment?.(index); }
-  suggestFiles(prefix: string) { return this.props.suggestFiles?.(prefix) ?? Promise.resolve([]); }
+  abort() {
+    return this.props.abort?.() ?? Promise.resolve();
+  }
+  addAttachments() {
+    return this.props.addAttachments?.() ?? Promise.resolve();
+  }
+  addPastedImages(files: readonly File[]) {
+    return this.props.addPastedImages?.(files) ?? Promise.resolve();
+  }
+  removeAttachment(index: number) {
+    this.props.removeAttachment?.(index);
+  }
+  suggestFiles(prefix: string) {
+    return this.props.suggestFiles?.(prefix) ?? Promise.resolve([]);
+  }
 }

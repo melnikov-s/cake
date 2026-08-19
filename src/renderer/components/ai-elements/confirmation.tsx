@@ -41,7 +41,7 @@ export function Confirmation({ className, state, ...props }: ConfirmationProps) 
       <div
         className={cn(
           "rounded-xl border border-border bg-card p-5 text-card-foreground shadow-[0_18px_60px_-32px_rgba(18,22,27,0.55)]",
-          className
+          className,
         )}
         {...props}
       />

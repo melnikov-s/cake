@@ -1,5 +1,10 @@
 import { homedir } from "node:os";
-import { createCakeRuntime, type CakeRuntime, type CakeRuntimeEvent, type GlobalControlTool } from "../agent/cake-runtime";
+import {
+  createCakeRuntime,
+  type CakeRuntime,
+  type CakeRuntimeEvent,
+  type GlobalControlTool,
+} from "../agent/cake-runtime";
 import type { DesktopEvent } from "../ipc/desktop-ipc";
 import type { JsonValue } from "../ipc/json-contract";
 import type { Attachment } from "../ipc/session-contract";
@@ -36,7 +41,11 @@ export class GlobalChatDriver {
     this.createRuntime = options.createRuntime ?? createCakeRuntime;
   }
 
-  open(requestId: string, tools: readonly GlobalControlTool[], target: { newSession?: boolean; sessionId?: string; initialPrompt?: string } = {}) {
+  open(
+    requestId: string,
+    tools: readonly GlobalControlTool[],
+    target: { newSession?: boolean; sessionId?: string; initialPrompt?: string } = {},
+  ) {
     this.tools = tools;
     void this.run(requestId, async () => {
       const runtime = await this.ensureRuntime(Boolean(target.newSession), target.sessionId);
@@ -48,7 +57,11 @@ export class GlobalChatDriver {
   prompt(requestId: string, sessionId: string, text: string, attachments: Attachment[]) {
     void this.run(requestId, async () => {
       const runtime = await this.ensureRuntime(false, sessionId);
-      await runtime.prompt(text, this.streamingSessionIds.has(sessionId) ? "follow-up" : "prompt", attachments);
+      await runtime.prompt(
+        text,
+        this.streamingSessionIds.has(sessionId) ? "follow-up" : "prompt",
+        attachments,
+      );
     });
   }
 
@@ -63,7 +76,11 @@ export class GlobalChatDriver {
     });
   }
 
-  setThinkingLevel(requestId: string, sessionId: string, level: Parameters<CakeRuntime["setThinkingLevel"]>[0]) {
+  setThinkingLevel(
+    requestId: string,
+    sessionId: string,
+    level: Parameters<CakeRuntime["setThinkingLevel"]>[0],
+  ) {
     void this.run(requestId, async () => {
       const runtime = await this.ensureRuntime(false, sessionId);
       await runtime.setThinkingLevel(level);
@@ -76,7 +93,8 @@ export class GlobalChatDriver {
 
   refreshRecoveryContext() {
     for (const sessionId of this.runtimes.keys()) {
-      if (this.streamingSessionIds.has(sessionId)) this.recoveryContextRefreshPending.add(sessionId);
+      if (this.streamingSessionIds.has(sessionId))
+        this.recoveryContextRefreshPending.add(sessionId);
       else this.disposeRuntime(sessionId);
     }
   }
@@ -110,9 +128,10 @@ export class GlobalChatDriver {
       globalControl: {
         tools: this.tools,
         recoveryContext: this.options.recoveryContext?.(),
-        invoke: (invocation, signal) => this.requestControl(invocation, signal, () => runtimeIdentity.sessionId)
+        invoke: (invocation, signal) =>
+          this.requestControl(invocation, signal, () => runtimeIdentity.sessionId),
       },
-      onEvent: (event) => this.receive(event)
+      onEvent: (event) => this.receive(event),
     });
     this.runtimePromises.set(pendingKey, runtimePromise);
     try {
@@ -135,7 +154,11 @@ export class GlobalChatDriver {
     return runtime;
   }
 
-  private requestControl(invocation: { name: string; arguments: JsonValue }, signal: AbortSignal, sessionId: () => string | undefined) {
+  private requestControl(
+    invocation: { name: string; arguments: JsonValue },
+    signal: AbortSignal,
+    sessionId: () => string | undefined,
+  ) {
     return new Promise<JsonValue>((resolve) => {
       const controlRequestId = crypto.randomUUID();
       const settle = (result: JsonValue) => {
@@ -143,7 +166,8 @@ export class GlobalChatDriver {
         signal.removeEventListener("abort", abort);
         resolve(result);
       };
-      const abort = () => settle({ ok: false, name: invocation.name, error: "The Cake Chat request was cancelled." });
+      const abort = () =>
+        settle({ ok: false, name: invocation.name, error: "The Cake Chat request was cancelled." });
       this.pendingControl.set(controlRequestId, { sessionId: sessionId() ?? "unknown", settle });
       signal.addEventListener("abort", abort, { once: true });
       this.options.emit({ type: "global-chat-control-request", controlRequestId, invocation });
@@ -152,12 +176,26 @@ export class GlobalChatDriver {
 
   private receive(event: CakeRuntimeEvent) {
     if (event.type === "snapshot") this.emitSnapshot(event.snapshot, event.requestId);
-    else if (event.type === "part-updated") this.options.emit({ type: "global-chat-part-updated", sessionId: event.sessionId, part: event.part });
-    else if (event.type === "part-removed") this.options.emit({ type: "global-chat-part-removed", sessionId: event.sessionId, partId: event.partId });
+    else if (event.type === "part-updated")
+      this.options.emit({
+        type: "global-chat-part-updated",
+        sessionId: event.sessionId,
+        part: event.part,
+      });
+    else if (event.type === "part-removed")
+      this.options.emit({
+        type: "global-chat-part-removed",
+        sessionId: event.sessionId,
+        partId: event.partId,
+      });
     else if (event.type === "streaming") {
       if (event.streaming) this.streamingSessionIds.add(event.sessionId);
       else this.streamingSessionIds.delete(event.sessionId);
-      this.options.emit({ type: "global-chat-streaming", sessionId: event.sessionId, streaming: event.streaming });
+      this.options.emit({
+        type: "global-chat-streaming",
+        sessionId: event.sessionId,
+        streaming: event.streaming,
+      });
       if (!event.streaming && this.recoveryContextRefreshPending.has(event.sessionId)) {
         this.recoveryContextRefreshPending.delete(event.sessionId);
         this.disposeRuntime(event.sessionId);
@@ -166,9 +204,11 @@ export class GlobalChatDriver {
   }
 
   private emitSnapshot(snapshot: Awaited<ReturnType<CakeRuntime["snapshot"]>>, requestId?: string) {
-    this.options.emit(requestId
-      ? { type: "global-chat-snapshot", requestId, snapshot }
-      : { type: "global-chat-snapshot", snapshot });
+    this.options.emit(
+      requestId
+        ? { type: "global-chat-snapshot", requestId, snapshot }
+        : { type: "global-chat-snapshot", snapshot },
+    );
   }
 
   private async run(requestId: string, operation: () => Promise<void>) {
@@ -176,7 +216,11 @@ export class GlobalChatDriver {
       await operation();
       this.options.emit({ type: "global-chat-operation-completed", requestId });
     } catch (error) {
-      this.options.emit({ type: "global-chat-operation-failed", requestId, message: error instanceof Error ? error.message : String(error) });
+      this.options.emit({
+        type: "global-chat-operation-failed",
+        requestId,
+        message: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

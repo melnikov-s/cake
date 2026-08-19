@@ -16,11 +16,18 @@ import "./customization-recovery.css";
 
 const root = createRoot(document.getElementById("root")!);
 const disposeStaleAssetRecovery = installStaleAssetRecovery();
-const customizationRevision = typeof __CAKE_CUSTOMIZATION_REVISION__ === "undefined" ? undefined : __CAKE_CUSTOMIZATION_REVISION__;
+const customizationRevision =
+  typeof __CAKE_CUSTOMIZATION_REVISION__ === "undefined"
+    ? undefined
+    : __CAKE_CUSTOMIZATION_REVISION__;
 
 function CustomizationHealth() {
   useEffect(() => {
-    if (customizationRevision) void window.cake?.request({ type: "customization-rendered", revision: customizationRevision });
+    if (customizationRevision)
+      void window.cake?.request({
+        type: "customization-rendered",
+        revision: customizationRevision,
+      });
   }, []);
   return null;
 }
@@ -30,9 +37,11 @@ if (!window.cake) {
     <main>
       <section>
         <h1>Cake</h1>
-        <output>Cake's desktop bridge did not load. Restart the app and inspect the preload diagnostics.</output>
+        <output>
+          Cake's desktop bridge did not load. Restart the app and inspect the preload diagnostics.
+        </output>
       </section>
-    </main>
+    </main>,
   );
 } else {
   const rootStore = mountRootStore(createDesktopClient(window.cake));
@@ -40,17 +49,28 @@ if (!window.cake) {
     <RendererErrorBoundary>
       <StrictMode>
         <StoreProvider store={rootStore}>
-          <Suspense fallback={<main className="loading-screen"><span className="cake-mark">C</span><LoadingState label="Hydrating customization" /></main>}>
+          <Suspense
+            fallback={
+              <main className="loading-screen">
+                <span className="cake-mark">C</span>
+                <LoadingState label="Hydrating customization" />
+              </main>
+            }
+          >
             <Scene />
             <CustomizationHealth />
           </Suspense>
           <CustomizationRecovery />
         </StoreProvider>
       </StrictMode>
-    </RendererErrorBoundary>
+    </RendererErrorBoundary>,
   );
-  window.addEventListener("pagehide", () => {
-    disposeStaleAssetRecovery();
-    rootStore[Symbol.dispose]();
-  }, { once: true });
+  window.addEventListener(
+    "pagehide",
+    () => {
+      disposeStaleAssetRecovery();
+      rootStore[Symbol.dispose]();
+    },
+    { once: true },
+  );
 }

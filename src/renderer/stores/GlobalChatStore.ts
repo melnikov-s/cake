@@ -1,18 +1,43 @@
 import { Store, child, createStore, observable, untracked } from "r-state-tree";
 import type { DesktopClientEvent } from "../desktop-client";
 import type { JsonObject } from "../../ipc/json-contract";
-import type { ApplicationState, Attachment, SessionSnapshot, ThinkingLevel } from "../../ipc/session-contract";
+import type {
+  ApplicationState,
+  Attachment,
+  SessionSnapshot,
+  ThinkingLevel,
+} from "../../ipc/session-contract";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SessionOperationCoordinator } from "./SessionOperationCoordinator";
 import { CakeChatSessionStore } from "./CakeChatSessionStore";
 import { describeError } from "../error-details";
 
 export interface GlobalChatPort {
-  open(input: { operationId: string; tools: ReadonlyArray<{ name: string; description: string; parameters: JsonObject }>; newSession?: boolean; sessionId?: string; initialPrompt?: string }): Promise<void>;
-  prompt(input: { operationId: string; sessionId: string; text: string; attachments: Attachment[] }): Promise<void>;
+  open(input: {
+    operationId: string;
+    tools: ReadonlyArray<{ name: string; description: string; parameters: JsonObject }>;
+    newSession?: boolean;
+    sessionId?: string;
+    initialPrompt?: string;
+  }): Promise<void>;
+  prompt(input: {
+    operationId: string;
+    sessionId: string;
+    text: string;
+    attachments: Attachment[];
+  }): Promise<void>;
   abort(input: { operationId: string; sessionId: string }): Promise<void>;
-  setModel(input: { operationId: string; sessionId: string; provider: string; modelId: string }): Promise<void>;
-  setThinkingLevel(input: { operationId: string; sessionId: string; level: ThinkingLevel }): Promise<void>;
+  setModel(input: {
+    operationId: string;
+    sessionId: string;
+    provider: string;
+    modelId: string;
+  }): Promise<void>;
+  setThinkingLevel(input: {
+    operationId: string;
+    sessionId: string;
+    level: ThinkingLevel;
+  }): Promise<void>;
   resolveSession(sessionId: string, resolved: boolean): Promise<ApplicationState>;
 }
 
@@ -35,21 +60,31 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
 
   constructor(props: GlobalChatStore["props"]) {
     super(props);
-    this.effect(() => { untracked(() => { void this.open(); }); });
+    this.effect(() => {
+      untracked(() => {
+        void this.open();
+      });
+    });
   }
 
-  get port() { return this.props.port; }
-  get sessionId() { return this.selectedSessionId; }
+  get port() {
+    return this.props.port;
+  }
+  get sessionId() {
+    return this.selectedSessionId;
+  }
 
   @child
   get loadedSessions(): CakeChatSessionStore[] {
-    return this.targets.map((sessionId) => createStore(CakeChatSessionStore, {
-      key: sessionId,
-      sessionId,
-      collection: this,
-      sessions: this.props.sessions(),
-      operations: this.props.operations
-    }));
+    return this.targets.map((sessionId) =>
+      createStore(CakeChatSessionStore, {
+        key: sessionId,
+        sessionId,
+        collection: this,
+        sessions: this.props.sessions(),
+        operations: this.props.operations,
+      }),
+    );
   }
 
   get activeSession() {
@@ -62,16 +97,24 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
 
   open(sessionId?: string, newSession = false, initialPrompt?: string) {
     const operationId = this.props.operations.start("cake-chat-open");
-    return this.port.open({ operationId, tools: this.props.tools(), sessionId, newSession, initialPrompt }).catch((error) => {
-      this.props.operations.finish(operationId);
-      this.reportError(error);
-    });
+    return this.port
+      .open({ operationId, tools: this.props.tools(), sessionId, newSession, initialPrompt })
+      .catch((error) => {
+        this.props.operations.finish(operationId);
+        this.reportError(error);
+      });
   }
 
-  startNewSession(prompt?: string) { return this.open(undefined, true, prompt); }
+  startNewSession(prompt?: string) {
+    return this.open(undefined, true, prompt);
+  }
 
   applyApplicationState(state: ApplicationState) {
-    this.resolvedSessionIds.splice(0, this.resolvedSessionIds.length, ...state.resolvedCakeChatSessionIds);
+    this.resolvedSessionIds.splice(
+      0,
+      this.resolvedSessionIds.length,
+      ...state.resolvedCakeChatSessionIds,
+    );
     this.applyResolvedState();
   }
 
@@ -85,7 +128,8 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
 
   async resolveSessions(sessionIds: readonly string[], resolved: boolean) {
     try {
-      for (const sessionId of sessionIds) this.applyApplicationState(await this.port.resolveSession(sessionId, resolved));
+      for (const sessionId of sessionIds)
+        this.applyApplicationState(await this.port.resolveSession(sessionId, resolved));
       return sessionIds.length;
     } catch (error) {
       this.reportError(error);
@@ -112,7 +156,10 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       this.props.sessions().upsert(event.snapshot);
       this.ensureTarget(event.snapshot.sessionId);
       this.applySummaries(event.snapshot);
-      if (event.operationId && this.props.operations.includes(event.operationId, "cake-chat-open")) {
+      if (
+        event.operationId &&
+        this.props.operations.includes(event.operationId, "cake-chat-open")
+      ) {
         this.selectedSessionId = event.snapshot.sessionId;
       } else if (!this.selectedSessionId) {
         this.selectedSessionId = event.snapshot.sessionId;
@@ -133,12 +180,15 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       return;
     }
     if (event.type === "global-chat-operation-failed") {
-      for (const session of this.loadedSessions) session.receiveOperationFailure(event.operationId, event.message);
-      if (this.props.operations.includes(event.operationId, "cake-chat-open")) this.reportError(event.message);
+      for (const session of this.loadedSessions)
+        session.receiveOperationFailure(event.operationId, event.message);
+      if (this.props.operations.includes(event.operationId, "cake-chat-open"))
+        this.reportError(event.message);
       this.props.operations.finish(event.operationId);
       return;
     }
-    if (event.type === "global-chat-operation-completed") this.props.operations.finish(event.operationId);
+    if (event.type === "global-chat-operation-completed")
+      this.props.operations.finish(event.operationId);
   }
 
   private ensureTarget(sessionId: string) {
@@ -148,13 +198,27 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   private applySummaries(snapshot: SessionSnapshot) {
     const prior = new Map(this.summaries.map((summary) => [summary.id, summary]));
     const resolvedIds = new Set(this.resolvedSessionIds);
-    const next = snapshot.sessions.map((summary) => ({ ...summary, resolved: resolvedIds.has(summary.id) }));
+    const next = snapshot.sessions.map((summary) => ({
+      ...summary,
+      resolved: resolvedIds.has(summary.id),
+    }));
     const listed = new Set(next.map((summary) => summary.id));
     for (const sessionId of this.targets) {
       if (listed.has(sessionId)) continue;
       const existing = prior.get(sessionId);
       const now = new Date().toISOString();
-      next.push(existing ? { ...existing, resolved: resolvedIds.has(sessionId) } : { id: sessionId, title: "New chat", created: now, modified: now, messageCount: 0, resolved: resolvedIds.has(sessionId) });
+      next.push(
+        existing
+          ? { ...existing, resolved: resolvedIds.has(sessionId) }
+          : {
+              id: sessionId,
+              title: "New chat",
+              created: now,
+              modified: now,
+              messageCount: 0,
+              resolved: resolvedIds.has(sessionId),
+            },
+      );
     }
     next.sort((left, right) => right.modified.localeCompare(left.modified));
     this.summaries.splice(0, this.summaries.length, ...next);

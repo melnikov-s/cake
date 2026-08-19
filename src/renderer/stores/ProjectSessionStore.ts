@@ -37,18 +37,29 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
 
   constructor(props: ProjectSessionStore["props"]) {
     super(props);
-    this.model = SessionModel.create({ sessionId: props.sessionId, workspacePath: props.workspacePath });
+    this.model = SessionModel.create({
+      sessionId: props.sessionId,
+      workspacePath: props.workspacePath,
+    });
     this.effect(() => () => this.model[Symbol.dispose]());
   }
 
-  get workspacePath() { return this.props.workspacePath; }
-  get sessionId() { return this.props.sessionId; }
-  get canonicalParts() { return this.model.uiParts; }
-  get isStreaming() { return this.model.streaming; }
+  get workspacePath() {
+    return this.props.workspacePath;
+  }
+  get sessionId() {
+    return this.props.sessionId;
+  }
+  get canonicalParts() {
+    return this.model.uiParts;
+  }
+  get isStreaming() {
+    return this.model.streaming;
+  }
   get canSubmit() {
-    return this.props.canSubmit() && Boolean(
-      this.chatStore.draft.trim()
-      || this.composerStore.attachments.length > 0
+    return (
+      this.props.canSubmit() &&
+      Boolean(this.chatStore.draft.trim() || this.composerStore.attachments.length > 0)
     );
   }
 
@@ -82,7 +93,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       matchesPluginCommand: (input) => this.props.pluginCommands().matches(input),
       runPluginCommand: (input) => this.props.pluginCommands().run(input),
       operations: this.props.operations,
-      operationOwner: `message-composer:${this.sessionId}`
+      operationOwner: `message-composer:${this.sessionId}`,
     });
   }
 
@@ -92,8 +103,10 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       session: () => this.model,
       operations: this.props.operations,
       operationOwner: `chat-configuration:${this.sessionId}`,
-      setModel: (operationId, provider, modelId) => this.props.client.setModel({ operationId, sessionId: this.sessionId, provider, modelId }),
-      setThinkingLevel: (operationId, level) => this.props.client.setThinkingLevel({ operationId, sessionId: this.sessionId, level })
+      setModel: (operationId, provider, modelId) =>
+        this.props.client.setModel({ operationId, sessionId: this.sessionId, provider, modelId }),
+      setThinkingLevel: (operationId, level) =>
+        this.props.client.setThinkingLevel({ operationId, sessionId: this.sessionId, level }),
     });
   }
 
@@ -106,10 +119,15 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       submitting: () => this.composerStore.activeOperations.length > 0,
       configuration: () => this.configurationStore,
       commands: () => [...this.model.commands, ...this.props.pluginCommands().commands],
-      placeholder: () => this.isStreaming ? "Add the next instruction…" : `Ask Cake to work in ${this.props.projectName()}…`,
+      placeholder: () =>
+        this.isStreaming
+          ? "Add the next instruction…"
+          : `Ask Cake to work in ${this.props.projectName()}…`,
       inputLabel: () => "Message",
       canSubmit: () => this.canSubmit,
-      submit: async (_draft, mode) => { await this.composerStore.submit(mode === "steer" ? "steer" : undefined); },
+      submit: async (_draft, mode) => {
+        await this.composerStore.submit(mode === "steer" ? "steer" : undefined);
+      },
       abort: () => this.props.abort(),
       attachments: () => this.composerStore.attachments,
       addAttachments: () => this.composerStore.addAttachments(),
@@ -120,8 +138,11 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       usage: () => this.model.usage,
       allowSteer: true,
       hideThinking: () => Boolean(this.model.piSettings?.hideThinkingBlock),
-      error: () => ({ message: this.composerStore.error ?? this.configurationStore.error, details: this.composerStore.errorDetails ?? this.configurationStore.errorDetails }),
-      persist: () => this.props.persist()
+      error: () => ({
+        message: this.composerStore.error ?? this.configurationStore.error,
+        details: this.composerStore.errorDetails ?? this.configurationStore.errorDetails,
+      }),
+      persist: () => this.props.persist(),
     });
   }
 
@@ -131,7 +152,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       client: this.props.client,
       sessionContext: () => ({ sessionId: this.sessionId }),
       isActiveSession: (sessionId) => this.props.isActive() && sessionId === this.sessionId,
-      operationActive: (operationId) => this.props.operations.includes(operationId)
+      operationActive: (operationId) => this.props.operations.includes(operationId),
     });
   }
 
@@ -141,7 +162,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       sessionRegistry: this.props.registry,
       reviews: this.props.reviews,
       draftChatStore: () => this.messageCommentChatStore,
-      context: () => ({ sessionId: this.sessionId })
+      context: () => ({ sessionId: this.sessionId }),
     });
   }
 

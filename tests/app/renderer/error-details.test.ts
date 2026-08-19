@@ -12,11 +12,17 @@ describe("describeError", () => {
   });
 
   it("uses a string as both the message and available details", () => {
-    expect(describeError("Operation failed")).toEqual({ message: "Operation failed", details: "Operation failed" });
+    expect(describeError("Operation failed")).toEqual({
+      message: "Operation failed",
+      details: "Operation failed",
+    });
   });
 
   it("adds operation context without replacing the original stack", () => {
-    const described = describeError(new Error("Identity collision"), "Desktop event: review-threads-received");
+    const described = describeError(
+      new Error("Identity collision"),
+      "Desktop event: review-threads-received",
+    );
 
     expect(described.details).toContain("Error: Identity collision");
     expect(described.details).toContain("Context:\nDesktop event: review-threads-received");

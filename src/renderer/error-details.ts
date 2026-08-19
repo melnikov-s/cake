@@ -8,7 +8,7 @@ export function describeError(error: unknown, context?: string): ErrorDetails {
     const details = error.stack ?? `${error.name}: ${error.message}`;
     return {
       message: error.message || error.name,
-      details: context ? `${details}\n\nContext:\n${context}` : details
+      details: context ? `${details}\n\nContext:\n${context}` : details,
     };
   }
   const message = String(error);

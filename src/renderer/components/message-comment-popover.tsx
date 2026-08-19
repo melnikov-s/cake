@@ -1,4 +1,14 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { createPortal } from "react-dom";
 import { observer } from "r-state-tree/react";
 import type { ReviewThreadModel } from "../models/review-thread";
@@ -13,7 +23,20 @@ export interface MessageCommentAnchorRect {
 }
 
 function CloseIcon() {
-  return <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>;
+  return (
+    <svg
+      aria-hidden="true"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+    >
+      <path d="m6 6 12 12M18 6 6 18" />
+    </svg>
+  );
 }
 
 function anchorRect(anchor: HTMLElement | MessageCommentAnchorRect) {
@@ -28,8 +51,14 @@ function useAnchoredPosition(anchor: HTMLElement | MessageCommentAnchorRect) {
     const surface = surfaceRef.current?.getBoundingClientRect();
     const padding = 12;
     return {
-      left: Math.min(Math.max(padding, left), Math.max(padding, window.innerWidth - (surface?.width ?? 380) - padding)),
-      top: Math.min(Math.max(padding, top), Math.max(padding, window.innerHeight - (surface?.height ?? 360) - padding))
+      left: Math.min(
+        Math.max(padding, left),
+        Math.max(padding, window.innerWidth - (surface?.width ?? 380) - padding),
+      ),
+      top: Math.min(
+        Math.max(padding, top),
+        Math.max(padding, window.innerHeight - (surface?.height ?? 360) - padding),
+      ),
     };
   }, []);
   const update = useCallback(() => {
@@ -46,14 +75,18 @@ function useAnchoredPosition(anchor: HTMLElement | MessageCommentAnchorRect) {
     const gap = 10;
     const rightSide = rect.right + gap;
     const leftSide = rect.left - width - gap;
-    const left = rightSide + width <= window.innerWidth - padding
-      ? rightSide
-      : leftSide >= padding
-        ? leftSide
-        : Math.min(Math.max(padding, rect.left), Math.max(padding, window.innerWidth - width - padding));
+    const left =
+      rightSide + width <= window.innerWidth - padding
+        ? rightSide
+        : leftSide >= padding
+          ? leftSide
+          : Math.min(
+              Math.max(padding, rect.left),
+              Math.max(padding, window.innerWidth - width - padding),
+            );
     const top = Math.min(
       Math.max(padding, rect.top - 14),
-      Math.max(padding, window.innerHeight - height - padding)
+      Math.max(padding, window.innerHeight - height - padding),
     );
     setPosition({ left, top });
   }, [anchor, clamp]);
@@ -80,32 +113,48 @@ function useAnchoredPosition(anchor: HTMLElement | MessageCommentAnchorRect) {
     return () => observer.disconnect();
   }, [clamp]);
 
-  const startDrag = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    if (event.button !== 0 || (event.target instanceof Element && event.target.closest("button"))) return;
-    const surface = surfaceRef.current;
-    if (!surface) return;
-    const rect = surface.getBoundingClientRect();
-    const origin = { pointerX: event.clientX, pointerY: event.clientY, left: rect.left, top: rect.top };
-    movedRef.current = true;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const move = (moveEvent: PointerEvent) => setPosition(clamp(origin.left + moveEvent.clientX - origin.pointerX, origin.top + moveEvent.clientY - origin.pointerY));
-    const stop = () => {
-      document.removeEventListener("pointermove", move);
-      document.removeEventListener("pointerup", stop);
-      document.removeEventListener("pointercancel", stop);
-    };
-    document.addEventListener("pointermove", move);
-    document.addEventListener("pointerup", stop);
-    document.addEventListener("pointercancel", stop);
-    event.preventDefault();
-  }, [clamp]);
+  const startDrag = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (event.button !== 0 || (event.target instanceof Element && event.target.closest("button")))
+        return;
+      const surface = surfaceRef.current;
+      if (!surface) return;
+      const rect = surface.getBoundingClientRect();
+      const origin = {
+        pointerX: event.clientX,
+        pointerY: event.clientY,
+        left: rect.left,
+        top: rect.top,
+      };
+      movedRef.current = true;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      const move = (moveEvent: PointerEvent) =>
+        setPosition(
+          clamp(
+            origin.left + moveEvent.clientX - origin.pointerX,
+            origin.top + moveEvent.clientY - origin.pointerY,
+          ),
+        );
+      const stop = () => {
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", stop);
+        document.removeEventListener("pointercancel", stop);
+      };
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", stop);
+      document.addEventListener("pointercancel", stop);
+      event.preventDefault();
+    },
+    [clamp],
+  );
 
   return { surfaceRef, position, startDrag };
 }
 
 function useDismissablePopover(surfaceRef: RefObject<HTMLDivElement | null>, onClose: () => void) {
   useEffect(() => {
-    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previouslyFocused =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const dismiss = (event: PointerEvent) => {
       if (!(event.target instanceof Node) || !surfaceRef.current?.contains(event.target)) onClose();
     };
@@ -122,35 +171,102 @@ function useDismissablePopover(surfaceRef: RefObject<HTMLDivElement | null>, onC
   }, [onClose, surfaceRef]);
 }
 
-function PopoverShell({ anchor, title, onClose, children }: { anchor: HTMLElement | MessageCommentAnchorRect; title: string; onClose(): void; children: ReactNode }) {
+function PopoverShell({
+  anchor,
+  title,
+  onClose,
+  children,
+}: {
+  anchor: HTMLElement | MessageCommentAnchorRect;
+  title: string;
+  onClose(): void;
+  children: ReactNode;
+}) {
   const { surfaceRef, position, startDrag } = useAnchoredPosition(anchor);
   useDismissablePopover(surfaceRef, onClose);
   return createPortal(
-    <div ref={surfaceRef} className="message-comment-popover" style={position} role="dialog" aria-label={title}>
-      <header className="message-comment-titlebar" onPointerDown={startDrag}><div><span>Selection</span><strong>{title}</strong></div><button type="button" aria-label={`Close ${title.toLowerCase()}`} onClick={onClose}><CloseIcon /></button></header>
+    <div
+      ref={surfaceRef}
+      className="message-comment-popover"
+      style={position}
+      role="dialog"
+      aria-label={title}
+    >
+      <header className="message-comment-titlebar" onPointerDown={startDrag}>
+        <div>
+          <span>Selection</span>
+          <strong>{title}</strong>
+        </div>
+        <button type="button" aria-label={`Close ${title.toLowerCase()}`} onClick={onClose}>
+          <CloseIcon />
+        </button>
+      </header>
       {children}
     </div>,
-    document.body
+    document.body,
   );
 }
 
-export function MessageSelectionAction({ rect, onChat }: { rect: MessageCommentAnchorRect; onChat(anchor: MessageCommentAnchorRect): void }) {
+export function MessageSelectionAction({
+  rect,
+  onChat,
+}: {
+  rect: MessageCommentAnchorRect;
+  onChat(anchor: MessageCommentAnchorRect): void;
+}) {
   const style: CSSProperties = {
     left: Math.min(Math.max(12, (rect.left + rect.right) / 2), window.innerWidth - 12),
-    top: Math.min(rect.bottom + 8, window.innerHeight - 44)
+    top: Math.min(rect.bottom + 8, window.innerHeight - 44),
   };
-  return createPortal(<button className="message-selection-action" type="button" style={style} onPointerDown={(event) => event.preventDefault()} onClick={(event) => onChat(event.currentTarget.getBoundingClientRect())}>Chat about this</button>, document.body);
+  return createPortal(
+    <button
+      className="message-selection-action"
+      type="button"
+      style={style}
+      onPointerDown={(event) => event.preventDefault()}
+      onClick={(event) => onChat(event.currentTarget.getBoundingClientRect())}
+    >
+      Chat about this
+    </button>,
+    document.body,
+  );
 }
 
-export const MessageCommentDraftPopover = observer(function MessageCommentDraftPopover({ anchor, chatStore, renderChat, onClose }: { anchor: MessageCommentAnchorRect; chatStore: ChatStore; renderChat(store: ChatStore): ReactNode; onClose(): void }) {
-  return <PopoverShell anchor={anchor} title="Chat about this" onClose={onClose}>
-    {renderChat(chatStore)}
-  </PopoverShell>;
+export const MessageCommentDraftPopover = observer(function MessageCommentDraftPopover({
+  anchor,
+  chatStore,
+  renderChat,
+  onClose,
+}: {
+  anchor: MessageCommentAnchorRect;
+  chatStore: ChatStore;
+  renderChat(store: ChatStore): ReactNode;
+  onClose(): void;
+}) {
+  return (
+    <PopoverShell anchor={anchor} title="Chat about this" onClose={onClose}>
+      {renderChat(chatStore)}
+    </PopoverShell>
+  );
 });
 
-export const MessageCommentThreadPopover = observer(function MessageCommentThreadPopover({ anchor, thread, store, renderChat, onClose }: { anchor: HTMLElement | MessageCommentAnchorRect; thread: ReviewThreadModel; store: MessageCommentsStore; renderChat(store: ChatStore): ReactNode; onClose(): void }) {
+export const MessageCommentThreadPopover = observer(function MessageCommentThreadPopover({
+  anchor,
+  thread,
+  store,
+  renderChat,
+  onClose,
+}: {
+  anchor: HTMLElement | MessageCommentAnchorRect;
+  thread: ReviewThreadModel;
+  store: MessageCommentsStore;
+  renderChat(store: ChatStore): ReactNode;
+  onClose(): void;
+}) {
   const chat = store.chatStore(thread.id);
-  return <PopoverShell anchor={anchor} title="Selection chat" onClose={onClose}>
-    {chat && renderChat(chat)}
-  </PopoverShell>;
+  return (
+    <PopoverShell anchor={anchor} title="Selection chat" onClose={onClose}>
+      {chat && renderChat(chat)}
+    </PopoverShell>
+  );
 });

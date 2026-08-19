@@ -5,7 +5,7 @@ import {
   createAgentSession,
   type AgentSessionEvent,
   type ExtensionUIContext,
-  type InlineExtension
+  type InlineExtension,
 } from "@earendil-works/pi-coding-agent";
 
 export type FoundationRuntimeEvent =
@@ -32,13 +32,14 @@ const foundationExtension: InlineExtension = (pi) => {
     async handler(_args, ctx) {
       const accepted = await ctx.ui.confirm(
         "Pi extension confirmation",
-        "This request came from a Pi extension running outside the renderer."
+        "This request came from a Pi extension running outside the renderer.",
       );
       const chunks = accepted
         ? ["Pi", " session", " boundary", " is", " alive."]
         : ["Pi", " extension", " confirmation", " was", " declined."];
-      for (const content of chunks) pi.sendMessage({ customType: "cake.foundation", content, display: true });
-    }
+      for (const content of chunks)
+        pi.sendMessage({ customType: "cake.foundation", content, display: true });
+    },
   });
 };
 
@@ -46,7 +47,9 @@ function unsupported(name: string): never {
   throw new Error(`Pi extension UI method ${name} is not supported by the S0 Cake adapter`);
 }
 
-function createFoundationUiContext(requestConfirm: FoundationRuntimeOptions["requestConfirm"]): ExtensionUIContext {
+function createFoundationUiContext(
+  requestConfirm: FoundationRuntimeOptions["requestConfirm"],
+): ExtensionUIContext {
   const noop = () => undefined;
   return {
     select: async () => undefined,
@@ -71,12 +74,14 @@ function createFoundationUiContext(requestConfirm: FoundationRuntimeOptions["req
     addAutocompleteProvider: noop,
     setEditorComponent: noop,
     getEditorComponent: () => undefined,
-    get theme() { return unsupported("theme"); },
+    get theme() {
+      return unsupported("theme");
+    },
     getAllThemes: () => [],
     getTheme: () => undefined,
     setTheme: () => ({ success: false, error: "Theme selection is not supported in S0" }),
     getToolsExpanded: () => false,
-    setToolsExpanded: noop
+    setToolsExpanded: noop,
   };
 }
 
@@ -84,13 +89,20 @@ function projectEvent(event: AgentSessionEvent): FoundationRuntimeEvent | undefi
   if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
     return { type: "text-delta", text: event.assistantMessageEvent.delta };
   }
-  if (event.type === "message_end" && event.message.role === "custom" && event.message.customType === "cake.foundation" && typeof event.message.content === "string") {
+  if (
+    event.type === "message_end" &&
+    event.message.role === "custom" &&
+    event.message.customType === "cake.foundation" &&
+    typeof event.message.content === "string"
+  ) {
     return { type: "text-delta", text: event.message.content };
   }
   return undefined;
 }
 
-export async function createFoundationRuntime(options: FoundationRuntimeOptions): Promise<FoundationRuntime> {
+export async function createFoundationRuntime(
+  options: FoundationRuntimeOptions,
+): Promise<FoundationRuntime> {
   const settingsManager = SettingsManager.inMemory();
   const resourceLoader = new DefaultResourceLoader({
     cwd: options.cwd,
@@ -101,7 +113,7 @@ export async function createFoundationRuntime(options: FoundationRuntimeOptions)
     noSkills: true,
     noPromptTemplates: true,
     noThemes: true,
-    noContextFiles: true
+    noContextFiles: true,
   });
   await resourceLoader.reload();
   const { session } = await createAgentSession({
@@ -110,13 +122,16 @@ export async function createFoundationRuntime(options: FoundationRuntimeOptions)
     noTools: "all",
     resourceLoader,
     sessionManager: SessionManager.inMemory(options.cwd),
-    settingsManager
+    settingsManager,
   });
   const unsubscribe = session.subscribe((event) => {
     const projected = projectEvent(event);
     if (projected) options.onEvent(projected);
   });
-  await session.bindExtensions({ mode: "rpc", uiContext: createFoundationUiContext(options.requestConfirm) });
+  await session.bindExtensions({
+    mode: "rpc",
+    uiContext: createFoundationUiContext(options.requestConfirm),
+  });
   options.onEvent({ type: "session-ready", sessionId: session.sessionId });
 
   let disposed = false;
@@ -132,6 +147,6 @@ export async function createFoundationRuntime(options: FoundationRuntimeOptions)
       disposed = true;
       unsubscribe();
       session.dispose();
-    }
+    },
   };
 }

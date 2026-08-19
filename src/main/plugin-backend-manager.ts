@@ -23,8 +23,13 @@ export class PluginBackendManager {
   constructor(
     private readonly builder: PluginBuildService,
     private readonly hostPath: string,
-    private readonly emit: (event: { type: "plugin-backend-event"; pluginId: string; name: string; value: JsonValue }) => void,
-    private readonly failed: (pluginId: string, message: string) => void
+    private readonly emit: (event: {
+      type: "plugin-backend-event";
+      pluginId: string;
+      name: string;
+      value: JsonValue;
+    }) => void,
+    private readonly failed: (pluginId: string, message: string) => void,
   ) {}
 
   async activate(revision?: string) {
@@ -44,7 +49,8 @@ export class PluginBackendManager {
   call(pluginId: string, callId: string, method: string, input: JsonValue) {
     const backend = this.running.get(pluginId);
     if (!backend) return Promise.reject(new Error(`Plugin ${pluginId} has no active backend`));
-    if (this.pending.has(callId)) return Promise.reject(new Error(`Plugin backend call ${callId} is already active`));
+    if (this.pending.has(callId))
+      return Promise.reject(new Error(`Plugin backend call ${callId} is already active`));
     return new Promise<JsonValue>((resolve, reject) => {
       this.pending.set(callId, { pluginId, resolve, reject });
       backend.process.postMessage({ type: "call", callId, method, input });
@@ -61,7 +67,8 @@ export class PluginBackendManager {
 
   async stop() {
     this.revision = undefined;
-    for (const pending of this.pending.values()) pending.reject(new Error("Plugin backend was stopped"));
+    for (const pending of this.pending.values())
+      pending.reject(new Error("Plugin backend was stopped"));
     this.pending.clear();
     const running = [...this.running.values()];
     this.running.clear();
@@ -78,12 +85,15 @@ export class PluginBackendManager {
         cwd: this.builder.paths.plugins,
         env: process.env,
         serviceName: `Cake Plugin: ${pluginId}`,
-        stdio: "pipe"
+        stdio: "pipe",
       });
       const running: RunningBackend = { pluginId, process: child, stopping: false };
       this.running.set(pluginId, running);
       let ready = false;
-      const timeout = setTimeout(() => reject(new Error(`Plugin ${pluginId} backend did not start within 10 seconds`)), 10_000);
+      const timeout = setTimeout(
+        () => reject(new Error(`Plugin ${pluginId} backend did not start within 10 seconds`)),
+        10_000,
+      );
       child.on("spawn", () => child.postMessage({ type: "init", pluginId, backendPath }));
       child.on("message", (untrusted) => {
         const parsed = pluginBackendHostMessageSchema.safeParse(untrusted);
@@ -94,7 +104,12 @@ export class PluginBackendManager {
           clearTimeout(timeout);
           resolve();
         } else if (message.type === "event") {
-          this.emit({ type: "plugin-backend-event", pluginId, name: message.name, value: message.value });
+          this.emit({
+            type: "plugin-backend-event",
+            pluginId,
+            name: message.name,
+            value: message.value,
+          });
         } else if (message.type === "result") {
           const pending = this.pending.get(message.callId);
           if (!pending || pending.pluginId !== pluginId) return;
@@ -115,13 +130,23 @@ export class PluginBackendManager {
           pending.reject(new Error(`Plugin ${pluginId} backend exited with code ${code}`));
           this.pending.delete(callId);
         }
-        if (!ready) reject(new Error(`Plugin ${pluginId} backend exited with code ${code} before becoming ready`));
-        else if (!running.stopping) this.failed(pluginId, `Backend exited unexpectedly with code ${code}`);
+        if (!ready)
+          reject(
+            new Error(`Plugin ${pluginId} backend exited with code ${code} before becoming ready`),
+          );
+        else if (!running.stopping)
+          this.failed(pluginId, `Backend exited unexpectedly with code ${code}`);
       });
-      child.stderr?.on("data", (chunk) => console.error(`[plugin:${pluginId}] ${String(chunk).trimEnd()}`));
-      child.stdout?.on("data", (chunk) => console.log(`[plugin:${pluginId}] ${String(chunk).trimEnd()}`));
+      child.stderr?.on("data", (chunk) =>
+        console.error(`[plugin:${pluginId}] ${String(chunk).trimEnd()}`),
+      );
+      child.stdout?.on("data", (chunk) =>
+        console.log(`[plugin:${pluginId}] ${String(chunk).trimEnd()}`),
+      );
     });
   }
 
-  [Symbol.dispose]() { void this.stop(); }
+  [Symbol.dispose]() {
+    void this.stop();
+  }
 }

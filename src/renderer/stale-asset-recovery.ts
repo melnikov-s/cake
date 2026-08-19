@@ -12,7 +12,10 @@ export function installStaleAssetRecovery(reload: () => void = () => window.loca
   };
 
   window.addEventListener("vite:preloadError", handlePreloadError);
-  const clearAttempt = window.setTimeout(() => window.sessionStorage.removeItem(recoveryAttemptKey), recoveryWindowMs);
+  const clearAttempt = window.setTimeout(
+    () => window.sessionStorage.removeItem(recoveryAttemptKey),
+    recoveryWindowMs,
+  );
 
   return () => {
     window.clearTimeout(clearAttempt);

@@ -7,9 +7,25 @@ export function Message({ className, ...props }: ComponentProps<"article">) {
 }
 
 export function MessageLabel({ className, ...props }: ComponentProps<"div">) {
-  return <div className={cn("font-mono text-[0.64rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground", className)} {...props} />;
+  return (
+    <div
+      className={cn(
+        "font-mono text-[0.64rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
 }
 
 export function MessageContent({ className, ...props }: ComponentProps<"div">) {
-  return <div className={cn("min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card px-5 py-4 text-[0.94rem] leading-7 shadow-[0_12px_35px_-30px_rgba(18,22,27,0.45)]", className)} {...props} />;
+  return (
+    <div
+      className={cn(
+        "min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card px-5 py-4 text-[0.94rem] leading-7 shadow-[0_12px_35px_-30px_rgba(18,22,27,0.45)]",
+        className,
+      )}
+      {...props}
+    />
+  );
 }

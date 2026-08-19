@@ -8,7 +8,9 @@ describe("AtomicFileWriter", () => {
   const directories: string[] = [];
 
   afterEach(async () => {
-    await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+    await Promise.all(
+      directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+    );
   });
 
   it("orders concurrent atomic writes without sharing a temporary path", async () => {
@@ -20,7 +22,7 @@ describe("AtomicFileWriter", () => {
     await Promise.all([
       writer.write(target, "first"),
       writer.write(target, "second"),
-      writer.write(target, "latest")
+      writer.write(target, "latest"),
     ]);
 
     expect(await readFile(target, "utf8")).toBe("latest");

@@ -8,16 +8,38 @@ import type { ModelOption } from "../../../src/ipc/session-contract";
 import { ModelCombobox, type ModelGroup } from "../../../src/renderer/components/model-combobox";
 
 function model(provider: string, providerName: string, id: string, name: string): ModelOption {
-  return { provider, providerName, id, name, authenticated: true, authTypes: [], input: ["text"], reasoning: true };
+  return {
+    provider,
+    providerName,
+    id,
+    name,
+    authenticated: true,
+    authTypes: [],
+    input: ["text"],
+    reasoning: true,
+  };
 }
 
-function disconnectedModel(provider: string, providerName: string, id: string, name: string): ModelOption {
-  return { ...model(provider, providerName, id, name), authenticated: false, authTypes: ["api_key"] };
+function disconnectedModel(
+  provider: string,
+  providerName: string,
+  id: string,
+  name: string,
+): ModelOption {
+  return {
+    ...model(provider, providerName, id, name),
+    authenticated: false,
+    authTypes: ["api_key"],
+  };
 }
 
 const groups: ModelGroup[] = [
   { id: "openai", name: "OpenAI", models: [model("openai", "OpenAI", "gpt-5.5", "GPT-5.5")] },
-  { id: "anthropic", name: "Anthropic", models: [model("anthropic", "Anthropic", "claude-sonnet-4", "Claude Sonnet 4")] }
+  {
+    id: "anthropic",
+    name: "Anthropic",
+    models: [model("anthropic", "Anthropic", "claude-sonnet-4", "Claude Sonnet 4")],
+  },
 ];
 
 describe("ModelCombobox", () => {
@@ -27,7 +49,10 @@ describe("ModelCombobox", () => {
   beforeEach(() => {
     Object.assign(globalThis, {
       IS_REACT_ACT_ENVIRONMENT: true,
-      requestAnimationFrame: (callback: FrameRequestCallback) => { callback(0); return 1; }
+      requestAnimationFrame: (callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      },
     });
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -41,7 +66,16 @@ describe("ModelCombobox", () => {
 
   it("searches across providers and selects the filtered model with Enter", () => {
     const onSelect = vi.fn();
-    act(() => root.render(<ModelCombobox ariaLabel="Model" groups={groups} value="openai/gpt-5.5" onSelect={onSelect} />));
+    act(() =>
+      root.render(
+        <ModelCombobox
+          ariaLabel="Model"
+          groups={groups}
+          value="openai/gpt-5.5"
+          onSelect={onSelect}
+        />,
+      ),
+    );
     const input = container.querySelector<HTMLInputElement>('[role="combobox"]')!;
 
     expect(input.value).toBe("GPT-5.5");
@@ -66,12 +100,35 @@ describe("ModelCombobox", () => {
   it("never renders models from disconnected providers", () => {
     const mixedGroups: ModelGroup[] = [
       ...groups,
-      { id: "nvidia", name: "NVIDIA", models: [
-        disconnectedModel("nvidia", "NVIDIA", "meta/llama-3.3-70b-instruct", "Llama 3.3 70b Instruct"),
-        disconnectedModel("nvidia", "NVIDIA", "mistralai/mistral-medium-3.5-128b", "Mistral Medium 3.5")
-      ] }
+      {
+        id: "nvidia",
+        name: "NVIDIA",
+        models: [
+          disconnectedModel(
+            "nvidia",
+            "NVIDIA",
+            "meta/llama-3.3-70b-instruct",
+            "Llama 3.3 70b Instruct",
+          ),
+          disconnectedModel(
+            "nvidia",
+            "NVIDIA",
+            "mistralai/mistral-medium-3.5-128b",
+            "Mistral Medium 3.5",
+          ),
+        ],
+      },
     ];
-    act(() => root.render(<ModelCombobox ariaLabel="Model" groups={mixedGroups} value="openai/gpt-5.5" onSelect={vi.fn()} />));
+    act(() =>
+      root.render(
+        <ModelCombobox
+          ariaLabel="Model"
+          groups={mixedGroups}
+          value="openai/gpt-5.5"
+          onSelect={vi.fn()}
+        />,
+      ),
+    );
     const input = container.querySelector<HTMLInputElement>('[role="combobox"]')!;
 
     act(() => input.click());

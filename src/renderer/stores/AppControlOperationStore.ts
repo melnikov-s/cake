@@ -15,11 +15,18 @@ export class AppControlOperationStore extends Store<{ operations: SessionOperati
   }
 
   receive(event: DesktopClientEvent) {
-    if (event.type === "pi-state-changed" && (event.state === "failed" || event.state === "stopped")) {
+    if (
+      event.type === "pi-state-changed" &&
+      (event.state === "failed" || event.state === "stopped")
+    ) {
       this.props.operations.reset("app-control");
       return;
     }
-    if ((event.type === "operation-completed" || event.type === "operation-failed") && event.operationId && this.props.operations.includes(event.operationId, "app-control")) {
+    if (
+      (event.type === "operation-completed" || event.type === "operation-failed") &&
+      event.operationId &&
+      this.props.operations.includes(event.operationId, "app-control")
+    ) {
       this.finish(event.operationId);
     }
   }

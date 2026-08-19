@@ -1,5 +1,9 @@
 import { Store, observable } from "r-state-tree";
-import type { CompiledInlineWidget, InlineWidgetCapability, InlineWidgetLanguage } from "../../ipc/inline-widget-contract";
+import type {
+  CompiledInlineWidget,
+  InlineWidgetCapability,
+  InlineWidgetLanguage,
+} from "../../ipc/inline-widget-contract";
 import type { DesktopClient } from "../desktop-client";
 
 export interface InlineWidgetState {
@@ -30,10 +34,25 @@ export class InlineWidgetStore extends Store<{ client: InlineWidgetClient }> {
     return this.states[id];
   }
 
-  prepare(id: string, language: InlineWidgetLanguage, source: string, capability: InlineWidgetCapability = "display") {
+  prepare(
+    id: string,
+    language: InlineWidgetLanguage,
+    source: string,
+    capability: InlineWidgetCapability = "display",
+  ) {
     const current = this.states[id];
-    if (current?.language === language && current.source === source && current.capability === capability) return;
-    const state = observable<InlineWidgetState>({ language, capability, source, status: "building" });
+    if (
+      current?.language === language &&
+      current.source === source &&
+      current.capability === capability
+    )
+      return;
+    const state = observable<InlineWidgetState>({
+      language,
+      capability,
+      source,
+      status: "building",
+    });
     this.states[id] = state;
     void this.compile(id, state, source);
   }
@@ -59,7 +78,7 @@ export class InlineWidgetStore extends Store<{ client: InlineWidgetClient }> {
         source: state.source,
         context: input.context,
         diagnostic: state.diagnostic,
-        model: input.model
+        model: input.model,
       });
       if (this.signal.aborted || this.revisions.get(input.id) !== revision) return;
       state.source = repaired.source;
@@ -74,17 +93,28 @@ export class InlineWidgetStore extends Store<{ client: InlineWidgetClient }> {
     }
   }
 
-  private async compile(id: string, state: InlineWidgetState, source: string, expectedRevision?: number) {
+  private async compile(
+    id: string,
+    state: InlineWidgetState,
+    source: string,
+    expectedRevision?: number,
+  ) {
     const revision = expectedRevision ?? (this.revisions.get(id) ?? 0) + 1;
     this.revisions.set(id, revision);
     try {
-      const compiled = await this.props.client.compileInlineWidget(state.language, source, state.capability);
-      if (this.signal.aborted || this.revisions.get(id) !== revision || this.states[id] !== state) return;
+      const compiled = await this.props.client.compileInlineWidget(
+        state.language,
+        source,
+        state.capability,
+      );
+      if (this.signal.aborted || this.revisions.get(id) !== revision || this.states[id] !== state)
+        return;
       state.compiled = compiled;
       state.status = "ready";
       state.diagnostic = undefined;
     } catch (error) {
-      if (this.signal.aborted || this.revisions.get(id) !== revision || this.states[id] !== state) return;
+      if (this.signal.aborted || this.revisions.get(id) !== revision || this.states[id] !== state)
+        return;
       state.compiled = undefined;
       state.status = "error";
       state.diagnostic = error instanceof Error ? error.message : String(error);
