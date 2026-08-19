@@ -344,6 +344,7 @@ function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
 
 function ActivityGroup({ parts, behavior, isStreaming }: { parts: UiPart[]; behavior: CanonicalTranscriptBehavior; isStreaming: boolean }) {
   const logRef = useRef<HTMLDivElement>(null);
+  const logIsAtBottomRef = useRef(true);
   const tools = parts.filter((part) => part.kind === "tool").length;
   const reasoningParts = parts.filter((part): part is Extract<UiPart, { kind: "reasoning" }> => part.kind === "reasoning");
   const reasoningHasContent = reasoningParts.some((part) => Boolean(part.text.trim()));
@@ -353,14 +354,21 @@ function ActivityGroup({ parts, behavior, isStreaming }: { parts: UiPart[]; beha
   const editParts = toolParts.filter((part) => part.name === "edit" && Boolean(part.diff));
   const editTotals = editParts.reduce((total, part) => { const stats = diffStats(part.diff!); return { additions: total.additions + stats.additions, deletions: total.deletions + stats.deletions }; }, { additions: 0, deletions: 0 });
   const label = editParts.length > 0 ? `${editParts.length} ${editParts.length === 1 ? "edit" : "edits"} · +${editTotals.additions} −${editTotals.deletions}` : tools === 0 ? "Reasoning" : `${tools} tool ${tools === 1 ? "call" : "calls"}`;
+  const activityVersion = JSON.stringify(parts);
   useLayoutEffect(() => {
-    if (!isStreaming || !logRef.current) return;
+    if (!isStreaming || !logRef.current || !logIsAtBottomRef.current) return;
     logRef.current.scrollTop = logRef.current.scrollHeight;
-  });
+  }, [activityVersion, isStreaming]);
   if (tools === 0 && !reasoningHasContent) return <div className="activity-group activity-group-status" role="status"><span className={`work-log-state${activityIsRunning ? " work-log-running" : ""}`} aria-label={activityIsRunning ? "working" : "complete"} />{reasoningIsStreaming ? "Thinking…" : "Reasoning details not exposed"}</div>;
   return <details className="activity-group">
     <summary><span className={`work-log-state${activityIsRunning ? " work-log-running" : ""}`} aria-label={activityIsRunning ? "working" : "complete"} />Work log <small>{label}</small></summary>
-    <div ref={logRef}>{parts.map((part) => <TranscriptPart key={part.id} part={part} behavior={behavior} />)}</div>
+    <div
+      ref={logRef}
+      onScroll={(event) => {
+        const log = event.currentTarget;
+        logIsAtBottomRef.current = log.scrollHeight - log.clientHeight - log.scrollTop <= 1;
+      }}
+    >{parts.map((part) => <TranscriptPart key={part.id} part={part} behavior={behavior} />)}</div>
   </details>;
 }
 

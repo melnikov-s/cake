@@ -202,11 +202,35 @@ describe("Transcript scrolling", () => {
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([first], true)} />));
     const log = container.querySelector<HTMLDivElement>(".activity-group > div")!;
-    Object.defineProperty(log, "scrollHeight", { configurable: true, value: 480 });
+    Object.defineProperties(log, {
+      clientHeight: { configurable: true, value: 120 },
+      scrollHeight: { configurable: true, value: 480 }
+    });
+    log.scrollTop = 360;
+    act(() => log.dispatchEvent(new Event("scroll", { bubbles: true })));
+    Object.defineProperty(log, "scrollHeight", { configurable: true, value: 600 });
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([first, second], true)} />));
 
-    expect(log.scrollTop).toBe(480);
+    expect(log.scrollTop).toBe(600);
+  });
+
+  it("does not move a streaming work log after the user scrolls away from the bottom", () => {
+    const first: UiPart = { id: "reasoning-1", kind: "reasoning", text: "First thought", status: "streaming" };
+    const second: UiPart = { id: "tool-1", kind: "tool", name: "read", input: "file", state: "running" };
+
+    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([first], true)} />));
+    const log = container.querySelector<HTMLDivElement>(".activity-group > div")!;
+    Object.defineProperties(log, {
+      clientHeight: { configurable: true, value: 120 },
+      scrollHeight: { configurable: true, value: 480 }
+    });
+    log.scrollTop = 100;
+    act(() => log.dispatchEvent(new Event("scroll", { bubbles: true })));
+
+    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([first, second], true)} />));
+
+    expect(log.scrollTop).toBe(100);
   });
 
   it("leaves work log expansion under user control as streaming changes", () => {
