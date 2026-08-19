@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { observer } from "r-state-tree/react";
 import type { ChangedFile } from "../../ipc/session-contract";
 import type { ReviewAnchor, ReviewPoint } from "../../ipc/review-contract";
@@ -43,7 +43,27 @@ function scrollToReviewThread(threadId: string) {
   [...document.querySelectorAll<HTMLElement>("[data-review-thread-id]")].find((element) => element.dataset.reviewThreadId === threadId)?.scrollIntoView({ block: "center" });
 }
 
-const HighlightedDiff = observer(function HighlightedDiff({ change, reviews, store, reviewable = true }: { change: ChangedFile; reviews: ReviewsStore; store: ChangesStore; reviewable?: boolean }) {
+function changeSection(container: HTMLElement, path: string) {
+  return [...container.querySelectorAll<HTMLElement>("[data-change-path]")].find((element) => element.dataset.changePath === path);
+}
+
+function scrollToChange(container: HTMLElement | null, path: string) {
+  if (!container) return;
+  changeSection(container, path)?.scrollIntoView?.({ block: "start" });
+}
+
+function activeChangePath(container: HTMLElement) {
+  const sections = [...container.querySelectorAll<HTMLElement>("[data-change-path]")];
+  if (container.scrollHeight > container.clientHeight + 2 && container.scrollTop + container.clientHeight >= container.scrollHeight - 2) return sections.at(-1)?.dataset.changePath;
+  const boundary = container.getBoundingClientRect().top + 24;
+  let active = sections[0];
+  for (const section of sections) {
+    if (section.getBoundingClientRect().top <= boundary) active = section;
+  }
+  return active?.dataset.changePath;
+}
+
+const HighlightedDiff = observer(function HighlightedDiff({ change, reviews, store, reviewable = true, className = "" }: { change: ChangedFile; reviews: ReviewsStore; store: ChangesStore; reviewable?: boolean; className?: string }) {
   const lines = useMemo(() => parseDiff(change.diff), [change.diff]);
   const source = useMemo(() => lines.map((line) => line.kind === "meta" ? "" : line.content).join("\n"), [lines]);
   const tokens = useHighlightedSource(change.path, source);
@@ -60,13 +80,44 @@ const HighlightedDiff = observer(function HighlightedDiff({ change, reviews, sto
       : reviewAnchor(change, lines, index, index, line, 0, line.length));
   };
 
-  return <div className="change-explorer-diff" role="table" aria-label={`Changes to ${change.path}`}>{lines.map((line, index) => line.kind === "meta"
+  return <div className={`change-explorer-diff ${className}`.trim()} role="table" aria-label={`Changes to ${change.path}`}>{lines.map((line, index) => line.kind === "meta"
     ? <div className="change-explorer-line meta" role="row" key={line.key}><span /><span /><code>{line.content}</code></div>
     : <Fragment key={line.key}><div className={`change-explorer-line ${line.kind}`} data-diff-index={index} role="row">
         <span className={reviewable ? "review-gutter" : undefined}>{reviewable && <button aria-label={`Comment on line ${line.newNumber ?? line.oldNumber}`} onMouseDown={(event) => event.preventDefault()} onClick={(event) => openFromLineAction(event.currentTarget, index, line.content)}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5" /></svg></button>}{line.oldNumber}</span><span>{line.newNumber}</span><code><b data-review-prefix>{line.kind === "add" ? "+" : line.kind === "remove" ? "−" : " "}</b>{(tokens?.[index] ?? []).length > 0
           ? tokens![index]!.map((token, tokenIndex) => <i className="syntax-token" style={token.htmlStyle} key={`${tokenIndex}-${token.content}`}>{token.content}</i>)
           : line.content || " "}</code>
       </div>{composer && composer.anchor.end.diffLine === index && <ReviewDraftCard anchor={composer.anchor} store={reviews} onCancel={cancelComposer} />}{threads.filter((thread) => thread.anchor.end.diffLine === index).map((thread) => <ReviewThreadCard key={`${thread.id}:${thread.status}`} thread={thread} store={reviews} />)}</Fragment>)}</div>;
+});
+
+const FullDiff = observer(function FullDiff({ changes, reviews, store }: { changes: readonly ChangedFile[]; reviews: ReviewsStore; store: ChangesStore }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const selectedPathRef = useRef<string | undefined>(undefined);
+  const selectedPath = store.selected?.path;
+  const changeKey = changes.map((change) => change.path).join("\u0000");
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    if (selectedPath && selectedPathRef.current !== selectedPath) {
+      selectedPathRef.current = selectedPath;
+      scrollToChange(container, selectedPath);
+    }
+    const onScroll = () => {
+      const path = activeChangePath(container);
+      if (!path || path === selectedPathRef.current) return;
+      selectedPathRef.current = path;
+      store.select(path);
+    };
+    container.addEventListener("scroll", onScroll, { passive: true });
+    return () => container.removeEventListener("scroll", onScroll);
+  }, [changeKey, selectedPath, store]);
+
+  return <div ref={scrollRef} className="change-explorer-diff change-explorer-all-diff" role="region" aria-label={`All workspace changes · ${changes.length} files`}>
+    {changes.map((item) => <section className="change-explorer-file-section" data-change-path={item.path} aria-label={`Changes to ${item.path}`} key={item.path}>
+      <header className="change-explorer-diff-file-header"><strong title={item.previousPath ? `${item.previousPath} → ${item.path}` : item.path}>{item.previousPath ? `${item.previousPath} → ${item.path}` : item.path}</strong><span><b>+{item.additions}</b><i>−{item.deletions}</i></span></header>
+      <HighlightedDiff change={item} reviews={reviews} store={store} className="change-explorer-embedded-diff" />
+    </section>)}
+  </div>;
 });
 
 function FullFile({ change, reviews, browse, store }: { change: ChangedFile; reviews: ReviewsStore; browse: BrowseStore; store: ChangesStore }) {
@@ -130,11 +181,13 @@ export const ChangeExplorer = observer(function ChangeExplorer({ store, reviews,
     scrollToReviewThread(activeChangeThread.id);
   }, [change?.path, activeChangeThread?.id, activeChangeThread?.anchor.view]);
   const context = `Working tree · staged, unstaged, and untracked · ${chat.sessionTitle}`;
+  const totalAdditions = store.changes.reduce((total, item) => total + item.additions, 0);
+  const totalDeletions = store.changes.reduce((total, item) => total + item.deletions, 0);
   const emptyTitle = store.error ? "Unable to inspect changes" : store.loading ? "Loading changes…" : "Working tree is clean";
   const emptyDetail = store.error ?? (store.loading ? "Reading the current Git working tree." : "There are no staged, unstaged, or untracked files.");
   return <SourceExplorerLayout resizeLabel="Resize changed files panel" file={<>
-      <header><div><small title={context}>{context}</small><h1>{change ? (change.previousPath ? `${change.previousPath} → ${change.path}` : change.path) : emptyTitle}</h1></div>{change && <div className="change-explorer-view-toggle" role="group" aria-label="File view"><button type="button" className={shownView === "diff" ? "active" : ""} aria-pressed={shownView === "diff"} onClick={() => setView("diff")}>Diff</button><button type="button" className={shownView === "file" ? "active" : ""} aria-pressed={shownView === "file"} disabled={change.status === "deleted"} onClick={() => setView("file")}>Full file</button></div>}{change && <span><b>+{change.additions}</b><i>−{change.deletions}</i></span>}</header>
-      {change ? (shownView === "diff" ? <HighlightedDiff change={change} reviews={reviews} store={store} /> : <FullFile change={change} reviews={reviews} browse={browse} store={store} />) : <div className="change-explorer-file-state">{store.loading ? <LoadingState label="Loading changes" /> : <><strong>{emptyTitle}</strong><span>{emptyDetail}</span></>}</div>}
+      <header><div><small title={context}>{context}</small><h1>{change ? (change.previousPath ? `${change.previousPath} → ${change.path}` : change.path) : emptyTitle}</h1></div>{change && <div className="change-explorer-view-toggle" role="group" aria-label="File view"><button type="button" className={shownView === "diff" ? "active" : ""} aria-pressed={shownView === "diff"} onClick={() => setView("diff")}>Diff</button><button type="button" className={shownView === "file" ? "active" : ""} aria-pressed={shownView === "file"} disabled={change.status === "deleted"} onClick={() => setView("file")}>Full file</button></div>}{store.changes.length > 0 && <span><b>+{totalAdditions}</b><i>−{totalDeletions}</i></span>}</header>
+      {change ? (shownView === "diff" ? <FullDiff changes={store.changes} reviews={reviews} store={store} /> : <FullFile change={change} reviews={reviews} browse={browse} store={store} />) : <div className="change-explorer-file-state">{store.loading ? <LoadingState label="Loading changes" /> : <><strong>{emptyTitle}</strong><span>{emptyDetail}</span></>}</div>}
     </>} sidebar={<><header><div><strong>Changed files</strong><small>{store.changes.length} {store.changes.length === 1 ? "file" : "files"}</small></div><div className="change-explorer-actions"><Button variant="ghost" size="sm" onClick={close}>Done</Button></div></header><div className={`change-explorer-sidebar-body ${resizingComments ? "is-resizing" : ""}`} style={sidebarStyle}><nav aria-label="Changed files"><SourceTree nodes={tree.children} selectedPath={change?.path} onSelect={(path) => store.select(path)} fileMeta={(item) => <small>+{item.additions} −{item.deletions}</small>} /></nav>{changeThreads.length > 0 && <><PanelResizeHandle className="review-index-resize-handle" label="Resize comments panel" value={shownCommentsHeight} min={commentsMinHeight} max={commentsMaxHeight} edge="bottom" onChange={setCommentsHeight} onResizeStart={() => setResizingComments(true)} onResizeEnd={() => setResizingComments(false)} /><section className="review-thread-index" aria-label="Review threads"><header><strong>Comments</strong><span>{changeThreads.length}</span></header><ol>{indexedThreads.map((thread) => {
       const state = thread.status === "resolved" ? "Resolved" : reviews.threadStreaming(thread.id) ? "Working" : thread.pending ? "Pending" : "Replied";
       return <li key={thread.id}><button className={`${thread.status === "resolved" ? "resolved" : ""} ${reviews.activeThread?.id === thread.id ? "active" : ""}`} onClick={() => focusThread(thread.id)}><i className={state.toLowerCase()} /><span><strong>{reviewThreadPreview(thread, "Review thread")}</strong><small>{threadLocation(thread)}</small></span><em>{state}</em></button></li>;

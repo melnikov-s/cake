@@ -304,6 +304,14 @@
 .change-explorer-file > header > span { display: flex; gap: 8px; font: 10px var(--font-mono); }
 .change-explorer-file > header b { color: oklch(0.66 0.14 152); }.change-explorer-file > header i { color: oklch(0.65 0.18 28); font-style: normal; font-weight: 700; }
 .change-explorer-diff { min-width: 0; min-height: 0; overflow: auto; padding: 14px 0 60px; font: 12px/1.7 var(--font-mono); scrollbar-gutter: stable; }
+.change-explorer-all-diff { padding-top: 0; }
+.change-explorer-file-section { padding-bottom: 24px; }
+.change-explorer-file-section + .change-explorer-file-section { border-top: 1px solid var(--border); }
+.change-explorer-diff-file-header { position: sticky; z-index: 2; top: 0; display: flex; min-height: 37px; align-items: center; justify-content: space-between; gap: 14px; padding: 0 20px 0 103px; border-bottom: 1px solid color-mix(in oklab, var(--border) 75%, transparent); background: color-mix(in oklab, var(--background) 94%, var(--card)); }
+.change-explorer-diff-file-header > strong { min-width: 0; overflow: hidden; color: var(--foreground); font: 600 11px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.change-explorer-diff-file-header > span { display: flex; flex: none; gap: 8px; font: 10px var(--font-mono); }
+.change-explorer-diff-file-header b { color: oklch(0.66 0.14 152); }.change-explorer-diff-file-header i { color: oklch(0.65 0.18 28); font-style: normal; font-weight: 700; }
+.change-explorer-all-diff > .change-explorer-file-section > .change-explorer-embedded-diff { overflow: visible; padding: 0; }
 .change-explorer-line { display: grid; min-width: max-content; grid-template-columns: 4.25rem 4.25rem minmax(30rem, 1fr); }
 .change-explorer-line > span { padding: 0 11px; border-right: 1px solid color-mix(in oklab, var(--border) 58%, transparent); color: color-mix(in oklab, var(--muted-foreground) 65%, transparent); font-size: 10px; text-align: right; user-select: none; }
 .change-explorer-line .review-gutter { position: relative; }

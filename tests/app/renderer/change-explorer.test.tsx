@@ -153,10 +153,71 @@ describe("ChangeExplorer", () => {
     expect(container.querySelector(".syntax-token")?.textContent).toContain("const old");
     expect(container.querySelector(".change-explorer-tree")?.textContent).toContain("src");
     expect(container.querySelector(".change-explorer-tree")?.textContent).toContain("PLAN.md");
+    expect(container.querySelector(".change-explorer-all-diff")).not.toBeNull();
+    expect(container.querySelectorAll(".change-explorer-file-section")).toHaveLength(2);
+    expect(container.querySelector(".change-explorer-all-diff")?.textContent).toContain("# Plan");
     expect(container.querySelector(".review-thread-index")).toBeNull();
     expect(container.querySelector('[aria-label="Resize comments panel"]')).toBeNull();
     act(() => container.querySelector<HTMLButtonElement>(".change-explorer-tree li button")!.click());
     expect((store as unknown as Record<string, any>).selectChangeExplorerFile).toHaveBeenCalledWith("src/app.ts");
+  });
+
+  it("scrolls the full diff when a sidebar file is selected", () => {
+    let selected = changes[0];
+    const selectChangeExplorerFile = vi.fn((path: string) => {
+      selected = changes.find((change) => change.path === path)!;
+    });
+    const store = {
+      workspaceChanges: changes,
+      get selectedWorkspaceChange() { return selected; },
+      sessionTitle: "Review",
+      reviewThreads: [],
+      reviewThreadStreaming: vi.fn(() => false),
+      createReviewThread: vi.fn(async () => undefined),
+      replyReviewThread: vi.fn(async () => undefined),
+      resolveReviewThread: vi.fn(async () => undefined),
+      selectChangeExplorerFile,
+      closeChangeExplorer: vi.fn()
+    } as unknown as ProjectWorkbenchStore;
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scrollIntoView });
+
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
+    scrollIntoView.mockClear();
+    const plan = [...container.querySelectorAll<HTMLButtonElement>(".change-explorer-tree li > button")].find((button) => button.textContent?.includes("PLAN.md"))!;
+    act(() => plan.click());
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
+
+    expect(selectChangeExplorerFile).toHaveBeenCalledWith("PLAN.md");
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "start" });
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: undefined });
+  });
+
+  it("selects the file whose section reaches the top while scrolling the full diff", () => {
+    const selectChangeExplorerFile = vi.fn();
+    const store = {
+      workspaceChanges: changes,
+      selectedWorkspaceChange: changes[0],
+      sessionTitle: "Review",
+      reviewThreads: [],
+      reviewThreadStreaming: vi.fn(() => false),
+      createReviewThread: vi.fn(async () => undefined),
+      replyReviewThread: vi.fn(async () => undefined),
+      resolveReviewThread: vi.fn(async () => undefined),
+      selectChangeExplorerFile,
+      closeChangeExplorer: vi.fn()
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
+    const diff = container.querySelector<HTMLElement>(".change-explorer-all-diff")!;
+    const sections = [...container.querySelectorAll<HTMLElement>(".change-explorer-file-section")];
+    Object.defineProperty(diff, "getBoundingClientRect", { configurable: true, value: () => ({ top: 0 }) });
+    Object.defineProperty(sections[0]!, "getBoundingClientRect", { configurable: true, value: () => ({ top: -120 }) });
+    Object.defineProperty(sections[1]!, "getBoundingClientRect", { configurable: true, value: () => ({ top: 12 }) });
+
+    act(() => diff.dispatchEvent(new Event("scroll")));
+
+    expect(selectChangeExplorerFile).toHaveBeenCalledWith("PLAN.md");
   });
 
   it("keeps the full session name available when the header context is truncated", () => {
