@@ -251,17 +251,6 @@ export const changedFileSchema = z.object({
   diff: boundedText
 });
 
-export const changeSourceSchema = z.enum(["working-tree", "conversation-turn"]);
-
-export const changeTurnSchema = z.object({
-  id: z.string().min(1).max(256),
-  label: ipcProjectionString(1_024).pipe(z.string().min(1)),
-  capturedAt: z.string().datetime(),
-  fileCount: z.number().int().nonnegative(),
-  additions: z.number().int().nonnegative(),
-  deletions: z.number().int().nonnegative()
-});
-
 export const resourceScopeSchema = z.enum(["user", "project", "temporary"]);
 
 export const compatibilityResourceSchema = z.object({
@@ -422,8 +411,6 @@ export type SessionSummary = z.infer<typeof sessionSummarySchema>;
 export type GlobalSessionSummary = z.infer<typeof globalSessionSummarySchema>;
 export type SessionTreeEntry = z.infer<typeof sessionTreeEntrySchema>;
 export type ChangedFile = z.infer<typeof changedFileSchema>;
-export type ChangeSource = z.infer<typeof changeSourceSchema>;
-export type ChangeTurn = z.infer<typeof changeTurnSchema>;
 export type CompatibilityResource = z.infer<typeof compatibilityResourceSchema>;
 export type ResourceDiagnostic = z.infer<typeof resourceDiagnosticSchema>;
 export type CompatibilityCatalog = z.infer<typeof compatibilityCatalogSchema>;

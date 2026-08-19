@@ -122,7 +122,9 @@ is configured.
 
 Pi agents receive focused `subagent_spawn`, `subagent_parallel`, `subagent_prompt`,
 `subagent_follow_up`, `subagent_wait`, `subagent_abort`, and `subagent_close`
-tools backed by the same coordinator. Subagents are hidden, parent-owned
+tools backed by the same coordinator. Project agents use these tools only when
+the user explicitly requests subagents, delegation, or parallel agent work;
+tool availability alone is not authorization. Subagents are hidden, parent-owned
 workers, never project sessions: the tool contract cannot attach, fork, select
 visibility, or expose the backing Pi session identity. Handles are
 parent-scoped and use isolated context. Every task chooses a capability profile:
@@ -130,12 +132,21 @@ parent-scoped and use isolated context. Every task chooses a capability profile:
 receives the parent's non-delegation tools. Recursive delegation defaults to
 depth zero and is capped at one explicitly requested descendant level. Parallel
 delegation accepts at most eight tasks and runs at most four at once per
-workspace. Cancellation reaches active child work. One-shot handles release
+workspace. A task acquires an active slot before Cake constructs its private Pi
+runtime. Private runtimes omit project-session catalogs, model menus, command
+menus, session trees, artifact indexes, and automatic naming. Live activity is
+coalesced from child part events rather than rebuilding full session snapshots.
+Cancellation reaches active child work. One-shot handles release
 their private runtime automatically after capturing the result; multi-turn
 continuation requires `retain: true`. Closing a private parent also releases
 its private descendants. Cake projects live child tool activity, usage, cost,
 and the final answer through the parent tool call rather than exposing a second
 transcript.
+
+The Changes surface reads the current staged, unstaged, deleted, renamed, and
+untracked workspace state directly through Git. Cake does not create checkpoint
+refs, synthetic indexes, or turn-history snapshots; Pi session history remains
+the transcript authority rather than a source of persisted workspace trees.
 
 Automatic project-session naming is the first utility workflow. After a
 completed assistant turn, an unnamed session may send its original first user

@@ -94,14 +94,63 @@ describe("PiWorkspaceDriver", () => {
 
     expect(spawned).toMatchObject({ handleId: expect.any(String), task: "Audit the IPC boundary", profile: "worker", status: "running", retained: false, maxDepth: 0 });
     expect(JSON.stringify(spawned)).not.toContain('"sessionId"');
-    expect(createdWith[1]).toMatchObject({ newSession: true, sessionDir: "/cake/pi/plugin-agent-sessions" });
-    expect(childPrompt).toHaveBeenCalledWith("Audit the IPC boundary", "prompt", []);
+    expect(createdWith[1]).toMatchObject({ newSession: true, sessionDir: "/cake/pi/plugin-agent-sessions", auxiliary: true, agentControl: undefined });
+    await vi.waitFor(() => expect(childPrompt).toHaveBeenCalledWith("Audit the IPC boundary", "prompt", []));
 
-    finishTask();
     if (typeof spawned !== "object" || spawned === null || Array.isArray(spawned)) throw new Error("Expected subagent spawn result");
     const handleId = String(spawned.handleId);
-    await expect(control.wait(handleId, parent.sessionId, new AbortController().signal)).resolves.not.toHaveProperty("sessionId");
+    const update = vi.fn();
+    const snapshotCalls = vi.mocked(child.snapshot).mock.calls.length;
+    const waiting = control.wait(handleId, parent.sessionId, new AbortController().signal, update);
+    createdWith[1]!.onEvent({ type: "part-updated", sessionId: child.sessionId, part: { id: "child-read", kind: "tool", name: "read", input: "src/main.ts", state: "running" } });
+    await vi.waitFor(() => expect(update).toHaveBeenCalledWith(expect.objectContaining({ parts: [expect.objectContaining({ id: "child-read" })] })));
+    expect(child.snapshot).toHaveBeenCalledTimes(snapshotCalls);
+
+    finishTask();
+    await expect(waiting).resolves.not.toHaveProperty("sessionId");
     expect(child.dispose).toHaveBeenCalledOnce();
+    driver[Symbol.dispose]();
+  });
+
+  it("acquires the active slot before constructing parallel subagent runtimes", async () => {
+    const createdWith: CakeRuntimeOptions[] = [];
+    const finishers: Array<() => void> = [];
+    let childCount = 0;
+    const runtime = (sessionId: string, prompt: CakeRuntime["prompt"]): CakeRuntime => ({
+      sessionId,
+      sessionFile: `/sessions/${sessionId}.jsonl`,
+      snapshot: vi.fn(async () => ({ ...snapshot, sessionId, sessionFile: `/sessions/${sessionId}.jsonl`, model: { provider: "test", id: "model", name: "Model" } })),
+      prompt,
+      abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), recordReviewRun: vi.fn(), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn()
+    });
+    const parent = runtime("parent", vi.fn(async () => undefined));
+    const driver = new PiWorkspaceDriver({
+      ...piPaths,
+      workspacePath: "/project",
+      emit: vi.fn(),
+      resolveAgentModel: () => ({ requested: "current", source: "current", provider: "test", modelId: "model", thinkingLevel: "off", fallbacks: [] }),
+      createRuntime: vi.fn(async (options) => {
+        createdWith.push(options);
+        if (!options.auxiliary) return parent;
+        const gate = new Promise<void>((resolve) => finishers.push(resolve));
+        return runtime(`child-${++childCount}`, vi.fn(async () => gate));
+      })
+    });
+    await driver.openAgent({ target: { kind: "new", visibility: "project" } });
+    const control = createdWith[0]?.agentControl;
+    if (!control) throw new Error("Expected subagent control");
+
+    const parallel = control.parallel({ tasks: Array.from({ length: 6 }, (_, index) => ({ task: `Task ${index + 1}` })) }, parent.sessionId, new AbortController().signal);
+    await vi.waitFor(() => expect(childCount).toBe(4));
+    expect(finishers).toHaveLength(4);
+
+    finishers[0]!();
+    finishers[1]!();
+    await vi.waitFor(() => expect(childCount).toBe(6));
+    for (const finish of finishers.slice(2)) finish();
+
+    await expect(parallel).resolves.toMatchObject({ mode: "parallel", completed: 6, total: 6 });
+    expect(createdWith.filter((options) => options.auxiliary)).toHaveLength(6);
     driver[Symbol.dispose]();
   });
 
@@ -122,8 +171,7 @@ describe("PiWorkspaceDriver", () => {
       rename: vi.fn(async () => undefined),
       fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
       navigate: vi.fn(async () => undefined),
-      dispose: vi.fn(),
-      ensureInitialGitCheckpoint: vi.fn(async () => { throw new NotGitRepositoryError("/project"); })
+      dispose: vi.fn()
     };
     const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime), collectWorkingChanges: async () => { throw new NotGitRepositoryError("/project"); } });
     const openId = crypto.randomUUID();
@@ -131,47 +179,17 @@ describe("PiWorkspaceDriver", () => {
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
 
     const inspectId = crypto.randomUUID();
-    driver.dispatch({ type: "inspect-changes", requestId: inspectId, sessionId: snapshot.sessionId, source: "working-tree" });
+    driver.dispatch({ type: "inspect-changes", requestId: inspectId, sessionId: snapshot.sessionId });
 
     await vi.waitFor(() => expect(events).toContainEqual({
       type: "changes-snapshot",
       requestId: inspectId,
       workspacePath: "/project",
       sessionId: snapshot.sessionId,
-      source: "working-tree",
-      turns: [],
       files: []
     }));
     expect(events).toContainEqual({ type: "complete", requestId: inspectId });
     expect(events.some((event) => event.type === "fatal" && event.requestId === inspectId)).toBe(false);
-    driver[Symbol.dispose]();
-  });
-
-  it("reads persisted checkpoints without capturing workspace state during inspection", async () => {
-    const events: DesktopEvent[] = [];
-    const captureLatestGitCheckpoint = vi.fn(async () => ({ tree: "c".repeat(40), ref: "refs/cake/checkpoints/c", capturedAt: new Date(0).toISOString() }));
-    const runtime: CakeRuntime = {
-      sessionId: snapshot.sessionId, sessionFile: snapshot.sessionFile,
-      snapshot: vi.fn(async () => snapshot), prompt: vi.fn(async () => undefined), abort: vi.fn(async () => undefined), setModel: vi.fn(async () => undefined), setThinkingLevel: vi.fn(async () => undefined), setPiSetting: vi.fn(async () => undefined), recordReviewRun: vi.fn(), login: vi.fn(async () => undefined), logout: vi.fn(async () => undefined), rename: vi.fn(async () => undefined), fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })), navigate: vi.fn(async () => undefined), dispose: vi.fn(),
-      ensureInitialGitCheckpoint: vi.fn(async () => ({ tree: "a".repeat(40), ref: "refs/cake/checkpoints/a", capturedAt: new Date(0).toISOString() })),
-      captureLatestGitCheckpoint,
-      waitForGitCheckpoints: vi.fn(async () => undefined),
-      gitCheckpoints: vi.fn(() => [
-        { tree: "a".repeat(40), ref: "refs/cake/checkpoints/a", capturedAt: new Date(0).toISOString() },
-        { tree: "b".repeat(40), ref: "refs/cake/checkpoints/b", capturedAt: new Date(0).toISOString() }
-      ]),
-      gitChangeTurns: vi.fn(() => [{ id: "turn-1", label: "Update the app", capturedAt: new Date(0).toISOString(), beforeTree: "a".repeat(40), afterTree: "b".repeat(40) }])
-    };
-    const driver = new PiWorkspaceDriver({ ...piPaths, workspacePath: "/project", emit: (event) => events.push(event), createRuntime: vi.fn(async () => runtime), summarizeCheckpointChanges: async () => { throw new Error("Missing checkpoint tree"); } });
-    const openId = crypto.randomUUID();
-    driver.dispatch({ type: "open-workspace", requestId: openId, path: "/project", newSession: true });
-    await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
-    const inspectId = crypto.randomUUID();
-    driver.dispatch({ type: "inspect-changes", requestId: inspectId, sessionId: snapshot.sessionId, source: "conversation-turn" });
-    await vi.waitFor(() => expect(events).toContainEqual(expect.objectContaining({ type: "fatal", requestId: inspectId })));
-
-    expect(captureLatestGitCheckpoint).not.toHaveBeenCalled();
-    expect(runtime.waitForGitCheckpoints).toHaveBeenCalled();
     driver[Symbol.dispose]();
   });
 
@@ -316,7 +334,7 @@ describe("PiWorkspaceDriver", () => {
     driver[Symbol.dispose]();
   });
 
-  it("opens a fork whose Pi session history carries its Git checkpoints", async () => {
+  it("opens a fork through Pi's session history", async () => {
     const events: DesktopEvent[] = [];
     const runtime = (sessionId: string): CakeRuntime => ({
       sessionId,

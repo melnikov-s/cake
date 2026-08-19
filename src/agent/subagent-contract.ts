@@ -31,9 +31,10 @@ export const SUBAGENT_PROFILE_INSTRUCTIONS = {
 export const subagentSpawnReceiptSchema = z.object({ handleId: z.uuid() }).passthrough();
 
 const READ_ONLY_TOOLS = new Set(["read", "grep", "find", "ls"]);
+const AUXILIARY_TOOLS = new Set(["read", "bash", "edit", "write", "grep", "find", "ls", "ui_request", "ui_widget"]);
 
 export function toolsForSubagentProfile(profile: SubagentProfile, parentTools: readonly string[], allowSubagents: boolean) {
-  const nonDelegating = parentTools.filter((name) => name !== "subagent" && !name.startsWith("subagent_") && !name.startsWith("agent_"));
+  const nonDelegating = parentTools.filter((name) => AUXILIARY_TOOLS.has(name));
   const bounded = profile === "worker" ? nonDelegating : nonDelegating.filter((name) => READ_ONLY_TOOLS.has(name));
   if (!allowSubagents) return bounded;
   return [...bounded, ...parentTools.filter((name) => name.startsWith("subagent_"))];

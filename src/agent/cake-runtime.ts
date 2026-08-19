@@ -68,25 +68,11 @@ For standalone deliverables such as PowerPoint presentations, PDFs, spreadsheets
 
 Cake can delegate one-off visual explanations to a separate widget agent. Use ui_widget when an interactive or highly visual presentation materially improves the explanation and Markdown, a table, or Mermaid is insufficient. Provide a self-contained presentation brief, all required data, and a readable Markdown fallback; do not write React or HTML yourself. Generated React widgets may use the approved, bundled D3 modules ('d3' or 'd3-*') for local SVG/canvas/DOM visualizations; they still have no network, parent, Cake, Node, Electron, or filesystem access. Cake generates and stores the implementation outside this conversation context, then renders the sandboxed widget at the tool-call position. Prefer ordinary transcript content for simple or primarily textual explanations.
 
+Do not use subagent tools unless the user explicitly asks for subagents, delegation, or parallel agent work. The presence of delegation tools is not permission to use them. Handle ordinary research, implementation, review, and testing yourself.
+
 Use ui_request only when the running turn must block and receive validated user input. Pass one cake.request/v1 request with a unique ID, a responseSchema, a readable Markdown fallback, and either a form view or a widget view. Prefer the form view for ordinary fields. Use a widget view only for a genuinely visual interaction; HTML widget source calls cakeRequest.submit(value) or cakeRequest.cancel(), while a React widget component receives { submit, cancel } props. Custom request widgets have the same isolation as inline widgets. Do not call ui_request for content that can be presented in the assistant message.
 
 When referencing workspace files, use Markdown links with absolute paths so Cake can open them.`;
-const gitCheckpointEntryType = "cake.git-checkpoint/v1";
-const gitCheckpointSchema = z.object({
-  tree: z.string().regex(/^[0-9a-f]{40,64}$/),
-  ref: z.string().min(1).max(1_024),
-  capturedAt: z.string().datetime()
-});
-export type GitCheckpoint = z.infer<typeof gitCheckpointSchema>;
-
-export interface GitChangeTurn {
-  id: string;
-  label: string;
-  capturedAt: string;
-  beforeTree: string;
-  afterTree: string;
-}
-
 export interface RuntimeUiRequest {
   kind: "confirm" | "text" | "secret" | "select" | "manual_code" | "editor";
   title: string;
@@ -117,13 +103,13 @@ export interface CakeRuntimeOptions {
   pluginResources?: { skills: string[]; prompts: string[]; extensions: string[] };
   additionalSystemPrompt?: string;
   tools?: string[];
+  auxiliary?: boolean;
   requestUi(request: RuntimeUiRequest): Promise<string | undefined>;
   persistArtifact?(artifact: CakeArtifactV1): Promise<ArtifactRecord>;
   requestArtifact?(record: ArtifactRecord, signal: AbortSignal): Promise<JsonValue | undefined>;
   generateInlineWidget?(input: InlineWidgetGenerationRequest): Promise<InlineWidgetGenerationResult>;
   listArtifacts?(pointers: ArtifactPointer[]): Promise<ArtifactRecord[]>;
   openExternal?(url: string): Promise<void>;
-  captureGitCheckpoint?(sessionId: string): Promise<{ tree: string; ref: string }>;
   reviewContextPath?(sessionId: string): string;
   utilityModel?(): UtilityModel | undefined;
   generateSessionTitle?: typeof generateSessionTitle;
@@ -172,8 +158,8 @@ function createAgentControlExtension(control: NonNullable<CakeRuntimeOptions["ag
   const promptSchema = z.object({ handleId: z.uuid(), text: z.string().min(1).max(262_144) });
   const handleSchema = z.object({ handleId: z.uuid() });
   const tools = [
-    { name: "subagent_spawn", description: "Start one isolated, parent-owned subagent with an explicit capability profile. Delegation depth is zero and completed runtimes are released by default; set retain only for intentional multi-turn work.", schema: subagentTaskSchema, run: (value: SubagentTask, parent: string, signal: AbortSignal) => control.spawn(value, parent, signal) },
-    { name: "subagent_parallel", description: "Run up to eight bounded subagent tasks with a workspace-wide active concurrency limit and return all results.", schema: parallelSubagentSchema, run: (value: ParallelSubagentTasks, parent: string, signal: AbortSignal, onUpdate?: (value: JsonValue) => void) => control.parallel(value, parent, signal, onUpdate) },
+    { name: "subagent_spawn", description: "Use only when the user explicitly requested subagents or delegation. Start one isolated, parent-owned subagent with an explicit capability profile. Delegation depth is zero and completed runtimes are released by default; set retain only for intentional multi-turn work.", schema: subagentTaskSchema, run: (value: SubagentTask, parent: string, signal: AbortSignal) => control.spawn(value, parent, signal) },
+    { name: "subagent_parallel", description: "Use only when the user explicitly requested parallel agent work. Run up to eight bounded subagent tasks with a workspace-wide active concurrency limit and return all results.", schema: parallelSubagentSchema, run: (value: ParallelSubagentTasks, parent: string, signal: AbortSignal, onUpdate?: (value: JsonValue) => void) => control.parallel(value, parent, signal, onUpdate) },
     { name: "subagent_prompt", description: "Send a normal prompt to an idle subagent and wait for its turn.", schema: promptSchema, run: (value: z.infer<typeof promptSchema>, parent: string, signal: AbortSignal) => control.prompt({ ...value, delivery: "prompt" }, parent, signal) },
     { name: "subagent_follow_up", description: "Queue a follow-up for a subagent using Pi's normal queue policy.", schema: promptSchema, run: (value: z.infer<typeof promptSchema>, parent: string, signal: AbortSignal) => control.prompt({ ...value, delivery: "follow-up" }, parent, signal) },
     { name: "subagent_wait", description: "Wait for a subagent and stream its latest tool activity, usage, and final result.", schema: handleSchema, run: (value: z.infer<typeof handleSchema>, parent: string, signal: AbortSignal, onUpdate?: (value: JsonValue) => void) => control.wait(value.handleId, parent, signal, onUpdate) },
@@ -231,11 +217,6 @@ export interface CakeRuntime {
   rename(name: string): Promise<void>;
   fork(entryId: string): Promise<{ sessionId: string; sessionFile: string }>;
   navigate(entryId: string): Promise<void>;
-  ensureInitialGitCheckpoint?(): Promise<GitCheckpoint | undefined>;
-  captureLatestGitCheckpoint?(): Promise<GitCheckpoint | undefined>;
-  waitForGitCheckpoints?(): Promise<void>;
-  gitCheckpoints?(): GitCheckpoint[];
-  gitChangeTurns?(): GitChangeTurn[];
   dispose(): void;
 }
 
@@ -274,21 +255,25 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     agentDir,
     settingsManager,
     appendSystemPromptOverride: (base) => [...base, cakeProjectSystemPrompt, ...(options.additionalSystemPrompt ? [options.additionalSystemPrompt] : [])],
-    additionalSkillPaths: [cakePluginAuthoringSkillPath(), ...(options.pluginResources?.skills ?? [])],
-    additionalPromptTemplatePaths: options.pluginResources?.prompts ?? [],
-    additionalExtensionPaths: options.pluginResources?.extensions ?? [],
+    additionalSkillPaths: options.auxiliary ? [] : [cakePluginAuthoringSkillPath(), ...(options.pluginResources?.skills ?? [])],
+    additionalPromptTemplatePaths: options.auxiliary ? [] : options.pluginResources?.prompts ?? [],
+    additionalExtensionPaths: options.auxiliary ? [] : options.pluginResources?.extensions ?? [],
+    noExtensions: options.auxiliary,
+    noSkills: options.auxiliary,
+    noPromptTemplates: options.auxiliary,
+    noThemes: options.auxiliary,
     extensionFactories: [
       createCakeArtifactExtension({ persistArtifact, requestArtifact, generateInlineWidget: options.generateInlineWidget }),
       ...(options.agentControl ? [createAgentControlExtension(options.agentControl, () => runtimeIdentity.sessionId)] : []),
       ...(options.reviewContextPath ? [reviewContextExtension(options.reviewContextPath, () => runtimeIdentity.sessionId)] : []),
-      commandCatalogExtension
+      ...(options.auxiliary ? [] : [commandCatalogExtension])
     ]
   });
   await resourceLoader.reload({ resolveProjectTrust: async () => options.trusted });
   const sessionDir = options.globalControl
     ? resolve(options.sessionDir)
     : cakeWorkspaceSessionDirectory(options.cwd, options.sessionDir);
-  const availableSessions = await SessionManager.list(options.cwd, sessionDir);
+  const availableSessions = options.newSession ? [] : await SessionManager.list(options.cwd, sessionDir);
   const allowedSessionRoot = sessionDir;
   let directSession: SessionManager | undefined;
   if (options.sessionFile) {
@@ -320,7 +305,6 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
   const cakeSessionId = session.sessionManager.getSessionId();
   runtimeIdentity.sessionId = cakeSessionId;
   let disposed = false;
-  let checkpointQueue = Promise.resolve<unknown>(undefined);
   let reloadRequested = 0;
   let reloadCompleted = 0;
   let reloadInFlight: Promise<void> | undefined;
@@ -369,7 +353,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
 
   async function makeSnapshot(): Promise<SessionSnapshot> {
     const stats = session.getSessionStats();
-    const listedSessions = await listWorkspaceSessions(options.cwd, options.sessionDir, Boolean(options.globalControl));
+    const listedSessions = options.auxiliary ? [] : await listWorkspaceSessions(options.cwd, options.sessionDir, Boolean(options.globalControl));
     const sessions = listedSessions.some((item) => item.id === cakeSessionId)
       ? listedSessions
       : [activeSessionSummary(stats.totalMessages), ...listedSessions];
@@ -382,7 +366,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       sessionFile: session.sessionFile ?? "",
       parts: [...branchParts, ...queuedParts],
       model: session.model ? { provider: session.model.provider, id: session.model.id, name: session.model.name } : undefined,
-      models: await modelOptions(),
+      models: options.auxiliary ? [] : await modelOptions(),
       thinkingLevel: session.thinkingLevel,
       availableThinkingLevels: session.getAvailableThinkingLevels(),
       piSettings: {
@@ -422,7 +406,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
         ...extensionsResult.errors.map((error) => `${error.path}: ${error.error}`),
         ...(modelFallbackMessage ? [modelFallbackMessage] : [])
       ],
-      commands: [...piBuiltinSlashCommands, ...getPiCommands()].flatMap((command) => {
+      commands: options.auxiliary ? [] : [...piBuiltinSlashCommands, ...getPiCommands()].flatMap((command) => {
         const parsed = slashCommandSchema.safeParse(command);
         return parsed.success ? [parsed.data] : [];
       }),
@@ -438,8 +422,8 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       compatibility: catalog,
       extensionUi: extensionUiState,
       sessions,
-      tree: projectTree(session.sessionManager),
-      artifacts: await (options.listArtifacts?.(projectArtifactPointers(session.sessionManager)) ?? Promise.resolve([]))
+      tree: options.auxiliary ? [] : projectTree(session.sessionManager),
+      artifacts: options.auxiliary ? [] : await (options.listArtifacts?.(projectArtifactPointers(session.sessionManager)) ?? Promise.resolve([]))
     };
   }
 
@@ -541,68 +525,6 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     }
   }
 
-  function gitCheckpoints() {
-    const checkpoints: GitCheckpoint[] = [];
-    for (const entry of session.sessionManager.getBranch()) {
-      if (entry.type !== "custom" || entry.customType !== gitCheckpointEntryType) continue;
-      const parsed = gitCheckpointSchema.safeParse(entry.data);
-      if (parsed.success) checkpoints.push(parsed.data);
-    }
-    return checkpoints;
-  }
-
-  function gitChangeTurns(): GitChangeTurn[] {
-    const turns: GitChangeTurn[] = [];
-    let previous: GitCheckpoint | undefined;
-    let userLabel = "Agent changes";
-    for (const entry of session.sessionManager.getBranch()) {
-      if (entry.type === "message" && entry.message.role === "user") {
-        const text = textFromContent(entry.message.content).replace(/\s+/g, " ").trim();
-        userLabel = text ? text.slice(0, 1_024) : "User turn";
-        continue;
-      }
-      if (entry.type !== "custom" || entry.customType !== gitCheckpointEntryType) continue;
-      const parsed = gitCheckpointSchema.safeParse(entry.data);
-      if (!parsed.success) continue;
-      const checkpoint = parsed.data;
-      if (previous && previous.tree !== checkpoint.tree) {
-        turns.push({
-          id: entry.id,
-          label: userLabel,
-          capturedAt: checkpoint.capturedAt,
-          beforeTree: previous.tree,
-          afterTree: checkpoint.tree
-        });
-      }
-      previous = checkpoint;
-    }
-    return turns;
-  }
-
-  function captureGitCheckpoint() {
-    if (!options.captureGitCheckpoint) return Promise.resolve(undefined);
-    const operation = checkpointQueue.then(async () => {
-      if (disposed) throw new Error("The Cake runtime has been disposed");
-      const captured = await options.captureGitCheckpoint!(cakeSessionId);
-      const checkpoint = gitCheckpointSchema.parse({ ...captured, capturedAt: new Date().toISOString() });
-      const latest = gitCheckpoints().at(-1);
-      if (latest?.tree === checkpoint.tree) return latest;
-      session.sessionManager.appendCustomEntry(gitCheckpointEntryType, checkpoint);
-      return checkpoint;
-    });
-    checkpointQueue = operation.catch(() => undefined);
-    return operation;
-  }
-
-  async function ensureInitialGitCheckpoint() {
-    const persisted = session.sessionManager.getEntries().flatMap((entry) => {
-      if (entry.type !== "custom" || entry.customType !== gitCheckpointEntryType) return [];
-      const parsed = gitCheckpointSchema.safeParse(entry.data);
-      return parsed.success ? [parsed.data] : [];
-    });
-    return persisted[0] ?? await captureGitCheckpoint();
-  }
-
   const activeToolCalls = new Map<string, { input: string; artifactId?: string; filePath?: string }>();
   let queuedPartIds = new Set(projectQueuedMessages(session.getSteeringMessages(), session.getFollowUpMessages()).map((part) => part.id));
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
@@ -655,8 +577,8 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     }
     if (event.type === "agent_settled") {
       options.onEvent({ type: "streaming", sessionId: cakeSessionId, streaming: false });
-      void nameSessionFromFirstExchange();
-      void captureGitCheckpoint().catch(() => undefined).then(() => drainReloads()).catch(() => undefined).finally(emitSnapshotInBackground);
+      if (!options.auxiliary) void nameSessionFromFirstExchange();
+      void drainReloads().catch(() => undefined).finally(emitSnapshotInBackground);
     }
   });
 
@@ -748,16 +670,9 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       await emitSnapshot();
     },
     async fork(entryId) {
-      const initialCheckpoint = session.sessionManager.getEntries().flatMap((entry) => {
-        if (entry.type !== "custom" || entry.customType !== gitCheckpointEntryType) return [];
-        const parsed = gitCheckpointSchema.safeParse(entry.data);
-        return parsed.success ? [parsed.data] : [];
-      })[0];
       const sessionFile = session.sessionManager.createBranchedSession(entryId);
       if (!sessionFile) throw new Error("The current session is not persisted");
       const forked = SessionManager.open(sessionFile, options.sessionDir, options.cwd);
-      const forkHasCheckpoint = forked.getEntries().some((entry) => entry.type === "custom" && entry.customType === gitCheckpointEntryType);
-      if (initialCheckpoint && !forkHasCheckpoint) forked.appendCustomEntry(gitCheckpointEntryType, initialCheckpoint);
       return { sessionId: forked.getSessionId(), sessionFile };
     },
     async navigate(entryId) {
@@ -765,11 +680,6 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       if (result.cancelled) throw new Error("Session tree navigation was cancelled");
       await emitSnapshot();
     },
-    ensureInitialGitCheckpoint,
-    captureLatestGitCheckpoint: captureGitCheckpoint,
-    async waitForGitCheckpoints() { await checkpointQueue; },
-    gitCheckpoints,
-    gitChangeTurns,
     dispose() {
       if (disposed) return;
       disposed = true;

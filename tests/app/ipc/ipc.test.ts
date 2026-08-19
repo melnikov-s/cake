@@ -29,12 +29,12 @@ describe("process IPC", () => {
     expect(desktopRequestSchema.parse({ type: "set-pi-setting", requestId, sessionId: "session", update: { key: "skills", value: ["skills", "!skills/excluded"] } })).toMatchObject({ update: { key: "skills" } });
     expect(desktopRequestSchema.parse({ type: "reload-pi", requestId, sessionId: "session" })).toMatchObject({ type: "reload-pi", requestId });
     expect(desktopRequestSchema.parse({ type: "get-changelog", requestId, sessionId: "session" })).toMatchObject({ type: "get-changelog", requestId });
-    expect(desktopRequestSchema.parse({ type: "inspect-changes", requestId, sessionId: "session", source: "working-tree" })).toMatchObject({ type: "inspect-changes", sessionId: "session" });
+    expect(desktopRequestSchema.parse({ type: "inspect-changes", requestId, sessionId: "session" })).toMatchObject({ type: "inspect-changes", sessionId: "session" });
     const anchor = { path: "src/app.ts", start: { diffLine: 1, newLine: 4 }, end: { diffLine: 1, newLine: 4 }, selectedText: "value", contextBefore: "", contextAfter: "", diff: "+value" };
     expect(desktopRequestSchema.parse({ type: "create-review-thread", sessionId: "session", anchor, body: "Why?" })).toMatchObject({ body: "Why?" });
     expect(desktopRequestSchema.parse({ type: "submit-review-thread", requestId, sessionId: "session", threadId: crypto.randomUUID() })).toMatchObject({ type: "submit-review-thread" });
     expect(desktopEventSchema.parse({ type: "changelog-snapshot", requestId, workspacePath: "/project", sessionId: "session", markdown: "# Changelog" })).toMatchObject({ markdown: "# Changelog" });
-    expect(desktopEventSchema.parse({ type: "changes-snapshot", requestId, workspacePath: "/project", sessionId: "session", source: "working-tree", turns: [], files: [] })).toMatchObject({ type: "changes-snapshot", sessionId: "session" });
+    expect(desktopEventSchema.parse({ type: "changes-snapshot", requestId, workspacePath: "/project", sessionId: "session", files: [] })).toMatchObject({ type: "changes-snapshot", sessionId: "session" });
     expect(desktopRequestSchema.safeParse({ type: "set-pi-setting", requestId, sessionId: "session", update: { key: "transport", value: "invalid" } }).success).toBe(false);
   });
 

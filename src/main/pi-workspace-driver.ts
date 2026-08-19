@@ -5,7 +5,7 @@ import { forkWorkspaceSession, loadPiChangelog } from "../agent/session-discover
 import { runInlineWidgetGeneration, runInlineWidgetRepair, runReviewTurn, type InlineWidgetGenerationRequest } from "../agent/sidecar-runtime";
 import { parallelSubagentSchema, subagentSpawnReceiptSchema, subagentSystemPrompt, subagentTaskSchema, toolsForSubagentProfile, type ParallelSubagentTasksInput, type SubagentProfile, type SubagentTaskInput } from "../agent/subagent-contract";
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
-import type { ChangeTurn, UtilityModel } from "../ipc/session-contract";
+import type { UiPart, UtilityModel } from "../ipc/session-contract";
 import type { JsonValue } from "../ipc/json-contract";
 import { jsonValueSchema } from "../ipc/json-contract";
 import type { AgentModelPreference, ResolvedAgentModel } from "../ipc/plugin-agent-contract";
@@ -13,7 +13,7 @@ import { parseArtifactInput, type ArtifactRecord, type CakeArtifactV1 } from "..
 import { REVIEW_TEXT_MAX_LENGTH } from "../ipc/review-contract";
 import type { ArtifactRepository } from "./artifact-repository";
 import type { ReviewRepository } from "./review-repository";
-import { captureWorkspaceCheckpoint, collectCheckpointChanges, collectWorkingTreeChanges, NotGitRepositoryError, summarizeCheckpointChanges } from "./git-changes";
+import { collectWorkingTreeChanges, NotGitRepositoryError } from "./git-changes";
 import { compileInlineWidget, extractRepairedWidget } from "./inline-widget-service";
 
 type ArtifactRepositoryPort = Pick<ArtifactRepository, "upsert" | "get" | "listSession" | "linkSession">;
@@ -63,7 +63,7 @@ interface RuntimeReference {
 
 interface SubagentHandle {
   parentSessionId: string;
-  sessionId: string;
+  sessionId?: string;
   releaseRuntime: boolean;
   taskDescription: string;
   profile: SubagentProfile;
@@ -74,6 +74,10 @@ interface SubagentHandle {
   error?: string;
   result?: JsonValue;
   cleanupTimer?: ReturnType<typeof setTimeout>;
+  liveParts: Map<string, UiPart>;
+  liveStreaming: boolean;
+  unsubscribe?: () => void;
+  observers: Set<() => void>;
 }
 
 export interface PiWorkspaceDriverOptions {
@@ -90,10 +94,7 @@ export interface PiWorkspaceDriverOptions {
   compileWidget?: typeof compileInlineWidget;
   artifactRepository?: ArtifactRepositoryPort;
   reviewRepository?: ReviewRepositoryPort;
-  captureCheckpoint?: typeof captureWorkspaceCheckpoint;
   collectWorkingChanges?: typeof collectWorkingTreeChanges;
-  collectCheckpointChanges?: typeof collectCheckpointChanges;
-  summarizeCheckpointChanges?: typeof summarizeCheckpointChanges;
   openExternal?: (url: string) => Promise<void>;
   isTrusted?: () => boolean;
   utilityModel?: () => UtilityModel | undefined;
@@ -115,10 +116,7 @@ export class PiWorkspaceDriver {
   private readonly compileWidget: typeof compileInlineWidget;
   private readonly artifactRepository: ArtifactRepositoryPort;
   private readonly reviewRepository: ReviewRepositoryPort;
-  private readonly captureCheckpoint: typeof captureWorkspaceCheckpoint;
   private readonly collectWorkingChanges: typeof collectWorkingTreeChanges;
-  private readonly collectCheckpointChanges: typeof collectCheckpointChanges;
-  private readonly summarizeCheckpointChanges: typeof summarizeCheckpointChanges;
   private readonly openExternal: NonNullable<PiWorkspaceDriverOptions["openExternal"]> | undefined;
   private readonly isTrusted: () => boolean;
   private readonly utilityModel: () => UtilityModel | undefined;
@@ -156,10 +154,7 @@ export class PiWorkspaceDriver {
     this.runWidgetRepair = options.runWidgetRepair ?? runInlineWidgetRepair;
     this.compileWidget = options.compileWidget ?? compileInlineWidget;
     this.openExternal = options.openExternal;
-    this.captureCheckpoint = options.captureCheckpoint ?? captureWorkspaceCheckpoint;
     this.collectWorkingChanges = options.collectWorkingChanges ?? collectWorkingTreeChanges;
-    this.collectCheckpointChanges = options.collectCheckpointChanges ?? collectCheckpointChanges;
-    this.summarizeCheckpointChanges = options.summarizeCheckpointChanges ?? summarizeCheckpointChanges;
     this.isTrusted = options.isTrusted ?? (() => false);
     this.utilityModel = options.utilityModel ?? (() => undefined);
     this.pluginResources = options.pluginResources ?? { skills: [], prompts: [], extensions: [] };
@@ -284,6 +279,7 @@ export class PiWorkspaceDriver {
     instructions?: string;
     tools?: string[];
     remainingSubagentDepth?: number;
+    auxiliary?: boolean;
   }) {
     const createsPrivateRuntime = (input.target.kind === "new" || input.target.kind === "fork") && input.target.visibility === "private";
     if (createsPrivateRuntime) {
@@ -296,7 +292,7 @@ export class PiWorkspaceDriver {
     let leaseAcquired = false;
     try {
       if (input.target.kind === "new") {
-        runtime = await this.createRuntime(true, undefined, undefined, input.instructions, input.target.visibility === "private" ? this.pluginAgentSessionDir : this.sessionDir, { tools: input.tools, remainingSubagentDepth: input.remainingSubagentDepth });
+        runtime = await this.createRuntime(true, undefined, undefined, input.instructions, input.target.visibility === "private" ? this.pluginAgentSessionDir : this.sessionDir, { tools: input.tools, remainingSubagentDepth: input.remainingSubagentDepth, auxiliary: input.auxiliary });
         if (input.target.visibility === "private") this.privateRuntimeIds.add(runtime.sessionId);
       } else if (input.target.kind === "attach") {
         runtime = this.runtimes.get(input.target.sessionId) ?? await this.createRuntime(false, input.target.sessionId);
@@ -308,7 +304,7 @@ export class PiWorkspaceDriver {
         if (!sourceSnapshot.sessionFile) throw new Error("The source session is not persisted");
         const targetRoot = input.target.visibility === "private" ? this.pluginAgentSessionDir : this.sessionDir;
         const forked = forkWorkspaceSession(sourceSnapshot.sessionFile, this.workspacePath, targetRoot);
-        runtime = await this.createRuntime(false, forked.sessionId, forked.sessionFile, input.instructions, targetRoot, { tools: input.tools, remainingSubagentDepth: input.remainingSubagentDepth });
+        runtime = await this.createRuntime(false, forked.sessionId, forked.sessionFile, input.instructions, targetRoot, { tools: input.tools, remainingSubagentDepth: input.remainingSubagentDepth, auxiliary: input.auxiliary });
         await runtime.navigate(entryId);
         if (input.target.visibility === "private") this.privateRuntimeIds.add(runtime.sessionId);
       }
@@ -345,7 +341,7 @@ export class PiWorkspaceDriver {
       this.subagentHandles.delete(handleId);
       handle.controller.abort(new Error("Parent subagent released"));
       if (handle.cleanupTimer) clearTimeout(handle.cleanupTimer);
-      if (handle.releaseRuntime) this.releaseAgent(handle.sessionId);
+      if (handle.releaseRuntime && handle.sessionId) this.releaseAgent(handle.sessionId);
     }
     this.runtimeListeners.delete(sessionId);
     this.activeAgentTurns.delete(sessionId);
@@ -489,7 +485,7 @@ export class PiWorkspaceDriver {
     return runtime.reload();
   }
 
-  private async createRuntime(newSession: boolean, sessionId?: string, sessionFile?: string, additionalSystemPrompt?: string, sessionRoot = this.sessionDir, policy?: { tools?: string[]; remainingSubagentDepth?: number }) {
+  private async createRuntime(newSession: boolean, sessionId?: string, sessionFile?: string, additionalSystemPrompt?: string, sessionRoot = this.sessionDir, policy?: { tools?: string[]; remainingSubagentDepth?: number; auxiliary?: boolean }) {
     if (sessionId && !sessionFile) {
       const existing = this.runtimes.get(sessionId);
       if (existing) return existing;
@@ -502,7 +498,7 @@ export class PiWorkspaceDriver {
     finally { if (sessionId && this.runtimePromises.get(sessionId) === opening) this.runtimePromises.delete(sessionId); }
   }
 
-  private async createRuntimeUncoordinated(newSession: boolean, sessionId?: string, sessionFile?: string, additionalSystemPrompt?: string, sessionRoot = this.sessionDir, policy?: { tools?: string[]; remainingSubagentDepth?: number }) {
+  private async createRuntimeUncoordinated(newSession: boolean, sessionId?: string, sessionFile?: string, additionalSystemPrompt?: string, sessionRoot = this.sessionDir, policy?: { tools?: string[]; remainingSubagentDepth?: number; auxiliary?: boolean }) {
     const requestedArtifactSessionId = sessionId;
     let openedSessionId = sessionId;
     const runtimeRef: RuntimeReference = {};
@@ -517,6 +513,7 @@ export class PiWorkspaceDriver {
       pluginResources: this.pluginResources,
       additionalSystemPrompt,
       tools: policy?.tools,
+      auxiliary: policy?.auxiliary,
       agentControl: policy?.remainingSubagentDepth === 0 ? undefined : {
         spawn: (input, parentSessionId, signal) => this.spawnSubagent(input, parentSessionId, signal),
         parallel: (input, parentSessionId, signal, onUpdate) => this.parallelSubagents(input, parentSessionId, signal, onUpdate),
@@ -534,7 +531,6 @@ export class PiWorkspaceDriver {
         : undefined,
       utilityModel: this.utilityModel,
       openExternal: this.openExternal,
-      captureGitCheckpoint: (activeSessionId) => this.captureCheckpoint(this.workspacePath, activeSessionId),
       listArtifacts: async (pointers) => {
         const direct = await Promise.all(pointers.map((pointer) => this.artifactRepository.get(this.workspacePath, pointer.sessionId, pointer.artifactId)));
         const sessionIds = [...new Set([requestedArtifactSessionId, openedSessionId].filter((value): value is string => Boolean(value)))];
@@ -569,7 +565,6 @@ export class PiWorkspaceDriver {
       throw new Error("The Pi workspace driver was disposed while opening a session");
     }
     this.runtimes.set(runtime.sessionId, runtime);
-    void runtime.ensureInitialGitCheckpoint?.().catch(() => undefined);
     return runtime;
   }
 
@@ -615,42 +610,42 @@ export class PiWorkspaceDriver {
     const parentDepth = this.runtimeSubagentDepth.get(parentSessionId);
     const remainingSubagentDepth = Math.min(input.maxDepth, parentDepth === undefined ? 1 : Math.max(0, parentDepth - 1));
     const tools = toolsForSubagentProfile(input.profile, parentTools, remainingSubagentDepth > 0);
-    let snapshot = await this.openAgent({
-      target: { kind: "new", visibility: "private" },
-      instructions: subagentSystemPrompt(input.profile, input.instructions),
-      tools,
-      remainingSubagentDepth
-    });
-    const releaseRuntime = this.privateRuntimeIds.has(snapshot.sessionId);
-    if (signal.aborted) {
-      if (releaseRuntime) this.releaseAgent(snapshot.sessionId);
-      throw signal.reason;
-    }
-    let resolvedModel: ResolvedAgentModel;
-    try {
-      resolvedModel = this.resolveAgentModel(input.model, snapshot);
-      const modelAlreadySelected = snapshot.model?.provider === resolvedModel.provider && snapshot.model.id === resolvedModel.modelId && snapshot.thinkingLevel === resolvedModel.thinkingLevel;
-      if (!modelAlreadySelected) {
-        if (snapshot.streaming) throw new Error("Cannot change the model profile while the attached agent is running");
-        snapshot = await this.configureAgent(snapshot.sessionId, resolvedModel.provider, resolvedModel.modelId, resolvedModel.thinkingLevel);
-      }
-    } catch (error) {
-      if (releaseRuntime) this.releaseAgent(snapshot.sessionId);
-      throw error;
-    }
     const handleId = crypto.randomUUID();
     const handle: SubagentHandle = {
       parentSessionId,
-      sessionId: snapshot.sessionId,
-      releaseRuntime,
+      releaseRuntime: false,
       taskDescription: input.task,
       profile: input.profile,
       retain: input.retain,
       status: this.activeSubagents < MAX_ACTIVE_SUBAGENTS ? "running" : "queued",
-      controller: new AbortController()
+      controller: new AbortController(),
+      liveParts: new Map(),
+      liveStreaming: false,
+      observers: new Set()
     };
     this.subagentHandles.set(handleId, handle);
     handle.task = this.withSubagentSlot(handle, async () => {
+      let snapshot = await this.openAgent({
+        target: { kind: "new", visibility: "private" },
+        instructions: subagentSystemPrompt(input.profile, input.instructions),
+        tools,
+        remainingSubagentDepth,
+        auxiliary: true
+      });
+      handle.sessionId = snapshot.sessionId;
+      handle.releaseRuntime = this.privateRuntimeIds.has(snapshot.sessionId);
+      if (handle.controller.signal.aborted) throw handle.controller.signal.reason;
+      const resolvedModel = this.resolveAgentModel(input.model, snapshot);
+      const modelAlreadySelected = snapshot.model?.provider === resolvedModel.provider && snapshot.model.id === resolvedModel.modelId && snapshot.thinkingLevel === resolvedModel.thinkingLevel;
+      if (!modelAlreadySelected) snapshot = await this.configureAgent(snapshot.sessionId, resolvedModel.provider, resolvedModel.modelId, resolvedModel.thinkingLevel);
+      handle.liveParts = new Map(snapshot.parts.map((part) => [part.id, part]));
+      handle.liveStreaming = snapshot.streaming;
+      handle.unsubscribe = this.subscribeAgent(snapshot.sessionId, (event) => {
+        if (event.type === "part-updated") handle.liveParts.set(event.part.id, event.part);
+        else if (event.type === "part-removed") handle.liveParts.delete(event.partId);
+        else if (event.type === "streaming") handle.liveStreaming = event.streaming;
+        for (const observer of handle.observers) observer();
+      });
       const finalSnapshot = await this.agentPrompt(snapshot.sessionId, input.task, "prompt");
       handle.status = "complete";
       handle.result = this.subagentResult(handleId, handle, finalSnapshot);
@@ -659,10 +654,11 @@ export class PiWorkspaceDriver {
       handle.status = handle.controller.signal.aborted ? "aborted" : "error";
       handle.result = jsonValueSchema.parse({ handleId, task: handle.taskDescription, profile: handle.profile, status: handle.status, error: handle.error });
     }).finally(() => {
-      if (!handle.retain && handle.releaseRuntime && this.privateRuntimeIds.has(handle.sessionId)) this.releaseAgent(handle.sessionId);
+      if (!handle.retain) handle.unsubscribe?.();
+      if (!handle.retain && handle.releaseRuntime && handle.sessionId && this.privateRuntimeIds.has(handle.sessionId)) this.releaseAgent(handle.sessionId);
       if (!handle.retain) this.scheduleSubagentResultExpiry(handleId, handle);
     });
-    return jsonValueSchema.parse({ handleId, task: input.task, profile: input.profile, resolvedModel, status: handle.status, retained: input.retain, maxDepth: remainingSubagentDepth });
+    return jsonValueSchema.parse({ handleId, task: input.task, profile: input.profile, status: handle.status, retained: input.retain, maxDepth: remainingSubagentDepth });
   }
 
   private async parallelSubagents(input: ParallelSubagentTasksInput, parentSessionId: string, signal: AbortSignal, onUpdate?: (value: JsonValue) => void) {
@@ -686,14 +682,16 @@ export class PiWorkspaceDriver {
   private async promptSubagent(input: { handleId: string; text: string; delivery: "prompt" | "follow-up" }, parentSessionId: string, signal: AbortSignal) {
     const handle = this.subagentHandle(input.handleId, parentSessionId);
     if (!handle.retain) throw new Error("This subagent was created for one-shot work. Spawn with retain: true to use multi-turn prompts.");
-    if (handle.sessionId === parentSessionId) throw new Error("An agent cannot synchronously prompt or wait on itself");
-    const onAbort = () => { void this.agentAbort(handle.sessionId); };
+    const sessionId = handle.sessionId;
+    if (!sessionId) throw new Error("The retained subagent is still starting");
+    if (sessionId === parentSessionId) throw new Error("An agent cannot synchronously prompt or wait on itself");
+    const onAbort = () => { void this.agentAbort(sessionId); };
     signal.addEventListener("abort", onAbort, { once: true });
     try {
       handle.status = this.activeSubagents < MAX_ACTIVE_SUBAGENTS ? "running" : "queued";
       let snapshot: Awaited<ReturnType<CakeRuntime["snapshot"]>> | undefined;
       handle.task = this.withSubagentSlot(handle, async () => {
-        snapshot = await this.agentPrompt(handle.sessionId, input.text, input.delivery);
+        snapshot = await this.agentPrompt(sessionId, input.text, input.delivery);
         handle.status = "complete";
       });
       await handle.task;
@@ -708,14 +706,21 @@ export class PiWorkspaceDriver {
   private async waitSubagent(handleId: string, parentSessionId: string, signal: AbortSignal, onUpdate?: (value: JsonValue) => void) {
     const handle = this.subagentHandle(handleId, parentSessionId);
     if (handle.sessionId === parentSessionId) throw new Error("An agent cannot synchronously wait on itself");
-    const unsubscribe = this.privateRuntimeIds.has(handle.sessionId) && onUpdate ? this.subscribeAgent(handle.sessionId, () => {
-      void this.agentSnapshot(handle.sessionId).then((snapshot) => onUpdate(this.subagentResult(handleId, handle, snapshot))).catch(() => undefined);
-    }) : undefined;
+    let updateTimer: ReturnType<typeof setTimeout> | undefined;
+    const emitUpdate = () => {
+      if (updateTimer || !onUpdate) return;
+      updateTimer = setTimeout(() => {
+        updateTimer = undefined;
+        onUpdate(this.liveSubagentResult(handleId, handle));
+      }, 150);
+    };
+    if (onUpdate) handle.observers.add(emitUpdate);
     onUpdate?.(jsonValueSchema.parse({ handleId, task: handle.taskDescription, profile: handle.profile, status: handle.status }));
     try {
       if (handle.task) await this.waitForSubagentTask(handle, signal);
     } finally {
-      unsubscribe?.();
+      handle.observers.delete(emitUpdate);
+      if (updateTimer) clearTimeout(updateTimer);
     }
     if (handle.result) {
       const result = handle.result;
@@ -725,11 +730,13 @@ export class PiWorkspaceDriver {
       }
       return result;
     }
-    let snapshot = await this.agentSnapshot(handle.sessionId);
+    const sessionId = handle.sessionId;
+    if (!sessionId) throw new Error("The subagent did not start a runtime");
+    let snapshot = await this.agentSnapshot(sessionId);
     if (snapshot.streaming) {
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => finish(new Error("Timed out waiting for the subagent")), 5 * 60_000);
-        const unsubscribe = this.subscribeAgent(handle.sessionId, (event) => {
+        const unsubscribe = this.subscribeAgent(sessionId, (event) => {
           if (event.type === "streaming" && !event.streaming) finish();
         });
         const onAbort = () => finish(signal.reason instanceof Error ? signal.reason : new Error("Subagent wait aborted"));
@@ -742,7 +749,7 @@ export class PiWorkspaceDriver {
         signal.addEventListener("abort", onAbort, { once: true });
         if (signal.aborted) onAbort();
       });
-      snapshot = await this.agentSnapshot(handle.sessionId);
+      snapshot = await this.agentSnapshot(sessionId);
     }
     return this.subagentResult(handleId, handle, snapshot);
   }
@@ -768,7 +775,7 @@ export class PiWorkspaceDriver {
     const handle = this.subagentHandle(handleId, parentSessionId);
     handle.controller.abort(new Error("Subagent aborted"));
     handle.status = "aborted";
-    if (!this.privateRuntimeIds.has(handle.sessionId)) return jsonValueSchema.parse({ handleId, streaming: false, status: handle.status });
+    if (!handle.sessionId || !this.privateRuntimeIds.has(handle.sessionId)) return jsonValueSchema.parse({ handleId, streaming: false, status: handle.status });
     const snapshot = await this.agentAbort(handle.sessionId);
     return jsonValueSchema.parse({ handleId, streaming: snapshot.streaming, status: handle.status });
   }
@@ -778,7 +785,8 @@ export class PiWorkspaceDriver {
     this.subagentHandles.delete(handleId);
     handle.controller.abort(new Error("Subagent closed"));
     if (handle.cleanupTimer) clearTimeout(handle.cleanupTimer);
-    if (handle.releaseRuntime && this.privateRuntimeIds.has(handle.sessionId)) this.releaseAgent(handle.sessionId);
+    handle.unsubscribe?.();
+    if (handle.releaseRuntime && handle.sessionId && this.privateRuntimeIds.has(handle.sessionId)) this.releaseAgent(handle.sessionId);
     return jsonValueSchema.parse({ handleId, closed: true });
   }
 
@@ -791,6 +799,10 @@ export class PiWorkspaceDriver {
   private subagentResult(handleId: string, handle: SubagentHandle, snapshot: Awaited<ReturnType<CakeRuntime["snapshot"]>>) {
     const result = { handleId, task: handle.taskDescription, profile: handle.profile, status: handle.status, streaming: snapshot.streaming, parts: snapshot.parts };
     return jsonValueSchema.parse(snapshot.usage ? { ...result, usage: snapshot.usage } : result);
+  }
+
+  private liveSubagentResult(handleId: string, handle: SubagentHandle) {
+    return jsonValueSchema.parse({ handleId, task: handle.taskDescription, profile: handle.profile, status: handle.status, streaming: handle.liveStreaming, parts: [...handle.liveParts.values()] });
   }
 
   private async withSubagentSlot(handle: SubagentHandle, run: () => Promise<void>) {
@@ -821,42 +833,13 @@ export class PiWorkspaceDriver {
   }
 
   private async inspectChanges(command: Extract<PiWorkspaceCommand, { type: "inspect-changes" }>) {
-    const runtime = this.runtimeFor(command.sessionId);
+    this.runtimeFor(command.sessionId);
     try {
-      if (command.source === "working-tree") {
-        const files = await this.collectWorkingChanges(this.workspacePath);
-        this.emit({ type: "changes-snapshot", requestId: command.requestId, workspacePath: this.workspacePath, sessionId: command.sessionId, source: command.source, turns: [], files });
-        return;
-      }
-      const initial = await runtime.ensureInitialGitCheckpoint?.();
-      await runtime.waitForGitCheckpoints?.();
-      if (!initial) throw new Error("Git checkpoints are unavailable for this session");
-      const projections = await Promise.all((runtime.gitChangeTurns?.() ?? []).map(async (turn) => {
-        const totals = await this.summarizeCheckpointChanges(this.workspacePath, turn.beforeTree, turn.afterTree);
-        const summary: ChangeTurn = {
-          id: turn.id,
-          label: turn.label,
-          capturedAt: turn.capturedAt,
-          ...totals
-        };
-        return { summary, turn };
-      }));
-      projections.reverse();
-      const selected = projections.find(({ summary }) => summary.id === command.turnId) ?? projections[0];
-      const files = selected ? await this.collectCheckpointChanges(this.workspacePath, selected.turn.beforeTree, selected.turn.afterTree) : [];
-      this.emit({
-        type: "changes-snapshot",
-        requestId: command.requestId,
-        workspacePath: this.workspacePath,
-        sessionId: command.sessionId,
-        source: command.source,
-        selectedTurnId: selected?.summary.id,
-        turns: projections.map(({ summary }) => summary),
-        files
-      });
+      const files = await this.collectWorkingChanges(this.workspacePath);
+      this.emit({ type: "changes-snapshot", requestId: command.requestId, workspacePath: this.workspacePath, sessionId: command.sessionId, files });
     } catch (error) {
       if (!(error instanceof NotGitRepositoryError)) throw error;
-      this.emit({ type: "changes-snapshot", requestId: command.requestId, workspacePath: this.workspacePath, sessionId: command.sessionId, source: command.source, turns: [], files: [] });
+      this.emit({ type: "changes-snapshot", requestId: command.requestId, workspacePath: this.workspacePath, sessionId: command.sessionId, files: [] });
     }
   }
 

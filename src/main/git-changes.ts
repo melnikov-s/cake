@@ -1,9 +1,8 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, relative, resolve, sep } from "node:path";
+import { realpath } from "node:fs/promises";
+import { relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
+import { z } from "zod";
 import type { ChangedFile } from "../ipc/session-contract";
 
 const execFileAsync = promisify(execFile);
@@ -15,17 +14,7 @@ interface ChangeEntry {
   path: string;
   previousPath?: string;
   changeCode?: string;
-}
-
-export interface WorkspaceCheckpoint {
-  tree: string;
-  ref: string;
-}
-
-export interface CheckpointChangeSummary {
-  fileCount: number;
-  additions: number;
-  deletions: number;
+  untracked?: boolean;
 }
 
 export class NotGitRepositoryError extends Error {
@@ -35,62 +24,25 @@ export class NotGitRepositoryError extends Error {
   }
 }
 
-/** Captures the complete non-ignored workspace state without mutating Git's real index. */
-export async function captureWorkspaceCheckpoint(workspacePath: string, sessionId: string): Promise<WorkspaceCheckpoint> {
-  const { root, prefix } = await resolveRepository(workspacePath);
-  const tree = await writeWorkspaceTree(root, prefix);
-  const sessionKey = createHash("sha256").update(sessionId).digest("hex").slice(0, 32);
-  const ref = `refs/cake/checkpoints/${sessionKey}/${tree}`;
-  await git(root, ["update-ref", ref, tree], maxStatusBuffer);
-  return { tree, ref };
-}
-
-/** Reads all staged, unstaged, and untracked changes without recording a Cake checkpoint. */
+/** Reads all staged, unstaged, and untracked changes with ordinary Git diffs. */
 export async function collectWorkingTreeChanges(workspacePath: string): Promise<ChangedFile[]> {
   const { root, prefix } = await resolveRepository(workspacePath);
-  const initialTree = await repositoryHeadTree(root);
-  const latestTree = await writeWorkspaceTree(root, prefix);
-  return collectCheckpointChanges(workspacePath, initialTree, latestTree);
-}
-
-async function writeWorkspaceTree(root: string, prefix: string) {
-  const temporaryDirectory = await mkdtemp(join(tmpdir(), "cake-git-checkpoint-"));
-  const indexPath = join(temporaryDirectory, "index");
-  const environment = { ...process.env, GIT_INDEX_FILE: indexPath };
-  try {
-    if (await hasHead(root)) await git(root, ["read-tree", "HEAD"], maxStatusBuffer, environment);
-    else await git(root, ["read-tree", "--empty"], maxStatusBuffer, environment);
-    await git(root, ["add", "-A", "--", prefix || "."], maxStatusBuffer, environment);
-    return (await git(root, ["write-tree"], maxStatusBuffer, environment)).trim();
-  } finally {
-    await rm(temporaryDirectory, { recursive: true, force: true });
-  }
-}
-
-async function repositoryHeadTree(root: string) {
-  if (await hasHead(root)) return (await git(root, ["rev-parse", "HEAD^{tree}"], maxStatusBuffer)).trim();
-  const temporaryDirectory = await mkdtemp(join(tmpdir(), "cake-git-empty-tree-"));
-  const environment = { ...process.env, GIT_INDEX_FILE: join(temporaryDirectory, "index") };
-  try {
-    await git(root, ["read-tree", "--empty"], maxStatusBuffer, environment);
-    return (await git(root, ["write-tree"], maxStatusBuffer, environment)).trim();
-  } finally {
-    await rm(temporaryDirectory, { recursive: true, force: true });
-  }
-}
-
-/** Compares two immutable session checkpoints. The current working tree is not consulted. */
-export async function collectCheckpointChanges(workspacePath: string, initialTree: string, latestTree: string): Promise<ChangedFile[]> {
-  const { root, prefix } = await resolveRepository(workspacePath);
-  await git(root, ["cat-file", "-e", `${initialTree}^{tree}`], maxStatusBuffer);
-  await git(root, ["cat-file", "-e", `${latestTree}^{tree}`], maxStatusBuffer);
+  const base = await repositoryBaseTree(root);
   const pathspec = prefix || ".";
-  const changed = await git(root, ["diff", "--name-status", "-z", "--find-renames", "--find-copies", initialTree, latestTree, "--", pathspec], maxStatusBuffer);
-  const entries = parseNameStatus(changed).filter((entry) => withinWorkspace(entry.path, prefix));
+  const [tracked, untracked] = await Promise.all([
+    git(root, ["diff", "--name-status", "-z", "--find-renames", "--find-copies", base, "--", pathspec], maxStatusBuffer),
+    git(root, ["ls-files", "--others", "--exclude-standard", "-z", "--", pathspec], maxStatusBuffer)
+  ]);
+  const entries = [
+    ...parseNameStatus(tracked),
+    ...untracked.split("\0").filter(Boolean).map((path): ChangeEntry => ({ path, changeCode: "A", untracked: true }))
+  ].filter((entry) => withinWorkspace(entry.path, prefix));
   const files: ChangedFile[] = [];
   for (const entry of entries) {
     const paths = entry.previousPath ? [entry.previousPath, entry.path] : [entry.path];
-    const diff = await git(root, ["diff", "--no-ext-diff", "--find-renames", "--find-copies", initialTree, latestTree, "--", ...paths], maxDiffBuffer);
+    const diff = entry.untracked
+      ? await untrackedDiff(root, entry.path)
+      : await git(root, ["diff", "--no-ext-diff", "--find-renames", "--find-copies", base, "--", ...paths], maxDiffBuffer);
     const lines = diff.split("\n");
     files.push({
       path: fromRepositoryPath(entry.path, prefix),
@@ -104,29 +56,26 @@ export async function collectCheckpointChanges(workspacePath: string, initialTre
   return files;
 }
 
-/** Computes turn-list totals without materializing every per-file patch. */
-export async function summarizeCheckpointChanges(workspacePath: string, initialTree: string, latestTree: string): Promise<CheckpointChangeSummary> {
-  const { root, prefix } = await resolveRepository(workspacePath);
-  await git(root, ["cat-file", "-e", `${initialTree}^{tree}`], maxStatusBuffer);
-  await git(root, ["cat-file", "-e", `${latestTree}^{tree}`], maxStatusBuffer);
-  const pathspec = prefix || ".";
-  const [names, numstat] = await Promise.all([
-    git(root, ["diff", "--name-status", "-z", "--find-renames", "--find-copies", initialTree, latestTree, "--", pathspec], maxStatusBuffer),
-    git(root, ["diff", "--numstat", "-z", initialTree, latestTree, "--", pathspec], maxStatusBuffer)
-  ]);
-  let additions = 0;
-  let deletions = 0;
-  for (const record of numstat.split("\0")) {
-    const totals = /^(\d+|-)\t(\d+|-)(?:\t|$)/.exec(record);
-    if (!totals) continue;
-    if (totals[1] !== "-") additions += Number(totals[1]);
-    if (totals[2] !== "-") deletions += Number(totals[2]);
+async function repositoryBaseTree(root: string) {
+  if (await hasHead(root)) return "HEAD";
+  const nullDevice = process.platform === "win32" ? "NUL" : "/dev/null";
+  return (await git(root, ["hash-object", "-t", "tree", nullDevice], maxStatusBuffer)).trim();
+}
+
+const noIndexFailureSchema = z.object({
+  stdout: z.union([z.string(), z.instanceof(Buffer)]),
+  code: z.union([z.number(), z.string()]).optional()
+});
+
+async function untrackedDiff(root: string, path: string) {
+  const nullDevice = process.platform === "win32" ? "NUL" : "/dev/null";
+  try {
+    return await git(root, ["diff", "--no-index", "--no-ext-diff", "--", nullDevice, path], maxDiffBuffer);
+  } catch (error) {
+    const parsed = noIndexFailureSchema.safeParse(error);
+    if (parsed.success && parsed.data.code === 1) return String(parsed.data.stdout);
+    throw error;
   }
-  return {
-    fileCount: parseNameStatus(names).filter((entry) => withinWorkspace(entry.path, prefix)).length,
-    additions,
-    deletions
-  };
 }
 
 async function resolveRepository(workspacePath: string) {

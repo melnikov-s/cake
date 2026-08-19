@@ -2,8 +2,6 @@ import type { CakeDesktopBridge, DesktopEvent } from "../ipc/desktop-ipc";
 import type {
   Attachment,
   ApplicationState,
-  ChangeSource,
-  ChangeTurn,
   ChangedFile,
   FileSuggestion,
   GlobalSessionSummary,
@@ -40,7 +38,7 @@ export type DesktopClientEvent =
   | { type: "global-chat-operation-failed"; operationId: string; message: string }
   | { type: "global-chat-control-requested"; controlRequestId: string; invocation: { name: string; arguments: JsonValue } }
   | { type: "extension-ui-received"; sessionId: string; event: ExtensionUiEvent }
-  | { type: "changes-received"; operationId: string; workspacePath: string; sessionId: string; source: ChangeSource; selectedTurnId?: string; turns: ChangeTurn[]; files: ChangedFile[] }
+  | { type: "changes-received"; operationId: string; workspacePath: string; sessionId: string; files: ChangedFile[] }
   | { type: "changelog-received"; operationId: string; workspacePath: string; sessionId: string; markdown: string }
   | { type: "artifact-updated"; record: ArtifactRecord }
   | { type: "artifact-requested"; operationId: string; artifactRequestId: string; record: ArtifactRecord }
@@ -134,7 +132,7 @@ export interface DesktopClient {
   renameSession(input: { operationId: string; sessionId: string; name: string }): Promise<void>;
   forkSession(input: { operationId: string; sessionId: string; entryId: string }): Promise<void>;
   navigateSession(input: { operationId: string; sessionId: string; entryId: string }): Promise<void>;
-  inspectChanges(input: { operationId: string; sessionId: string; source: ChangeSource; turnId?: string }): Promise<void>;
+  inspectChanges(input: { operationId: string; sessionId: string }): Promise<void>;
   getChangelog(input: { operationId: string; sessionId: string }): Promise<void>;
   respondToUi(input: { operationId: string; sessionId: string; uiRequestId: string; value?: string; cancelled: boolean }): Promise<void>;
   respondToArtifact(input: { operationId: string; sessionId: string; artifactRequestId: string; value?: JsonValue; cancelled: boolean }): Promise<void>;
@@ -160,7 +158,7 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
   if (event.type === "artifact-requested") return { type: "artifact-requested", operationId: event.requestId, artifactRequestId: event.artifactRequestId, record: event.record };
   if (event.type === "review-threads-snapshot") return { type: "review-threads-received", workspacePath: event.workspacePath, sessionId: event.sessionId, threads: event.threads };
   if (event.type === "review-thread-updated" || event.type === "review-thread-streaming" || event.type === "review-thread-part-updated" || event.type === "review-thread-usage-updated") return event;
-  if (event.type === "changes-snapshot") return { type: "changes-received", operationId: event.requestId, workspacePath: event.workspacePath, sessionId: event.sessionId, source: event.source, selectedTurnId: event.selectedTurnId, turns: event.turns, files: event.files };
+  if (event.type === "changes-snapshot") return { type: "changes-received", operationId: event.requestId, workspacePath: event.workspacePath, sessionId: event.sessionId, files: event.files };
   if (event.type === "changelog-snapshot") return { type: "changelog-received", operationId: event.requestId, workspacePath: event.workspacePath, sessionId: event.sessionId, markdown: event.markdown };
   if (event.type === "ui-request") return { type: "ui-requested", operationId: event.requestId, uiRequestId: event.uiRequestId, kind: event.kind, title: event.title, message: event.message, placeholder: event.placeholder, initialValue: event.initialValue, multiline: event.multiline, options: event.options };
   if (event.type === "complete") return { type: "operation-completed", operationId: event.requestId };
@@ -421,7 +419,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
     renameSession: (input) => accept(bridge, { type: "rename-session", requestId: input.operationId, sessionId: input.sessionId, name: input.name }),
     forkSession: (input) => accept(bridge, { type: "fork-session", requestId: input.operationId, sessionId: input.sessionId, entryId: input.entryId }),
     navigateSession: (input) => accept(bridge, { type: "navigate-session", requestId: input.operationId, sessionId: input.sessionId, entryId: input.entryId }),
-    inspectChanges: (input) => accept(bridge, { type: "inspect-changes", requestId: input.operationId, sessionId: input.sessionId, source: input.source, turnId: input.turnId }),
+    inspectChanges: (input) => accept(bridge, { type: "inspect-changes", requestId: input.operationId, sessionId: input.sessionId }),
     getChangelog: (input) => accept(bridge, { type: "get-changelog", requestId: input.operationId, sessionId: input.sessionId }),
     async respondToUi(input) {
       const response = await bridge.request({ type: "respond-ui", requestId: input.operationId, sessionId: input.sessionId, uiRequestId: input.uiRequestId, value: input.value, cancelled: input.cancelled });

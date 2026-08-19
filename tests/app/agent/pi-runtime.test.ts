@@ -143,55 +143,6 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(summaries).toEqual([expect.objectContaining({ id: "cake-chat", title: "Repair my plugins" })]);
   });
 
-  it("persists Git checkpoints in the Pi session branch and reloads them", async () => {
-    const directory = await createTemporaryDirectory();
-    const sessionDir = join(directory, "sessions");
-    const agentDir = join(directory, "agent");
-    let capture = 0;
-    const first = await createCakeRuntime({
-      cwd: directory, agentDir, sessionDir, trusted: false, newSession: true,
-      requestUi: async () => undefined,
-      captureGitCheckpoint: async () => ({ tree: String(++capture).padStart(40, "a"), ref: `refs/cake/checkpoints/${capture}` }),
-      onEvent: () => undefined
-    });
-    runtimes.push(first);
-
-    const initial = await first.ensureInitialGitCheckpoint!();
-    const latest = await first.captureLatestGitCheckpoint!();
-    expect(first.gitCheckpoints!().map((checkpoint) => checkpoint.tree)).toEqual([initial?.tree, latest?.tree]);
-    const sessionId = first.sessionId;
-    const sessionFile = first.sessionFile;
-    first.dispose();
-    runtimes.splice(runtimes.indexOf(first), 1);
-    const timestamp = new Date().toISOString();
-    await mkdir(sessionDir, { recursive: true });
-    await writeFile(sessionFile, [
-      { type: "session", version: 3, id: sessionId, timestamp, cwd: directory },
-      { type: "custom", id: "checkpoint-1", parentId: null, timestamp, customType: "cake.git-checkpoint/v1", data: initial },
-      { type: "message", id: "user-1", parentId: "checkpoint-1", timestamp, message: { role: "user", content: [{ type: "text", text: "Update the app shell" }], timestamp: Date.now() } },
-      { type: "custom", id: "checkpoint-2", parentId: "user-1", timestamp, customType: "cake.git-checkpoint/v1", data: latest },
-      { type: "message", id: "assistant-1", parentId: "checkpoint-2", timestamp, message: { role: "assistant", content: [{ type: "text", text: "done" }], api: "anthropic-messages", provider: "anthropic", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() } }
-    ].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
-
-    const second = await createCakeRuntime({
-      cwd: directory, agentDir, sessionDir, trusted: false, sessionId, sessionFile,
-      requestUi: async () => undefined,
-      captureGitCheckpoint: async () => ({ tree: "f".repeat(40), ref: "refs/cake/checkpoints/f" }),
-      onEvent: () => undefined
-    });
-    runtimes.push(second);
-
-    expect(await second.ensureInitialGitCheckpoint!()).toMatchObject({ tree: initial?.tree });
-    expect(second.gitCheckpoints!().map((checkpoint) => checkpoint.tree)).toEqual([initial?.tree, latest?.tree]);
-    expect(second.gitChangeTurns!()).toEqual([expect.objectContaining({ id: "checkpoint-2", label: "Update the app shell", beforeTree: initial?.tree, afterTree: latest?.tree })]);
-    const reviewRun = { operationId: "00000000-0000-4000-8000-000000000003", threadIds: ["review-3"], commentCount: 1 };
-    second.recordReviewRun({ ...reviewRun, status: "running" });
-    second.recordReviewRun({ ...reviewRun, status: "complete" });
-    expect((await second.snapshot()).parts.filter((part) => part.kind === "review-run")).toEqual([
-      expect.objectContaining({ ...reviewRun, status: "complete" })
-    ]);
-  });
-
   it("keeps code comments lightweight and refreshes their live parent projection", async () => {
     const directory = await createTemporaryDirectory();
     const parentDir = join(directory, "parents");
@@ -423,9 +374,33 @@ describe("S1 Pi runtime", () => {
     });
     runtimes.push(runtime);
 
-    const tools = runtime.getReviewParentContext?.().activeTools ?? [];
+    const parentContext = runtime.getReviewParentContext?.();
+    const tools = parentContext?.activeTools ?? [];
     expect(tools).toEqual(expect.arrayContaining(["subagent_spawn", "subagent_parallel", "subagent_prompt", "subagent_follow_up", "subagent_wait", "subagent_abort", "subagent_close"]));
     expect(tools).not.toEqual(expect.arrayContaining(["agent_open", "agent_prompt", "agent_wait"]));
+    expect(parentContext?.systemPrompt).toContain("Do not use subagent tools unless the user explicitly asks");
+  });
+
+  it("keeps auxiliary runtime snapshots limited to turn execution data", async () => {
+    const directory = await createTemporaryDirectory();
+    const runtime = await createCakeRuntime({
+      cwd: directory,
+      agentDir: join(directory, "agent"),
+      sessionDir: join(directory, "sessions"),
+      trusted: false,
+      newSession: true,
+      auxiliary: true,
+      tools: ["read", "grep", "find", "ls"],
+      requestUi: async () => undefined,
+      onEvent: () => undefined
+    });
+    runtimes.push(runtime);
+
+    const auxiliary = await runtime.snapshot();
+    expect(auxiliary.models).toEqual([]);
+    expect(auxiliary.commands).toEqual([]);
+    expect(auxiliary.tree).toEqual([]);
+    expect(auxiliary.artifacts).toEqual([]);
   });
 
   it("enables Cake application tools in global chat without enabling coding tools", async () => {
