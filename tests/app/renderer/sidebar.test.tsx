@@ -46,7 +46,6 @@ function sidebarProps(store: ProjectWorkbenchStore) {
     onCreateCakeChat: vi.fn(),
     onOpenSession: fixture.openSession ?? vi.fn(),
     onCreateSession: fixture.startNewSession ?? vi.fn(),
-    onStartOneOffChat: fixture.startOneOffChat ?? vi.fn(),
     onChooseProject: fixture.chooseProject ?? vi.fn(),
     selection: { kind: "workbench" } as const,
   };
@@ -117,41 +116,6 @@ describe("Sidebar projects", () => {
     act(() => projectToggle.click());
     expect(projectToggle.getAttribute("aria-expanded")).toBe("true");
     expect(container.textContent).toContain("Add project collapsing");
-  });
-
-  it("offers Pi reload from the Cake menu", () => {
-    const reload = vi.fn();
-    const store = {
-      recentProjectPaths: [],
-      projects: [],
-      session: { sessionId: "session-1", piSettings: { reloadPending: false } },
-      projectSessions: vi.fn(() => []),
-      sessionLimit: vi.fn(() => 8),
-      nameFromPath: vi.fn(() => "cake"),
-      sessionActivity: vi.fn(),
-      sessionDisplayTitle,
-      chatReviewCommentCountForSession: vi.fn(() => 0),
-      startOneOffChat: vi.fn(),
-      chooseProject: vi.fn(),
-      showMoreSessions: vi.fn(),
-    } as unknown as ProjectWorkbenchStore;
-    act(() =>
-      root.render(
-        <Sidebar
-          {...sidebarProps(store)}
-          onOpenSettings={vi.fn()}
-          onToggle={vi.fn()}
-          onReloadPi={reload}
-        />,
-      ),
-    );
-
-    const menu = container.querySelector("details.brand-menu")!;
-    act(() => menu.setAttribute("open", ""));
-    act(() => container.querySelector<HTMLButtonElement>(".brand-dropdown button")!.click());
-
-    expect(reload).toHaveBeenCalledOnce();
-    expect(menu.hasAttribute("open")).toBe(false);
   });
 
   it("shows running and ready-unread indicators for sessions", () => {
@@ -408,11 +372,62 @@ describe("Sidebar projects", () => {
         />,
       ),
     );
-    expect(container.querySelector(".brand-menu summary")?.textContent).toContain("🍰 Cake Chat");
     expect(container.querySelector(".sidebar input")).toBeNull();
     expect(container.textContent).toContain("Repair the sidebar");
     act(() => container.querySelector<HTMLButtonElement>('[aria-label="New Cake Chat"]')!.click());
     expect(props.onCreateCakeChat).toHaveBeenCalledOnce();
+  });
+
+  it("places Cake Chat above Projects and repeats it in Resolved", () => {
+    const store = {
+      recentProjectPaths: ["/work/empty"],
+      projects: [{ path: "/work/empty", name: "Empty" }],
+      projectSessions: (_path: string, resolved = false) =>
+        resolved ? [{ id: "resolved-project", title: "Finished work" }] : [],
+      sessionLimit: vi.fn(() => 8),
+      sessionActivity: vi.fn(),
+      sessionActivityTime: vi.fn(() => "Today"),
+      nameFromPath: () => "empty",
+      showMoreSessions: vi.fn(),
+      hasResolvedSessions: true,
+      cakeChatSummaries: [
+        {
+          id: "active-cake",
+          title: "Current Cake Chat",
+          modified: new Date(0).toISOString(),
+          resolved: false,
+        },
+        {
+          id: "resolved-cake",
+          title: "Finished Cake Chat",
+          modified: new Date(0).toISOString(),
+          resolved: true,
+        },
+      ],
+    } as unknown as ProjectWorkbenchStore;
+    const props = sidebarProps(store);
+
+    act(() => root.render(<Sidebar {...props} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
+
+    const activeCakeGroup = container.querySelector<HTMLElement>(
+      ".sidebar-scroll > .cake-chat-sessions",
+    );
+    const projectsHeading = container.querySelector<HTMLElement>(".projects-heading");
+    expect(activeCakeGroup?.nextElementSibling).toBe(projectsHeading);
+    expect(activeCakeGroup?.querySelector(".project-label")?.textContent).toBe("Cake Chat");
+    expect(activeCakeGroup?.querySelector(".project-label svg")?.getAttribute("width")).toBe("16");
+
+    const resolvedCakeGroup = container.querySelector<HTMLElement>(
+      ".resolved-lane .cake-chat-sessions",
+    );
+    expect(resolvedCakeGroup?.querySelector(".project-label")?.textContent).toBe("Cake Chat");
+    expect(resolvedCakeGroup?.textContent).toContain("Finished Cake Chat");
+
+    const emptyProject = container.querySelector<HTMLElement>(
+      ".project-group:not(.cake-chat-sessions)",
+    );
+    expect(emptyProject?.classList).toContain("project-group-empty");
+    expect(emptyProject?.querySelector(".project-disclosure")?.classList).toContain("no-sessions");
   });
 
   it("derives exactly one active chat from the application selection", () => {

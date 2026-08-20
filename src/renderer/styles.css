@@ -322,8 +322,7 @@
   padding: 0 12px 0 103px;
   -webkit-app-region: drag;
 }
-.sidebar-window-tools button,
-.brand-actions button {
+.sidebar-window-tools button {
   display: grid;
   width: 28px;
   height: 28px;
@@ -335,9 +334,7 @@
   color: var(--muted-foreground);
   -webkit-app-region: no-drag;
 }
-.sidebar-window-tools button:hover:not(:disabled),
-.brand-actions button:hover,
-.brand-actions button.active {
+.sidebar-window-tools button:hover:not(:disabled) {
   background: var(--sidebar-hover);
   color: var(--foreground);
 }
@@ -346,90 +343,6 @@
   cursor: default;
 }
 .sidebar-window-tools svg {
-  width: 15px;
-  height: 15px;
-}
-.sidebar-brand {
-  display: flex;
-  height: 48px;
-  flex: 0 0 48px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 0 15px;
-}
-.brand-menu {
-  position: relative;
-  min-width: 0;
-  color: inherit;
-  font-size: 17px;
-  font-weight: 650;
-  letter-spacing: -0.025em;
-}
-.brand-menu summary {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 4px 3px;
-  border-radius: 6px;
-  cursor: pointer;
-  list-style: none;
-}
-.brand-menu summary::-webkit-details-marker {
-  display: none;
-}
-.brand-menu summary:hover,
-.brand-menu[open] summary {
-  background: var(--sidebar-hover);
-}
-.brand-menu svg {
-  color: var(--muted-foreground);
-}
-.brand-menu[open] summary svg {
-  transform: rotate(180deg);
-}
-.brand-dropdown {
-  position: absolute;
-  z-index: 60;
-  top: calc(100% + 5px);
-  left: 0;
-  width: 210px;
-  padding: 5px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--popover);
-  box-shadow: 0 16px 36px -18px hsl(var(--shadow) / 0.65);
-}
-.brand-dropdown button {
-  display: grid;
-  width: 100%;
-  gap: 2px;
-  padding: 8px 9px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--foreground);
-  font-size: 12px;
-  font-weight: 620;
-  text-align: left;
-}
-.brand-dropdown button:hover:not(:disabled) {
-  background: var(--sidebar-hover);
-}
-.brand-dropdown button:disabled {
-  opacity: 0.45;
-}
-.brand-dropdown button span {
-  color: var(--muted-foreground);
-  font-size: 10px;
-  font-weight: 400;
-}
-.brand-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.brand-actions svg {
   width: 15px;
   height: 15px;
 }
@@ -445,52 +358,6 @@
   font-weight: 850;
   letter-spacing: -0.06em;
   transform: rotate(-2deg);
-}
-.sidebar-brand .status-dot {
-  margin-left: auto;
-}
-.new-chat {
-  display: grid;
-  width: 100%;
-  grid-template-columns: 20px 1fr;
-  align-items: center;
-  gap: 9px;
-  min-height: 36px;
-  margin: 0 0 13px;
-  padding: 0 7px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: inherit;
-  font-size: 13.5px;
-  text-align: left;
-}
-.new-chat:hover {
-  background: var(--sidebar-hover);
-}
-.new-chat.active {
-  background: var(--sidebar-active);
-}
-.cake-chat-sessions {
-  margin-bottom: 4px;
-}
-.cake-chat-link {
-  margin-bottom: 2px;
-}
-.cake-mini-mark {
-  display: grid;
-  width: 20px;
-  height: 20px;
-  place-items: center;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  font-size: 10px;
-  font-weight: 700;
-}
-.new-chat kbd {
-  color: var(--muted-foreground);
-  font: 11px var(--font-sans);
-  opacity: 0.7;
 }
 .sidebar-scroll {
   min-height: 0;
@@ -549,16 +416,6 @@
 .section-heading > div {
   display: flex;
 }
-.project-options {
-  display: grid;
-  width: 27px;
-  height: 27px;
-  place-items: center;
-}
-.project-options svg {
-  width: 14px;
-  height: 14px;
-}
 .section-heading button,
 .project-add {
   display: grid;
@@ -588,6 +445,9 @@
 }
 .project-group {
   margin-bottom: 12px;
+}
+.project-group-empty {
+  margin-bottom: 4px;
 }
 .project-row {
   display: flex;
@@ -647,6 +507,9 @@
 }
 .project-disclosure.collapsed {
   transform: rotate(-90deg);
+}
+.project-disclosure.no-sessions {
+  visibility: hidden;
 }
 .project-disclosure svg {
   width: 12px;
@@ -830,7 +693,6 @@
   padding: 0;
 }
 .sidebar-collapsed .sidebar-window-tools button,
-.sidebar-collapsed .sidebar-brand,
 .sidebar-collapsed .sidebar-scroll {
   display: none;
 }
@@ -4598,7 +4460,6 @@ button.reasoning-summary {
     padding: 0;
   }
   .sidebar-window-tools button,
-  .sidebar-brand,
   .sidebar-scroll {
     display: none;
   }

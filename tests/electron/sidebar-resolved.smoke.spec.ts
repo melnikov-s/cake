@@ -83,6 +83,9 @@ test("resolves and restores the selected project session in the desktop sidebar"
   try {
     const page = await application.firstWindow();
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
+    const cakeChatGroup = page.locator(".sidebar-scroll > .cake-chat-sessions");
+    await expect(cakeChatGroup.locator(".project-label")).toHaveText("Cake Chat");
+    await expect(cakeChatGroup.locator(".project-label svg")).toHaveAttribute("width", "16");
     await expect(page.locator(".resolved-lane")).toHaveCount(0);
 
     const selectedSession = page

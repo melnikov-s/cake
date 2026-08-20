@@ -60,6 +60,7 @@ state, and development boundaries behind these principles.
 - Cake is a greenfield project. Unless the user explicitly requests it, do not preserve backward compatibility.
 - Remove replaced APIs and implementations outright. Do not add deprecated aliases, compatibility shims, transitional forwarding facades, legacy import paths, migrations, or fallback behavior for code being replaced.
 - Prefer updating every caller, test, and document in the same change over carrying an old interface forward.
+- Do not add tests solely to assert that a feature or DOM element removed outright is absent. Remove obsolete tests for removed features; test absence only when conditional or state-dependent absence is itself the behavior under contract.
 
 ## UI composition and reuse
 

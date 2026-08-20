@@ -81,6 +81,13 @@ const FolderIcon = () => (
     <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z" />
   </Icon>
 );
+const CakeIcon = () => (
+  <Icon>
+    <path d="M4 12.5h16v6A1.5 1.5 0 0 1 18.5 20h-13A1.5 1.5 0 0 1 4 18.5z" />
+    <path d="M4 12.5c0-1.7 1.6-3 3.5-3s3.5 1.3 3.5 3c0-1.7 1.6-3 3.5-3s3.5 1.3 3.5 3c0-1.7 1.6-3 3.5-3" />
+    <path d="M8 6v2M12 4v2M16 6v2M4 16h16" />
+  </Icon>
+);
 const PlusIcon = () => (
   <Icon>
     <path d="M12 5v14M5 12h14" />
@@ -110,13 +117,6 @@ const SidebarIcon = () => (
 const ChevronIcon = () => (
   <Icon size={13}>
     <path d="m8 10 4 4 4-4" />
-  </Icon>
-);
-const MoreIcon = () => (
-  <Icon>
-    <circle cx="5" cy="12" r=".7" fill="currentColor" stroke="none" />
-    <circle cx="12" cy="12" r=".7" fill="currentColor" stroke="none" />
-    <circle cx="19" cy="12" r=".7" fill="currentColor" stroke="none" />
   </Icon>
 );
 const ResolveIcon = () => (
@@ -433,10 +433,8 @@ export const Sidebar = observer(function Sidebar({
   onCreateCakeChat,
   onOpenSession,
   onCreateSession,
-  onStartOneOffChat,
   onChooseProject,
   onToggle,
-  onReloadPi,
 }: {
   store: SidebarStore;
   projects: ProjectCatalogStore;
@@ -448,10 +446,8 @@ export const Sidebar = observer(function Sidebar({
   onCreateCakeChat(): void;
   onOpenSession(sessionId: string): void;
   onCreateSession(workspacePath: string): void;
-  onStartOneOffChat(): void;
   onChooseProject(): void;
   onToggle: () => void;
-  onReloadPi?: () => void;
 }) {
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() => new Set());
   const renameSession = (event: React.MouseEvent, sessionId: string, title: string) => {
@@ -542,11 +538,12 @@ export const Sidebar = observer(function Sidebar({
     if (resolved && sessions.length === 0) return null;
     const visibleSessions = sessions.slice(0, store.sessionLimit(path, resolved));
     const collapseKey = `${resolved ? "resolved" : "active"}:${path}`;
+    const empty = sessions.length === 0;
     return (
-      <div className="project-group" key={path}>
+      <div className={`project-group ${empty ? "project-group-empty" : ""}`} key={path}>
         <div className="project-row" title={path}>
           <button
-            className={`project-disclosure ${collapsed ? "collapsed" : ""}`}
+            className={`project-disclosure ${collapsed ? "collapsed" : ""} ${empty ? "no-sessions" : ""}`}
             type="button"
             aria-expanded={!collapsed}
             aria-label={`${collapsed ? "Expand" : "Collapse"} ${projects.nameForPath(path)}${resolved ? " resolved" : ""}`}
@@ -629,6 +626,54 @@ export const Sidebar = observer(function Sidebar({
       </div>
     );
   };
+  const renderCakeChatGroup = (sessions: GlobalChatStore["summaries"], resolved: boolean) => {
+    if (resolved && sessions.length === 0) return null;
+    const collapseKey = `${resolved ? "resolved" : "active"}:cake-chat`;
+    const collapsed = collapsedProjects.has(collapseKey);
+    const empty = sessions.length === 0;
+    return (
+      <div
+        className={`project-group cake-chat-sessions ${empty ? "project-group-empty" : ""}`}
+        key={collapseKey}
+      >
+        <div className="project-row" title="Cake Chat">
+          <button
+            className={`project-disclosure ${collapsed ? "collapsed" : ""} ${empty ? "no-sessions" : ""}`}
+            type="button"
+            aria-expanded={!collapsed}
+            aria-label={`${collapsed ? "Expand" : "Collapse"} Cake Chat${resolved ? " resolved" : ""}`}
+            onClick={() => toggleProject(collapseKey)}
+          >
+            <ChevronIcon />
+          </button>
+          <button
+            className="project-label"
+            type="button"
+            aria-label={
+              resolved
+                ? `${collapsed ? "Expand" : "Collapse"} Cake Chat resolved`
+                : "Open Cake Chat"
+            }
+            onClick={() => (resolved ? toggleProject(collapseKey) : onOpenCakeChat())}
+          >
+            <CakeIcon />
+            <span>Cake Chat</span>
+          </button>
+          {!resolved && (
+            <button
+              className="project-add"
+              type="button"
+              aria-label="New Cake Chat"
+              onClick={onCreateCakeChat}
+            >
+              <PlusIcon />
+            </button>
+          )}
+        </div>
+        {!collapsed && sessions.map((session) => renderCakeChatSession(session, resolved))}
+      </div>
+    );
+  };
   const activeCakeChats = store.cakeChatSessions();
   const resolvedCakeChats = store.cakeChatSessions(true);
   return (
@@ -644,61 +689,14 @@ export const Sidebar = observer(function Sidebar({
           <ForwardIcon />
         </button>
       </div>
-      <div className="sidebar-brand">
-        <details className="brand-menu">
-          <summary>
-            <span>🍰 Cake Chat</span>
-            <ChevronIcon />
-          </summary>
-          <div className="brand-dropdown">
-            <button
-              type="button"
-              disabled={!chat.session || !onReloadPi}
-              onClick={(event) => {
-                onReloadPi?.();
-                event.currentTarget.closest("details")?.removeAttribute("open");
-              }}
-            >
-              Reload Pi
-              <span>
-                {chat.session?.piSettings?.reloadPending ? "Queued" : "Settings and resources"}
-              </span>
-            </button>
-          </div>
-        </details>
-        <div className="brand-actions">
-          <button aria-label="New Cake Chat" onClick={onCreateCakeChat}>
-            <PlusIcon />
-          </button>
-        </div>
-      </div>
       <div className="plugin-slot plugin-slot-sidebar-header">
         <Slot name="global.sidebar.header" />
       </div>
       <div className="sidebar-scroll">
-        <div className="project-group cake-chat-sessions">
-          {activeCakeChats.map((session) => renderCakeChatSession(session, false))}
-          {activeCakeChats.length === 0 && (
-            <button
-              className={`new-chat cake-chat-link${cakeChatSelected() ? " active" : ""}`}
-              aria-current={cakeChatSelected() ? "page" : undefined}
-              onClick={() => onOpenCakeChat()}
-            >
-              <span className="cake-mini-mark">C</span>
-              <span>Open Cake Chat</span>
-            </button>
-          )}
-        </div>
-        <button className="new-chat" onClick={onStartOneOffChat}>
-          <ChatIcon />
-          <span>New chat</span>
-        </button>
+        {renderCakeChatGroup(activeCakeChats, false)}
         <div className="section-heading projects-heading">
           <span>Projects</span>
           <div>
-            <span className="project-options" aria-hidden="true">
-              <MoreIcon />
-            </span>
             <button aria-label="Add project" onClick={onChooseProject}>
               <PlusIcon />
             </button>
@@ -730,11 +728,7 @@ export const Sidebar = observer(function Sidebar({
             </div>
             {store.resolvedLaneExpanded && (
               <div id="resolved-lane-content" className="resolved-lane-content">
-                {resolvedCakeChats.length > 0 && (
-                  <div className="project-group cake-chat-sessions">
-                    {resolvedCakeChats.map((session) => renderCakeChatSession(session, true))}
-                  </div>
-                )}
+                {renderCakeChatGroup(resolvedCakeChats, true)}
                 {projects.recentProjectPaths.map((path) => renderProjectGroup(path, true))}
               </div>
             )}
@@ -891,13 +885,9 @@ export const App = observer(function App() {
         onCreateSession={(workspacePath) => {
           void root.createSession(workspacePath);
         }}
-        onStartOneOffChat={() => {
-          void root.startOneOffChat();
-        }}
         onChooseProject={() => {
           void root.chooseProject();
         }}
-        onReloadPi={() => void settings.reloadPi()}
       />
       {!sidebarCollapsed && (
         <PanelResizeHandle
