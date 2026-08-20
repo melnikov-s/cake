@@ -790,22 +790,18 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     await drainReloads();
   }
 
-  async function nameSessionFromFirstExchange() {
+  async function nameSessionFromFirstMessage(currentUserMessage: string) {
     if (disposed || sessionNamingInFlight || session.sessionManager.getSessionName()) return;
     const utilityModel = options.utilityModel?.();
     if (!utilityModel) return;
-    const messages = session.sessionManager
+    const firstUserMessage = session.sessionManager
       .getBranch()
-      .flatMap((entry) => (entry.type === "message" ? [entry.message] : []));
-    const userText = messages
+      .flatMap((entry) => (entry.type === "message" ? [entry.message] : []))
       .filter((message) => message.role === "user")
       .map((message) => textFromContent(message.content).trim())
       .find(Boolean);
-    const assistantText = messages
-      .filter((message) => message.role === "assistant")
-      .map((message) => textFromContent(message.content).trim())
-      .find(Boolean);
-    if (!userText || !assistantText) return;
+    const userText = firstUserMessage || currentUserMessage.trim();
+    if (!userText) return;
 
     sessionNamingInFlight = true;
     try {
@@ -813,7 +809,6 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
         modelRuntime,
         utilityModel,
         firstUserMessage: userText,
-        firstAssistantMessage: assistantText,
         signal: AbortSignal.any([sessionNamingController.signal, AbortSignal.timeout(15_000)]),
       });
       if (disposed || !title || session.sessionManager.getSessionName()) return;
@@ -972,9 +967,13 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
         options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
       queuedPartIds = nextIds;
     }
+    if (!options.auxiliary && event.type === "message_end" && event.message.role === "user") {
+      // The user message is not appended to SessionManager until after subscribers run, so
+      // pass the event payload while still using the active branch for reopened sessions.
+      void nameSessionFromFirstMessage(textFromContent(event.message.content));
+    }
     if (event.type === "agent_settled") {
       options.onEvent({ type: "streaming", sessionId: cakeSessionId, streaming: false });
-      if (!options.auxiliary) void nameSessionFromFirstExchange();
       void drainReloads()
         .catch(() => undefined)
         .finally(emitSnapshotInBackground);

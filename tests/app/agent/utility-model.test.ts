@@ -14,17 +14,19 @@ describe("utility model", () => {
       } as never,
       utilityModel: { provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "low" },
       firstUserMessage: "Add a user-configured utility model.",
-      firstAssistantMessage: "I will add application preferences and session naming.",
     });
 
     expect(title).toBe("Implement utility model settings");
     expect(completeSimple).toHaveBeenCalledWith(
       model,
       expect.objectContaining({
+        systemPrompt: expect.stringContaining("user's initial request"),
         messages: [
           expect.objectContaining({
             role: "user",
-            content: expect.stringContaining("Add a user-configured utility model"),
+            content: expect.stringMatching(
+              /^<first_user_message>[\s\S]*Add a user-configured utility model[\s\S]*<\/first_user_message>$/,
+            ),
           }),
         ],
       }),

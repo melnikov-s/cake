@@ -1,4 +1,6 @@
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -201,6 +203,104 @@ describe("Pi 0.84.0 foundation contract", () => {
     if (!summary) throw new Error("Expected Pi to list the session fixture");
     expect(summary.title).toBe("x".repeat(1_024));
     expect(() => sessionSnapshotSchema.shape.sessions.parse([summary])).not.toThrow();
+  });
+
+  it("starts automatic naming from the initial user message", async () => {
+    const directory = await createTemporaryDirectory();
+    const agentDir = join(directory, "agent");
+    let releaseResponse!: () => void;
+    const responseReleased = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    const server = createServer((_request, response) => {
+      void responseReleased.then(() => {
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        const chunk = (delta: object, finishReason: string | null = null) =>
+          `data: ${JSON.stringify({
+            id: "fixture-completion",
+            object: "chat.completion.chunk",
+            created: Math.floor(Date.now() / 1_000),
+            model: "fixture-model",
+            choices: [{ index: 0, delta, finish_reason: finishReason }],
+          })}\n\n`;
+        response.write(chunk({ role: "assistant", content: "The response" }));
+        response.write(chunk({}, "stop"));
+        response.end("data: [DONE]\n\n");
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Expected a TCP test server");
+    const port = (address as AddressInfo).port;
+    await mkdir(join(directory, ".pi", "extensions"), { recursive: true });
+    await writeFile(
+      join(directory, ".pi", "extensions", "fixture-provider.ts"),
+      `export default function (pi) { pi.registerProvider("fixture-provider", ${JSON.stringify({
+        name: "Fixture provider",
+        baseUrl: `http://127.0.0.1:${port}/v1`,
+        apiKey: "fixture",
+        api: "openai-completions",
+        models: [
+          {
+            id: "fixture-model",
+            name: "Fixture model",
+            reasoning: false,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 4_096,
+            maxTokens: 1_024,
+          },
+        ],
+      })}); }\n`,
+    );
+    let prompt: Promise<void> | undefined;
+    const generateTitle = vi.fn(async ({ firstUserMessage }: { firstUserMessage: string }) => {
+      return firstUserMessage === "Investigate session naming" ? "Generated title" : "Unexpected";
+    });
+    try {
+      const runtime = await createCakeRuntime({
+        cwd: directory,
+        agentDir,
+        sessionDir: join(directory, "sessions"),
+        trusted: true,
+        utilityModel: () => ({
+          provider: "fixture-provider",
+          modelId: "fixture-model",
+          thinkingLevel: "off",
+        }),
+        generateSessionTitle: generateTitle as never,
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+      });
+      runtimes.push(runtime);
+      await runtime.setModel("fixture-provider", "fixture-model");
+      prompt = runtime.prompt("Investigate session naming", "prompt", []);
+
+      await vi.waitFor(() => expect(generateTitle).toHaveBeenCalledOnce(), { timeout: 1_000 });
+      await vi.waitFor(
+        async () =>
+          expect(
+            (await runtime.snapshot()).sessions.find((item) => item.id === runtime.sessionId)
+              ?.title,
+          ).toBe("Generated title"),
+        { timeout: 1_000 },
+      );
+      expect(generateTitle).toHaveBeenCalledWith(
+        expect.objectContaining({ firstUserMessage: "Investigate session naming" }),
+      );
+      releaseResponse();
+      await prompt;
+      prompt = undefined;
+    } finally {
+      releaseResponse();
+      await prompt?.catch(() => undefined);
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
   });
 
   it("lists Cake Chat sessions directly from its dedicated session directory", async () => {

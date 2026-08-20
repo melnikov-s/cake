@@ -150,15 +150,15 @@ untracked workspace state directly through Git. Cake does not create checkpoint
 refs, synthetic indexes, or turn-history snapshots; Pi session history remains
 the transcript authority rather than a source of persisted workspace trees.
 
-Automatic project-session naming is the first utility workflow. After a
-completed assistant turn, an unnamed session may send its original first user
-and first assistant messages, with bounded lengths, to the configured utility
-model. A successful short title is appended through Pi's normal session-name
-API. The completion is discarded if the session is manually named while it is
-running. Failures are silent and leave Pi's first-message session-list title as
-the display fallback. Configuring a utility model later makes an unnamed
-session eligible after its next completed interaction; already named sessions
-are never regenerated automatically.
+Automatic project-session naming is the first utility workflow. After the
+initial user message is accepted, an unnamed session may send that original
+user message, with bounded length, to the configured utility model without
+waiting for the assistant turn to finish. A successful short title is appended
+through Pi's normal session-name API. The completion is discarded if the
+session is manually named while it is running. Failures are silent and leave
+Pi's first-message session-list title as the display fallback. Configuring a
+utility model later makes an unnamed session eligible after its next
+interaction; already named sessions are never regenerated automatically.
 
 ## Renderer state
 
