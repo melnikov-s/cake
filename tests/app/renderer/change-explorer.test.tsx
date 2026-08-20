@@ -132,14 +132,28 @@ function explorerProps(store: ProjectWorkbenchStore) {
       get changes() {
         return fixture.workspaceChanges;
       },
+      get visibleChanges() {
+        return fixture.visibleChanges;
+      },
       get selected() {
         return fixture.selectedWorkspaceChange;
+      },
+      get source() {
+        return fixture.changeSource ?? "working-tree";
+      },
+      get turns() {
+        return fixture.changeTurns ?? [];
+      },
+      get selectedTurnId() {
+        return fixture.selectedTurnId;
       },
       error: undefined,
       loading: false,
       changeMatchesPath: (change: ChangedFile, path: string) =>
         change.path === path || change.previousPath === path,
       select: fixture.selectChangeExplorerFile,
+      selectSource: fixture.selectChangeSource ?? vi.fn(),
+      selectTurn: fixture.selectChangeTurn ?? vi.fn(),
       focusPath: fixture.selectChangeExplorerFile,
       close: fixture.closeChangeExplorer,
     } as any,
@@ -237,6 +251,46 @@ describe("ChangeExplorer", () => {
     );
   });
 
+  it("restores work-log turns as an alternate change source", () => {
+    const turnChanges = [changes[1]!];
+    const selectChangeTurn = vi.fn();
+    const store = {
+      workspaceChanges: changes,
+      visibleChanges: turnChanges,
+      selectedWorkspaceChange: turnChanges[0],
+      changeSource: "conversation-turn",
+      selectedTurnId: "turn-user-1",
+      changeTurns: [
+        {
+          id: "turn-user-1",
+          label: "Update the plan",
+          changes: turnChanges,
+          additions: 1,
+          deletions: 0,
+        },
+      ],
+      selectChangeTurn,
+      sessionTitle: "Review",
+      reviewThreads: [],
+      reviewThreadStreaming: vi.fn(() => false),
+      createReviewThread: vi.fn(async () => undefined),
+      replyReviewThread: vi.fn(async () => undefined),
+      resolveReviewThread: vi.fn(async () => undefined),
+      selectChangeExplorerFile: vi.fn(),
+      closeChangeExplorer: vi.fn(),
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
+
+    expect(container.querySelector<HTMLSelectElement>('[aria-label="Change source"]')?.value).toBe(
+      "conversation-turn",
+    );
+    expect(container.querySelector('[aria-label="Work log turns"]')).not.toBeNull();
+    expect(container.querySelector(".change-explorer-all-diff")?.textContent).toContain("# Plan");
+    act(() => container.querySelector<HTMLButtonElement>(".change-turn-index li button")!.click());
+    expect(selectChangeTurn).toHaveBeenCalledWith("turn-user-1");
+  });
+
   it("scrolls the full diff when a sidebar file is selected", () => {
     let selected = changes[0];
     const selectChangeExplorerFile = vi.fn((path: string) => {
@@ -272,6 +326,40 @@ describe("ChangeExplorer", () => {
 
     expect(selectChangeExplorerFile).toHaveBeenCalledWith("PLAN.md");
     expect(scrollIntoView).toHaveBeenCalledWith({ block: "start" });
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: undefined,
+    });
+  });
+
+  it("does not scroll when the selected file changes without a sidebar selection", () => {
+    let selected = changes[0];
+    const store = {
+      workspaceChanges: changes,
+      get selectedWorkspaceChange() {
+        return selected;
+      },
+      sessionTitle: "Review",
+      reviewThreads: [],
+      reviewThreadStreaming: vi.fn(() => false),
+      createReviewThread: vi.fn(async () => undefined),
+      replyReviewThread: vi.fn(async () => undefined),
+      resolveReviewThread: vi.fn(async () => undefined),
+      selectChangeExplorerFile: vi.fn(),
+      closeChangeExplorer: vi.fn(),
+    } as unknown as ProjectWorkbenchStore;
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
+    scrollIntoView.mockClear();
+    selected = changes[1];
+    act(() => root.render(<ChangeExplorer {...explorerProps(store)} />));
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: undefined,

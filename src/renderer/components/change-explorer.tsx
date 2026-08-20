@@ -69,12 +69,6 @@ function threadLocation(thread: ReviewThread) {
       : thread.anchor.path;
 }
 
-function scrollToReviewThread(threadId: string) {
-  [...document.querySelectorAll<HTMLElement>("[data-review-thread-id]")]
-    .find((element) => element.dataset.reviewThreadId === threadId)
-    ?.scrollIntoView({ block: "center" });
-}
-
 function changeSection(container: HTMLElement, path: string) {
   return [...container.querySelectorAll<HTMLElement>("[data-change-path]")].find(
     (element) => element.dataset.changePath === path,
@@ -236,32 +230,35 @@ const FullDiff = observer(function FullDiff({
   changes,
   reviews,
   store,
+  reviewable = true,
+  scrollRequest,
 }: {
   changes: readonly ChangedFile[];
   reviews: ReviewsStore;
   store: ChangesStore;
+  reviewable?: boolean;
+  scrollRequest?: { path: string; revision: number };
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const selectedPathRef = useRef<string | undefined>(undefined);
-  const selectedPath = store.selected?.path;
+  const activePathRef = useRef<string | undefined>(undefined);
   const changeKey = changes.map((change) => change.path).join("\u0000");
+
+  useEffect(() => {
+    if (scrollRequest) scrollToChange(scrollRef.current, scrollRequest.path);
+  }, [scrollRequest]);
 
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
-    if (selectedPath && selectedPathRef.current !== selectedPath) {
-      selectedPathRef.current = selectedPath;
-      scrollToChange(container, selectedPath);
-    }
     const onScroll = () => {
       const path = activeChangePath(container);
-      if (!path || path === selectedPathRef.current) return;
-      selectedPathRef.current = path;
+      if (!path || path === activePathRef.current) return;
+      activePathRef.current = path;
       store.select(path);
     };
     container.addEventListener("scroll", onScroll, { passive: true });
     return () => container.removeEventListener("scroll", onScroll);
-  }, [changeKey, selectedPath, store]);
+  }, [changeKey, store]);
 
   return (
     <div
@@ -290,6 +287,7 @@ const FullDiff = observer(function FullDiff({
             change={item}
             reviews={reviews}
             store={store}
+            reviewable={reviewable}
             className="change-explorer-embedded-diff"
           />
         </section>
@@ -411,8 +409,13 @@ export const ChangeExplorer = observer(function ChangeExplorer({
   const [view, setView] = useState<"diff" | "file">("diff");
   const [commentsHeight, setCommentsHeight] = useState<number>();
   const [resizingComments, setResizingComments] = useState(false);
+  const [scrollRequest, setScrollRequest] = useState<{ path: string; revision: number }>();
+  const scrollRevision = useRef(0);
+  const historical = store.source === "conversation-turn";
+  const viewChanges = store.visibleChanges ?? store.changes;
+  const turns = store.turns ?? [];
   const change = store.selected;
-  const tree = sourceTree(store.changes, (item) => item.path);
+  const tree = sourceTree(viewChanges, (item) => item.path);
   const changeThreads = reviews.threads.filter(
     (thread) => thread.anchor.view !== "file" && thread.anchor.view !== "message",
   );
@@ -427,32 +430,42 @@ export const ChangeExplorer = observer(function ChangeExplorer({
     "--review-panel-height": `${shownCommentsHeight}px`,
   };
   const activeChangeThread = changeThreads.find((thread) => thread.id === reviews.activeThreadId);
-  const shownView = change?.status === "deleted" ? "diff" : view;
+  const shownView = historical || change?.status === "deleted" ? "diff" : view;
+  const selectFile = (path: string) => {
+    store.select(path);
+    setScrollRequest({ path, revision: ++scrollRevision.current });
+  };
   const focusThread = (threadId: string) => {
     const thread = changeThreads.find((item) => item.id === threadId);
     if (thread) setView(thread.anchor.view === "full" ? "file" : "diff");
     reviews.activeThreadId = threadId;
     store.focusPath(thread!.anchor.path);
-    requestAnimationFrame(() => scrollToReviewThread(threadId));
   };
   useEffect(() => {
-    if (!activeChangeThread) return;
+    if (!activeChangeThread || historical) return;
     setView(activeChangeThread.anchor.view === "full" ? "file" : "diff");
-    scrollToReviewThread(activeChangeThread.id);
-  }, [change?.path, activeChangeThread?.id, activeChangeThread?.anchor.view]);
-  const context = `Working tree · staged, unstaged, and untracked · ${chat.sessionTitle}`;
-  const totalAdditions = store.changes.reduce((total, item) => total + item.additions, 0);
-  const totalDeletions = store.changes.reduce((total, item) => total + item.deletions, 0);
+  }, [change?.path, activeChangeThread?.id, activeChangeThread?.anchor.view, historical]);
+  const context = historical
+    ? `Work log · ${chat.sessionTitle}`
+    : `Working tree · staged, unstaged, and untracked · ${chat.sessionTitle}`;
+  const totalAdditions = viewChanges.reduce((total, item) => total + item.additions, 0);
+  const totalDeletions = viewChanges.reduce((total, item) => total + item.deletions, 0);
   const emptyTitle = store.error
     ? "Unable to inspect changes"
     : store.loading
       ? "Loading changes…"
-      : "Working tree is clean";
+      : historical
+        ? "No recorded work-log changes"
+        : "Working tree is clean";
   const emptyDetail =
     store.error ??
     (store.loading
-      ? "Reading the current Git working tree."
-      : "There are no staged, unstaged, or untracked files.");
+      ? historical
+        ? "Reading file diffs from the session work log."
+        : "Reading the current Git working tree."
+      : historical
+        ? "No edit diffs were recorded for this session."
+        : "There are no staged, unstaged, or untracked files.");
   return (
     <SourceExplorerLayout
       resizeLabel="Resize changed files panel"
@@ -469,7 +482,25 @@ export const ChangeExplorer = observer(function ChangeExplorer({
                   : emptyTitle}
               </h1>
             </div>
-            {change && (
+            <label className="change-explorer-source">
+              <span>Show</span>
+              <select
+                aria-label="Change source"
+                value={store.source ?? "working-tree"}
+                onChange={(event) => {
+                  setScrollRequest(undefined);
+                  void store.selectSource(
+                    event.target.value === "conversation-turn"
+                      ? "conversation-turn"
+                      : "working-tree",
+                  );
+                }}
+              >
+                <option value="working-tree">Working tree</option>
+                <option value="conversation-turn">Work log</option>
+              </select>
+            </label>
+            {change && !historical && (
               <div className="change-explorer-view-toggle" role="group" aria-label="File view">
                 <button
                   type="button"
@@ -490,7 +521,7 @@ export const ChangeExplorer = observer(function ChangeExplorer({
                 </button>
               </div>
             )}
-            {store.changes.length > 0 && (
+            {viewChanges.length > 0 && (
               <span>
                 <b>+{totalAdditions}</b>
                 <i>−{totalDeletions}</i>
@@ -499,7 +530,13 @@ export const ChangeExplorer = observer(function ChangeExplorer({
           </header>
           {change ? (
             shownView === "diff" ? (
-              <FullDiff changes={store.changes} reviews={reviews} store={store} />
+              <FullDiff
+                changes={viewChanges}
+                reviews={reviews}
+                store={store}
+                reviewable={!historical}
+                scrollRequest={scrollRequest}
+              />
             ) : (
               <FullFile change={change} reviews={reviews} browse={browse} store={store} />
             )
@@ -521,9 +558,11 @@ export const ChangeExplorer = observer(function ChangeExplorer({
         <>
           <header>
             <div>
-              <strong>Changed files</strong>
+              <strong>{historical ? "Work log" : "Changed files"}</strong>
               <small>
-                {store.changes.length} {store.changes.length === 1 ? "file" : "files"}
+                {historical
+                  ? `${turns.length} ${turns.length === 1 ? "turn" : "turns"}`
+                  : `${viewChanges.length} ${viewChanges.length === 1 ? "file" : "files"}`}
               </small>
             </div>
             <div className="change-explorer-actions">
@@ -532,71 +571,120 @@ export const ChangeExplorer = observer(function ChangeExplorer({
               </Button>
             </div>
           </header>
-          <div
-            className={`change-explorer-sidebar-body ${resizingComments ? "is-resizing" : ""}`}
-            style={sidebarStyle}
-          >
-            <nav aria-label="Changed files">
-              <SourceTree
-                nodes={tree.children}
-                selectedPath={change?.path}
-                onSelect={(path) => store.select(path)}
-                fileMeta={(item) => (
-                  <small>
-                    +{item.additions} −{item.deletions}
-                  </small>
-                )}
-              />
-            </nav>
-            {changeThreads.length > 0 && (
-              <>
-                <PanelResizeHandle
-                  className="review-index-resize-handle"
-                  label="Resize comments panel"
-                  value={shownCommentsHeight}
-                  min={commentsMinHeight}
-                  max={commentsMaxHeight}
-                  edge="bottom"
-                  onChange={setCommentsHeight}
-                  onResizeStart={() => setResizingComments(true)}
-                  onResizeEnd={() => setResizingComments(false)}
-                />
-                <section className="review-thread-index" aria-label="Review threads">
-                  <header>
-                    <strong>Comments</strong>
-                    <span>{changeThreads.length}</span>
-                  </header>
+          {historical ? (
+            <div className="change-explorer-turn-body">
+              <section className="change-turn-index" aria-label="Work log turns">
+                <header>
+                  <strong>Work log turns</strong>
+                  <span>{turns.length}</span>
+                </header>
+                {turns.length === 0 ? (
+                  <p>No edit diffs recorded.</p>
+                ) : (
                   <ol>
-                    {indexedThreads.map((thread) => {
-                      const state =
-                        thread.status === "resolved"
-                          ? "Resolved"
-                          : reviews.threadStreaming(thread.id)
-                            ? "Working"
-                            : thread.pending
-                              ? "Pending"
-                              : "Replied";
-                      return (
-                        <li key={thread.id}>
-                          <button
-                            className={`${thread.status === "resolved" ? "resolved" : ""} ${reviews.activeThread?.id === thread.id ? "active" : ""}`}
-                            onClick={() => focusThread(thread.id)}
-                          >
-                            <i className={state.toLowerCase()} />
-                            <span>
-                              <strong>{reviewThreadPreview(thread, "Review thread")}</strong>
-                              <small>{threadLocation(thread)}</small>
-                            </span>
-                            <em>{state}</em>
-                          </button>
-                        </li>
-                      );
-                    })}
+                    {turns.map((turn) => (
+                      <li key={turn.id}>
+                        <button
+                          className={turn.id === store.selectedTurnId ? "active" : ""}
+                          onClick={() => store.selectTurn(turn.id)}
+                        >
+                          <span>
+                            <strong>{turn.label}</strong>
+                            <small>{turn.changes.length} changed files</small>
+                          </span>
+                          <em>
+                            +{turn.additions} −{turn.deletions}
+                          </em>
+                        </button>
+                      </li>
+                    ))}
                   </ol>
-                </section>
-              </>
-            )}
-          </div>
+                )}
+              </section>
+              <nav aria-label="Files changed in selected work-log turn">
+                <header>
+                  <strong>Files in this turn</strong>
+                  <span>{viewChanges.length}</span>
+                </header>
+                <SourceTree
+                  nodes={tree.children}
+                  selectedPath={change?.path}
+                  onSelect={selectFile}
+                  fileMeta={(item) => (
+                    <small>
+                      +{item.additions} −{item.deletions}
+                    </small>
+                  )}
+                />
+              </nav>
+            </div>
+          ) : (
+            <div
+              className={`change-explorer-sidebar-body ${resizingComments ? "is-resizing" : ""}`}
+              style={sidebarStyle}
+            >
+              <nav aria-label="Changed files">
+                <SourceTree
+                  nodes={tree.children}
+                  selectedPath={change?.path}
+                  onSelect={selectFile}
+                  fileMeta={(item) => (
+                    <small>
+                      +{item.additions} −{item.deletions}
+                    </small>
+                  )}
+                />
+              </nav>
+              {changeThreads.length > 0 && (
+                <>
+                  <PanelResizeHandle
+                    className="review-index-resize-handle"
+                    label="Resize comments panel"
+                    value={shownCommentsHeight}
+                    min={commentsMinHeight}
+                    max={commentsMaxHeight}
+                    edge="bottom"
+                    onChange={setCommentsHeight}
+                    onResizeStart={() => setResizingComments(true)}
+                    onResizeEnd={() => setResizingComments(false)}
+                  />
+                  <section className="review-thread-index" aria-label="Review threads">
+                    <header>
+                      <strong>Comments</strong>
+                      <span>{changeThreads.length}</span>
+                    </header>
+                    <ol>
+                      {indexedThreads.map((thread) => {
+                        const state =
+                          thread.status === "resolved"
+                            ? "Resolved"
+                            : reviews.threadStreaming(thread.id)
+                              ? "Working"
+                              : thread.pending
+                                ? "Pending"
+                                : "Replied";
+                        return (
+                          <li key={thread.id}>
+                            <button
+                              className={`${thread.status === "resolved" ? "resolved" : ""} ${reviews.activeThread?.id === thread.id ? "active" : ""}`}
+                              onClick={() => focusThread(thread.id)}
+                            >
+                              <i className={state.toLowerCase()} />
+                              <span>
+                                <strong>{reviewThreadPreview(thread, "Review thread")}</strong>
+                                <small>{threadLocation(thread)}</small>
+                              </span>
+                              <em>{state}</em>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  </section>
+                </>
+              )}
+            </div>
+          )}
         </>
       }
     />

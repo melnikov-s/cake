@@ -99,6 +99,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       client: this.client,
       projectPath: () => this.projectPath,
       sessionId: () => this.session?.sessionId,
+      parts: () => this.activeSession?.canonicalParts ?? [],
       operations: this.props.operations,
     });
   }

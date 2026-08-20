@@ -1431,6 +1431,29 @@
   color: var(--foreground);
   box-shadow: 0 1px 2px color-mix(in oklab, black 12%, transparent);
 }
+.change-explorer-source {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  -webkit-app-region: no-drag;
+}
+.change-explorer-source select {
+  height: 31px;
+  padding: 0 28px 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  outline: none;
+  background: color-mix(in oklab, var(--card) 86%, var(--background));
+  color: var(--foreground);
+  font: 10px var(--font-sans);
+}
+.change-explorer-source select:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 17%, transparent);
+}
 .change-explorer-file > header small {
   display: block;
   overflow: hidden;
@@ -1899,6 +1922,114 @@
 .change-explorer-sidebar-body.is-resizing {
   cursor: row-resize;
   user-select: none;
+}
+.change-explorer-turn-body {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: minmax(150px, 52%) minmax(120px, 48%);
+}
+.change-turn-index {
+  min-height: 0;
+  overflow: auto;
+  padding: 0 10px 12px;
+}
+.change-turn-index > header,
+.change-explorer-turn-body nav > header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 8px 8px;
+  background: color-mix(in oklab, var(--sidebar) 84%, var(--background));
+}
+.change-turn-index > header strong,
+.change-explorer-turn-body nav > header strong {
+  font-size: 11px;
+}
+.change-turn-index > header span,
+.change-explorer-turn-body nav > header span {
+  color: var(--muted-foreground);
+  font: 9px var(--font-mono);
+}
+.change-turn-index > p {
+  margin: 8px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.change-turn-index ol {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.change-turn-index li > button {
+  position: relative;
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 8px 9px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+  cursor: pointer;
+}
+.change-turn-index li > button::before {
+  position: absolute;
+  left: 3px;
+  width: 2px;
+  height: 22px;
+  border-radius: 2px;
+  background: transparent;
+  content: "";
+}
+.change-turn-index li > button:hover {
+  background: var(--sidebar-hover);
+}
+.change-turn-index li > button.active {
+  background: var(--sidebar-active);
+}
+.change-turn-index li > button.active::before {
+  background: var(--accent);
+}
+.change-turn-index li button > span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+.change-turn-index li strong,
+.change-turn-index li small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.change-turn-index li strong {
+  font-size: 11px;
+  font-weight: 560;
+}
+.change-turn-index li small {
+  color: var(--muted-foreground);
+  font: 9px var(--font-mono);
+}
+.change-turn-index li em {
+  color: var(--muted-foreground);
+  font: 9px var(--font-mono);
+  font-style: normal;
+  white-space: nowrap;
+}
+.change-explorer-turn-body nav {
+  min-height: 0;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+}
+.change-explorer-turn-body nav > ul {
+  padding: 0 10px 24px;
 }
 .review-index-resize-handle {
   bottom: calc(var(--review-panel-height) - 5px);
