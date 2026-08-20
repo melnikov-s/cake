@@ -17,6 +17,8 @@ export class Session extends Model {
   @state sessionFile = "";
   @child(Message) parts: Message[] = observable([]);
   @state model: SessionSnapshot["model"] = undefined;
+  @state fastMode = false;
+  @state fastModeAvailable = false;
   @child(ModelOption) models: ModelOption[] = observable([]);
   @state thinkingLevel: ThinkingLevel = "off";
   @state availableThinkingLevels: ThinkingLevel[] = observable([]);

@@ -107,6 +107,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         this.props.client.setModel({ operationId, sessionId: this.sessionId, provider, modelId }),
       setThinkingLevel: (operationId, level) =>
         this.props.client.setThinkingLevel({ operationId, sessionId: this.sessionId, level }),
+      setFastMode: (operationId, enabled) =>
+        this.props.client.setFastMode({ operationId, sessionId: this.sessionId, enabled }),
     });
   }
 

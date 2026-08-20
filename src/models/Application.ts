@@ -20,6 +20,8 @@ export class Application extends Model {
   @state
   trustedProjectPaths: string[] = [];
   @state
+  fastModeSessionIds: string[] = [];
+  @state
   utilityModel: UtilityModel | undefined;
 
   static from(untrustedInput: unknown) {
@@ -62,6 +64,17 @@ export class Application extends Model {
 
   setUtilityModel(model: UtilityModel | undefined) {
     this.utilityModel = model ? utilityModelSchema.parse(model) : undefined;
+  }
+
+  setSessionFastMode(sessionId: string, enabled: boolean) {
+    const next = new Set(this.fastModeSessionIds);
+    if (enabled) next.add(sessionId);
+    else next.delete(sessionId);
+    this.fastModeSessionIds = [...next];
+  }
+
+  hasSessionFastMode(sessionId: string) {
+    return this.fastModeSessionIds.includes(sessionId);
   }
 
   setCakeChatSessionResolved(sessionId: string, resolved: boolean) {

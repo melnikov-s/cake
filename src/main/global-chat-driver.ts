@@ -23,6 +23,8 @@ export interface GlobalChatDriverOptions {
   sessionDir: string;
   emit(event: DesktopEvent): void;
   recoveryContext?(): string | undefined;
+  fastMode?(sessionId: string): boolean;
+  setFastMode?(sessionId: string, enabled: boolean): Promise<void>;
   createRuntime?: typeof createCakeRuntime;
 }
 
@@ -87,6 +89,15 @@ export class GlobalChatDriver {
     });
   }
 
+  setFastMode(requestId: string, sessionId: string, enabled: boolean) {
+    void this.run(requestId, async () => {
+      const runtime = await this.ensureRuntime(false, sessionId);
+      if (!runtime.setFastMode)
+        throw new Error("This Cake Chat runtime does not support Fast mode");
+      await runtime.setFastMode(enabled);
+    });
+  }
+
   respond(controlRequestId: string, result: JsonValue) {
     this.pendingControl.get(controlRequestId)?.settle(result);
   }
@@ -125,6 +136,17 @@ export class GlobalChatDriver {
       newSession,
       sessionId,
       requestUi: async () => undefined,
+      fastMode: {
+        get: () => {
+          const targetSessionId = runtimeIdentity.sessionId ?? sessionId;
+          return targetSessionId ? (this.options.fastMode?.(targetSessionId) ?? false) : false;
+        },
+        set: async (enabled) => {
+          const targetSessionId = runtimeIdentity.sessionId ?? sessionId;
+          if (!targetSessionId) throw new Error("The Cake Chat session is not ready for Fast mode");
+          await this.options.setFastMode?.(targetSessionId, enabled);
+        },
+      },
       globalControl: {
         tools: this.tools,
         recoveryContext: this.options.recoveryContext?.(),
@@ -141,6 +163,7 @@ export class GlobalChatDriver {
         throw new Error("Cake Chat has been disposed");
       }
       runtimeIdentity.sessionId = runtime.sessionId;
+      if (runtime.syncFastMode) await runtime.syncFastMode();
       this.runtimes.set(runtime.sessionId, runtime);
       return runtime;
     } finally {

@@ -15,6 +15,8 @@ export function toSessionSnapshot(snapshot: SessionSnapshot): Snapshot<Session> 
     sessionFile: snapshot.sessionFile,
     parts: snapshot.parts,
     model: snapshot.model,
+    fastMode: snapshot.fastMode ?? false,
+    fastModeAvailable: snapshot.fastModeAvailable ?? false,
     models: snapshot.models.map((option) => ({ ...option, key: modelOptionKey(option) })),
     thinkingLevel: snapshot.thinkingLevel,
     availableThinkingLevels: snapshot.availableThinkingLevels,

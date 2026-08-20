@@ -206,6 +206,7 @@ export const modelOptionSchema = z.object({
   id: z.string().max(512),
   name: ipcProjectionString(1_024),
   reasoning: z.boolean(),
+  fastMode: z.boolean().optional(),
   input: ipcProjectionArray(z.enum(["text", "image"]), 2),
   authenticated: z.boolean(),
   authSource: z
@@ -396,6 +397,8 @@ export const sessionSnapshotSchema = z.object({
   sessionFile: z.string().max(4_096),
   parts: ipcProjectionArray(uiPartSchema, 50_000),
   model: z.object({ provider: z.string(), id: z.string(), name: z.string() }).optional(),
+  fastMode: z.boolean().optional(),
+  fastModeAvailable: z.boolean().optional(),
   models: ipcProjectionArray(modelOptionSchema, 5_000),
   thinkingLevel: thinkingLevelSchema,
   availableThinkingLevels: ipcProjectionArray(thinkingLevelSchema, 7),
@@ -431,6 +434,7 @@ export const applicationStateSchema = z.object({
   resolvedSessionIds: z.array(z.string().max(256)).max(10_000).default([]),
   resolvedCakeChatSessionIds: z.array(z.string().max(256)).max(10_000).default([]),
   trustedProjectPaths: z.array(z.string().max(4_096)).max(200).default([]),
+  fastModeSessionIds: z.array(z.string().max(256)).max(10_000).optional(),
   utilityModel: utilityModelSchema.optional(),
 });
 

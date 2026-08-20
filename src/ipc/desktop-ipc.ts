@@ -389,6 +389,12 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     level: thinkingLevelSchema,
   }),
   z.object({
+    type: z.literal("set-global-chat-fast-mode"),
+    requestId: z.uuid(),
+    sessionId: z.string().min(1).max(256),
+    enabled: z.boolean(),
+  }),
+  z.object({
     type: z.literal("respond-global-chat-control"),
     controlRequestId: z.uuid(),
     result: jsonValueSchema,
@@ -490,6 +496,12 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     type: z.literal("set-thinking"),
     requestId: z.uuid(),
     level: thinkingLevelSchema,
+    sessionId: z.string().max(256),
+  }),
+  z.object({
+    type: z.literal("set-fast-mode"),
+    requestId: z.uuid(),
+    enabled: z.boolean(),
     sessionId: z.string().max(256),
   }),
   z.object({

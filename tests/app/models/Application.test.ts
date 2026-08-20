@@ -12,8 +12,10 @@ describe("Application", () => {
     project.rename("Cake desktop");
     model.setSessionsResolved(["session-1"], true);
     model.setCakeChatSessionResolved("cake-chat-1", true);
+    model.setSessionFastMode("session-1", true);
 
     expect(model.snapshot()).toMatchObject({
+      fastModeSessionIds: ["session-1"],
       schemaVersion: 1,
       resolvedCakeChatSessionIds: ["cake-chat-1"],
       trustedProjectPaths: ["/work/cake"],
@@ -23,6 +25,7 @@ describe("Application", () => {
 
     model.setSessionsResolved(["session-1"], false);
     model.setCakeChatSessionResolved("cake-chat-1", false);
+    model.setSessionFastMode("session-1", false);
     model.removeProject("/work/cake");
     expect(model.projects).toBe(projects);
     expect(model.trustedProjectPaths).toBe(trustedProjectPaths);

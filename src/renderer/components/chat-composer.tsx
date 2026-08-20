@@ -1,6 +1,7 @@
 import type { FormEvent, ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { Composer, ComposerToolbar } from "@/components/ai-elements/composer";
+import { FastModeToggle } from "@/components/fast-mode-toggle";
 import { ModelCombobox } from "@/components/model-combobox";
 import { ThinkingLevelSelect } from "@/components/thinking-level-select";
 import type { ChatConfigurationStore } from "../stores/ChatConfigurationStore";
@@ -49,6 +50,13 @@ export const ChatComposer = observer(function ChatComposer({
                 levels={session?.availableThinkingLevels ?? ["off"]}
                 onSelect={(level) => void configuration.selectThinkingLevel(level)}
               />
+              {session?.fastModeAvailable && (
+                <FastModeToggle
+                  enabled={configuration.fastMode}
+                  disabled={session.streaming || configuration.activeOperations.length > 0}
+                  onToggle={(enabled) => void configuration.selectFastMode(enabled)}
+                />
+              )}
             </>
           )}
         </div>

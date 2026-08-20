@@ -65,6 +65,9 @@ function createTestStore() {
     setThinkingLevel: vi.fn(async (input: Parameters<GlobalChatPort["setThinkingLevel"]>[0]) => {
       void input;
     }),
+    setFastMode: vi.fn(async (input: Parameters<GlobalChatPort["setFastMode"]>[0]) => {
+      void input;
+    }),
     resolveSession: vi.fn(async () => ({
       schemaVersion: 1 as const,
       projects: [],
@@ -135,6 +138,11 @@ describe("GlobalChatStore", () => {
     ]);
     await active.configurationStore.selectModel("openai/gpt");
     await active.configurationStore.selectThinkingLevel("high");
+    await active.configurationStore.selectFastMode(true);
+    expect(active.configurationStore.fastMode).toBe(true);
+    expect(port.setFastMode).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "global-1", enabled: true }),
+    );
     expect(port.setModel).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: "global-1", provider: "openai", modelId: "gpt" }),
     );

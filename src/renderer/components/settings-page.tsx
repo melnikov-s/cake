@@ -96,6 +96,18 @@ export const SettingsPage = observer(function SettingsPage({
                 onSelect={(level) => void configuration?.selectThinkingLevel(level)}
               />
             </label>
+            {store.session.fastModeAvailable && (
+              <SettingsToggle
+                label="Fast mode"
+                description="Use Codex priority processing for supported models."
+                checked={configuration?.fastMode ?? store.session.fastMode}
+                disabled={
+                  store.session.streaming || (configuration?.activeOperations.length ?? 0) > 0
+                }
+                instant
+                onChange={(enabled) => void configuration?.selectFastMode(enabled)}
+              />
+            )}
           </div>
         ) : (
           <p className="settings-empty">

@@ -246,6 +246,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         abort: (input) => this.client.abortGlobalChat(input),
         setModel: (input) => this.client.setGlobalChatModel(input),
         setThinkingLevel: (input) => this.client.setGlobalChatThinkingLevel(input),
+        setFastMode: (input) => this.client.setGlobalChatFastMode(input),
         resolveSession: (sessionId, resolved) =>
           this.client.resolveCakeChatSession(sessionId, resolved),
       },

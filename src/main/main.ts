@@ -129,6 +129,11 @@ const globalChatDriver = new GlobalChatDriver({
       2,
     );
   },
+  fastMode: (sessionId) => applicationModel.hasSessionFastMode(sessionId),
+  setFastMode: async (sessionId, enabled) => {
+    applicationModel.setSessionFastMode(sessionId, enabled);
+    await persistApplicationState();
+  },
   emit: (event) => {
     if (
       event.type === "global-chat-control-request" &&
@@ -262,6 +267,11 @@ function launchPi(path: string) {
     pluginResources: pluginAgentResources,
     isTrusted: () => applicationModel.isProjectTrusted(path),
     utilityModel: () => applicationModel.utilityModel,
+    fastMode: (sessionId) => applicationModel.hasSessionFastMode(sessionId),
+    setFastMode: async (sessionId, enabled) => {
+      applicationModel.setSessionFastMode(sessionId, enabled);
+      await persistApplicationState();
+    },
     resolveAgentModel: (preference, snapshot) =>
       resolveAgentModel(preference, snapshot, applicationModel.utilityModel),
     openExternal: async (url) => {
@@ -883,6 +893,11 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
   if (request.type === "set-global-chat-thinking") {
     globalChatController = event.sender;
     globalChatDriver.setThinkingLevel(request.requestId, request.sessionId, request.level);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  if (request.type === "set-global-chat-fast-mode") {
+    globalChatController = event.sender;
+    globalChatDriver.setFastMode(request.requestId, request.sessionId, request.enabled);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "respond-global-chat-control") {

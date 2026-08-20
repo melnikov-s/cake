@@ -95,6 +95,12 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
           sessionId: this.sessionId,
           level,
         }),
+      setFastMode: (operationId, enabled) =>
+        this.props.collection.port.setFastMode({
+          operationId,
+          sessionId: this.sessionId,
+          enabled,
+        }),
     });
   }
 

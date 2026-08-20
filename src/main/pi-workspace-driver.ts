@@ -67,6 +67,7 @@ type PiCommandType =
   | "abort"
   | "set-model"
   | "set-thinking"
+  | "set-fast-mode"
   | "set-pi-setting"
   | "reload-pi"
   | "login"
@@ -135,6 +136,8 @@ export interface PiWorkspaceDriverOptions {
   openExternal?: (url: string) => Promise<void>;
   isTrusted?: () => boolean;
   utilityModel?: () => UtilityModel | undefined;
+  fastMode?(sessionId: string): boolean;
+  setFastMode?(sessionId: string, enabled: boolean): Promise<void>;
   pluginResources?: { skills: string[]; prompts: string[]; extensions: string[] };
   resolveAgentModel?: (
     preference: AgentModelPreference,
@@ -160,6 +163,8 @@ export class PiWorkspaceDriver {
   private readonly openExternal: NonNullable<PiWorkspaceDriverOptions["openExternal"]> | undefined;
   private readonly isTrusted: () => boolean;
   private readonly utilityModel: () => UtilityModel | undefined;
+  private readonly fastMode: (sessionId: string) => boolean;
+  private readonly setFastMode: (sessionId: string, enabled: boolean) => Promise<void>;
   private readonly pluginResources: { skills: string[]; prompts: string[]; extensions: string[] };
   private readonly runtimes = new Map<string, CakeRuntime>();
   private readonly runtimePromises = new Map<string, Promise<CakeRuntime>>();
@@ -202,6 +207,8 @@ export class PiWorkspaceDriver {
     this.collectWorkingChanges = options.collectWorkingChanges ?? collectWorkingTreeChanges;
     this.isTrusted = options.isTrusted ?? (() => false);
     this.utilityModel = options.utilityModel ?? (() => undefined);
+    this.fastMode = options.fastMode ?? (() => false);
+    this.setFastMode = options.setFastMode ?? (async () => undefined);
     this.pluginResources = options.pluginResources ?? { skills: [], prompts: [], extensions: [] };
     this.resolveAgentModel =
       options.resolveAgentModel ??
@@ -338,7 +345,10 @@ export class PiWorkspaceDriver {
         } else if (command.type === "set-model")
           await runtime.setModel(command.provider, command.modelId);
         else if (command.type === "set-thinking") await runtime.setThinkingLevel(command.level);
-        else if (command.type === "set-pi-setting") {
+        else if (command.type === "set-fast-mode") {
+          if (!runtime.setFastMode) throw new Error("This Pi runtime does not support Fast mode");
+          await runtime.setFastMode(command.enabled);
+        } else if (command.type === "set-pi-setting") {
           await runtime.setPiSetting(command.update);
           if (["packages", "extensions", "skills", "prompts"].includes(command.update.key)) {
             await Promise.all(
@@ -746,6 +756,14 @@ export class PiWorkspaceDriver {
             this.reviewRepository.reviewContextPath!(this.workspacePath, activeSessionId)
         : undefined,
       utilityModel: this.utilityModel,
+      fastMode: {
+        get: () => (openedSessionId ? this.fastMode(openedSessionId) : false),
+        set: async (enabled) => {
+          const targetSessionId = openedSessionId;
+          if (!targetSessionId) throw new Error("The Pi session is not ready for Fast mode");
+          await this.setFastMode(targetSessionId, enabled);
+        },
+      },
       openExternal: this.openExternal,
       listArtifacts: async (pointers) => {
         const direct = await Promise.all(
@@ -817,6 +835,7 @@ export class PiWorkspaceDriver {
     });
     runtimeRef.current = runtime;
     openedSessionId = runtime.sessionId;
+    if (runtime.syncFastMode) await runtime.syncFastMode();
     if (this.disposed) {
       runtime.dispose();
       throw new Error("The Pi workspace driver was disposed while opening a session");

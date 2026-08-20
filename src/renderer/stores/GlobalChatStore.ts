@@ -38,6 +38,7 @@ export interface GlobalChatPort {
     sessionId: string;
     level: ThinkingLevel;
   }): Promise<void>;
+  setFastMode(input: { operationId: string; sessionId: string; enabled: boolean }): Promise<void>;
   resolveSession(sessionId: string, resolved: boolean): Promise<ApplicationState>;
 }
 

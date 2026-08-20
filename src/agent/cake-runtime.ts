@@ -38,6 +38,7 @@ import {
 } from "../ipc/artifact-contract";
 import type { TSchema } from "@earendil-works/pi-ai";
 import { createCakeArtifactExtension } from "./artifact-extension";
+import { applyFastModePayload, supportsFastMode, type FastModeModel } from "./fast-mode";
 import { compatibilityCatalog, createCakeExtensionUiContext } from "./extension-compatibility";
 import type {
   InlineWidgetGenerationRequest,
@@ -138,6 +139,10 @@ export interface CakeRuntimeOptions {
   openExternal?(url: string): Promise<void>;
   reviewContextPath?(sessionId: string): string;
   utilityModel?(): UtilityModel | undefined;
+  fastMode?: {
+    get(): boolean;
+    set(enabled: boolean): Promise<void>;
+  };
   generateSessionTitle?: typeof generateSessionTitle;
   globalControl?: {
     tools: readonly GlobalControlTool[];
@@ -177,6 +182,14 @@ export interface GlobalControlTool {
   name: string;
   description: string;
   parameters: JsonObject;
+}
+
+function createFastModeExtension(isEnabled: () => boolean): InlineExtension {
+  return (pi) => {
+    pi.on("before_provider_request", (event, context) =>
+      applyFastModePayload(event.payload, context.model, isEnabled()),
+    );
+  };
 }
 
 function createGlobalControlExtension(
@@ -343,6 +356,8 @@ export interface CakeRuntime {
   abort(): Promise<void>;
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: ThinkingLevel): Promise<void>;
+  setFastMode?(enabled: boolean): Promise<void>;
+  syncFastMode?(): Promise<void>;
   setPiSetting(update: PiSettingUpdate): Promise<void>;
   reload?(): Promise<void>;
   login(provider: string, authType: "api_key" | "oauth"): Promise<void>;
@@ -374,6 +389,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         updatedAt: new Date().toISOString(),
       }));
   const requestArtifact = options.requestArtifact ?? (async () => undefined);
+  let fastMode = options.fastMode?.get() ?? false;
+  let currentModel: FastModeModel | undefined;
+  const fastModeEnabled = () => fastMode && supportsFastMode(currentModel);
   let getPiCommands: () => SlashCommandInfo[] = () => [];
   interface RuntimeIdentity {
     sessionId?: string;
@@ -389,6 +407,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           agentDir,
           settingsManager,
           extensionFactories: [
+            createFastModeExtension(fastModeEnabled),
             createGlobalControlExtension(options.globalControl),
             commandCatalogExtension,
           ],
@@ -426,6 +445,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
           noPromptTemplates: options.auxiliary,
           noThemes: options.auxiliary,
           extensionFactories: [
+            createFastModeExtension(fastModeEnabled),
             createCakeArtifactExtension({
               persistArtifact,
               requestArtifact,
@@ -481,6 +501,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
         : agentSessionOptions,
   );
   const cakeSessionId = session.sessionManager.getSessionId();
+  currentModel = session.model;
   runtimeIdentity.sessionId = cakeSessionId;
   let disposed = false;
   let reloadRequested = 0;
@@ -544,6 +565,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
           id: model.id,
           name: model.name,
           reasoning: model.reasoning,
+          fastMode: supportsFastMode({ provider: provider.id, id: model.id }),
           input: model.input,
           authenticated: Boolean(authentication.get(provider.id)),
           authSource: modelRuntime.getProviderAuthStatus(provider.id).source,
@@ -584,6 +606,8 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       model: session.model
         ? { provider: session.model.provider, id: session.model.id, name: session.model.name }
         : undefined,
+      fastMode: fastModeEnabled(),
+      fastModeAvailable: supportsFastMode(session.model),
       models: options.auxiliary ? [] : await modelOptions(),
       thinkingLevel: session.thinkingLevel,
       availableThinkingLevels: session.getAvailableThinkingLevels(),
@@ -1001,10 +1025,22 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       const model = modelRuntime.getModel(provider, modelId);
       if (!model) throw new Error(`Unknown model ${provider}/${modelId}`);
       await session.setModel(model);
+      currentModel = session.model;
       await emitSnapshot();
     },
     async setThinkingLevel(level) {
       session.setThinkingLevel(level);
+      await emitSnapshot();
+    },
+    async setFastMode(enabled) {
+      if (enabled && !supportsFastMode(session.model))
+        throw new Error("Fast mode is unavailable for the current model");
+      if (options.fastMode) await options.fastMode.set(enabled);
+      fastMode = enabled;
+      await emitSnapshot();
+    },
+    async syncFastMode() {
+      if (options.fastMode) fastMode = options.fastMode.get();
       await emitSnapshot();
     },
     async setPiSetting(update) {

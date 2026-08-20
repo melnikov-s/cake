@@ -2,11 +2,15 @@ export function SettingsToggle({
   label,
   description,
   checked,
+  disabled,
+  instant = false,
   onChange,
 }: {
   label: string;
   description: string;
   checked: boolean;
+  disabled?: boolean;
+  instant?: boolean;
   onChange(checked: boolean): void;
 }) {
   return (
@@ -16,11 +20,12 @@ export function SettingsToggle({
         <small>{description}</small>
       </span>
       <button
-        className="settings-switch"
+        className={`settings-switch${instant ? " settings-switch-instant" : ""}`}
         type="button"
         role="switch"
         aria-checked={checked}
         aria-label={label}
+        disabled={disabled}
         onClick={() => onChange(!checked)}
       >
         <i />

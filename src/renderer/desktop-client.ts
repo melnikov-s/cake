@@ -230,6 +230,11 @@ export interface DesktopClient {
     sessionId: string;
     level: ThinkingLevel;
   }): Promise<void>;
+  setGlobalChatFastMode(input: {
+    operationId: string;
+    sessionId: string;
+    enabled: boolean;
+  }): Promise<void>;
   respondToGlobalChatControl(controlRequestId: string, result: JsonValue): Promise<void>;
   listReviewThreads(sessionId: string): Promise<ReviewThread[]>;
   createReviewThread(input: {
@@ -293,6 +298,7 @@ export interface DesktopClient {
     sessionId: string;
     level: ThinkingLevel;
   }): Promise<void>;
+  setFastMode(input: { operationId: string; sessionId: string; enabled: boolean }): Promise<void>;
   setPiSetting(input: {
     operationId: string;
     sessionId: string;
@@ -717,6 +723,13 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         sessionId: input.sessionId,
         level: input.level,
       }),
+    setGlobalChatFastMode: (input) =>
+      accept(bridge, {
+        type: "set-global-chat-fast-mode",
+        requestId: input.operationId,
+        sessionId: input.sessionId,
+        enabled: input.enabled,
+      }),
     async respondToGlobalChatControl(controlRequestId, result) {
       const response = await bridge.request({
         type: "respond-global-chat-control",
@@ -852,6 +865,13 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         requestId: input.operationId,
         sessionId: input.sessionId,
         level: input.level,
+      }),
+    setFastMode: (input) =>
+      accept(bridge, {
+        type: "set-fast-mode",
+        requestId: input.operationId,
+        sessionId: input.sessionId,
+        enabled: input.enabled,
       }),
     setPiSetting: (input) =>
       accept(bridge, {

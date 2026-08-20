@@ -8,6 +8,7 @@ export class ModelOption extends Model {
   @state id = "";
   @state name = "";
   @state reasoning = false;
+  @state fastMode = false;
   @state input: ModelOptionRecord["input"] = observable([]);
   @state authenticated = false;
   @state authSource: ModelOptionRecord["authSource"] = undefined;

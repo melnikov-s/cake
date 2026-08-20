@@ -142,6 +142,7 @@ function createDesktopClient(restoredPath?: string) {
     abortGlobalChat: vi.fn(async () => undefined),
     setGlobalChatModel: vi.fn(async () => undefined),
     setGlobalChatThinkingLevel: vi.fn(async () => undefined),
+    setGlobalChatFastMode: vi.fn(async () => undefined),
     respondToGlobalChatControl: vi.fn(async () => undefined),
     listReviewThreads: vi.fn(async () => []),
     createReviewThread: vi.fn(async () => {
@@ -205,6 +206,7 @@ function createDesktopClient(restoredPath?: string) {
     abort: vi.fn(async () => undefined),
     setModel: vi.fn(async () => undefined),
     setThinkingLevel: vi.fn(async () => undefined),
+    setFastMode: vi.fn(async () => undefined),
     setPiSetting: vi.fn(async () => undefined),
     reloadPi: vi.fn(async () => undefined),
     login: vi.fn(async () => undefined),

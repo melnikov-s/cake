@@ -16,14 +16,21 @@ export interface ChatConfigurationStoreProps {
   operationOwner?: string;
   setModel(operationId: string, provider: string, modelId: string): Promise<void>;
   setThinkingLevel(operationId: string, level: ThinkingLevel): Promise<void>;
+  setFastMode(operationId: string, enabled: boolean): Promise<void>;
 }
 
 /** Reusable model-catalog and reasoning configuration for one Pi chat session. */
 export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   error: string | undefined;
   errorDetails: string | undefined;
+  private fastModeOverride: boolean | undefined;
+  private fastModeOperationId: string | undefined;
+
   get session() {
     return this.props.session();
+  }
+  get fastMode() {
+    return this.fastModeOverride ?? this.session?.fastMode ?? false;
   }
   get activeOperations() {
     return this.props.operations.active(this.props.operationOwner);
@@ -57,11 +64,55 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
     await this.run((operationId) => this.props.setThinkingLevel(operationId, level));
   }
 
+  async selectFastMode(enabled: boolean) {
+    if (this.fastModeOperationId) return;
+    this.fastModeOverride = enabled;
+    const accepted = await this.run((operationId) => {
+      this.fastModeOperationId = operationId;
+      return this.props.setFastMode(operationId, enabled);
+    });
+    if (!accepted) {
+      this.fastModeOverride = undefined;
+      this.fastModeOperationId = undefined;
+    }
+  }
+
   receive(event: DesktopClientEvent) {
+    if (
+      event.type === "session-snapshot-received" ||
+      event.type === "global-chat-snapshot-received"
+    ) {
+      if (
+        event.snapshot.sessionId === this.session?.sessionId &&
+        this.fastModeOverride !== undefined &&
+        (event.snapshot.fastMode === this.fastModeOverride ||
+          event.snapshot.fastModeAvailable === false)
+      ) {
+        this.fastModeOverride = undefined;
+      }
+    }
+    if (
+      (event.type === "operation-completed" || event.type === "operation-failed") &&
+      event.operationId &&
+      event.operationId === this.fastModeOperationId
+    ) {
+      this.fastModeOverride = undefined;
+      this.fastModeOperationId = undefined;
+    }
+    if (
+      (event.type === "global-chat-operation-completed" ||
+        event.type === "global-chat-operation-failed") &&
+      event.operationId === this.fastModeOperationId
+    ) {
+      this.fastModeOverride = undefined;
+      this.fastModeOperationId = undefined;
+    }
     if (
       event.type === "pi-state-changed" &&
       (event.state === "failed" || event.state === "stopped")
     ) {
+      this.fastModeOverride = undefined;
+      this.fastModeOperationId = undefined;
       this.props.operations.reset(this.props.operationOwner);
       return;
     }
@@ -90,9 +141,11 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
     const operationId = this.props.operations.start(this.props.operationOwner);
     try {
       await command(operationId);
+      return true;
     } catch (error) {
       this.reportError(error);
       this.finish(operationId);
+      return false;
     }
   }
 
