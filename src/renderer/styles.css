@@ -3177,6 +3177,15 @@
   min-width: 0;
   gap: 8px;
 }
+.work-log-diff .diff-view {
+  overflow: visible;
+}
+.work-log-diff .diff-view > header {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  background: color-mix(in oklab, var(--background) 94%, var(--card));
+}
 .work-log-diff .diff-scroll {
   max-height: none;
   overflow-y: visible;
