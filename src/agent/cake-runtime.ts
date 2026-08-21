@@ -42,8 +42,11 @@ import { createCakeArtifactExtension } from "./artifact-extension";
 import {
   EMPTY_TURN_MAX_CONTINUATIONS,
   EMPTY_TURN_NOTICE_PART_ID,
+  INTERRUPTED_TURN_NOTICE_PART_ID,
   decideEmptyTurnResponse,
   emptyTurnContinuationPrompt,
+  interruptedTurnResumePrompt,
+  shouldAutoResumeInterruptedTurn,
 } from "./empty-turn";
 import { applyFastModePayload, supportsFastMode, type FastModeModel } from "./fast-mode";
 import { compatibilityCatalog, createCakeExtensionUiContext } from "./extension-compatibility";
@@ -905,6 +908,28 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       });
     });
   }
+  // Resume a turn that the previous runtime instance left dangling (crash or
+  // silent teardown): the conversation ends in tool results the model never
+  // answered. Intentional aborts are excluded by the predicate.
+  function resumeInterruptedTurn() {
+    if (disposed || session.isStreaming) return;
+    if (!shouldAutoResumeInterruptedTurn(session.messages)) return;
+    options.onEvent({
+      type: "part-updated",
+      sessionId: cakeSessionId,
+      part: {
+        id: INTERRUPTED_TURN_NOTICE_PART_ID,
+        kind: "notice",
+        tone: "info",
+        title: "Resuming interrupted turn",
+        detail:
+          "The previous run was interrupted before the model responded. Continuing automatically.",
+      },
+    });
+    void session
+      .prompt(interruptedTurnResumePrompt, { source: "interactive" })
+      .catch(() => undefined);
+  }
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     if (disposed) return;
     if (event.type === "agent_start") {
@@ -1062,6 +1087,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
         });
     }
   });
+  void resumeInterruptedTurn();
 
   return {
     sessionId: cakeSessionId,
@@ -1266,8 +1292,22 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       disposed = true;
       sessionNamingController.abort();
       unsubscribe();
-      session.dispose();
-      void settingsManager.flush();
+      const finish = () => {
+        session.dispose();
+        void settingsManager.flush();
+      };
+      // Graceful teardown: while a run is active, abort first so Pi unwinds
+      // through its normal failure path and persists the "aborted" marker.
+      // Disposing immediately would kill the request silently and leave the
+      // session ending in dangling tool results with no trace of the stop.
+      if (session.isStreaming) {
+        void session
+          .abort()
+          .catch(() => undefined)
+          .then(finish, finish);
+        return;
+      }
+      finish();
     },
   };
 }

@@ -4,6 +4,7 @@ import {
   EMPTY_TURN_MAX_CONTINUATIONS,
   decideEmptyTurnResponse,
   isEmptyAssistantTurn,
+  shouldAutoResumeInterruptedTurn,
 } from "../../../src/agent/empty-turn";
 
 function assistantMessage(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
@@ -97,6 +98,45 @@ describe("isEmptyAssistantTurn", () => {
     expect(
       isEmptyAssistantTurn({ role: "user", content: [], timestamp: Date.now() } as never),
     ).toBe(false);
+  });
+});
+
+describe("shouldAutoResumeInterruptedTurn", () => {
+  it("resumes when the conversation ends in tool results the model never answered", () => {
+    const messages = [
+      { role: "user" },
+      { role: "assistant", stopReason: "toolUse" },
+      { role: "toolResult" },
+    ];
+    expect(shouldAutoResumeInterruptedTurn(messages)).toBe(true);
+  });
+
+  it("never resumes a completed conversation ending in an assistant message", () => {
+    expect(
+      shouldAutoResumeInterruptedTurn([
+        { role: "user" },
+        { role: "assistant", stopReason: "stop" },
+      ]),
+    ).toBe(false);
+  });
+
+  it("never resumes when the tail is a user message (prompt never answered is ambiguous)", () => {
+    expect(shouldAutoResumeInterruptedTurn([{ role: "user" }])).toBe(false);
+  });
+
+  it("never resumes after an intentional abort, even with dangling tool results", () => {
+    const messages = [
+      { role: "user" },
+      { role: "assistant", stopReason: "toolUse" },
+      { role: "toolResult" },
+      { role: "assistant", stopReason: "aborted" },
+      { role: "assistant", stopReason: "aborted" },
+    ];
+    expect(shouldAutoResumeInterruptedTurn(messages)).toBe(false);
+  });
+
+  it("handles empty conversations", () => {
+    expect(shouldAutoResumeInterruptedTurn([])).toBe(false);
   });
 });
 

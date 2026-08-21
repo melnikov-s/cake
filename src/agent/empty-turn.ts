@@ -9,6 +9,16 @@ export const EMPTY_TURN_MAX_CONTINUATIONS = 5;
 /** Notice part id used for the empty-turn auto-continuation status. */
 export const EMPTY_TURN_NOTICE_PART_ID = "active-empty-turn";
 
+/** Notice part id used when resuming a turn interrupted by a teardown/crash. */
+export const INTERRUPTED_TURN_NOTICE_PART_ID = "interrupted-turn-resume";
+
+/**
+ * Prompt sent back to the model when a session reattaches after its previous
+ * run was killed mid-task (crash, window teardown, plugin reload).
+ */
+export const interruptedTurnResumePrompt =
+  "The previous turn was interrupted before you could respond; your earlier tool results are in the conversation above. Continue exactly where you left off.";
+
 /**
  * Prompt sent back to the model when it returns an empty response.
  */
@@ -45,6 +55,29 @@ export type EmptyTurnDecision =
   | { action: "reset" }
   | { action: "continue"; attempt: number }
   | { action: "give-up"; attempts: number };
+
+/**
+ * Detects a turn that was interrupted mid-task: the conversation ends in tool
+ * results the model never responded to. This shape only occurs when a run was
+ * killed without unwinding normally (crash, silent runtime teardown), because
+ * every legitimate end-of-run - completion, error, retry exhaustion, or user
+ * abort - leaves an assistant message as the final entry.
+ *
+ * If the nearest preceding assistant message has stopReason "aborted", the run
+ * was stopped intentionally and must not be resumed.
+ */
+export function shouldAutoResumeInterruptedTurn(
+  messages: readonly { role: string; stopReason?: string }[],
+): boolean {
+  const last = messages[messages.length - 1];
+  if (!last || last.role !== "toolResult") return false;
+  for (let i = messages.length - 2; i >= 0; i--) {
+    const message = messages[i];
+    if (!message) break;
+    if (message.role === "assistant") return message.stopReason !== "aborted";
+  }
+  return true;
+}
 
 /**
  * Decide what to do after the agent settles, given the final assistant message
