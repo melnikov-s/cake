@@ -304,7 +304,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   private showCachedSession(sessionId: string) {
     const session = this.sessionRegistry.findSession(sessionId);
-    if (!session) return false;
+    // An identity-only registry entry must not replace the visible session.
+    if (!session || !session.hydrated) return false;
     this.projectPath = session.workspacePath;
     this.selectedSessionId = sessionId;
     this.markSessionRead(sessionId);

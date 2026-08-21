@@ -34,6 +34,8 @@ export interface ProjectSessionStoreProps extends SessionTarget {
 export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   readonly model: Session;
   activity: "running" | "unread" | undefined;
+  // Drafts and review threads can create this Store before its transcript is loaded.
+  hydrated = false;
 
   constructor(props: ProjectSessionStore["props"]) {
     super(props);
@@ -56,6 +58,11 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   get isStreaming() {
     return this.model.streaming;
   }
+
+  markHydrated() {
+    this.hydrated = true;
+  }
+
   get canSubmit() {
     return (
       this.props.canSubmit() &&

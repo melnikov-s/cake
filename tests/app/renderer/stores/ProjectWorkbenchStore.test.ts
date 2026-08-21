@@ -1473,6 +1473,65 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("keeps the current session visible while a partial target hydrates", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    const oldSnapshot: SessionSnapshot = {
+      ...snapshot,
+      parts: [
+        { id: "old-message", kind: "text", role: "assistant", text: "Old", status: "complete" },
+      ],
+    };
+    await openSnapshot(store, desktop, oldSnapshot);
+    root.sessionCatalogStore.replace([
+      {
+        id: "session-2",
+        title: "Session two",
+        created: new Date(0).toISOString(),
+        modified: new Date(0).toISOString(),
+        messageCount: 1,
+        resolved: false,
+        workspacePath: "/project",
+        workspaceName: "Project",
+      },
+    ]);
+    root.sessionRegistry.ensure("session-2");
+
+    await root.openSession("session-2");
+
+    expect(store.session?.sessionId).toBe("session-1");
+    expect(store.activeSession?.composerStore.parts.map((part) => part.id)).toEqual([
+      "old-message",
+    ]);
+
+    const openId = store.activeOperations.at(-1)!;
+    desktop.emit({
+      type: "session-snapshot-received",
+      operationId: openId,
+      snapshot: {
+        ...snapshot,
+        sessionId: "session-2",
+        sessionFile: "/sessions/two.jsonl",
+        parts: [
+          {
+            id: "new-message",
+            kind: "text",
+            role: "assistant",
+            text: "New",
+            status: "complete",
+          },
+        ],
+      },
+    });
+
+    expect(store.session?.sessionId).toBe("session-2");
+    expect(store.activeSession?.composerStore.parts.map((part) => part.id)).toEqual([
+      "new-message",
+    ]);
+    root[Symbol.dispose]();
+  });
+
   it("refuses a non-empty snapshot for a newly created session", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);

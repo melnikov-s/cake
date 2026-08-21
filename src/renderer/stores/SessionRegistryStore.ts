@@ -98,6 +98,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     this.rememberSessionLocation(snapshot.sessionId, snapshot.workspacePath);
     const session = this.ensure(snapshot.sessionId);
     applySnapshot(session.model, toSessionSnapshot(snapshot));
+    session.markHydrated();
     if (
       snapshot.parts.length > 0 &&
       this.pendingNewSessionIdsByWorkspace[snapshot.workspacePath] === snapshot.sessionId
@@ -112,6 +113,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     this.rememberSessionLocation(preview.sessionId, preview.workspacePath);
     const session = this.ensure(preview.sessionId);
     applySnapshot(session.model, toSessionPreviewSnapshot(preview));
+    session.markHydrated();
     return session.model;
   }
 
