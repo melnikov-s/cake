@@ -3804,6 +3804,40 @@ button.reasoning-summary {
   max-height: 240px;
   font-size: 14px;
 }
+.queued-prompts {
+  display: grid;
+  gap: 5px;
+  padding: 2px 6px 8px;
+}
+.queued-prompt {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 5px 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: color-mix(in oklab, var(--muted) 55%, transparent);
+}
+.queued-prompt-text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.queued-prompt-actions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 1px;
+}
+.queued-prompt-actions .icon-button {
+  width: 24px;
+  height: 24px;
+}
 .attachment-list {
   display: flex;
   flex-wrap: wrap;
@@ -3925,21 +3959,16 @@ button.reasoning-summary {
   text-anchor: middle;
   dominant-baseline: central;
 }
-.composer-context select {
-  width: auto;
-  max-width: 180px;
-  height: 30px;
-  field-sizing: content;
-  padding: 0 7px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted-foreground);
-  font-size: 11px;
+.thinking-level-select .thinking-level-trigger {
+  cursor: pointer;
+  text-align: left;
 }
-.composer-context select:hover {
-  background: var(--muted);
-  color: var(--foreground);
+.thinking-level-select .thinking-level-trigger:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.thinking-level-select.settings {
+  width: 100%;
 }
 .fast-mode-toggle {
   display: inline-flex;
@@ -4144,12 +4173,14 @@ button.reasoning-summary {
   white-space: nowrap;
 }
 .send-button {
-  gap: 6px;
-  border-radius: 9px !important;
+  width: 32px;
+  justify-content: center;
+  padding: 0 !important;
+  border-radius: 999px !important;
 }
 .send-button svg {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
 }
 
 .settings-page {
@@ -4684,12 +4715,11 @@ button.reasoning-summary {
   .workspace-header span {
     display: none;
   }
-  .composer-context select,
   .model-combobox.compact,
   .model-combobox.compact .model-combobox-input {
     max-width: 125px;
   }
-  .composer-context select[aria-label="Thinking level"] {
+  .composer-context .thinking-level-select {
     display: none;
   }
   .session-usage {
@@ -4736,7 +4766,6 @@ button.reasoning-summary {
   .workspace-settings-icon {
     display: grid;
   }
-  .composer-context select,
   .model-combobox.compact,
   .model-combobox.compact .model-combobox-input {
     max-width: 105px;

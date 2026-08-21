@@ -154,6 +154,7 @@ export const SettingsPage = observer(function SettingsPage({
                 ariaLabel="Default agent thinking level"
                 value={pi.defaultThinkingLevel ?? "off"}
                 levels={thinkingLevelSchema.options}
+                variant="settings"
                 onSelect={(value) =>
                   void settings.setPiSetting({ key: "defaultThinkingLevel", value })
                 }
@@ -212,6 +213,7 @@ export const SettingsPage = observer(function SettingsPage({
               value={utilityModel?.thinkingLevel ?? "off"}
               levels={thinkingLevelSchema.options}
               disabled={!utilityModel || settings.utilityModelSaving}
+              variant="settings"
               onSelect={(level) => void settings.selectUtilityThinkingLevel(level)}
             />
           </label>

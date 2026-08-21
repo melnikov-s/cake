@@ -3,7 +3,9 @@ import { observer } from "r-state-tree/react";
 import { Button } from "@/components/ui/button";
 import { ChatComposer } from "@/components/chat-composer";
 import { ChatTranscript, type ChatTranscriptBehavior } from "@/components/chat-transcript";
+import { QueuedPrompts } from "@/components/queued-prompts";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
+import { IconButton } from "@/components/ui/icon-button";
 import type { ChatStore } from "../stores/ChatStore";
 
 function Icon({ children }: { children: ReactNode }) {
@@ -34,6 +36,11 @@ const SendIcon = () => (
     <path d="m5 12 7-7 7 7M12 19V5" />
   </Icon>
 );
+const StopIcon = () => (
+  <Icon>
+    <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none" />
+  </Icon>
+);
 
 function Usage({ store }: { store: ChatStore }) {
   const usage = store.usage;
@@ -51,7 +58,7 @@ function Usage({ store }: { store: ChatStore }) {
   return (
     <div
       className="session-usage"
-      aria-label={`${contextLabel}, session cost $${usage.cost.toFixed(3)}`}
+      aria-label={contextLabel}
       title={`${contextTitle} · ${usage.tokens.total.toLocaleString()} billed tokens`}
     >
       <svg className="context-gauge" viewBox="0 0 36 36" aria-hidden="true">
@@ -68,7 +75,6 @@ function Usage({ store }: { store: ChatStore }) {
           {percent === undefined ? "—" : `${percent}%`}
         </text>
       </svg>
-      <span className="session-cost">${usage.cost.toFixed(3)}</span>
     </div>
   );
 }
@@ -98,8 +104,8 @@ export const Chat = observer(function Chat({
   embedded?: boolean;
   compact?: boolean;
 }) {
-  const submit = async (value?: string, mode: "send" | "steer" = "send") => {
-    await store.submit(value ?? store.draft, mode);
+  const submit = async (value?: string) => {
+    await store.submit(value ?? store.draft);
   };
   const composer = store.composerVisible && (
     <div className={embedded ? "chat-embedded-composer" : "composer-dock"}>
@@ -145,49 +151,44 @@ export const Chat = observer(function Chat({
         }
         toolbarLeading={
           store.canAttach && (
-            <button
-              type="button"
-              className="icon-button"
-              aria-label="Attach files"
-              title="Attach files"
-              onClick={() => void store.addAttachments()}
-            >
+            <IconButton tooltip="Attach files" onClick={() => void store.addAttachments()}>
               <PaperclipIcon />
-            </button>
+            </IconButton>
           )
         }
         toolbarActions={
           <>
             <Usage store={store} />
             {pluginActions}
-            {store.streaming && store.canAbort && (
-              <Button variant="ghost" size="sm" type="button" onClick={() => void store.abort()}>
-                Stop
-              </Button>
-            )}
-            {store.streaming && store.allowSteer && (
+            {store.loading && store.canAbort ? (
               <Button
-                variant="outline"
+                className="send-button"
                 size="sm"
                 type="button"
-                disabled={!store.canSubmit}
-                onClick={() => void submit(undefined, "steer")}
+                aria-label="Stop"
+                title="Stop"
+                onClick={() => void store.abort()}
               >
-                Steer
+                <StopIcon />
               </Button>
+            ) : (
+              !store.loading && (
+                <Button
+                  className="send-button"
+                  size="sm"
+                  type="submit"
+                  aria-label="Send"
+                  title="Send"
+                  disabled={!store.canSubmitDraft(store.draft)}
+                >
+                  <SendIcon />
+                </Button>
+              )
             )}
-            <Button
-              className="send-button"
-              size="sm"
-              type="submit"
-              disabled={!store.canSubmitDraft(store.draft)}
-            >
-              {store.submitting ? "Sending…" : store.streaming ? "Queue" : "Send"}
-              <SendIcon />
-            </Button>
           </>
         }
       >
+        <QueuedPrompts store={store} />
         {composerContent}
         {store.attachments.length > 0 && (
           <div className="attachment-list">

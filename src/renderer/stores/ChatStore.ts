@@ -5,9 +5,8 @@ import type {
   SessionSnapshot,
   UiPart,
 } from "../../ipc/session-contract";
+import type { QueuedPrompt } from "./MessageComposerStore";
 import type { ChatConfigurationStore } from "./ChatConfigurationStore";
-
-type ChatSubmitMode = "send" | "steer";
 
 export interface ChatStoreProps {
   id(): string;
@@ -19,7 +18,7 @@ export interface ChatStoreProps {
   placeholder(): string;
   inputLabel(): string;
   canSubmit(draft: string): boolean;
-  submit(draft: string, mode: ChatSubmitMode): Promise<boolean | void>;
+  submit(draft: string): Promise<boolean | void>;
   abort?(): Promise<void>;
   attachments?(): Attachment[];
   addAttachments?(): Promise<void>;
@@ -28,7 +27,10 @@ export interface ChatStoreProps {
   suggestFiles?(prefix: string): Promise<FileSuggestion[]>;
   focusRequestRevision?(): number;
   usage?(): SessionSnapshot["usage"];
-  allowSteer?: boolean;
+  queuedPrompts?(): readonly QueuedPrompt[];
+  steerQueuedPrompt?(id: string): void;
+  editQueuedPrompt?(id: string): void;
+  removeQueuedPrompt?(id: string): void;
   composerVisible?(): boolean;
   hideThinking?(): boolean;
   error?(): { message?: string; details?: string; title?: string };
@@ -96,8 +98,17 @@ export class ChatStore extends Store<ChatStoreProps> {
   get canSuggestFiles() {
     return Boolean(this.props.suggestFiles);
   }
-  get allowSteer() {
-    return Boolean(this.props.allowSteer);
+  get queuedPrompts(): readonly QueuedPrompt[] {
+    return this.props.queuedPrompts?.() ?? [];
+  }
+  get canSteerQueuedPrompt() {
+    return Boolean(this.props.steerQueuedPrompt);
+  }
+  get canEditQueuedPrompt() {
+    return Boolean(this.props.editQueuedPrompt);
+  }
+  get canRemoveQueuedPrompt() {
+    return Boolean(this.props.removeQueuedPrompt);
   }
   get composerVisible() {
     return this.props.composerVisible?.() ?? true;
@@ -143,17 +154,27 @@ export class ChatStore extends Store<ChatStoreProps> {
     this.setWorkLogDiff(!this.workLogDiff);
   }
 
-  async submit(value = this.draft, mode: ChatSubmitMode = "send") {
+  async submit(value = this.draft) {
     if (value !== this.draft) this.setDraft(value);
     if (!this.props.canSubmit(value) || this.submittingLocally) return false;
     this.submittingLocally = true;
     try {
-      const submitted = await this.props.submit(value, mode);
+      const submitted = await this.props.submit(value);
       if (submitted !== false && this.draft === value) this.setDraft("");
       return submitted !== false;
     } finally {
       this.submittingLocally = false;
     }
+  }
+
+  steerQueuedPrompt(id: string) {
+    this.props.steerQueuedPrompt?.(id);
+  }
+  editQueuedPrompt(id: string) {
+    this.props.editQueuedPrompt?.(id);
+  }
+  removeQueuedPrompt(id: string) {
+    this.props.removeQueuedPrompt?.(id);
   }
 
   abort() {

@@ -1206,8 +1206,8 @@ describe("Transcript scrolling", () => {
     expect(chat?.textContent).not.toContain("Reopen chat");
     expect(chat?.querySelector(".chat-embedded-workbench-composer")).not.toBeNull();
     expect(chat?.querySelector<HTMLInputElement>('[aria-label="Model"]')?.value).toBe("GPT");
-    expect(chat?.querySelector<HTMLSelectElement>('[aria-label="Thinking level"]')?.value).toBe(
-      "medium",
+    expect(chat?.querySelector('[aria-label="Thinking level"]')?.textContent).toContain(
+      "Medium reasoning",
     );
 
     const titlebar = chat!.querySelector<HTMLElement>(".message-comment-titlebar")!;

@@ -1095,7 +1095,7 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("queues by default during a run and only steers when explicitly requested", async () => {
+  it("queues prompts locally during a run and steers queued chips on request", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
@@ -1104,40 +1104,26 @@ describe("ProjectWorkbenchStore", () => {
 
     store.activeSession!.chatStore.setDraft("Do this next");
     await root.projectWorkbenchStore.activeSession!.composerStore.submit();
-    expect(desktop.client.submit).toHaveBeenLastCalledWith(
-      expect.objectContaining({ text: "Do this next", delivery: "follow-up" }),
-    );
-    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([
-      expect.objectContaining({ text: "Do this next", deliveryState: "queued" }),
-    ]);
+    expect(desktop.client.submit).not.toHaveBeenCalled();
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([]);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.pendingUserMessages).toEqual([]);
     expect(
-      root.projectWorkbenchStore.activeSession!.composerStore.pendingUserMessages,
-    ).toHaveLength(1);
+      root.projectWorkbenchStore.activeSession!.chatStore.queuedPrompts.map((entry) => entry.text),
+    ).toEqual(["Do this next"]);
 
-    store.activeSession!.chatStore.setDraft("Change direction");
-    await root.projectWorkbenchStore.activeSession!.composerStore.submit("steer");
-    expect(desktop.client.submit).toHaveBeenLastCalledWith(
-      expect.objectContaining({ text: "Change direction", delivery: "steer" }),
+    // Steering a queued chip delivers it immediately as a steer.
+    root.projectWorkbenchStore.activeSession!.chatStore.steerQueuedPrompt(
+      root.projectWorkbenchStore.activeSession!.chatStore.queuedPrompts[0]!.id,
     );
+    await flush();
+    expect(desktop.client.submit).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Do this next", delivery: "steer" }),
+    );
+    expect(root.projectWorkbenchStore.activeSession!.chatStore.queuedPrompts).toEqual([]);
     expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([
-      expect.objectContaining({ text: "Do this next", deliveryState: "queued" }),
-      expect.objectContaining({ text: "Change direction", deliveryState: "steering" }),
+      expect.objectContaining({ text: "Do this next", deliveryState: "steering" }),
     ]);
-    expect(
-      root.projectWorkbenchStore.activeSession!.composerStore.pendingUserMessages,
-    ).toHaveLength(2);
 
-    desktop.emit({
-      type: "part-updated",
-      sessionId: "session-1",
-      part: {
-        id: "follow-up-canonical",
-        kind: "text",
-        role: "user",
-        text: "Do this next",
-        status: "complete",
-      },
-    });
     desktop.emit({
       type: "part-updated",
       sessionId: "session-1",
@@ -1145,13 +1131,13 @@ describe("ProjectWorkbenchStore", () => {
         id: "steer-canonical",
         kind: "text",
         role: "user",
-        text: "Change direction",
+        text: "Do this next",
         status: "complete",
       },
     });
     expect(
       root.projectWorkbenchStore.activeSession!.composerStore.parts.map((part) => part.id),
-    ).toEqual(["follow-up-canonical", "steer-canonical"]);
+    ).toEqual(["steer-canonical"]);
     root[Symbol.dispose]();
   });
 

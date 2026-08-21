@@ -16,6 +16,13 @@ interface PendingUserMessage {
   parts: UiPart[];
 }
 
+/** A prompt held locally while the session streams, shown as a chip above the composer. */
+export interface QueuedPrompt {
+  id: string;
+  text: string;
+  attachments: Attachment[];
+}
+
 export interface MessageComposerStoreProps {
   client: Pick<DesktopClient, "chooseAttachments" | "suggestFiles" | "submit">;
   sessionRegistry: SessionRegistryStore;
@@ -34,13 +41,26 @@ export interface MessageComposerStoreProps {
   operationOwner: string;
 }
 
-/** Owns attachments, optimistic immediate prompts, and prompt delivery. */
+/** Owns attachments, the local prompt queue, optimistic immediate prompts, and prompt delivery. */
 export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   attachments: Attachment[] = observable([]);
   pendingUserMessages: PendingUserMessage[] = observable([]);
+  queuedPrompts: QueuedPrompt[] = observable([]);
   focusRequestRevision = 0;
   error: string | undefined;
   errorDetails: string | undefined;
+  private drainingQueue = false;
+
+  constructor(props: MessageComposerStore["props"]) {
+    super(props);
+    this.reaction(
+      () => this.props.isStreaming(),
+      (streaming, previousStreaming) => {
+        if (previousStreaming && !streaming) this.drainQueue();
+      },
+    );
+  }
+
   get activeOperations() {
     return this.props.operations.active(this.props.operationOwner);
   }
@@ -154,27 +174,91 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     }
     const sessionId = this.props.sessionId();
     if (!sessionId) return;
-    const delivery = deliveryOverride ?? (this.props.isStreaming() ? "follow-up" : "prompt");
     const attachments = this.attachments.slice();
-    this.props.setDraft("");
-    const submissions: Promise<void>[] = [];
-    if (text || attachments.length > 0) {
-      const operationId = this.props.operations.start(this.props.operationOwner);
-      this.attachments.splice(0);
-      this.addPendingUserMessage(operationId, sessionId, text, attachments, delivery);
-      submissions.push(
-        this.props.client
-          .submit({ operationId, sessionId, text, delivery, attachments })
-          .catch((error) => {
-            this.removePendingUserMessage(operationId);
-            this.reportError(error);
-            if (!this.props.draft().trim()) this.props.setDraft(text);
-            this.attachments.push(...attachments);
-            this.finishOperation(operationId);
-          }),
-      );
+    if (deliveryOverride === undefined && this.props.isStreaming()) {
+      // While streaming, submissions queue locally and stay editable above the composer.
+      if (text || attachments.length > 0) {
+        this.props.setDraft("");
+        this.attachments.splice(0);
+        this.queuedPrompts.push({ id: crypto.randomUUID(), text, attachments });
+      }
+      return;
     }
-    await Promise.all(submissions);
+    if (text || attachments.length > 0) {
+      this.props.setDraft("");
+      this.attachments.splice(0);
+      await this.deliver(text, attachments, deliveryOverride ?? "prompt", sessionId, true);
+    }
+  }
+
+  removeQueuedPrompt(id: string) {
+    const index = this.queuedPrompts.findIndex((entry) => entry.id === id);
+    if (index >= 0) this.queuedPrompts.splice(index, 1);
+  }
+
+  editQueuedPrompt(id: string) {
+    const entry = this.takeQueuedPrompt(id);
+    if (!entry) return;
+    this.props.setDraft(entry.text);
+    this.attachments.push(...entry.attachments);
+    this.requestFocus();
+  }
+
+  steerQueuedPrompt(id: string) {
+    const entry = this.takeQueuedPrompt(id);
+    if (!entry) return;
+    void this.deliverQueued(entry, this.props.isStreaming() ? "steer" : "prompt");
+  }
+
+  private takeQueuedPrompt(id: string) {
+    const index = this.queuedPrompts.findIndex((entry) => entry.id === id);
+    return index >= 0 ? this.queuedPrompts.splice(index, 1)[0] : undefined;
+  }
+
+  private drainQueue() {
+    if (this.drainingQueue || this.props.isStreaming()) return;
+    const entry = this.queuedPrompts[0];
+    if (!entry) return;
+    this.drainingQueue = true;
+    this.queuedPrompts.splice(0, 1);
+    void this.deliverQueued(entry, "prompt").finally(() => {
+      this.drainingQueue = false;
+    });
+  }
+
+  private async deliverQueued(entry: QueuedPrompt, delivery: "prompt" | "steer") {
+    const sessionId = this.props.sessionId();
+    const delivered =
+      sessionId !== undefined && (entry.text || entry.attachments.length > 0)
+        ? await this.deliver(entry.text, entry.attachments.slice(), delivery, sessionId, false)
+        : false;
+    if (!delivered) this.queuedPrompts.unshift(entry);
+  }
+
+  private async deliver(
+    text: string,
+    attachments: Attachment[],
+    delivery: "prompt" | "steer",
+    sessionId: string,
+    restoreOnError: boolean,
+  ): Promise<boolean> {
+    this.error = undefined;
+    this.errorDetails = undefined;
+    const operationId = this.props.operations.start(this.props.operationOwner);
+    this.addPendingUserMessage(operationId, sessionId, text, attachments, delivery);
+    try {
+      await this.props.client.submit({ operationId, sessionId, text, delivery, attachments });
+      return true;
+    } catch (error) {
+      this.removePendingUserMessage(operationId);
+      this.reportError(error);
+      this.finishOperation(operationId);
+      if (restoreOnError) {
+        if (!this.props.draft().trim()) this.props.setDraft(text);
+        this.attachments.push(...attachments);
+      }
+      return false;
+    }
   }
 
   reconcile(sessionId: string) {

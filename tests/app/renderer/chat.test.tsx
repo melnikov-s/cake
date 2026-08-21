@@ -59,6 +59,7 @@ describe("Chat", () => {
 
   it("renders the shared transcript, loading state, configuration, and composer actions", async () => {
     const submit = vi.fn(async () => true);
+    const abort = vi.fn(async () => undefined);
     const configuration = {
       session: {
         model: { provider: "openai", id: "gpt" },
@@ -96,6 +97,7 @@ describe("Chat", () => {
         inputLabel: () => "Reply to chat",
         canSubmit: (draft) => Boolean(draft.trim()),
         submit,
+        abort,
       }),
     );
 
@@ -105,11 +107,36 @@ describe("Chat", () => {
     expect(container.textContent).toContain("You · queued");
     expect(container.querySelector('[aria-label="Churning in progress"]')).not.toBeNull();
     expect(container.querySelector<HTMLInputElement>('[aria-label="Model"]')?.value).toBe("GPT");
-    expect(container.querySelector<HTMLSelectElement>('[aria-label="Thinking level"]')?.value).toBe(
-      "medium",
+    expect(container.textContent).toContain("Medium reasoning");
+
+    // While streaming, the send icon becomes a stop icon and submits are hidden.
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Send"]')).toBeNull();
+    const stop = container.querySelector<HTMLButtonElement>('[aria-label="Stop"]')!;
+    await act(async () => stop.click());
+    expect(abort).toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("submits the draft from the send icon when idle", async () => {
+    const submit = vi.fn(async () => true);
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "idle-chat",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Message Cake",
+        inputLabel: () => "Message",
+        canSubmit: (draft) => Boolean(draft.trim()),
+        submit,
+      }),
     );
 
-    const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Reply to chat"]')!;
+    act(() => root.render(<Chat store={store!} />));
+
+    const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
     act(() => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
         input,
@@ -118,10 +145,10 @@ describe("Chat", () => {
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await act(async () =>
-      container.querySelector<HTMLButtonElement>('button[type="submit"]')!.click(),
+      container.querySelector<HTMLButtonElement>('[aria-label="Send"]')!.click(),
     );
 
-    expect(submit).toHaveBeenCalledWith("Please continue", "send");
+    expect(submit).toHaveBeenCalledWith("Please continue");
     expect(store.draft).toBe("");
   });
 

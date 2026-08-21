@@ -134,9 +134,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
           : `Ask Cake to work in ${this.props.projectName()}…`,
       inputLabel: () => "Message",
       canSubmit: () => this.canSubmit,
-      submit: async (_draft, mode) => {
-        await this.composerStore.submit(mode === "steer" ? "steer" : undefined);
-      },
+      submit: () => this.composerStore.submit(),
       abort: () => this.props.abort(),
       attachments: () => this.composerStore.attachments,
       addAttachments: () => this.composerStore.addAttachments(),
@@ -145,7 +143,10 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       suggestFiles: (prefix) => this.composerStore.suggestFiles(prefix),
       focusRequestRevision: () => this.composerStore.focusRequestRevision,
       usage: () => this.model.usage,
-      allowSteer: true,
+      queuedPrompts: () => this.composerStore.queuedPrompts,
+      steerQueuedPrompt: (id) => this.composerStore.steerQueuedPrompt(id),
+      editQueuedPrompt: (id) => this.composerStore.editQueuedPrompt(id),
+      removeQueuedPrompt: (id) => this.composerStore.removeQueuedPrompt(id),
       hideThinking: () => Boolean(this.model.piSettings?.hideThinkingBlock),
       error: () => ({
         message: this.composerStore.error ?? this.configurationStore.error,
