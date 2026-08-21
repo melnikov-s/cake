@@ -1,6 +1,22 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import type { ThinkingLevel } from "../../ipc/session-contract";
 
+const ChevronDownIcon = () => (
+  <svg
+    aria-hidden="true"
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="m6 9 6 6 6-6" />
+  </svg>
+);
+
 function thinkingLevelLabel(level: ThinkingLevel) {
   return level === "off"
     ? "No reasoning"
@@ -119,7 +135,7 @@ export function ThinkingLevelSelect({
       >
         <span className="thinking-level-label">{thinkingLevelLabel(value)}</span>
         <span className="model-combobox-chevron" aria-hidden="true">
-          ⌄
+          <ChevronDownIcon />
         </span>
       </button>
       {open && (

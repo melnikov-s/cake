@@ -4081,11 +4081,11 @@ button.reasoning-summary {
   position: absolute;
   top: 50%;
   right: 9px;
+  display: block;
   color: var(--muted-foreground);
-  font-size: 13px;
   line-height: 1;
   pointer-events: none;
-  transform: translateY(-58%);
+  transform: translateY(-50%);
 }
 .model-combobox-popover {
   position: absolute;
