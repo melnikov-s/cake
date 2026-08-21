@@ -4,6 +4,21 @@
 @source "../../node_modules/@streamdown/math/dist/*.js";
 @source "../../node_modules/@streamdown/mermaid/dist/*.js";
 
+/* Map Tailwind's `dark:` variant to Cake's data-theme attribute. Third-party
+   utilities (notably Streamdown's dual-theme Shiki token spans) must follow
+   the app theme, not the OS color scheme, or dark-palette token colors render
+   on light backgrounds. */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
+}
+
 :root,
 :root[data-theme="light"] {
   color-scheme: light;
