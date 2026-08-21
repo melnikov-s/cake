@@ -145,6 +145,9 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
     await log.locator(":scope > summary").click();
     await expect(log).toHaveAttribute("open", "");
     await expect(log.locator(".tool-call")).toHaveCount(1);
+    await expect(log.locator(".tool-input")).toHaveCount(0);
+    await expect(log.locator(".tool-output")).toContainText("README contents");
+    await expect(log.locator(".tool-output")).not.toContainText('"path"');
 
     await log.locator(":scope > summary").click();
     await expect(log).not.toHaveAttribute("open", "");

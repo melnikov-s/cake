@@ -3,6 +3,7 @@ import { observer } from "r-state-tree/react";
 import type { ChangedFile } from "../../ipc/session-contract";
 import type { ReviewAnchor, ReviewPoint } from "../../ipc/review-contract";
 import { parseDiff } from "./ai-elements/diff-view";
+import { useHighlightedSource } from "./ai-elements/code";
 import { Button } from "./ui/button";
 import { LoadingState } from "./ui/loading-state";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
@@ -16,7 +17,6 @@ import {
   SourceReview,
   reviewThreadPreview,
   useFileContent,
-  useHighlightedSource,
 } from "./source-review";
 import { extractSourceSelection } from "./source-selection";
 import { SourceExplorerLayout, SourceTree, sourceTree } from "./source-explorer";

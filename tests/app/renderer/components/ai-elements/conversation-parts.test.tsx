@@ -203,28 +203,28 @@ describe("Cake-owned conversation components", () => {
     expect(html).not.toContain("&quot;command&quot;");
   });
 
-  it("renders structured tool arguments as highlighted JSON with line gutters", () => {
+  it("renders read results as highlighted file contents instead of JSON arguments", () => {
     const html = renderToStaticMarkup(
       <Tool
         part={{
           id: "tool-read",
           kind: "tool",
           name: "read",
-          input: '{"path":"Sources/QuickEyeApp/AnnotationInputView.swift","offset":12}',
+          input: '{"path":"src/app.ts","offset":12}',
+          filePath: "src/app.ts",
+          output: "export const value: boolean = true;",
           state: "success",
         }}
       />,
     );
-    expect(html).toContain('title="read Sources/QuickEyeApp/AnnotationInputView.swift"');
-    expect(html).toContain('data-language="json"');
-    expect(html).toContain('data-streamdown="code-block-body"');
+    expect(html).toContain('title="read src/app.ts"');
+    expect(html).toContain('data-language="typescript"');
+    expect(html).toContain("export const value: boolean = true;");
     expect(html).toContain("before:content-[counter(line)]");
-    expect(html).toContain(
-      "&quot;path&quot;: &quot;Sources/QuickEyeApp/AnnotationInputView.swift&quot;",
-    );
+    expect(html).not.toContain("&quot;path&quot;");
   });
 
-  it("uses the same editor surface for plain-text tool results", () => {
+  it("infers the source language for read results without a projected file path", () => {
     const html = renderToStaticMarkup(
       <Tool
         part={{
@@ -237,9 +237,43 @@ describe("Cake-owned conversation components", () => {
         }}
       />,
     );
-    expect(html).toContain('data-language="text"');
+    expect(html).toContain('data-language="markdown"');
     expect(html).toContain("# Cake");
-    expect(html).toContain("before:content-[counter(line)]");
+    expect(html).not.toContain("&quot;path&quot;");
+  });
+
+  it("renders typed bash results without the result envelope", () => {
+    const text = renderToStaticMarkup(
+      <Tool
+        part={{
+          id: "tool-bash-result",
+          kind: "tool",
+          name: "bash",
+          input: "printf '{\\\"ok\\\":true}'",
+          output: '{"content":[{"type":"text","text":"{\\"ok\\":true}"}]}',
+          outputContent: [{ type: "text", text: '{"ok":true}' }],
+          state: "success",
+        }}
+      />,
+    );
+    expect(text).toContain('data-language="text"');
+    expect(text).toContain("ok");
+    expect(text).not.toContain("&quot;content&quot;");
+
+    const image = renderToStaticMarkup(
+      <Tool
+        part={{
+          id: "tool-image-result",
+          kind: "tool",
+          name: "bash",
+          input: "screenshot",
+          outputContent: [{ type: "image", data: "AA==", mimeType: "image/png" }],
+          state: "success",
+        }}
+      />,
+    );
+    expect(image).toContain('src="data:image/png;base64,AA=="');
+    expect(image).toContain("Tool output image 1");
   });
 
   it("renders subagent work as a compact execution trace", () => {

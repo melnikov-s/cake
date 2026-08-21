@@ -6,14 +6,20 @@ import {
   type AgentSession,
   type SessionManager,
 } from "@earendil-works/pi-coding-agent";
-import type { SessionSnapshot, ThinkingLevel, UiPart } from "../ipc/session-contract";
+import type {
+  SessionSnapshot,
+  ThinkingLevel,
+  ToolOutputContent,
+  UiPart,
+} from "../ipc/session-contract";
 import {
   boundedProjectionKey,
   createLiveMessageProjector,
   formatToolInput,
-  formatUnknown,
+  formatToolResult,
   toolArtifactId,
   toolFilePath,
+  toolResultOutputContent,
   toolResultDiff,
 } from "./session-projection";
 
@@ -142,7 +148,13 @@ export async function runIsolatedSession(
       const projectLiveMessage = createLiveMessageProjector();
       const activeToolCalls = new Map<
         string,
-        { input: string; artifactId?: string; filePath?: string; diff?: string }
+        {
+          input: string;
+          artifactId?: string;
+          filePath?: string;
+          diff?: string;
+          outputContent?: ToolOutputContent[];
+        }
       >();
       const unsubscribe = session.subscribe((event) => {
         for (const part of projectLiveMessage(event)) {
@@ -175,7 +187,8 @@ export async function runIsolatedSession(
             diff: undefined,
           };
           const diff = toolResultDiff(event.toolName, event.partialResult) ?? call.diff;
-          const nextCall = diff ? { ...call, diff } : call;
+          const outputContent = toolResultOutputContent(event.partialResult) ?? call.outputContent;
+          const nextCall = diff || outputContent ? { ...call, diff, outputContent } : call;
           activeToolCalls.set(event.toolCallId, nextCall);
           options.onEvent?.({
             type: "part-updated",
@@ -184,7 +197,7 @@ export async function runIsolatedSession(
               kind: "tool",
               name: event.toolName,
               ...nextCall,
-              output: formatUnknown(event.partialResult),
+              output: formatToolResult(event.partialResult),
               state: "running",
             },
           });
@@ -199,10 +212,11 @@ export async function runIsolatedSession(
               kind: "tool",
               name: event.toolName,
               input: call?.input ?? "",
-              output: formatUnknown(event.result),
+              output: formatToolResult(event.result),
               artifactId: toolArtifactId(event.result) ?? call?.artifactId,
               filePath: call?.filePath,
               diff: toolResultDiff(event.toolName, event.result) ?? call?.diff,
+              outputContent: toolResultOutputContent(event.result) ?? call?.outputContent,
               state: event.isError ? "error" : "success",
             },
           });

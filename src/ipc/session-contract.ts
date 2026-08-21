@@ -135,6 +135,17 @@ export const attachmentSchema = z.discriminatedUnion("kind", [
 
 const partBase = { id: z.string().min(1).max(256) };
 
+export const toolOutputContentSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("text"), text: boundedText }),
+  z.object({
+    type: z.literal("image"),
+    data: z.string().max(20_000_000),
+    mimeType: z.string().max(128),
+  }),
+]);
+export const toolOutputContentArraySchema = ipcProjectionArray(toolOutputContentSchema, 100);
+export type ToolOutputContent = z.infer<typeof toolOutputContentSchema>;
+
 export const uiPartSchema = z.discriminatedUnion("kind", [
   z.object({
     ...partBase,
@@ -157,6 +168,7 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
     name: ipcProjectionString(256),
     input: boundedText,
     output: boundedText.optional(),
+    outputContent: toolOutputContentArraySchema.optional(),
     artifactId: z.string().min(1).max(256).optional(),
     filePath: z.string().max(8_192).optional(),
     diff: boundedText.optional(),

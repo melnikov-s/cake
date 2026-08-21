@@ -1,3 +1,6 @@
+import { useMemo } from "react";
+import { useHighlightedSource } from "./code";
+
 export type DiffLine = {
   key: string;
   kind: "add" | "remove" | "context" | "meta";
@@ -70,7 +73,12 @@ export function DiffView({
   filePath?: string;
   label?: string;
 }) {
-  const lines = parseDiff(diff);
+  const lines = useMemo(() => parseDiff(diff), [diff]);
+  const source = useMemo(
+    () => lines.map((line) => (line.kind === "meta" ? "" : line.content)).join("\n"),
+    [lines],
+  );
+  const tokens = useHighlightedSource(filePath ?? "", source);
   const stats = diffStats(diff);
   return (
     <section className="diff-view" aria-label={`${label}${filePath ? ` to ${filePath}` : ""}`}>
@@ -82,7 +90,7 @@ export function DiffView({
         </span>
       </header>
       <div className="diff-scroll" role="table" aria-label="Code changes">
-        {lines.map((line) =>
+        {lines.map((line, index) =>
           line.kind === "meta" ? (
             <div className="diff-line diff-meta" role="row" key={line.key}>
               <span />
@@ -105,7 +113,17 @@ export function DiffView({
                 <b aria-hidden="true">
                   {line.kind === "add" ? "+" : line.kind === "remove" ? "−" : " "}
                 </b>
-                {line.content || " "}
+                {(tokens?.[index] ?? []).length > 0
+                  ? tokens![index]!.map((token, tokenIndex) => (
+                      <i
+                        className="syntax-token"
+                        style={token.htmlStyle}
+                        key={`${tokenIndex}-${token.content}`}
+                      >
+                        {token.content}
+                      </i>
+                    ))
+                  : line.content || " "}
               </code>
             </div>
           ),

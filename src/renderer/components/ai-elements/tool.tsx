@@ -2,9 +2,10 @@
 import { useState } from "react";
 import { z } from "zod";
 import { jsonObjectSchema, jsonValueSchema } from "../../../ipc/json-contract";
-import type { UiPart } from "../../../ipc/session-contract";
+import type { ToolOutputContent, UiPart } from "../../../ipc/session-contract";
 import { toolDiff } from "../../../utils/turn-diff";
 import { DiffView } from "./diff-view";
+import { languageForSource } from "./code";
 import { fencedCode, Markdown } from "./markdown";
 import { SubagentTool } from "./subagent-tool";
 
@@ -20,6 +21,16 @@ function oneLine(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function toolPath(part: Extract<UiPart, { kind: "tool" }>) {
+  if (part.filePath) return part.filePath;
+  const parsed = parseJson(part.input);
+  const structuredResult = jsonObjectSchema.safeParse(parsed);
+  if (!structuredResult.success) return undefined;
+  return ["path", "file_path"]
+    .map((key) => z.string().safeParse(structuredResult.data[key]))
+    .find((result) => result.success)?.data;
+}
+
 function toolTitle(part: Extract<UiPart, { kind: "tool" }>) {
   if (part.name === "edit" && part.filePath) return `edit ${part.filePath}`;
 
@@ -30,8 +41,8 @@ function toolTitle(part: Extract<UiPart, { kind: "tool" }>) {
   const detail =
     part.name === "bash"
       ? part.input
-      : (part.filePath ??
-        ["command", "path", "file_path", "query", "pattern", "url"]
+      : (toolPath(part) ??
+        ["command", "query", "pattern", "url"]
           .map((key) => z.string().safeParse(structured?.[key]))
           .find((result) => result.success)?.data ??
         (parsedString.success ? parsedString.data : parsed === undefined ? part.input : ""));
@@ -46,13 +57,57 @@ function toolCode(value: string, className: string) {
   return <Markdown className={className}>{fencedCode(source, language)}</Markdown>;
 }
 
+function toolText(value: string, className: string, language = "text") {
+  return <Markdown className={className}>{fencedCode(value, language)}</Markdown>;
+}
+
+function toolOutputContent(
+  content: readonly ToolOutputContent[],
+  className: string,
+  language = "text",
+) {
+  return content.map((item, index) =>
+    item.type === "text" ? (
+      <Markdown className={className} key={`text-${index}`}>
+        {fencedCode(item.text, language)}
+      </Markdown>
+    ) : (
+      <figure className="tool-output-image" key={`image-${index}`}>
+        <img
+          src={`data:${item.mimeType};base64,${item.data}`}
+          alt={`Tool output image ${index + 1}`}
+        />
+      </figure>
+    ),
+  );
+}
+
+function toolOutput(part: Extract<UiPart, { kind: "tool" }>, className: string, language = "text") {
+  if (part.outputContent && part.outputContent.length > 0)
+    return toolOutputContent(part.outputContent, className, language);
+  if (part.output === undefined) return null;
+  return toolText(part.output, className, language);
+}
+
+function readToolCode(part: Extract<UiPart, { kind: "tool" }>) {
+  const path = toolPath(part);
+  return toolOutput(
+    part,
+    "tool-output tool-code-input tool-read-output mt-3 text-xs",
+    path ? languageForSource(path) : "text",
+  );
+}
+
 export function Tool({ part }: { part: Extract<UiPart, { kind: "tool" }> }) {
   const [open, setOpen] = useState(false);
   if (part.name.startsWith("subagent_")) return <SubagentTool part={part} />;
   const diff = toolDiff(part);
   const title = toolTitle(part);
+  const read = part.name === "read";
   const bash = part.name === "bash" && part.input ? part.input : undefined;
-  const hasDetails = Boolean(diff || bash || part.input || part.output);
+  const hasDetails = Boolean(
+    diff || bash || part.input || part.output || part.outputContent?.length,
+  );
   return (
     <div
       className={`tool-call rounded-xl border border-border bg-muted/35 px-4 py-3${diff ? " tool-edit" : ""}${open ? " tool-open" : ""}`}
@@ -72,7 +127,9 @@ export function Tool({ part }: { part: Extract<UiPart, { kind: "tool" }> }) {
       {/* Keep Streamdown mounted: mounting it during a Virtuoso resize can feed its passive update back into measurement. */}
       {hasDetails && (
         <div className="tool-details" hidden={!open}>
-          {diff ? (
+          {read ? (
+            readToolCode(part)
+          ) : diff ? (
             <DiffView
               diff={diff}
               filePath={part.filePath}
@@ -86,9 +143,9 @@ export function Tool({ part }: { part: Extract<UiPart, { kind: "tool" }> }) {
             part.input && toolCode(part.input, "tool-input tool-code-input mt-3 text-xs")
           )}
           {!diff &&
-            part.output &&
-            toolCode(
-              part.output,
+            !read &&
+            toolOutput(
+              part,
               "tool-output tool-code-input mt-3 border-t border-border pt-3 text-xs",
             )}
         </div>

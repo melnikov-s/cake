@@ -1,5 +1,5 @@
 import { Model, id, state } from "r-state-tree";
-import { uiPartSchema, type UiPart } from "../ipc/session-contract";
+import { uiPartSchema, type ToolOutputContent, type UiPart } from "../ipc/session-contract";
 
 type TextRole = Extract<UiPart, { kind: "text" }>["role"];
 type PartStatus = Extract<UiPart, { kind: "text" }>["status"];
@@ -19,6 +19,7 @@ export class Message extends Model {
   @state name: string | undefined;
   @state input: string | undefined;
   @state output: string | undefined;
+  @state outputContent: ToolOutputContent[] | undefined;
   @state artifactId: string | undefined;
   @state filePath: string | undefined;
   @state diff: string | undefined;
@@ -63,6 +64,7 @@ export class Message extends Model {
           name: this.name!,
           input: this.input!,
           output: this.output,
+          outputContent: this.outputContent,
           artifactId: this.artifactId,
           filePath: this.filePath,
           diff: this.diff,

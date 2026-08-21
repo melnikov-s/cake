@@ -21,6 +21,7 @@ import type {
   ResourceDiagnostic,
   SessionSnapshot,
   ThinkingLevel,
+  ToolOutputContent,
   UiPart,
   UtilityModel,
 } from "../ipc/session-contract";
@@ -65,6 +66,7 @@ import {
   boundedProjectionKey,
   createLiveMessageProjector,
   formatToolInput,
+  formatToolResult,
   formatUnknown,
   imageContent,
   projectArtifactPointers,
@@ -78,6 +80,7 @@ import {
   textFromContent,
   toolArtifactId,
   toolFilePath,
+  toolResultOutputContent,
   toolResultDiff,
   type ReviewRunEntry,
 } from "./session-projection";
@@ -823,7 +826,13 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
 
   const activeToolCalls = new Map<
     string,
-    { input: string; artifactId?: string; filePath?: string; diff?: string }
+    {
+      input: string;
+      artifactId?: string;
+      filePath?: string;
+      diff?: string;
+      outputContent?: ToolOutputContent[];
+    }
   >();
   let queuedPartIds = new Set(
     projectQueuedMessages(session.getSteeringMessages(), session.getFollowUpMessages()).map(
@@ -865,7 +874,8 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
         diff: undefined,
       };
       const diff = toolResultDiff(event.toolName, event.partialResult) ?? call.diff;
-      const nextCall = diff ? { ...call, diff } : call;
+      const outputContent = toolResultOutputContent(event.partialResult) ?? call.outputContent;
+      const nextCall = diff || outputContent ? { ...call, diff, outputContent } : call;
       activeToolCalls.set(event.toolCallId, nextCall);
       options.onEvent({
         type: "part-updated",
@@ -875,7 +885,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
           kind: "tool",
           name: event.toolName,
           ...nextCall,
-          output: formatUnknown(event.partialResult),
+          output: formatToolResult(event.partialResult),
           state: "running",
         },
       });
@@ -891,10 +901,11 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
           kind: "tool",
           name: event.toolName,
           input: call?.input ?? "",
-          output: formatUnknown(event.result),
+          output: formatToolResult(event.result),
           artifactId: toolArtifactId(event.result) ?? call?.artifactId,
           filePath: call?.filePath,
           diff: toolResultDiff(event.toolName, event.result) ?? call?.diff,
+          outputContent: toolResultOutputContent(event.result) ?? call?.outputContent,
           state: event.isError ? "error" : "success",
         },
       });

@@ -25,9 +25,11 @@ import {
 } from "../../../src/agent/session-discovery";
 import {
   createLiveMessageProjector,
+  formatToolResult,
   formatUnknown,
   projectQueuedMessages,
   projectSessionEntries,
+  toolResultContent,
 } from "../../../src/agent/session-projection";
 import { loadReviewSessionProjection, runReviewTurn } from "../../../src/agent/sidecar-runtime";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
@@ -686,6 +688,22 @@ describe("Pi 0.84.0 foundation contract", () => {
     } as unknown as AgentSessionEvent);
 
     expect(parts[0]).toMatchObject({ kind: "tool", name: "bash", input: "sleep 5" });
+  });
+
+  it("keeps tool result content separate from its result envelope", () => {
+    expect(
+      formatToolResult({
+        content: [{ type: "text", text: "export const value = true;" }],
+        details: { truncation: undefined },
+      }),
+    ).toBe("export const value = true;");
+    expect(formatToolResult({ content: [{ type: "text", text: "" }], details: {} })).toBe("");
+    expect(formatToolResult({ details: { status: "ok" } })).toContain('"status": "ok"');
+    expect(
+      toolResultContent({
+        content: [{ type: "image", data: "AA==", mimeType: "image/png" }],
+      }),
+    ).toEqual([{ type: "image", data: "AA==", mimeType: "image/png" }]);
   });
 
   it("projects a tool result with no text or details without failing later snapshots", () => {

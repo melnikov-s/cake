@@ -1,6 +1,79 @@
-/* Inspired by Vercel AI Elements code-block.tsx at 0c1f5e8c75273f0e95c8faa031544a8aa2bb1a5b (Apache-2.0). No highlighter runtime. */
-import type { ComponentProps } from "react";
+/* Inspired by Vercel AI Elements code-block.tsx at 0c1f5e8c75273f0e95c8faa031544a8aa2bb1a5b (Apache-2.0). */
+import { code } from "@streamdown/code";
+import { useEffect, useState, type ComponentProps } from "react";
 import { cn } from "@/lib/utils";
+
+export type HighlightResult = ReturnType<typeof code.highlight>;
+export type HighlightTokens = NonNullable<HighlightResult>["tokens"];
+type HighlightLanguage = Parameters<typeof code.highlight>[0]["language"];
+
+const languages = new Map<string, HighlightLanguage>([
+  ["c", "c"],
+  ["cc", "cpp"],
+  ["cpp", "cpp"],
+  ["css", "css"],
+  ["go", "go"],
+  ["html", "html"],
+  ["htm", "html"],
+  ["java", "java"],
+  ["js", "javascript"],
+  ["cjs", "javascript"],
+  ["mjs", "javascript"],
+  ["jsx", "jsx"],
+  ["json", "json"],
+  ["md", "markdown"],
+  ["mdx", "mdx"],
+  ["php", "php"],
+  ["py", "python"],
+  ["rb", "ruby"],
+  ["rs", "rust"],
+  ["scss", "scss"],
+  ["sh", "shellscript"],
+  ["bash", "shellscript"],
+  ["sql", "sql"],
+  ["svelte", "svelte"],
+  ["ts", "typescript"],
+  ["mts", "typescript"],
+  ["cts", "typescript"],
+  ["tsx", "tsx"],
+  ["vue", "vue"],
+  ["xml", "xml"],
+  ["svg", "xml"],
+  ["yaml", "yaml"],
+  ["yml", "yaml"],
+]);
+
+export function languageForSource(path: string): HighlightLanguage {
+  return languages.get(path.split(".").pop()?.toLowerCase() ?? "") ?? "markdown";
+}
+
+export function highlightSource(
+  path: string,
+  source: string,
+  apply: (tokens: HighlightTokens) => void,
+) {
+  const accept = (result: NonNullable<HighlightResult>) => apply(result.tokens);
+  const immediate = code.highlight(
+    { code: source, language: languageForSource(path), themes: code.getThemes() },
+    accept,
+  );
+  if (immediate) accept(immediate);
+}
+
+export function useHighlightedSource(path: string, source: string) {
+  const [tokens, setTokens] = useState<HighlightTokens>();
+  useEffect(() => {
+    let active = true;
+    setTokens(undefined);
+    highlightSource(path, source, (next) => {
+      if (active) setTokens(next);
+    });
+    return () => {
+      active = false;
+    };
+  }, [path, source]);
+  return tokens;
+}
 
 export function CodeBlock({ className, ...props }: ComponentProps<"pre">) {
   return (

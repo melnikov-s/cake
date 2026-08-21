@@ -6,7 +6,13 @@ import {
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { artifactPointerSchema, type ArtifactPointer } from "../ipc/artifact-contract";
-import type { Attachment, SessionTreeEntry, UiPart } from "../ipc/session-contract";
+import {
+  toolOutputContentArraySchema,
+  type Attachment,
+  type SessionTreeEntry,
+  type ToolOutputContent,
+  type UiPart,
+} from "../ipc/session-contract";
 
 export const reviewRunEntryType = "cake.review-run/v1";
 export const reviewRunEntrySchema = z.object({
@@ -42,6 +48,31 @@ export function formatToolInput(toolName: string, args: unknown) {
     if (typeof command === "string") return formatUnknown(command);
   }
   return formatUnknown(args);
+}
+
+function parseToolOutputContent(content: unknown) {
+  const parsed = toolOutputContentArraySchema.safeParse(content);
+  return parsed.success && parsed.data.length > 0 ? parsed.data : undefined;
+}
+
+export function projectToolOutputContent(content: unknown): ToolOutputContent[] | undefined {
+  const parsed = parseToolOutputContent(content);
+  return parsed?.some((item) => item.type !== "text") ? parsed : undefined;
+}
+
+export function toolResultContent(result: unknown) {
+  if (typeof result !== "object" || result === null) return undefined;
+  return parseToolOutputContent(Reflect.get(result, "content"));
+}
+
+export function toolResultOutputContent(result: unknown) {
+  const content = toolResultContent(result);
+  return content?.some((item) => item.type !== "text") ? content : undefined;
+}
+
+export function formatToolResult(result: unknown) {
+  const content = toolResultContent(result);
+  return content ? textFromContent(content) : formatUnknown(result);
 }
 
 export function toolFilePath(_toolName: string, args: unknown) {
@@ -218,6 +249,7 @@ function partsFromMessage(
         name,
         input: "",
         output: textFromContent(content) || formatUnknown(details),
+        outputContent: projectToolOutputContent(content),
         artifactId: toolArtifactId({ details }),
         diff: toolResultDiff(name, { details }),
         state: Reflect.get(message, "isError") ? "error" : "success",
