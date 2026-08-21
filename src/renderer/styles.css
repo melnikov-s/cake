@@ -3059,6 +3059,49 @@
 .markdown-code-block code {
   font: inherit;
 }
+/* Streamdown code blocks: drop the language label, outer chrome, and nested
+   borders; float the copy button over the block and reveal it on hover. */
+.markdown-content [data-streamdown="code-block"] {
+  position: relative;
+  gap: 0;
+  margin: 1em 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+}
+.markdown-content [data-streamdown="code-block-header"] {
+  display: none;
+}
+.markdown-content [data-streamdown="code-block-body"] {
+  border: 0;
+  background: var(--muted);
+}
+.markdown-content [data-streamdown="code-block-actions"] {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  z-index: 1;
+  height: auto;
+  margin: 0;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.markdown-content [data-streamdown="code-block-actions"] > div {
+  border: 0;
+  background: transparent;
+}
+.markdown-content [data-streamdown="code-block"]:hover [data-streamdown="code-block-actions"],
+.markdown-content
+  [data-streamdown="code-block"]:focus-within
+  [data-streamdown="code-block-actions"] {
+  opacity: 1;
+}
+@media (hover: none) {
+  .markdown-content [data-streamdown="code-block-actions"] {
+    opacity: 1;
+  }
+}
 .markdown-table-wrap {
   max-width: 100%;
   margin: 1em 0;

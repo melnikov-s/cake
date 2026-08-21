@@ -1,4 +1,4 @@
-import { code } from "@streamdown/code";
+import { createCodePlugin } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { createMermaidPlugin } from "@streamdown/mermaid";
 import { Streamdown, type Components, type StreamdownProps } from "streamdown";
@@ -13,6 +13,9 @@ const components: Components = {
 };
 
 const mermaid = createMermaidPlugin({ config: { securityLevel: "strict" } });
+// Use a high-contrast light theme; the default github-light renders punctuation
+// and other neutral tokens too faintly in light mode.
+const code = createCodePlugin({ themes: ["github-light-high-contrast", "github-dark"] });
 const plugins = { code, math, mermaid };
 const emptyStaticBlocks: string[] = [];
 const staticBlocks: NonNullable<StreamdownProps["parseMarkdownIntoBlocksFn"]> = () =>
@@ -40,6 +43,12 @@ export function Markdown({ children, className, ...props }: MarkdownProps) {
         className,
       )}
       components={components}
+      controls={{
+        code: {
+          copy: true,
+          download: false,
+        },
+      }}
       // Streamdown mirrors parsed blocks through passive state even in static mode. The static render path does not
       // consume those blocks, so keep their identity stable and let Store updates drive the rendered source directly.
       isAnimating={false}
