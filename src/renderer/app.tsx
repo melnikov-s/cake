@@ -18,6 +18,7 @@ import {
 } from "@/components/ai-elements/confirmation";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { Button } from "@/components/ui/button";
+import { ContextMenu } from "@/components/ui/context-menu";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ArtifactHost } from "@/components/artifact-host";
 import { ChangeExplorer } from "@/components/change-explorer";
@@ -450,10 +451,27 @@ export const Sidebar = observer(function Sidebar({
   onToggle: () => void;
 }) {
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() => new Set());
-  const renameSession = (event: React.MouseEvent, sessionId: string, title: string) => {
+  const [sessionMenu, setSessionMenu] = useState<{
+    sessionId: string;
+    title: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [renamingSession, setRenamingSession] = useState<{
+    sessionId: string;
+    value: string;
+  } | null>(null);
+  const openSessionMenu = (event: React.MouseEvent, sessionId: string, title: string) => {
     event.preventDefault();
-    const name = window.prompt("Session name", title);
-    if (name) void chat.renameSession(sessionId, name);
+    setSessionMenu({ sessionId, title, x: event.clientX, y: event.clientY });
+  };
+  const commitRename = () => {
+    const renaming = renamingSession;
+    setRenamingSession(null);
+    if (!renaming) return;
+    const name = renaming.value.trim();
+    if (!name) return;
+    void chat.renameSession(renaming.sessionId, name);
   };
   const toggleProject = (path: string) => {
     setCollapsedProjects((current) => {
@@ -584,26 +602,43 @@ export const Sidebar = observer(function Sidebar({
                 data-session-id={session.id}
                 className={`session-item ${selected ? (running ? "active" : "active has-session-action") : ""}`}
               >
-                <button
-                  className="session-row"
-                  aria-current={selected ? "page" : undefined}
-                  onClick={() => onOpenSession(session.id)}
-                  onContextMenu={(event) => renameSession(event, session.id, session.title)}
-                >
-                  <span className="session-title" title={session.title}>
-                    {session.title}
-                  </span>
-                  {!selected && !running && (
-                    <time
-                      className="session-time"
-                      dateTime={session.modified}
-                      title={new Date(session.modified).toLocaleString()}
-                    >
-                      {store.sessionActivityTime(session.modified)}
-                    </time>
-                  )}
-                  {activityIndicator(session.id)}
-                </button>
+                {renamingSession?.sessionId === session.id ? (
+                  <input
+                    className="session-rename-input"
+                    aria-label="Session name"
+                    value={renamingSession.value}
+                    autoFocus
+                    onChange={(event) =>
+                      setRenamingSession({ sessionId: session.id, value: event.target.value })
+                    }
+                    onBlur={commitRename}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") commitRename();
+                      else if (event.key === "Escape") setRenamingSession(null);
+                    }}
+                  />
+                ) : (
+                  <button
+                    className="session-row"
+                    aria-current={selected ? "page" : undefined}
+                    onClick={() => onOpenSession(session.id)}
+                    onContextMenu={(event) => openSessionMenu(event, session.id, session.title)}
+                  >
+                    <span className="session-title" title={session.title}>
+                      {session.title}
+                    </span>
+                    {!selected && !running && (
+                      <time
+                        className="session-time"
+                        dateTime={session.modified}
+                        title={new Date(session.modified).toLocaleString()}
+                      >
+                        {store.sessionActivityTime(session.modified)}
+                      </time>
+                    )}
+                    {activityIndicator(session.id)}
+                  </button>
+                )}
                 {selected && !running && (
                   <button
                     className="session-resolve-action"
@@ -752,6 +787,21 @@ export const Sidebar = observer(function Sidebar({
           <SettingsIcon />
         </button>
       </div>
+      {sessionMenu && (
+        <ContextMenu
+          position={{ x: sessionMenu.x, y: sessionMenu.y }}
+          items={[
+            {
+              id: "rename",
+              label: "Rename",
+              onSelect: () => {
+                setRenamingSession({ sessionId: sessionMenu.sessionId, value: sessionMenu.title });
+              },
+            },
+          ]}
+          onClose={() => setSessionMenu(null)}
+        />
+      )}
     </aside>
   );
 });
