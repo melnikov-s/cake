@@ -3100,21 +3100,31 @@
   white-space: nowrap;
 }
 .work-log-view-toggle {
+  display: flex;
   flex: none;
   margin-left: auto;
-  padding: 3px 7px;
+  gap: 2px;
+  padding: 2px;
   border: 1px solid color-mix(in oklab, var(--border) 78%, transparent);
-  border-radius: 5px;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--muted) 65%, transparent);
+}
+.work-log-view-option {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
   background: transparent;
   color: var(--muted-foreground);
-  font: 600 10px var(--font-mono);
   cursor: pointer;
 }
-.work-log-view-toggle:hover,
-.work-log-view-toggle[aria-pressed="true"] {
-  border-color: color-mix(in oklab, var(--accent) 45%, var(--border));
-  background: color-mix(in oklab, var(--accent) 12%, transparent);
+.work-log-view-option:hover,
+.work-log-view-option[aria-pressed="true"] {
+  background: var(--card);
   color: var(--foreground);
+  box-shadow: 0 1px 2px color-mix(in oklab, black 12%, transparent);
 }
 .activity-group > summary > .work-log-state {
   margin-right: 0;

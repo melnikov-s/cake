@@ -511,9 +511,12 @@ describe("Transcript scrolling", () => {
 
     act(() => render(false));
     act(() => container.querySelector<HTMLElement>(".activity-group > summary")!.click());
-    const toggle = container.querySelector<HTMLButtonElement>(".work-log-view-toggle")!;
-    expect(toggle.textContent).toBe("Diff");
-    act(() => toggle.click());
+    const viewToggle = container.querySelector<HTMLElement>(".work-log-view-toggle")!;
+    const diffToggle = viewToggle.querySelector<HTMLButtonElement>('[aria-label="Show diff"]')!;
+    const logToggle = viewToggle.querySelector<HTMLButtonElement>('[aria-label="Show work log"]')!;
+    expect(diffToggle.getAttribute("aria-pressed")).toBe("false");
+    expect(logToggle.getAttribute("aria-pressed")).toBe("true");
+    act(() => diffToggle.click());
     expect(onToggleWorkLogDiff).toHaveBeenCalledOnce();
     expect(container.querySelector(".activity-group")?.matches("[open]")).toBe(true);
 
@@ -521,12 +524,24 @@ describe("Transcript scrolling", () => {
     expect(container.querySelector(".work-log-diff")).not.toBeNull();
     expect(container.querySelector(".tool-call")).toBeNull();
     expect(container.querySelector(".work-log-diff")?.textContent).toContain("fresh");
-    expect(container.querySelector<HTMLButtonElement>(".work-log-view-toggle")?.textContent).toBe(
-      "Log",
-    );
+    expect(
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Show diff"]')
+        ?.getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Show work log"]')
+        ?.getAttribute("aria-pressed"),
+    ).toBe("false");
 
     act(() => render(true, { ...running, diff: "-4 old\n+4 updated" }));
     expect(container.querySelector(".work-log-diff")?.textContent).toContain("updated");
+
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Show work log"]')!.click());
+    expect(onToggleWorkLogDiff).toHaveBeenCalledTimes(2);
+    act(() => render(false));
+    expect(container.querySelector(".tool-call")).not.toBeNull();
   });
 
   it("shows empty reasoning as a non-expandable status", () => {

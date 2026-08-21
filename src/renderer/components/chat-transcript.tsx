@@ -83,6 +83,17 @@ const CheckIcon = () => (
     <path d="m5 12 4 4L19 6" />
   </Icon>
 );
+const DiffIcon = () => (
+  <Icon>
+    <rect x="4" y="4" width="16" height="16" rx="2" />
+    <path d="M12 4v16M7 9h3M8.5 7.5v3M14 9h3M14 15h3" />
+  </Icon>
+);
+const LogIcon = () => (
+  <Icon>
+    <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />
+  </Icon>
+);
 
 export function chatWorkIsActive(
   parts: UiPart[],
@@ -708,20 +719,38 @@ function ActivityGroup({
           aria-label={activityIsRunning ? "working" : "complete"}
         />
         Work log <small>{label}</small>
-        <button
-          type="button"
-          className="work-log-view-toggle"
-          aria-pressed={behavior.workLogDiff}
-          title={behavior.workLogDiff ? "Show plain work log" : "Show file diff"}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            behavior.onToggleWorkLogDiff();
-            setOpen(true);
-          }}
-        >
-          {behavior.workLogDiff ? "Log" : "Diff"}
-        </button>
+        <div className="work-log-view-toggle" role="group" aria-label="Work log view">
+          <button
+            type="button"
+            className="work-log-view-option"
+            aria-label="Show diff"
+            aria-pressed={behavior.workLogDiff}
+            title="Diff"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (!behavior.workLogDiff) behavior.onToggleWorkLogDiff();
+              setOpen(true);
+            }}
+          >
+            <DiffIcon />
+          </button>
+          <button
+            type="button"
+            className="work-log-view-option"
+            aria-label="Show work log"
+            aria-pressed={!behavior.workLogDiff}
+            title="Work log"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (behavior.workLogDiff) behavior.onToggleWorkLogDiff();
+              setOpen(true);
+            }}
+          >
+            <LogIcon />
+          </button>
+        </div>
       </summary>
       {open && (
         <div
