@@ -6,6 +6,9 @@ const editInputSchema = z.object({
     .array(z.object({ oldText: z.string().optional(), newText: z.string().optional() }))
     .optional(),
 });
+const writeInputSchema = z.object({
+  content: z.string().optional(),
+});
 const toolPathInputSchema = z.object({
   path: z.string().optional(),
   file_path: z.string().optional(),
@@ -21,17 +24,27 @@ export interface WorkLogTurn {
   deletions: number;
 }
 
-function editPreview(part: Extract<UiPart, { kind: "tool" }>) {
-  if (part.name !== "edit") return undefined;
+export function toolDiff(part: Extract<UiPart, { kind: "tool" }>) {
+  if (part.diff) return part.diff;
   try {
-    const parsed = editInputSchema.safeParse(JSON.parse(part.input));
-    if (!parsed.success || !parsed.data.edits?.length) return undefined;
-    return parsed.data.edits
-      .flatMap((edit, index) => [
-        ...(index > 0 ? [`@@ change ${index + 1} @@`] : []),
-        ...(edit.oldText ?? "").split("\n").map((line) => `-${line}`),
-        ...(edit.newText ?? "").split("\n").map((line) => `+${line}`),
-      ])
+    const input = JSON.parse(part.input);
+    if (part.name === "edit") {
+      const parsed = editInputSchema.safeParse(input);
+      if (!parsed.success || !parsed.data.edits?.length) return undefined;
+      return parsed.data.edits
+        .flatMap((edit, index) => [
+          ...(index > 0 ? [`@@ change ${index + 1} @@`] : []),
+          ...(edit.oldText ?? "").split("\n").map((line) => `-${line}`),
+          ...(edit.newText ?? "").split("\n").map((line) => `+${line}`),
+        ])
+        .join("\n");
+    }
+    if (part.name !== "write") return undefined;
+    const parsed = writeInputSchema.safeParse(input);
+    if (!parsed.success || !parsed.data.content) return undefined;
+    return parsed.data.content
+      .split("\n")
+      .map((line) => `+${line}`)
       .join("\n");
   } catch {
     return undefined;
@@ -62,6 +75,32 @@ function labelForTurn(text: string, index: number) {
   return label ? label.slice(0, 160) : `Turn ${index}`;
 }
 
+export function workLogChanges(parts: readonly UiPart[]): ChangedFile[] {
+  const changes: ChangedFile[] = [];
+  for (const part of parts) {
+    if (part.kind !== "tool" || part.state === "error" || part.state === "denied") continue;
+    const diff = toolDiff(part);
+    const path = toolPath(part);
+    if (!diff || !path) continue;
+    const stats = diffStats(diff);
+    const existing = changes.find((change) => change.path === path);
+    if (existing) {
+      existing.diff = `${existing.diff}\n${diff}`;
+      existing.additions += stats.additions;
+      existing.deletions += stats.deletions;
+    } else {
+      changes.push({
+        path,
+        status: "modified",
+        additions: stats.additions,
+        deletions: stats.deletions,
+        diff,
+      });
+    }
+  }
+  return changes;
+}
+
 export function workLogTurns(parts: readonly UiPart[]): WorkLogTurn[] {
   const turns: WorkLogTurn[] = [];
   let current: WorkLogTurn | undefined;
@@ -86,7 +125,7 @@ export function workLogTurns(parts: readonly UiPart[]): WorkLogTurn[] {
       continue;
     }
     if (part.kind !== "tool" || part.state === "error" || part.state === "denied") continue;
-    const diff = part.diff || editPreview(part);
+    const diff = toolDiff(part);
     const path = toolPath(part);
     if (!diff || !path) continue;
     current ??= {

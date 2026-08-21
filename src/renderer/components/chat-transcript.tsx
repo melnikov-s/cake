@@ -21,6 +21,7 @@ import { Reasoning } from "@/components/ai-elements/reasoning";
 import { Source } from "@/components/ai-elements/source";
 import { Tool } from "@/components/ai-elements/tool";
 import { diffStats } from "@/components/ai-elements/diff-view";
+import { WorkLogDiff } from "@/components/ai-elements/work-log-diff";
 import { ArtifactHost } from "@/components/artifact-host";
 import { CompactionMessage } from "@/components/compaction-message";
 import { CopyErrorDetailsButton } from "@/components/copy-error-details-button";
@@ -34,6 +35,7 @@ import {
 } from "@/components/message-comment-popover";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { UiPart } from "../../ipc/session-contract";
+import { toolDiff } from "../../utils/turn-diff";
 import type { ArtifactInteractionStore } from "../stores/ArtifactInteractionStore";
 import type { ChatStore } from "../stores/ChatStore";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
@@ -249,6 +251,8 @@ export interface ChatTranscriptBehavior {
 interface CanonicalTranscriptBehavior extends ChatTranscriptBehavior {
   thinkingExpanded: boolean;
   onToggleThinking(): void;
+  workLogDiff: boolean;
+  onToggleWorkLogDiff(): void;
   renderChat(store: ChatStore): ReactNode;
 }
 
@@ -645,6 +649,7 @@ function ActivityGroup({
   behavior: CanonicalTranscriptBehavior;
   isStreaming: boolean;
 }) {
+  const [open, setOpen] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
   const logIsAtBottomRef = useRef(true);
   const tools = parts.filter((part) => part.kind === "tool").length;
@@ -658,10 +663,10 @@ function ActivityGroup({
   );
   const activityIsRunning =
     reasoningIsStreaming || toolParts.some((part) => part.state === "running");
-  const editParts = toolParts.filter((part) => part.name === "edit" && Boolean(part.diff));
+  const editParts = toolParts.filter((part) => part.name === "edit" && Boolean(toolDiff(part)));
   const editTotals = editParts.reduce(
     (total, part) => {
-      const stats = diffStats(part.diff!);
+      const stats = diffStats(toolDiff(part)!);
       return {
         additions: total.additions + stats.additions,
         deletions: total.deletions + stats.deletions,
@@ -677,9 +682,9 @@ function ActivityGroup({
         : `${tools} tool ${tools === 1 ? "call" : "calls"}`;
   const activityVersion = JSON.stringify(parts);
   useLayoutEffect(() => {
-    if (!isStreaming || !logRef.current || !logIsAtBottomRef.current) return;
+    if (!isStreaming || !open || !logRef.current || !logIsAtBottomRef.current) return;
     logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [activityVersion, isStreaming]);
+  }, [activityVersion, isStreaming, open]);
   if (tools === 0 && !reasoningHasContent)
     return (
       <div className="activity-group activity-group-status" role="status">
@@ -691,25 +696,48 @@ function ActivityGroup({
       </div>
     );
   return (
-    <details className="activity-group">
-      <summary>
+    <details className="activity-group" open={open}>
+      <summary
+        onClick={(event) => {
+          event.preventDefault();
+          setOpen((value) => !value);
+        }}
+      >
         <span
           className={`work-log-state${activityIsRunning ? " work-log-running" : ""}`}
           aria-label={activityIsRunning ? "working" : "complete"}
         />
         Work log <small>{label}</small>
+        <button
+          type="button"
+          className="work-log-view-toggle"
+          aria-pressed={behavior.workLogDiff}
+          title={behavior.workLogDiff ? "Show plain work log" : "Show file diff"}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            behavior.onToggleWorkLogDiff();
+            setOpen(true);
+          }}
+        >
+          {behavior.workLogDiff ? "Log" : "Diff"}
+        </button>
       </summary>
-      <div
-        ref={logRef}
-        onScroll={(event) => {
-          const log = event.currentTarget;
-          logIsAtBottomRef.current = log.scrollHeight - log.clientHeight - log.scrollTop <= 1;
-        }}
-      >
-        {parts.map((part) => (
-          <TranscriptPart key={part.id} part={part} behavior={behavior} />
-        ))}
-      </div>
+      {open && (
+        <div
+          ref={logRef}
+          onScroll={(event) => {
+            const log = event.currentTarget;
+            logIsAtBottomRef.current = log.scrollHeight - log.clientHeight - log.scrollTop <= 1;
+          }}
+        >
+          {behavior.workLogDiff ? (
+            <WorkLogDiff parts={parts} streaming={activityIsRunning} />
+          ) : (
+            parts.map((part) => <TranscriptPart key={part.id} part={part} behavior={behavior} />)
+          )}
+        </div>
+      )}
     </details>
   );
 }
@@ -820,6 +848,8 @@ export const ChatTranscript = observer(function ChatTranscript({
     ...behavior,
     thinkingExpanded: store.thinkingExpanded,
     onToggleThinking: () => store.toggleThinking(),
+    workLogDiff: store.workLogDiff,
+    onToggleWorkLogDiff: () => store.toggleWorkLogDiff(),
     renderChat,
   };
   const scrollToLatest = useCallback(() => {

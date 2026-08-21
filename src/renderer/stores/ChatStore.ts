@@ -39,6 +39,7 @@ export interface ChatStoreProps {
 export class ChatStore extends Store<ChatStoreProps> {
   draft = "";
   thinkingExpanded = false;
+  workLogDiff = false;
   submittingLocally = false;
   loadingStartedAt: number | undefined;
 
@@ -132,6 +133,14 @@ export class ChatStore extends Store<ChatStoreProps> {
 
   toggleThinking() {
     this.setThinkingExpanded(!this.thinkingExpanded);
+  }
+
+  setWorkLogDiff(showDiff: boolean) {
+    this.workLogDiff = showDiff;
+  }
+
+  toggleWorkLogDiff() {
+    this.setWorkLogDiff(!this.workLogDiff);
   }
 
   async submit(value = this.draft, mode: ChatSubmitMode = "send") {

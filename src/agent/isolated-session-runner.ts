@@ -142,7 +142,7 @@ export async function runIsolatedSession(
       const projectLiveMessage = createLiveMessageProjector();
       const activeToolCalls = new Map<
         string,
-        { input: string; artifactId?: string; filePath?: string }
+        { input: string; artifactId?: string; filePath?: string; diff?: string }
       >();
       const unsubscribe = session.subscribe((event) => {
         for (const part of projectLiveMessage(event)) {
@@ -172,15 +172,18 @@ export async function runIsolatedSession(
             input: formatToolInput(event.toolName, event.args),
             artifactId: toolArtifactId(event.args),
             filePath: toolFilePath(event.toolName, event.args),
+            diff: undefined,
           };
-          activeToolCalls.set(event.toolCallId, call);
+          const diff = toolResultDiff(event.toolName, event.partialResult) ?? call.diff;
+          const nextCall = diff ? { ...call, diff } : call;
+          activeToolCalls.set(event.toolCallId, nextCall);
           options.onEvent?.({
             type: "part-updated",
             part: {
               id: boundedProjectionKey(`tool-${event.toolCallId}`),
               kind: "tool",
               name: event.toolName,
-              ...call,
+              ...nextCall,
               output: formatUnknown(event.partialResult),
               state: "running",
             },
@@ -199,7 +202,7 @@ export async function runIsolatedSession(
               output: formatUnknown(event.result),
               artifactId: toolArtifactId(event.result) ?? call?.artifactId,
               filePath: call?.filePath,
-              diff: toolResultDiff(event.toolName, event.result),
+              diff: toolResultDiff(event.toolName, event.result) ?? call?.diff,
               state: event.isError ? "error" : "success",
             },
           });

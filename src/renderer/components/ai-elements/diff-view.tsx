@@ -28,6 +28,7 @@ export function parseDiff(diff: string): DiffLine[] {
       newNumber = Number(hunk[2]);
       return { key: `${index}-${line}`, kind: "meta", content: `@@${hunk[3] ?? ""}` };
     }
+    if (line.startsWith("@@")) return { key: `${index}-${line}`, kind: "meta", content: line };
     if (
       line.startsWith("---") ||
       line.startsWith("+++") ||

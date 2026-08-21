@@ -3,6 +3,7 @@ import { useState } from "react";
 import { z } from "zod";
 import { jsonObjectSchema, jsonValueSchema } from "../../../ipc/json-contract";
 import type { UiPart } from "../../../ipc/session-contract";
+import { toolDiff } from "../../../utils/turn-diff";
 import { DiffView } from "./diff-view";
 import { fencedCode, Markdown } from "./markdown";
 import { SubagentTool } from "./subagent-tool";
@@ -45,35 +46,10 @@ function toolCode(value: string, className: string) {
   return <Markdown className={className}>{fencedCode(source, language)}</Markdown>;
 }
 
-function editPreview(part: Extract<UiPart, { kind: "tool" }>) {
-  if (part.name !== "edit") return undefined;
-  if (part.diff) return part.diff;
-  try {
-    const input = z
-      .object({
-        edits: z
-          .array(z.object({ oldText: z.string().optional(), newText: z.string().optional() }))
-          .optional(),
-      })
-      .parse(JSON.parse(part.input));
-    const edits = Array.isArray(input.edits) ? input.edits : [];
-    if (edits.length === 0) return undefined;
-    return edits
-      .flatMap((edit, index) => [
-        ...(index > 0 ? [`@@ change ${index + 1} @@`] : []),
-        ...(edit.oldText ?? "").split("\n").map((line) => `-${line}`),
-        ...(edit.newText ?? "").split("\n").map((line) => `+${line}`),
-      ])
-      .join("\n");
-  } catch {
-    return undefined;
-  }
-}
-
 export function Tool({ part }: { part: Extract<UiPart, { kind: "tool" }> }) {
   const [open, setOpen] = useState(false);
   if (part.name.startsWith("subagent_")) return <SubagentTool part={part} />;
-  const diff = editPreview(part);
+  const diff = toolDiff(part);
   const title = toolTitle(part);
   const bash = part.name === "bash" && part.input ? part.input : undefined;
   const hasDetails = Boolean(diff || bash || part.input || part.output);

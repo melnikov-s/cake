@@ -86,14 +86,25 @@ function Transcript({
   isStreaming: boolean;
   isSubmitting?: boolean;
   hideThinking?: boolean;
-  behavior: ChatTranscriptBehavior & { thinkingExpanded: boolean; onToggleThinking(): void };
+  behavior: ChatTranscriptBehavior & {
+    thinkingExpanded: boolean;
+    onToggleThinking(): void;
+    workLogDiff?: boolean;
+    onToggleWorkLogDiff?(): void;
+  };
   empty?: React.ReactNode;
   footer?: React.ReactNode;
   error?: string;
   errorDetails?: string;
   errorTitle?: string;
 }) {
-  const { thinkingExpanded, onToggleThinking, ...transcriptBehavior } = behavior;
+  const {
+    thinkingExpanded,
+    onToggleThinking,
+    workLogDiff = false,
+    onToggleWorkLogDiff = () => undefined,
+    ...transcriptBehavior
+  } = behavior;
   const store = {
     id: sessionId,
     parts,
@@ -102,6 +113,8 @@ function Transcript({
     hideThinking,
     thinkingExpanded,
     toggleThinking: onToggleThinking,
+    workLogDiff,
+    toggleWorkLogDiff: onToggleWorkLogDiff,
     error: undefined,
   } as unknown as ChatStore;
   return (
@@ -371,6 +384,7 @@ describe("Transcript scrolling", () => {
     act(() =>
       root.render(<TestTranscript sessionId="session-1" store={storeWith([first], true)} />),
     );
+    act(() => container.querySelector<HTMLElement>(".activity-group > summary")!.click());
     const log = container.querySelector<HTMLDivElement>(".activity-group > div")!;
     Object.defineProperties(log, {
       clientHeight: { configurable: true, value: 120 },
@@ -407,6 +421,7 @@ describe("Transcript scrolling", () => {
     act(() =>
       root.render(<TestTranscript sessionId="session-1" store={storeWith([first], true)} />),
     );
+    act(() => container.querySelector<HTMLElement>(".activity-group > summary")!.click());
     const log = container.querySelector<HTMLDivElement>(".activity-group > div")!;
     Object.defineProperties(log, {
       clientHeight: { configurable: true, value: 120 },
@@ -437,12 +452,13 @@ describe("Transcript scrolling", () => {
       root.render(<TestTranscript sessionId="session-1" store={storeWith([running], true)} />),
     );
     const log = container.querySelector<HTMLDetailsElement>(".activity-group")!;
-    const tool = container.querySelector<HTMLElement>(".tool-call")!;
-    const toolToggle = tool.querySelector<HTMLButtonElement>(".tool-summary")!;
     expect(log.open).toBe(false);
-    expect(toolToggle.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector(".tool-call")).toBeNull();
 
     act(() => container.querySelector<HTMLElement>(".activity-group > summary")!.click());
+    const tool = container.querySelector<HTMLElement>(".tool-call")!;
+    const toolToggle = tool.querySelector<HTMLButtonElement>(".tool-summary")!;
+    expect(toolToggle.getAttribute("aria-expanded")).toBe("false");
     act(() => toolToggle.click());
     expect(log.open).toBe(true);
     expect(toolToggle.getAttribute("aria-expanded")).toBe("true");
@@ -462,6 +478,55 @@ describe("Transcript scrolling", () => {
     expect(
       log.querySelector(':scope > summary .work-log-state[aria-label="complete"]'),
     ).not.toBeNull();
+  });
+
+  it("switches an expanded work log between its activity and streaming diff views", () => {
+    const running: UiPart = {
+      id: "tool-edit",
+      kind: "tool",
+      name: "edit",
+      input: JSON.stringify({
+        path: "src/app.ts",
+        edits: [{ oldText: "old", newText: "fresh" }],
+      }),
+      filePath: "src/app.ts",
+      state: "running",
+    };
+    const onToggleWorkLogDiff = vi.fn();
+    const render = (workLogDiff: boolean, part: UiPart = running) =>
+      root.render(
+        <Transcript
+          parts={[part]}
+          sessionId="session-1"
+          isStreaming
+          behavior={{
+            thinkingExpanded: false,
+            onToggleThinking: () => undefined,
+            workLogDiff,
+            onToggleWorkLogDiff,
+          }}
+          empty={<div />}
+        />,
+      );
+
+    act(() => render(false));
+    act(() => container.querySelector<HTMLElement>(".activity-group > summary")!.click());
+    const toggle = container.querySelector<HTMLButtonElement>(".work-log-view-toggle")!;
+    expect(toggle.textContent).toBe("Diff");
+    act(() => toggle.click());
+    expect(onToggleWorkLogDiff).toHaveBeenCalledOnce();
+    expect(container.querySelector(".activity-group")?.matches("[open]")).toBe(true);
+
+    act(() => render(true));
+    expect(container.querySelector(".work-log-diff")).not.toBeNull();
+    expect(container.querySelector(".tool-call")).toBeNull();
+    expect(container.querySelector(".work-log-diff")?.textContent).toContain("fresh");
+    expect(container.querySelector<HTMLButtonElement>(".work-log-view-toggle")?.textContent).toBe(
+      "Log",
+    );
+
+    act(() => render(true, { ...running, diff: "-4 old\n+4 updated" }));
+    expect(container.querySelector(".work-log-diff")?.textContent).toContain("updated");
   });
 
   it("shows empty reasoning as a non-expandable status", () => {
@@ -506,6 +571,8 @@ describe("Transcript scrolling", () => {
       log.querySelector(':scope > summary .work-log-state[aria-label="complete"]'),
     ).not.toBeNull();
     expect(log.querySelector(":scope > summary .tool-error")).toBeNull();
+    expect(log.querySelector(".tool-call")).toBeNull();
+    act(() => container.querySelector<HTMLElement>(".activity-group > summary")!.click());
     expect(log.querySelector('.tool-call .tool-error[aria-label="error"]')).not.toBeNull();
   });
 

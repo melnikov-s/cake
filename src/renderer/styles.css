@@ -3084,7 +3084,7 @@
 }
 .activity-group > summary::after {
   flex: none;
-  margin-left: auto;
+  margin-left: 0;
   content: "+";
   font-size: 14px;
 }
@@ -3092,8 +3092,29 @@
   content: "−";
 }
 .activity-group > summary small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font: inherit;
   opacity: 0.72;
+  white-space: nowrap;
+}
+.work-log-view-toggle {
+  flex: none;
+  margin-left: auto;
+  padding: 3px 7px;
+  border: 1px solid color-mix(in oklab, var(--border) 78%, transparent);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: 600 10px var(--font-mono);
+  cursor: pointer;
+}
+.work-log-view-toggle:hover,
+.work-log-view-toggle[aria-pressed="true"] {
+  border-color: color-mix(in oklab, var(--accent) 45%, var(--border));
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
+  color: var(--foreground);
 }
 .activity-group > summary > .work-log-state {
   margin-right: 0;
@@ -3138,6 +3159,22 @@
 }
 .activity-group > div > .tool-call {
   background: color-mix(in oklab, var(--card) 45%, transparent);
+}
+.work-log-diff {
+  display: grid;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  gap: 8px;
+}
+.work-log-diff .diff-scroll {
+  max-height: none;
+  overflow-y: visible;
+}
+.work-log-diff-empty {
+  padding: 12px 4px;
+  color: var(--muted-foreground);
+  font: 11px var(--font-mono);
 }
 .reasoning-block,
 .tool-call {
