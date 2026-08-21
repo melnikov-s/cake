@@ -117,11 +117,11 @@ export function ThinkingLevelSelect({
         onClick={() => (open ? setOpen(false) : openMenu())}
         onKeyDown={onKeyDown}
       >
-        {thinkingLevelLabel(value)}
+        <span className="thinking-level-label">{thinkingLevelLabel(value)}</span>
+        <span className="model-combobox-chevron" aria-hidden="true">
+          ⌄
+        </span>
       </button>
-      <span className="model-combobox-chevron" aria-hidden="true">
-        ⌄
-      </span>
       {open && (
         <div className="model-combobox-popover">
           <div

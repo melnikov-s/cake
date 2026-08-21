@@ -3960,8 +3960,24 @@ button.reasoning-summary {
   dominant-baseline: central;
 }
 .thinking-level-select .thinking-level-trigger {
+  display: inline-flex;
+  width: auto;
+  align-items: center;
+  gap: 6px;
+  padding-right: 9px;
   cursor: pointer;
   text-align: left;
+}
+.thinking-level-select .thinking-level-trigger .thinking-level-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thinking-level-select .thinking-level-trigger .model-combobox-chevron {
+  position: static;
+  flex: 0 0 auto;
+  transform: none;
 }
 .thinking-level-select .thinking-level-trigger:disabled {
   cursor: default;
@@ -3969,6 +3985,12 @@ button.reasoning-summary {
 }
 .thinking-level-select.settings {
   width: 100%;
+}
+.thinking-level-select.settings .thinking-level-trigger {
+  width: 100%;
+}
+.thinking-level-select.settings .thinking-level-trigger .model-combobox-chevron {
+  margin-left: auto;
 }
 .fast-mode-toggle {
   display: inline-flex;
