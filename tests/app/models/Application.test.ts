@@ -29,7 +29,7 @@ describe("Application", () => {
     model.removeProject("/work/cake");
     expect(model.projects).toBe(projects);
     expect(model.trustedProjectPaths).toBe(trustedProjectPaths);
-    expect(model.resolvedSessionIds).not.toBe(resolvedSessionIds);
+    expect(model.resolvedSessionIds).toBe(resolvedSessionIds);
     expect(model.snapshot().projects).toEqual([]);
     expect(model.snapshot().resolvedCakeChatSessionIds).toEqual([]);
     expect(model.isProjectTrusted("/work/cake")).toBe(false);

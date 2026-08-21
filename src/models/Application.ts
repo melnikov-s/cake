@@ -1,4 +1,4 @@
-import { Model, child, toSnapshot } from "r-state-tree";
+import { Model, child, observable, toSnapshot } from "r-state-tree";
 import { Project } from "./Project";
 import {
   applicationStateSchema,
@@ -13,10 +13,10 @@ export class Application extends Model {
   schemaVersion = 1 as const;
   @child(Project)
   projects: Project[] = [];
-  resolvedSessionIds: string[] = [];
-  resolvedCakeChatSessionIds: string[] = [];
-  trustedProjectPaths: string[] = [];
-  fastModeSessionIds: string[] = [];
+  resolvedSessionIds: string[] = observable([]);
+  resolvedCakeChatSessionIds: string[] = observable([]);
+  trustedProjectPaths: string[] = observable([]);
+  fastModeSessionIds: string[] = observable([]);
   utilityModel: UtilityModel | undefined;
   editorCommand = DEFAULT_EDITOR_COMMAND;
 
@@ -69,10 +69,9 @@ export class Application extends Model {
   }
 
   setSessionFastMode(sessionId: string, enabled: boolean) {
-    const next = new Set(this.fastModeSessionIds);
-    if (enabled) next.add(sessionId);
-    else next.delete(sessionId);
-    this.fastModeSessionIds = [...next];
+    const index = this.fastModeSessionIds.indexOf(sessionId);
+    if (enabled && index === -1) this.fastModeSessionIds.push(sessionId);
+    else if (!enabled && index !== -1) this.fastModeSessionIds.splice(index, 1);
   }
 
   hasSessionFastMode(sessionId: string) {
@@ -81,21 +80,20 @@ export class Application extends Model {
 
   setCakeChatSessionResolved(sessionId: string, resolved: boolean) {
     const index = this.resolvedCakeChatSessionIds.indexOf(sessionId);
-    if (resolved && index === -1)
-      this.resolvedCakeChatSessionIds = [...this.resolvedCakeChatSessionIds, sessionId];
-    else if (!resolved && index !== -1)
-      this.resolvedCakeChatSessionIds = this.resolvedCakeChatSessionIds.filter(
-        (id) => id !== sessionId,
-      );
+    if (resolved && index === -1) this.resolvedCakeChatSessionIds.push(sessionId);
+    else if (!resolved && index !== -1) this.resolvedCakeChatSessionIds.splice(index, 1);
   }
 
   setSessionsResolved(sessionIds: readonly string[], resolved: boolean) {
-    const next = new Set(this.resolvedSessionIds);
-    for (const sessionId of sessionIds) {
-      if (resolved) next.add(sessionId);
-      else next.delete(sessionId);
+    if (resolved) {
+      for (const sessionId of sessionIds)
+        if (!this.resolvedSessionIds.includes(sessionId)) this.resolvedSessionIds.push(sessionId);
+      return;
     }
-    this.resolvedSessionIds = [...next];
+    for (const sessionId of sessionIds) {
+      const index = this.resolvedSessionIds.indexOf(sessionId);
+      if (index !== -1) this.resolvedSessionIds.splice(index, 1);
+    }
   }
 
   isProjectTrusted(path: string) {
