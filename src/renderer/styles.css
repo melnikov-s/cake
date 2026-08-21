@@ -4622,7 +4622,7 @@ button.reasoning-summary {
   resize: vertical;
   font-family: var(--font-mono);
 }
-.extension-notifications {
+.toast-stack {
   position: fixed;
   z-index: 60;
   top: 64px;
@@ -4631,7 +4631,7 @@ button.reasoning-summary {
   width: min(24rem, calc(100vw - 28px));
   gap: 8px;
 }
-.extension-notifications button {
+.toast-stack button {
   border-top: 0;
   border-right: 0;
   border-bottom: 0;

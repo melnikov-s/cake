@@ -18,6 +18,8 @@ import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorS
 import { AppControlOperationStore } from "./AppControlOperationStore";
 import { ProjectCatalogStore } from "./ProjectCatalogStore";
 import { WindowPersistenceCoordinatorStore } from "./WindowPersistenceCoordinatorStore";
+import { ToastStore } from "./ToastStore";
+import { describeError } from "../error-details";
 import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
 
 export class RootStore extends Store<{ client: DesktopClient }> {
@@ -53,6 +55,19 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       this.appShellStore.selectProjectSession(sessionId);
     }
     await opening;
+  }
+
+  async openFileInEditor(workspacePath: string, path: string) {
+    try {
+      await this.client.openFileInEditor(workspacePath, path);
+    } catch (error) {
+      const described = describeError(error, `File: ${path}`);
+      this.toastStore.show({
+        tone: "error",
+        title: "Could not open editor",
+        message: described.message,
+      });
+    }
   }
 
   async openSessionChanges(sessionId: string) {
@@ -133,6 +148,11 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       projectName: (workspacePath) => this.projectCatalogStore.nameForPath(workspacePath),
       abort: () => this.projectWorkbenchStore.abort(),
     });
+  }
+
+  @child
+  get toastStore(): ToastStore {
+    return createStore(ToastStore, {});
   }
 
   @child
