@@ -4267,30 +4267,6 @@ button.reasoning-summary {
   font-size: 12px;
   line-height: 1.5;
 }
-.settings-runtime {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--muted-foreground);
-  font: 10px var(--font-mono);
-  text-transform: capitalize;
-}
-.settings-runtime i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-.settings-runtime.status-ready i {
-  background: oklch(0.68 0.15 155);
-}
-.settings-runtime.status-failed i,
-.settings-runtime.status-stopped i {
-  background: oklch(0.62 0.19 28);
-}
 .settings-source {
   padding: 5px 8px;
   border: 1px solid color-mix(in oklch, var(--accent) 32%, var(--border));

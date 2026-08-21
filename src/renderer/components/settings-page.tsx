@@ -66,10 +66,6 @@ export const SettingsPage = observer(function SettingsPage({
             <h2 id="pi-settings-title">Current chat</h2>
             <p>Model and reasoning changes apply to this chat and become Pi’s defaults.</p>
           </div>
-          <span className={`settings-runtime status-${store.piState}`}>
-            <i />
-            {store.piState}
-          </span>
         </header>
         {store.session ? (
           <div className="settings-fields">
