@@ -233,7 +233,18 @@ export const Chat = observer(function Chat({
         footer={footer}
         error={error}
         virtualized={!compact}
-        renderChat={(nestedStore) => <Chat store={nestedStore} embedded compact />}
+        renderChat={(nestedStore) => (
+          <Chat
+            store={nestedStore}
+            embedded
+            compact
+            transcriptBehavior={
+              transcriptBehavior?.openFileInEditor
+                ? { openFileInEditor: transcriptBehavior.openFileInEditor }
+                : undefined
+            }
+          />
+        )}
       />
       {composer}
     </div>

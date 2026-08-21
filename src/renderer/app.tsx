@@ -676,6 +676,7 @@ export const Sidebar = observer(function Sidebar({
   };
   const activeCakeChats = store.cakeChatSessions();
   const resolvedCakeChats = store.cakeChatSessions(true);
+  const projectPaths = projects.orderedProjectPaths;
   return (
     <aside className="sidebar">
       <div className="sidebar-window-tools">
@@ -702,10 +703,10 @@ export const Sidebar = observer(function Sidebar({
             </button>
           </div>
         </div>
-        {projects.recentProjectPaths.length === 0 ? (
+        {projectPaths.length === 0 ? (
           <p className="sidebar-empty">Add a folder to start a project.</p>
         ) : (
-          projects.recentProjectPaths.map((path) => renderProjectGroup(path, false))
+          projectPaths.map((path) => renderProjectGroup(path, false))
         )}
         {store.hasResolvedSessions && (
           <section className="resolved-lane" aria-labelledby="resolved-lane-heading">
@@ -729,7 +730,7 @@ export const Sidebar = observer(function Sidebar({
             {store.resolvedLaneExpanded && (
               <div id="resolved-lane-content" className="resolved-lane-content">
                 {renderCakeChatGroup(resolvedCakeChats, true)}
-                {projects.recentProjectPaths.map((path) => renderProjectGroup(path, true))}
+                {projectPaths.map((path) => renderProjectGroup(path, true))}
               </div>
             )}
           </section>
@@ -1053,6 +1054,8 @@ export const App = observer(function App() {
                   onFork: (entryId) => {
                     void store.forkAt(entryId);
                   },
+                  openFileInEditor: (path) =>
+                    root.client.openFileInEditor(session.workspacePath, path),
                   onOpenReviewRun: (threadId) => {
                     void store.openSessionChanges(threadId);
                   },

@@ -1,16 +1,20 @@
 import { Store, observable } from "r-state-tree";
-import type {
-  ApplicationState,
-  PiSettingUpdate,
-  ThinkingLevel,
-  UtilityModel,
+import {
+  DEFAULT_EDITOR_COMMAND,
+  type ApplicationState,
+  type PiSettingUpdate,
+  type ThinkingLevel,
+  type UtilityModel,
 } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { describeError } from "../error-details";
 
 export interface SettingsStoreProps {
-  client: Pick<DesktopClient, "setPiSetting" | "reloadPi" | "login" | "logout" | "setUtilityModel">;
+  client: Pick<
+    DesktopClient,
+    "setPiSetting" | "reloadPi" | "login" | "logout" | "setEditorCommand" | "setUtilityModel"
+  >;
   sessionContext(): { sessionId: string } | undefined;
   operations: SessionOperationCoordinatorStore;
 }
@@ -23,11 +27,15 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   );
   utilityModel: UtilityModel | undefined;
   utilityModelSaving = false;
+  editorCommand = DEFAULT_EDITOR_COMMAND;
   error: string | undefined;
   errorDetails: string | undefined;
   private utilitySaveRevision = 0;
   private utilitySaveQueue: Promise<unknown> = Promise.resolve();
   private persistedUtilityModel: UtilityModel | undefined;
+  private editorSaveRevision = 0;
+  private editorSaveQueue: Promise<unknown> = Promise.resolve();
+  private persistedEditorCommand = DEFAULT_EDITOR_COMMAND;
   get activeOperations() {
     return this.props.operations.active("settings");
   }
@@ -45,6 +53,31 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   applyApplicationState(state: ApplicationState) {
     this.persistedUtilityModel = state.utilityModel;
     this.utilityModel = state.utilityModel;
+    this.persistedEditorCommand = state.editorCommand?.trim() || DEFAULT_EDITOR_COMMAND;
+    this.editorCommand = this.persistedEditorCommand;
+  }
+
+  setEditorCommand(command: string) {
+    const revision = ++this.editorSaveRevision;
+    const normalized = command.trim() || DEFAULT_EDITOR_COMMAND;
+    this.editorCommand = normalized;
+    this.error = undefined;
+    this.errorDetails = undefined;
+    const save = this.editorSaveQueue
+      .catch(() => undefined)
+      .then(() => this.props.client.setEditorCommand(normalized))
+      .then((state) => {
+        this.persistedEditorCommand = state.editorCommand?.trim() || DEFAULT_EDITOR_COMMAND;
+        if (revision === this.editorSaveRevision) this.editorCommand = this.persistedEditorCommand;
+      })
+      .catch((error) => {
+        if (revision === this.editorSaveRevision) {
+          this.editorCommand = this.persistedEditorCommand;
+          this.reportError(error);
+        }
+      });
+    this.editorSaveQueue = save;
+    return save;
   }
 
   selectUtilityModel(value: string) {

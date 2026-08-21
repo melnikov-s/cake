@@ -323,6 +323,25 @@ export const SettingsPage = observer(function SettingsPage({
         )}
       </section>
 
+      <section className="settings-section" aria-labelledby="editor-title">
+        <header>
+          <div>
+            <h2 id="editor-title">Editor</h2>
+            <p>Open files from work logs in the editor you use for this project.</p>
+          </div>
+          <span className="settings-source">Cake</span>
+        </header>
+        <div className="settings-fields">
+          <SettingsTextField
+            label="Editor command"
+            description="Executable used to open files. VS Code is the default (code)."
+            value={settings.editorCommand}
+            placeholder="code"
+            onApply={(value) => void settings.setEditorCommand(value)}
+          />
+        </div>
+      </section>
+
       <section className="settings-section" aria-labelledby="resources-title">
         <header>
           <div>

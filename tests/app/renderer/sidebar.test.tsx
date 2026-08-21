@@ -29,6 +29,7 @@ function sidebarProps(store: ProjectWorkbenchStore) {
     } as any,
     projects: {
       recentProjectPaths: fixture.recentProjectPaths,
+      orderedProjectPaths: fixture.orderedProjectPaths ?? fixture.recentProjectPaths,
       projects: fixture.projects,
       nameFromPath: fixture.nameFromPath,
       nameForPath: (path: string) =>

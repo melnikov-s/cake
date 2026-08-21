@@ -1,18 +1,18 @@
-import { Model, id, observable, state } from "r-state-tree";
+import { Model, id, observable } from "r-state-tree";
 import type { CompatibilityResource as CompatibilityResourceRecord } from "../ipc/session-contract";
 
 export class CompatibilityResource extends Model {
   @id id = "";
-  @state kind: CompatibilityResourceRecord["kind"] = "extension";
-  @state name = "";
-  @state description: string | undefined;
-  @state path: string | undefined;
-  @state source = "";
-  @state scope: CompatibilityResourceRecord["scope"] = "user";
-  @state origin: CompatibilityResourceRecord["origin"] = "top-level";
-  @state commands: string[] = observable([]);
-  @state tools: string[] = observable([]);
-  @state enabled = true;
+  kind: CompatibilityResourceRecord["kind"] = "extension";
+  name = "";
+  description: string | undefined;
+  path: string | undefined;
+  source = "";
+  scope: CompatibilityResourceRecord["scope"] = "user";
+  origin: CompatibilityResourceRecord["origin"] = "top-level";
+  commands: string[] = observable([]);
+  tools: string[] = observable([]);
+  enabled = true;
 
   get value(): CompatibilityResourceRecord {
     return {

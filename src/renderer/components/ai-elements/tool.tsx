@@ -5,6 +5,7 @@ import { jsonObjectSchema, jsonValueSchema } from "../../../ipc/json-contract";
 import type { ToolOutputContent, UiPart } from "../../../ipc/session-contract";
 import { toolDiff } from "../../../utils/turn-diff";
 import { DiffView } from "./diff-view";
+import { EditorIcon } from "./editor-icon";
 import { languageForSource } from "./code";
 import { fencedCode, Markdown } from "./markdown";
 import { SubagentTool } from "./subagent-tool";
@@ -98,7 +99,18 @@ function readToolCode(part: Extract<UiPart, { kind: "tool" }>) {
   );
 }
 
-export function Tool({ part }: { part: Extract<UiPart, { kind: "tool" }> }) {
+function editorPath(part: Extract<UiPart, { kind: "tool" }>) {
+  if (part.name !== "read" && part.name !== "write" && part.name !== "edit") return undefined;
+  return toolPath(part);
+}
+
+export function Tool({
+  part,
+  onOpenFile,
+}: {
+  part: Extract<UiPart, { kind: "tool" }>;
+  onOpenFile?: (path: string) => void | Promise<void>;
+}) {
   const [open, setOpen] = useState(false);
   if (part.name.startsWith("subagent_")) return <SubagentTool part={part} />;
   const diff = toolDiff(part);
@@ -108,22 +120,36 @@ export function Tool({ part }: { part: Extract<UiPart, { kind: "tool" }> }) {
   const hasDetails = Boolean(
     diff || bash || part.input || part.output || part.outputContent?.length,
   );
+  const path = onOpenFile ? editorPath(part) : undefined;
   return (
     <div
       className={`tool-call rounded-xl border border-border bg-muted/35 px-4 py-3${diff ? " tool-edit" : ""}${open ? " tool-open" : ""}`}
     >
-      <button
-        type="button"
-        className="tool-summary cursor-pointer font-mono text-xs font-semibold"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-        disabled={!hasDetails}
-      >
-        <span className={`tool-state tool-${part.state}`} aria-label={part.state} />
-        <span className="tool-title" title={title}>
-          {title}
-        </span>
-      </button>
+      <div className="tool-summary-row">
+        <button
+          type="button"
+          className="tool-summary cursor-pointer font-mono text-xs font-semibold"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          disabled={!hasDetails}
+        >
+          <span className={`tool-state tool-${part.state}`} aria-label={part.state} />
+          <span className="tool-title" title={title}>
+            {title}
+          </span>
+        </button>
+        {path && (
+          <button
+            type="button"
+            className="tool-editor-button"
+            aria-label={`Open ${path} in editor`}
+            title="Open file in editor"
+            onClick={() => void onOpenFile?.(path)}
+          >
+            <EditorIcon />
+          </button>
+        )}
+      </div>
       {/* Keep Streamdown mounted: mounting it during a Virtuoso resize can feed its passive update back into measurement. */}
       {hasDetails && (
         <div className="tool-details" hidden={!open}>

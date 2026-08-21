@@ -1540,8 +1540,16 @@
 .syntax-token {
   font-style: normal;
 }
+:root[data-theme="light"] .syntax-token {
+  color: var(--shiki-light, var(--foreground)) !important;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .syntax-token {
+    color: var(--shiki-light, var(--foreground)) !important;
+  }
+}
 :root[data-theme="dark"] .syntax-token {
-  color: var(--shiki-dark) !important;
+  color: var(--shiki-dark, var(--foreground)) !important;
 }
 .review-thread,
 .review-thread-collapsed {
@@ -3227,17 +3235,49 @@ button.reasoning-summary {
   border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
   padding-top: 10px;
 }
-.tool-summary {
+.tool-summary-row {
   display: flex;
   width: 100%;
   max-width: 100%;
   min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+.tool-summary {
+  display: flex;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
   align-items: center;
   overflow: hidden;
   border: 0;
   background: transparent;
   color: inherit;
   text-align: left;
+}
+.tool-editor-button,
+.diff-editor-button {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  flex: none;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+.tool-editor-button:hover,
+.diff-editor-button:hover {
+  border-color: var(--border);
+  background: var(--muted);
+  color: var(--foreground);
+}
+.tool-editor-button svg,
+.diff-editor-button svg {
+  width: 14px;
+  height: 14px;
 }
 .tool-summary:disabled {
   cursor: default;
@@ -3366,11 +3406,11 @@ button.reasoning-summary {
   padding: 0 !important;
   overflow: hidden;
 }
-.tool-edit > .tool-summary {
+.tool-edit > .tool-summary-row {
   min-height: 38px;
   padding: 0 12px;
 }
-.tool-edit.tool-open > .tool-summary {
+.tool-edit.tool-open > .tool-summary-row {
   padding-block: 11px;
 }
 .diff-view {
@@ -3412,6 +3452,9 @@ button.reasoning-summary {
   color: oklch(0.58 0.18 28);
   font-style: normal;
   font-weight: 700;
+}
+.diff-view > header .diff-editor-button {
+  margin-left: 0;
 }
 .diff-scroll {
   width: 100%;

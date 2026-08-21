@@ -1,7 +1,8 @@
-import { Model, child, state, toSnapshot } from "r-state-tree";
+import { Model, child, toSnapshot } from "r-state-tree";
 import { Project } from "./Project";
 import {
   applicationStateSchema,
+  DEFAULT_EDITOR_COMMAND,
   utilityModelSchema,
   type ApplicationState,
   type ProjectRecord,
@@ -9,23 +10,20 @@ import {
 } from "../ipc/session-contract";
 
 export class Application extends Model {
-  @state
   schemaVersion = 1 as const;
   @child(Project)
   projects: Project[] = [];
-  @state
   resolvedSessionIds: string[] = [];
-  @state
   resolvedCakeChatSessionIds: string[] = [];
-  @state
   trustedProjectPaths: string[] = [];
-  @state
   fastModeSessionIds: string[] = [];
-  @state
   utilityModel: UtilityModel | undefined;
+  editorCommand = DEFAULT_EDITOR_COMMAND;
 
   static from(untrustedInput: unknown) {
-    return Application.create(applicationStateSchema.parse(untrustedInput));
+    const model = Application.create(applicationStateSchema.parse(untrustedInput));
+    model.setEditorCommand(model.editorCommand);
+    return model;
   }
 
   upsertProject(path: string, defaultName: string) {
@@ -64,6 +62,10 @@ export class Application extends Model {
 
   setUtilityModel(model: UtilityModel | undefined) {
     this.utilityModel = model ? utilityModelSchema.parse(model) : undefined;
+  }
+
+  setEditorCommand(command: string) {
+    this.editorCommand = command.trim() || DEFAULT_EDITOR_COMMAND;
   }
 
   setSessionFastMode(sessionId: string, enabled: boolean) {

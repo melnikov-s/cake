@@ -1,4 +1,4 @@
-import { Model, id, state } from "r-state-tree";
+import { Model, id } from "r-state-tree";
 import {
   cakeArtifactV1Schema,
   type ArtifactRecord,
@@ -7,18 +7,18 @@ import {
 
 export class Artifact extends Model {
   @id id = "";
-  @state protocol: CakeArtifactV1["protocol"] = "cake.artifact/v1";
-  @state sessionId = "";
-  @state revision = 1;
-  @state kind: CakeArtifactV1["kind"] = "markdown";
-  @state title: string | undefined;
-  @state payload: CakeArtifactV1["payload"] = { markdown: "" };
-  @state fallback: CakeArtifactV1["fallback"] = { markdown: "" };
-  @state interaction: CakeArtifactV1["interaction"] = undefined;
-  @state workspacePath = "";
-  @state digest = "";
-  @state createdAt = "";
-  @state updatedAt = "";
+  protocol: CakeArtifactV1["protocol"] = "cake.artifact/v1";
+  sessionId = "";
+  revision = 1;
+  kind: CakeArtifactV1["kind"] = "markdown";
+  title: string | undefined;
+  payload: CakeArtifactV1["payload"] = { markdown: "" };
+  fallback: CakeArtifactV1["fallback"] = { markdown: "" };
+  interaction: CakeArtifactV1["interaction"] = undefined;
+  workspacePath = "";
+  digest = "";
+  createdAt = "";
+  updatedAt = "";
 
   get value(): ArtifactRecord {
     return {

@@ -5,7 +5,7 @@ import type { ReviewThread } from "../../models/ReviewThread";
 import type { ReviewsStore } from "../stores/ReviewsStore";
 import { extractSourceSelection } from "./source-selection";
 import { Chat } from "./chat";
-import { highlightSource, type HighlightTokens } from "./ai-elements/code";
+import { highlightSource, syntaxTokenStyle, type HighlightTokens } from "./ai-elements/code";
 export { selectionColumn } from "./source-selection";
 export function useFileContent(path: string, readFile: (path: string) => Promise<string>) {
   const [state, setState] = useState<{
@@ -300,7 +300,7 @@ export const SourceReview = observer(function SourceReview({
                 ? tokens![index]!.map((token, tokenIndex) => (
                     <i
                       className="syntax-token"
-                      style={token.htmlStyle}
+                      style={syntaxTokenStyle(token)}
                       key={`${tokenIndex}-${token.content}`}
                     >
                       {token.content}

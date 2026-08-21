@@ -182,6 +182,7 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
 export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("choose-project") }),
   z.object({ type: z.literal("get-home-directory") }),
+  z.object({ type: z.literal("set-editor-command"), command: z.string().max(512) }),
   z.object({ type: z.literal("get-customization-state") }),
   z.object({ type: z.literal("get-plugin-authoring-reference") }),
   z.object({ type: z.literal("list-plugin-files") }),
@@ -315,6 +316,12 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("list-workspace-files"), workspacePath: z.string().max(4_096) }),
   z.object({
     type: z.literal("read-workspace-file"),
+    workspacePath: z.string().max(4_096),
+    path: z.string().min(1).max(8_192),
+  }),
+  z.object({
+    type: z.literal("open-file-in-editor"),
+    requestId: z.uuid(),
     workspacePath: z.string().max(4_096),
     path: z.string().min(1).max(8_192),
   }),

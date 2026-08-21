@@ -1,17 +1,17 @@
-import { Model, id, observable, state } from "r-state-tree";
+import { Model, id, observable } from "r-state-tree";
 import type { ModelOption as ModelOptionRecord } from "../ipc/session-contract";
 
 export class ModelOption extends Model {
   @id key = "";
-  @state provider = "";
-  @state providerName = "";
-  @state id = "";
-  @state name = "";
-  @state reasoning = false;
-  @state fastMode = false;
-  @state input: ModelOptionRecord["input"] = observable([]);
-  @state authenticated = false;
-  @state authSource: ModelOptionRecord["authSource"] = undefined;
-  @state authLabel: ModelOptionRecord["authLabel"] = undefined;
-  @state authTypes: ModelOptionRecord["authTypes"] = observable([]);
+  provider = "";
+  providerName = "";
+  id = "";
+  name = "";
+  reasoning = false;
+  fastMode = false;
+  input: ModelOptionRecord["input"] = observable([]);
+  authenticated = false;
+  authSource: ModelOptionRecord["authSource"] = undefined;
+  authLabel: ModelOptionRecord["authLabel"] = undefined;
+  authTypes: ModelOptionRecord["authTypes"] = observable([]);
 }

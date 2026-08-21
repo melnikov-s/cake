@@ -5,9 +5,11 @@ import { DiffView } from "./diff-view";
 export function WorkLogDiff({
   parts,
   streaming,
+  onOpenFile,
 }: {
   parts: readonly UiPart[];
   streaming: boolean;
+  onOpenFile?: (path: string) => void | Promise<void>;
 }) {
   const changes = workLogChanges(parts);
   if (changes.length === 0)
@@ -25,6 +27,7 @@ export function WorkLogDiff({
           diff={change.diff}
           filePath={change.path}
           label={streaming ? "Streaming changes" : "File changes"}
+          onOpenFile={onOpenFile}
         />
       ))}
     </div>

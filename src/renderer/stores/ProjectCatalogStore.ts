@@ -20,6 +20,30 @@ export class ProjectCatalogStore extends Store<{ sessions: SessionCatalogStore }
     return this.find(path)?.name ?? this.nameFromPath(path);
   }
 
+  get orderedProjectPaths() {
+    const persistedOrder = new Map(this.recentProjectPaths.map((path, index) => [path, index]));
+    const lastSessionByProject = new Map<string, string>();
+    for (const session of this.props.sessions.sessions) {
+      const previous = lastSessionByProject.get(session.workspacePath);
+      if (!previous || session.modified > previous)
+        lastSessionByProject.set(session.workspacePath, session.modified);
+    }
+
+    return [...this.recentProjectPaths].sort((left, right) => {
+      const leftLastSession = lastSessionByProject.get(left);
+      const rightLastSession = lastSessionByProject.get(right);
+      if (leftLastSession && rightLastSession && leftLastSession !== rightLastSession)
+        return rightLastSession.localeCompare(leftLastSession);
+      if (leftLastSession) return -1;
+      if (rightLastSession) return 1;
+
+      const leftLastOpened = this.find(left)?.lastOpenedAt ?? "";
+      const rightLastOpened = this.find(right)?.lastOpenedAt ?? "";
+      if (leftLastOpened !== rightLastOpened) return rightLastOpened.localeCompare(leftLastOpened);
+      return (persistedOrder.get(left) ?? 0) - (persistedOrder.get(right) ?? 0);
+    });
+  }
+
   applyApplicationState(state: ApplicationState) {
     this.projects.splice(0, this.projects.length, ...state.projects);
     this.props.sessions.applyResolvedState(state.resolvedSessionIds);

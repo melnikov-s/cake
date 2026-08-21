@@ -1,4 +1,4 @@
-import { Model, id, state } from "r-state-tree";
+import { Model, id } from "r-state-tree";
 import { uiPartSchema, type ToolOutputContent, type UiPart } from "../ipc/session-contract";
 
 type TextRole = Extract<UiPart, { kind: "text" }>["role"];
@@ -10,33 +10,33 @@ type DeliveryState = Extract<UiPart, { kind: "text" }>["deliveryState"];
 
 export class Message extends Model {
   @id id = "";
-  @state kind: UiPart["kind"] = "notice";
-  @state role: TextRole | undefined;
-  @state entryId: string | undefined;
-  @state text: string | undefined;
-  @state status: PartStatus | undefined;
-  @state deliveryState: DeliveryState | undefined;
-  @state name: string | undefined;
-  @state input: string | undefined;
-  @state output: string | undefined;
-  @state outputContent: ToolOutputContent[] | undefined;
-  @state artifactId: string | undefined;
-  @state filePath: string | undefined;
-  @state diff: string | undefined;
-  @state state: ToolState | undefined;
-  @state title: string | undefined;
-  @state url: string | undefined;
-  @state mediaType: string | undefined;
-  @state attachmentKind: AttachmentKind | undefined;
-  @state data: string | undefined;
-  @state tone: NoticeTone | undefined;
-  @state detail: string | undefined;
-  @state operationId: string | undefined;
-  @state threadIds: string[] | undefined;
-  @state commentCount: number | undefined;
-  @state summary: string | undefined;
-  @state tokensBefore: number | undefined;
-  @state firstKeptEntryId: string | undefined;
+  kind: UiPart["kind"] = "notice";
+  role: TextRole | undefined;
+  entryId: string | undefined;
+  text: string | undefined;
+  status: PartStatus | undefined;
+  deliveryState: DeliveryState | undefined;
+  name: string | undefined;
+  input: string | undefined;
+  output: string | undefined;
+  outputContent: ToolOutputContent[] | undefined;
+  artifactId: string | undefined;
+  filePath: string | undefined;
+  diff: string | undefined;
+  state: ToolState | undefined;
+  title: string | undefined;
+  url: string | undefined;
+  mediaType: string | undefined;
+  attachmentKind: AttachmentKind | undefined;
+  data: string | undefined;
+  tone: NoticeTone | undefined;
+  detail: string | undefined;
+  operationId: string | undefined;
+  threadIds: string[] | undefined;
+  commentCount: number | undefined;
+  summary: string | undefined;
+  tokensBefore: number | undefined;
+  firstKeptEntryId: string | undefined;
 
   get value(): UiPart {
     switch (this.kind) {

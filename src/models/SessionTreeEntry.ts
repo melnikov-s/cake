@@ -1,12 +1,12 @@
-import { Model, id, state } from "r-state-tree";
+import { Model, id } from "r-state-tree";
 
 export class SessionTreeEntry extends Model {
   @id id = "";
-  @state parentId: string | undefined;
-  @state type = "";
-  @state messageRole: string | undefined;
-  @state editorText: string | undefined;
-  @state label: string | undefined;
-  @state preview = "";
-  @state active = false;
+  parentId: string | undefined;
+  type = "";
+  messageRole: string | undefined;
+  editorText: string | undefined;
+  label: string | undefined;
+  preview = "";
+  active = false;
 }

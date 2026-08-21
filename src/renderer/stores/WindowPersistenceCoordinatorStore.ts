@@ -158,7 +158,7 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
       projectPath: workbench.projectPath,
       selectedSessionId: activeSession?.sessionId,
       activeConversation: this.props.shell().activeConversation,
-      recentProjectPaths: this.props.projects.recentProjectPaths.slice(),
+      recentProjectPaths: this.props.projects.orderedProjectPaths.slice(),
       draft: activeSession?.chatStore.draft ?? "",
       theme: this.props.settings().theme,
       thinkingExpanded: activeSession?.chatStore.thinkingExpanded ?? false,

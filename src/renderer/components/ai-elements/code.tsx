@@ -1,11 +1,25 @@
 /* Inspired by Vercel AI Elements code-block.tsx at 0c1f5e8c75273f0e95c8faa031544a8aa2bb1a5b (Apache-2.0). */
 import { code } from "@streamdown/code";
-import { useEffect, useState, type ComponentProps } from "react";
+import { useEffect, useState, type CSSProperties, type ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 
 export type HighlightResult = ReturnType<typeof code.highlight>;
 export type HighlightTokens = NonNullable<HighlightResult>["tokens"];
 type HighlightLanguage = Parameters<typeof code.highlight>[0]["language"];
+
+type HighlightToken = HighlightTokens[number][number];
+
+export function syntaxTokenStyle(token: HighlightToken): CSSProperties {
+  const style = {
+    ...token.htmlStyle,
+    // Shiki exposes the light color as `color` and the dark color as a CSS
+    // variable. Keep both values available so the renderer can switch themes
+    // without allowing a stale dark token color to bleed into light mode.
+    "--shiki-light": token.htmlStyle?.color ?? "var(--foreground)",
+  };
+  // SAFETY: React's CSSProperties omits custom properties, but this object is a valid inline CSS map.
+  return style as CSSProperties;
+}
 
 const languages = new Map<string, HighlightLanguage>([
   ["c", "c"],
@@ -54,7 +68,13 @@ export function highlightSource(
 ) {
   const accept = (result: NonNullable<HighlightResult>) => apply(result.tokens);
   const immediate = code.highlight(
-    { code: source, language: languageForSource(path), themes: code.getThemes() },
+    // Use a high-contrast light theme for source diffs; github-light renders
+    // punctuation and other neutral TypeScript tokens too faintly here.
+    {
+      code: source,
+      language: languageForSource(path),
+      themes: ["github-light-high-contrast", "github-dark"],
+    },
     accept,
   );
   if (immediate) accept(immediate);

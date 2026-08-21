@@ -1,11 +1,21 @@
 import { lstat, readFile, readdir, realpath } from "node:fs/promises";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import { basename, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
-import { app, BrowserWindow, dialog, ipcMain, shell, type WebContents } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeImage,
+  shell,
+  type WebContents,
+} from "electron";
 import { desktopRequestSchema, desktopResponseSchema, type DesktopEvent } from "../ipc/desktop-ipc";
 import {
+  DEFAULT_EDITOR_COMMAND,
   windowViewStateSchema,
   type Attachment,
   type WindowViewState,
@@ -36,6 +46,7 @@ import {
   registerInlineWidgetScheme,
 } from "./inline-widget-protocol";
 import { PluginAgentHost, resolveAgentModel } from "./plugin-agent-host";
+import cakeIconPath from "../assets/cake.png?asset";
 
 app.setName("Cake");
 registerInlineWidgetScheme();
@@ -305,6 +316,36 @@ function scheduleIdle(path: string) {
   }, 5 * 60_000);
 }
 
+function configureApplicationBranding() {
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: "Cake",
+        submenu: [
+          { role: "about", label: "About Cake" },
+          { type: "separator" },
+          { role: "services", submenu: [] },
+          { type: "separator" },
+          { role: "hide" },
+          { role: "hideOthers" },
+          { role: "unhide" },
+          { type: "separator" },
+          { role: "quit" },
+        ],
+      },
+      { role: "fileMenu" },
+      { role: "editMenu" },
+      { role: "viewMenu" },
+      { role: "windowMenu" },
+    ]),
+  );
+
+  if (process.platform === "darwin" && app.dock) {
+    const icon = nativeImage.createFromPath(cakeIconPath);
+    if (!icon.isEmpty()) app.dock.setIcon(icon);
+  }
+}
+
 function createWindow(slot = nextWindowSlot++) {
   const browserWindowOptions = {
     width: 1180,
@@ -313,6 +354,7 @@ function createWindow(slot = nextWindowSlot++) {
     minHeight: 560,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     backgroundColor: "#15191d",
+    icon: cakeIconPath,
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/preload.cjs"),
       contextIsolation: true,
@@ -515,6 +557,47 @@ async function listWorkspaceFiles(workspacePath: string) {
   }
 }
 
+async function resolveWorkspaceEditorTarget(workspacePath: string, requestedPath: string) {
+  if (!requestedPath.trim()) throw new Error("An editor path is required");
+  const workspace = await realpath(workspacePath);
+  const candidate = resolve(workspace, requestedPath);
+  const ensureInsideWorkspace = (target: string) => {
+    const relativePath = relative(workspace, target);
+    if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath))
+      throw new Error("File is outside the selected project");
+    return target;
+  };
+
+  let target: string;
+  try {
+    target = await realpath(candidate);
+  } catch {
+    const parent = ensureInsideWorkspace(await realpath(dirname(candidate)));
+    target = join(parent, basename(candidate));
+  }
+  return { workspace, target: ensureInsideWorkspace(target) };
+}
+
+function launchEditor(editorCommand: string, workspace: string, target: string) {
+  const command = editorCommand.trim() || DEFAULT_EDITOR_COMMAND;
+  return new Promise<void>((resolvePromise, reject) => {
+    const child = spawn(command, [target], {
+      cwd: workspace,
+      detached: true,
+      stdio: "ignore",
+    });
+    const handleError = (error: Error) => {
+      reject(new Error(`Could not open ${command}: ${error.message}`));
+    };
+    child.once("error", handleError);
+    child.once("spawn", () => {
+      child.removeListener("error", handleError);
+      child.unref();
+      resolvePromise();
+    });
+  });
+}
+
 async function chooseAttachments(window: BrowserWindow): Promise<Attachment[]> {
   const result = await dialog.showOpenDialog(window, {
     properties: ["openFile", "multiSelections"],
@@ -539,6 +622,14 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
   const request = desktopRequestSchema.parse(untrustedInput);
   const owner = BrowserWindow.fromWebContents(event.sender);
   const slot = windowSlots.get(event.sender.id) ?? 0;
+  if (request.type === "set-editor-command") {
+    applicationModel.setEditorCommand(request.command);
+    await persistApplicationState();
+    return desktopResponseSchema.parse({
+      type: "application-state-updated",
+      state: applicationModel.snapshot(),
+    });
+  }
   if (request.type === "get-customization-state")
     return desktopResponseSchema.parse({
       type: "customization-state",
@@ -954,6 +1045,16 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
     if (content.length > 2_000_000) throw new Error("File is too large to display");
     return desktopResponseSchema.parse({ type: "workspace-file", content });
   }
+  if (request.type === "open-file-in-editor") {
+    if (!allowedProjectPaths.has(request.workspacePath))
+      throw new Error("Project path was not selected by the user");
+    const { workspace, target } = await resolveWorkspaceEditorTarget(
+      request.workspacePath,
+      request.path,
+    );
+    await launchEditor(applicationModel.editorCommand, workspace, target);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
   if (request.type === "compile-inline-widget") {
     const compiled = await compileInlineWidget(
       request.language,
@@ -1230,6 +1331,7 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
 });
 
 app.whenReady().then(async () => {
+  configureApplicationBranding();
   handleInlineWidgetScheme();
   await pluginActivation.load();
   const startupRenderer = pluginActivation.startupRenderer();

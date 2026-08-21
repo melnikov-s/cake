@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { useHighlightedSource } from "./code";
+import { syntaxTokenStyle, useHighlightedSource } from "./code";
+import { EditorIcon } from "./editor-icon";
 
 export type DiffLine = {
   key: string;
@@ -68,10 +69,12 @@ export function DiffView({
   diff,
   filePath,
   label = "Changes",
+  onOpenFile,
 }: {
   diff: string;
   filePath?: string;
   label?: string;
+  onOpenFile?: (path: string) => void | Promise<void>;
 }) {
   const lines = useMemo(() => parseDiff(diff), [diff]);
   const source = useMemo(
@@ -88,6 +91,17 @@ export function DiffView({
           <b>+{stats.additions}</b>
           <i>−{stats.deletions}</i>
         </span>
+        {filePath && onOpenFile && (
+          <button
+            type="button"
+            className="diff-editor-button"
+            aria-label={`Open ${filePath} in editor`}
+            title="Open file in editor"
+            onClick={() => void onOpenFile?.(filePath)}
+          >
+            <EditorIcon />
+          </button>
+        )}
       </header>
       <div className="diff-scroll" role="table" aria-label="Code changes">
         {lines.map((line, index) =>
@@ -117,7 +131,7 @@ export function DiffView({
                   ? tokens![index]!.map((token, tokenIndex) => (
                       <i
                         className="syntax-token"
-                        style={token.htmlStyle}
+                        style={syntaxTokenStyle(token)}
                         key={`${tokenIndex}-${token.content}`}
                       >
                         {token.content}

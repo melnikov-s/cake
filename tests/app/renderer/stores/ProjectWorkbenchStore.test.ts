@@ -102,6 +102,7 @@ function createDesktopClient(restoredPath?: string) {
     suggestFiles: vi.fn(async () => []),
     listWorkspaceFiles: vi.fn(async () => []),
     readWorkspaceFile: vi.fn(async () => ""),
+    openFileInEditor: vi.fn(async () => undefined),
     compileInlineWidget: vi.fn(async () => ({
       url: "cake-widget://document/00000000-0000-4000-8000-000000000001",
       token: "00000000-0000-4000-8000-000000000001",
@@ -121,6 +122,13 @@ function createDesktopClient(restoredPath?: string) {
     })),
     saveWindowState: vi.fn(async () => undefined),
     loadApplicationState: vi.fn(async () => ({
+      schemaVersion: 1 as const,
+      projects: [],
+      resolvedSessionIds: [],
+      resolvedCakeChatSessionIds: [],
+      trustedProjectPaths: [],
+    })),
+    setEditorCommand: vi.fn(async () => ({
       schemaVersion: 1 as const,
       projects: [],
       resolvedSessionIds: [],

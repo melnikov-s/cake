@@ -1,13 +1,10 @@
-import { Model, id, state } from "r-state-tree";
+import { Model, id } from "r-state-tree";
 
 export class Project extends Model {
   @id
   path = "";
-  @state
   name = "";
-  @state
   addedAt = "";
-  @state
   lastOpenedAt = "";
 
   rename(name: string) {

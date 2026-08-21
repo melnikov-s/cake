@@ -3,7 +3,7 @@ import { observer } from "r-state-tree/react";
 import type { ChangedFile } from "../../ipc/session-contract";
 import type { ReviewAnchor, ReviewPoint } from "../../ipc/review-contract";
 import { parseDiff } from "./ai-elements/diff-view";
-import { useHighlightedSource } from "./ai-elements/code";
+import { syntaxTokenStyle, useHighlightedSource } from "./ai-elements/code";
 import { Button } from "./ui/button";
 import { LoadingState } from "./ui/loading-state";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
@@ -198,7 +198,7 @@ const HighlightedDiff = observer(function HighlightedDiff({
                   ? tokens![index]!.map((token, tokenIndex) => (
                       <i
                         className="syntax-token"
-                        style={token.htmlStyle}
+                        style={syntaxTokenStyle(token)}
                         key={`${tokenIndex}-${token.content}`}
                       >
                         {token.content}

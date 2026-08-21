@@ -1,13 +1,13 @@
-import { Model, id, state } from "r-state-tree";
+import { Model, id } from "r-state-tree";
 import type { ResourceDiagnostic as ResourceDiagnosticRecord } from "../ipc/session-contract";
 
 export class ResourceDiagnostic extends Model {
   @id id = "";
-  @state severity: ResourceDiagnosticRecord["severity"] = "info";
-  @state source: ResourceDiagnosticRecord["source"] = "runtime";
-  @state message = "";
-  @state path: string | undefined;
-  @state method: string | undefined;
+  severity: ResourceDiagnosticRecord["severity"] = "info";
+  source: ResourceDiagnosticRecord["source"] = "runtime";
+  message = "";
+  path: string | undefined;
+  method: string | undefined;
 
   get value(): ResourceDiagnosticRecord {
     return {

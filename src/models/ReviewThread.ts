@@ -1,14 +1,14 @@
-import { Model, applySnapshot, child, id, state, type Snapshot } from "r-state-tree";
+import { Model, applySnapshot, child, id, type Snapshot } from "r-state-tree";
 import type { ReviewAnchor, ReviewThread as ReviewThreadRecord } from "../ipc/review-contract";
 import type { UiPart } from "../ipc/session-contract";
 import { Message } from "./Message";
 
 export class ReviewThread extends Model {
   @id id = "";
-  @state workspacePath = "";
-  @state sessionId = "";
-  @state agentSessionId: string | undefined;
-  @state anchor: ReviewAnchor = {
+  workspacePath = "";
+  sessionId = "";
+  agentSessionId: string | undefined;
+  anchor: ReviewAnchor = {
     path: "",
     start: { diffLine: 0 },
     end: { diffLine: 0 },
@@ -18,11 +18,11 @@ export class ReviewThread extends Model {
     diff: "",
   };
   @child(Message) parts: Message[] = [];
-  @state usage: ReviewThreadRecord["usage"] = undefined;
-  @state status: ReviewThreadRecord["status"] = "open";
-  @state createdAt = "";
-  @state updatedAt = "";
-  @state resolvedAt: string | undefined;
+  usage: ReviewThreadRecord["usage"] = undefined;
+  status: ReviewThreadRecord["status"] = "open";
+  createdAt = "";
+  updatedAt = "";
+  resolvedAt: string | undefined;
 
   get uiParts() {
     return this.parts.map((part) => part.value);

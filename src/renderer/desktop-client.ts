@@ -185,6 +185,7 @@ export interface DesktopClient {
   suggestFiles(workspacePath: string, prefix: string): Promise<FileSuggestion[]>;
   listWorkspaceFiles(workspacePath: string): Promise<string[]>;
   readWorkspaceFile(workspacePath: string, path: string): Promise<string>;
+  openFileInEditor(workspacePath: string, path: string): Promise<void>;
   compileInlineWidget(
     language: InlineWidgetLanguage,
     source: string,
@@ -202,6 +203,7 @@ export interface DesktopClient {
   loadWindowState(): Promise<WindowViewState>;
   saveWindowState(state: WindowViewState): Promise<void>;
   loadApplicationState(): Promise<ApplicationState>;
+  setEditorCommand(command: string): Promise<ApplicationState>;
   setUtilityModel(model: UtilityModel | undefined): Promise<ApplicationState>;
   listSessions(): Promise<{ sessions: GlobalSessionSummary[]; reviewThreads: ReviewThread[] }>;
   loadSession(sessionId: string): Promise<SessionPreview | undefined>;
@@ -633,6 +635,17 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         throw new Error("Cake received invalid workspace file content");
       return response.content;
     },
+    async openFileInEditor(workspacePath, path) {
+      const requestId = crypto.randomUUID();
+      const response = await bridge.request({
+        type: "open-file-in-editor",
+        requestId,
+        workspacePath,
+        path,
+      });
+      if (response.type !== "accepted" || response.requestId !== requestId)
+        throw new Error("Cake received a mismatched editor response");
+    },
     async compileInlineWidget(language, source, capability) {
       const response = await bridge.request({
         type: "compile-inline-widget",
@@ -665,6 +678,12 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       const response = await bridge.request({ type: "load-application-state" });
       if (response.type !== "application-state-loaded")
         throw new Error("Cake received invalid application state");
+      return response.state;
+    },
+    async setEditorCommand(command) {
+      const response = await bridge.request({ type: "set-editor-command", command });
+      if (response.type !== "application-state-updated")
+        throw new Error("Cake could not update the editor command");
       return response.state;
     },
     async setUtilityModel(model) {

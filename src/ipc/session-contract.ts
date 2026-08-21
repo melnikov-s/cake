@@ -16,6 +16,8 @@ export const thinkingLevelSchema = z.enum([
   "max",
 ]);
 
+export const DEFAULT_EDITOR_COMMAND = "code";
+
 export const utilityModelSchema = z.object({
   provider: z.string().min(1).max(256),
   modelId: z.string().min(1).max(512),
@@ -448,6 +450,7 @@ export const applicationStateSchema = z.object({
   trustedProjectPaths: z.array(z.string().max(4_096)).max(200).default([]),
   fastModeSessionIds: z.array(z.string().max(256)).max(10_000).optional(),
   utilityModel: utilityModelSchema.optional(),
+  editorCommand: z.string().max(512).optional(),
 });
 
 export const windowConversationSelectionSchema = z.discriminatedUnion("kind", [

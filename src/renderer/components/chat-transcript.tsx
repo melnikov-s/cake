@@ -253,6 +253,7 @@ function selectionEndRect(range: Range) {
 export interface ChatTranscriptBehavior {
   onFork?(entryId: string): void;
   onOpenReviewRun?(threadId?: string): void;
+  openFileInEditor?(path: string): void | Promise<void>;
   waitingForUser?: boolean;
   inlineWidgets?: InlineWidgetStore;
   artifacts?: { records: ArtifactRecord[]; interaction: ArtifactInteractionStore };
@@ -590,7 +591,7 @@ function TranscriptPart({
         />
       );
     }
-    return <Tool part={part} />;
+    return <Tool part={part} onOpenFile={behavior.openFileInEditor} />;
   }
   if (part.kind === "source") return <Source title={part.title} url={part.url} />;
   if (part.kind === "attachment")
@@ -761,7 +762,11 @@ function ActivityGroup({
           }}
         >
           {behavior.workLogDiff ? (
-            <WorkLogDiff parts={parts} streaming={activityIsRunning} />
+            <WorkLogDiff
+              parts={parts}
+              streaming={activityIsRunning}
+              onOpenFile={behavior.openFileInEditor}
+            />
           ) : (
             parts.map((part) => <TranscriptPart key={part.id} part={part} behavior={behavior} />)
           )}
