@@ -548,6 +548,15 @@ export const SettingsPage = observer(function SettingsPage({
             <h2 id="providers-title">Providers</h2>
             <p>Connect the accounts and API keys that make models available to Pi.</p>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            disabled={!store.session || settings.refreshingModels}
+            onClick={() => void settings.refreshModels()}
+          >
+            {settings.refreshingModels ? "Refreshing…" : "Refresh models"}
+          </Button>
         </header>
         {providerGroups.length === 0 ? (
           <p className="settings-empty">Provider details will appear after a chat is open.</p>

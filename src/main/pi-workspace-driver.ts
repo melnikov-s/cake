@@ -70,6 +70,7 @@ type PiCommandType =
   | "set-fast-mode"
   | "set-pi-setting"
   | "reload-pi"
+  | "refresh-models"
   | "login"
   | "logout"
   | "respond-ui"
@@ -356,6 +357,7 @@ export class PiWorkspaceDriver {
             );
           }
         } else if (command.type === "reload-pi") await this.reloadRuntime(runtime);
+        else if (command.type === "refresh-models") await this.refreshModels(runtime);
         else if (command.type === "login") await runtime.login(command.provider, command.authType);
         else if (command.type === "logout") await runtime.logout(command.provider);
         else if (command.type === "rename-session") await runtime.rename(command.name);
@@ -676,6 +678,12 @@ export class PiWorkspaceDriver {
   private reloadRuntime(runtime: CakeRuntime) {
     if (!runtime.reload) throw new Error("This Pi runtime does not support reloading");
     return runtime.reload();
+  }
+
+  private refreshModels(runtime: CakeRuntime) {
+    if (!runtime.refreshModels)
+      throw new Error("This Pi runtime does not support refreshing models");
+    return runtime.refreshModels();
   }
 
   private async createRuntime(

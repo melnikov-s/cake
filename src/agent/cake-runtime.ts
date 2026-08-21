@@ -369,6 +369,7 @@ export interface CakeRuntime {
   syncFastMode?(): Promise<void>;
   setPiSetting(update: PiSettingUpdate): Promise<void>;
   reload?(): Promise<void>;
+  refreshModels?(): Promise<void>;
   login(provider: string, authType: "api_key" | "oauth"): Promise<void>;
   logout(provider: string): Promise<void>;
   rename(name: string): Promise<void>;
@@ -1130,6 +1131,46 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       await emitSnapshot();
     },
     reload: requestReload,
+    async refreshModels() {
+      options.onEvent({
+        type: "part-updated",
+        sessionId: cakeSessionId,
+        part: {
+          id: "pi-models-status",
+          kind: "notice",
+          tone: "info",
+          title: "Refreshing models",
+          detail: "Fetching the latest model catalog from providers.",
+        },
+      });
+      try {
+        await modelRuntime.refresh({ allowNetwork: true, force: true });
+        if (!disposed) {
+          options.onEvent({
+            type: "part-removed",
+            sessionId: cakeSessionId,
+            partId: "pi-models-status",
+          });
+        }
+      } catch (error) {
+        if (!disposed) {
+          options.onEvent({
+            type: "part-updated",
+            sessionId: cakeSessionId,
+            part: {
+              id: "pi-models-status",
+              kind: "notice",
+              tone: "error",
+              title: "Model refresh failed",
+              detail: error instanceof Error ? error.message : String(error),
+            },
+          });
+        }
+        throw error;
+      } finally {
+        await emitSnapshot();
+      }
+    },
     async login(provider, authType) {
       await modelRuntime.login(provider, authType, {
         async prompt(prompt) {

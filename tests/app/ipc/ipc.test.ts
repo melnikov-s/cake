@@ -174,6 +174,9 @@ describe("process IPC", () => {
       desktopRequestSchema.parse({ type: "reload-pi", requestId, sessionId: "session" }),
     ).toMatchObject({ type: "reload-pi", requestId });
     expect(
+      desktopRequestSchema.parse({ type: "refresh-models", requestId, sessionId: "session" }),
+    ).toMatchObject({ type: "refresh-models", requestId });
+    expect(
       desktopRequestSchema.parse({ type: "get-changelog", requestId, sessionId: "session" }),
     ).toMatchObject({ type: "get-changelog", requestId });
     expect(

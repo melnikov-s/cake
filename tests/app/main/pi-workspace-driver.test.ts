@@ -1235,4 +1235,45 @@ describe("PiWorkspaceDriver", () => {
     expect(response).toEqual({ answer: "yes" });
     driver[Symbol.dispose]();
   });
+
+  it("dispatches refresh-models to the active runtime and emits completion", async () => {
+    const events: DesktopEvent[] = [];
+    const refreshModels = vi.fn(async () => undefined);
+    const runtime: CakeRuntime = {
+      sessionId: snapshot.sessionId,
+      sessionFile: snapshot.sessionFile,
+      snapshot: vi.fn(async () => snapshot),
+      prompt: vi.fn(async () => undefined),
+      abort: vi.fn(async () => undefined),
+      setModel: vi.fn(async () => undefined),
+      setThinkingLevel: vi.fn(async () => undefined),
+      setPiSetting: vi.fn(async () => undefined),
+      refreshModels,
+      recordReviewRun: vi.fn(),
+      login: vi.fn(async () => undefined),
+      logout: vi.fn(async () => undefined),
+      rename: vi.fn(async () => undefined),
+      fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      navigate: vi.fn(async () => undefined),
+      dispose: vi.fn(),
+    };
+    const driver = new PiWorkspaceDriver({
+      ...piPaths,
+      workspacePath: "/project",
+      emit: (event) => events.push(event),
+      createRuntime: vi.fn(async () => runtime),
+    });
+    await driver.openAgent({ target: { kind: "attach", sessionId: snapshot.sessionId } });
+    const operationId = crypto.randomUUID();
+    driver.dispatch({
+      type: "refresh-models",
+      requestId: operationId,
+      sessionId: snapshot.sessionId,
+    });
+    await vi.waitFor(() => expect(refreshModels).toHaveBeenCalled());
+    await vi.waitFor(() =>
+      expect(events).toContainEqual({ type: "complete", requestId: operationId }),
+    );
+    driver[Symbol.dispose]();
+  });
 });

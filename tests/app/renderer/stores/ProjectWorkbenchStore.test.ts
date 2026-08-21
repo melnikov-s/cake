@@ -217,6 +217,7 @@ function createDesktopClient(restoredPath?: string) {
     setFastMode: vi.fn(async () => undefined),
     setPiSetting: vi.fn(async () => undefined),
     reloadPi: vi.fn(async () => undefined),
+    refreshModels: vi.fn(async () => undefined),
     login: vi.fn(async () => undefined),
     logout: vi.fn(async () => undefined),
     renameSession: vi.fn(async () => undefined),
@@ -566,6 +567,18 @@ describe("ProjectWorkbenchStore", () => {
       sessionId: "session-1",
     });
     desktop.emit({ type: "operation-completed", operationId: reloadOperationId });
+
+    expect(root.settingsStore.refreshingModels).toBe(false);
+    const refreshPromise = root.settingsStore.refreshModels();
+    expect(root.settingsStore.refreshingModels).toBe(true);
+    const refreshOperationId = root.settingsStore.activeOperations.at(-1)!;
+    expect(desktop.client.refreshModels).toHaveBeenCalledWith({
+      operationId: refreshOperationId,
+      sessionId: "session-1",
+    });
+    desktop.emit({ type: "operation-completed", operationId: refreshOperationId });
+    await refreshPromise;
+    expect(root.settingsStore.refreshingModels).toBe(false);
     root[Symbol.dispose]();
   });
 

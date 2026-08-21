@@ -519,6 +519,11 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("reload-pi"), requestId: z.uuid(), sessionId: z.string().max(256) }),
   z.object({
+    type: z.literal("refresh-models"),
+    requestId: z.uuid(),
+    sessionId: z.string().max(256),
+  }),
+  z.object({
     type: z.literal("login"),
     requestId: z.uuid(),
     provider: z.string(),

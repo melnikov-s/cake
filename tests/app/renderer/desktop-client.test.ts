@@ -78,6 +78,7 @@ describe("desktop client", () => {
     await client.inspectChanges({ operationId, sessionId: "session" });
     await client.getChangelog({ operationId, sessionId: "session" });
     await client.reloadPi({ operationId, sessionId: "session" });
+    await client.refreshModels({ operationId, sessionId: "session" });
     await client.promptGlobalChat({
       operationId,
       sessionId: "cake-chat",
@@ -112,6 +113,11 @@ describe("desktop client", () => {
     });
     expect(desktop.request).toHaveBeenCalledWith({
       type: "reload-pi",
+      requestId: operationId,
+      sessionId: "session",
+    });
+    expect(desktop.request).toHaveBeenCalledWith({
+      type: "refresh-models",
       requestId: operationId,
       sessionId: "session",
     });

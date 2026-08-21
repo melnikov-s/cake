@@ -13,7 +13,13 @@ import { describeError } from "../error-details";
 export interface SettingsStoreProps {
   client: Pick<
     DesktopClient,
-    "setPiSetting" | "reloadPi" | "login" | "logout" | "setEditorCommand" | "setUtilityModel"
+    | "setPiSetting"
+    | "reloadPi"
+    | "refreshModels"
+    | "login"
+    | "logout"
+    | "setEditorCommand"
+    | "setUtilityModel"
   >;
   sessionContext(): { sessionId: string } | undefined;
   operations: SessionOperationCoordinatorStore;
@@ -30,6 +36,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   editorCommand = DEFAULT_EDITOR_COMMAND;
   error: string | undefined;
   errorDetails: string | undefined;
+  private refreshOperationId: string | undefined;
   private utilitySaveRevision = 0;
   private utilitySaveQueue: Promise<unknown> = Promise.resolve();
   private persistedUtilityModel: UtilityModel | undefined;
@@ -38,6 +45,12 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   private persistedEditorCommand = DEFAULT_EDITOR_COMMAND;
   get activeOperations() {
     return this.props.operations.active("settings");
+  }
+
+  get refreshingModels() {
+    return Boolean(
+      this.refreshOperationId && this.activeOperations.includes(this.refreshOperationId),
+    );
   }
 
   private reportError(error: unknown) {
@@ -111,6 +124,24 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     );
   }
 
+  async refreshModels() {
+    if (this.refreshingModels) return;
+    this.error = undefined;
+    this.errorDetails = undefined;
+    const operationId = this.props.operations.start("settings");
+    this.refreshOperationId = operationId;
+    try {
+      await this.props.client.refreshModels({
+        operationId,
+        sessionId: this.requireSessionId(),
+      });
+    } catch (error) {
+      this.refreshOperationId = undefined;
+      this.reportError(error);
+      this.finish(operationId);
+    }
+  }
+
   async authenticate(provider: string, authType: "api_key" | "oauth") {
     if (this.providerOperation(provider)) return;
     this.error = undefined;
@@ -153,6 +184,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     if (event.type === "operation-completed" && this.activeOperations.includes(event.operationId)) {
       if (this.providerOperations[event.operationId])
         delete this.providerOperations[event.operationId];
+      if (this.refreshOperationId === event.operationId) this.refreshOperationId = undefined;
       this.finish(event.operationId);
     }
     if (
@@ -162,6 +194,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     ) {
       if (this.providerOperations[event.operationId])
         delete this.providerOperations[event.operationId];
+      if (this.refreshOperationId === event.operationId) this.refreshOperationId = undefined;
       this.finish(event.operationId);
       this.reportError(event.message);
     }
@@ -169,6 +202,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
       event.type === "pi-state-changed" &&
       (event.state === "failed" || event.state === "stopped")
     ) {
+      this.refreshOperationId = undefined;
       for (const operationId of this.activeOperations.slice()) {
         if (this.providerOperations[operationId]) delete this.providerOperations[operationId];
         this.finish(operationId);

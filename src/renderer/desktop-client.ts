@@ -307,6 +307,7 @@ export interface DesktopClient {
     update: PiSettingUpdate;
   }): Promise<void>;
   reloadPi(input: { operationId: string; sessionId: string }): Promise<void>;
+  refreshModels(input: { operationId: string; sessionId: string }): Promise<void>;
   login(input: {
     operationId: string;
     sessionId: string;
@@ -902,6 +903,12 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
     reloadPi: (input) =>
       accept(bridge, {
         type: "reload-pi",
+        requestId: input.operationId,
+        sessionId: input.sessionId,
+      }),
+    refreshModels: (input) =>
+      accept(bridge, {
+        type: "refresh-models",
         requestId: input.operationId,
         sessionId: input.sessionId,
       }),
