@@ -799,6 +799,13 @@ export const Sidebar = observer(function Sidebar({
                 setRenamingSession({ sessionId: sessionMenu.sessionId, value: sessionMenu.title });
               },
             },
+            {
+              id: "copy-session-id",
+              label: "Copy Session ID",
+              onSelect: () => {
+                void navigator.clipboard.writeText(sessionMenu.sessionId);
+              },
+            },
           ]}
           onClose={() => setSessionMenu(null)}
         />
