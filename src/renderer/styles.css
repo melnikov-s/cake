@@ -2260,7 +2260,9 @@
   width: min(100%, 51rem);
   min-height: 210px;
   margin-inline: auto;
-  padding: 0 24px 24px;
+  /* Keeps the tail of the last card (for example an artifact form's action row)
+     scrollable above the fixed composer dock instead of trapped beneath it. */
+  padding: 0 24px 200px;
 }
 .compaction-message details {
   overflow: hidden;
