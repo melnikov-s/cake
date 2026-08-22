@@ -387,6 +387,11 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (pane === "changelog") await this.refreshChangelog();
   }
 
+  toggleCommandPane(pane: "changelog" | "tree" | "resources") {
+    if (this.commandPane === pane) this.closeCommandPane();
+    else void this.openCommandPane(pane);
+  }
+
   closeCommandPane() {
     this.commandPane = undefined;
     this.activeSession?.composerStore.requestFocus();

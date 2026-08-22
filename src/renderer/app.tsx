@@ -152,6 +152,16 @@ const BrowseIcon = () => (
     <path d="M4 9h16" />
   </Icon>
 );
+const TreeIcon = () => (
+  <Icon size={15}>
+    <circle cx="6" cy="5" r="2" />
+    <circle cx="6" cy="19" r="2" />
+    <circle cx="18" cy="12" r="2" />
+    <path d="M6 7v10" />
+    <path d="M8 5h4a2 2 0 0 1 2 2v3.5" />
+    <path d="M8 19h4a2 2 0 0 0 2-2v-3.5" />
+  </Icon>
+);
 const compatibilityResourceKinds: CompatibilityResource["kind"][] = [
   "extension",
   "skill",
@@ -1084,6 +1094,16 @@ export const App = observer(function App() {
                     >
                       <BrowseIcon />
                       <span>Browse</span>
+                    </button>
+                    <button
+                      className={`header-pane-toggle${store.commandPane === "tree" ? " active" : ""}`}
+                      type="button"
+                      aria-label="Session tree"
+                      aria-pressed={store.commandPane === "tree"}
+                      onClick={() => store.toggleCommandPane("tree")}
+                    >
+                      <TreeIcon />
+                      <span>Tree</span>
                     </button>
                     <button
                       className="header-pane-toggle"
