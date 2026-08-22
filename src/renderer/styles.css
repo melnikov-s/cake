@@ -3860,17 +3860,45 @@ button.reasoning-summary {
   display: grid;
   width: 112px;
   height: 82px;
-  padding: 0;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--background);
-  text-align: left;
 }
-.attachment-list .image-attachment img {
+.attachment-list .image-attachment .image-preview-trigger {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+}
+.attachment-list .image-attachment .image-preview-trigger img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+.attachment-list .image-attachment .image-attachment-remove {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: hsl(var(--shadow) / 0.72);
+  color: white;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.attachment-list .image-attachment .image-attachment-remove:hover {
+  background: hsl(var(--shadow) / 0.92);
 }
 .attachment-list .image-attachment span {
   position: absolute;
@@ -3904,6 +3932,75 @@ button.reasoning-summary {
   max-height: 32rem;
   object-fit: contain;
   background: var(--muted);
+}
+.transcript-image .image-preview-trigger {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+}
+.tool-output-image .image-preview-trigger {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+}
+.image-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 4rem;
+  background: hsl(var(--shadow) / 0.86);
+}
+.image-preview-figure {
+  display: inline-flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+}
+.image-preview-figure img {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  max-height: calc(100vh - 8rem);
+  object-fit: contain;
+  user-select: none;
+}
+.image-preview-figure figcaption {
+  margin-top: 10px;
+  overflow: hidden;
+  color: #fff;
+  font: 11px var(--font-mono);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.image-preview-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.14);
+  color: #fff;
+  cursor: pointer;
+}
+.image-preview-close:hover,
+.image-preview-close:focus-visible {
+  background: rgb(255 255 255 / 0.28);
 }
 .transcript-image figcaption {
   padding: 6px 9px;

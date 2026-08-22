@@ -10,6 +10,7 @@ import { EditorIcon } from "./editor-icon";
 import { languageForSource } from "./code";
 import { fencedCode, Markdown } from "./markdown";
 import { SubagentTool } from "./subagent-tool";
+import { ImagePreview } from "@/components/image-preview";
 
 function parseJson(value: string) {
   try {
@@ -75,7 +76,7 @@ function toolOutputContent(
       </Markdown>
     ) : (
       <figure className="tool-output-image" key={`image-${index}`}>
-        <img
+        <ImagePreview
           src={`data:${item.mimeType};base64,${item.data}`}
           alt={`Tool output image ${index + 1}`}
         />

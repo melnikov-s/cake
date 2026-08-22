@@ -2,6 +2,7 @@ import { type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { Button } from "@/components/ui/button";
 import { ChatComposer } from "@/components/chat-composer";
+import { ImagePreview } from "@/components/image-preview";
 import { ChatTranscript, type ChatTranscriptBehavior } from "@/components/chat-transcript";
 import { QueuedPrompts } from "@/components/queued-prompts";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
@@ -203,19 +204,25 @@ export const Chat = observer(function Chat({
           <div className="attachment-list">
             {store.attachments.map((attachment, index) =>
               attachment.kind === "image" ? (
-                <button
+                <div
                   className="image-attachment"
-                  type="button"
-                  aria-label={`Remove ${attachment.name}`}
                   key={`${attachment.kind}-${attachment.name}-${index}`}
-                  onClick={() => store.removeAttachment(index)}
                 >
-                  <img src={`data:${attachment.mimeType};base64,${attachment.data}`} alt="" />
-                  <span>
-                    {attachment.name}
-                    <b aria-hidden="true">×</b>
-                  </span>
-                </button>
+                  <ImagePreview
+                    src={`data:${attachment.mimeType};base64,${attachment.data}`}
+                    alt={attachment.name}
+                  />
+                  <span>{attachment.name}</span>
+                  <button
+                    type="button"
+                    className="image-attachment-remove"
+                    aria-label={`Remove ${attachment.name}`}
+                    title={`Remove ${attachment.name}`}
+                    onClick={() => store.removeAttachment(index)}
+                  >
+                    ×
+                  </button>
+                </div>
               ) : (
                 <button
                   type="button"

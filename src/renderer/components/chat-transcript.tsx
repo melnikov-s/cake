@@ -26,6 +26,7 @@ import { ArtifactHost } from "@/components/artifact-host";
 import { CompactionMessage } from "@/components/compaction-message";
 import { CopyErrorDetailsButton } from "@/components/copy-error-details-button";
 import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
+import { ImagePreview } from "@/components/image-preview";
 import { IconButton } from "@/components/ui/icon-button";
 import { LoadingState } from "@/components/ui/loading-state";
 import {
@@ -595,7 +596,11 @@ function TranscriptPart({
   if (part.kind === "attachment")
     return part.attachmentKind === "image" && part.data ? (
       <figure className="transcript-image">
-        <img src={`data:${part.mediaType};base64,${part.data}`} alt={part.name} />
+        <ImagePreview
+          src={`data:${part.mediaType};base64,${part.data}`}
+          alt={part.name}
+          caption={part.name}
+        />
         <figcaption>{part.name}</figcaption>
       </figure>
     ) : (
