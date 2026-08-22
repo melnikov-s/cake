@@ -109,6 +109,11 @@ permits, since it runs Oxlint first and then ESLint. Run focused tests and the
 relevant typecheck or build for the files changed. Preserve unrelated worktree
 changes.
 
+Do not run the full e2e suite for every change. Run only the targeted e2e tests
+that could actually be affected by the change (same components, stores, or
+features). Leave full-suite runs to CI or an explicitly requested verification
+pass.
+
 ### Electron UI verification
 
 - Cake is an Electron application. Do not use a localhost browser page to verify Cake UI unless the task explicitly targets a separately identified web surface.
