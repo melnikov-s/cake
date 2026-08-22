@@ -580,10 +580,19 @@
   gap: 8px;
   margin-left: 8px;
 }
+.session-time-slot {
+  display: flex;
+  width: 58px;
+  flex: 0 0 58px;
+  align-items: center;
+  justify-content: flex-end;
+}
+.session-time-replaceable {
+  transition: opacity 100ms ease;
+}
 .session-status-slot {
   display: grid;
   width: 11px;
-  height: 25px;
   flex: 0 0 11px;
   place-items: center;
 }
@@ -675,8 +684,8 @@
   opacity: 1;
   pointer-events: auto;
 }
-.session-item:hover .session-time {
-  opacity: 1;
+.session-item:hover .session-time-replaceable {
+  opacity: 0;
 }
 .session-resolve-action:hover {
   background: color-mix(in oklab, var(--accent) 14%, var(--sidebar-hover));

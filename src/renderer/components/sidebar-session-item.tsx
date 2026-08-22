@@ -75,15 +75,17 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
             {session.title}
           </span>
           <span className="session-meta">
-            {!selected && !running && !unread && (
-              <time
-                className="session-time"
-                dateTime={session.modified}
-                title={new Date(session.modified).toLocaleString()}
-              >
-                {store.sessionActivityTime(session.modified)}
-              </time>
-            )}
+            <span className="session-time-slot">
+              {!selected && !running && !unread ? (
+                <time
+                  className={`session-time ${canResolve ? "session-time-replaceable" : ""}`}
+                  dateTime={session.modified}
+                  title={new Date(session.modified).toLocaleString()}
+                >
+                  {store.sessionActivityTime(session.modified)}
+                </time>
+              ) : null}
+            </span>
             <span className="session-status-slot">
               {activity && (
                 <i

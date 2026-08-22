@@ -77,16 +77,18 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
                 <span className="session-title" title={session.title}>
                   {session.title}
                 </span>
-                {!selected && !running && (
-                  <time
-                    className="session-time"
-                    dateTime={session.modified}
-                    title={new Date(session.modified).toLocaleString()}
-                  >
-                    {store.sessionActivityTime(session.modified)}
-                  </time>
-                )}
                 <span className="session-meta">
+                  <span className="session-time-slot">
+                    {!selected && !running ? (
+                      <time
+                        className={`session-time ${canResolve ? "session-time-replaceable" : ""}`}
+                        dateTime={session.modified}
+                        title={new Date(session.modified).toLocaleString()}
+                      >
+                        {store.sessionActivityTime(session.modified)}
+                      </time>
+                    ) : null}
+                  </span>
                   <span className="session-status-slot">
                     {running && (
                       <i
