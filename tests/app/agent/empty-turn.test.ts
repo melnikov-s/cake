@@ -227,33 +227,44 @@ describe("decideEmptyTurnResponse", () => {
   const substantive = assistantMessage({ content: [{ type: "text", text: "All done." }] });
 
   it("resets on any substantive final message", () => {
-    expect(decideEmptyTurnResponse(substantive, 3)).toEqual({ action: "reset" });
+    expect(decideEmptyTurnResponse(substantive, false, 3)).toEqual({ action: "reset" });
+  });
+
+  it("never continues past a user-initiated stop, even on an empty turn", () => {
+    // The provider completed an empty response in the same window as the stop
+    // press: nothing was left to abort, so the empty turn must not continue.
+    expect(decideEmptyTurnResponse(assistantMessage(), true, 0)).toEqual({ action: "reset" });
+    expect(decideEmptyTurnResponse(assistantMessage(), true, 4)).toEqual({ action: "reset" });
   });
 
   it("continues with an incrementing attempt on an empty turn", () => {
-    expect(decideEmptyTurnResponse(assistantMessage(), 0)).toEqual({
+    expect(decideEmptyTurnResponse(assistantMessage(), false, 0)).toEqual({
       action: "continue",
       attempt: 1,
     });
-    expect(decideEmptyTurnResponse(assistantMessage(), 4)).toEqual({
+    expect(decideEmptyTurnResponse(assistantMessage(), false, 4)).toEqual({
       action: "continue",
       attempt: 5,
     });
   });
 
   it("gives up after EMPTY_TURN_MAX_CONTINUATIONS consecutive empty turns", () => {
-    expect(decideEmptyTurnResponse(assistantMessage(), EMPTY_TURN_MAX_CONTINUATIONS)).toEqual({
+    expect(
+      decideEmptyTurnResponse(assistantMessage(), false, EMPTY_TURN_MAX_CONTINUATIONS),
+    ).toEqual({
       action: "give-up",
       attempts: EMPTY_TURN_MAX_CONTINUATIONS,
     });
-    expect(decideEmptyTurnResponse(assistantMessage(), EMPTY_TURN_MAX_CONTINUATIONS + 2)).toEqual({
+    expect(
+      decideEmptyTurnResponse(assistantMessage(), false, EMPTY_TURN_MAX_CONTINUATIONS + 2),
+    ).toEqual({
       action: "give-up",
       attempts: EMPTY_TURN_MAX_CONTINUATIONS + 2,
     });
   });
 
   it("resets after give-up once a real response arrives", () => {
-    expect(decideEmptyTurnResponse(substantive, EMPTY_TURN_MAX_CONTINUATIONS + 2)).toEqual({
+    expect(decideEmptyTurnResponse(substantive, false, EMPTY_TURN_MAX_CONTINUATIONS + 2)).toEqual({
       action: "reset",
     });
   });

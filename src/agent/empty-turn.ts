@@ -85,9 +85,10 @@ export type AbortedTurnDecision =
 
 /**
  * Decide what to do after a run settles on an aborted assistant message.
- * A user-initiated stop (tracked by the caller while the run was active) always
- * resets; otherwise an aborted turn continues up to EMPTY_TURN_MAX_CONTINUATIONS
- * times before giving up visibly, mirroring the empty-turn policy.
+ * A user-initiated stop (flagged by abort() and cleared only on the next user
+ * submission) always resets; otherwise an aborted turn continues up to
+ * EMPTY_TURN_MAX_CONTINUATIONS times before giving up visibly, mirroring the
+ * empty-turn policy.
  */
 export function decideAbortedTurnResponse(
   lastMessage: AssistantMessage | undefined,
@@ -131,12 +132,18 @@ export function shouldAutoResumeInterruptedTurn(
  * and how many consecutive empty-turn continuations were already issued.
  * Any substantive turn resets the counter; empty turns continue up to
  * EMPTY_TURN_MAX_CONTINUATIONS times, then give up visibly.
+ *
+ * A user-initiated stop always wins: when the provider completes an empty
+ * response in the same window as a stop press there is nothing left to abort,
+ * so without this guard the stop would be silently followed by another
+ * automatic continuation.
  */
 export function decideEmptyTurnResponse(
   lastMessage: AssistantMessage | undefined,
+  userInitiated: boolean,
   priorContinuations: number,
 ): EmptyTurnDecision {
-  if (!isEmptyAssistantTurn(lastMessage)) return { action: "reset" };
+  if (userInitiated || !isEmptyAssistantTurn(lastMessage)) return { action: "reset" };
   if (priorContinuations >= EMPTY_TURN_MAX_CONTINUATIONS)
     return { action: "give-up", attempts: priorContinuations };
   return { action: "continue", attempt: priorContinuations + 1 };

@@ -885,7 +885,13 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     const messages = session.messages;
     const last = messages[messages.length - 1];
     const lastAssistant = last?.role === "assistant" ? last : undefined;
-    const decision = decideEmptyTurnResponse(lastAssistant, emptyTurnContinuations);
+    // An empty response completed in the same window as a user stop leaves
+    // nothing to abort — respect the stop instead of auto-continuing over it.
+    const decision = decideEmptyTurnResponse(
+      lastAssistant,
+      userAbortRequested,
+      emptyTurnContinuations,
+    );
     if (decision.action === "reset") {
       if (emptyTurnContinuations > 0) {
         emptyTurnContinuations = 0;
@@ -1027,7 +1033,10 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     if (disposed) return;
     if (event.type === "agent_start") {
-      userAbortRequested = false;
+      // userAbortRequested is deliberately NOT reset here: auto-continuation
+      // runs go through session.prompt() directly, so a reset on agent_start
+      // would launder a just-recorded user stop before its settle handlers
+      // observe it. The flag clears when the user actually submits a turn.
       options.onEvent({ type: "streaming", sessionId: cakeSessionId, streaming: true });
     }
     for (const part of projectLiveMessage(event)) {
@@ -1225,6 +1234,10 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     compact: (instructions) => runCompact(instructions),
     async prompt(text, delivery, attachments) {
       if (disposed) throw new Error("The Cake runtime has been disposed");
+      // Only real user submissions reach this entry point; auto-continuations
+      // call session.prompt directly. Re-arm spontaneous-failure continuations
+      // here so they stay suppressed between a user stop and the next message.
+      userAbortRequested = false;
       const builtin = parsePiBuiltinCommand(text);
       if (builtin?.name === "compact") {
         await runCompact(builtin.args || undefined);
