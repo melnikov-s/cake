@@ -421,14 +421,6 @@ const AssistantTextMessage = observer(function AssistantTextMessage({
     if (!message || !contentNode || !behavior.messageComments || part.status === "streaming")
       return;
     const settleSelection = () => {
-      const activeElement = document.activeElement;
-      if (
-        activeElement instanceof HTMLTextAreaElement ||
-        activeElement instanceof HTMLInputElement ||
-        activeElement instanceof HTMLSelectElement ||
-        (activeElement instanceof HTMLElement && activeElement.isContentEditable)
-      )
-        return;
       window.clearTimeout(selectionTimer.current);
       if (selectionFrame.current !== undefined) cancelAnimationFrame(selectionFrame.current);
       const selection = window.getSelection();

@@ -900,6 +900,82 @@ describe("Transcript scrolling", () => {
     vi.useRealTimers();
   });
 
+  it("hides the selection chat offer when focus moves into an input", () => {
+    vi.useFakeTimers();
+    const draftChat = mount(
+      createStore(ChatStore, {
+        id: () => "selection-input-focus",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Ask Cake about this selection…",
+        inputLabel: () => "Message about selected text",
+        canSubmit: (draft) => Boolean(draft.trim()),
+        submit: async () => true,
+      }),
+    );
+    const comments = {
+      threadsForMessage: () => [],
+      prepareDraft: vi.fn(),
+      draftChatStore: draftChat,
+    } as unknown as MessageCommentsStore;
+    act(() =>
+      root.render(
+        <Transcript
+          parts={[
+            {
+              id: "assistant-1",
+              kind: "text",
+              role: "assistant",
+              entryId: "entry-1",
+              text: "Alpha important detail.",
+              status: "complete",
+            },
+          ]}
+          sessionId="session-1"
+          isStreaming={false}
+          behavior={{
+            thinkingExpanded: false,
+            onToggleThinking: () => undefined,
+            messageComments: comments,
+          }}
+          empty={<div />}
+        />,
+      ),
+    );
+
+    const content = container.querySelector<HTMLElement>(".assistant-message-content")!;
+    const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+    let detail: Node | null = walker.nextNode();
+    while (detail && !detail.textContent?.includes("important")) detail = walker.nextNode();
+    expect(detail).not.toBeNull();
+    const range = document.createRange();
+    const start = detail!.textContent!.indexOf("important");
+    range.setStart(detail!, start);
+    range.setEnd(detail!, start + "important".length);
+    const browserSelection = window.getSelection()!;
+    browserSelection.removeAllRanges();
+    browserSelection.addRange(range);
+    act(() => document.dispatchEvent(new Event("selectionchange")));
+    act(() => vi.advanceTimersByTime(MESSAGE_COMMENT_SELECTION_SETTLE_MS));
+    expect(document.body.querySelector(".message-selection-action")).not.toBeNull();
+
+    const composerInput = document.createElement("textarea");
+    document.body.append(composerInput);
+    composerInput.focus();
+    act(() => {
+      browserSelection.removeAllRanges();
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+    expect(document.body.querySelector(".message-selection-action")).toBeNull();
+
+    composerInput.remove();
+    draftChat[Symbol.dispose]();
+    vi.useRealTimers();
+  });
+
   it("captures selections from fenced code at the assistant message boundary", () => {
     vi.useFakeTimers();
     const draftChat = mount(
