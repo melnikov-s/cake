@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   Menu,
@@ -384,6 +385,51 @@ function createWindow() {
   const webContentsId = window.webContents.id;
   windows.set(window.id, window);
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.webContents.on("context-menu", (_event, params) => {
+    // Only pop the native menu where editing actions apply; plain right-clicks
+    // (e.g. session rows) are handled by the renderer's own context menus.
+    if (!params.isEditable && !params.selectionText && !params.misspelledWord && !params.linkURL)
+      return;
+    const template: Electron.MenuItemConstructorOptions[] = [];
+    if (params.misspelledWord) {
+      for (const suggestion of params.dictionarySuggestions.slice(0, 5))
+        template.push({
+          label: suggestion,
+          click: () => window.webContents.replaceMisspelling(suggestion),
+        });
+      if (!params.dictionarySuggestions.length)
+        template.push({ label: "No Suggestions", enabled: false });
+      template.push(
+        { type: "separator" },
+        {
+          label: "Learn Spelling",
+          click: () =>
+            window.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord),
+        },
+        { type: "separator" },
+      );
+    }
+    if (params.linkURL) {
+      template.push(
+        {
+          label: "Copy Link",
+          click: () => clipboard.writeText(params.linkURL),
+        },
+        { type: "separator" },
+      );
+    }
+    if (params.isEditable) {
+      template.push(
+        { role: "cut", enabled: params.editFlags.canCut },
+        { role: "copy", enabled: params.editFlags.canCopy },
+        { role: "paste", enabled: params.editFlags.canPaste },
+        { role: "selectAll" },
+      );
+    } else if (params.selectionText) {
+      template.push({ role: "copy" }, { role: "selectAll" });
+    }
+    Menu.buildFromTemplate(template).popup({ window });
+  });
   window.webContents.on("will-navigate", (event, url) => {
     // Vite sometimes falls back from a module update to a full-page reload. Blocking
     // that same-origin reload after Chromium has cleared the document leaves a blank
