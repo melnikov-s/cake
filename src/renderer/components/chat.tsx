@@ -1,6 +1,5 @@
 import { type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
-import { Button } from "@/components/ui/button";
 import { ChatComposer } from "@/components/chat-composer";
 import { ImagePreview } from "@/components/image-preview";
 import { ChatTranscript, type ChatTranscriptBehavior } from "@/components/chat-transcript";
@@ -167,30 +166,25 @@ export const Chat = observer(function Chat({
               // typing a new message turns the button back into queue-and-submit.
               if (store.loading && store.canAbort && !hasInput) {
                 return (
-                  <Button
+                  <IconButton
                     className="send-button"
-                    size="sm"
-                    type="button"
-                    aria-label="Stop"
-                    title="Stop"
+                    tooltip="Stop"
                     onClick={() => void store.abort()}
                   >
                     <StopIcon />
-                  </Button>
+                  </IconButton>
                 );
               }
               if (!store.loading || hasInput) {
                 return (
-                  <Button
+                  <IconButton
                     className="send-button"
-                    size="sm"
+                    tooltip="Send"
                     type="submit"
-                    aria-label="Send"
-                    title="Send"
                     disabled={!store.canSubmitDraft(store.draft)}
                   >
                     <SendIcon />
-                  </Button>
+                  </IconButton>
                 );
               }
               return null;
@@ -213,15 +207,13 @@ export const Chat = observer(function Chat({
                     alt={attachment.name}
                   />
                   <span>{attachment.name}</span>
-                  <button
-                    type="button"
+                  <IconButton
                     className="image-attachment-remove"
-                    aria-label={`Remove ${attachment.name}`}
-                    title={`Remove ${attachment.name}`}
+                    tooltip={`Remove ${attachment.name}`}
                     onClick={() => store.removeAttachment(index)}
                   >
                     ×
-                  </button>
+                  </IconButton>
                 </div>
               ) : (
                 <button

@@ -4008,7 +4008,7 @@ button.reasoning-summary {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.image-preview-close {
+.icon-button.image-preview-close {
   position: absolute;
   top: 16px;
   right: 16px;
@@ -4023,8 +4023,8 @@ button.reasoning-summary {
   color: #fff;
   cursor: pointer;
 }
-.image-preview-close:hover,
-.image-preview-close:focus-visible {
+.icon-button.image-preview-close:hover,
+.icon-button.image-preview-close:focus-visible {
   background: rgb(255 255 255 / 0.28);
 }
 .transcript-image figcaption {
@@ -4313,14 +4313,37 @@ button.reasoning-summary {
   background: var(--muted);
   color: var(--foreground);
 }
+.icon-button-tooltip {
+  position: fixed;
+  z-index: 1000;
+  max-width: 280px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 11px;
+  line-height: 1.4;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .composer-actions button {
   white-space: nowrap;
 }
-.send-button {
+.icon-button.send-button {
   width: 32px;
-  justify-content: center;
-  padding: 0 !important;
-  border-radius: 999px !important;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.icon-button.send-button:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--primary) 88%, transparent);
+  color: var(--primary-foreground);
+}
+.icon-button.send-button:disabled {
+  opacity: 0.45;
 }
 .send-button svg {
   width: 15px;

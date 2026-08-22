@@ -1,6 +1,5 @@
 import { useEffect, useId, useRef, type MouseEventHandler, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { cn } from "@/lib/utils";
 
@@ -51,16 +50,15 @@ export function FullscreenButton({
   onClick(): void;
 }) {
   return (
-    <Button
+    <IconButton
       className={cn("fullscreen-trigger", className)}
-      variant="ghost"
+      tooltip="View fullscreen"
+      ariaLabel={label}
       disabled={disabled}
-      aria-label={label}
-      title="View fullscreen"
       onClick={onClick}
     >
       <ExpandIcon />
-    </Button>
+    </IconButton>
   );
 }
 

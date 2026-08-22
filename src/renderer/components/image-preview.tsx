@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { IconButton } from "@/components/ui/icon-button";
 
 function CloseIcon() {
   return (
@@ -77,15 +78,15 @@ export function ImagePreview({
               if (event.target === event.currentTarget) setOpen(false);
             }}
           >
-            <button
+            <IconButton
               ref={closeButton}
-              type="button"
               className="image-preview-close"
-              aria-label={`Close ${alt}`}
+              tooltip="Close image"
+              ariaLabel={`Close ${alt}`}
               onClick={() => setOpen(false)}
             >
               <CloseIcon />
-            </button>
+            </IconButton>
             <figure className="image-preview-figure">
               <img src={src} alt={alt} draggable={false} onMouseDown={(e) => e.stopPropagation()} />
               {caption && <figcaption>{caption}</figcaption>}
