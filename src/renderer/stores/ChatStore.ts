@@ -229,6 +229,13 @@ export class ChatStore extends Store<ChatStoreProps> {
 
   async submit(value = this.draft) {
     if (value !== this.draft) this.setDraft(value);
+    // Submitting an empty composer while prompts are queued steers the head of
+    // the queue immediately, so "type + Enter, Enter" is a keyboard-only way to
+    // steer while streaming.
+    if (!value.trim() && this.attachments.length === 0 && this.queuedPrompts.length > 0) {
+      this.steerQueuedPrompt(this.queuedPrompts[0]!.id);
+      return true;
+    }
     if (!this.props.canSubmit(value) || this.submittingLocally) return false;
     this.submittingLocally = true;
     try {
