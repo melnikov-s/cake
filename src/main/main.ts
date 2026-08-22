@@ -399,15 +399,7 @@ function createWindow() {
         });
       if (!params.dictionarySuggestions.length)
         template.push({ label: "No Suggestions", enabled: false });
-      template.push(
-        { type: "separator" },
-        {
-          label: "Learn Spelling",
-          click: () =>
-            window.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord),
-        },
-        { type: "separator" },
-      );
+      template.push({ type: "separator" });
     }
     if (params.linkURL) {
       template.push(
