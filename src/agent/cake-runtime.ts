@@ -624,10 +624,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       : [activeSessionSummary(stats.totalMessages), ...listedSessions];
     const globalSettings = settingsManager.getGlobalSettings();
     const branchParts = projectSessionEntries(session.sessionManager.getBranch());
-    const queuedParts = projectQueuedMessages(
-      session.getSteeringMessages(),
-      session.getFollowUpMessages(),
-    );
+    const queuedParts = allQueuedParts();
     const models = options.auxiliary ? [] : await modelOptions();
     const artifacts = options.auxiliary
       ? []
@@ -637,7 +634,13 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       workspacePath: options.cwd,
       sessionId: cakeSessionId,
       sessionFile: session.sessionFile ?? "",
-      parts: [...branchParts, ...queuedParts],
+      parts: [
+        ...branchParts,
+        ...queuedParts,
+        // Snapshots must carry live compaction state so navigating away and
+        // back keeps the indicator visible while compaction runs.
+        ...(session.isCompacting ? [activeCompactionNotice()] : []),
+      ],
       model: session.model
         ? { provider: session.model.provider, id: session.model.id, name: session.model.name }
         : undefined,
@@ -872,11 +875,38 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       outputContent?: ToolOutputContent[];
     }
   >();
-  let queuedPartIds = new Set(
-    projectQueuedMessages(session.getSteeringMessages(), session.getFollowUpMessages()).map(
-      (part) => part.id,
-    ),
-  );
+  // Messages submitted while compaction is running. Pi rejects prompts during
+  // manual compaction, so Cake holds them here and delivers them when the
+  // compaction_end event reports the session is available again.
+  let compactionQueue: {
+    text: string;
+    attachments: Attachment[];
+    delivery: "steer" | "follow-up";
+  }[] = [];
+  const allQueuedParts = () =>
+    projectQueuedMessages(
+      session.getSteeringMessages(),
+      session.getFollowUpMessages(),
+      compactionQueue.map((item) => item.text),
+    );
+  let queuedPartIds = new Set(allQueuedParts().map((part) => part.id));
+  const activeCompactionNotice = (): Extract<UiPart, { kind: "notice" }> => ({
+    id: "active-compaction",
+    kind: "notice",
+    tone: "info",
+    title: "Compacting context",
+  });
+  function syncQueuedParts() {
+    const queuedParts = allQueuedParts();
+    const nextIds = new Set(queuedParts.map((part) => part.id));
+    for (const partId of queuedPartIds) {
+      if (!nextIds.has(partId))
+        options.onEvent({ type: "part-removed", sessionId: cakeSessionId, partId });
+    }
+    for (const part of queuedParts)
+      options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
+    queuedPartIds = nextIds;
+  }
   // Turn recovery: providers fail silently in three shapes — a protocol-valid
   // but completely empty response (stopReason "stop", no content), a stream
   // cut off mid-generation (stopReason "aborted" without a user stop), and a
@@ -1104,16 +1134,11 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       });
     }
     if (event.type === "compaction_start") {
+      const notice = activeCompactionNotice();
       options.onEvent({
         type: "part-updated",
         sessionId: cakeSessionId,
-        part: {
-          id: "active-compaction",
-          kind: "notice",
-          tone: "info",
-          title: "Compacting context",
-          detail: event.reason,
-        },
+        part: event.reason === "manual" ? notice : { ...notice, detail: event.reason },
       });
     }
     if (event.type === "compaction_end") {
@@ -1149,17 +1174,12 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
         });
         emitSnapshotInBackground();
       }
+      // Deliver anything submitted while compaction held the session. A retry
+      // is still pending, so wait for the final compaction_end instead.
+      if (!event.willRetry) void flushCompactionQueue();
     }
     if (event.type === "queue_update") {
-      const queuedParts = projectQueuedMessages(event.steering, event.followUp);
-      const nextIds = new Set(queuedParts.map((part) => part.id));
-      for (const partId of queuedPartIds) {
-        if (!nextIds.has(partId))
-          options.onEvent({ type: "part-removed", sessionId: cakeSessionId, partId });
-      }
-      for (const part of queuedParts)
-        options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
-      queuedPartIds = nextIds;
+      syncQueuedParts();
     }
     if (!options.auxiliary && event.type === "message_end" && event.message.role === "user") {
       // The user message is not appended to SessionManager until after subscribers run, so
@@ -1184,6 +1204,43 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     await session.compact(instructions || undefined);
     await emitSnapshot();
   };
+
+  // Delivers messages that were submitted while compaction held the session.
+  // The first message starts a fresh turn when the session is idle; the rest
+  // ride the normal steer/follow-up queues of that turn. Hoisted as a function
+  // declaration: the compaction_end subscriber above fires it.
+  async function flushCompactionQueue() {
+    if (disposed || compactionQueue.length === 0) return;
+    const queued = compactionQueue;
+    compactionQueue = [];
+    syncQueuedParts();
+    let index = 0;
+    for (const item of queued) {
+      try {
+        const content = promptText(item.text, item.attachments);
+        const images = imageContent(item.attachments);
+        if (index === 0 && !session.isStreaming) {
+          try {
+            await session.prompt(content, { images, source: "interactive" });
+            continue;
+          } catch (error) {
+            // A turn may have started between the check and this call.
+            if (!isAlreadyProcessingError(error)) throw error;
+          }
+        }
+        if (item.delivery === "steer") await session.steer(content, images);
+        else await session.followUp(content, images);
+      } catch {
+        // Delivery failed; keep the remainder queued for the next flush.
+        compactionQueue.unshift(...queued.slice(index));
+        syncQueuedParts();
+        break;
+      } finally {
+        index += 1;
+      }
+    }
+    emitSnapshotInBackground();
+  }
 
   return {
     sessionId: cakeSessionId,
@@ -1228,6 +1285,20 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
         return;
       }
       if (!session.isStreaming && reloadCompleted < reloadRequested) await drainReloads();
+      if (session.isCompacting) {
+        // Pi rejects prompts during compaction. Hold the message with its
+        // delivery intent and deliver it when compaction finishes instead of
+        // failing the submission.
+        compactionQueue.push({
+          text,
+          attachments,
+          // A plain "prompt" intent degrades to a follow-up when it has to
+          // wait behind compaction; steering intent is preserved.
+          delivery: delivery === "steer" ? "steer" : "follow-up",
+        });
+        syncQueuedParts();
+        return;
+      }
       const content = promptText(text, attachments);
       const images = imageContent(attachments);
       if (delivery === "steer") await session.steer(content, images);

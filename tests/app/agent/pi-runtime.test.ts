@@ -665,11 +665,24 @@ describe("Pi 0.84.0 foundation contract", () => {
         deliveryState: "steering",
       }),
       expect.objectContaining({
-        id: expect.stringMatching(/^queued-queued-.*-1$/),
+        id: expect.stringMatching(/^queued-follow-up-.*-1$/),
         text: "Do this next",
         deliveryState: "queued",
       }),
     ]);
+    expect(projectQueuedMessages([], [], ["After compaction", "After compaction"])).toEqual([
+      expect.objectContaining({
+        id: expect.stringMatching(/^queued-pending-.*-1$/),
+        text: "After compaction",
+        deliveryState: "queued",
+      }),
+      expect.objectContaining({
+        id: expect.stringMatching(/^queued-pending-.*-2$/),
+        text: "After compaction",
+        deliveryState: "queued",
+      }),
+    ]);
+    expect(projectQueuedMessages([], [])).toEqual([]);
     expect(projectQueuedMessages([], [""])).toEqual([]);
   });
 

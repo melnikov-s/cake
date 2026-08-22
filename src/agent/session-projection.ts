@@ -307,8 +307,13 @@ export function reviewRunPart(run: ReviewRunEntry): Extract<UiPart, { kind: "rev
 export function projectQueuedMessages(
   steering: readonly string[],
   followUp: readonly string[],
+  pending: readonly string[] = [],
 ): UiPart[] {
-  const project = (deliveryState: "steering" | "queued", messages: readonly string[]) => {
+  const project = (
+    idPrefix: string,
+    deliveryState: "steering" | "queued",
+    messages: readonly string[],
+  ) => {
     const occurrences = new Map<string, number>();
     return messages.flatMap((text): UiPart[] => {
       if (!text) return [];
@@ -320,7 +325,7 @@ export function projectQueuedMessages(
         .slice(0, 24);
       return [
         {
-          id: `queued-${deliveryState}-${digest}-${occurrence}`,
+          id: `${idPrefix}-${digest}-${occurrence}`,
           kind: "text",
           role: "user",
           text,
@@ -330,7 +335,11 @@ export function projectQueuedMessages(
       ];
     });
   };
-  return [...project("steering", steering), ...project("queued", followUp)];
+  return [
+    ...project("queued-steering", "steering", steering),
+    ...project("queued-follow-up", "queued", followUp),
+    ...project("queued-pending", "queued", pending),
+  ];
 }
 
 export function projectSessionEntries(
