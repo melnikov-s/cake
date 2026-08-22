@@ -117,6 +117,42 @@ describe("Chat", () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
+  it("shows the submit icon instead of stop while streaming when the composer has content", async () => {
+    const submit = vi.fn(async () => true);
+    const abort = vi.fn(async () => undefined);
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "queue-while-streaming-chat",
+        parts: () => [],
+        streaming: () => true,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Ask a follow-up…",
+        inputLabel: () => "Reply to chat",
+        canSubmit: (draft) => Boolean(draft.trim()),
+        submit,
+        abort,
+      }),
+    );
+
+    act(() => root.render(<Chat store={store!} />));
+
+    // An empty composer keeps the stop button while streaming.
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Send"]')).toBeNull();
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Stop"]')).not.toBeNull();
+
+    act(() => store!.setDraft("One more thing"));
+
+    // Typing a queued message swaps stop back to submit.
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Stop"]')).toBeNull();
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[aria-label="Send"]')!.click(),
+    );
+    expect(submit).toHaveBeenCalledWith("One more thing");
+    expect(abort).not.toHaveBeenCalled();
+  });
+
   it("submits the draft from the send icon when idle", async () => {
     const submit = vi.fn(async () => true);
     store = mount(

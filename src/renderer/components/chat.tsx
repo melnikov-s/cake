@@ -160,31 +160,40 @@ export const Chat = observer(function Chat({
           <>
             <Usage store={store} />
             {pluginActions}
-            {store.loading && store.canAbort ? (
-              <Button
-                className="send-button"
-                size="sm"
-                type="button"
-                aria-label="Stop"
-                title="Stop"
-                onClick={() => void store.abort()}
-              >
-                <StopIcon />
-              </Button>
-            ) : (
-              !store.loading && (
-                <Button
-                  className="send-button"
-                  size="sm"
-                  type="submit"
-                  aria-label="Send"
-                  title="Send"
-                  disabled={!store.canSubmitDraft(store.draft)}
-                >
-                  <SendIcon />
-                </Button>
-              )
-            )}
+            {(() => {
+              const hasInput = store.draft.trim().length > 0 || store.attachments.length > 0;
+              // While a prompt is running, stop only applies to an empty composer;
+              // typing a new message turns the button back into queue-and-submit.
+              if (store.loading && store.canAbort && !hasInput) {
+                return (
+                  <Button
+                    className="send-button"
+                    size="sm"
+                    type="button"
+                    aria-label="Stop"
+                    title="Stop"
+                    onClick={() => void store.abort()}
+                  >
+                    <StopIcon />
+                  </Button>
+                );
+              }
+              if (!store.loading || hasInput) {
+                return (
+                  <Button
+                    className="send-button"
+                    size="sm"
+                    type="submit"
+                    aria-label="Send"
+                    title="Send"
+                    disabled={!store.canSubmitDraft(store.draft)}
+                  >
+                    <SendIcon />
+                  </Button>
+                );
+              }
+              return null;
+            })()}
           </>
         }
       >
