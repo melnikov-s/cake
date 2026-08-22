@@ -8,6 +8,7 @@ import type {
   ThinkingLevel,
 } from "../../ipc/session-contract";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
+import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { CakeChatSessionStore } from "./CakeChatSessionStore";
 import { describeError } from "../error-details";
@@ -222,7 +223,7 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
             },
       );
     }
-    next.sort((left, right) => right.modified.localeCompare(left.modified));
+    next.sort(compareSessionSummariesForSidebar);
     this.summaries.splice(0, this.summaries.length, ...next);
   }
 

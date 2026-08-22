@@ -40,6 +40,33 @@ describe("SessionCatalogStore", () => {
     store[Symbol.dispose]();
   });
 
+  it("pins unsubmitted 'New chat' sessions above all submitted sessions", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    store.replace([
+      summary("latest", "2026-08-16T12:00:00.000Z"),
+      summary("older", "2026-08-15T12:00:00.000Z"),
+      { ...summary("fresh", "2026-08-14T12:00:00.000Z"), messageCount: 0 },
+    ]);
+
+    expect(store.sessions.map((session) => session.id)).toEqual(["fresh", "latest", "older"]);
+    store[Symbol.dispose]();
+  });
+
+  it("keeps newly created unsubmitted sessions on top when a workspace refreshes", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    store.replace([summary("active", "2026-08-16T12:00:00.000Z")]);
+    store.applyWorkspace("/project", "Project", [
+      summary("active", "2026-08-16T12:00:00.000Z"),
+      { ...summary("new-chat", "2026-08-10T00:00:00.000Z"), messageCount: 0 },
+    ]);
+
+    expect(store.projectSessions("/project").map((session) => session.id)).toEqual([
+      "new-chat",
+      "active",
+    ]);
+    store[Symbol.dispose]();
+  });
+
   it("indexes sessions by ID and project without duplicating session records", () => {
     const store = mount(createStore(SessionCatalogStore));
     store.replace([

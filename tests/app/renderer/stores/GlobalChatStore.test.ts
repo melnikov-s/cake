@@ -228,6 +228,45 @@ describe("GlobalChatStore", () => {
     operations[Symbol.dispose]();
   });
 
+  it("pins unsubmitted Cake Chat sessions above submitted ones", async () => {
+    const { store, port, sessions, operations } = createTestStore();
+    await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
+    store.receive({
+      type: "global-chat-snapshot-received",
+      snapshot: {
+        ...snapshot,
+        sessions: [
+          {
+            id: "submitted",
+            title: "Older work",
+            created: "2026-08-16T12:00:00.000Z",
+            modified: "2026-08-16T12:00:00.000Z",
+            messageCount: 3,
+            resolved: false,
+          },
+          {
+            id: "brand-new",
+            title: "New chat",
+            created: "2026-08-10T00:00:00.000Z",
+            modified: "2026-08-10T00:00:00.000Z",
+            messageCount: 0,
+            resolved: false,
+          },
+        ],
+      },
+    });
+
+    // "global-1" stays an open but unsubmitted target, so it is also pinned.
+    expect(store.summaries.map((summary) => summary.id)).toEqual([
+      "global-1",
+      "brand-new",
+      "submitted",
+    ]);
+    store[Symbol.dispose]();
+    sessions[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
   it("keeps independent Stores for multiple selected and background Cake Chat sessions", async () => {
     const { store, port, sessions, operations } = createTestStore();
     await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());

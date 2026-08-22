@@ -1,5 +1,6 @@
 import { Store, observable } from "r-state-tree";
 import type { GlobalSessionSummary, SessionSnapshot } from "../../ipc/session-contract";
+import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 
 /** The single renderer-owned catalog of Pi session summaries. */
 export class SessionCatalogStore extends Store<Record<string, never>> {
@@ -27,7 +28,7 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
   replace(sessions: GlobalSessionSummary[]) {
     this.assertUniqueIds(sessions);
     this.sessions.splice(0, this.sessions.length, ...sessions);
-    this.sortByActivity();
+    this.sortBySidebarOrder();
     this.rebuildIndexes();
   }
 
@@ -56,7 +57,7 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
     const next = [...otherSessions, ...workspaceSessions];
     this.assertUniqueIds(next);
     this.sessions.splice(0, this.sessions.length, ...next);
-    this.sortByActivity();
+    this.sortBySidebarOrder();
     this.rebuildIndexes();
   }
 
@@ -90,8 +91,8 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
     this.rebuildIndexes();
   }
 
-  private sortByActivity() {
-    this.sessions.sort((left, right) => right.modified.localeCompare(left.modified));
+  private sortBySidebarOrder() {
+    this.sessions.sort(compareSessionSummariesForSidebar);
   }
 
   private assertUniqueIds(sessions: readonly GlobalSessionSummary[]) {
