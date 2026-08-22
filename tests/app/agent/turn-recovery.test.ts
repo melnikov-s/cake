@@ -204,6 +204,13 @@ describe("classifyTurnFailure", () => {
       "Invalid request: malformed body",
       "Model not found: stealth/ox-alpha",
       "Prompt exceeds context length",
+      "Monthly usage limit reached for this subscription",
+      "GoUsageLimitError: you have reached your plan limit",
+      "insufficient_quota: You exceeded your current quota",
+      "Out of budget for this billing period",
+      "Please enable available balance usage to continue",
+      "Insufficient credits: purchase more to continue",
+      "Your credit balance is too low to access the API",
     ]) {
       expect(
         classifyTurnFailure(assistantMessage({ stopReason: "error", errorMessage })),
@@ -214,7 +221,7 @@ describe("classifyTurnFailure", () => {
   it("keeps rate limits and server errors retryable", () => {
     for (const errorMessage of [
       "429 Too Many Requests",
-      "Rate limit exceeded",
+      "Rate limit exceeded, please slow down",
       "500 Internal Server Error",
       "Connection reset while streaming",
     ]) {

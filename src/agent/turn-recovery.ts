@@ -85,6 +85,19 @@ const permanentErrorPatterns = [
   /unknown model/i,
   /context (length|window)/i,
   /billing/i,
+
+  // Usage/quota exhaustion. These arrive as 429s or error text but are
+  // account limits rather than transient throttles: retrying cannot help
+  // until the user upgrades, tops up, or the billing period rolls over.
+  // Mirrors the wording pi-ai itself treats as non-retryable so Cake's
+  // fallback never retries an error Pi already declined to.
+  /usage.?limit/i,
+  /insufficient_quota/i,
+  /quota exceeded/i,
+  /out of budget/i,
+  /available balance/i,
+  /insufficient (?:credits?|balance|funds)/i,
+  /credit balance is too low/i,
 ];
 
 /**
