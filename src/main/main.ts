@@ -27,6 +27,9 @@ import {
   type WindowViewState,
 } from "../ipc/session-contract";
 import {
+  cakeWorkspaceSessionDirectory,
+  findWorkspaceSessionFile,
+  forkWorkspaceSession,
   inspectWorkspace,
   listWorkspaceSessions,
   loadWorkspaceSessionPreview,
@@ -40,6 +43,7 @@ import { VsCodeServerManager } from "./vscode-server-manager";
 import { ArtifactRepository } from "./artifact-repository";
 import { ReviewRepository } from "./review-repository";
 import { AtomicFileWriter } from "./atomic-file-writer";
+import { WorktreeService } from "./worktree-service";
 import { GlobalChatDriver } from "./global-chat-driver";
 import { resolveCakePaths } from "./cake-paths";
 import { PluginBuildService } from "./plugin-build-service";
@@ -129,6 +133,7 @@ interface PluginAgentResources {
 }
 let pluginAgentResources: PluginAgentResources = { skills: [], prompts: [], extensions: [] };
 const artifactRepository = new ArtifactRepository(join(app.getPath("userData"), "artifacts"));
+const worktrees = new WorktreeService(join(app.getPath("userData"), "worktrees.json"));
 const reviewRepository = new ReviewRepository(
   join(app.getPath("userData"), "reviews"),
   cakePaths.piReviewSessions,
@@ -223,6 +228,12 @@ async function resolveSessionWorkspacePath(sessionId: string) {
   return matches[0]!;
 }
 
+async function requireWorktreeRecord(worktreePath: string) {
+  const record = (await worktrees.records()).find((entry) => entry.worktreePath === worktreePath);
+  if (!record) throw new Error("Cake could not find that worktree");
+  return record;
+}
+
 function appStatePath() {
   return join(app.getPath("userData"), "application.json");
 }
@@ -233,7 +244,12 @@ async function loadApplicationState() {
   } catch {
     applicationModel = Application.from({});
   }
-  for (const project of applicationModel.projects) allowedProjectPaths.add(project.path);
+  for (const project of applicationModel.projects) {
+    allowedProjectPaths.add(project.path);
+    // Worktree paths derive from registered projects, so re-allow them on boot.
+    for (const record of await worktrees.records())
+      if (record.projectPath === project.path) allowedProjectPaths.add(record.worktreePath);
+  }
 }
 
 async function persistApplicationState() {
@@ -1204,7 +1220,7 @@ async function handleCakeRequest(
   }
   if (request.type === "list-sessions") {
     const resolvedSessionIds = new Set(applicationModel.resolvedSessionIds);
-    const sessions = (
+    const projectSessions = (
       await Promise.all(
         applicationModel.projects.map(async (project) => {
           try {
@@ -1224,9 +1240,36 @@ async function handleCakeRequest(
           }
         }),
       )
-    )
-      .flat()
-      .sort((left, right) => right.modified.localeCompare(left.modified));
+    ).flat();
+    const worktreeSessions = (
+      await Promise.all(
+        (await worktrees.records()).map(async (record) => {
+          const project = applicationModel.projects.find(
+            (entry) => entry.path === record.projectPath,
+          );
+          if (!project || !allowedProjectPaths.has(record.worktreePath)) return [];
+          try {
+            return (await listWorkspaceSessions(record.worktreePath, cakePaths.piSessions)).map(
+              (session) => {
+                rememberSessionLocation(record.worktreePath, session.id);
+                return {
+                  ...session,
+                  resolved: resolvedSessionIds.has(session.id),
+                  workspacePath: record.worktreePath,
+                  projectPath: project.path,
+                  workspaceName: project.name,
+                };
+              },
+            );
+          } catch {
+            return [];
+          }
+        }),
+      )
+    ).flat();
+    const sessions = [...projectSessions, ...worktreeSessions].sort((left, right) =>
+      right.modified.localeCompare(left.modified),
+    );
     const reviewThreads = (
       await Promise.all(
         sessions.map((session) => reviewRepository.listSession(session.workspacePath, session.id)),
@@ -1234,9 +1277,40 @@ async function handleCakeRequest(
     ).flat();
     return desktopResponseSchema.parse({ type: "sessions-listed", sessions, reviewThreads });
   }
+  if (request.type === "fork-worktree-session") {
+    const record = await requireWorktreeRecord(request.workspacePath);
+    const sourceFile = await findWorkspaceSessionFile(
+      record.worktreePath,
+      request.sessionId,
+      cakePaths.piSessions,
+    );
+    if (!sourceFile) throw new Error("Cake could not find the session to fork in that worktree");
+    const branchOff = await worktrees.createBranchOff(request.workspacePath);
+    allowedProjectPaths.add(branchOff.worktreePath);
+    if (applicationModel.isProjectTrusted(record.projectPath))
+      applicationModel.trustProject(branchOff.worktreePath);
+    const forked = forkWorkspaceSession(
+      sourceFile,
+      branchOff.worktreePath,
+      cakeWorkspaceSessionDirectory(branchOff.worktreePath, cakePaths.piSessions),
+    );
+    rememberSessionLocation(branchOff.worktreePath, forked.sessionId);
+    return desktopResponseSchema.parse({
+      type: "worktree-session-forked",
+      requestId: request.requestId,
+      sessionId: forked.sessionId,
+      workspacePath: branchOff.worktreePath,
+    });
+  }
   if (request.type === "register-project") {
     if (!allowedProjectPaths.has(request.path))
       throw new Error("Project path was not selected by the user");
+    // Managed worktrees belong to their parent project; never register them as projects.
+    if ((await worktrees.records()).some((entry) => entry.worktreePath === request.path))
+      return desktopResponseSchema.parse({
+        type: "application-state-updated",
+        state: applicationModel.snapshot(),
+      });
     applicationModel.upsertProject(request.path, request.name);
     await persistApplicationState();
     return desktopResponseSchema.parse({
@@ -1324,6 +1398,42 @@ async function handleCakeRequest(
       applicationModel.trustProject(request.path);
       await persistApplicationState();
     }
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  if (request.type === "create-worktree") {
+    if (!allowedProjectPaths.has(request.path))
+      throw new Error("Project path was not selected by the user");
+    const record = await worktrees.create(request.path);
+    allowedProjectPaths.add(record.worktreePath);
+    if (applicationModel.isProjectTrusted(record.projectPath))
+      applicationModel.trustProject(record.worktreePath);
+    return desktopResponseSchema.parse({
+      type: "worktree-created",
+      requestId: request.requestId,
+      record,
+    });
+  }
+  if (request.type === "get-worktree-status") {
+    return desktopResponseSchema.parse({
+      type: "worktree-status-loaded",
+      status: await worktrees.status(request.workspacePath),
+    });
+  }
+  if (request.type === "land-worktree") {
+    await requireWorktreeRecord(request.workspacePath);
+    const result = await worktrees.land(request.workspacePath, {
+      message: request.message,
+      autoResolve: request.autoResolve,
+    });
+    return desktopResponseSchema.parse({
+      type: "worktree-landed",
+      requestId: request.requestId,
+      result,
+    });
+  }
+  if (request.type === "discard-worktree") {
+    await requireWorktreeRecord(request.workspacePath);
+    await worktrees.discard(request.workspacePath, request.keepBranch);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   const path =

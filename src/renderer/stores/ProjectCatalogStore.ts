@@ -24,9 +24,9 @@ export class ProjectCatalogStore extends Store<{ sessions: SessionCatalogStore }
     const persistedOrder = new Map(this.recentProjectPaths.map((path, index) => [path, index]));
     const lastSessionByProject = new Map<string, string>();
     for (const session of this.props.sessions.sessions) {
-      const previous = lastSessionByProject.get(session.workspacePath);
-      if (!previous || session.modified > previous)
-        lastSessionByProject.set(session.workspacePath, session.modified);
+      const key = session.projectPath ?? session.workspacePath;
+      const previous = lastSessionByProject.get(key);
+      if (!previous || session.modified > previous) lastSessionByProject.set(key, session.modified);
     }
 
     return [...this.recentProjectPaths].sort((left, right) => {

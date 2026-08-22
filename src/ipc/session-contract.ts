@@ -268,6 +268,8 @@ export const sessionSummarySchema = z.object({
 export const globalSessionSummarySchema = sessionSummarySchema.extend({
   workspacePath: z.string().min(1).max(4_096),
   workspaceName: ipcProjectionString(512).pipe(z.string().min(1)),
+  /** Set when the session works inside a managed worktree belonging to this project. */
+  projectPath: z.string().min(1).max(4_096).optional(),
 });
 
 export const sessionTreeEntrySchema = z.object({

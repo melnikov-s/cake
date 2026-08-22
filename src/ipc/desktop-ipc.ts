@@ -43,6 +43,11 @@ import {
   uiPartSchema,
   windowViewStateSchema,
 } from "./session-contract";
+import {
+  worktreeLandOutcomeSchema,
+  worktreeRecordSchema,
+  worktreeStatusSchema,
+} from "./worktree-contract";
 
 export const desktopEventSchema = z.discriminatedUnion("type", [
   z.object({
@@ -497,6 +502,32 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("restart-pi"), path: z.string().max(4_096) }),
   z.object({
+    type: z.literal("create-worktree"),
+    requestId: z.uuid(),
+    path: z.string().max(4_096),
+  }),
+  z.object({ type: z.literal("get-worktree-status"), workspacePath: z.string().max(4_096) }),
+  z.object({
+    type: z.literal("land-worktree"),
+    requestId: z.uuid(),
+    workspacePath: z.string().max(4_096),
+    message: z.string().min(1).max(512).optional(),
+    autoResolve: z.boolean().default(false),
+  }),
+  z.object({
+    type: z.literal("discard-worktree"),
+    requestId: z.uuid(),
+    workspacePath: z.string().max(4_096),
+    keepBranch: z.boolean().default(false),
+  }),
+  z.object({
+    type: z.literal("fork-worktree-session"),
+    requestId: z.uuid(),
+    sessionId: z.string().min(1).max(256),
+    entryId: z.string().max(256),
+    workspacePath: z.string().min(1).max(4_096),
+  }),
+  z.object({
     type: z.literal("inspect-workspace"),
     requestId: z.uuid(),
     path: z.string().max(4_096),
@@ -713,6 +744,26 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("review-thread-saved"), thread: reviewThreadSchema }),
   z.object({ type: z.literal("application-state-updated"), state: applicationStateSchema }),
+  z.object({
+    type: z.literal("worktree-created"),
+    requestId: z.uuid(),
+    record: worktreeRecordSchema,
+  }),
+  z.object({
+    type: z.literal("worktree-status-loaded"),
+    status: worktreeStatusSchema.optional(),
+  }),
+  z.object({
+    type: z.literal("worktree-landed"),
+    requestId: z.uuid(),
+    result: worktreeLandOutcomeSchema,
+  }),
+  z.object({
+    type: z.literal("worktree-session-forked"),
+    requestId: z.uuid(),
+    sessionId: z.string().min(1).max(256),
+    workspacePath: z.string().min(1).max(4_096),
+  }),
   z.object({ type: z.literal("accepted"), requestId: z.uuid() }),
   z.object({ type: z.literal("ui-response-accepted"), uiRequestId: z.uuid() }),
   z.object({ type: z.literal("artifact-response-accepted"), artifactRequestId: z.uuid() }),

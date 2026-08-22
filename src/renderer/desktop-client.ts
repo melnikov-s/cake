@@ -16,6 +16,7 @@ import type {
 } from "../ipc/session-contract";
 import type { ArtifactRecord } from "../ipc/artifact-contract";
 import type { ReviewAnchor, ReviewThread } from "../ipc/review-contract";
+import type { WorktreeLandOutcome, WorktreeRecord, WorktreeStatus } from "../ipc/worktree-contract";
 import type { CustomizationState, PluginDiagnostic, PluginStatus } from "../plugin/plugin-contract";
 import type {
   CompiledInlineWidget,
@@ -312,6 +313,25 @@ export interface DesktopClient {
     newSession?: boolean;
     sessionId?: string;
   }): Promise<void>;
+  createWorktree(input: { operationId: string; path: string }): Promise<WorktreeRecord>;
+  getWorktreeStatus(input: { workspacePath: string }): Promise<WorktreeStatus | undefined>;
+  landWorktree(input: {
+    operationId: string;
+    workspacePath: string;
+    message?: string;
+    autoResolve: boolean;
+  }): Promise<WorktreeLandOutcome>;
+  discardWorktree(input: {
+    operationId: string;
+    workspacePath: string;
+    keepBranch: boolean;
+  }): Promise<void>;
+  forkWorktreeSession(input: {
+    operationId: string;
+    sessionId: string;
+    entryId: string;
+    workspacePath: string;
+  }): Promise<{ sessionId: string; workspacePath: string }>;
   submit(input: {
     operationId: string;
     sessionId: string;
@@ -945,6 +965,53 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         newSession: input.newSession ?? false,
         sessionId: input.sessionId,
       }),
+    async createWorktree(input) {
+      const response = await bridge.request({
+        type: "create-worktree",
+        requestId: input.operationId,
+        path: input.path,
+      });
+      if (response.type !== "worktree-created")
+        throw new Error("Cake could not create the worktree");
+      return response.record;
+    },
+    async getWorktreeStatus(input) {
+      const response = await bridge.request({ type: "get-worktree-status", ...input });
+      if (response.type !== "worktree-status-loaded")
+        throw new Error("Cake returned an invalid worktree status");
+      return response.status;
+    },
+    async landWorktree(input) {
+      const response = await bridge.request({
+        type: "land-worktree",
+        requestId: input.operationId,
+        workspacePath: input.workspacePath,
+        message: input.message,
+        autoResolve: input.autoResolve,
+      });
+      if (response.type !== "worktree-landed")
+        throw new Error("Cake received an unexpected worktree landing response");
+      return response.result;
+    },
+    discardWorktree: (input) =>
+      accept(bridge, {
+        type: "discard-worktree",
+        requestId: input.operationId,
+        workspacePath: input.workspacePath,
+        keepBranch: input.keepBranch,
+      }),
+    async forkWorktreeSession(input) {
+      const response = await bridge.request({
+        type: "fork-worktree-session",
+        requestId: input.operationId,
+        sessionId: input.sessionId,
+        entryId: input.entryId,
+        workspacePath: input.workspacePath,
+      });
+      if (response.type !== "worktree-session-forked")
+        throw new Error("Cake could not fork the session into a new worktree");
+      return { sessionId: response.sessionId, workspacePath: response.workspacePath };
+    },
     submit: (input) =>
       accept(bridge, {
         type: "prompt",

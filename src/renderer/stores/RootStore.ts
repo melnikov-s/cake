@@ -241,6 +241,17 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       persistence: () => this.windowPersistence,
       catalog: this.sessionCatalogStore,
       startCakeChat: (prompt) => this.startCakeChat(prompt),
+      startFreshSessionInProject: async (path) => {
+        this.toastStore.show({
+          tone: "info",
+          title: "Worktree merged",
+          message: "Your work was merged back into the project.",
+        });
+        await this.createSession(path);
+      },
+      openSessionById: async (sessionId) => {
+        await this.openSession(sessionId);
+      },
     });
   }
 

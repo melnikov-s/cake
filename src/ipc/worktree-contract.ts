@@ -1,0 +1,60 @@
+import { z } from "zod";
+import { ipcProjectionArray } from "./projection";
+
+/**
+ * A Cake-managed Git worktree created for isolated session work.
+ *
+ * Worktrees live outside the repository in a sibling directory, use an
+ * `agent/`-namespaced branch, and are cleaned up by Cake after their work is
+ * merged back or discarded.
+ */
+export const worktreeRecordSchema = z.object({
+  /** The registered project (repository) the worktree was created from. */
+  projectPath: z.string().min(1).max(4_096),
+  /** Absolute path of the worktree checkout; doubles as the session workspace path. */
+  worktreePath: z.string().min(1).max(4_096),
+  branch: z.string().min(1).max(512),
+  /** The branch the worktree was branched from and merges back into. */
+  baseBranch: z.string().min(1).max(512),
+  createdAt: z.string().datetime(),
+});
+
+export type WorktreeRecord = z.infer<typeof worktreeRecordSchema>;
+
+export const worktreeStatusSchema = z.object({
+  record: worktreeRecordSchema,
+  mainBranch: z.string().min(1).max(512),
+  /** Uncommitted or untracked files in the worktree. */
+  dirtyCount: z.number().int().nonnegative(),
+  /** Commits on the worktree branch that are not reachable from the base branch. */
+  aheadCount: z.number().int().nonnegative(),
+  /** True when the branch tip is already contained in the base branch. */
+  merged: z.boolean(),
+  /** True when the canonical checkout has uncommitted changes. */
+  canonicalDirty: z.boolean(),
+  /** False when the canonical checkout currently has a branch other than the base checked out. */
+  canonicalOnBaseBranch: z.boolean(),
+  /** True while a conflicted merge is in progress inside the worktree awaiting resolution. */
+  merging: z.boolean(),
+});
+
+export type WorktreeStatus = z.infer<typeof worktreeStatusSchema>;
+
+export const worktreeLandOutcomeSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("landed"),
+    /** The squash-merge commit on the base branch, when commits were merged. */
+    commit: z.string().max(256).optional(),
+  }),
+  z.object({
+    outcome: z.literal("conflicts"),
+    files: ipcProjectionArray(z.string().max(4_096), 10_000),
+  }),
+  z.object({
+    /** A conflicted merge was started in the worktree for the session agent to resolve. */
+    outcome: z.literal("resolving"),
+    files: ipcProjectionArray(z.string().max(4_096), 10_000),
+  }),
+]);
+
+export type WorktreeLandOutcome = z.infer<typeof worktreeLandOutcomeSchema>;

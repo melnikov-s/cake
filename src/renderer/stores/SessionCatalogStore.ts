@@ -108,9 +108,10 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
     const byProject = new Map<string, GlobalSessionSummary[]>();
     for (const session of this.sessions) {
       byId.set(session.id, session);
-      const projectSessions = byProject.get(session.workspacePath) ?? [];
+      const projectKey = session.projectPath ?? session.workspacePath;
+      const projectSessions = byProject.get(projectKey) ?? [];
       projectSessions.push(session);
-      byProject.set(session.workspacePath, projectSessions);
+      byProject.set(projectKey, projectSessions);
     }
     this.indexedById = byId;
     this.indexedByProject = byProject;

@@ -209,6 +209,17 @@ function createDesktopClient(restoredPath?: string) {
     inspectWorkspace: vi.fn(async () => undefined),
     respondToWorkspaceTrust: vi.fn(async () => undefined),
     openWorkspace: vi.fn(async () => undefined),
+    createWorktree: vi.fn(async () => ({
+      projectPath: "/tmp/project",
+      worktreePath: "/tmp/.project-worktrees/project-test",
+      branch: "agent/project-test",
+      baseBranch: "main",
+      createdAt: new Date().toISOString(),
+    })),
+    getWorktreeStatus: vi.fn(async () => undefined),
+    landWorktree: vi.fn(async () => ({ outcome: "landed" as const })),
+    discardWorktree: vi.fn(async () => undefined),
+    forkWorktreeSession: vi.fn(async () => ({ sessionId: "forked", workspacePath: "/tmp/forked" })),
     getEmbeddedEditorState: vi.fn(async () => ({ status: "missing" as const })),
     installEmbeddedEditor: vi.fn(async () => undefined),
     setVscodeServerPath: vi.fn(async () => ({

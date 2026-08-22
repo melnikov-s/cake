@@ -29,6 +29,7 @@ import { SessionTree } from "@/components/session-tree";
 import { PanelResizeHandle } from "@/components/panel-resize-handle";
 import { CopyErrorDetailsButton } from "@/components/copy-error-details-button";
 import { ToastHost } from "@/components/toast-host";
+import { WorktreeChip } from "@/components/worktree-chip";
 import { Chat } from "@/components/chat";
 import { toWorkspaceRelativePath } from "../utils/workspace-relative-path";
 import type { CompatibilityResource } from "../ipc/session-contract";
@@ -1098,6 +1099,17 @@ export const App = observer(function App() {
               createPortal(
                 <>
                   <div className="header-pane-actions">
+                    <WorktreeChip
+                      store={store.worktreeStore}
+                      currentProjectPath={store.projectPath}
+                      onCreateWorktree={(projectPath) => {
+                        void store.createWorktreeSession(projectPath);
+                      }}
+                      onFinished={(projectPath) => {
+                        void root.createSession(projectPath);
+                      }}
+                      notify={root.toastStore.show}
+                    />
                     <button
                       className="header-pane-toggle"
                       type="button"
@@ -1238,6 +1250,43 @@ export const App = observer(function App() {
                 </ConfirmationAction>
                 <ConfirmationAction onClick={() => void store.resolveProjectTrust(true)}>
                   Trust and open
+                </ConfirmationAction>
+              </ConfirmationActions>
+            </ConfirmationRequest>
+          </Confirmation>
+        </div>
+      )}
+      {store.forkPrompt && (
+        <div className="dialog-backdrop">
+          <Confirmation
+            state="requested"
+            role="dialog"
+            aria-labelledby="fork-worktree-title"
+            aria-describedby="fork-worktree-description"
+          >
+            <ConfirmationRequest>
+              <ConfirmationTitle id="fork-worktree-title">
+                Fork into which worktree?
+              </ConfirmationTitle>
+              <ConfirmationDescription id="fork-worktree-description">
+                This session works inside a Cake-managed worktree. Choose where the forked
+                conversation should make its changes.
+              </ConfirmationDescription>
+              <ConfirmationActions>
+                <ConfirmationAction
+                  variant="ghost"
+                  onClick={() => void store.resolveForkPrompt("cancel")}
+                >
+                  Cancel
+                </ConfirmationAction>
+                <ConfirmationAction
+                  variant="outline"
+                  onClick={() => void store.resolveForkPrompt("existing")}
+                >
+                  Use the existing worktree
+                </ConfirmationAction>
+                <ConfirmationAction onClick={() => void store.resolveForkPrompt("new-worktree")}>
+                  Branch off a new worktree
                 </ConfirmationAction>
               </ConfirmationActions>
             </ConfirmationRequest>

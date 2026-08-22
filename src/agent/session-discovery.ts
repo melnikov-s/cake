@@ -91,6 +91,15 @@ export async function listWorkspaceSessions(
   }));
 }
 
+export async function findWorkspaceSessionFile(
+  cwd: string,
+  sessionId: string,
+  sessionDir: string,
+): Promise<string | undefined> {
+  const sessions = await SessionManager.list(cwd, cakeWorkspaceSessionDirectory(cwd, sessionDir));
+  return sessions.find((session) => session.id === sessionId)?.path;
+}
+
 export async function loadWorkspaceSessionPreview(
   cwd: string,
   sessionId: string,

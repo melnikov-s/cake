@@ -17,6 +17,7 @@ import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { WindowPersistenceCoordinatorStore } from "./WindowPersistenceCoordinatorStore";
+import { WorktreeStore } from "./WorktreeStore";
 import { describeError } from "../error-details";
 
 export interface ProjectWorkbenchStoreProps {
@@ -41,6 +42,12 @@ export interface ProjectWorkbenchStoreProps {
     | "installEmbeddedEditor"
     | "setVscodeServerPath"
     | "openWorkspace"
+    | "createWorktree"
+    | "getWorktreeStatus"
+    | "landWorktree"
+    | "discardWorktree"
+    | "forkWorktreeSession"
+    | "submit"
     | "registerProject"
     | "readWorkspaceFile"
     | "removeProject"
@@ -58,6 +65,10 @@ export interface ProjectWorkbenchStoreProps {
   persistence(): WindowPersistenceCoordinatorStore;
   catalog: SessionCatalogStore;
   startCakeChat(prompt?: string): Promise<void>;
+  /** Leaves the current surface and opens a fresh session in the given project. */
+  startFreshSessionInProject(path: string): Promise<void>;
+  /** Navigates the shell to an existing session by ID. */
+  openSessionById(sessionId: string): Promise<void>;
 }
 
 /** Owns active project/session activation and the project workbench workflow. */
@@ -118,6 +129,20 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       sessionId: () => this.session?.sessionId,
       parts: () => this.activeSession?.canonicalParts ?? [],
       operations: this.props.operations,
+    });
+  }
+
+  @child
+  get worktreeStore(): WorktreeStore {
+    return createStore(WorktreeStore, {
+      client: this.client,
+      workspacePath: () =>
+        this.selectedSessionId ? (this.session?.workspacePath ?? this.projectPath) : undefined,
+      sessionId: () => this.selectedSessionId,
+      isStreaming: () => this.activeSession?.isStreaming ?? false,
+      onLanded: (projectPath) => {
+        void this.props.startFreshSessionInProject(projectPath);
+      },
     });
   }
 
@@ -493,9 +518,50 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   async resolveSession(sessionId: string, resolved: boolean) {
     if (!this.props.catalog.find(sessionId)) return;
     try {
+      await this.cleanupWorktreeForResolvedSession(sessionId, resolved);
       this.applyApplicationState(await this.client.resolveSession(sessionId, resolved));
     } catch (error) {
       this.setError(error);
+    }
+  }
+
+  /**
+   * Resolving a session whose workspace is a Cake-managed worktree finishes the
+   * worktree too: clean merged worktrees are deleted silently, unmerged ones
+   * keep their branch, and dirty ones block resolution until handled explicitly.
+   */
+  private async cleanupWorktreeForResolvedSession(sessionId: string, resolved: boolean) {
+    if (!resolved) return;
+    const workspacePath = this.props.catalog.find(sessionId)?.workspacePath;
+    if (!workspacePath) return;
+    const status = await this.props.client.getWorktreeStatus({ workspacePath });
+    if (!status) return;
+    if (status.dirtyCount > 0)
+      throw new Error(
+        "This session's worktree still has uncommitted changes. Land or discard the worktree before resolving it.",
+      );
+    await this.props.client.discardWorktree({
+      operationId: crypto.randomUUID(),
+      workspacePath,
+      keepBranch: status.aheadCount > 0 && !status.merged,
+    });
+  }
+
+  /** Creates a managed worktree for the project and opens a new session inside it. */
+  async createWorktreeSession(path = this.projectPath) {
+    if (!path) {
+      await this.chooseProject();
+      return;
+    }
+    const operationId = this.startOperation();
+    try {
+      const record = await this.props.client.createWorktree({ operationId, path });
+      if (path === this.projectPath) await this.openPath(record.worktreePath, true);
+      else await this.inspectPath(record.worktreePath, true);
+    } catch (error) {
+      this.setError(error);
+    } finally {
+      this.finishOperation(operationId);
     }
   }
 
@@ -518,14 +584,63 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return this.resolveSessions(sessionIds, resolved);
   }
 
+  forkPrompt: { sessionId: string; entryId: string; workspacePath: string } | undefined;
+
   async forkAt(entryId: string) {
     const context = this.sessionContext();
     if (!context) return;
     this.closeCommandPane();
+    // Forking inside a managed worktree is ambiguous: the fork inherits the
+    // transcript but must choose which working tree it edits.
+    let status: Awaited<ReturnType<typeof this.client.getWorktreeStatus>>;
+    try {
+      status = await this.client.getWorktreeStatus({ workspacePath: context.workspacePath });
+    } catch {
+      status = undefined;
+    }
+    if (!status) {
+      await this.dispatchFork(context.sessionId, entryId);
+      return;
+    }
+    this.forkPrompt = {
+      sessionId: context.sessionId,
+      entryId,
+      workspacePath: context.workspacePath,
+    };
+  }
+
+  async resolveForkPrompt(choice: "existing" | "new-worktree" | "cancel") {
+    const prompt = this.forkPrompt;
+    if (!prompt) return;
+    this.forkPrompt = undefined;
+    if (choice === "cancel") return;
+    if (choice === "existing") {
+      await this.dispatchFork(prompt.sessionId, prompt.entryId);
+      return;
+    }
+    const operationId = this.startOperation();
+    try {
+      const result = await this.client.forkWorktreeSession({
+        operationId,
+        sessionId: prompt.sessionId,
+        entryId: prompt.entryId,
+        workspacePath: prompt.workspacePath,
+      });
+      const preview = await this.client.loadSession(result.sessionId);
+      if (preview) this.sessionRegistry.hydratePreview(preview);
+      await this.props.openSessionById(result.sessionId);
+    } catch (error) {
+      this.setError(error);
+    } finally {
+      this.finishOperation(operationId);
+    }
+  }
+
+  private async dispatchFork(sessionId: string, entryId: string) {
     const operationId = this.startOperation();
     this.activeOpenOperationId = operationId;
     try {
-      await this.client.forkSession({ operationId, sessionId: context.sessionId, entryId });
+      await this.client.forkSession({ operationId, sessionId, entryId });
     } catch (error) {
       this.finishOperation(operationId);
       this.setError(error);
