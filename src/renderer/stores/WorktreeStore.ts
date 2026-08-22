@@ -1,4 +1,4 @@
-import { Store } from "r-state-tree";
+import { Store, untracked } from "r-state-tree";
 import type { DesktopClient } from "../desktop-client";
 import { describeError } from "../error-details";
 import type { WorktreeLandOutcome, WorktreeStatus } from "../../ipc/worktree-contract";
@@ -27,7 +27,9 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   constructor(props: WorktreeStore["props"]) {
     super(props);
     this.effect(() => {
-      void this.refresh();
+      untracked(() => {
+        void this.refresh();
+      });
       const timer = setInterval(() => void this.refresh(), POLL_INTERVAL_MS);
       return () => clearInterval(timer);
     });
