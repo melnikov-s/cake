@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useState,
-  type CSSProperties,
-  type FormEvent,
-} from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { observer, StoreProvider, useStore } from "r-state-tree/react";
 import {
@@ -83,7 +77,10 @@ const compatibilityResourceKinds: CompatibilityResource["kind"][] = [
   "package",
 ];
 
-function CommandPane({
+// Observer-wrapped: reads ProjectWorkbenchStore.commandPane and
+// session.compatibility resources/diagnostics directly, which the App observer
+// does not read, so pane content must track those reads itself.
+const CommandPane = observer(function CommandPane({
   store,
   extensionUi,
 }: {
@@ -209,7 +206,7 @@ function CommandPane({
       )}
     </aside>
   );
-}
+});
 
 function ErrorNotice({
   title,

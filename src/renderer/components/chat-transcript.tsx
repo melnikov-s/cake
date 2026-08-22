@@ -488,7 +488,10 @@ const AssistantTextMessage = observer(function AssistantTextMessage({
   );
 });
 
-function TranscriptPartContent({
+// Observer-wrapped: reads ChatStore.workLogItemOpen (per-item overrides plus the
+// global expansion mode), so item clicks must re-render this component even when
+// the rest of the transcript is idle.
+const TranscriptPartContent = observer(function TranscriptPartContent({
   part,
   behavior,
   workLogItem = false,
@@ -581,7 +584,7 @@ function TranscriptPartContent({
       {part.detail && <span>{part.detail}</span>}
     </div>
   );
-}
+});
 
 /** Marks every rendered transcript part in the DOM so right-click selection
  *  capture can resolve any selectable surface back to its conversation part.

@@ -4,7 +4,9 @@ import type { EmbeddedEditorStore } from "../stores/EmbeddedEditorStore";
 import { Button } from "./ui/button";
 import { LoadingState } from "./ui/loading-state";
 
-function StatusCard({ store }: { store: EmbeddedEditorStore }) {
+// Observer-wrapped: reads EmbeddedEditorStore status fields directly, so status
+// transitions must re-render this card even if no parent render rescues it.
+const StatusCard = observer(function StatusCard({ store }: { store: EmbeddedEditorStore }) {
   const managedDownloadAvailable = /Linux/.test(navigator.userAgent);
   return (
     <div className="embedded-editor-card" role="status">
@@ -39,7 +41,7 @@ function StatusCard({ store }: { store: EmbeddedEditorStore }) {
       </div>
     </div>
   );
-}
+});
 
 /**
  * Host surface for the embedded VS Code editor. Renders placeholder states while

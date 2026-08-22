@@ -297,7 +297,9 @@ const FullDiff = observer(function FullDiff({
   );
 });
 
-function FullFile({
+// Observer-wrapped: reads ReviewsStore.threads directly, so newly arriving
+// review threads re-render the full-file view without relying on a parent read.
+const FullFile = observer(function FullFile({
   change,
   reviews,
   browse,
@@ -391,7 +393,7 @@ function FullFile({
       afterLines={removedRows(sourceLines.length + 1)}
     />
   );
-}
+});
 
 export const ChangeExplorer = observer(function ChangeExplorer({
   store,

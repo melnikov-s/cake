@@ -42,7 +42,9 @@ const StopIcon = () => (
   </Icon>
 );
 
-function Usage({ store }: { store: ChatStore }) {
+// Observer-wrapped: reads ChatStore.usage (an observable props getter), so usage
+// updates at the end of a turn re-render the gauge even while Chat itself is idle.
+const Usage = observer(function Usage({ store }: { store: ChatStore }) {
   const usage = store.usage;
   if (!usage) return null;
   const context = usage.context;
@@ -77,7 +79,7 @@ function Usage({ store }: { store: ChatStore }) {
       </svg>
     </div>
   );
-}
+});
 
 export const Chat = observer(function Chat({
   store,
