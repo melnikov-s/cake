@@ -2507,6 +2507,14 @@
   background: var(--foreground) !important;
   color: var(--background) !important;
 }
+/* A queued/steered prompt that Pi has not accepted into the conversation yet. */
+.user-message-pending {
+  opacity: 0.72;
+}
+.user-message-pending .user-message {
+  border-color: color-mix(in oklab, var(--foreground) 45%, transparent) !important;
+  border-style: dashed;
+}
 .assistant-message {
   position: relative;
 }

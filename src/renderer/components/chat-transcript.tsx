@@ -123,18 +123,27 @@ export const ChatTextMessage = forwardRef<
   }
 >(function ChatTextMessage({ part, contentRef, children }, ref) {
   const assistant = part.role === "assistant";
+  // A steered or queued prompt is not yet accepted into the conversation;
+  // render it with a distinct pending treatment until Pi delivers it.
+  const pending =
+    !assistant && (part.deliveryState === "queued" || part.deliveryState === "steering");
   const userLabel =
     part.deliveryState === "queued"
-      ? "You · queued"
+      ? "You · pending"
       : part.deliveryState === "steering"
-        ? "You · steering next"
+        ? "You · pending steer"
         : part.deliveryState === "sending"
           ? "You · sending"
           : "You";
   return (
     <Message
       ref={ref}
-      className={assistant ? "assistant-message mr-auto w-full" : "ml-auto w-[min(88%,42rem)]"}
+      className={[
+        assistant ? "assistant-message mr-auto w-full" : "ml-auto w-[min(88%,42rem)]",
+        pending ? "user-message-pending" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
       <MessageLabel>
         {assistant ? (part.status === "streaming" ? "Cake · working" : "Cake") : userLabel}
