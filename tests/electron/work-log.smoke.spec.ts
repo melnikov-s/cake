@@ -153,6 +153,14 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
     await expect(log).not.toHaveAttribute("open", "");
     await expect(log.locator(":scope > div")).toHaveCount(0);
     await expect(log.locator(".tool-call")).toHaveCount(0);
+
+    await page.keyboard.press("Control+o");
+    await expect(log).toHaveAttribute("open", "");
+    await expect(log.locator(".tool-call")).toHaveCount(1);
+
+    await page.keyboard.press("Control+o");
+    await expect(log).not.toHaveAttribute("open", "");
+    await expect(log.locator(":scope > div")).toHaveCount(0);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

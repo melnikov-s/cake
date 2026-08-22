@@ -671,7 +671,7 @@ function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
   return items;
 }
 
-function ActivityGroup({
+const ActivityGroup = observer(function ActivityGroup({
   parts,
   behavior,
   isStreaming,
@@ -680,7 +680,7 @@ function ActivityGroup({
   behavior: CanonicalTranscriptBehavior;
   isStreaming: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const open = behavior.store.workLogsExpanded;
   const logRef = useRef<HTMLDivElement>(null);
   const logIsAtBottomRef = useRef(true);
   const tools = parts.filter((part) => part.kind === "tool").length;
@@ -731,7 +731,7 @@ function ActivityGroup({
       <summary
         onClick={(event) => {
           event.preventDefault();
-          setOpen((value) => !value);
+          behavior.store.toggleWorkLogsExpanded();
         }}
       >
         <span
@@ -749,7 +749,7 @@ function ActivityGroup({
               event.preventDefault();
               event.stopPropagation();
               if (!behavior.workLogDiff) behavior.onToggleWorkLogDiff();
-              setOpen(true);
+              behavior.store.setWorkLogsExpanded(true);
             }}
           >
             <DiffIcon />
@@ -763,7 +763,7 @@ function ActivityGroup({
               event.preventDefault();
               event.stopPropagation();
               if (behavior.workLogDiff) behavior.onToggleWorkLogDiff();
-              setOpen(true);
+              behavior.store.setWorkLogsExpanded(true);
             }}
           >
             <LogIcon />
@@ -791,7 +791,7 @@ function ActivityGroup({
       )}
     </details>
   );
-}
+});
 
 function ReviewRunMessage({
   run,
@@ -921,6 +921,16 @@ export const ChatTranscript = observer(function ChatTranscript({
     const frame = requestAnimationFrame(scrollToLatest);
     return () => cancelAnimationFrame(frame);
   }, [latestUserPartId, scrollToLatest]);
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "o") {
+        event.preventDefault();
+        store.toggleWorkLogsExpanded();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [store]);
   const error = errorOverride ?? store.error;
   const renderItem = (item: TranscriptItem, index: number) => (
     <div

@@ -219,6 +219,14 @@ export class ChatStore extends Store<ChatStoreProps> {
     this.setWorkLogDiff(!this.workLogDiff);
   }
 
+  setWorkLogsExpanded(expanded: boolean) {
+    this.workLogsExpanded = expanded;
+  }
+
+  toggleWorkLogsExpanded() {
+    this.setWorkLogsExpanded(!this.workLogsExpanded);
+  }
+
   async submit(value = this.draft) {
     if (value !== this.draft) this.setDraft(value);
     if (!this.props.canSubmit(value) || this.submittingLocally) return false;
