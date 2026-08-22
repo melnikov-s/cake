@@ -21,6 +21,7 @@ export interface SessionRegistryStoreProps {
   persist(): void;
   projectName(workspacePath: string): string;
   abort(): Promise<void>;
+  renameSession(sessionId: string, name: string): Promise<void>;
 }
 
 /** Owns the keyed collection of loaded per-session Store instances for a window. */
@@ -48,6 +49,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         persist: () => this.props.persist(),
         projectName: () => this.props.projectName(target.workspacePath),
         abort: () => this.props.abort(),
+        renameSession: (name) => this.props.renameSession(target.sessionId, name),
       }),
     );
   }

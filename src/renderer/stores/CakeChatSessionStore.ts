@@ -1,5 +1,6 @@
 import { Store, child, createStore, observable } from "r-state-tree";
 import type { Attachment } from "../../ipc/session-contract";
+import { parsePiBuiltinCommand } from "../../ipc/session-contract";
 import { pastedImageAttachments } from "../pasted-image-attachments";
 import { describeError } from "../error-details";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
@@ -44,6 +45,45 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     text = text.trim();
     const attachments = this.attachments.slice();
     if (!text && attachments.length === 0) return false;
+    const builtin = parsePiBuiltinCommand(text);
+    if (builtin?.name === "model") {
+      const separator = builtin.args.indexOf("/");
+      if (!builtin.args || separator < 1) {
+        this.reportError(new Error("Usage: /model <provider/model>"));
+        return false;
+      }
+      const operationId = this.props.operations.start(this.promptOwner);
+      try {
+        await this.props.collection.port.setModel({
+          operationId,
+          sessionId: this.sessionId,
+          provider: builtin.args.slice(0, separator),
+          modelId: builtin.args.slice(separator + 1),
+        });
+        return true;
+      } catch (error) {
+        this.props.operations.finish(operationId);
+        this.reportError(error);
+        return false;
+      }
+    }
+    if (builtin?.name === "compact") {
+      // Compaction is a session operation, not a prompt: nothing enters the transcript.
+      const operationId = this.props.operations.start(this.promptOwner);
+      try {
+        await this.props.collection.port.compact({
+          operationId,
+          sessionId: this.sessionId,
+          instructions: builtin.args || undefined,
+        });
+        this.attachments.splice(0);
+        return true;
+      } catch (error) {
+        this.props.operations.finish(operationId);
+        this.reportError(error);
+        return false;
+      }
+    }
     const operationId = this.props.operations.start(this.promptOwner);
     this.attachments.splice(0);
     try {

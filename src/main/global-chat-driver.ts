@@ -71,6 +71,13 @@ export class GlobalChatDriver {
     void this.run(requestId, async () => this.runtimeFor(sessionId).abort());
   }
 
+  compact(requestId: string, sessionId: string, instructions?: string) {
+    void this.run(requestId, async () => {
+      const runtime = await this.ensureRuntime(false, sessionId);
+      await runtime.compact(instructions);
+    });
+  }
+
   setModel(requestId: string, sessionId: string, provider: string, modelId: string) {
     void this.run(requestId, async () => {
       const runtime = await this.ensureRuntime(false, sessionId);
@@ -135,6 +142,8 @@ export class GlobalChatDriver {
       sessionDir: this.options.sessionDir,
       newSession,
       sessionId,
+      // Cake Chat sessions have no rename workflow, so /name is not offered there.
+      slashCommands: ["compact", "model"],
       requestUi: async () => undefined,
       fastMode: {
         get: () => {

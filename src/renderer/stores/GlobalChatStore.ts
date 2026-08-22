@@ -27,6 +27,7 @@ export interface GlobalChatPort {
     attachments: Attachment[];
   }): Promise<void>;
   abort(input: { operationId: string; sessionId: string }): Promise<void>;
+  compact(input: { operationId: string; sessionId: string; instructions?: string }): Promise<void>;
   setModel(input: {
     operationId: string;
     sessionId: string;

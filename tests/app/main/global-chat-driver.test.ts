@@ -29,6 +29,7 @@ function runtime(nextSnapshot = snapshot): CakeRuntime {
     sessionFile: nextSnapshot.sessionFile,
     snapshot: vi.fn(async () => nextSnapshot),
     prompt: vi.fn(async () => undefined),
+    compact: vi.fn(async () => undefined),
     abort: vi.fn(async () => undefined),
     setModel: vi.fn(async () => undefined),
     setThinkingLevel: vi.fn(async () => undefined),

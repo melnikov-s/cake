@@ -1071,6 +1071,11 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
     globalChatDriver.abort(request.requestId, request.sessionId);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
+  if (request.type === "compact-global-chat") {
+    globalChatController = event.sender;
+    globalChatDriver.compact(request.requestId, request.sessionId, request.instructions);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
   if (request.type === "set-global-chat-model") {
     globalChatController = event.sender;
     globalChatDriver.setModel(

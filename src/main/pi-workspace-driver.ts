@@ -65,6 +65,7 @@ type PiCommandType =
   | "prompt"
   | "submit-review-thread"
   | "abort"
+  | "compact-session"
   | "set-model"
   | "set-thinking"
   | "set-fast-mode"
@@ -335,6 +336,7 @@ export class PiWorkspaceDriver {
         const runtime =
           command.type === "rename-session" ||
           command.type === "prompt" ||
+          command.type === "compact-session" ||
           command.type === "set-model"
             ? (this.runtimes.get(command.sessionId) ??
               (await this.createRuntime(false, command.sessionId)))
@@ -342,6 +344,9 @@ export class PiWorkspaceDriver {
         if (command.type === "abort") await runtime.abort();
         else if (command.type === "prompt") {
           await runtime.prompt(command.text, command.delivery, command.attachments);
+          this.emit({ type: "session-snapshot", snapshot: await runtime.snapshot() });
+        } else if (command.type === "compact-session") {
+          await runtime.compact(command.instructions);
           this.emit({ type: "session-snapshot", snapshot: await runtime.snapshot() });
         } else if (command.type === "set-model")
           await runtime.setModel(command.provider, command.modelId);

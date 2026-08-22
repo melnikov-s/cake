@@ -28,6 +28,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   persist(): void;
   projectName(): string;
   abort(): Promise<void>;
+  renameSession(name: string): Promise<void>;
 }
 
 /** Owns the view and interaction workflow for one project Pi session. */
@@ -99,6 +100,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       openCommandPane: (pane) => this.props.openCommandPane(pane),
       matchesPluginCommand: (input) => this.props.pluginCommands().matches(input),
       runPluginCommand: (input) => this.props.pluginCommands().run(input),
+      renameSession: (name) => this.props.renameSession(name),
       operations: this.props.operations,
       operationOwner: `message-composer:${this.sessionId}`,
     });

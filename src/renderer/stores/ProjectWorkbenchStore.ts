@@ -150,17 +150,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return title ?? "New chat";
   }
 
-  get isLocalSlashCommand() {
-    const draft = this.activeSession?.chatStore.draft ?? "";
-    const command = draft.trim().toLocaleLowerCase();
-    return (
-      command === "/tree" ||
-      command === "/resources" ||
-      command === "/changelog" ||
-      this.props.pluginCommands().matches(draft)
-    );
-  }
-
   canSubmitSession(sessionId: string) {
     if (!this.isActiveSession(sessionId) || this.activeOpenOperationId) return false;
     const session = this.sessionRegistry.findSession(sessionId);

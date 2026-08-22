@@ -243,6 +243,11 @@ export interface DesktopClient {
     attachments: Attachment[];
   }): Promise<void>;
   abortGlobalChat(input: { operationId: string; sessionId: string }): Promise<void>;
+  compactGlobalChat(input: {
+    operationId: string;
+    sessionId: string;
+    instructions?: string;
+  }): Promise<void>;
   setGlobalChatModel(input: {
     operationId: string;
     sessionId: string;
@@ -310,6 +315,11 @@ export interface DesktopClient {
     attachments: Attachment[];
   }): Promise<void>;
   abort(input: { operationId: string; sessionId: string }): Promise<void>;
+  compactSession(input: {
+    operationId: string;
+    sessionId: string;
+    instructions?: string;
+  }): Promise<void>;
   setModel(input: {
     operationId: string;
     sessionId: string;
@@ -794,6 +804,13 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         requestId: input.operationId,
         sessionId: input.sessionId,
       }),
+    compactGlobalChat: (input) =>
+      accept(bridge, {
+        type: "compact-global-chat",
+        requestId: input.operationId,
+        sessionId: input.sessionId,
+        instructions: input.instructions,
+      }),
     setGlobalChatModel: (input) =>
       accept(bridge, {
         type: "set-global-chat-model",
@@ -933,6 +950,13 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       }),
     abort: (input) =>
       accept(bridge, { type: "abort", requestId: input.operationId, sessionId: input.sessionId }),
+    compactSession: (input) =>
+      accept(bridge, {
+        type: "compact-session",
+        requestId: input.operationId,
+        sessionId: input.sessionId,
+        instructions: input.instructions,
+      }),
     setModel: (input) =>
       accept(bridge, {
         type: "set-model",

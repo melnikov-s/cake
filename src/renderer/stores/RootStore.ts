@@ -147,6 +147,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       persist: () => this.windowPersistence.schedule(),
       projectName: (workspacePath) => this.projectCatalogStore.nameForPath(workspacePath),
       abort: () => this.projectWorkbenchStore.abort(),
+      renameSession: (sessionId, name) => this.projectWorkbenchStore.renameSession(sessionId, name),
     });
   }
 
@@ -264,6 +265,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         open: (input) => this.client.openGlobalChat(input),
         prompt: (input) => this.client.promptGlobalChat(input),
         abort: (input) => this.client.abortGlobalChat(input),
+        compact: (input) => this.client.compactGlobalChat(input),
         setModel: (input) => this.client.setGlobalChatModel(input),
         setThinkingLevel: (input) => this.client.setGlobalChatThinkingLevel(input),
         setFastMode: (input) => this.client.setGlobalChatFastMode(input),

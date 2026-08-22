@@ -1,5 +1,6 @@
 import { Store, observable } from "r-state-tree";
 import type { Attachment, FileSuggestion, UiPart } from "../../ipc/session-contract";
+import { parsePiBuiltinCommand } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { ReviewsStore } from "./ReviewsStore";
@@ -24,7 +25,10 @@ export interface QueuedPrompt {
 }
 
 export interface MessageComposerStoreProps {
-  client: Pick<DesktopClient, "chooseAttachments" | "suggestFiles" | "submit">;
+  client: Pick<
+    DesktopClient,
+    "chooseAttachments" | "suggestFiles" | "submit" | "compactSession" | "setModel"
+  >;
   sessionRegistry: SessionRegistryStore;
   reviews(): ReviewsStore;
   projectPath(): string | undefined;
@@ -37,6 +41,7 @@ export interface MessageComposerStoreProps {
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
   matchesPluginCommand(input: string): boolean;
   runPluginCommand(input: string): Promise<boolean>;
+  renameSession(name: string): Promise<void>;
   operations: SessionOperationCoordinatorStore;
   operationOwner: string;
 }
@@ -172,6 +177,17 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       this.props.setDraft("");
       return;
     }
+    const builtin = parsePiBuiltinCommand(text);
+    if (builtin?.name === "model") {
+      this.props.setDraft("");
+      await this.switchModel(builtin.args);
+      return;
+    }
+    if (builtin?.name === "name") {
+      this.props.setDraft("");
+      await this.renameSession(builtin.args);
+      return;
+    }
     const sessionId = this.props.sessionId();
     if (!sessionId) return;
     const attachments = this.attachments.slice();
@@ -194,6 +210,44 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   removeQueuedPrompt(id: string) {
     const index = this.queuedPrompts.findIndex((entry) => entry.id === id);
     if (index >= 0) this.queuedPrompts.splice(index, 1);
+  }
+
+  private async switchModel(value: string) {
+    const separator = value.indexOf("/");
+    if (!value || separator < 1) {
+      this.reportError(new Error("Usage: /model <provider/model>"));
+      return;
+    }
+    const sessionId = this.props.sessionId();
+    if (!sessionId) return;
+    this.error = undefined;
+    this.errorDetails = undefined;
+    const operationId = this.props.operations.start(this.props.operationOwner);
+    try {
+      await this.props.client.setModel({
+        operationId,
+        sessionId,
+        provider: value.slice(0, separator),
+        modelId: value.slice(separator + 1),
+      });
+    } catch (error) {
+      this.reportError(error);
+      this.finishOperation(operationId);
+    }
+  }
+
+  private async renameSession(name: string) {
+    if (!name.trim()) {
+      this.reportError(new Error("Usage: /name <title>"));
+      return;
+    }
+    this.error = undefined;
+    this.errorDetails = undefined;
+    try {
+      await this.props.renameSession(name.trim());
+    } catch (error) {
+      this.reportError(error);
+    }
   }
 
   editQueuedPrompt(id: string) {
@@ -244,6 +298,24 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   ): Promise<boolean> {
     this.error = undefined;
     this.errorDetails = undefined;
+    const builtin = parsePiBuiltinCommand(text);
+    if (builtin?.name === "compact") {
+      // Compaction is a session operation, not a prompt: no optimistic user message.
+      const operationId = this.props.operations.start(this.props.operationOwner);
+      try {
+        await this.props.client.compactSession({
+          operationId,
+          sessionId,
+          instructions: builtin.args || undefined,
+        });
+        return true;
+      } catch (error) {
+        this.reportError(error);
+        this.finishOperation(operationId);
+        if (restoreOnError && !this.props.draft().trim()) this.props.setDraft(text);
+        return false;
+      }
+    }
     const operationId = this.props.operations.start(this.props.operationOwner);
     this.addPendingUserMessage(operationId, sessionId, text, attachments, delivery);
     try {

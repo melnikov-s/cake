@@ -27,6 +27,7 @@ import type {
 } from "../ipc/session-contract";
 import {
   SESSION_TITLE_MAX_LENGTH,
+  parsePiBuiltinCommand,
   piBuiltinSlashCommands,
   slashCommandSchema,
 } from "../ipc/session-contract";
@@ -144,6 +145,8 @@ export interface CakeRuntimeOptions {
   additionalSystemPrompt?: string;
   tools?: string[];
   auxiliary?: boolean;
+  /** Subset of builtin slash command names to advertise; defaults to all of them. */
+  slashCommands?: readonly string[];
   requestUi(request: RuntimeUiRequest): Promise<string | undefined>;
   persistArtifact?(artifact: CakeArtifactV1): Promise<ArtifactRecord>;
   requestArtifact?(record: ArtifactRecord, signal: AbortSignal): Promise<JsonValue | undefined>;
@@ -368,6 +371,7 @@ export interface CakeRuntime {
     delivery: "prompt" | "steer" | "follow-up",
     attachments: Attachment[],
   ): Promise<void>;
+  compact(instructions?: string): Promise<void>;
   abort(): Promise<void>;
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: ThinkingLevel): Promise<void>;
@@ -675,7 +679,12 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       ],
       commands: options.auxiliary
         ? []
-        : [...piBuiltinSlashCommands, ...getPiCommands()].flatMap((command) => {
+        : [
+            ...piBuiltinSlashCommands.filter(
+              (command) => !options.slashCommands || options.slashCommands.includes(command.name),
+            ),
+            ...getPiCommands(),
+          ].flatMap((command) => {
             const parsed = slashCommandSchema.safeParse(command);
             return parsed.success ? [parsed.data] : [];
           }),
@@ -1168,6 +1177,13 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
   });
   void resumeInterruptedTurn();
 
+  const runCompact = async (instructions?: string) => {
+    if (disposed) throw new Error("The Cake runtime has been disposed");
+    if (!session.isStreaming && reloadCompleted < reloadRequested) await drainReloads();
+    await session.compact(instructions || undefined);
+    await emitSnapshot();
+  };
+
   return {
     sessionId: cakeSessionId,
     get sessionFile() {
@@ -1198,8 +1214,14 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       });
     },
     snapshot: makeSnapshot,
+    compact: (instructions) => runCompact(instructions),
     async prompt(text, delivery, attachments) {
       if (disposed) throw new Error("The Cake runtime has been disposed");
+      const builtin = parsePiBuiltinCommand(text);
+      if (builtin?.name === "compact") {
+        await runCompact(builtin.args || undefined);
+        return;
+      }
       if (!session.isStreaming && reloadCompleted < reloadRequested) await drainReloads();
       const content = promptText(text, attachments);
       const images = imageContent(attachments);

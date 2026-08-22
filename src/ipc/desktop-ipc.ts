@@ -417,6 +417,12 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     sessionId: z.string().min(1).max(256),
   }),
   z.object({
+    type: z.literal("compact-global-chat"),
+    requestId: z.uuid(),
+    sessionId: z.string().min(1).max(256),
+    instructions: z.string().max(262_144).optional(),
+  }),
+  z.object({
     type: z.literal("set-global-chat-model"),
     requestId: z.uuid(),
     sessionId: z.string().min(1).max(256),
@@ -525,6 +531,12 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     thinkingLevel: thinkingLevelSchema.optional(),
   }),
   z.object({ type: z.literal("abort"), requestId: z.uuid(), sessionId: z.string().max(256) }),
+  z.object({
+    type: z.literal("compact-session"),
+    requestId: z.uuid(),
+    sessionId: z.string().max(256),
+    instructions: z.string().max(262_144).optional(),
+  }),
   z.object({
     type: z.literal("set-model"),
     requestId: z.uuid(),

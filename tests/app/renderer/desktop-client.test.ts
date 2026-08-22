@@ -87,6 +87,12 @@ describe("desktop client", () => {
         { kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" },
       ],
     });
+    await client.compactSession({ operationId, sessionId: "session" });
+    await client.compactGlobalChat({
+      operationId,
+      sessionId: "cake-chat",
+      instructions: "Keep the migration notes",
+    });
 
     expect(desktop.request).toHaveBeenCalledWith({
       type: "respond-workspace-trust",
@@ -131,6 +137,18 @@ describe("desktop client", () => {
       ],
     });
     expect(desktop.request).toHaveBeenCalledWith({ type: "load-session", sessionId: "session" });
+    expect(desktop.request).toHaveBeenCalledWith({
+      type: "compact-session",
+      requestId: operationId,
+      sessionId: "session",
+      instructions: undefined,
+    });
+    expect(desktop.request).toHaveBeenCalledWith({
+      type: "compact-global-chat",
+      requestId: operationId,
+      sessionId: "cake-chat",
+      instructions: "Keep the migration notes",
+    });
     expect(desktop.request).toHaveBeenCalledWith({
       type: "suggest-files",
       workspacePath: "/project",

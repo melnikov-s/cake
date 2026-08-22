@@ -1550,38 +1550,19 @@ export default function (pi) {
     const catalog = firstSnapshot.compatibility;
     expect(firstSnapshot.commands).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: "settings", source: "builtin" }),
-        expect.objectContaining({ name: "tree", source: "builtin" }),
-        expect.objectContaining({ name: "quit", source: "builtin" }),
+        expect.objectContaining({ name: "compact", source: "builtin" }),
+        expect.objectContaining({ name: "model", source: "builtin" }),
+        expect.objectContaining({ name: "name", source: "builtin" }),
         expect.objectContaining({ name: "cake-compat", source: "extension" }),
         expect.objectContaining({ name: "fixture-prompt", source: "prompt" }),
         expect.objectContaining({ name: "skill:fixture-skill", source: "skill" }),
         expect.objectContaining({ name: "skill:cake-plugin-authoring", source: "skill" }),
       ]),
     );
-    expect(firstSnapshot.commands.slice(0, 22).map((command) => command.name)).toEqual([
-      "settings",
-      "model",
-      "scoped-models",
-      "export",
-      "import",
-      "share",
-      "copy",
-      "name",
-      "session",
-      "changelog",
-      "hotkeys",
-      "fork",
-      "clone",
-      "tree",
-      "trust",
-      "login",
-      "logout",
-      "new",
+    expect(firstSnapshot.commands.slice(0, 3).map((command) => command.name)).toEqual([
       "compact",
-      "resume",
-      "reload",
-      "quit",
+      "model",
+      "name",
     ]);
     expect(catalog.resources).toEqual(
       expect.arrayContaining([

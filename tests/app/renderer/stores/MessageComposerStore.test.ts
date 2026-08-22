@@ -11,7 +11,10 @@ interface SubmittedPrompt {
 }
 
 function createComposerStore(options: {
-  clientSubmit: (input: unknown) => Promise<void>;
+  clientSubmit?: (input: unknown) => Promise<void>;
+  clientCompactSession?: (input: unknown) => Promise<void>;
+  clientSetModel?: (input: unknown) => Promise<void>;
+  renameSession?: (name: string) => Promise<void>;
   streaming: () => boolean;
 }) {
   let draft = "";
@@ -20,7 +23,9 @@ function createComposerStore(options: {
       client: {
         chooseAttachments: vi.fn(async () => []),
         suggestFiles: vi.fn(async () => []),
-        submit: options.clientSubmit,
+        submit: options.clientSubmit ?? (async () => undefined),
+        compactSession: options.clientCompactSession ?? (async () => undefined),
+        setModel: options.clientSetModel ?? (async () => undefined),
       },
       sessionRegistry: {
         findModel: () => undefined,
@@ -40,6 +45,7 @@ function createComposerStore(options: {
       openCommandPane: vi.fn(async () => undefined),
       matchesPluginCommand: () => false,
       runPluginCommand: vi.fn(async () => true),
+      renameSession: options.renameSession ?? (async () => undefined),
       operations: mount(createStore(SessionOperationCoordinatorStore)),
       operationOwner: "message-composer:test",
     }),
@@ -156,6 +162,122 @@ describe("MessageComposerStore prompt queue", () => {
     state.streaming = false;
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(clientSubmit).not.toHaveBeenCalled();
+    harness.dispose();
+  });
+});
+
+describe("MessageComposerStore builtin slash commands", () => {
+  it("compacts the session instead of sending /compact as a prompt", async () => {
+    const clientSubmit = vi.fn(async () => undefined);
+    const clientCompactSession = vi.fn(async (input: unknown) => {
+      void input;
+    });
+    const harness = createComposerStore({
+      clientSubmit,
+      clientCompactSession,
+      streaming: () => false,
+    });
+    const { store } = harness;
+
+    harness.setDraft("/compact");
+    await store.submit();
+
+    expect(clientCompactSession).toHaveBeenCalledWith({
+      operationId: expect.any(String),
+      sessionId: "session-1",
+      instructions: undefined,
+    });
+    expect(clientSubmit).not.toHaveBeenCalled();
+    expect(harness.getDraft()).toBe("");
+    expect(store.pendingUserMessages).toEqual([]);
+    harness.dispose();
+  });
+
+  it("passes custom compaction instructions", async () => {
+    const clientCompactSession = vi.fn(async (input: unknown) => {
+      void input;
+    });
+    const harness = createComposerStore({
+      clientCompactSession,
+      streaming: () => false,
+    });
+    const { store } = harness;
+
+    harness.setDraft("/compact  Keep the API migration details ");
+    await store.submit();
+
+    expect(clientCompactSession).toHaveBeenCalledWith({
+      operationId: expect.any(String),
+      sessionId: "session-1",
+      instructions: "Keep the API migration details",
+    });
+    harness.dispose();
+  });
+
+  it("switches models with /model <provider/model>", async () => {
+    const clientSetModel = vi.fn(async (input: unknown) => {
+      void input;
+    });
+    const harness = createComposerStore({ clientSetModel, streaming: () => false });
+    const { store } = harness;
+
+    harness.setDraft("/model openai/gpt-5.2");
+    await store.submit();
+
+    expect(clientSetModel).toHaveBeenCalledWith({
+      operationId: expect.any(String),
+      sessionId: "session-1",
+      provider: "openai",
+      modelId: "gpt-5.2",
+    });
+    expect(harness.getDraft()).toBe("");
+    expect(store.error).toBeUndefined();
+    harness.dispose();
+  });
+
+  it("reports usage for /model without an argument", async () => {
+    const clientSetModel = vi.fn(async (input: unknown) => {
+      void input;
+    });
+    const harness = createComposerStore({ clientSetModel, streaming: () => false });
+    const { store } = harness;
+
+    harness.setDraft("/model");
+    await store.submit();
+
+    expect(clientSetModel).not.toHaveBeenCalled();
+    expect(store.error).toContain("Usage: /model <provider/model>");
+    harness.dispose();
+  });
+
+  it("renames the session with /name <title>", async () => {
+    const renameSession = vi.fn(async (name: string) => {
+      void name;
+    });
+    const harness = createComposerStore({ renameSession, streaming: () => false });
+    const { store } = harness;
+
+    harness.setDraft("/name  Migration cleanup ");
+    await store.submit();
+
+    expect(renameSession).toHaveBeenCalledWith("Migration cleanup");
+    expect(harness.getDraft()).toBe("");
+    harness.dispose();
+  });
+
+  it("sends unrecognized slash input as an ordinary message", async () => {
+    const submissions: SubmittedPrompt[] = [];
+    const clientSubmit = vi.fn(async (input: unknown) => {
+      submissions.push(input as SubmittedPrompt);
+    });
+    const harness = createComposerStore({ clientSubmit, streaming: () => false });
+    const { store } = harness;
+
+    harness.setDraft("/share this with the team");
+    await store.submit();
+
+    expect(submissions[0]).toMatchObject({ text: "/share this with the team" });
+    expect(store.error).toBeUndefined();
     harness.dispose();
   });
 });

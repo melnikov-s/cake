@@ -348,41 +348,28 @@ const builtinSourceInfo = {
   origin: "top-level",
 } as const;
 
-// Mirrors BUILTIN_SLASH_COMMANDS from @earendil-works/pi-coding-agent 0.84.0.
-// Pi's getCommands() intentionally returns only extension, prompt, and skill commands.
+// Pi builtins that Cake implements as first-class commands. These are the only
+// Pi CLI commands Cake advertises; any other input is an ordinary message.
 export const piBuiltinSlashCommands = [
-  { name: "settings", description: "Open settings menu" },
+  { name: "compact", description: "Manually compact the session context" },
   {
     name: "model",
-    description: "Select model (opens selector UI)",
+    description: "Switch model",
     argumentHint: "<provider/model>",
   },
-  { name: "scoped-models", description: "Enable/disable models for Ctrl+P cycling" },
-  { name: "export", description: "Export session (HTML default, or specify path: .html/.jsonl)" },
-  { name: "import", description: "Import and resume a session from a JSONL file" },
-  { name: "share", description: "Share session as a secret GitHub gist" },
-  { name: "copy", description: "Copy last agent message to clipboard" },
-  { name: "name", description: "Set session display name" },
-  { name: "session", description: "Show session info and stats" },
-  { name: "changelog", description: "Show changelog entries" },
-  { name: "hotkeys", description: "Show all keyboard shortcuts" },
-  { name: "fork", description: "Create a new fork from a previous user message" },
-  { name: "clone", description: "Duplicate the current session at the current position" },
-  { name: "tree", description: "Navigate session tree (switch branches)" },
-  { name: "trust", description: "Save project trust decision for future sessions" },
-  { name: "login", description: "Configure provider authentication", argumentHint: "<provider>" },
-  { name: "logout", description: "Remove provider authentication" },
-  { name: "new", description: "Start a new session" },
-  { name: "compact", description: "Manually compact the session context" },
-  { name: "resume", description: "Resume a different session" },
-  {
-    name: "reload",
-    description: "Reload keybindings, extensions, skills, prompts, themes, and context files",
-  },
-  { name: "quit", description: "Quit pi" },
+  { name: "name", description: "Rename the current session" },
 ].map((command) =>
   slashCommandSchema.parse({ ...command, source: "builtin", sourceInfo: builtinSourceInfo }),
 );
+
+/** Parses text shaped like "/name [args]" into a Pi builtin command, or undefined. */
+export function parsePiBuiltinCommand(text: string): { name: string; args: string } | undefined {
+  const match = /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
+  if (!match) return undefined;
+  const name = match[1]!.toLocaleLowerCase();
+  if (!piBuiltinSlashCommands.some((command) => command.name === name)) return undefined;
+  return { name, args: match[2]?.trim() ?? "" };
+}
 
 export const extensionUiEventSchema = z.discriminatedUnion("kind", [
   z.object({

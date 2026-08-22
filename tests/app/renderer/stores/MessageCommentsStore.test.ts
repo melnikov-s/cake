@@ -23,6 +23,10 @@ describe("MessageCommentsStore", () => {
         persist: () => undefined,
         projectName: () => "Project",
         abort: async () => undefined,
+        renameSession: async (sessionId: string, name: string) => {
+          void sessionId;
+          void name;
+        },
       }),
     );
     const store = mount(
@@ -69,6 +73,10 @@ describe("MessageCommentsStore", () => {
         persist: () => undefined,
         projectName: () => "Project",
         abort: async () => undefined,
+        renameSession: async (sessionId: string, name: string) => {
+          void sessionId;
+          void name;
+        },
       }),
     );
     const createThread = vi.fn(async (anchor: ReviewThread["anchor"]) => {

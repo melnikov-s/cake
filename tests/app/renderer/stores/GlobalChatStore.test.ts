@@ -59,6 +59,9 @@ function createTestStore() {
     abort: vi.fn(async (input: Parameters<GlobalChatPort["abort"]>[0]) => {
       void input;
     }),
+    compact: vi.fn(async (input: Parameters<GlobalChatPort["compact"]>[0]) => {
+      void input;
+    }),
     setModel: vi.fn(async (input: Parameters<GlobalChatPort["setModel"]>[0]) => {
       void input;
     }),
@@ -88,6 +91,10 @@ function createTestStore() {
       persist: () => undefined,
       projectName: () => "Project",
       abort: async () => undefined,
+      renameSession: async (sessionId: string, name: string) => {
+        void sessionId;
+        void name;
+      },
     }),
   );
   const operations = mount(createStore(SessionOperationCoordinatorStore));
