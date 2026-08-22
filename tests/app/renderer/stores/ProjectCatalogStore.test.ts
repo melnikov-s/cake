@@ -82,3 +82,41 @@ describe("ProjectCatalogStore", () => {
     sessions[Symbol.dispose]();
   });
 });
+
+describe("ProjectCatalogStore managed worktrees", () => {
+  it("presents managed worktree workspaces under their parent project's name", () => {
+    const sessions = mount(createStore(SessionCatalogStore));
+    const projects = mount(createStore(ProjectCatalogStore, { sessions }));
+
+    // Before any listing exists, the association can be noted at creation time.
+    sessions.noteManagedWorktree("/repo/.cake-worktrees/repo-abc", "/repo");
+    projects.applyApplicationState({
+      schemaVersion: 1,
+      resolvedSessionIds: [],
+      resolvedCakeChatSessionIds: [],
+      trustedProjectPaths: [],
+      projects: [{ path: "/repo", name: "Repo", addedAt: "", lastOpenedAt: "" }],
+    });
+
+    expect(projects.nameForPath("/repo/.cake-worktrees/repo-abc")).toBe("Repo");
+
+    // A listed session reinforces the association via its projectPath.
+    sessions.replace([
+      {
+        id: "session-wt",
+        title: "Worktree task",
+        created: "",
+        modified: "",
+        messageCount: 1,
+        resolved: false,
+        workspacePath: "/repo/.cake-worktrees/repo-abc",
+        projectPath: "/repo",
+        workspaceName: "Repo",
+      },
+    ]);
+    expect(projects.nameForPath("/repo/.cake-worktrees/repo-abc")).toBe("Repo");
+
+    projects[Symbol.dispose]();
+    sessions[Symbol.dispose]();
+  });
+});

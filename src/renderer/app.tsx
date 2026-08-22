@@ -1103,7 +1103,7 @@ export const App = observer(function App() {
                       store={store.worktreeStore}
                       currentProjectPath={store.projectPath}
                       onCreateWorktree={(projectPath) => {
-                        void store.createWorktreeSession(projectPath);
+                        store.requestCreateWorktreeSession(projectPath);
                       }}
                       onFinished={(projectPath) => {
                         void root.createSession(projectPath);
@@ -1250,6 +1250,43 @@ export const App = observer(function App() {
                 </ConfirmationAction>
                 <ConfirmationAction onClick={() => void store.resolveProjectTrust(true)}>
                   Trust and open
+                </ConfirmationAction>
+              </ConfirmationActions>
+            </ConfirmationRequest>
+          </Confirmation>
+        </div>
+      )}
+      {store.createWorktreePrompt && (
+        <div className="dialog-backdrop">
+          <Confirmation
+            state="requested"
+            role="dialog"
+            aria-labelledby="create-worktree-title"
+            aria-describedby="create-worktree-description"
+          >
+            <ConfirmationRequest>
+              <ConfirmationTitle id="create-worktree-title">Create a worktree?</ConfirmationTitle>
+              <ConfirmationDescription id="create-worktree-description">
+                Cake creates an isolated checkout in the background and this new session works
+                there. Landing merges your commits back into {store.projectName} and removes it. The
+                session stays part of this project.
+              </ConfirmationDescription>
+              {changes.workingTreeCount > 0 && (
+                <ConfirmationDescription id="create-worktree-warning">
+                  {changes.workingTreeCount} uncommitted change
+                  {changes.workingTreeCount === 1 ? "" : "s"} in the current checkout will stay
+                  behind.
+                </ConfirmationDescription>
+              )}
+              <ConfirmationActions>
+                <ConfirmationAction
+                  variant="outline"
+                  onClick={() => store.cancelCreateWorktreePrompt()}
+                >
+                  Cancel
+                </ConfirmationAction>
+                <ConfirmationAction onClick={() => void store.confirmCreateWorktreePrompt()}>
+                  Create worktree
                 </ConfirmationAction>
               </ConfirmationActions>
             </ConfirmationRequest>

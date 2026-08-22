@@ -556,6 +556,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const operationId = this.startOperation();
     try {
       const record = await this.props.client.createWorktree({ operationId, path });
+      // Associate the hidden worktree workspace with its project immediately so
+      // every surface presents it under the project's identity from the start.
+      this.props.catalog.noteManagedWorktree(record.worktreePath, record.projectPath);
       if (path === this.projectPath) await this.openPath(record.worktreePath, true);
       else await this.inspectPath(record.worktreePath, true);
     } catch (error) {
@@ -563,6 +566,28 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     } finally {
       this.finishOperation(operationId);
     }
+  }
+
+  get createWorktreePrompt() {
+    return this.createWorktreePromptPath;
+  }
+
+  private createWorktreePromptPath: string | undefined;
+
+  /** Opens the confirmation dialog for creating a worktree behind this session. */
+  requestCreateWorktreeSession(path = this.projectPath) {
+    if (path) this.createWorktreePromptPath = path;
+  }
+
+  cancelCreateWorktreePrompt() {
+    this.createWorktreePromptPath = undefined;
+  }
+
+  async confirmCreateWorktreePrompt() {
+    const path = this.createWorktreePromptPath;
+    this.createWorktreePromptPath = undefined;
+    if (!path) return;
+    await this.createWorktreeSession(path);
   }
 
   async resolveSessions(sessionIds: readonly string[], resolved: boolean) {

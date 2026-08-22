@@ -17,6 +17,13 @@ export class ProjectCatalogStore extends Store<{ sessions: SessionCatalogStore }
   }
 
   nameForPath(path: string) {
+    // Managed worktrees always present under their parent project's identity.
+    const managedProject = this.props.sessions.projectOfManagedWorktree(path);
+    if (managedProject) return this.nameForRegisteredPath(managedProject);
+    return this.nameForRegisteredPath(path);
+  }
+
+  private nameForRegisteredPath(path: string) {
     return this.find(path)?.name ?? this.nameFromPath(path);
   }
 

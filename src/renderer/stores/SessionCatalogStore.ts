@@ -8,6 +8,18 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
   private indexedById = new Map<string, GlobalSessionSummary>();
   private indexedByProject = new Map<string, GlobalSessionSummary[]>();
   private resolvedSessionIds = new Set<string>();
+  /** Managed worktree workspaces mapped to their parent project path. */
+  private managedWorktreeProjects = new Map<string, string>();
+
+  /** Registers the parent project of a managed worktree workspace ahead of any listing. */
+  noteManagedWorktree(workspacePath: string, projectPath: string) {
+    this.managedWorktreeProjects.set(workspacePath, projectPath);
+  }
+
+  /** The parent project of a managed worktree workspace, if it is one. */
+  projectOfManagedWorktree(workspacePath: string) {
+    return this.managedWorktreeProjects.get(workspacePath);
+  }
 
   find(sessionId: string) {
     return this.indexedById.get(sessionId);
@@ -112,6 +124,8 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
       const projectSessions = byProject.get(projectKey) ?? [];
       projectSessions.push(session);
       byProject.set(projectKey, projectSessions);
+      if (session.projectPath)
+        this.managedWorktreeProjects.set(session.workspacePath, session.projectPath);
     }
     this.indexedById = byId;
     this.indexedByProject = byProject;
