@@ -202,6 +202,14 @@ export interface GlobalControlTool {
   parameters: JsonObject;
 }
 
+/** Pi throws this when a plain prompt arrives while the agent turn is streaming. */
+function isAlreadyProcessingError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.startsWith("Agent is already processing. Specify streamingBehavior")
+  );
+}
+
 function createFastModeExtension(isEnabled: () => boolean): InlineExtension {
   return (pi) => {
     pi.on("before_provider_request", (event, context) =>
@@ -1227,7 +1235,19 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       const images = imageContent(attachments);
       if (delivery === "steer") await session.steer(content, images);
       else if (delivery === "follow-up") await session.followUp(content, images);
-      else await session.prompt(content, { images, source: "interactive" });
+      else if (session.isStreaming) {
+        // The renderer may see a stale idle snapshot while a turn is still
+        // running. Queue the message instead of failing the submission.
+        await session.followUp(content, images);
+      } else {
+        try {
+          await session.prompt(content, { images, source: "interactive" });
+        } catch (error) {
+          // The turn may have started between the check and this call.
+          if (!isAlreadyProcessingError(error)) throw error;
+          await session.followUp(content, images);
+        }
+      }
     },
     abort: () => {
       userAbortRequested = true;
