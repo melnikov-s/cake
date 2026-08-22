@@ -1047,11 +1047,12 @@
   font: 9px var(--font-mono);
   text-align: center;
 }
-.header-sidebar-toggle {
+/* Compound selectors outrank the late ".icon-button { display: grid }" and
+   ".header-back, .header-sidebar-toggle { display: grid }" rules, so these stay
+   hidden until the sidebar collapses. */
+.icon-button.header-sidebar-toggle {
   display: none;
 }
-/* Compound selector outranks the late ".icon-button { display: grid }" rule,
-   so the icon stays hidden until the sidebar collapses. */
 .icon-button.workspace-settings-icon {
   position: absolute;
   z-index: 20;
@@ -1075,8 +1076,11 @@
 .sidebar-collapsed .workspace-header {
   padding-left: 84px;
 }
-.sidebar-collapsed .header-sidebar-toggle {
+.sidebar-collapsed .icon-button.header-sidebar-toggle {
   display: grid;
+  /* Sits on the same horizontal line as the 46px .sidebar-window-tools row
+     (28px buttons, 9px vertical inset) despite this header being 52px tall. */
+  margin-top: -6px;
 }
 .sidebar-collapsed .workspace-settings-icon {
   display: grid;
@@ -4922,6 +4926,12 @@ button.reasoning-summary {
   }
   .header-sidebar-toggle {
     display: grid;
+  }
+  .icon-button.header-sidebar-toggle {
+    display: grid;
+  }
+  .sidebar-collapsed .icon-button.header-sidebar-toggle {
+    margin-top: -6px;
   }
   .icon-button.workspace-settings-icon {
     display: grid;
