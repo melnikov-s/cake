@@ -92,31 +92,6 @@ function createBridge(
   const setSessionsResolved = vi.fn(async () => 2);
   const setCakeChatSessionsResolved = vi.fn(async () => 1);
   const setSessionModel = vi.fn(async () => undefined);
-  const readSession = vi.fn(async () => [
-    {
-      id: "user-1",
-      kind: "text" as const,
-      role: "user" as const,
-      text: "Find the PDF session",
-      status: "complete" as const,
-    },
-    {
-      id: "tool-1",
-      kind: "tool" as const,
-      name: "search",
-      input: "PDF",
-      output: "Found it",
-      state: "success" as const,
-    },
-    {
-      id: "assistant-1",
-      kind: "text" as const,
-      role: "assistant" as const,
-      entryId: "entry-2",
-      text: "Here it is",
-      status: "complete" as const,
-    },
-  ]);
   const bridge = new AppControlBridge({
     currentSession:
       customization.currentSession ?? (() => ({ workspacePath: "/cake", sessionId: "current" })),
@@ -124,7 +99,6 @@ function createBridge(
     sessions: () => sessions,
     cakeChatSessions: () => cakeChatSessions,
     sessionActivity: (sessionId) => (sessionId === "running" ? "running" : undefined),
-    readSession,
     openSession,
     createSession,
     sendSessionMessage,
@@ -181,7 +155,6 @@ function createBridge(
   return {
     bridge,
     openSession,
-    readSession,
     createSession,
     sendSessionMessage,
     abortSession,
@@ -211,10 +184,6 @@ describe("AppControlBridge", () => {
       "set_active_scene",
       "get_session_status",
       "open_session",
-      "list_sessions",
-      "list_cake_chat_sessions",
-      "read_session",
-      "search_sessions",
       "create_session",
       "send_session_message",
       "abort_session",
@@ -224,51 +193,11 @@ describe("AppControlBridge", () => {
       "set_cake_chat_sessions_resolved",
       "set_session_model",
     ]);
-    expect(
-      appControlToolCatalog.find((tool) => tool.name === "list_sessions")?.parameters,
-    ).toMatchObject({
-      properties: { cursor: { minimum: 0 }, limit: { minimum: 1, maximum: 200, default: 100 } },
-    });
-    expect(
-      appControlToolCatalog.find((tool) => tool.name === "read_session")?.parameters,
-    ).toMatchObject({
-      properties: { limit: { minimum: 1, maximum: 50, default: 20 } },
-    });
   });
 
-  it("lists sessions with filtering and pagination", async () => {
-    const { bridge } = createBridge();
-
-    await expect(
-      bridge.invoke({ name: "list_sessions", arguments: { workspacePath: "/cake", limit: 1 } }),
-    ).resolves.toMatchObject({
-      ok: true,
-      name: "list_sessions",
-      total: 2,
-      nextCursor: 1,
-      sessions: [{ sessionId: "current", workspacePath: "/cake" }],
-    });
-  });
-
-  it("lists and resolves global Cake Chat sessions", async () => {
+  it("resolves global Cake Chat sessions", async () => {
     const { bridge, setCakeChatSessionsResolved } = createBridge();
 
-    await expect(
-      bridge.invoke({ name: "list_cake_chat_sessions", arguments: {} }),
-    ).resolves.toEqual({
-      ok: true,
-      name: "list_cake_chat_sessions",
-      total: 1,
-      sessions: [
-        {
-          sessionId: "cake-chat-current",
-          title: "Cake-wide work",
-          modified: "2026-08-13T00:00:00.000Z",
-          messageCount: 6,
-          resolved: false,
-        },
-      ],
-    });
     await expect(
       bridge.invoke({
         name: "set_cake_chat_sessions_resolved",
@@ -292,29 +221,6 @@ describe("AppControlBridge", () => {
       name: "set_cake_chat_sessions_resolved",
       error: "Cake could not find Cake Chat session missing.",
     });
-  });
-
-  it("reads a session without opening it", async () => {
-    const { bridge, openSession, readSession } = createBridge();
-
-    const result = await bridge.invoke({
-      name: "read_session",
-      arguments: { sessionId: "current", limit: 2 },
-    });
-
-    expect(result).toMatchObject({
-      ok: true,
-      name: "read_session",
-      totalParts: 3,
-      nextCursor: 2,
-      parts: [
-        { index: 0, id: "user-1", role: "user", text: "Find the PDF session" },
-        { index: 1, id: "tool-1", text: "Tool: search\nPDF\nFound it" },
-      ],
-    });
-    expect(jsonValueSchema.safeParse(result).success).toBe(true);
-    expect(readSession).toHaveBeenCalledWith("current");
-    expect(openSession).not.toHaveBeenCalled();
   });
 
   it("returns compact live application state", async () => {
@@ -446,40 +352,6 @@ describe("AppControlBridge", () => {
       error: "Cake could not find that session.",
     });
     expect(openSession).toHaveBeenCalledTimes(1);
-  });
-
-  it("searches titles and transcript content without opening sessions", async () => {
-    const { bridge, openSession, readSession } = createBridge();
-
-    await expect(
-      bridge.invoke({
-        name: "search_sessions",
-        arguments: { query: "PDF", workspacePath: "/cake", limit: 5 },
-      }),
-    ).resolves.toMatchObject({
-      ok: true,
-      name: "search_sessions",
-      query: "PDF",
-      searchedSessions: 2,
-      results: [
-        {
-          session: { sessionId: "current" },
-          matches: [
-            { location: "transcript", partIndex: 0, snippet: "Find the PDF session" },
-            { location: "transcript", partIndex: 1, snippet: "Tool: search\nPDF\nFound it" },
-          ],
-        },
-        {
-          session: { sessionId: "running" },
-          matches: [
-            { location: "transcript", partIndex: 0, snippet: "Find the PDF session" },
-            { location: "transcript", partIndex: 1, snippet: "Tool: search\nPDF\nFound it" },
-          ],
-        },
-      ],
-    });
-    expect(readSession).toHaveBeenCalledTimes(2);
-    expect(openSession).not.toHaveBeenCalled();
   });
 
   it("reports live session status", async () => {

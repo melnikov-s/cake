@@ -139,7 +139,7 @@ export class GlobalChatDriver {
     const runtimePromise = this.createRuntime({
       cwd: homedir(),
       agentDir: this.options.agentDir,
-      trusted: false,
+      trusted: true,
       sessionDir: this.options.sessionDir,
       newSession,
       sessionId,

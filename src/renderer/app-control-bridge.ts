@@ -1,11 +1,6 @@
 import { z } from "zod";
 import { jsonObjectSchema, jsonValueSchema } from "../ipc/json-contract";
-import type {
-  GlobalSessionSummary,
-  ProjectRecord,
-  SessionSummary,
-  UiPart,
-} from "../ipc/session-contract";
+import type { GlobalSessionSummary, ProjectRecord, SessionSummary } from "../ipc/session-contract";
 import {
   customizationStateSchema,
   pluginIdSchema,
@@ -16,25 +11,6 @@ import {
 } from "../plugin/plugin-contract";
 
 const sessionIdTargetSchema = z.object({ sessionId: z.string().min(1).max(256) });
-
-const sessionPageSchema = z.object({
-  workspacePath: z.string().min(1).max(4_096).optional(),
-  includeResolved: z.boolean().default(false),
-  cursor: z.number().int().nonnegative().default(0),
-  limit: z.number().int().min(1).max(200).default(100),
-});
-
-const sessionReadSchema = sessionIdTargetSchema.extend({
-  cursor: z.number().int().nonnegative().default(0),
-  limit: z.number().int().min(1).max(50).default(20),
-});
-
-const searchSessionsSchema = z.object({
-  query: z.string().trim().min(1).max(500),
-  workspacePath: z.string().min(1).max(4_096).optional(),
-  includeResolved: z.boolean().default(false),
-  limit: z.number().int().min(1).max(50).default(10),
-});
 
 const emptyArgumentsSchema = z.object({}).strict();
 const pluginStatusesSchema = z.array(pluginStatusSchema).max(1_000);
@@ -82,10 +58,6 @@ const appControlArgumentSchemas = {
   set_active_scene: z.object({ pluginId: pluginIdSchema.optional() }),
   get_session_status: sessionIdTargetSchema,
   open_session: sessionIdTargetSchema,
-  list_sessions: sessionPageSchema,
-  list_cake_chat_sessions: sessionPageSchema.omit({ workspacePath: true }),
-  read_session: sessionReadSchema,
-  search_sessions: searchSessionsSchema,
   create_session: z.object({ workspacePath: z.string().min(1).max(4_096) }),
   send_session_message: sessionIdTargetSchema.extend({
     text: z.string().trim().min(1).max(100_000),
@@ -128,10 +100,6 @@ export const appControlInvocationSchema = z.discriminatedUnion("name", [
   invocation("set_active_scene"),
   invocation("get_session_status"),
   invocation("open_session"),
-  invocation("list_sessions"),
-  invocation("list_cake_chat_sessions"),
-  invocation("read_session"),
-  invocation("search_sessions"),
   invocation("create_session"),
   invocation("send_session_message"),
   invocation("abort_session"),
@@ -221,26 +189,6 @@ export const appControlToolCatalog = [
     appControlArgumentSchemas.open_session,
   ),
   tool(
-    "list_sessions",
-    "List Cake sessions by recency, optionally limited to one project or including resolved sessions.",
-    appControlArgumentSchemas.list_sessions,
-  ),
-  tool(
-    "list_cake_chat_sessions",
-    "List global Cake Chat sessions by recency, optionally including resolved sessions.",
-    appControlArgumentSchemas.list_cake_chat_sessions,
-  ),
-  tool(
-    "read_session",
-    "Read a bounded page of displayable parts from a known Cake session without opening it.",
-    appControlArgumentSchemas.read_session,
-  ),
-  tool(
-    "search_sessions",
-    "Search session titles and transcript contents without opening sessions.",
-    appControlArgumentSchemas.search_sessions,
-  ),
-  tool(
     "create_session",
     "Start a new session in a known Cake project and open it.",
     appControlArgumentSchemas.create_session,
@@ -263,12 +211,12 @@ export const appControlToolCatalog = [
   ),
   tool(
     "set_sessions_resolved",
-    "Resolve or restore an explicit set of known sessions by ID. Use list_sessions with a project filter first when changing every session in a project.",
+    "Resolve or restore an explicit set of known sessions by ID.",
     appControlArgumentSchemas.set_sessions_resolved,
   ),
   tool(
     "set_cake_chat_sessions_resolved",
-    "Resolve or restore an explicit set of known global Cake Chat sessions by ID. Use list_cake_chat_sessions first when changing multiple chats.",
+    "Resolve or restore an explicit set of known global Cake Chat sessions by ID.",
     appControlArgumentSchemas.set_cake_chat_sessions_resolved,
   ),
   tool(
@@ -284,7 +232,6 @@ export interface AppControlHost {
   sessions(): readonly GlobalSessionSummary[];
   cakeChatSessions(): readonly SessionSummary[];
   sessionActivity(sessionId: string): "running" | "unread" | undefined;
-  readSession(sessionId: string): Promise<readonly UiPart[] | undefined>;
   openSession(sessionId: string): Promise<void>;
   createSession(workspacePath: string): Promise<void>;
   sendSessionMessage(
@@ -349,14 +296,6 @@ export interface AppControlSession {
   activity?: "running" | "unread";
 }
 
-export interface AppControlCakeChatSession {
-  sessionId: string;
-  title: string;
-  modified: string;
-  messageCount: number;
-  resolved: boolean;
-}
-
 export interface AppControlState {
   currentSession?: { workspacePath: string; sessionId: string };
   projectCount: number;
@@ -364,20 +303,6 @@ export interface AppControlState {
   projects: Array<{ path: string; name: string; sessionCount: number }>;
   attentionSessions: AppControlSession[];
   recentSessions: AppControlSession[];
-}
-
-export interface AppControlReadablePart {
-  index: number;
-  id: string;
-  entryId?: string;
-  kind: UiPart["kind"];
-  role?: "user" | "assistant";
-  text: string;
-}
-
-export interface AppControlSearchMatch {
-  session: AppControlSession;
-  matches: Array<{ location: "title" | "transcript"; partIndex?: number; snippet: string }>;
 }
 
 export type AppControlResult =
@@ -420,35 +345,6 @@ export type AppControlResult =
       status: "running" | "unread" | "idle";
     }
   | { ok: true; name: "open_session"; opened: SessionTarget }
-  | {
-      ok: true;
-      name: "list_sessions";
-      sessions: AppControlSession[];
-      total: number;
-      nextCursor?: number;
-    }
-  | {
-      ok: true;
-      name: "list_cake_chat_sessions";
-      sessions: AppControlCakeChatSession[];
-      total: number;
-      nextCursor?: number;
-    }
-  | {
-      ok: true;
-      name: "read_session";
-      session: AppControlSession;
-      parts: AppControlReadablePart[];
-      totalParts: number;
-      nextCursor?: number;
-    }
-  | {
-      ok: true;
-      name: "search_sessions";
-      query: string;
-      results: AppControlSearchMatch[];
-      searchedSessions: number;
-    }
   | { ok: true; name: "create_session"; workspacePath: string; status: "creating" }
   | {
       ok: true;
@@ -630,10 +526,6 @@ export class AppControlBridge {
           pluginStatusesSchema.parse(await this.host.setActiveScene(invocation.arguments.pluginId)),
         ),
       };
-    if (invocation.name === "list_sessions") return this.listSessions(invocation.arguments);
-    if (invocation.name === "list_cake_chat_sessions")
-      return this.listCakeChatSessions(invocation.arguments);
-    if (invocation.name === "search_sessions") return this.searchSessions(invocation.arguments);
     if (invocation.name === "create_session")
       return this.createSession(invocation.arguments.workspacePath);
     if (invocation.name === "set_sessions_resolved")
@@ -659,7 +551,6 @@ export class AppControlBridge {
         status: activity ?? "idle",
       };
     }
-    if (invocation.name === "read_session") return this.readSession(known, invocation.arguments);
     if (invocation.name === "open_session") {
       await this.host.openSession(sessionId);
       return { ok: true, name: invocation.name, opened: target };
@@ -713,117 +604,6 @@ export class AppControlBridge {
 
   private knownSession(sessionId: string) {
     return this.host.sessions().find((session) => session.id === sessionId);
-  }
-
-  private listSessions({
-    workspacePath,
-    includeResolved,
-    cursor,
-    limit,
-  }: z.infer<typeof sessionPageSchema>): AppControlResult {
-    const matching = this.sortedSessions().filter(
-      (session) =>
-        (!workspacePath || session.workspacePath === workspacePath) &&
-        (includeResolved || !session.resolved),
-    );
-    const sessions = matching
-      .slice(cursor, cursor + limit)
-      .map((session) => this.toControlSession(session));
-    const nextCursor =
-      cursor + sessions.length < matching.length ? cursor + sessions.length : undefined;
-    const result = { ok: true, name: "list_sessions", sessions, total: matching.length } as const;
-    return nextCursor === undefined ? result : { ...result, nextCursor };
-  }
-
-  private listCakeChatSessions({
-    includeResolved,
-    cursor,
-    limit,
-  }: z.infer<typeof appControlArgumentSchemas.list_cake_chat_sessions>): AppControlResult {
-    const matching = [...this.host.cakeChatSessions()]
-      .sort((left, right) => right.modified.localeCompare(left.modified))
-      .filter((session) => includeResolved || !session.resolved);
-    const sessions = matching
-      .slice(cursor, cursor + limit)
-      .map(({ id, title, modified, messageCount, resolved }) => ({
-        sessionId: id,
-        title,
-        modified,
-        messageCount,
-        resolved,
-      }));
-    const nextCursor =
-      cursor + sessions.length < matching.length ? cursor + sessions.length : undefined;
-    const result = {
-      ok: true,
-      name: "list_cake_chat_sessions",
-      sessions,
-      total: matching.length,
-    } as const;
-    return nextCursor === undefined ? result : { ...result, nextCursor };
-  }
-
-  private async readSession(
-    known: GlobalSessionSummary,
-    { sessionId, cursor, limit }: z.infer<typeof sessionReadSchema>,
-  ): Promise<AppControlResult> {
-    const parts = await this.host.readSession(sessionId);
-    if (!parts)
-      return { ok: false, name: "read_session", error: "Cake could not read that session." };
-    const page = parts
-      .slice(cursor, cursor + limit)
-      .map((part, offset) => this.toReadablePart(part, cursor + offset));
-    const nextCursor = cursor + page.length < parts.length ? cursor + page.length : undefined;
-    const result = {
-      ok: true,
-      name: "read_session",
-      session: this.toControlSession(known),
-      parts: page,
-      totalParts: parts.length,
-    } as const;
-    return nextCursor === undefined ? result : { ...result, nextCursor };
-  }
-
-  private async searchSessions({
-    query,
-    workspacePath,
-    includeResolved,
-    limit,
-  }: z.infer<typeof searchSessionsSchema>): Promise<AppControlResult> {
-    const candidates = this.sortedSessions().filter(
-      (session) =>
-        (!workspacePath || session.workspacePath === workspacePath) &&
-        (includeResolved || !session.resolved),
-    );
-    const needle = query.toLocaleLowerCase();
-    const results: AppControlSearchMatch[] = [];
-    let searchedSessions = 0;
-    for (const session of candidates) {
-      searchedSessions += 1;
-      const matches: AppControlSearchMatch["matches"] = [];
-      const titleIndex = session.title.toLocaleLowerCase().indexOf(needle);
-      if (titleIndex >= 0)
-        matches.push({
-          location: "title",
-          snippet: matchingSnippet(session.title, titleIndex, query.length),
-        });
-      const parts = await this.host.readSession(session.id);
-      for (let index = 0; index < (parts?.length ?? 0) && matches.length < 3; index += 1) {
-        const part = parts?.[index];
-        if (!part) continue;
-        const text = this.toReadablePart(part, index).text;
-        const matchIndex = text.toLocaleLowerCase().indexOf(needle);
-        if (matchIndex >= 0)
-          matches.push({
-            location: "transcript",
-            partIndex: index,
-            snippet: matchingSnippet(text, matchIndex, query.length),
-          });
-      }
-      if (matches.length > 0) results.push({ session: this.toControlSession(session), matches });
-      if (results.length >= limit) break;
-    }
-    return { ok: true, name: "search_sessions", query, results, searchedSessions };
   }
 
   private async createSession(workspacePath: string): Promise<AppControlResult> {
@@ -894,31 +674,6 @@ export class AppControlBridge {
     };
     return activity ? { ...result, activity } : result;
   }
-
-  private toReadablePart(part: UiPart, index: number): AppControlReadablePart {
-    const base = { index, id: part.id, kind: part.kind };
-    if (part.kind === "text") {
-      const result = { ...base, role: part.role, text: clip(part.text) };
-      return part.entryId === undefined ? result : { ...result, entryId: part.entryId };
-    }
-    if (part.kind === "reasoning") return { ...base, text: clip(part.text) };
-    if (part.kind === "tool")
-      return {
-        ...base,
-        text: clip([`Tool: ${part.name}`, part.input, part.output].filter(Boolean).join("\n")),
-      };
-    if (part.kind === "source") return { ...base, text: clip(`${part.title}\n${part.url}`) };
-    if (part.kind === "attachment")
-      return { ...base, text: clip(`Attachment: ${part.name} (${part.mediaType})`) };
-    if (part.kind === "notice")
-      return { ...base, text: clip([part.title, part.detail].filter(Boolean).join("\n")) };
-    if (part.kind === "compaction")
-      return {
-        ...base,
-        text: clip(`Context compacted after ${part.tokensBefore} tokens\n${part.summary}`),
-      };
-    return { ...base, text: clip(`Review run: ${part.commentCount} comments (${part.status})`) };
-  }
 }
 
 function tool(name: AppControlInvocation["name"], description: string, argumentsSchema: z.ZodType) {
@@ -927,16 +682,6 @@ function tool(name: AppControlInvocation["name"], description: string, arguments
     description,
     parameters: z.toJSONSchema(argumentsSchema, { io: "input", target: "draft-7" }),
   } as const;
-}
-
-function matchingSnippet(value: string, index: number, matchLength: number) {
-  const start = Math.max(0, index - 100);
-  const end = Math.min(value.length, index + matchLength + 180);
-  return `${start > 0 ? "…" : ""}${value.slice(start, end)}${end < value.length ? "…" : ""}`;
-}
-
-function clip(value: string, limit = 4_000) {
-  return value.length <= limit ? value : `${value.slice(0, limit - 1)}…`;
 }
 
 function toStrictJson<T>(value: T): T {

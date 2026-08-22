@@ -313,11 +313,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       sessions: () => this.sessionCatalogStore.sessions,
       cakeChatSessions: () => this.globalChatStore.summaries,
       sessionActivity: (sessionId) => this.sidebarStore.sessionActivity(sessionId),
-      readSession: async (sessionId) => {
-        const cached = this.sessionRegistry.findModel(sessionId);
-        if (cached?.sessionFile) return cached.uiParts;
-        return (await this.client.loadSession(sessionId))?.parts;
-      },
       openSession: async (sessionId) => {
         await this.openSession(sessionId);
       },

@@ -886,7 +886,7 @@ describe("S1 Pi runtime", () => {
     expect(auxiliary.artifacts).toEqual([]);
   });
 
-  it("enables Cake application tools in global chat without enabling coding tools", async () => {
+  it("enables Cake application tools alongside the full coding toolset in global chat", async () => {
     const directory = await createTemporaryDirectory();
     const runtime = await createCakeRuntime({
       cwd: directory,
@@ -901,11 +901,6 @@ describe("S1 Pi runtime", () => {
             description: "Read Cake application state.",
             parameters: { type: "object", properties: {} },
           },
-          {
-            name: "search_sessions",
-            description: "Search Cake sessions.",
-            parameters: { type: "object", properties: {} },
-          },
         ],
         invoke: async () => ({ ok: true }),
       },
@@ -914,7 +909,12 @@ describe("S1 Pi runtime", () => {
     runtimes.push(runtime);
 
     const context = runtime.getReviewParentContext?.();
-    expect(context?.activeTools).toEqual(["get_app_state", "search_sessions"]);
+    expect(context?.activeTools).toContain("get_app_state");
+    expect(context?.activeTools).toContain("bash");
+    expect(context?.activeTools).toContain("read");
+    expect(context?.activeTools).toContain("edit");
+    expect(context?.systemPrompt).toContain("You are Cake Chat, the built-in assistant of Cake");
+    expect(context?.systemPrompt).toContain("treat it as read-only");
     expect(context?.systemPrompt).toContain("that request authorizes the complete authoring loop");
     expect(context?.systemPrompt).toContain("fix the source and validate again autonomously");
     expect(context?.systemPrompt).toContain("Validation never changes the running UI");
