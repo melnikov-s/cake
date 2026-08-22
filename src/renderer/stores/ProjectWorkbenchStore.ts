@@ -57,6 +57,7 @@ export interface ProjectWorkbenchStoreProps {
   pluginCommands(): PluginCommandStore;
   persistence(): WindowPersistenceCoordinatorStore;
   catalog: SessionCatalogStore;
+  startCakeChat(prompt?: string): Promise<void>;
 }
 
 /** Owns active project/session activation and the project workbench workflow. */
@@ -105,7 +106,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       client: this.client,
       projectPath: () => this.projectPath,
       schedulePersistence: () => this.props.persistence().schedule(),
-      startChatWithDraft: (draft) => this.startNewSessionWithDraft(draft),
+      startCakeChat: (prompt) => this.props.startCakeChat(prompt),
     });
   }
 
@@ -277,21 +278,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     }
     if (path === this.projectPath) await this.openPath(path, true);
     else await this.inspectPath(path, true);
-  }
-
-  /** Opens a fresh session in this project and seeds its composer with `draft`. */
-  async startNewSessionWithDraft(draft: string, path = this.projectPath) {
-    if (!path) throw new Error("No project is open");
-    await this.startNewSession(path);
-    const active = this.activeSession;
-    if (!active) return;
-    // Seed any unsent, empty target session - including one already open - but
-    // never touch a session that carries a real transcript or existing draft.
-    if (active.canonicalParts.length === 0 && !active.chatStore.draft.trim()) {
-      active.chatStore.setDraft(draft);
-      this.props.persistence().schedule();
-    }
-    active.composerStore.requestFocus();
   }
 
   async openSession(sessionId: string) {

@@ -240,6 +240,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       pluginCommands: () => this.pluginCommandStore,
       persistence: () => this.windowPersistence,
       catalog: this.sessionCatalogStore,
+      startCakeChat: (prompt) => this.startCakeChat(prompt),
     });
   }
 

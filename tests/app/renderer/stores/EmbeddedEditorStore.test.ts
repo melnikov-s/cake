@@ -17,15 +17,16 @@ function createHarness() {
     updateEmbeddedEditorBounds: vi.fn(async () => undefined),
     revealInEmbeddedEditor: vi.fn(async () => undefined),
   };
+  const startCakeChat = vi.fn(async (_prompt: string) => undefined);
   const store = mount(
     createStore(EmbeddedEditorStore, {
       client,
       projectPath: () => "/tmp/project",
       schedulePersistence: vi.fn(),
-      startChatWithDraft: vi.fn(async () => undefined),
+      startCakeChat,
     }),
   );
-  return { client, store };
+  return { client, store, startCakeChat };
 }
 
 function stateEvent(status: "missing" | "downloading" | "starting" | "ready" | "failed") {
@@ -103,6 +104,29 @@ describe("EmbeddedEditorStore", () => {
     await store.reveal("src/app.ts", 3);
 
     expect(client.revealInEmbeddedEditor).toHaveBeenCalledWith("/tmp/project", "src/app.ts", 3);
+    store[Symbol.dispose]();
+  });
+
+  it("asks Cake Chat to set up a VS Code server with platform and project context", async () => {
+    const { store, startCakeChat } = createHarness();
+
+    await store.askCakeToSetUp();
+
+    expect(startCakeChat).toHaveBeenCalledTimes(1);
+    const prompt = startCakeChat.mock.calls[0]?.[0] ?? "";
+    expect(prompt).toContain("Platform: ");
+    expect(prompt).toContain("Project: /tmp/project");
+    expect(store.error).toBeUndefined();
+    store[Symbol.dispose]();
+  });
+
+  it("reports ask-Cake failures on the embedded editor card", async () => {
+    const { store, startCakeChat } = createHarness();
+    startCakeChat.mockRejectedValueOnce(new Error("no chat"));
+
+    await store.askCakeToSetUp();
+
+    expect(store.error).toContain("no chat");
     store[Symbol.dispose]();
   });
 

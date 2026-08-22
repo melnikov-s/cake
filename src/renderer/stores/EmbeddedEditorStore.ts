@@ -19,7 +19,7 @@ export interface EmbeddedEditorStoreProps {
   >;
   projectPath(): string | undefined;
   schedulePersistence(): void;
-  startChatWithDraft(draft: string): Promise<void>;
+  startCakeChat(prompt: string): Promise<void>;
 }
 
 /**
@@ -87,16 +87,17 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     }
   }
 
-  /** Asks Cake, in a fresh project chat, to install and verify a VS Code server. */
+  /** Asks Cake Chat, in a fresh global session, to install and verify a VS Code server. */
   async askCakeToSetUp() {
     const platform = /Mac/.test(navigator.userAgent)
       ? "macOS"
       : /Linux/.test(navigator.userAgent)
         ? "Linux"
         : "Windows";
-    const draft = [
+    const prompt = [
       "Cake's embedded VS Code editor could not find a VS Code server binary on this machine.",
       `Platform: ${platform}.`,
+      this.props.projectPath() ? `Project: ${this.props.projectPath()}.` : undefined,
       "",
       "Please set one up for me:",
       "- On macOS, install code-server via Homebrew (`brew install code-server`) and verify it with `code-server --version`. Cake auto-detects /opt/homebrew/bin/code-server, /usr/local/bin/code-server, and /usr/bin/code-server once installed.",
@@ -104,11 +105,13 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
       "- If I already have a compatible server binary somewhere else, tell me where to point CAKE_VSCODE_SERVER_PATH (note: that environment variable must be set before launching Cake).",
       "",
       "When you're done, tell me to click the retry button in Cake's project browser.",
-    ].join("\n");
+    ]
+      .filter((line) => line !== undefined)
+      .join("\n");
     this.error = undefined;
     this.errorDetails = undefined;
     try {
-      await this.props.startChatWithDraft(draft);
+      await this.props.startCakeChat(prompt);
     } catch (error) {
       const described = describeError(error);
       this.error = described.message;
