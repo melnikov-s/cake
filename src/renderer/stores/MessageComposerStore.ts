@@ -361,7 +361,8 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     ) {
       if (event.type === "operation-failed") {
         this.removePendingUserMessage(event.operationId);
-        this.reportError(event.message);
+        this.error = event.message;
+        this.errorDetails = event.details ?? event.message;
       }
       this.finishOperation(event.operationId);
     }

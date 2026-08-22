@@ -588,7 +588,17 @@ export class PiWorkspaceDriver {
       await this.operationContext.run({ operationId, sessionId }, operation);
       this.emit({ type: "complete", requestId: operationId });
     } catch (error) {
-      this.emit({ type: "fatal", requestId: operationId, message: errorMessage(error) });
+      const described = describeOperationError(error);
+      console.error(
+        `[cake] Pi workspace operation ${operationId}${sessionId ? ` (session ${sessionId})` : ""} failed:`,
+        described.details ?? described.message,
+      );
+      this.emit({
+        type: "fatal",
+        requestId: operationId,
+        message: described.message,
+        details: described.details,
+      });
     } finally {
       for (const pending of this.pendingUi.values()) {
         if (pending.operationId === operationId) pending.settle(undefined);
@@ -1445,4 +1455,18 @@ export class PiWorkspaceDriver {
 
 function errorMessage(error: unknown) {
   return (error instanceof Error ? error.message : String(error)).slice(0, REVIEW_TEXT_MAX_LENGTH);
+}
+
+/** Full message plus stack and cause chain so failures stay diagnosable across IPC. */
+export function describeOperationError(error: unknown) {
+  if (error instanceof Error) {
+    const frames = [error.stack || `${error.name}: ${error.message}`];
+    let cause: unknown = error.cause;
+    while (cause instanceof Error) {
+      frames.push(`Caused by: ${cause.stack || `${cause.name}: ${cause.message}`}`);
+      cause = cause.cause;
+    }
+    return { message: error.message || error.name, details: frames.join("\n\n") };
+  }
+  return { message: String(error), details: undefined };
 }

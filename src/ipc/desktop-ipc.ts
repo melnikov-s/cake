@@ -89,6 +89,8 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     type: z.literal("global-chat-operation-failed"),
     requestId: z.uuid(),
     message: ipcProjectionString(2_048),
+    /** Full stack trace (including cause chain) for the underlying failure. */
+    details: ipcProjectionString(16_384).optional(),
   }),
   z.object({
     type: z.literal("global-chat-control-request"),
@@ -169,6 +171,8 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     type: z.literal("fatal"),
     requestId: z.uuid().optional(),
     message: ipcProjectionString(2_048),
+    /** Full stack trace (including cause chain) for the underlying failure. */
+    details: ipcProjectionString(16_384).optional(),
   }),
   pluginBackendEventSchema.extend({ type: z.literal("plugin-backend-event") }),
   z.object({ type: z.literal("customization-state-changed"), state: customizationStateSchema }),

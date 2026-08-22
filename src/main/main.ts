@@ -14,7 +14,12 @@ import {
   shell,
   type WebContents,
 } from "electron";
-import { desktopRequestSchema, desktopResponseSchema, type DesktopEvent } from "../ipc/desktop-ipc";
+import {
+  desktopRequestSchema,
+  desktopResponseSchema,
+  type DesktopEvent,
+  type DesktopResponse,
+} from "../ipc/desktop-ipc";
 import {
   DEFAULT_EDITOR_COMMAND,
   windowViewStateSchema,
@@ -670,6 +675,18 @@ async function chooseAttachments(window: BrowserWindow): Promise<Attachment[]> {
 }
 
 ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
+  try {
+    return await handleCakeRequest(event, untrustedInput);
+  } catch (error) {
+    console.error("[cake] Renderer request failed:", error);
+    throw error;
+  }
+});
+
+async function handleCakeRequest(
+  event: Electron.IpcMainInvokeEvent,
+  untrustedInput: unknown,
+): Promise<DesktopResponse> {
   const request = desktopRequestSchema.parse(untrustedInput);
   const owner = BrowserWindow.fromWebContents(event.sender);
   if (request.type === "set-editor-command") {
@@ -1421,7 +1438,7 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
   }
   dispatchToPi(path, request);
   return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
-});
+}
 
 app.whenReady().then(async () => {
   if (process.env.CAKE_ELECTRON_SMOKE === "1" && process.platform === "darwin" && app.dock)

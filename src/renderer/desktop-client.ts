@@ -54,7 +54,12 @@ export type DesktopClientEvent =
   | { type: "global-chat-part-removed"; sessionId: string; partId: string }
   | { type: "global-chat-streaming-changed"; sessionId: string; streaming: boolean }
   | { type: "global-chat-operation-completed"; operationId: string }
-  | { type: "global-chat-operation-failed"; operationId: string; message: string }
+  | {
+      type: "global-chat-operation-failed";
+      operationId: string;
+      message: string;
+      details?: string;
+    }
   | {
       type: "global-chat-control-requested";
       controlRequestId: string;
@@ -123,7 +128,7 @@ export type DesktopClientEvent =
       options?: Array<{ id: string; label: string }>;
     }
   | { type: "operation-completed"; operationId: string }
-  | { type: "operation-failed"; operationId?: string; message: string }
+  | { type: "operation-failed"; operationId?: string; message: string; details?: string }
   | { type: "customization-state-changed"; state: CustomizationState }
   | { type: "plugin-agent-event"; pluginId: string; snapshot: PluginAgentSnapshot }
   | { type: "embedded-editor-state-received"; status: EmbeddedEditorStatus; message?: string }
@@ -409,7 +414,12 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
   if (event.type === "global-chat-operation-completed")
     return { type: event.type, operationId: event.requestId };
   if (event.type === "global-chat-operation-failed")
-    return { type: event.type, operationId: event.requestId, message: event.message };
+    return {
+      type: event.type,
+      operationId: event.requestId,
+      message: event.message,
+      details: event.details,
+    };
   if (event.type === "global-chat-control-request")
     return {
       type: "global-chat-control-requested",
@@ -473,7 +483,12 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
   if (event.type === "complete")
     return { type: "operation-completed", operationId: event.requestId };
   if (event.type === "fatal")
-    return { type: "operation-failed", operationId: event.requestId, message: event.message };
+    return {
+      type: "operation-failed",
+      operationId: event.requestId,
+      message: event.message,
+      details: event.details,
+    };
   if (event.type === "customization-state-changed") return event;
   if (event.type === "embedded-editor-state")
     return {

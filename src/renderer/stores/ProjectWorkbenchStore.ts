@@ -212,8 +212,12 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   async chooseProject() {
-    const path = await this.client.chooseProject();
-    if (path && !this.signal.aborted) await this.inspectPath(path);
+    try {
+      const path = await this.client.chooseProject();
+      if (path && !this.signal.aborted) await this.inspectPath(path);
+    } catch (error) {
+      this.setError(error, "Choosing a project folder");
+    }
   }
 
   async startOneOffChat() {
@@ -227,7 +231,11 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   async switchProject(path: string) {
     if (path === this.projectPath) return;
-    await this.inspectPath(path);
+    try {
+      await this.inspectPath(path);
+    } catch (error) {
+      this.setError(error, `Opening project ${path}`);
+    }
   }
 
   async renameProject(path: string, name: string) {
@@ -719,7 +727,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         this.activeOpenTarget = undefined;
         this.activeOpenExpectsEmpty = false;
       }
-      this.setError(event.message);
+      this.error = event.message;
+      this.errorDetails = event.details ?? event.message;
     }
   }
 

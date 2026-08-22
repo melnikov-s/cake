@@ -4735,6 +4735,23 @@ button.reasoning-summary {
 .notice-error {
   border-left-color: oklch(0.62 0.19 28);
 }
+.notice-error-details summary {
+  cursor: pointer;
+  color: var(--muted-foreground);
+  user-select: none;
+}
+.notice-error-details pre {
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  max-height: 220px;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--background);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .notice .copy-error-details {
   width: fit-content;
   margin-top: 3px;

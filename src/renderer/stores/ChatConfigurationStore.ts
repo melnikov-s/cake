@@ -121,7 +121,10 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
       event.operationId &&
       this.activeOperations.includes(event.operationId)
     ) {
-      if (event.type === "operation-failed") this.reportError(event.message);
+      if (event.type === "operation-failed") {
+        this.error = event.message;
+        this.errorDetails = event.details ?? event.message;
+      }
       this.finish(event.operationId);
       return;
     }
@@ -130,7 +133,10 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
         event.type === "global-chat-operation-failed") &&
       this.activeOperations.includes(event.operationId)
     ) {
-      if (event.type === "global-chat-operation-failed") this.reportError(event.message);
+      if (event.type === "global-chat-operation-failed") {
+        this.error = event.message;
+        this.errorDetails = event.details ?? event.message;
+      }
       this.finish(event.operationId);
     }
   }

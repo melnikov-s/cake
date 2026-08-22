@@ -465,7 +465,12 @@ const AssistantTextMessage = observer(function AssistantTextMessage({
   const draftChatStore = draft ? behavior.messageComments?.draftChatStore : undefined;
 
   return (
-    <ChatTextMessage ref={messageRef} part={part} contentRef={contentRef}>
+    <ChatTextMessage
+      ref={messageRef}
+      part={part}
+      contentRef={contentRef}
+      onOpenFilePath={behavior.openFilePath}
+    >
       <FullscreenButton
         className="assistant-message-expand"
         label="View response fullscreen"
@@ -867,6 +872,12 @@ function ErrorNotice({
     <div className="notice notice-error" role="alert">
       <strong>{title}</strong>
       <span>{message}</span>
+      {details && details !== message && (
+        <details className="notice-error-details">
+          <summary>Technical details</summary>
+          <pre>{details}</pre>
+        </details>
+      )}
       <CopyErrorDetailsButton details={details} />
     </div>
   );

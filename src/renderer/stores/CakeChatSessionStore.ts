@@ -182,12 +182,19 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     }
   }
 
-  receiveOperationFailure(operationId: string, error: unknown) {
+  receiveOperationFailure(operationId: string, error: unknown, details?: string) {
     if (
       this.props.operations.includes(operationId, this.promptOwner) ||
       this.props.operations.includes(operationId, `cake-chat-abort:${this.sessionId}`)
-    )
-      this.reportError(error);
+    ) {
+      if (details !== undefined) {
+        const described = describeError(error);
+        this.error = described.message;
+        this.errorDetails = details;
+      } else {
+        this.reportError(error);
+      }
+    }
   }
 
   reportError(error: unknown, context?: string) {

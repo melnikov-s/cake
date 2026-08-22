@@ -8,6 +8,7 @@ import {
 import type { DesktopEvent } from "../ipc/desktop-ipc";
 import type { JsonValue } from "../ipc/json-contract";
 import type { Attachment } from "../ipc/session-contract";
+import { describeOperationError } from "./pi-workspace-driver";
 
 interface PendingControlRequest {
   sessionId: string;
@@ -248,10 +249,16 @@ export class GlobalChatDriver {
       await operation();
       this.options.emit({ type: "global-chat-operation-completed", requestId });
     } catch (error) {
+      const described = describeOperationError(error);
+      console.error(
+        `[cake] Cake Chat operation ${requestId} failed:`,
+        described.details ?? described.message,
+      );
       this.options.emit({
         type: "global-chat-operation-failed",
         requestId,
-        message: error instanceof Error ? error.message : String(error),
+        message: described.message,
+        details: described.details,
       });
     }
   }

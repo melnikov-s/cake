@@ -184,9 +184,11 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     }
     if (event.type === "global-chat-operation-failed") {
       for (const session of this.loadedSessions)
-        session.receiveOperationFailure(event.operationId, event.message);
-      if (this.props.operations.includes(event.operationId, "cake-chat-open"))
-        this.reportError(event.message);
+        session.receiveOperationFailure(event.operationId, event.message, event.details);
+      if (this.props.operations.includes(event.operationId, "cake-chat-open")) {
+        this.error = event.message;
+        this.errorDetails = event.details ?? event.message;
+      }
       this.props.operations.finish(event.operationId);
       return;
     }
