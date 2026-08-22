@@ -137,7 +137,8 @@ test("selects rendered TypeScript and opens a continuous, resizable selection ch
     await expect
       .poll(() => page.evaluate(() => window.getSelection()?.toString().trim()))
       .toBe("UtilityModePreferences");
-    const action = page.getByRole("button", { name: "Chat about this" });
+    await page.mouse.click(selectionTarget.x, selectionTarget.y, { button: "right" });
+    const action = page.getByRole("menuitem", { name: "Chat about this" });
     await expect(action).toBeVisible();
     await action.click();
 

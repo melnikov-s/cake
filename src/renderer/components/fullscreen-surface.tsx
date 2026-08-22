@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type MouseEventHandler, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { IconButton } from "@/components/ui/icon-button";
 import { cn } from "@/lib/utils";
@@ -67,14 +67,12 @@ export function FullscreenSurface({
   eyebrow,
   mode = "reader",
   onClose,
-  onContentMouseUp,
   title,
 }: {
   children: ReactNode;
   eyebrow: string;
   mode?: "reader" | "canvas";
   onClose(): void;
-  onContentMouseUp?: MouseEventHandler<HTMLElement>;
   title: string;
 }) {
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -126,7 +124,6 @@ export function FullscreenSurface({
         <article
           className="fullscreen-surface-content"
           onMouseDown={(event) => event.stopPropagation()}
-          onMouseUp={onContentMouseUp}
         >
           {children}
         </article>

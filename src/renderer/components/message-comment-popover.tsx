@@ -208,31 +208,6 @@ function PopoverShell({
   );
 }
 
-export function MessageSelectionAction({
-  rect,
-  onChat,
-}: {
-  rect: MessageCommentAnchorRect;
-  onChat(anchor: MessageCommentAnchorRect): void;
-}) {
-  const style: CSSProperties = {
-    left: Math.min(Math.max(12, (rect.left + rect.right) / 2), window.innerWidth - 12),
-    top: Math.min(rect.bottom + 8, window.innerHeight - 44),
-  };
-  return createPortal(
-    <button
-      className="message-selection-action"
-      type="button"
-      style={style}
-      onPointerDown={(event) => event.preventDefault()}
-      onClick={(event) => onChat(event.currentTarget.getBoundingClientRect())}
-    >
-      Chat about this
-    </button>,
-    document.body,
-  );
-}
-
 export const MessageCommentDraftPopover = observer(function MessageCommentDraftPopover({
   anchor,
   chatStore,

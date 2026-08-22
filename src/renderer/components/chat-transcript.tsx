@@ -27,12 +27,12 @@ import { CompactionMessage } from "@/components/compaction-message";
 import { CopyErrorDetailsButton } from "@/components/copy-error-details-button";
 import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
 import { ImagePreview } from "@/components/image-preview";
+import { ContextMenu } from "@/components/ui/context-menu";
 import { IconButton } from "@/components/ui/icon-button";
 import { LoadingState } from "@/components/ui/loading-state";
 import {
   MessageCommentDraftPopover,
   MessageCommentThreadPopover,
-  MessageSelectionAction,
   type MessageCommentAnchorRect,
 } from "@/components/message-comment-popover";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
@@ -230,9 +230,11 @@ export function captureMessageSelection(
 ): MessageSelectionAnchor | undefined {
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return undefined;
-  const range = selection.getRangeAt(0);
-  if (!container.contains(range.startContainer) || !container.contains(range.endContainer))
-    return undefined;
+  // Clamp the browser range into the container so selections that spill across
+  // message boundaries still produce a well-formed anchor for the first part.
+  const range = selection.getRangeAt(0).cloneRange();
+  if (!container.contains(range.startContainer)) range.setStart(container, 0);
+  if (!container.contains(range.endContainer)) range.setEnd(container, container.childNodes.length);
   const raw = range.toString();
   const selectedText = raw.trim();
   if (!selectedText) return undefined;
@@ -252,14 +254,51 @@ export function captureMessageSelection(
   };
 }
 
-export const MESSAGE_COMMENT_SELECTION_SETTLE_MS = 80;
-
 function plainRect(rect: DOMRect): MessageCommentAnchorRect {
   return { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left };
 }
 
 function selectionEndRect(range: Range) {
   return Array.from(range.getClientRects()).at(-1) ?? range.getBoundingClientRect();
+}
+
+export interface TranscriptSelectionCapture {
+  selection: MessageSelectionAnchor;
+  rect: MessageCommentAnchorRect;
+  x: number;
+  y: number;
+}
+
+/** Resolves the active browser selection against the parts this transcript
+ *  owns, so every selectable surface (user messages, assistant replies, code,
+ *  work logs, artifacts) can be right-clicked into a selection chat. */
+export function captureTranscriptSelection(
+  parts: UiPart[],
+  cursor: { x: number; y: number },
+): TranscriptSelectionCapture | undefined {
+  const browser = window.getSelection();
+  if (!browser || browser.rangeCount === 0 || browser.isCollapsed) return undefined;
+  const range = browser.getRangeAt(0);
+  const startElement =
+    range.startContainer instanceof HTMLElement
+      ? range.startContainer
+      : range.startContainer.parentElement;
+  const partElement = startElement?.closest<HTMLElement>("[data-part-id]");
+  const partId = partElement?.dataset.partId;
+  const part = partId ? parts.find((candidate) => candidate.id === partId) : undefined;
+  if (!partId || !part) return undefined;
+  // Offsets inside streaming text are unstable, so ignore those selections.
+  if (part.kind === "text" && part.status === "streaming") return undefined;
+  const container =
+    partElement.querySelector<HTMLElement>(".assistant-message-content, .user-message") ??
+    partElement;
+  const selection = captureMessageSelection(
+    container,
+    partId,
+    part.kind === "text" ? part.entryId : undefined,
+  );
+  if (!selection) return undefined;
+  return { selection, rect: plainRect(selectionEndRect(range)), x: cursor.x, y: cursor.y };
 }
 
 export interface ChatTranscriptBehavior {
@@ -290,14 +329,6 @@ const AssistantTextMessage = observer(function AssistantTextMessage({
 }) {
   const [copied, setCopied] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [selectionAction, setSelectionAction] = useState<{
-    selection: MessageSelectionAnchor;
-    rect: MessageCommentAnchorRect;
-  }>();
-  const [draft, setDraft] = useState<{
-    selection: MessageSelectionAnchor;
-    anchor: MessageCommentAnchorRect;
-  }>();
   const [openThread, setOpenThread] = useState<{
     id: string;
     anchor: HTMLElement | MessageCommentAnchorRect;
@@ -305,8 +336,6 @@ const AssistantTextMessage = observer(function AssistantTextMessage({
   const [markerPositions, setMarkerPositions] = useState<
     Record<string, { left: number; top: number }>
   >({});
-  const selectionTimer = useRef<number | undefined>(undefined);
-  const selectionFrame = useRef<number | undefined>(undefined);
   const messageRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const commentThreads = behavior.messageComments?.threadsForMessage(part.id) ?? [];
@@ -316,13 +345,6 @@ const AssistantTextMessage = observer(function AssistantTextMessage({
     const timeout = window.setTimeout(() => setCopied(false), 1_500);
     return () => window.clearTimeout(timeout);
   }, [copied]);
-  useEffect(
-    () => () => {
-      window.clearTimeout(selectionTimer.current);
-      if (selectionFrame.current !== undefined) cancelAnimationFrame(selectionFrame.current);
-    },
-    [],
-  );
 
   const content = () => <Markdown onOpenFilePath={behavior.openFilePath}>{part.text}</Markdown>;
 
@@ -392,77 +414,9 @@ const AssistantTextMessage = observer(function AssistantTextMessage({
       .join("|"),
   ]);
 
-  const showSelectionAction = useCallback(
-    (container: HTMLElement | null = contentRef.current) => {
-      window.clearTimeout(selectionTimer.current);
-      if (!behavior.messageComments || part.status === "streaming" || !container) {
-        setSelectionAction(undefined);
-        return;
-      }
-      const captured = captureMessageSelection(container, part.id, part.entryId);
-      const selection = window.getSelection();
-      if (!captured || !selection?.rangeCount) {
-        setSelectionAction(undefined);
-        return;
-      }
-      setSelectionAction({
-        selection: captured,
-        rect: plainRect(selectionEndRect(selection.getRangeAt(0))),
-      });
-    },
-    [behavior.messageComments, part.entryId, part.id, part.status],
-  );
-
-  useEffect(() => {
-    const message = messageRef.current;
-    const contentNode = contentRef.current;
-    if (!message || !contentNode || !behavior.messageComments || part.status === "streaming")
-      return;
-    const settleSelection = () => {
-      window.clearTimeout(selectionTimer.current);
-      if (selectionFrame.current !== undefined) cancelAnimationFrame(selectionFrame.current);
-      const selection = window.getSelection();
-      if (!selection?.rangeCount || selection.isCollapsed) {
-        setSelectionAction(undefined);
-        return;
-      }
-      const range = selection.getRangeAt(0);
-      if (
-        !contentNode.contains(range.startContainer) ||
-        !contentNode.contains(range.endContainer)
-      ) {
-        setSelectionAction(undefined);
-        return;
-      }
-      selectionTimer.current = window.setTimeout(
-        () => showSelectionAction(contentNode),
-        MESSAGE_COMMENT_SELECTION_SETTLE_MS,
-      );
-    };
-    const finishSelection = () => {
-      window.clearTimeout(selectionTimer.current);
-      if (selectionFrame.current !== undefined) cancelAnimationFrame(selectionFrame.current);
-      selectionFrame.current = requestAnimationFrame(() => {
-        selectionFrame.current = undefined;
-        showSelectionAction(contentNode);
-      });
-    };
-    document.addEventListener("selectionchange", settleSelection);
-    message.addEventListener("pointerup", finishSelection, true);
-    message.addEventListener("keyup", finishSelection, true);
-    return () => {
-      window.clearTimeout(selectionTimer.current);
-      if (selectionFrame.current !== undefined) cancelAnimationFrame(selectionFrame.current);
-      document.removeEventListener("selectionchange", settleSelection);
-      message.removeEventListener("pointerup", finishSelection, true);
-      message.removeEventListener("keyup", finishSelection, true);
-    };
-  }, [behavior.messageComments, part.status, showSelectionAction]);
-
   const activeThread = openThread
     ? commentThreads.find((thread) => thread.id === openThread.id)
     : undefined;
-  const draftChatStore = draft ? behavior.messageComments?.draftChatStore : undefined;
 
   return (
     <ChatTextMessage
@@ -491,24 +445,6 @@ const AssistantTextMessage = observer(function AssistantTextMessage({
               <b>{thread.messageCount}</b>
             </IconButton>
           ),
-      )}
-      {selectionAction && (
-        <MessageSelectionAction
-          rect={selectionAction.rect}
-          onChat={(anchor) => {
-            behavior.messageComments?.prepareDraft(selectionAction.selection);
-            setDraft({ selection: selectionAction.selection, anchor });
-            setSelectionAction(undefined);
-          }}
-        />
-      )}
-      {draft && behavior.messageComments && draftChatStore && (
-        <MessageCommentDraftPopover
-          anchor={draft.anchor}
-          chatStore={draftChatStore}
-          renderChat={behavior.renderChat}
-          onClose={() => setDraft(undefined)}
-        />
       )}
       {activeThread && behavior.messageComments && (
         <MessageCommentThreadPopover
@@ -542,20 +478,17 @@ const AssistantTextMessage = observer(function AssistantTextMessage({
         </div>
       )}
       {fullscreen && (
-        <FullscreenSurface
-          eyebrow="Full response"
-          title="Cake"
-          onClose={closeFullscreen}
-          onContentMouseUp={(event) => showSelectionAction(event.currentTarget)}
-        >
-          {content()}
+        <FullscreenSurface eyebrow="Full response" title="Cake" onClose={closeFullscreen}>
+          <div className="transcript-part" data-part-id={part.id}>
+            {content()}
+          </div>
         </FullscreenSurface>
       )}
     </ChatTextMessage>
   );
 });
 
-function TranscriptPart({
+function TranscriptPartContent({
   part,
   behavior,
   workLogItem = false,
@@ -646,6 +579,21 @@ function TranscriptPart({
     <div className={`notice notice-${part.tone}`} role={part.tone === "error" ? "alert" : "status"}>
       <strong>{part.title}</strong>
       {part.detail && <span>{part.detail}</span>}
+    </div>
+  );
+}
+
+/** Marks every rendered transcript part in the DOM so right-click selection
+ *  capture can resolve any selectable surface back to its conversation part.
+ *  The wrapper is layout-invisible via `display: contents`. */
+function TranscriptPart(props: {
+  part: UiPart;
+  behavior: CanonicalTranscriptBehavior;
+  workLogItem?: boolean;
+}) {
+  return (
+    <div className="transcript-part" data-part-id={props.part.id}>
+      <TranscriptPartContent {...props} />
     </div>
   );
 }
@@ -902,6 +850,8 @@ export const ChatTranscript = observer(function ChatTranscript({
 }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const staticTranscriptRef = useRef<HTMLDivElement>(null);
+  const [selectionMenu, setSelectionMenu] = useState<TranscriptSelectionCapture>();
+  const [draftAnchor, setDraftAnchor] = useState<MessageCommentAnchorRect>();
   const visibleParts = store.hideThinking
     ? store.parts.filter((part) => part.kind !== "reasoning")
     : store.parts;
@@ -957,6 +907,65 @@ export const ChatTranscript = observer(function ChatTranscript({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [store]);
   const error = errorOverride ?? store.error;
+  // Right-clicking any selection inside this conversation offers "Chat about
+  // this". The capture resolves the selection to a part owned by this store,
+  // so sibling or nested transcripts never react to each other's selections.
+  const messageComments = behavior.messageComments;
+  useEffect(() => {
+    if (!messageComments) return;
+    const handler = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      const targetElement = target instanceof Element ? target : target.parentElement;
+      // Editing surfaces keep their native cut/copy/paste menu.
+      if (
+        targetElement?.closest(
+          'input, textarea, select, [contenteditable="true"], [contenteditable=""]',
+        )
+      )
+        return;
+      const capture = captureTranscriptSelection(store.parts, {
+        x: event.clientX,
+        y: event.clientY,
+      });
+      if (!capture) return;
+      event.preventDefault();
+      setSelectionMenu(capture);
+    };
+    document.addEventListener("contextmenu", handler);
+    return () => document.removeEventListener("contextmenu", handler);
+  }, [messageComments, store.parts]);
+  const openSelectionDraft = (capture: TranscriptSelectionCapture) => {
+    if (!messageComments) return;
+    messageComments.prepareDraft(capture.selection);
+    setDraftAnchor(capture.rect);
+    setSelectionMenu(undefined);
+  };
+  const selectionOverlays = (
+    <>
+      {selectionMenu && (
+        <ContextMenu
+          position={{ x: selectionMenu.x, y: selectionMenu.y }}
+          items={[
+            {
+              id: "chat-about-this",
+              label: "Chat about this",
+              onSelect: () => openSelectionDraft(selectionMenu),
+            },
+          ]}
+          onClose={() => setSelectionMenu(undefined)}
+        />
+      )}
+      {draftAnchor && messageComments && (
+        <MessageCommentDraftPopover
+          anchor={draftAnchor}
+          chatStore={messageComments.draftChatStore}
+          renderChat={renderChat}
+          onClose={() => setDraftAnchor(undefined)}
+        />
+      )}
+    </>
+  );
   const renderItem = (item: TranscriptItem, index: number) => (
     <div
       key={item.id}
@@ -979,63 +988,72 @@ export const ChatTranscript = observer(function ChatTranscript({
   );
   if (visibleParts.length === 0)
     return (
-      <div className="transcript transcript-empty">
-        <Conversation>
-          {empty}
-          {showAssistantLoading && <LoadingState startedAt={store.loadingStartedAt} />}
-          {footer}
-          {error?.message && (
-            <ErrorNotice
-              title={error.title ?? "Operation failed"}
-              message={error.message}
-              details={error.details}
-            />
-          )}
-        </Conversation>
-      </div>
+      <>
+        {selectionOverlays}
+        <div className="transcript transcript-empty">
+          <Conversation>
+            {empty}
+            {showAssistantLoading && <LoadingState startedAt={store.loadingStartedAt} />}
+            {footer}
+            {error?.message && (
+              <ErrorNotice
+                title={error.title ?? "Operation failed"}
+                message={error.message}
+                details={error.details}
+              />
+            )}
+          </Conversation>
+        </div>
+      </>
     );
   if (!virtualized)
     return (
-      <div ref={staticTranscriptRef} className="transcript">
-        <TranscriptList>
-          {items.map(renderItem)}
-          <div className="transcript-footer">
-            {footer}
-            {error?.message && (
-              <ErrorNotice
-                title={error.title ?? "Operation failed"}
-                message={error.message}
-                details={error.details}
-              />
-            )}
-          </div>
-        </TranscriptList>
-      </div>
+      <>
+        {selectionOverlays}
+        <div ref={staticTranscriptRef} className="transcript">
+          <TranscriptList>
+            {items.map(renderItem)}
+            <div className="transcript-footer">
+              {footer}
+              {error?.message && (
+                <ErrorNotice
+                  title={error.title ?? "Operation failed"}
+                  message={error.message}
+                  details={error.details}
+                />
+              )}
+            </div>
+          </TranscriptList>
+        </div>
+      </>
     );
   return (
-    <VirtualizedConversation
-      ref={virtuosoRef}
-      className="transcript"
-      data={items}
-      computeItemKey={(_index, item) => item.id}
-      initialTopMostItemIndex={{ index: items.length - 1, align: "end" }}
-      followOutput={(isAtBottom) => (isAtBottom ? "auto" : false)}
-      components={{
-        List: TranscriptList,
-        Footer: () => (
-          <div className="transcript-footer">
-            {footer}
-            {error?.message && (
-              <ErrorNotice
-                title={error.title ?? "Operation failed"}
-                message={error.message}
-                details={error.details}
-              />
-            )}
-          </div>
-        ),
-      }}
-      itemContent={(index, item) => renderItem(item, index)}
-    />
+    <>
+      {selectionOverlays}
+      <VirtualizedConversation
+        ref={virtuosoRef}
+        className="transcript"
+        data={items}
+        computeItemKey={(_index, item) => item.id}
+        initialTopMostItemIndex={{ index: items.length - 1, align: "end" }}
+        followOutput={(isAtBottom) => (isAtBottom ? "auto" : false)}
+        components={{
+          List: TranscriptList,
+          Footer: () => (
+            <div className="transcript-footer">
+              {footer}
+              {error?.message && (
+                <ErrorNotice
+                  title={error.title ?? "Operation failed"}
+                  message={error.message}
+                  details={error.details}
+                />
+              )}
+            </div>
+          ),
+        }}
+        itemContent={(index, item) => renderItem(item, index)}
+      />
+    </>
   );
 });

@@ -44,7 +44,6 @@ import {
   captureMessageSelection,
   chatWorkIsActive,
   ChatTranscript,
-  MESSAGE_COMMENT_SELECTION_SETTLE_MS,
   type ChatTranscriptBehavior,
 } from "../../../src/renderer/components/chat-transcript";
 import { MessageCommentsStore } from "../../../src/renderer/stores/MessageCommentsStore";
@@ -840,8 +839,48 @@ describe("Transcript scrolling", () => {
     browserSelection.removeAllRanges();
   });
 
-  it("offers a chat immediately when text selection finishes", () => {
-    vi.useFakeTimers();
+  /** Selects the first occurrence of `needle` inside `scope` as the browser selection. */
+  function selectWithin(scope: HTMLElement, needle: string): void {
+    const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const start = node.textContent?.indexOf(needle) ?? -1;
+      if (start < 0) continue;
+      const range = document.createRange();
+      range.setStart(node, start);
+      range.setEnd(node, start + needle.length);
+      const browserSelection = window.getSelection()!;
+      browserSelection.removeAllRanges();
+      browserSelection.addRange(range);
+      return;
+    }
+    throw new Error(`Could not locate ${needle}`);
+  }
+
+  function rightClick(target: Element): void {
+    act(() => {
+      target.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 42,
+          clientY: 64,
+        }),
+      );
+    });
+  }
+
+  const chatMenuItem = () =>
+    document.body.querySelector<HTMLButtonElement>(".cake-context-menu [role='menuitem']");
+
+  function mountedComments(draftChat: ChatStore): MessageCommentsStore {
+    return {
+      threadsForMessage: () => [],
+      prepareDraft: vi.fn(),
+      draftChatStore: draftChat,
+    } as unknown as MessageCommentsStore;
+  }
+
+  it("offers Chat about this when right-clicking a message selection", () => {
     const comments: MessageCommentsStore = mount(
       createStore(MessageCommentsStore, {
         client: { createReviewThread: vi.fn() } as never,
@@ -875,27 +914,15 @@ describe("Transcript scrolling", () => {
       ),
     );
 
-    const walker = document.createTreeWalker(
-      container.querySelector<HTMLElement>(".assistant-message-content")!,
-      NodeFilter.SHOW_TEXT,
-    );
-    let important: Node | null = walker.nextNode();
-    while (important && !important.textContent?.includes("Alpha important detail"))
-      important = walker.nextNode();
-    expect(important).not.toBeNull();
-    const range = document.createRange();
-    range.setStart(important!, 6);
-    range.setEnd(important!, 15);
-    const browserSelection = window.getSelection()!;
-    browserSelection.removeAllRanges();
-    browserSelection.addRange(range);
-    act(() => document.dispatchEvent(new Event("selectionchange")));
-    act(() => vi.advanceTimersByTime(MESSAGE_COMMENT_SELECTION_SETTLE_MS));
-    expect(
-      document.body.querySelector<HTMLButtonElement>(".message-selection-action")?.textContent,
-    ).toBe("Chat about this");
+    const content = container.querySelector<HTMLElement>(".assistant-message-content")!;
+    selectWithin(content, "important");
+    expect(chatMenuItem()).toBeNull();
+    rightClick(content);
 
-    act(() => document.body.querySelector<HTMLButtonElement>(".message-selection-action")!.click());
+    const item = chatMenuItem();
+    expect(item?.textContent).toBe("Chat about this");
+    act(() => item!.click());
+
     const dialog = document.body.querySelector<HTMLElement>(
       '[role="dialog"][aria-label="Chat about this"]',
     )!;
@@ -917,33 +944,27 @@ describe("Transcript scrolling", () => {
     expect(comments.draftChatStore.draft).toBe("Why is this important?");
     expect(input.value).toBe("Why is this important?");
     expect(input).toBe(document.activeElement);
-    browserSelection.removeAllRanges();
+    window.getSelection()?.removeAllRanges();
     comments[Symbol.dispose]();
     popupChat[Symbol.dispose]();
-    vi.useRealTimers();
   });
 
-  it("hides the selection chat offer when focus moves into an input", () => {
-    vi.useFakeTimers();
+  it("keeps the native menu over editing surfaces and collapsed selections", () => {
     const draftChat = mount(
       createStore(ChatStore, {
-        id: () => "selection-input-focus",
+        id: () => "selection-editing-surface",
         parts: () => [],
         streaming: () => false,
         submitting: () => false,
         configuration: () => undefined,
         commands: () => [],
-        placeholder: () => "Ask Cake about this selection…",
+        placeholder: () => "Ask Cake about this passage…",
         inputLabel: () => "Message about selected text",
         canSubmit: (draft) => Boolean(draft.trim()),
         submit: async () => true,
       }),
     );
-    const comments = {
-      threadsForMessage: () => [],
-      prepareDraft: vi.fn(),
-      draftChatStore: draftChat,
-    } as unknown as MessageCommentsStore;
+    const comments = mountedComments(draftChat);
     act(() =>
       root.render(
         <Transcript
@@ -952,53 +973,86 @@ describe("Transcript scrolling", () => {
               id: "assistant-1",
               kind: "text",
               role: "assistant",
-              entryId: "entry-1",
               text: "Alpha important detail.",
               status: "complete",
             },
           ]}
           sessionId="session-1"
           isStreaming={false}
-          behavior={{
-            messageComments: comments,
-          }}
+          behavior={{ messageComments: comments }}
           empty={<div />}
         />,
       ),
     );
 
     const content = container.querySelector<HTMLElement>(".assistant-message-content")!;
-    const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
-    let detail: Node | null = walker.nextNode();
-    while (detail && !detail.textContent?.includes("important")) detail = walker.nextNode();
-    expect(detail).not.toBeNull();
-    const range = document.createRange();
-    const start = detail!.textContent!.indexOf("important");
-    range.setStart(detail!, start);
-    range.setEnd(detail!, start + "important".length);
-    const browserSelection = window.getSelection()!;
-    browserSelection.removeAllRanges();
-    browserSelection.addRange(range);
-    act(() => document.dispatchEvent(new Event("selectionchange")));
-    act(() => vi.advanceTimersByTime(MESSAGE_COMMENT_SELECTION_SETTLE_MS));
-    expect(document.body.querySelector(".message-selection-action")).not.toBeNull();
+    // A collapsed selection keeps the default menu.
+    rightClick(content);
+    expect(chatMenuItem()).toBeNull();
 
+    // Right-clicking an editing surface keeps the native cut/copy/paste menu.
+    selectWithin(content, "important");
     const composerInput = document.createElement("textarea");
-    document.body.append(composerInput);
-    composerInput.focus();
-    act(() => {
-      browserSelection.removeAllRanges();
-      document.dispatchEvent(new Event("selectionchange"));
-    });
-    expect(document.body.querySelector(".message-selection-action")).toBeNull();
+    composerInput.append(document.createTextNode("draft text"));
+    container.appendChild(composerInput);
+    rightClick(composerInput);
+    expect(chatMenuItem()).toBeNull();
 
-    composerInput.remove();
     draftChat[Symbol.dispose]();
-    vi.useRealTimers();
   });
 
-  it("captures selections from fenced code at the assistant message boundary", () => {
-    vi.useFakeTimers();
+  it("offers Chat about this for selections in the user's own message", () => {
+    const draftChat = mount(
+      createStore(ChatStore, {
+        id: () => "user-message-comment-draft",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Ask Cake about this passage…",
+        inputLabel: () => "Message about selected text",
+        canSubmit: (draft) => Boolean(draft.trim()),
+        submit: async () => true,
+      }),
+    );
+    const comments = mountedComments(draftChat);
+    act(() =>
+      root.render(
+        <Transcript
+          parts={[
+            {
+              id: "user-1",
+              kind: "text",
+              role: "user",
+              text: "Explain the settings shape please.",
+              status: "complete",
+            },
+          ]}
+          sessionId="session-1"
+          isStreaming={false}
+          behavior={{ messageComments: comments }}
+          empty={<div />}
+        />,
+      ),
+    );
+
+    const message = container.querySelector<HTMLElement>(".user-message")!;
+    selectWithin(message, "settings shape");
+    rightClick(message);
+
+    expect(chatMenuItem()?.textContent).toBe("Chat about this");
+    act(() => chatMenuItem()!.click());
+    expect(comments.prepareDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: "user-1", selectedText: "settings shape" }),
+    );
+    expect(
+      document.body.querySelector('[role="dialog"][aria-label="Chat about this"]'),
+    ).not.toBeNull();
+    draftChat[Symbol.dispose]();
+  });
+
+  it("offers Chat about this for selections inside fenced code", () => {
     const draftChat = mount(
       createStore(ChatStore, {
         id: () => "code-message-comment-draft",
@@ -1013,11 +1067,7 @@ describe("Transcript scrolling", () => {
         submit: async () => true,
       }),
     );
-    const comments = {
-      threadsForMessage: () => [],
-      prepareDraft: vi.fn(),
-      draftChatStore: draftChat,
-    } as unknown as MessageCommentsStore;
+    const comments = mountedComments(draftChat);
     act(() =>
       root.render(
         <Transcript
@@ -1033,47 +1083,29 @@ describe("Transcript scrolling", () => {
           ]}
           sessionId="session-1"
           isStreaming={false}
-          behavior={{
-            messageComments: comments,
-          }}
+          behavior={{ messageComments: comments }}
           empty={<div />}
         />,
       ),
     );
 
     const content = container.querySelector<HTMLElement>(".assistant-message-content")!;
-    const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
-    let codeText: Node | null = walker.nextNode();
-    while (codeText && !codeText.textContent?.includes("const value = 42"))
-      codeText = walker.nextNode();
-    expect(codeText).not.toBeNull();
-    const start = codeText!.textContent!.indexOf("value");
-    const range = document.createRange();
-    range.setStart(codeText!, start);
-    range.setEnd(codeText!, start + "value".length);
-    const browserSelection = window.getSelection()!;
-    browserSelection.removeAllRanges();
-    browserSelection.addRange(range);
-    const codeBlock = codeText!.parentElement!.closest(
-      "[data-streamdown='code-block'], pre, code",
-    )!;
-    codeBlock.addEventListener("pointerup", (event) => event.stopPropagation());
-    act(() => document.dispatchEvent(new Event("selectionchange")));
-    act(() => vi.advanceTimersByTime(MESSAGE_COMMENT_SELECTION_SETTLE_MS));
+    selectWithin(content, "value");
+    const codeBlock = content.querySelector("[data-streamdown='code-block'], pre, code")!;
+    rightClick(codeBlock);
 
-    expect(
-      document.body.querySelector<HTMLButtonElement>(".message-selection-action")?.textContent,
-    ).toBe("Chat about this");
-    browserSelection.removeAllRanges();
+    expect(chatMenuItem()?.textContent).toBe("Chat about this");
+    act(() => chatMenuItem()!.click());
+    expect(comments.prepareDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: "assistant-code", selectedText: "value" }),
+    );
     draftChat[Symbol.dispose]();
-    vi.useRealTimers();
   });
 
-  it("detects native selection changes inside assistant Markdown", () => {
-    vi.useFakeTimers();
+  it("does not offer Chat about this while the selected part is streaming", () => {
     const draftChat = mount(
       createStore(ChatStore, {
-        id: () => "keyboard-message-comment-draft",
+        id: () => "streaming-selection-draft",
         parts: () => [],
         streaming: () => false,
         submitting: () => false,
@@ -1085,54 +1117,35 @@ describe("Transcript scrolling", () => {
         submit: async () => true,
       }),
     );
-    const comments = {
-      threadsForMessage: () => [],
-      prepareDraft: vi.fn(),
-      draftChatStore: draftChat,
-    } as unknown as MessageCommentsStore;
+    const comments = mountedComments(draftChat);
     act(() =>
       root.render(
         <Transcript
           parts={[
             {
-              id: "assistant-keyboard",
+              id: "assistant-live",
               kind: "text",
               role: "assistant",
-              text: "Keyboard selection works.",
-              status: "complete",
+              text: "Streaming answer text.",
+              status: "streaming",
             },
           ]}
           sessionId="session-1"
-          isStreaming={false}
-          behavior={{
-            messageComments: comments,
-          }}
+          isStreaming
+          behavior={{ messageComments: comments }}
           empty={<div />}
         />,
       ),
     );
 
     const content = container.querySelector<HTMLElement>(".assistant-message-content")!;
-    const text = document.createTreeWalker(content, NodeFilter.SHOW_TEXT).nextNode()!;
-    const range = document.createRange();
-    range.setStart(text, 0);
-    range.setEnd(text, "Keyboard".length);
-    const browserSelection = window.getSelection()!;
-    browserSelection.removeAllRanges();
-    browserSelection.addRange(range);
-    act(() => document.dispatchEvent(new Event("selectionchange")));
-    act(() => vi.advanceTimersByTime(MESSAGE_COMMENT_SELECTION_SETTLE_MS));
-
-    expect(
-      document.body.querySelector<HTMLButtonElement>(".message-selection-action")?.textContent,
-    ).toBe("Chat about this");
-    browserSelection.removeAllRanges();
+    selectWithin(content, "answer");
+    rightClick(content);
+    expect(chatMenuItem()).toBeNull();
     draftChat[Symbol.dispose]();
-    vi.useRealTimers();
   });
 
   it("offers the same selection chat above a fullscreen assistant response", () => {
-    vi.useFakeTimers();
     const draftChat = mount(
       createStore(ChatStore, {
         id: () => "fullscreen-message-comment-draft",
@@ -1147,11 +1160,7 @@ describe("Transcript scrolling", () => {
         submit: async () => true,
       }),
     );
-    const comments = {
-      threadsForMessage: () => [],
-      prepareDraft: vi.fn(),
-      draftChatStore: draftChat,
-    } as unknown as MessageCommentsStore;
+    const comments = mountedComments(draftChat);
     act(() =>
       root.render(
         <Transcript
@@ -1167,9 +1176,7 @@ describe("Transcript scrolling", () => {
           ]}
           sessionId="session-1"
           isStreaming={false}
-          behavior={{
-            messageComments: comments,
-          }}
+          behavior={{ messageComments: comments }}
           empty={<div />}
         />,
       ),
@@ -1182,36 +1189,26 @@ describe("Transcript scrolling", () => {
     );
     const fullscreen = document.body.querySelector<HTMLElement>(".fullscreen-surface")!;
     const content = fullscreen.querySelector<HTMLElement>(".fullscreen-surface-content")!;
-    const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
-    let important: Node | null = walker.nextNode();
-    while (important && !important.textContent?.includes("Alpha important detail"))
-      important = walker.nextNode();
-    const range = document.createRange();
-    range.setStart(important!, 6);
-    range.setEnd(important!, 15);
-    const browserSelection = window.getSelection()!;
-    browserSelection.removeAllRanges();
-    browserSelection.addRange(range);
-    act(() => content.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })));
+    selectWithin(content, "important");
+    rightClick(content);
 
-    act(() => document.body.querySelector<HTMLButtonElement>(".message-selection-action")!.click());
+    expect(chatMenuItem()?.textContent).toBe("Chat about this");
+    act(() => chatMenuItem()!.click());
     expect(document.body.querySelector(".fullscreen-surface")).toBe(fullscreen);
     expect(
       document.body.querySelector('[role="dialog"][aria-label="Chat about this"]'),
     ).not.toBeNull();
     expect(comments.prepareDraft).toHaveBeenCalledWith(
-      expect.objectContaining({ selectedText: "important", startOffset: 6, endOffset: 15 }),
+      expect.objectContaining({ selectedText: "important" }),
     );
     expect(
       document.body.querySelector<HTMLTextAreaElement>(
         '[aria-label="Message about selected fullscreen text"]',
       ),
     ).toBe(document.activeElement);
-    browserSelection.removeAllRanges();
+    window.getSelection()?.removeAllRanges();
     draftChat[Symbol.dispose]();
-    vi.useRealTimers();
   });
-
   it("restores a selection marker and reopens its persisted chat", () => {
     const now = new Date(0).toISOString();
     const thread = {

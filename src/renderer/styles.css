@@ -563,12 +563,22 @@
   white-space: nowrap;
 }
 .session-row .session-time {
-  flex: 0 0 auto;
+  width: 58px;
+  flex: 0 0 58px;
   margin-left: 8px;
   color: var(--muted-foreground);
   font-size: 10px;
   font-weight: 450;
+  text-align: right;
   white-space: nowrap;
+}
+.session-status-slot {
+  display: grid;
+  width: 11px;
+  height: 25px;
+  flex: 0 0 11px;
+  place-items: center;
+  margin-left: 8px;
 }
 .session-row:hover {
   background: var(--sidebar-hover);
@@ -578,7 +588,6 @@
   width: 7px;
   height: 7px;
   flex: 0 0 7px;
-  margin-left: 8px;
   border-radius: 50%;
 }
 .session-row .session-status-running {
@@ -622,7 +631,7 @@
   width: calc(100% - 25px);
 }
 .session-item:hover .session-row {
-  padding-right: 36px;
+  padding-right: 8px;
 }
 .session-item.active .session-row {
   background: var(--sidebar-active);
@@ -660,7 +669,7 @@
   pointer-events: auto;
 }
 .session-item:hover .session-time {
-  opacity: 0;
+  opacity: 1;
 }
 .session-resolve-action:hover {
   background: color-mix(in oklab, var(--accent) 14%, var(--sidebar-hover));
@@ -2614,30 +2623,6 @@
   pointer-events: auto;
   transform: translateY(0);
 }
-.message-selection-action {
-  position: fixed;
-  z-index: 70;
-  display: inline-flex;
-  height: 30px;
-  align-items: center;
-  padding: 0 11px;
-  border: 1px solid color-mix(in oklab, var(--accent) 54%, var(--border));
-  border-radius: 999px;
-  background: var(--foreground);
-  box-shadow: 0 10px 28px -12px hsl(var(--shadow) / 0.6);
-  color: var(--background);
-  cursor: pointer;
-  font: 650 11px var(--font-sans);
-  transform: translateX(-50%);
-  animation: message-comment-arrive 120ms ease-out;
-}
-.message-selection-action:hover {
-  background: color-mix(in oklab, var(--foreground) 90%, var(--accent));
-}
-.message-selection-action:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
 .message-comment-marker {
   position: absolute;
   z-index: 2;
@@ -2778,10 +2763,12 @@
   .artifact-fullscreen-button {
     transition: none;
   }
-  .message-selection-action,
   .message-comment-popover {
     animation: none;
   }
+}
+.transcript-part {
+  display: contents;
 }
 .fullscreen-surface {
   position: fixed;
