@@ -12,7 +12,9 @@ import {
   platformAssetName,
   releaseAssetUrl,
   resolveServerBinary,
+  serverFlavor,
   VSCODE_SERVER_VERSION,
+  type ServerFlavor,
 } from "./vscode-server-binary";
 
 /** Idle servers are stopped after this long without an attached viewer or activity. */
@@ -80,6 +82,7 @@ interface ServerInstance {
   child: ChildProcess;
   port: number;
   token: string;
+  flavor: ServerFlavor;
   lastUsedAt: number;
   viewers: number;
   evictTimer?: ReturnType<typeof setTimeout>;
@@ -246,7 +249,8 @@ export class VsCodeServerManager {
     this.cancelEviction(instance);
 
     try {
-      await view.webContents.loadURL(`http://127.0.0.1:${instance.port}/?tkn=${instance.token}`);
+      const authSuffix = instance.flavor === "openvscode" ? `/?tkn=${instance.token}` : "/";
+      await view.webContents.loadURL(`http://127.0.0.1:${instance.port}${authSuffix}`);
     } catch (error) {
       this.views.delete(webContentsId);
       this.releaseViewer(resolved);
@@ -333,23 +337,38 @@ export class VsCodeServerManager {
     const token = randomBytes(24).toString("hex");
     const userDataDir = join(this.props.root, "user-data", workspaceHash(workspacePath));
     await mkdir(userDataDir, { recursive: true });
+    const flavor = serverFlavor(binary);
 
     const child = spawn(
       binary,
-      [
-        "--port",
-        String(port),
-        "--bind-addr",
-        `127.0.0.1:${port}`,
-        "--connection-token",
-        token,
-        "--extensions-dir",
-        extensionDir,
-        "--user-data-dir",
-        userDataDir,
-        "--disable-telemetry",
-        workspacePath,
-      ],
+      // code-server (the common local install) and openvscode-server differ in
+      // their listen/auth flags; both take the folder as the final positional.
+      flavor === "codeserver"
+        ? [
+            "--bind-addr",
+            `127.0.0.1:${port}`,
+            "--auth",
+            "none",
+            "--extensions-dir",
+            extensionDir,
+            "--user-data-dir",
+            userDataDir,
+            workspacePath,
+          ]
+        : [
+            "--port",
+            String(port),
+            "--bind-addr",
+            `127.0.0.1:${port}`,
+            "--connection-token",
+            token,
+            "--extensions-dir",
+            extensionDir,
+            "--user-data-dir",
+            userDataDir,
+            "--disable-telemetry",
+            workspacePath,
+          ],
       {
         cwd: workspacePath,
         env: (() => {
@@ -374,6 +393,7 @@ export class VsCodeServerManager {
       child,
       port,
       token,
+      flavor,
       lastUsedAt: Date.now(),
       viewers: 0,
     };

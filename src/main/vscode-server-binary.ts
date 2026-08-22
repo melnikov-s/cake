@@ -10,20 +10,52 @@ export const VSCODE_SERVER_VERSION = "1.102.1";
 
 const DOWNLOAD_TIMEOUT = 10 * 60_000;
 
+/**
+ * openvscode-server publishes Linux binaries only (verified against the
+ * gitpod-io release assets); macOS servers must come from a local install,
+ * typically `brew install code-server`.
+ */
 const RELEASE_BASE =
   process.env.CAKE_VSCODE_RELEASE_BASE ??
-  "https://github.com/openvscode-server/org/openvscode-server/releases/download";
+  "https://github.com/gitpod-io/openvscode-server/releases/download";
+
+/** Which server distribution a resolved binary belongs to; their CLIs differ slightly. */
+export type ServerFlavor = "openvscode" | "codeserver";
 
 /**
  * Binary and archive plumbing for the embedded VS Code editor. Kept free of
  * Electron imports so the resolution rules are unit-testable in isolation.
  */
 
+/** Classifies a resolved binary so the spawner can apply the right CLI flags and URL scheme. */
+export function serverFlavor(binaryPath: string): ServerFlavor {
+  return basename(binaryPath).startsWith("code-server") ? "codeserver" : "openvscode";
+}
+
+/** Confirms a download URL is live before handing it to the downloader. */
+export async function verifyDownloadUrl(url: string): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(url, { method: "HEAD", redirect: "follow" });
+  } catch (error) {
+    throw new Error(
+      `Could not reach ${url}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+  if (!response.ok)
+    throw new Error(
+      `${url} is not available (HTTP ${response.status}). ` +
+        "The pinned editor version may not publish assets for this platform.",
+    );
+}
+
 export async function downloadFile(
   url: string,
   destination: string,
   onProgress: (fraction: number) => void,
 ): Promise<void> {
+  await verifyDownloadUrl(url);
   const response = await fetch(url, { redirect: "follow" });
   if (!response.ok || !response.body)
     throw new Error(`Download failed with HTTP ${response.status}`);
@@ -67,13 +99,24 @@ export async function extractArchive(archivePath: string, destination: string, i
   }
 }
 
-/** Resolves the server launcher script, preferring explicit overrides over the managed download. */
+/**
+ * Resolves the server launcher script. Order: explicit user setting, env
+ * override, Cake's managed openvscode-server download (Linux), then
+ * well-known locally installed servers such as Homebrew's code-server.
+ */
 export async function resolveServerBinary(root: string, customPath?: string): Promise<string> {
   const candidates: string[] = [];
   if (customPath) candidates.push(customPath);
   if (process.env.CAKE_VSCODE_SERVER_PATH) candidates.push(process.env.CAKE_VSCODE_SERVER_PATH);
-  const binaryName = process.platform === "win32" ? "openvscode-server.cmd" : "openvscode-server";
-  candidates.push(join(root, `openvscode-server-v${VSCODE_SERVER_VERSION}`, "bin", binaryName));
+  if (process.platform === "linux")
+    candidates.push(
+      join(root, `openvscode-server-v${VSCODE_SERVER_VERSION}`, "bin", "openvscode-server"),
+    );
+  candidates.push(
+    "/opt/homebrew/bin/code-server",
+    "/usr/local/bin/code-server",
+    "/usr/bin/code-server",
+  );
   for (const candidate of candidates) {
     try {
       await access(candidate, constants.X_OK);
@@ -82,6 +125,10 @@ export async function resolveServerBinary(root: string, customPath?: string): Pr
       // Try the next candidate.
     }
   }
+  if (process.platform === "darwin")
+    throw new Error(
+      "No VS Code server is installed on this Mac. Run `brew install code-server`, then retry, or set CAKE_VSCODE_SERVER_PATH to an existing server binary.",
+    );
   throw new Error(
     "The VS Code editor is not installed yet. Download it from within Cake or choose an existing installation.",
   );
@@ -94,15 +141,13 @@ export function releaseAssetUrl(asset: string): string {
 export function platformAssetName(platform = process.platform, arch = process.arch): string {
   const key = `${platform}-${arch}`;
   switch (key) {
-    case "darwin-arm64":
-    case "darwin-x64":
     case "linux-x64":
     case "linux-arm64":
       return `openvscode-server-v${VSCODE_SERVER_VERSION}-${key}.tar.gz`;
-    case "win32-x64":
-      return `openvscode-server-v${VSCODE_SERVER_VERSION}-win32-x64.zip`;
     default:
-      throw new Error(`Cake does not support an embedded editor on ${key}`);
+      throw new Error(
+        `openvscode-server publishes Linux builds only; on ${key}, install code-server locally (\`brew install code-server\`) and retry.`,
+      );
   }
 }
 

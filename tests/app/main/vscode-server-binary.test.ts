@@ -9,33 +9,35 @@ import {
   platformAssetName,
   releaseAssetUrl,
   resolveServerBinary,
+  serverFlavor,
   VSCODE_SERVER_VERSION,
 } from "../../../src/main/vscode-server-binary";
 
 const run = promisify(execFile);
 
 describe("releaseAssetUrl", () => {
-  it("points at the pinned release tag with the given asset", () => {
+  it("points at the gitpod-io release tag with the given asset", () => {
     const url = releaseAssetUrl(platformAssetName("linux", "x64"));
-    expect(url).toContain(`releases/download/v${VSCODE_SERVER_VERSION}/`);
+    expect(url).toContain("github.com/gitpod-io/openvscode-server/releases/download/");
+    expect(url).toContain(`v${VSCODE_SERVER_VERSION}/`);
     expect(url.endsWith(`openvscode-server-v${VSCODE_SERVER_VERSION}-linux-x64.tar.gz`)).toBe(true);
   });
 });
 
 describe("platformAssetName", () => {
-  it("maps supported desktop platforms to release archives", () => {
-    expect(platformAssetName("darwin", "arm64")).toBe(
-      `openvscode-server-v${VSCODE_SERVER_VERSION}-darwin-arm64.tar.gz`,
-    );
+  it("maps supported Linux platforms to release archives", () => {
     expect(platformAssetName("linux", "x64")).toBe(
       `openvscode-server-v${VSCODE_SERVER_VERSION}-linux-x64.tar.gz`,
     );
-    expect(platformAssetName("win32", "x64")).toBe(
-      `openvscode-server-v${VSCODE_SERVER_VERSION}-win32-x64.zip`,
+    expect(platformAssetName("linux", "arm64")).toBe(
+      `openvscode-server-v${VSCODE_SERVER_VERSION}-linux-arm64.tar.gz`,
     );
   });
 
-  it("rejects unsupported platforms", () => {
+  it("refuses managed downloads on platforms openvscode-server does not publish", () => {
+    // Verified against the gitpod-io release assets: darwin and win32 builds do not exist.
+    expect(() => platformAssetName("darwin", "arm64")).toThrow(/brew install code-server/);
+    expect(() => platformAssetName("win32", "x64")).toThrow(/brew install code-server/);
     expect(() => platformAssetName("freebsd", "x64")).toThrow(/freebsd-x64/);
   });
 });
@@ -57,7 +59,7 @@ describe("resolveServerBinary", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it("prefers the user-configured path over the managed download", async () => {
+  it("prefers the user-configured path over other candidates", async () => {
     const managedDir = join(root, `openvscode-server-v${VSCODE_SERVER_VERSION}`, "bin");
     await mkdir(managedDir, { recursive: true });
     const managed = join(managedDir, "openvscode-server");
@@ -65,7 +67,6 @@ describe("resolveServerBinary", () => {
     await chmod(managed, 0o755);
 
     expect(await resolveServerBinary(root, executablePath)).toBe(executablePath);
-    expect(await resolveServerBinary(root)).toBe(managed);
   });
 
   it("falls back to the CAKE_VSCODE_SERVER_PATH environment override", async () => {
@@ -73,8 +74,32 @@ describe("resolveServerBinary", () => {
     expect(await resolveServerBinary(root)).toBe(executablePath);
   });
 
-  it("throws an actionable error when no binary exists", async () => {
-    await expect(resolveServerBinary(root)).rejects.toThrow(/not installed yet/);
+  it.skipIf(process.platform !== "linux")(
+    "falls back to the managed download on Linux",
+    async () => {
+      const managedDir = join(root, `openvscode-server-v${VSCODE_SERVER_VERSION}`, "bin");
+      await mkdir(managedDir, { recursive: true });
+      const managed = join(managedDir, "openvscode-server");
+      await writeFile(managed, "#!/bin/sh\n");
+      await chmod(managed, 0o755);
+
+      expect(await resolveServerBinary(root)).toBe(managed);
+    },
+  );
+
+  it.skipIf(process.platform !== "linux")(
+    "throws an actionable error when no binary exists",
+    async () => {
+      await expect(resolveServerBinary(join(root, "empty"))).rejects.toThrow(/not installed yet/);
+    },
+  );
+});
+
+describe("serverFlavor", () => {
+  it("classifies code-server installs separately from openvscode-server", () => {
+    expect(serverFlavor("/opt/homebrew/bin/code-server")).toBe("codeserver");
+    expect(serverFlavor("/opt/server/bin/openvscode-server")).toBe("openvscode");
+    expect(serverFlavor("/anywhere/custom-editor")).toBe("openvscode");
   });
 });
 
