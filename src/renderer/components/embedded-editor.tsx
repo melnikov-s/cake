@@ -5,13 +5,14 @@ import { Button } from "./ui/button";
 import { LoadingState } from "./ui/loading-state";
 
 function StatusCard({ store }: { store: EmbeddedEditorStore }) {
+  const managedDownloadAvailable = /Linux/.test(navigator.userAgent);
   return (
     <div className="embedded-editor-card" role="status">
       <strong>Full VS Code editing</strong>
       <p>
         Run a real VS Code server for this project inside Cake, with full language services, your
-        extension workspace, and the command palette. Cake downloads it once and reuses it across
-        projects.
+        extension workspace, and the command palette. On Mac, Cake needs code-server installed
+        locally (Homebrew works well).
       </p>
       {store.statusMessage ? <p className="embedded-editor-status">{store.statusMessage}</p> : null}
       {store.error ? (
@@ -21,10 +22,17 @@ function StatusCard({ store }: { store: EmbeddedEditorStore }) {
       ) : null}
       <div className="embedded-editor-actions">
         {store.status === "downloading" || store.status === "starting" ? null : (
-          <Button size="sm" onClick={() => void store.install()}>
-            {store.status === "failed" ? "Retry installation" : "Install VS Code editor"}
+          <Button size="sm" onClick={() => void store.askCakeToSetUp()}>
+            Ask Cake to set this up
           </Button>
         )}
+        {managedDownloadAvailable &&
+        store.status !== "downloading" &&
+        store.status !== "starting" ? (
+          <Button variant="outline" size="sm" onClick={() => void store.install()}>
+            Download openvscode-server
+          </Button>
+        ) : null}
         <Button variant="outline" size="sm" onClick={() => store.setMode("builtin")}>
           Use the built-in reader
         </Button>

@@ -105,6 +105,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       client: this.client,
       projectPath: () => this.projectPath,
       schedulePersistence: () => this.props.persistence().schedule(),
+      startChatWithDraft: (draft) => this.startNewSessionWithDraft(draft),
     });
   }
 
@@ -268,6 +269,17 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     }
     if (path === this.projectPath) await this.openPath(path, true);
     else await this.inspectPath(path, true);
+  }
+
+  /** Opens a fresh session in this project and seeds its composer with `draft`. */
+  async startNewSessionWithDraft(draft: string, path = this.projectPath) {
+    if (!path) throw new Error("No project is open");
+    const previousSessionId = this.session?.sessionId;
+    await this.startNewSession(path);
+    const active = this.activeSession;
+    if (!active || active.model.sessionId === previousSessionId) return;
+    if (!active.chatStore.draft.trim()) active.chatStore.setDraft(draft);
+    active.composerStore.requestFocus();
   }
 
   async openSession(sessionId: string) {

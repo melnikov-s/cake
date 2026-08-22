@@ -22,6 +22,7 @@ function createHarness() {
       client,
       projectPath: () => "/tmp/project",
       schedulePersistence: vi.fn(),
+      startChatWithDraft: vi.fn(async () => undefined),
     }),
   );
   return { client, store };

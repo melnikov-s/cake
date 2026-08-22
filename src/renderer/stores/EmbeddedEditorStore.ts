@@ -19,6 +19,7 @@ export interface EmbeddedEditorStoreProps {
   >;
   projectPath(): string | undefined;
   schedulePersistence(): void;
+  startChatWithDraft(draft: string): Promise<void>;
 }
 
 /**
@@ -79,6 +80,35 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     try {
       await this.props.client.openEmbeddedEditor(projectPath);
       this.openedWorkspace = projectPath;
+    } catch (error) {
+      const described = describeError(error);
+      this.error = described.message;
+      this.errorDetails = described.details;
+    }
+  }
+
+  /** Asks Cake, in a fresh project chat, to install and verify a VS Code server. */
+  async askCakeToSetUp() {
+    const platform = /Mac/.test(navigator.userAgent)
+      ? "macOS"
+      : /Linux/.test(navigator.userAgent)
+        ? "Linux"
+        : "Windows";
+    const draft = [
+      "Cake's embedded VS Code editor could not find a VS Code server binary on this machine.",
+      `Platform: ${platform}.`,
+      "",
+      "Please set one up for me:",
+      "- On macOS, install code-server via Homebrew (`brew install code-server`) and verify it with `code-server --version`. Cake auto-detects /opt/homebrew/bin/code-server, /usr/local/bin/code-server, and /usr/bin/code-server once installed.",
+      "- On Linux, no install is needed: Cake downloads openvscode-server automatically; if that download failed, diagnose the network or proxy problem.",
+      "- If I already have a compatible server binary somewhere else, tell me where to point CAKE_VSCODE_SERVER_PATH (note: that environment variable must be set before launching Cake).",
+      "",
+      "When you're done, tell me to click the retry button in Cake's project browser.",
+    ].join("\n");
+    this.error = undefined;
+    this.errorDetails = undefined;
+    try {
+      await this.props.startChatWithDraft(draft);
     } catch (error) {
       const described = describeError(error);
       this.error = described.message;
