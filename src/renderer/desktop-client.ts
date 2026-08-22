@@ -131,6 +131,7 @@ export type DesktopClientEvent =
   | { type: "operation-completed"; operationId: string }
   | { type: "operation-failed"; operationId?: string; message: string; details?: string }
   | { type: "customization-state-changed"; state: CustomizationState }
+  | { type: "application-state-changed"; state: ApplicationState }
   | { type: "plugin-agent-event"; pluginId: string; snapshot: PluginAgentSnapshot }
   | { type: "embedded-editor-state-received"; status: EmbeddedEditorStatus; message?: string }
   | { type: "embedded-editor-activity"; workspacePath: string; path: string };
@@ -510,6 +511,7 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
       details: event.details,
     };
   if (event.type === "customization-state-changed") return event;
+  if (event.type === "application-state-changed") return event;
   if (event.type === "embedded-editor-state")
     return {
       type: "embedded-editor-state-received",

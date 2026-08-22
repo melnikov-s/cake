@@ -199,6 +199,22 @@ function broadcast(event: DesktopEvent) {
   for (const window of windows.values()) sendTo(window.webContents, event);
 }
 
+/**
+ * Submitting a prompt into a resolved session reopens it: the session becomes
+ * unresolved, the change is persisted, and every window learns about it so the
+ * session moves back into the active sidebar lane.
+ */
+async function reopenSessionForPrompt(sessionId: string, cakeChat: boolean) {
+  const resolvedIds = cakeChat
+    ? applicationModel.resolvedCakeChatSessionIds
+    : applicationModel.resolvedSessionIds;
+  if (!resolvedIds.includes(sessionId)) return;
+  if (cakeChat) applicationModel.setCakeChatSessionResolved(sessionId, false);
+  else applicationModel.setSessionsResolved([sessionId], false);
+  await persistApplicationState();
+  broadcast({ type: "application-state-changed", state: applicationModel.snapshot() });
+}
+
 function rememberSessionLocation(workspacePath: string, sessionId: string) {
   const existing = sessionWorkspacePaths.get(sessionId);
   if (existing && existing !== workspacePath)
@@ -1083,6 +1099,7 @@ async function handleCakeRequest(
   }
   if (request.type === "prompt-global-chat") {
     globalChatController = event.sender;
+    await reopenSessionForPrompt(request.sessionId, true);
     globalChatDriver.prompt(
       request.requestId,
       request.sessionId,
@@ -1546,6 +1563,7 @@ async function handleCakeRequest(
       markdown: await artifactRepository.exportMarkdown(path, request.sessionId),
     });
   }
+  if (request.type === "prompt") await reopenSessionForPrompt(request.sessionId, false);
   dispatchToPi(path, request);
   return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
 }

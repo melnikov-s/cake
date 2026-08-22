@@ -375,6 +375,11 @@ export class RootStore extends Store<{ client: DesktopClient }> {
 
   private receive(event: DesktopClientEvent) {
     this.customizationStore.receive(event);
+    if (event.type === "application-state-changed") {
+      this.projectCatalogStore.applyApplicationState(event.state);
+      this.globalChatStore.applyApplicationState(event.state);
+      return;
+    }
     if (event.type === "global-chat-control-requested") {
       void this.appControl
         .invoke(event.invocation)

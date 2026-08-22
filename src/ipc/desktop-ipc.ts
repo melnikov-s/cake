@@ -181,6 +181,7 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
   }),
   pluginBackendEventSchema.extend({ type: z.literal("plugin-backend-event") }),
   z.object({ type: z.literal("customization-state-changed"), state: customizationStateSchema }),
+  z.object({ type: z.literal("application-state-changed"), state: applicationStateSchema }),
   z.object({
     type: z.literal("plugin-agent-event"),
     pluginId: pluginIdSchema,
