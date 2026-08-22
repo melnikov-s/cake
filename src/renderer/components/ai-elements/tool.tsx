@@ -130,12 +130,17 @@ export function Tool({
   part,
   onOpenFile,
   timer,
+  expansion,
 }: {
   part: Extract<UiPart, { kind: "tool" }>;
   onOpenFile?: (path: string) => void | Promise<void>;
   timer?: ReactNode;
+  /** Controlled expansion inside a work log; uncontrolled local state otherwise. */
+  expansion?: { open: boolean; toggle(): void };
 }) {
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = expansion ? expansion.open : uncontrolledOpen;
+  const toggleOpen = expansion ? expansion.toggle : () => setUncontrolledOpen((value) => !value);
   if (part.name.startsWith("subagent_")) return <SubagentTool part={part} timer={timer} />;
   const diff = toolDiff(part);
   const title = toolTitle(part);
@@ -153,7 +158,7 @@ export function Tool({
         <button
           type="button"
           className="tool-summary cursor-pointer font-mono text-xs font-semibold"
-          onClick={() => setOpen((value) => !value)}
+          onClick={toggleOpen}
           aria-expanded={open}
           disabled={!hasDetails}
         >

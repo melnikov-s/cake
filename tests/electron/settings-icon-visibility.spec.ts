@@ -22,7 +22,6 @@ test("workspace settings icon visibility follows sidebar state", async () => {
       recentProjectPaths: [project],
       draft: "",
       theme: "system",
-      thinkingExpanded: false,
     }),
   );
   await writeFile(

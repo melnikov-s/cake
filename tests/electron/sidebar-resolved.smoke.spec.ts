@@ -28,7 +28,6 @@ test("resolves and restores the selected project session in the desktop sidebar"
       recentProjectPaths: [project],
       draft: "",
       theme: "system",
-      thinkingExpanded: false,
       draftsBySession: {},
     }),
   );

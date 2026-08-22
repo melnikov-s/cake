@@ -29,7 +29,6 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
       recentProjectPaths: [project],
       draft: "",
       theme: "dark",
-      thinkingExpanded: false,
       draftsBySession: {},
     }),
   );
@@ -157,10 +156,23 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
     await page.keyboard.press("Control+o");
     await expect(log).toHaveAttribute("open", "");
     await expect(log.locator(".tool-call")).toHaveCount(1);
+    await expect(log.locator(".tool-call.tool-open")).toHaveCount(0);
+    await expect(log.locator(".tool-details")).toBeHidden();
+
+    await page.keyboard.press("Control+o");
+    await expect(log).toHaveAttribute("open", "");
+    await expect(log.locator(".tool-call.tool-open")).toHaveCount(1);
+    await expect(log.locator(".tool-details")).toBeVisible();
+    await expect(log.locator(".tool-output")).toContainText("README contents");
 
     await page.keyboard.press("Control+o");
     await expect(log).not.toHaveAttribute("open", "");
     await expect(log.locator(":scope > div")).toHaveCount(0);
+
+    await log.locator(":scope > summary").click();
+    await expect(log).toHaveAttribute("open", "");
+    await expect(log.locator(".tool-call")).toHaveCount(1);
+    await expect(log.locator(".tool-call.tool-open")).toHaveCount(0);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

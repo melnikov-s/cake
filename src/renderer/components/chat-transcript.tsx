@@ -276,8 +276,6 @@ export interface ChatTranscriptBehavior {
 
 interface CanonicalTranscriptBehavior extends ChatTranscriptBehavior {
   store: ChatStore;
-  thinkingExpanded: boolean;
-  onToggleThinking(): void;
   workLogDiff: boolean;
   onToggleWorkLogDiff(): void;
   renderChat(store: ChatStore): ReactNode;
@@ -555,9 +553,12 @@ const AssistantTextMessage = observer(function AssistantTextMessage({
 function TranscriptPart({
   part,
   behavior,
+  workLogItem = false,
 }: {
   part: UiPart;
   behavior: CanonicalTranscriptBehavior;
+  /** True when rendered inside a work log, so item expansion follows the global mode. */
+  workLogItem?: boolean;
 }) {
   if (part.kind === "text")
     return part.role === "assistant" ? (
@@ -568,8 +569,10 @@ function TranscriptPart({
   if (part.kind === "reasoning")
     return (
       <Reasoning
-        open={behavior.thinkingExpanded}
-        onToggle={behavior.onToggleThinking}
+        open={behavior.store.workLogItemOpen(part.id)}
+        onToggle={() =>
+          behavior.store.setWorkLogItemOpen(part.id, !behavior.store.workLogItemOpen(part.id))
+        }
         streaming={part.status === "streaming"}
         hasContent={Boolean(part.text.trim())}
       >
@@ -600,6 +603,18 @@ function TranscriptPart({
         part={part}
         onOpenFile={behavior.openFileInEditor}
         timer={<ToolRunTimer store={behavior.store} partId={part.id} />}
+        expansion={
+          workLogItem
+            ? {
+                open: behavior.store.workLogItemOpen(part.id),
+                toggle: () =>
+                  behavior.store.setWorkLogItemOpen(
+                    part.id,
+                    !behavior.store.workLogItemOpen(part.id),
+                  ),
+              }
+            : undefined
+        }
       />
     );
   }
@@ -675,7 +690,7 @@ const ActivityGroup = observer(function ActivityGroup({
   behavior: CanonicalTranscriptBehavior;
   isStreaming: boolean;
 }) {
-  const open = behavior.store.workLogsExpanded;
+  const open = behavior.store.workLogsExpansion !== "collapsed";
   const logRef = useRef<HTMLDivElement>(null);
   const logIsAtBottomRef = useRef(true);
   const tools = parts.filter((part) => part.kind === "tool").length;
@@ -726,7 +741,9 @@ const ActivityGroup = observer(function ActivityGroup({
       <summary
         onClick={(event) => {
           event.preventDefault();
-          behavior.store.toggleWorkLogsExpanded();
+          behavior.store.setWorkLogsExpansion(
+            behavior.store.workLogsExpansion === "collapsed" ? "expanded" : "collapsed",
+          );
         }}
       >
         <span
@@ -744,7 +761,8 @@ const ActivityGroup = observer(function ActivityGroup({
               event.preventDefault();
               event.stopPropagation();
               if (!behavior.workLogDiff) behavior.onToggleWorkLogDiff();
-              behavior.store.setWorkLogsExpanded(true);
+              if (behavior.store.workLogsExpansion === "collapsed")
+                behavior.store.setWorkLogsExpansion("expanded");
             }}
           >
             <DiffIcon />
@@ -758,7 +776,8 @@ const ActivityGroup = observer(function ActivityGroup({
               event.preventDefault();
               event.stopPropagation();
               if (behavior.workLogDiff) behavior.onToggleWorkLogDiff();
-              behavior.store.setWorkLogsExpanded(true);
+              if (behavior.store.workLogsExpansion === "collapsed")
+                behavior.store.setWorkLogsExpansion("expanded");
             }}
           >
             <LogIcon />
@@ -780,7 +799,9 @@ const ActivityGroup = observer(function ActivityGroup({
               onOpenFile={behavior.openFileInEditor}
             />
           ) : (
-            parts.map((part) => <TranscriptPart key={part.id} part={part} behavior={behavior} />)
+            parts.map((part) => (
+              <TranscriptPart key={part.id} part={part} behavior={behavior} workLogItem />
+            ))
           )}
         </div>
       )}
@@ -893,8 +914,6 @@ export const ChatTranscript = observer(function ChatTranscript({
   const transcriptBehavior: CanonicalTranscriptBehavior = {
     store,
     ...behavior,
-    thinkingExpanded: store.thinkingExpanded,
-    onToggleThinking: () => store.toggleThinking(),
     workLogDiff: store.workLogDiff,
     onToggleWorkLogDiff: () => store.toggleWorkLogDiff(),
     renderChat,
@@ -920,7 +939,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "o") {
         event.preventDefault();
-        store.toggleWorkLogsExpanded();
+        store.cycleWorkLogsExpansion();
       }
     };
     window.addEventListener("keydown", onKeyDown);

@@ -31,7 +31,6 @@ function createBridge() {
           draft: "",
           recentProjectPaths: [],
           theme: "system",
-          thinkingExpanded: false,
           draftsBySession: {},
           newSessionDraftsByProject: {},
         },

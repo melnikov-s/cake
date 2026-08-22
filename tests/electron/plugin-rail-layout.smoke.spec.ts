@@ -20,7 +20,6 @@ test("keeps session plugin rails beside the chat and bounds plugin-authored widt
         recentProjectPaths: [project],
         draft: "",
         theme: "system",
-        thinkingExpanded: false,
       }),
     ),
     writeFile(

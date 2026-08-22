@@ -34,7 +34,6 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
   errorDetails: string | undefined;
   private restoredDraft = "";
   private restoredNewSessionDraftsByProject: Record<string, string> = {};
-  private restoredThinkingExpanded = false;
   private persistTimer: ReturnType<typeof setTimeout> | undefined;
   private hydration: Promise<void> | undefined;
   private saveQueue: Promise<void> = Promise.resolve();
@@ -83,10 +82,8 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
       session.chatStore.setDraft(restoredProjectDraft);
     else if (!previousSessionId && !session.chatStore.draft)
       session.chatStore.setDraft(this.restoredDraft);
-    session.chatStore.setThinkingExpanded(this.restoredThinkingExpanded);
     if (newSession) delete this.restoredNewSessionDraftsByProject[session.workspacePath];
     this.restoredDraft = "";
-    this.restoredThinkingExpanded = false;
   }
 
   private async performHydration() {
@@ -106,7 +103,6 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
       this.props.workbench().embeddedEditorStore.mode = state.projectBrowserMode ?? "builtin";
       this.restoredDraft = state.draft;
       this.restoredNewSessionDraftsByProject = { ...state.newSessionDraftsByProject };
-      this.restoredThinkingExpanded = state.thinkingExpanded;
 
       const reviewsBySession = new Map<string, typeof sessionIndex.reviewThreads>();
       for (const thread of sessionIndex.reviewThreads) {
@@ -163,7 +159,6 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
       projectBrowserMode: workbench.embeddedEditorStore.mode === "vscode" ? "vscode" : "builtin",
       draft: activeSession?.chatStore.draft ?? "",
       theme: this.props.settings().theme,
-      thinkingExpanded: activeSession?.chatStore.thinkingExpanded ?? false,
       draftsBySession: Object.fromEntries(
         this.props.registry.sessions.map((session) => [session.sessionId, session.chatStore.draft]),
       ),

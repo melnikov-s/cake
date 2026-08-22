@@ -42,12 +42,15 @@ export interface WorkLogTimerState {
   endedAt?: number;
 }
 
+/** Global work-log expansion: collapsed, expanded with items collapsed, or fully expanded. */
+export type WorkLogsExpansion = "collapsed" | "expanded" | "fully-expanded";
+
 /** Common state and behavior contract for every Cake conversation surface. */
 export class ChatStore extends Store<ChatStoreProps> {
   draft = "";
-  thinkingExpanded = false;
   workLogDiff = false;
-  workLogsExpanded = false;
+  workLogsExpansion: WorkLogsExpansion = "collapsed";
+  readonly workLogItemOverrides = observable(new Map<string, boolean>());
   submittingLocally = false;
   loadingStartedAt: number | undefined;
   readonly workLogTimers = observable(new Map<string, WorkLogTimerState>());
@@ -202,15 +205,6 @@ export class ChatStore extends Store<ChatStoreProps> {
     this.props.persist?.();
   }
 
-  setThinkingExpanded(expanded: boolean) {
-    this.thinkingExpanded = expanded;
-    this.props.persist?.();
-  }
-
-  toggleThinking() {
-    this.setThinkingExpanded(!this.thinkingExpanded);
-  }
-
   setWorkLogDiff(showDiff: boolean) {
     this.workLogDiff = showDiff;
   }
@@ -219,12 +213,29 @@ export class ChatStore extends Store<ChatStoreProps> {
     this.setWorkLogDiff(!this.workLogDiff);
   }
 
-  setWorkLogsExpanded(expanded: boolean) {
-    this.workLogsExpanded = expanded;
+  setWorkLogsExpansion(expansion: WorkLogsExpansion) {
+    this.workLogsExpansion = expansion;
+    this.workLogItemOverrides.clear();
   }
 
-  toggleWorkLogsExpanded() {
-    this.setWorkLogsExpanded(!this.workLogsExpanded);
+  /** Ctrl+O cycles: collapsed → expanded (items collapsed) → fully expanded → collapsed. */
+  cycleWorkLogsExpansion() {
+    const next =
+      this.workLogsExpansion === "collapsed"
+        ? "expanded"
+        : this.workLogsExpansion === "expanded"
+          ? "fully-expanded"
+          : "collapsed";
+    this.setWorkLogsExpansion(next);
+  }
+
+  /** Effective open state of one item inside a work log; per-item clicks override the global mode. */
+  workLogItemOpen(partId: string): boolean {
+    return this.workLogItemOverrides.get(partId) ?? this.workLogsExpansion === "fully-expanded";
+  }
+
+  setWorkLogItemOpen(partId: string, open: boolean) {
+    this.workLogItemOverrides.set(partId, open);
   }
 
   async submit(value = this.draft) {

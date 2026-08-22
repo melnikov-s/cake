@@ -21,7 +21,6 @@ test("uses an intrinsic-height shared chat for code questions and toggles its he
       recentProjectPaths: [project],
       draft: "",
       theme: "system",
-      thinkingExpanded: false,
     }),
   );
   await writeFile(

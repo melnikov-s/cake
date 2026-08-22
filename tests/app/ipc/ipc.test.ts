@@ -334,7 +334,6 @@ describe("process IPC", () => {
       recentProjectPaths: [],
       draft: "",
       theme: "system",
-      thinkingExpanded: false,
       draftsBySession: {},
       newSessionDraftsByProject: {},
     });

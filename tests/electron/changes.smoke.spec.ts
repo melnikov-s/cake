@@ -52,7 +52,6 @@ test("renders all changed files in one scrollable diff and synchronizes file nav
       recentProjectPaths: [project],
       draft: "",
       theme: "dark",
-      thinkingExpanded: false,
       draftsBySession: {},
     }),
   );

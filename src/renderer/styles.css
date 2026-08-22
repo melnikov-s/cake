@@ -3206,15 +3206,6 @@
 .activity-group > summary::-webkit-details-marker {
   display: none;
 }
-.activity-group > summary::after {
-  flex: none;
-  margin-left: 0;
-  content: "+";
-  font-size: 14px;
-}
-.activity-group[open] > summary::after {
-  content: "−";
-}
 .activity-group > summary small {
   min-width: 0;
   overflow: hidden;

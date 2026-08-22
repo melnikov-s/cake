@@ -40,7 +40,6 @@ test("selects rendered TypeScript and opens a continuous, resizable selection ch
       recentProjectPaths: [project],
       draft: "",
       theme: "dark",
-      thinkingExpanded: false,
       draftsBySession: {},
     }),
   );

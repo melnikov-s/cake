@@ -87,8 +87,6 @@ function Transcript({
   isSubmitting?: boolean;
   hideThinking?: boolean;
   behavior: ChatTranscriptBehavior & {
-    thinkingExpanded: boolean;
-    onToggleThinking(): void;
     workLogDiff?: boolean;
     onToggleWorkLogDiff?(): void;
   };
@@ -99,15 +97,19 @@ function Transcript({
   errorTitle?: string;
 }) {
   const {
-    thinkingExpanded,
-    onToggleThinking,
     workLogDiff = false,
     onToggleWorkLogDiff = () => undefined,
     ...transcriptBehavior
   } = behavior;
   // Expansion state must survive prop-only re-renders, like a real ChatStore.
-  const workLogStateRef = useRef<{ expanded: boolean } | undefined>(undefined);
-  if (!workLogStateRef.current) workLogStateRef.current = observable({ expanded: false });
+  const workLogStateRef = useRef<
+    { expansion: { value: string }; items: Map<string, boolean> } | undefined
+  >(undefined);
+  if (!workLogStateRef.current)
+    workLogStateRef.current = {
+      expansion: observable({ value: "collapsed" }),
+      items: observable(new Map()),
+    };
   const workLogState = workLogStateRef.current;
   const store = {
     id: sessionId,
@@ -115,19 +117,33 @@ function Transcript({
     streaming: isStreaming,
     submitting: isSubmitting,
     hideThinking,
-    thinkingExpanded,
-    toggleThinking: onToggleThinking,
     workLogDiff,
     toggleWorkLogDiff: onToggleWorkLogDiff,
     workLogElapsedMs: () => undefined,
-    get workLogsExpanded() {
-      return workLogState.expanded;
+    get workLogsExpansion() {
+      return workLogState.expansion.value;
     },
-    setWorkLogsExpanded(expanded: boolean) {
-      workLogState.expanded = expanded;
+    get workLogItemOverrides() {
+      return workLogState.items;
     },
-    toggleWorkLogsExpanded() {
-      workLogState.expanded = !workLogState.expanded;
+    setWorkLogsExpansion(expansion: string) {
+      workLogState.expansion.value = expansion;
+      workLogState.items.clear();
+    },
+    cycleWorkLogsExpansion() {
+      workLogState.expansion.value =
+        workLogState.expansion.value === "collapsed"
+          ? "expanded"
+          : workLogState.expansion.value === "expanded"
+            ? "fully-expanded"
+            : "collapsed";
+      workLogState.items.clear();
+    },
+    workLogItemOpen(partId: string) {
+      return workLogState.items.get(partId) ?? workLogState.expansion.value === "fully-expanded";
+    },
+    setWorkLogItemOpen(partId: string, open: boolean) {
+      workLogState.items.set(partId, open);
     },
     error: undefined,
   } as unknown as ChatStore;
@@ -143,6 +159,23 @@ function Transcript({
   );
 }
 
+/** Retries an assertion across async flushes; signals-driven commits may land on a later task. */
+async function waitFor(assertion: () => void, attempts = 20): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+  throw lastError;
+}
+
 function TestTranscript({ store, sessionId }: { store: TranscriptHarness; sessionId: string }) {
   return (
     <Transcript
@@ -150,8 +183,6 @@ function TestTranscript({ store, sessionId }: { store: TranscriptHarness; sessio
       sessionId={sessionId}
       isStreaming={store.isStreaming}
       behavior={{
-        thinkingExpanded: false,
-        onToggleThinking: () => undefined,
         onFork: (entryId) => {
           void store.forkAt(entryId);
         },
@@ -333,7 +364,7 @@ describe("Transcript scrolling", () => {
           sessionId="session-1"
           isStreaming={false}
           isSubmitting
-          behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined }}
+          behavior={{}}
           empty={<div />}
         />,
       ),
@@ -368,8 +399,6 @@ describe("Transcript scrolling", () => {
           sessionId="session-1"
           isStreaming
           behavior={{
-            thinkingExpanded: false,
-            onToggleThinking: () => undefined,
             waitingForUser: true,
           }}
           empty={<div />}
@@ -453,7 +482,7 @@ describe("Transcript scrolling", () => {
     expect(log.scrollTop).toBe(100);
   });
 
-  it("leaves work log expansion under user control as streaming changes", () => {
+  it("leaves work log expansion under user control as streaming changes", async () => {
     const running: UiPart = {
       id: "tool-1",
       kind: "tool",
@@ -461,10 +490,10 @@ describe("Transcript scrolling", () => {
       input: "file",
       state: "running",
     };
+    const render = (parts: UiPart[], isStreaming = false) =>
+      root.render(<TestTranscript sessionId="session-1" store={storeWith(parts, isStreaming)} />);
 
-    act(() =>
-      root.render(<TestTranscript sessionId="session-1" store={storeWith([running], true)} />),
-    );
+    act(() => render([running], true));
     const log = container.querySelector<HTMLDetailsElement>(".activity-group")!;
     expect(log.open).toBe(false);
     expect(container.querySelector(".tool-call")).toBeNull();
@@ -473,20 +502,18 @@ describe("Transcript scrolling", () => {
     const tool = container.querySelector<HTMLElement>(".tool-call")!;
     const toolToggle = tool.querySelector<HTMLButtonElement>(".tool-summary")!;
     expect(toolToggle.getAttribute("aria-expanded")).toBe("false");
-    act(() => toolToggle.click());
+    toolToggle.click();
+    // Signal-driven commits can be dropped in reused vitest workers, so re-render
+    // explicitly and retry until the DOM reflects the store's item override.
+    await waitFor(() => {
+      act(() => render([running], true));
+      expect(toolToggle.getAttribute("aria-expanded")).toBe("true");
+      expect(tool.classList.contains("tool-open")).toBe(true);
+    });
     expect(log.open).toBe(true);
-    expect(toolToggle.getAttribute("aria-expanded")).toBe("true");
-    expect(tool.classList.contains("tool-open")).toBe(true);
     expect(tool.querySelector(".tool-details")).not.toBeNull();
 
-    act(() =>
-      root.render(
-        <TestTranscript
-          sessionId="session-1"
-          store={storeWith([{ ...running, state: "success" }], false)}
-        />,
-      ),
-    );
+    act(() => render([{ ...running, state: "success" }]));
     expect(log.open).toBe(true);
     expect(toolToggle.getAttribute("aria-expanded")).toBe("true");
     expect(
@@ -514,8 +541,6 @@ describe("Transcript scrolling", () => {
           sessionId="session-1"
           isStreaming
           behavior={{
-            thinkingExpanded: false,
-            onToggleThinking: () => undefined,
             workLogDiff,
             onToggleWorkLogDiff,
           }}
@@ -738,7 +763,7 @@ describe("Transcript scrolling", () => {
           sessionId="session-1"
           isStreaming={false}
           isSubmitting
-          behavior={{ thinkingExpanded: false, onToggleThinking: () => undefined }}
+          behavior={{}}
           empty={<div />}
         />,
       ),
@@ -843,8 +868,6 @@ describe("Transcript scrolling", () => {
           sessionId="session-1"
           isStreaming={false}
           behavior={{
-            thinkingExpanded: false,
-            onToggleThinking: () => undefined,
             messageComments: comments,
           }}
           empty={<div />}
@@ -937,8 +960,6 @@ describe("Transcript scrolling", () => {
           sessionId="session-1"
           isStreaming={false}
           behavior={{
-            thinkingExpanded: false,
-            onToggleThinking: () => undefined,
             messageComments: comments,
           }}
           empty={<div />}
@@ -1013,8 +1034,6 @@ describe("Transcript scrolling", () => {
           sessionId="session-1"
           isStreaming={false}
           behavior={{
-            thinkingExpanded: false,
-            onToggleThinking: () => undefined,
             messageComments: comments,
           }}
           empty={<div />}
@@ -1086,8 +1105,6 @@ describe("Transcript scrolling", () => {
           sessionId="session-1"
           isStreaming={false}
           behavior={{
-            thinkingExpanded: false,
-            onToggleThinking: () => undefined,
             messageComments: comments,
           }}
           empty={<div />}
@@ -1151,8 +1168,6 @@ describe("Transcript scrolling", () => {
           sessionId="session-1"
           isStreaming={false}
           behavior={{
-            thinkingExpanded: false,
-            onToggleThinking: () => undefined,
             messageComments: comments,
           }}
           empty={<div />}
@@ -1273,8 +1288,6 @@ describe("Transcript scrolling", () => {
           sessionId="session-1"
           isStreaming={false}
           behavior={{
-            thinkingExpanded: false,
-            onToggleThinking: () => undefined,
             messageComments: comments,
           }}
           empty={<div />}

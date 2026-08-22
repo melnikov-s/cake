@@ -30,7 +30,6 @@ test("the session header tree button toggles the session tree pane", async () =>
       recentProjectPaths: [project],
       draft: "",
       theme: "dark",
-      thinkingExpanded: false,
       draftsBySession: {},
     }),
   );

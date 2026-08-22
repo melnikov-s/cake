@@ -19,7 +19,6 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
       recentProjectPaths: [project],
       draft: "",
       theme: "system",
-      thinkingExpanded: false,
     }),
   );
   await writeFile(

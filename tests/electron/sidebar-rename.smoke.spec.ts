@@ -28,7 +28,6 @@ test("renames a project session from the sidebar context menu", async () => {
       recentProjectPaths: [project],
       draft: "",
       theme: "system",
-      thinkingExpanded: false,
       draftsBySession: {},
     }),
   );

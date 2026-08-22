@@ -19,7 +19,6 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
       recentProjectPaths: [project],
       draft: "",
       theme: "system",
-      thinkingExpanded: false,
     }),
   );
   await writeFile(

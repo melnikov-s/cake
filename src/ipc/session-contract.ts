@@ -458,7 +458,6 @@ export const windowViewStateSchema = z.object({
   draft: z.string().max(262_144).default(""),
   projectBrowserMode: z.enum(["builtin", "vscode"]).optional(),
   theme: z.enum(["system", "light", "dark"]).default("system"),
-  thinkingExpanded: z.boolean().default(false),
   draftsBySession: z.record(z.string(), z.string().max(262_144)).default({}),
   newSessionDraftsByProject: z.record(z.string(), z.string().max(262_144)).default({}),
 });

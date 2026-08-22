@@ -116,7 +116,6 @@ function createDesktopClient(restoredPath?: string) {
       recentProjectPaths: restoredPath ? [restoredPath] : [],
       draft: "saved",
       theme: "system" as const,
-      thinkingExpanded: false,
       draftsBySession: {},
       newSessionDraftsByProject: {},
     })),
@@ -654,7 +653,6 @@ describe("ProjectWorkbenchStore", () => {
       recentProjectPaths: ["/project"],
       draft: "",
       theme: "system" as const,
-      thinkingExpanded: false,
       draftsBySession: {},
       newSessionDraftsByProject: {},
     }));
@@ -694,7 +692,6 @@ describe("ProjectWorkbenchStore", () => {
       recentProjectPaths: ["/project"],
       draft: "",
       theme: "system" as const,
-      thinkingExpanded: false,
       draftsBySession: { "unpersisted-session": "" },
       newSessionDraftsByProject: {},
     }));
@@ -1792,7 +1789,6 @@ describe("ProjectWorkbenchStore", () => {
       recentProjectPaths: projects.map((project) => project.path),
       draft: "",
       theme: "system" as const,
-      thinkingExpanded: false,
       draftsBySession: {},
       newSessionDraftsByProject: {},
     }));

@@ -24,7 +24,6 @@ test("adapts extension dialogs and reports unsupported widgets", async () => {
       recentProjectPaths: [project],
       draft: "",
       theme: "system",
-      thinkingExpanded: false,
     }),
   );
   await writeFile(
