@@ -12,6 +12,9 @@ export const EMPTY_TURN_NOTICE_PART_ID = "active-empty-turn";
 /** Notice part id used when resuming a turn interrupted by a teardown/crash. */
 export const INTERRUPTED_TURN_NOTICE_PART_ID = "interrupted-turn-resume";
 
+/** Notice part id used for the aborted-turn auto-continuation status. */
+export const ABORTED_TURN_NOTICE_PART_ID = "active-aborted-turn";
+
 /**
  * Prompt sent back to the model when a session reattaches after its previous
  * run was killed mid-task (crash, window teardown, plugin reload).
@@ -24,6 +27,13 @@ export const interruptedTurnResumePrompt =
  */
 export const emptyTurnContinuationPrompt =
   "Your previous response arrived completely empty: the provider returned no content at all. Continue exactly where you left off and produce your full response.";
+
+/**
+ * Prompt sent back to the model when its response stream was cut off mid-turn
+ * (stop reason "aborted") without a user-initiated stop.
+ */
+export const abortedTurnContinuationPrompt =
+  "Your previous response was cut off mid-stream before you could finish. Continue exactly where you left off.";
 
 /**
  * A provider can fail silently: the HTTP request succeeds and the response is
@@ -51,6 +61,45 @@ export function isEmptyAssistantTurn(message: AssistantMessage | undefined): boo
   );
 }
 
+/**
+ * Recognizes a turn whose response stream was cut off mid-generation: the
+ * assistant message is persisted with stopReason "aborted" and whatever partial
+ * content had already streamed (thinking, text, or nothing), but no tool call
+ * ever completed. Pi ends the turn normally at this point, so neither its
+ * transient-error auto-retry nor Cake's empty-turn continuation applies, and
+ * the turn stalls mid-sentence until the user nudges it.
+ *
+ * Messages containing a tool call are excluded: an aborted tool-use turn may
+ * have unexecuted tool calls, and continuing over those is not safe.
+ */
+export function isAbortedAssistantTurn(message: AssistantMessage | undefined): boolean {
+  if (!message || message.role !== "assistant") return false;
+  if (message.stopReason !== "aborted") return false;
+  return message.content.every((part) => part.type !== "toolCall");
+}
+
+export type AbortedTurnDecision =
+  | { action: "reset" }
+  | { action: "continue"; attempt: number }
+  | { action: "give-up"; attempts: number };
+
+/**
+ * Decide what to do after a run settles on an aborted assistant message.
+ * A user-initiated stop (tracked by the caller while the run was active) always
+ * resets; otherwise an aborted turn continues up to EMPTY_TURN_MAX_CONTINUATIONS
+ * times before giving up visibly, mirroring the empty-turn policy.
+ */
+export function decideAbortedTurnResponse(
+  lastMessage: AssistantMessage | undefined,
+  userInitiated: boolean,
+  priorContinuations: number,
+): AbortedTurnDecision {
+  if (userInitiated || !isAbortedAssistantTurn(lastMessage)) return { action: "reset" };
+  if (priorContinuations >= EMPTY_TURN_MAX_CONTINUATIONS)
+    return { action: "give-up", attempts: priorContinuations };
+  return { action: "continue", attempt: priorContinuations + 1 };
+}
+
 export type EmptyTurnDecision =
   | { action: "reset" }
   | { action: "continue"; attempt: number }
@@ -59,9 +108,7 @@ export type EmptyTurnDecision =
 /**
  * Detects a turn that was interrupted mid-task: the conversation ends in tool
  * results the model never responded to. This shape only occurs when a run was
- * killed without unwinding normally (crash, silent runtime teardown), because
- * every legitimate end-of-run - completion, error, retry exhaustion, or user
- * abort - leaves an assistant message as the final entry.
+ * killed without unwinding normally (crash, silent runtime teardown).
  *
  * If the nearest preceding assistant message has stopReason "aborted", the run
  * was stopped intentionally and must not be resumed.

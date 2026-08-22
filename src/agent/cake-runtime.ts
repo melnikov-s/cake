@@ -40,9 +40,12 @@ import {
 import type { TSchema } from "@earendil-works/pi-ai";
 import { createCakeArtifactExtension } from "./artifact-extension";
 import {
+  ABORTED_TURN_NOTICE_PART_ID,
   EMPTY_TURN_MAX_CONTINUATIONS,
   EMPTY_TURN_NOTICE_PART_ID,
   INTERRUPTED_TURN_NOTICE_PART_ID,
+  abortedTurnContinuationPrompt,
+  decideAbortedTurnResponse,
   decideEmptyTurnResponse,
   emptyTurnContinuationPrompt,
   interruptedTurnResumePrompt,
@@ -908,6 +911,74 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       });
     });
   }
+  // Detects response streams that were cut off mid-generation: the run settles
+  // on an assistant message with stopReason "aborted" and no completed tool
+  // call. Pi treats an abort as a normal end of turn, so without this the turn
+  // stalls mid-sentence. Deliberate user stops are excluded via the flag set by
+  // abort(); teardown aborts dispose the runtime first and never reach here.
+  // Continuations are bounded by EMPTY_TURN_MAX_CONTINUATIONS and surfaced in
+  // the transcript so the retry is visible.
+  let userAbortRequested = false;
+  let abortedTurnContinuations = 0;
+  function handleSettledAbortedTurn() {
+    if (disposed) return;
+    const messages = session.messages;
+    const last = messages[messages.length - 1];
+    const lastAssistant = last?.role === "assistant" ? last : undefined;
+    const decision = decideAbortedTurnResponse(
+      lastAssistant,
+      userAbortRequested,
+      abortedTurnContinuations,
+    );
+    if (decision.action === "reset") {
+      if (abortedTurnContinuations > 0) {
+        abortedTurnContinuations = 0;
+        options.onEvent({
+          type: "part-removed",
+          sessionId: cakeSessionId,
+          partId: ABORTED_TURN_NOTICE_PART_ID,
+        });
+      }
+      return;
+    }
+    if (decision.action === "give-up") {
+      options.onEvent({
+        type: "part-updated",
+        sessionId: cakeSessionId,
+        part: {
+          id: ABORTED_TURN_NOTICE_PART_ID,
+          kind: "notice",
+          tone: "error",
+          title: `Response interrupted ${decision.attempts} times`,
+          detail: "Automatic continuation stopped. Send another message to retry manually.",
+        },
+      });
+      emitSnapshotInBackground();
+      return;
+    }
+    abortedTurnContinuations = decision.attempt;
+    options.onEvent({
+      type: "part-updated",
+      sessionId: cakeSessionId,
+      part: {
+        id: ABORTED_TURN_NOTICE_PART_ID,
+        kind: "notice",
+        tone: "warning",
+        title: `Response interrupted — continuing (${decision.attempt}/${EMPTY_TURN_MAX_CONTINUATIONS})`,
+        detail:
+          "The response stream was cut off before the model finished. Cake is retrying automatically.",
+      },
+    });
+    if (session.isStreaming) return;
+    void session.prompt(abortedTurnContinuationPrompt, { source: "interactive" }).catch(() => {
+      abortedTurnContinuations = 0;
+      options.onEvent({
+        type: "part-removed",
+        sessionId: cakeSessionId,
+        partId: ABORTED_TURN_NOTICE_PART_ID,
+      });
+    });
+  }
   // Resume a turn that the previous runtime instance left dangling (crash or
   // silent teardown): the conversation ends in tool results the model never
   // answered. Intentional aborts are excluded by the predicate.
@@ -933,6 +1004,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     if (disposed) return;
     if (event.type === "agent_start") {
+      userAbortRequested = false;
       options.onEvent({ type: "streaming", sessionId: cakeSessionId, streaming: true });
     }
     for (const part of projectLiveMessage(event)) {
@@ -1084,6 +1156,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
         .finally(() => {
           emitSnapshotInBackground();
           handleSettledEmptyTurn();
+          handleSettledAbortedTurn();
         });
     }
   });
@@ -1128,7 +1201,10 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       else if (delivery === "follow-up") await session.followUp(content, images);
       else await session.prompt(content, { images, source: "interactive" });
     },
-    abort: () => session.abort(),
+    abort: () => {
+      userAbortRequested = true;
+      return session.abort();
+    },
     async setModel(provider, modelId) {
       const model = modelRuntime.getModel(provider, modelId);
       if (!model) throw new Error(`Unknown model ${provider}/${modelId}`);
