@@ -779,6 +779,64 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("registers a blocking artifact request without an active operation or session selection", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+    const request = {
+      protocol: "cake.request/v1" as const,
+      id: "form",
+      title: "Answer",
+      responseSchema: {
+        type: "object" as const,
+        required: ["answer"],
+        properties: { answer: { type: "string" as const } },
+      },
+      view: {
+        type: "form" as const,
+        fields: [{ id: "answer", label: "Answer", type: "text" as const, required: true }],
+        submitLabel: "Send",
+      },
+      fallback: { markdown: "Answer" },
+    };
+    const record = {
+      artifact: {
+        protocol: "cake.artifact/v1" as const,
+        id: request.id,
+        sessionId: "session-1",
+        revision: 1,
+        kind: "request" as const,
+        payload: { request },
+        fallback: request.fallback,
+        interaction: { mode: "request" as const, responseSchema: request.responseSchema },
+      },
+      workspacePath: "/project",
+      digest: "a".repeat(64),
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+    };
+    // No coordinator operation is started and the event arrives while the
+    // session is already selected: either way the request must register so the
+    // form stays answerable even after the user switches sessions mid-block.
+    desktop.emit({
+      type: "artifact-requested",
+      operationId: crypto.randomUUID(),
+      artifactRequestId: crypto.randomUUID(),
+      record,
+    });
+    expect(
+      root.projectWorkbenchStore.activeSession!.artifactInteractionStore.request,
+    ).toBeDefined();
+    await root.projectWorkbenchStore.activeSession!.artifactInteractionStore.respond({
+      answer: "yes",
+    });
+    expect(desktop.client.respondToArtifact).toHaveBeenCalledWith(
+      expect.objectContaining({ value: { answer: "yes" }, cancelled: false }),
+    );
+    root[Symbol.dispose]();
+  });
+
   it("cancels a pending artifact request before replacing the active session", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);

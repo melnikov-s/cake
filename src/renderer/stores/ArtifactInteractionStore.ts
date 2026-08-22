@@ -13,8 +13,6 @@ export interface ArtifactRequestState {
 export interface ArtifactInteractionStoreProps {
   client: Pick<DesktopClient, "respondToArtifact" | "exportArtifacts">;
   sessionContext(): { sessionId: string } | undefined;
-  isActiveSession(sessionId: string): boolean;
-  operationActive(operationId: string): boolean;
 }
 
 /** Owns blocking artifact interaction and artifact export behavior. */
@@ -60,11 +58,10 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
 
   receive(event: DesktopClientEvent) {
     if (event.type === "artifact-requested") {
-      if (
-        !this.props.operationActive(event.operationId) ||
-        !this.props.isActiveSession(event.record.artifact.sessionId)
-      )
-        return;
+      // Register even while another session is selected: the user may switch
+      // back later, and the main process stays blocked until one response (or
+      // cancellation) arrives. Replayed requests overwrite harmlessly.
+      if (event.record.artifact.sessionId !== this.props.sessionContext()?.sessionId) return;
       this.request = event;
       return;
     }

@@ -1229,6 +1229,28 @@ describe("PiWorkspaceDriver", () => {
         event.type === "artifact-requested",
     )!;
     expect(events.some((event) => event.type === "artifact-updated")).toBe(true);
+    // Reopening the session replays the still-pending request so a freshly
+    // attached renderer can answer it.
+    const replayOpenId = crypto.randomUUID();
+    driver.dispatch({
+      type: "open-workspace",
+      requestId: replayOpenId,
+      path: "/project",
+      newSession: false,
+      sessionId: snapshot.sessionId,
+    });
+    await vi.waitFor(() =>
+      expect(
+        events.some((event) => event.type === "complete" && event.requestId === replayOpenId),
+      ).toBe(true),
+    );
+    const replays = events.filter(
+      (event): event is Extract<DesktopEvent, { type: "artifact-requested" }> =>
+        event.type === "artifact-requested" &&
+        event.artifactRequestId === request.artifactRequestId,
+    );
+    expect(replays.length).toBe(2);
+    expect(replays[1]!.record.artifact.id).toBe(request.record.artifact.id);
     driver.dispatch({
       type: "respond-artifact",
       requestId: operationId,

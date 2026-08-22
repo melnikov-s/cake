@@ -163,8 +163,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return createStore(ArtifactInteractionStore, {
       client: this.props.client,
       sessionContext: () => ({ sessionId: this.sessionId }),
-      isActiveSession: (sessionId) => this.props.isActive() && sessionId === this.sessionId,
-      operationActive: (operationId) => this.props.operations.includes(operationId),
     });
   }
 

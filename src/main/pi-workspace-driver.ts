@@ -87,6 +87,8 @@ interface PendingUi {
 
 interface PendingArtifact {
   operationId: string;
+  record: ArtifactRecord;
+  artifactRequestId: string;
   settle(value: JsonValue | undefined): void;
 }
 
@@ -302,6 +304,7 @@ export class PiWorkspaceDriver {
           requestId: command.requestId,
           snapshot: await runtime.snapshot(command.requestId),
         });
+        this.replayPendingArtifacts(runtime.sessionId);
       });
       return;
     }
@@ -668,10 +671,27 @@ export class PiWorkspaceDriver {
         resolve(value);
       };
       const onAbort = () => settle(undefined);
-      this.pendingArtifacts.set(artifactRequestId, { operationId, settle });
+      this.pendingArtifacts.set(artifactRequestId, {
+        operationId,
+        record,
+        artifactRequestId,
+        settle,
+      });
       signal.addEventListener("abort", onAbort, { once: true });
       this.emit({ type: "artifact-requested", requestId: operationId, artifactRequestId, record });
     });
+  }
+
+  /** Re-emits requests that are still blocking so freshly attached renderers can answer them. */
+  private replayPendingArtifacts(sessionId: string) {
+    for (const pending of this.pendingArtifacts.values())
+      if (pending.record.artifact.sessionId === sessionId)
+        this.emit({
+          type: "artifact-requested",
+          requestId: pending.operationId,
+          artifactRequestId: pending.artifactRequestId,
+          record: pending.record,
+        });
   }
 
   private runtimeFor(sessionId: string) {
