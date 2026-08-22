@@ -565,12 +565,20 @@
 .session-row .session-time {
   width: 58px;
   flex: 0 0 58px;
-  margin-left: 8px;
   color: var(--muted-foreground);
   font-size: 10px;
   font-weight: 450;
   text-align: right;
   white-space: nowrap;
+}
+.session-meta {
+  display: flex;
+  width: 77px;
+  flex: 0 0 77px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: 8px;
 }
 .session-status-slot {
   display: grid;
@@ -578,7 +586,6 @@
   height: 25px;
   flex: 0 0 11px;
   place-items: center;
-  margin-left: 8px;
 }
 .session-row:hover {
   background: var(--sidebar-hover);
@@ -631,7 +638,7 @@
   width: calc(100% - 25px);
 }
 .session-item:hover .session-row {
-  padding-right: 8px;
+  padding-right: 36px;
 }
 .session-item.active .session-row {
   background: var(--sidebar-active);

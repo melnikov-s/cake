@@ -62,12 +62,12 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
           const selected =
             shell.selection.kind === "cake-chat" && shell.selection.sessionId === session.id;
           const running = cakeChat.findSession(session.id)?.streaming === true;
-          const canResolve = !running && session.messageCount > 0;
+          const canResolve = !running;
           return (
             <div
               key={session.id}
               data-session-id={session.id}
-              className={`session-item ${canResolve ? "has-session-action" : ""} ${selected ? "active" : ""}`}
+              className={`session-item ${selected && canResolve ? "has-session-action" : ""} ${selected ? "active" : ""}`}
             >
               <button
                 className="session-row"
@@ -86,15 +86,17 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
                     {store.sessionActivityTime(session.modified)}
                   </time>
                 )}
-                <span className="session-status-slot">
-                  {running && (
-                    <i
-                      className="session-status session-status-running"
-                      role="img"
-                      aria-label="Running"
-                      title="Running"
-                    />
-                  )}
+                <span className="session-meta">
+                  <span className="session-status-slot">
+                    {running && (
+                      <i
+                        className="session-status session-status-running"
+                        role="img"
+                        aria-label="Running"
+                        title="Running"
+                      />
+                    )}
+                  </span>
                 </span>
               </button>
               {canResolve && (

@@ -46,7 +46,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   return (
     <div
       data-session-id={session.id}
-      className={`session-item ${canResolve ? "has-session-action" : ""} ${selected ? "active" : ""}`}
+      className={`session-item ${selected && canResolve ? "has-session-action" : ""} ${selected ? "active" : ""}`}
     >
       {renamingValue !== null ? (
         <input
@@ -74,24 +74,26 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
           <span className="session-title" title={session.title}>
             {session.title}
           </span>
-          {!selected && !running && !unread && (
-            <time
-              className="session-time"
-              dateTime={session.modified}
-              title={new Date(session.modified).toLocaleString()}
-            >
-              {store.sessionActivityTime(session.modified)}
-            </time>
-          )}
-          <span className="session-status-slot">
-            {activity && (
-              <i
-                className={`session-status session-status-${activity}`}
-                role="img"
-                aria-label={activityLabel}
-                title={activityLabel}
-              />
+          <span className="session-meta">
+            {!selected && !running && !unread && (
+              <time
+                className="session-time"
+                dateTime={session.modified}
+                title={new Date(session.modified).toLocaleString()}
+              >
+                {store.sessionActivityTime(session.modified)}
+              </time>
             )}
+            <span className="session-status-slot">
+              {activity && (
+                <i
+                  className={`session-status session-status-${activity}`}
+                  role="img"
+                  aria-label={activityLabel}
+                  title={activityLabel}
+                />
+              )}
+            </span>
           </span>
         </button>
       )}
