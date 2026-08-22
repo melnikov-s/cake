@@ -17,6 +17,7 @@ export interface SidebarStoreProps {
 /** Owns project navigation, session pagination, and activity badges. */
 export class SidebarStore extends Store<SidebarStoreProps> {
   limitsByProject: Record<string, number> = observable({});
+  collapsedGroups: Record<string, boolean> = observable({});
   resolvedLaneExpanded = true;
   now = Date.now();
 
@@ -64,6 +65,14 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   showMoreSessions(workspacePath: string, resolved = false) {
     const key = this.limitKey(workspacePath, resolved);
     this.limitsByProject[key] = this.sessionLimit(workspacePath, resolved) + 10;
+  }
+
+  isGroupCollapsed(groupKey: string) {
+    return this.collapsedGroups[groupKey] === true;
+  }
+
+  toggleGroupCollapsed(groupKey: string) {
+    this.collapsedGroups[groupKey] = !this.isGroupCollapsed(groupKey);
   }
 
   setSessionResolved(sessionId: string, resolved: boolean) {

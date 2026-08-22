@@ -24,6 +24,8 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       setCakeChatSessionResolved: fixture.setCakeChatSessionResolved ?? vi.fn(),
       resolvedLaneExpanded: fixture.resolvedLaneExpanded ?? true,
       toggleResolvedLane: fixture.toggleResolvedLane ?? vi.fn(),
+      isGroupCollapsed: fixture.isGroupCollapsed ?? (() => false),
+      toggleGroupCollapsed: fixture.toggleGroupCollapsed ?? vi.fn(),
       sessionActivity: fixture.sessionActivity,
       sessionActivityTime: fixture.sessionActivityTime ?? (() => ""),
     } as any,
@@ -42,13 +44,12 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       sessionId: undefined,
       findSession: vi.fn(),
     } as any,
-    reviews: { chatCommentCountForSession: fixture.chatReviewCommentCountForSession } as any,
     onOpenCakeChat: vi.fn(),
     onCreateCakeChat: vi.fn(),
     onOpenSession: fixture.openSession ?? vi.fn(),
     onCreateSession: fixture.startNewSession ?? vi.fn(),
     onChooseProject: fixture.chooseProject ?? vi.fn(),
-    selection: { kind: "workbench" } as const,
+    shell: { selection: { kind: "workbench" } } as any,
   };
 }
 
@@ -78,6 +79,7 @@ describe("Sidebar projects", () => {
   });
 
   it("collapses and expands the sessions beneath an individual project", () => {
+    const collapsedGroups = new Set<string>();
     const store = {
       recentProjectPaths: ["/work/cake"],
       projectPath: "/work/cake",
@@ -97,11 +99,15 @@ describe("Sidebar projects", () => {
       openSession: vi.fn(),
       renameSession: vi.fn(),
       showMoreSessions: vi.fn(),
+      isGroupCollapsed: (groupKey: string) => collapsedGroups.has(groupKey),
+      toggleGroupCollapsed: (groupKey: string) => {
+        if (collapsedGroups.has(groupKey)) collapsedGroups.delete(groupKey);
+        else collapsedGroups.add(groupKey);
+      },
     } as unknown as ProjectWorkbenchStore;
+    const props = () => sidebarProps(store);
 
-    act(() =>
-      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
-    );
+    act(() => root.render(<Sidebar {...props()} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
 
     const projectToggle = container.querySelector<HTMLButtonElement>(
       '[aria-label="Collapse Cake"]',
@@ -110,11 +116,13 @@ describe("Sidebar projects", () => {
     expect(container.textContent).toContain("Add project collapsing");
 
     act(() => projectToggle.click());
+    act(() => root.render(<Sidebar {...props()} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
     expect(projectToggle.getAttribute("aria-expanded")).toBe("false");
     expect(projectToggle.getAttribute("aria-label")).toBe("Expand Cake");
     expect(container.textContent).not.toContain("Add project collapsing");
 
     act(() => projectToggle.click());
+    act(() => root.render(<Sidebar {...props()} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
     expect(projectToggle.getAttribute("aria-expanded")).toBe("true");
     expect(container.textContent).toContain("Add project collapsing");
   });
@@ -155,7 +163,7 @@ describe("Sidebar projects", () => {
     ).not.toBeNull();
   });
 
-  it("hides time and resolve controls while a session is running", () => {
+  it("hides time and resolve controls while a session is running or unread", () => {
     const modified = new Date(0).toISOString();
     const setSessionResolved = vi.fn();
     const store = {
@@ -166,7 +174,8 @@ describe("Sidebar projects", () => {
         { id: "ready", title: "Finished work", modified },
       ],
       sessionLimit: () => 8,
-      sessionActivity: (id: string) => (id === "running" ? "running" : undefined),
+      sessionActivity: (id: string) =>
+        id === "running" ? "running" : id === "ready" ? "unread" : undefined,
       sessionActivityTime: vi.fn(() => "Today"),
       nameFromPath: () => "cake",
       startOneOffChat: vi.fn(),
@@ -180,7 +189,15 @@ describe("Sidebar projects", () => {
       root.render(
         <Sidebar
           {...sidebarProps(store)}
-          selection={{ kind: "project-session", workspacePath: "/work/cake", sessionId: "ready" }}
+          shell={
+            {
+              selection: {
+                kind: "project-session",
+                workspacePath: "/work/cake",
+                sessionId: "ready",
+              },
+            } as any
+          }
           onOpenSettings={vi.fn()}
           onToggle={vi.fn()}
         />,
@@ -192,15 +209,21 @@ describe("Sidebar projects", () => {
     ).not.toBeNull();
     expect(container.querySelector('[data-session-id="running"] .session-time')).toBeNull();
     expect(container.querySelector('[data-session-id="ready"] .session-time')).toBeNull();
-    expect(
-      container.querySelector('[data-session-id="ready"] .session-resolve-action'),
-    ).not.toBeNull();
+    expect(container.querySelector('[data-session-id="ready"] .session-resolve-action')).toBeNull();
 
     act(() =>
       root.render(
         <Sidebar
           {...sidebarProps(store)}
-          selection={{ kind: "project-session", workspacePath: "/work/cake", sessionId: "running" }}
+          shell={
+            {
+              selection: {
+                kind: "project-session",
+                workspacePath: "/work/cake",
+                sessionId: "running",
+              },
+            } as any
+          }
           onOpenSettings={vi.fn()}
           onToggle={vi.fn()}
         />,
@@ -367,7 +390,7 @@ describe("Sidebar projects", () => {
       root.render(
         <Sidebar
           {...props}
-          selection={{ kind: "cake-chat", sessionId: "cake-chat-1" }}
+          shell={{ selection: { kind: "cake-chat", sessionId: "cake-chat-1" } } as any}
           onOpenSettings={vi.fn()}
           onToggle={vi.fn()}
         />,
@@ -467,7 +490,7 @@ describe("Sidebar projects", () => {
       root.render(
         <Sidebar
           {...props}
-          selection={{ kind: "cake-chat", sessionId: "cake-session" }}
+          shell={{ selection: { kind: "cake-chat", sessionId: "cake-session" } } as any}
           onOpenSettings={vi.fn()}
           onToggle={vi.fn()}
         />,
@@ -486,11 +509,15 @@ describe("Sidebar projects", () => {
       root.render(
         <Sidebar
           {...props}
-          selection={{
-            kind: "project-session",
-            workspacePath: "/work/cake",
-            sessionId: "project-session",
-          }}
+          shell={
+            {
+              selection: {
+                kind: "project-session",
+                workspacePath: "/work/cake",
+                sessionId: "project-session",
+              },
+            } as any
+          }
           onOpenSettings={vi.fn()}
           onToggle={vi.fn()}
         />,
@@ -608,7 +635,15 @@ describe("Sidebar projects", () => {
       root.render(
         <Sidebar
           {...props}
-          selection={{ kind: "project-session", workspacePath: "/work/cake", sessionId: "active" }}
+          shell={
+            {
+              selection: {
+                kind: "project-session",
+                workspacePath: "/work/cake",
+                sessionId: "active",
+              },
+            } as any
+          }
           onOpenSettings={vi.fn()}
           onToggle={vi.fn()}
         />,
@@ -626,11 +661,15 @@ describe("Sidebar projects", () => {
       root.render(
         <Sidebar
           {...props}
-          selection={{
-            kind: "project-session",
-            workspacePath: "/work/cake",
-            sessionId: "resolved",
-          }}
+          shell={
+            {
+              selection: {
+                kind: "project-session",
+                workspacePath: "/work/cake",
+                sessionId: "resolved",
+              },
+            } as any
+          }
           onOpenSettings={vi.fn()}
           onToggle={vi.fn()}
         />,
@@ -670,11 +709,15 @@ describe("Sidebar projects", () => {
       root.render(
         <Sidebar
           {...sidebarProps(store)}
-          selection={{
-            kind: "project-session",
-            workspacePath: "/work/cake",
-            sessionId: "selected",
-          }}
+          shell={
+            {
+              selection: {
+                kind: "project-session",
+                workspacePath: "/work/cake",
+                sessionId: "selected",
+              },
+            } as any
+          }
           onOpenSettings={vi.fn()}
           onToggle={vi.fn()}
         />,
@@ -693,6 +736,36 @@ describe("Sidebar projects", () => {
     });
     expect(setSessionResolved).toHaveBeenCalledWith("other", true);
     expect(openSession).not.toHaveBeenCalled();
+  });
+
+  it("does not offer resolve or time for unread completed sessions", () => {
+    const setSessionResolved = vi.fn();
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [
+        { id: "unread", title: "Finished in background", modified: new Date(0).toISOString() },
+      ],
+      sessionLimit: () => 8,
+      sessionActivity: () => "unread",
+      sessionActivityTime: () => "Today",
+      nameFromPath: () => "cake",
+      showMoreSessions: vi.fn(),
+      renameSession: vi.fn(),
+      setSessionResolved,
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
+
+    expect(
+      container.querySelector('[data-session-id="unread"] [aria-label="Ready, unread"]'),
+    ).not.toBeNull();
+    expect(container.querySelector('[data-session-id="unread"] .session-time')).toBeNull();
+    expect(
+      container.querySelector('[data-session-id="unread"] .session-resolve-action'),
+    ).toBeNull();
   });
 
   it("resolves selected Cake Chat into the shared resolved lane", () => {
@@ -722,7 +795,7 @@ describe("Sidebar projects", () => {
       root.render(
         <Sidebar
           {...props}
-          selection={{ kind: "cake-chat", sessionId: "active-cake" }}
+          shell={{ selection: { kind: "cake-chat", sessionId: "active-cake" } } as any}
           onOpenSettings={vi.fn()}
           onToggle={vi.fn()}
         />,
