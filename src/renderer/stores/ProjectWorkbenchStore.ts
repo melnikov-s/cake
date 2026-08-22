@@ -274,11 +274,15 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   /** Opens a fresh session in this project and seeds its composer with `draft`. */
   async startNewSessionWithDraft(draft: string, path = this.projectPath) {
     if (!path) throw new Error("No project is open");
-    const previousSessionId = this.session?.sessionId;
     await this.startNewSession(path);
     const active = this.activeSession;
-    if (!active || active.model.sessionId === previousSessionId) return;
-    if (!active.chatStore.draft.trim()) active.chatStore.setDraft(draft);
+    if (!active) return;
+    // Seed any unsent, empty target session - including one already open - but
+    // never touch a session that carries a real transcript or existing draft.
+    if (active.canonicalParts.length === 0 && !active.chatStore.draft.trim()) {
+      active.chatStore.setDraft(draft);
+      this.props.persistence().schedule();
+    }
     active.composerStore.requestFocus();
   }
 
