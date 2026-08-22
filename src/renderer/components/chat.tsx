@@ -256,8 +256,11 @@ export const Chat = observer(function Chat({
             embedded
             compact
             transcriptBehavior={
-              transcriptBehavior?.openFileInEditor
-                ? { openFileInEditor: transcriptBehavior.openFileInEditor }
+              transcriptBehavior?.openFileInEditor || transcriptBehavior?.openFilePath
+                ? {
+                    openFileInEditor: transcriptBehavior.openFileInEditor,
+                    openFilePath: transcriptBehavior.openFilePath,
+                  }
                 : undefined
             }
           />

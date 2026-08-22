@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { act } from "react";
+import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Streamdown } from "streamdown";
@@ -47,5 +47,33 @@ describe("Markdown", () => {
     expect(fencedCode("const sample = ```nested```;", "tsx")).toBe(
       "````tsx\nconst sample = ```nested```;\n````",
     );
+  });
+
+  it("opens path-like links through onOpenFilePath and leaves web links external", () => {
+    const onOpenFilePath = vi.fn();
+    act(() => root.render(<Markdown onOpenFilePath={onOpenFilePath}>text</Markdown>));
+    const anchorComponent = () => vi.mocked(Streamdown).mock.calls.at(-1)![0].components!.a!;
+
+    const renderAnchor = (props: Record<string, unknown>) => {
+      act(() => {
+        root.render(createElement(anchorComponent(), props));
+      });
+      return container.querySelector("a")!;
+    };
+
+    const fileLink = renderAnchor({ href: "src/modelMeta.ts", children: "src/modelMeta.ts" });
+    act(() => {
+      fileLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(onOpenFilePath).toHaveBeenCalledWith("src/modelMeta.ts");
+
+    const webLink = renderAnchor({ href: "https://example.com", children: "example" });
+    expect(webLink.target).toBe("_blank");
+    expect(onOpenFilePath).toHaveBeenCalledTimes(1);
+
+    act(() => root.render(<Markdown>text</Markdown>));
+    const defaultLink = renderAnchor({ href: "docs/readme.md", children: "readme" });
+    expect(defaultLink.target).toBe("_blank");
+    expect(onOpenFilePath).toHaveBeenCalledTimes(1);
   });
 });

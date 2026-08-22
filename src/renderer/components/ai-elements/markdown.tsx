@@ -1,16 +1,21 @@
+import { useMemo } from "react";
+import type { ComponentProps } from "react";
 import { createCodePlugin } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { createMermaidPlugin } from "@streamdown/mermaid";
 import { Streamdown, type Components, type StreamdownProps } from "streamdown";
 import { cn } from "@/lib/utils";
 
-const components: Components = {
-  a(allProps) {
-    const props = { ...allProps };
-    delete props.node;
-    return <a {...props} target="_blank" rel="noreferrer" />;
-  },
-};
+/** Matches web-style hrefs that must never be treated as workspace file paths. */
+const nonPathHref = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i;
+
+type AnchorProps = ComponentProps<"a"> & { node?: unknown };
+
+function externalAnchor(allProps: AnchorProps) {
+  const props = { ...allProps };
+  delete props.node;
+  return <a {...props} target="_blank" rel="noreferrer" />;
+}
 
 const mermaid = createMermaidPlugin({ config: { securityLevel: "strict" } });
 // Use a high-contrast light theme; the default github-light renders punctuation
@@ -32,17 +37,41 @@ type MarkdownProps = Omit<
   | "skipHtml"
 > & {
   children: string;
+  /** Invoked when the reader clicks a link whose target is a file path instead of a web URL. */
+  onOpenFilePath?(path: string): void;
 };
 
-export function Markdown({ children, className, ...props }: MarkdownProps) {
+export function Markdown({ children, className, onOpenFilePath, ...props }: MarkdownProps) {
+  const components = useMemo<Components>(() => {
+    if (!onOpenFilePath) return { a: externalAnchor };
+    const openFilePath = onOpenFilePath;
+    return {
+      a(allProps: AnchorProps) {
+        const href = allProps.href;
+        if (!href || nonPathHref.test(href)) return externalAnchor(allProps);
+        const props = { ...allProps };
+        delete props.node;
+        return (
+          <a
+            {...props}
+            title={`Open ${href} in Browse`}
+            onClick={(event) => {
+              event.preventDefault();
+              openFilePath(href);
+            }}
+          />
+        );
+      },
+    };
+  }, [onOpenFilePath]);
   return (
     <Streamdown
       {...props}
+      components={components}
       className={cn(
         "markdown-content min-w-0 max-w-full break-words [overflow-wrap:anywhere]",
         className,
       )}
-      components={components}
       controls={{
         code: {
           copy: true,

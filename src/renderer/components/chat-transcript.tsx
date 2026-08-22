@@ -120,8 +120,9 @@ export const ChatTextMessage = forwardRef<
     part: Extract<UiPart, { kind: "text" }>;
     contentRef?: RefObject<HTMLDivElement | null>;
     children?: ReactNode;
+    onOpenFilePath?(path: string): void;
   }
->(function ChatTextMessage({ part, contentRef, children }, ref) {
+>(function ChatTextMessage({ part, contentRef, children, onOpenFilePath }, ref) {
   const assistant = part.role === "assistant";
   // A steered or queued prompt is not yet accepted into the conversation;
   // render it with a distinct pending treatment until Pi delivers it.
@@ -152,7 +153,7 @@ export const ChatTextMessage = forwardRef<
         ref={contentRef}
         className={assistant ? "assistant-message-content" : "user-message"}
       >
-        <Markdown>{part.text}</Markdown>
+        <Markdown onOpenFilePath={onOpenFilePath}>{part.text}</Markdown>
       </MessageContent>
       {children}
     </Message>
@@ -265,6 +266,8 @@ export interface ChatTranscriptBehavior {
   onFork?(entryId: string): void;
   onOpenReviewRun?(threadId?: string): void;
   openFileInEditor?(path: string): void | Promise<void>;
+  /** Opens a workspace-relative file path mentioned in a message inside the project's Browse view. */
+  openFilePath?(path: string): void;
   waitingForUser?: boolean;
   inlineWidgets?: InlineWidgetStore;
   artifacts?: { records: ArtifactRecord[]; interaction: ArtifactInteractionStore };
@@ -323,7 +326,7 @@ const AssistantTextMessage = observer(function AssistantTextMessage({
     [],
   );
 
-  const content = () => <Markdown>{part.text}</Markdown>;
+  const content = () => <Markdown onOpenFilePath={behavior.openFilePath}>{part.text}</Markdown>;
 
   useLayoutEffect(() => {
     const key = `${part.id}:${part.entryId ?? ""}`;
@@ -568,7 +571,7 @@ function TranscriptPart({
     return part.role === "assistant" ? (
       <AssistantTextMessage part={part} behavior={behavior} />
     ) : (
-      <ChatTextMessage part={part} />
+      <ChatTextMessage part={part} onOpenFilePath={behavior.openFilePath} />
     );
   if (part.kind === "reasoning")
     return (
@@ -578,7 +581,7 @@ function TranscriptPart({
         streaming={part.status === "streaming"}
         hasContent={Boolean(part.text.trim())}
       >
-        <Markdown>{part.text}</Markdown>
+        <Markdown onOpenFilePath={behavior.openFilePath}>{part.text}</Markdown>
       </Reasoning>
     );
   if (part.kind === "tool") {

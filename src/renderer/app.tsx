@@ -30,6 +30,7 @@ import { PanelResizeHandle } from "@/components/panel-resize-handle";
 import { CopyErrorDetailsButton } from "@/components/copy-error-details-button";
 import { ToastHost } from "@/components/toast-host";
 import { Chat } from "@/components/chat";
+import { toWorkspaceRelativePath } from "../utils/workspace-relative-path";
 import type { CompatibilityResource } from "../ipc/session-contract";
 import type { ProjectWorkbenchStore } from "./stores/ProjectWorkbenchStore";
 import type { ProjectSessionStore } from "./stores/ProjectSessionStore";
@@ -1110,6 +1111,11 @@ export const App = observer(function App() {
                     void store.forkAt(entryId);
                   },
                   openFileInEditor: (path) => root.openFileInEditor(session.workspacePath, path),
+                  openFilePath: (path) => {
+                    void store
+                      .openWorkspaceBrowser(toWorkspaceRelativePath(path, session.workspacePath))
+                      .catch(() => undefined);
+                  },
                   onOpenReviewRun: (threadId) => {
                     void store.openSessionChanges(threadId);
                   },
