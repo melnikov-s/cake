@@ -1,10 +1,10 @@
 /**
  * @vitest-environment jsdom
  */
-import React, { act, forwardRef, useEffect, useImperativeHandle } from "react";
+import React, { act, forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createStore, mount } from "r-state-tree";
+import { createStore, mount, observable } from "r-state-tree";
 import type { UiPart } from "../../../src/ipc/session-contract";
 
 const { scrollToIndex, virtualizedLifecycle, virtualizedProps } = vi.hoisted(() => ({
@@ -105,6 +105,10 @@ function Transcript({
     onToggleWorkLogDiff = () => undefined,
     ...transcriptBehavior
   } = behavior;
+  // Expansion state must survive prop-only re-renders, like a real ChatStore.
+  const workLogStateRef = useRef<{ expanded: boolean } | undefined>(undefined);
+  if (!workLogStateRef.current) workLogStateRef.current = observable({ expanded: false });
+  const workLogState = workLogStateRef.current;
   const store = {
     id: sessionId,
     parts,
@@ -115,6 +119,16 @@ function Transcript({
     toggleThinking: onToggleThinking,
     workLogDiff,
     toggleWorkLogDiff: onToggleWorkLogDiff,
+    workLogElapsedMs: () => undefined,
+    get workLogsExpanded() {
+      return workLogState.expanded;
+    },
+    setWorkLogsExpanded(expanded: boolean) {
+      workLogState.expanded = expanded;
+    },
+    toggleWorkLogsExpanded() {
+      workLogState.expanded = !workLogState.expanded;
+    },
     error: undefined,
   } as unknown as ChatStore;
   return (

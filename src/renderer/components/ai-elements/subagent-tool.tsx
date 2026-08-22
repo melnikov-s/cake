@@ -2,6 +2,7 @@ import { z } from "zod";
 import { jsonValueSchema } from "../../../ipc/json-contract";
 import { sessionUsageSchema, type UiPart } from "../../../ipc/session-contract";
 import { Markdown } from "./markdown";
+import type { ReactNode } from "react";
 
 const subagentPartSchema = z
   .object({
@@ -35,7 +36,13 @@ function projectionFromJson(value?: string) {
   }
 }
 
-export function SubagentTool({ part }: { part: Extract<UiPart, { kind: "tool" }> }) {
+export function SubagentTool({
+  part,
+  timer,
+}: {
+  part: Extract<UiPart, { kind: "tool" }>;
+  timer?: ReactNode;
+}) {
   const input = projectionFromJson(part.input);
   const output = projectionFromJson(part.output);
   const task = output?.task ?? input?.task;
@@ -62,6 +69,7 @@ export function SubagentTool({ part }: { part: Extract<UiPart, { kind: "tool" }>
       <div className="subagent-header">
         <span className={`tool-state tool-${part.state}`} aria-label={part.state} />
         <span className="subagent-title">{title}</span>
+        {timer}
         <span className="subagent-status">{status}</span>
       </div>
       {task && <p className="subagent-task">{task}</p>}

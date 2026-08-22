@@ -20,7 +20,7 @@ const patterns = {
 
 export type LoadingStateVariant = keyof typeof patterns;
 
-function formatElapsed(milliseconds: number) {
+export function formatElapsed(milliseconds: number) {
   const total = Math.max(0, milliseconds) / 1_000;
   if (total < 60) return `${total.toFixed(1)}s`;
   return `${Math.floor(total / 60)}m ${(total % 60).toFixed(1)}s`;

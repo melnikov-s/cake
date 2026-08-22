@@ -1,10 +1,13 @@
 /* Adapted from Vercel AI Elements tool.tsx at 0c1f5e8c75273f0e95c8faa031544a8aa2bb1a5b (Apache-2.0). Uses Cake tool states. */
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { observer } from "r-state-tree/react";
 import { z } from "zod";
 import { jsonObjectSchema, jsonValueSchema } from "../../../ipc/json-contract";
 import type { ToolOutputContent, UiPart } from "../../../ipc/session-contract";
+import type { ChatStore } from "../../stores/ChatStore";
 import { toolDiff } from "../../../utils/turn-diff";
 import { IconButton } from "../ui/icon-button";
+import { formatElapsed } from "../ui/loading-state";
 import { DiffView } from "./diff-view";
 import { EditorIcon } from "./editor-icon";
 import { languageForSource } from "./code";
@@ -106,15 +109,34 @@ function editorPath(part: Extract<UiPart, { kind: "tool" }>) {
   return toolPath(part);
 }
 
+/** Count-up elapsed-time chip for a work log tool item; frozen once the item finishes. */
+export const ToolRunTimer = observer(function ToolRunTimer({
+  store,
+  partId,
+}: {
+  store: ChatStore;
+  partId: string;
+}) {
+  const elapsedMs = store.workLogElapsedMs(partId);
+  if (elapsedMs === undefined) return null;
+  return (
+    <span className="tool-timer" aria-label="elapsed time">
+      {formatElapsed(elapsedMs)}
+    </span>
+  );
+});
+
 export function Tool({
   part,
   onOpenFile,
+  timer,
 }: {
   part: Extract<UiPart, { kind: "tool" }>;
   onOpenFile?: (path: string) => void | Promise<void>;
+  timer?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  if (part.name.startsWith("subagent_")) return <SubagentTool part={part} />;
+  if (part.name.startsWith("subagent_")) return <SubagentTool part={part} timer={timer} />;
   const diff = toolDiff(part);
   const title = toolTitle(part);
   const read = part.name === "read";
@@ -140,6 +162,7 @@ export function Tool({
             {title}
           </span>
         </button>
+        {timer}
         {path && (
           <IconButton
             className="tool-editor-button"

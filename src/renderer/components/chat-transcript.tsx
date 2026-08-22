@@ -19,7 +19,7 @@ import { Markdown } from "@/components/ai-elements/markdown";
 import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
 import { Reasoning } from "@/components/ai-elements/reasoning";
 import { Source } from "@/components/ai-elements/source";
-import { Tool } from "@/components/ai-elements/tool";
+import { Tool, ToolRunTimer } from "@/components/ai-elements/tool";
 import { diffStats } from "@/components/ai-elements/diff-view";
 import { WorkLogDiff } from "@/components/ai-elements/work-log-diff";
 import { ArtifactHost } from "@/components/artifact-host";
@@ -272,6 +272,7 @@ export interface ChatTranscriptBehavior {
 }
 
 interface CanonicalTranscriptBehavior extends ChatTranscriptBehavior {
+  store: ChatStore;
   thinkingExpanded: boolean;
   onToggleThinking(): void;
   workLogDiff: boolean;
@@ -599,7 +600,13 @@ function TranscriptPart({
         />
       );
     }
-    return <Tool part={part} onOpenFile={behavior.openFileInEditor} />;
+    return (
+      <Tool
+        part={part}
+        onOpenFile={behavior.openFileInEditor}
+        timer={<ToolRunTimer store={behavior.store} partId={part.id} />}
+      />
+    );
   }
   if (part.kind === "source") return <Source title={part.title} url={part.url} />;
   if (part.kind === "attachment")
@@ -889,6 +896,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   const itemCountRef = useRef(items.length);
   itemCountRef.current = items.length;
   const transcriptBehavior: CanonicalTranscriptBehavior = {
+    store,
     ...behavior,
     thinkingExpanded: store.thinkingExpanded,
     onToggleThinking: () => store.toggleThinking(),

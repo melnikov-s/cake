@@ -3384,6 +3384,12 @@ button.reasoning-summary {
   background: var(--muted);
   color: var(--foreground);
 }
+.tool-timer {
+  flex: none;
+  color: var(--muted-foreground);
+  font: 11px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
 .tool-editor-button svg,
 .diff-editor-button svg {
   width: 14px;

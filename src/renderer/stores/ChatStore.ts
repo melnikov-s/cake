@@ -1,4 +1,4 @@
-import { Store } from "r-state-tree";
+import { observable, Store, untracked } from "r-state-tree";
 import type {
   Attachment,
   FileSuggestion,
@@ -37,13 +37,22 @@ export interface ChatStoreProps {
   persist?(): void;
 }
 
+export interface WorkLogTimerState {
+  startedAt: number;
+  endedAt?: number;
+}
+
 /** Common state and behavior contract for every Cake conversation surface. */
 export class ChatStore extends Store<ChatStoreProps> {
   draft = "";
   thinkingExpanded = false;
   workLogDiff = false;
+  workLogsExpanded = false;
   submittingLocally = false;
   loadingStartedAt: number | undefined;
+  readonly workLogTimers = observable(new Map<string, WorkLogTimerState>());
+  private workLogTickNow = 0;
+  private workLogTickInterval: ReturnType<typeof setInterval> | undefined;
 
   constructor(props: ChatStore["props"]) {
     super(props);
@@ -54,6 +63,62 @@ export class ChatStore extends Store<ChatStoreProps> {
         this.loadingStartedAt = loading ? Date.now() : undefined;
       },
     );
+    untracked(() => this.syncWorkLogTimers());
+    this.reaction(
+      () =>
+        this.props
+          .parts()
+          .map((part) => (part.kind === "tool" ? `${part.id}:${part.state}` : ""))
+          .join("|"),
+      () => this.syncWorkLogTimers(),
+    );
+    this.effect(() => () => this.stopWorkLogTick());
+  }
+
+  private get workLogTimingActive() {
+    for (const timer of this.workLogTimers.values()) if (timer.endedAt === undefined) return true;
+    return false;
+  }
+
+  private syncWorkLogTimers() {
+    const now = Date.now();
+    for (const part of this.props.parts()) {
+      if (part.kind !== "tool") continue;
+      const timer = this.workLogTimers.get(part.id);
+      if (part.state === "running" || part.state === "approval") {
+        if (!timer) this.workLogTimers.set(part.id, { startedAt: now });
+      } else if (timer && timer.endedAt === undefined) {
+        this.workLogTimers.set(part.id, { ...timer, endedAt: now });
+      }
+    }
+    this.updateWorkLogTick();
+  }
+
+  /** Runs exactly one shared tick interval while any work log item is still counting. */
+  private updateWorkLogTick() {
+    if (this.workLogTimingActive) this.startWorkLogTick();
+    else this.stopWorkLogTick();
+  }
+
+  private startWorkLogTick() {
+    if (this.workLogTickInterval !== undefined) return;
+    this.workLogTickNow = Date.now();
+    this.workLogTickInterval = setInterval(() => {
+      this.workLogTickNow = Date.now();
+    }, 100);
+  }
+
+  private stopWorkLogTick() {
+    if (this.workLogTickInterval === undefined) return;
+    clearInterval(this.workLogTickInterval);
+    this.workLogTickInterval = undefined;
+  }
+
+  /** Elapsed milliseconds for a work log tool item, or undefined when never observed running. */
+  workLogElapsedMs(partId: string): number | undefined {
+    const timer = this.workLogTimers.get(partId);
+    if (!timer) return undefined;
+    return Math.max(0, (timer.endedAt ?? this.workLogTickNow) - timer.startedAt);
   }
 
   get id() {
