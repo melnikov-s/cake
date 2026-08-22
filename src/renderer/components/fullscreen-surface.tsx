@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, type MouseEventHandler, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { cn } from "@/lib/utils";
 
 function ExpandIcon() {
@@ -113,16 +114,15 @@ export function FullscreenSurface({
           <span>{eyebrow}</span>
           <h2 id={titleId}>{title}</h2>
         </div>
-        <button
+        <IconButton
           ref={closeButton}
           className="fullscreen-surface-close"
-          type="button"
-          aria-label={`Exit fullscreen ${title}`}
-          title="Exit fullscreen"
+          tooltip="Exit fullscreen"
+          ariaLabel={`Exit fullscreen ${title}`}
           onClick={onClose}
         >
           <CloseIcon />
-        </button>
+        </IconButton>
       </header>
       <main>
         <article

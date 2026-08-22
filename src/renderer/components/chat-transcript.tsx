@@ -26,6 +26,7 @@ import { ArtifactHost } from "@/components/artifact-host";
 import { CompactionMessage } from "@/components/compaction-message";
 import { CopyErrorDetailsButton } from "@/components/copy-error-details-button";
 import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
+import { IconButton } from "@/components/ui/icon-button";
 import { LoadingState } from "@/components/ui/loading-state";
 import {
   MessageCommentDraftPopover,
@@ -469,18 +470,17 @@ const AssistantTextMessage = observer(function AssistantTextMessage({
       {commentThreads.map(
         (thread, index) =>
           markerPositions[thread.id] && (
-            <button
+            <IconButton
               key={thread.id}
               className="message-comment-marker"
               style={markerPositions[thread.id]}
-              type="button"
-              aria-label={`Open selection chat ${index + 1}`}
-              title={thread.anchor.selectedText}
+              tooltip={thread.anchor.selectedText}
+              ariaLabel={`Open selection chat ${index + 1}`}
               onClick={(event) => setOpenThread({ id: thread.id, anchor: event.currentTarget })}
             >
               <ChatIcon />
               <b>{thread.messageCount}</b>
-            </button>
+            </IconButton>
           ),
       )}
       {selectionAction && (
@@ -512,25 +512,23 @@ const AssistantTextMessage = observer(function AssistantTextMessage({
       )}
       {part.status !== "streaming" && (
         <div className="assistant-message-actions" aria-label="Message actions">
-          <button
-            type="button"
-            aria-label={copied ? "Copied response" : "Copy response"}
-            title={copied ? "Copied" : "Copy response"}
+          <IconButton
+            tooltip={copied ? "Copied" : "Copy response"}
+            ariaLabel={copied ? "Copied response" : "Copy response"}
             onClick={() =>
               void navigator.clipboard.writeText(part.text).then(() => setCopied(true))
             }
           >
             {copied ? <CheckIcon /> : <CopyIcon />}
-          </button>
+          </IconButton>
           {part.entryId && behavior.onFork && (
-            <button
-              type="button"
-              aria-label="Fork response into new chat"
-              title="Fork into new chat"
+            <IconButton
+              tooltip="Fork into new chat"
+              ariaLabel="Fork response into new chat"
               onClick={() => behavior.onFork!(part.entryId!)}
             >
               <ForkIcon />
-            </button>
+            </IconButton>
           )}
         </div>
       )}
@@ -721,12 +719,11 @@ function ActivityGroup({
         />
         Work log <small>{label}</small>
         <div className="work-log-view-toggle" role="group" aria-label="Work log view">
-          <button
-            type="button"
+          <IconButton
             className="work-log-view-option"
-            aria-label="Show diff"
             aria-pressed={behavior.workLogDiff}
-            title="Diff"
+            tooltip="Diff"
+            ariaLabel="Show diff"
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -735,13 +732,12 @@ function ActivityGroup({
             }}
           >
             <DiffIcon />
-          </button>
-          <button
-            type="button"
+          </IconButton>
+          <IconButton
             className="work-log-view-option"
-            aria-label="Show work log"
             aria-pressed={!behavior.workLogDiff}
-            title="Work log"
+            tooltip="Work log"
+            ariaLabel="Show work log"
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -750,7 +746,7 @@ function ActivityGroup({
             }}
           >
             <LogIcon />
-          </button>
+          </IconButton>
         </div>
       </summary>
       {open && (

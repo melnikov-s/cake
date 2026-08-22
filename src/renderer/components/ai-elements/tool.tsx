@@ -4,6 +4,7 @@ import { z } from "zod";
 import { jsonObjectSchema, jsonValueSchema } from "../../../ipc/json-contract";
 import type { ToolOutputContent, UiPart } from "../../../ipc/session-contract";
 import { toolDiff } from "../../../utils/turn-diff";
+import { IconButton } from "../ui/icon-button";
 import { DiffView } from "./diff-view";
 import { EditorIcon } from "./editor-icon";
 import { languageForSource } from "./code";
@@ -139,15 +140,14 @@ export function Tool({
           </span>
         </button>
         {path && (
-          <button
-            type="button"
+          <IconButton
             className="tool-editor-button"
-            aria-label={`Open ${path} in editor`}
-            title="Open file in editor"
+            tooltip="Open file in editor"
+            ariaLabel={`Open ${path} in editor`}
             onClick={() => void onOpenFile?.(path)}
           >
             <EditorIcon />
-          </button>
+          </IconButton>
         )}
       </div>
       {/* Keep Streamdown mounted: mounting it during a Virtuoso resize can feed its passive update back into measurement. */}

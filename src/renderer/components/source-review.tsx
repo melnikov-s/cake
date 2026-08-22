@@ -4,6 +4,7 @@ import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { ReviewThread } from "../../models/ReviewThread";
 import type { ReviewsStore } from "../stores/ReviewsStore";
 import { extractSourceSelection } from "./source-selection";
+import { IconButton } from "./ui/icon-button";
 import { Chat } from "./chat";
 import { highlightSource, syntaxTokenStyle, type HighlightTokens } from "./ai-elements/code";
 export { selectionColumn } from "./source-selection";
@@ -283,15 +284,15 @@ export const SourceReview = observer(function SourceReview({
             role="row"
           >
             <span className="review-gutter">
-              <button
-                aria-label={`${actionLabel} line ${index + 1}`}
+              <IconButton
+                tooltip={`${actionLabel} line ${index + 1}`}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={(event) => openFromLineAction(event.currentTarget, index, line)}
               >
                 <svg viewBox="0 0 16 16" aria-hidden="true">
                   <path d="M8 3.25v9.5M3.25 8h9.5" />
                 </svg>
-              </button>
+              </IconButton>
               {index + 1}
             </span>
             <code>

@@ -5,6 +5,7 @@ import type { ReviewAnchor, ReviewPoint } from "../../ipc/review-contract";
 import { parseDiff } from "./ai-elements/diff-view";
 import { syntaxTokenStyle, useHighlightedSource } from "./ai-elements/code";
 import { Button } from "./ui/button";
+import { IconButton } from "./ui/icon-button";
 import { LoadingState } from "./ui/loading-state";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { ChangesStore } from "../stores/ChangesStore";
@@ -175,8 +176,8 @@ const HighlightedDiff = observer(function HighlightedDiff({
             <div className={`change-explorer-line ${line.kind}`} data-diff-index={index} role="row">
               <span className={reviewable ? "review-gutter" : undefined}>
                 {reviewable && (
-                  <button
-                    aria-label={`Comment on line ${line.newNumber ?? line.oldNumber}`}
+                  <IconButton
+                    tooltip={`Comment on line ${line.newNumber ?? line.oldNumber}`}
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={(event) =>
                       openFromLineAction(event.currentTarget, index, line.content)
@@ -185,7 +186,7 @@ const HighlightedDiff = observer(function HighlightedDiff({
                     <svg viewBox="0 0 16 16" aria-hidden="true">
                       <path d="M8 3.25v9.5M3.25 8h9.5" />
                     </svg>
-                  </button>
+                  </IconButton>
                 )}
                 {line.oldNumber}
               </span>

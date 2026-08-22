@@ -11,6 +11,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { observer } from "r-state-tree/react";
+import { IconButton } from "@/components/ui/icon-button";
 import type { ReviewThread } from "../../models/ReviewThread";
 import type { ChatStore } from "../stores/ChatStore";
 import type { MessageCommentsStore } from "../stores/MessageCommentsStore";
@@ -197,9 +198,9 @@ function PopoverShell({
           <span>Selection</span>
           <strong>{title}</strong>
         </div>
-        <button type="button" aria-label={`Close ${title.toLowerCase()}`} onClick={onClose}>
+        <IconButton tooltip={`Close ${title.toLowerCase()}`} onClick={onClose}>
           <CloseIcon />
-        </button>
+        </IconButton>
       </header>
       {children}
     </div>,

@@ -19,6 +19,7 @@ import {
 import { Markdown } from "@/components/ai-elements/markdown";
 import { Button } from "@/components/ui/button";
 import { ContextMenu } from "@/components/ui/context-menu";
+import { IconButton } from "@/components/ui/icon-button";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ArtifactHost } from "@/components/artifact-host";
 import { ChangeExplorer } from "@/components/change-explorer";
@@ -538,15 +539,14 @@ export const Sidebar = observer(function Sidebar({
           )}
         </button>
         {selected && !running && (
-          <button
+          <IconButton
             className="session-resolve-action"
-            type="button"
-            aria-label={`${resolved ? "Restore" : "Resolve"} ${session.title}`}
-            title={resolved ? "Restore" : "Resolve"}
+            tooltip={resolved ? "Restore" : "Resolve"}
+            ariaLabel={`${resolved ? "Restore" : "Resolve"} ${session.title}`}
             onClick={() => void store.setCakeChatSessionResolved(session.id, !resolved)}
           >
             {resolved ? <RestoreIcon /> : <ResolveIcon />}
-          </button>
+          </IconButton>
         )}
       </div>
     );
@@ -561,15 +561,15 @@ export const Sidebar = observer(function Sidebar({
     return (
       <div className={`project-group ${empty ? "project-group-empty" : ""}`} key={path}>
         <div className="project-row" title={path}>
-          <button
+          <IconButton
             className={`project-disclosure ${collapsed ? "collapsed" : ""} ${empty ? "no-sessions" : ""}`}
-            type="button"
             aria-expanded={!collapsed}
-            aria-label={`${collapsed ? "Expand" : "Collapse"} ${projects.nameForPath(path)}${resolved ? " resolved" : ""}`}
+            tooltip={collapsed ? "Expand" : "Collapse"}
+            ariaLabel={`${collapsed ? "Expand" : "Collapse"} ${projects.nameForPath(path)}${resolved ? " resolved" : ""}`}
             onClick={() => toggleProject(collapseKey)}
           >
             <ChevronIcon />
-          </button>
+          </IconButton>
           <button
             className="project-label"
             type="button"
@@ -584,13 +584,14 @@ export const Sidebar = observer(function Sidebar({
             <span>{projects.nameForPath(path)}</span>
           </button>
           {!resolved && (
-            <button
+            <IconButton
               className="project-add"
-              aria-label={`New chat in ${projects.nameFromPath(path)}`}
+              tooltip="New chat"
+              ariaLabel={`New chat in ${projects.nameFromPath(path)}`}
               onClick={() => onCreateSession(path)}
             >
               <PlusIcon />
-            </button>
+            </IconButton>
           )}
         </div>
         {!collapsed &&
@@ -641,15 +642,14 @@ export const Sidebar = observer(function Sidebar({
                   </button>
                 )}
                 {selected && !running && (
-                  <button
+                  <IconButton
                     className="session-resolve-action"
-                    type="button"
-                    aria-label={`${resolved ? "Restore" : "Resolve"} ${session.title}`}
-                    title={resolved ? "Restore" : "Resolve"}
+                    tooltip={resolved ? "Restore" : "Resolve"}
+                    ariaLabel={`${resolved ? "Restore" : "Resolve"} ${session.title}`}
                     onClick={() => void store.setSessionResolved(session.id, !resolved)}
                   >
                     {resolved ? <RestoreIcon /> : <ResolveIcon />}
-                  </button>
+                  </IconButton>
                 )}
               </div>
             );
@@ -673,15 +673,15 @@ export const Sidebar = observer(function Sidebar({
         key={collapseKey}
       >
         <div className="project-row" title="Cake Chat">
-          <button
+          <IconButton
             className={`project-disclosure ${collapsed ? "collapsed" : ""} ${empty ? "no-sessions" : ""}`}
-            type="button"
             aria-expanded={!collapsed}
-            aria-label={`${collapsed ? "Expand" : "Collapse"} Cake Chat${resolved ? " resolved" : ""}`}
+            tooltip={collapsed ? "Expand" : "Collapse"}
+            ariaLabel={`${collapsed ? "Expand" : "Collapse"} Cake Chat${resolved ? " resolved" : ""}`}
             onClick={() => toggleProject(collapseKey)}
           >
             <ChevronIcon />
-          </button>
+          </IconButton>
           <button
             className="project-label"
             type="button"
@@ -696,14 +696,9 @@ export const Sidebar = observer(function Sidebar({
             <span>Cake Chat</span>
           </button>
           {!resolved && (
-            <button
-              className="project-add"
-              type="button"
-              aria-label="New Cake Chat"
-              onClick={onCreateCakeChat}
-            >
+            <IconButton className="project-add" tooltip="New Cake Chat" onClick={onCreateCakeChat}>
               <PlusIcon />
-            </button>
+            </IconButton>
           )}
         </div>
         {!collapsed && sessions.map((session) => renderCakeChatSession(session, resolved))}
@@ -716,15 +711,15 @@ export const Sidebar = observer(function Sidebar({
   return (
     <aside className="sidebar">
       <div className="sidebar-window-tools">
-        <button aria-label="Toggle sidebar" onClick={onToggle}>
+        <IconButton tooltip="Toggle sidebar" onClick={onToggle}>
           <SidebarIcon />
-        </button>
-        <button aria-label="Back" disabled>
+        </IconButton>
+        <IconButton tooltip="Back" disabled>
           <BackIcon />
-        </button>
-        <button aria-label="Forward" disabled>
+        </IconButton>
+        <IconButton tooltip="Forward" disabled>
           <ForwardIcon />
-        </button>
+        </IconButton>
       </div>
       <div className="plugin-slot plugin-slot-sidebar-header">
         <Slot name="global.sidebar.header" />
@@ -734,9 +729,9 @@ export const Sidebar = observer(function Sidebar({
         <div className="section-heading projects-heading">
           <span>Projects</span>
           <div>
-            <button aria-label="Add project" onClick={onChooseProject}>
+            <IconButton tooltip="Add project" onClick={onChooseProject}>
               <PlusIcon />
-            </button>
+            </IconButton>
           </div>
         </div>
         {projectPaths.length === 0 ? (
@@ -776,17 +771,16 @@ export const Sidebar = observer(function Sidebar({
         <div className="plugin-slot plugin-slot-sidebar-footer">
           <Slot name="global.sidebar.footer" />
         </div>
-        <button
+        <IconButton
           className={
             selection.kind === "settings" ? "sidebar-settings-icon active" : "sidebar-settings-icon"
           }
-          type="button"
-          aria-label="Open settings"
+          tooltip="Open settings"
           aria-current={selection.kind === "settings" ? "page" : undefined}
           onClick={onOpenSettings}
         >
           <SettingsIcon />
-        </button>
+        </IconButton>
       </div>
       {sessionMenu && (
         <ContextMenu
@@ -971,30 +965,33 @@ export const App = observer(function App() {
               : undefined
         }
       >
-        <button
+        <IconButton
           className={
             surface === "settings" ? "workspace-settings-icon active" : "workspace-settings-icon"
           }
-          type="button"
-          aria-label="Open settings"
+          tooltip="Open settings"
           aria-current={surface === "settings" ? "page" : undefined}
           onClick={() => root.showSettings()}
         >
           <SettingsIcon />
-        </button>
+        </IconButton>
         <header className="workspace-header">
           <div>
-            <button
+            <IconButton
               className="header-sidebar-toggle"
-              aria-label="Toggle sidebar"
+              tooltip="Toggle sidebar"
               onClick={() => setSidebarCollapsed((value) => !value)}
             >
               <SidebarIcon />
-            </button>
+            </IconButton>
             {surface === "settings" && (
-              <button className="header-back" aria-label="Back to chat" onClick={returnToWorkbench}>
+              <IconButton
+                className="header-back"
+                tooltip="Back to chat"
+                onClick={returnToWorkbench}
+              >
                 <BackIcon />
-              </button>
+              </IconButton>
             )}
             <strong>
               {surface === "settings"

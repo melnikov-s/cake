@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { IconButton } from "../ui/icon-button";
 import { syntaxTokenStyle, useHighlightedSource } from "./code";
 import { EditorIcon } from "./editor-icon";
 
@@ -92,15 +93,14 @@ export function DiffView({
           <i>−{stats.deletions}</i>
         </span>
         {filePath && onOpenFile && (
-          <button
-            type="button"
+          <IconButton
             className="diff-editor-button"
-            aria-label={`Open ${filePath} in editor`}
-            title="Open file in editor"
+            tooltip="Open file in editor"
+            ariaLabel={`Open ${filePath} in editor`}
             onClick={() => void onOpenFile?.(filePath)}
           >
             <EditorIcon />
-          </button>
+          </IconButton>
         )}
       </header>
       <div className="diff-scroll" role="table" aria-label="Code changes">

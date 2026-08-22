@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from "react";
+import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 export interface IconButtonProps extends Omit<
@@ -12,10 +12,14 @@ export interface IconButtonProps extends Omit<
 }
 
 /** Square transparent button for a single icon; the tooltip is required. */
-export function IconButton({ tooltip, ariaLabel, className, children, ...props }: IconButtonProps) {
+export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
+  { tooltip, ariaLabel, type = "button", className, children, ...props },
+  ref,
+) {
   return (
     <button
-      type="button"
+      ref={ref}
+      type={type}
       className={cn("icon-button", className)}
       aria-label={ariaLabel ?? tooltip}
       title={tooltip}
@@ -24,4 +28,4 @@ export function IconButton({ tooltip, ariaLabel, className, children, ...props }
       {children}
     </button>
   );
-}
+});
