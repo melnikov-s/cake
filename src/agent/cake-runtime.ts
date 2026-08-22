@@ -614,6 +614,11 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       session.getSteeringMessages(),
       session.getFollowUpMessages(),
     );
+    const models = options.auxiliary ? [] : await modelOptions();
+    const artifacts = options.auxiliary
+      ? []
+      : await (options.listArtifacts?.(projectArtifactPointers(session.sessionManager)) ??
+          Promise.resolve([]));
     return {
       workspacePath: options.cwd,
       sessionId: cakeSessionId,
@@ -624,7 +629,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
         : undefined,
       fastMode: fastModeEnabled(),
       fastModeAvailable: supportsFastMode(session.model),
-      models: options.auxiliary ? [] : await modelOptions(),
+      models,
       thinkingLevel: session.thinkingLevel,
       availableThinkingLevels: session.getAvailableThinkingLevels(),
       piSettings: {
@@ -659,6 +664,10 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
         prompts: globalSettings.prompts ?? [],
         reloadPending: reloadCompleted < reloadRequested || Boolean(reloadInFlight),
       } satisfies PiSettings,
+      // Read last: every await happens above, so the value is captured in the
+      // same synchronous step that emits the snapshot. A snapshot that finishes
+      // after agent_settled emitted streaming=false must not resurrect a stale
+      // streaming=true in the renderer (it would stick until the next turn).
       streaming: session.isStreaming,
       diagnostics: [
         ...extensionsResult.errors.map((error) => `${error.path}: ${error.error}`),
@@ -685,10 +694,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       extensionUi: extensionUiState,
       sessions,
       tree: options.auxiliary ? [] : projectTree(session.sessionManager),
-      artifacts: options.auxiliary
-        ? []
-        : await (options.listArtifacts?.(projectArtifactPointers(session.sessionManager)) ??
-            Promise.resolve([])),
+      artifacts,
     };
   }
 
