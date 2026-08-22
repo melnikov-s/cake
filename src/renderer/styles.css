@@ -621,6 +621,9 @@
 .session-item .session-row {
   width: calc(100% - 25px);
 }
+.session-item:hover .session-row {
+  padding-right: 36px;
+}
 .session-item.active .session-row {
   background: var(--sidebar-active);
   color: var(--foreground);
@@ -647,6 +650,17 @@
   border-radius: 6px;
   background: transparent;
   color: var(--muted-foreground);
+  opacity: 0;
+  pointer-events: none;
+}
+.session-item:hover .session-resolve-action,
+.session-item.has-session-action .session-resolve-action,
+.session-resolve-action:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.session-item:hover .session-time {
+  opacity: 0;
 }
 .session-resolve-action:hover {
   background: color-mix(in oklab, var(--accent) 14%, var(--sidebar-hover));

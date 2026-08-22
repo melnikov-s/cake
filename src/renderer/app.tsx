@@ -555,12 +555,15 @@ export const Sidebar = observer(function Sidebar({
             />
           )}
         </button>
-        {selected && !running && (
+        {!running && (
           <IconButton
             className="session-resolve-action"
             tooltip={resolved ? "Restore" : "Resolve"}
             ariaLabel={`${resolved ? "Restore" : "Resolve"} ${session.title}`}
-            onClick={() => void store.setCakeChatSessionResolved(session.id, !resolved)}
+            onClick={(event) => {
+              event.stopPropagation();
+              void store.setCakeChatSessionResolved(session.id, !resolved);
+            }}
           >
             {resolved ? <RestoreIcon /> : <ResolveIcon />}
           </IconButton>
@@ -658,12 +661,15 @@ export const Sidebar = observer(function Sidebar({
                     {activityIndicator(session.id)}
                   </button>
                 )}
-                {selected && !running && (
+                {!running && renamingSession?.sessionId !== session.id && (
                   <IconButton
                     className="session-resolve-action"
                     tooltip={resolved ? "Restore" : "Resolve"}
                     ariaLabel={`${resolved ? "Restore" : "Resolve"} ${session.title}`}
-                    onClick={() => void store.setSessionResolved(session.id, !resolved)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void store.setSessionResolved(session.id, !resolved);
+                    }}
                   >
                     {resolved ? <RestoreIcon /> : <ResolveIcon />}
                   </IconButton>

@@ -643,6 +643,58 @@ describe("Sidebar projects", () => {
     expect(setSessionResolved).toHaveBeenLastCalledWith("resolved", false);
   });
 
+  it("offers resolve on non-selected sessions without opening them", () => {
+    const setSessionResolved = vi.fn();
+    const openSession = vi.fn();
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [
+        { id: "other", title: "Other work" },
+        { id: "selected", title: "Current work" },
+      ],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(() => undefined),
+      sessionActivityTime: vi.fn(() => "Today"),
+      chatReviewCommentCountForSession: vi.fn(() => 0),
+      nameFromPath: () => "cake",
+      startOneOffChat: vi.fn(),
+      chooseProject: vi.fn(),
+      openSession,
+      renameSession: vi.fn(),
+      showMoreSessions: vi.fn(),
+      setSessionResolved,
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(
+        <Sidebar
+          {...sidebarProps(store)}
+          selection={{
+            kind: "project-session",
+            workspacePath: "/work/cake",
+            sessionId: "selected",
+          }}
+          onOpenSettings={vi.fn()}
+          onToggle={vi.fn()}
+        />,
+      ),
+    );
+
+    const otherResolve = container.querySelector<HTMLButtonElement>(
+      '[data-session-id="other"] .session-resolve-action',
+    )!;
+    expect(otherResolve).not.toBeNull();
+    expect(container.querySelector('[data-session-id="other"] .session-time')).not.toBeNull();
+    expect(container.querySelector('[data-session-id="selected"] .session-time')).toBeNull();
+
+    act(() => {
+      otherResolve.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(setSessionResolved).toHaveBeenCalledWith("other", true);
+    expect(openSession).not.toHaveBeenCalled();
+  });
+
   it("resolves selected Cake Chat into the shared resolved lane", () => {
     const setCakeChatSessionResolved = vi.fn();
     const modified = new Date(0).toISOString();
