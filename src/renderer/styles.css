@@ -694,7 +694,7 @@
   border-top: 1px solid color-mix(in oklab, var(--border) 65%, transparent);
   color: var(--muted-foreground);
 }
-.sidebar-settings-icon {
+.icon-button.sidebar-settings-icon {
   display: grid;
   width: 32px;
   height: 32px;
@@ -1036,10 +1036,14 @@
 .header-sidebar-toggle {
   display: none;
 }
-.workspace-settings-icon {
+/* Compound selector outranks the late ".icon-button { display: grid }" rule,
+   so the icon stays hidden until the sidebar collapses. */
+.icon-button.workspace-settings-icon {
   position: absolute;
   z-index: 20;
-  bottom: 16px;
+  /* Center-aligns with the gear in .sidebar-footer: its 1px border-top makes
+     the resting center sit 25.5px above the window's bottom edge. */
+  bottom: 9.5px;
   left: 16px;
   display: none;
   width: 32px;
@@ -4874,7 +4878,7 @@ button.reasoning-summary {
   .header-sidebar-toggle {
     display: grid;
   }
-  .workspace-settings-icon {
+  .icon-button.workspace-settings-icon {
     display: grid;
   }
   .model-combobox.compact,

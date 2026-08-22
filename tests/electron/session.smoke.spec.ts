@@ -56,6 +56,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(page.getByRole("button", { name: "New chat in project" })).toBeVisible();
     await expect(page.getByLabel("Model")).toBeVisible();
     await expect(page.getByLabel("Thinking level")).toBeVisible();
+    await expect(page.locator(".workspace-settings-icon")).toBeHidden();
     await page.getByRole("button", { name: "Toggle sidebar" }).click();
     await expect
       .poll(() =>
@@ -69,7 +70,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
             sidebarRemoved: sidebar?.width === 0,
             toggleClearsWindowControls: Boolean(toggle && toggle.left >= 84),
             settingsOnWorkspace: Boolean(
-              settings && settings.left === 16 && Math.abs(innerHeight - settings.bottom - 16) < 1,
+              settings && settings.left === 16 && Math.abs(innerHeight - settings.bottom - 9.5) < 1,
             ),
             settingsAboveComposer: Boolean(
               settingsElement &&
