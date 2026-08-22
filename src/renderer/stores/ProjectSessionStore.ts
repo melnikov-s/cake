@@ -163,6 +163,9 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return createStore(ArtifactInteractionStore, {
       client: this.props.client,
       sessionContext: () => ({ sessionId: this.sessionId }),
+      operations: this.props.operations,
+      operationOwner: `artifact-answer:${this.sessionId}`,
+      isStreaming: () => this.isStreaming,
     });
   }
 

@@ -40,7 +40,7 @@ interface ArtifactHostProps {
   record: ArtifactRecord;
   requested?: boolean;
   onSubmit?(value: JsonValue): void;
-  onCancel?(): void;
+  onSkip?(): void;
   inlineWidgets?: InlineWidgetStore;
 }
 
@@ -48,7 +48,7 @@ export const ArtifactHost = observer(function ArtifactHost({
   record,
   requested = false,
   onSubmit,
-  onCancel,
+  onSkip,
   inlineWidgets,
 }: ArtifactHostProps) {
   const artifact = record.artifact;
@@ -97,7 +97,7 @@ export const ArtifactHost = observer(function ArtifactHost({
             artifact={artifact}
             requested={requested}
             onSubmit={onSubmit}
-            onCancel={onCancel}
+            onSkip={onSkip}
           />
         ) : null}
         {artifact.kind === "media" ? <MediaArtifact artifact={artifact} /> : null}
@@ -118,7 +118,7 @@ export const ArtifactHost = observer(function ArtifactHost({
             artifact={artifact}
             requested={requested}
             onSubmit={onSubmit}
-            onCancel={onCancel}
+            onSkip={onSkip}
             inlineWidgets={inlineWidgets}
             fullscreen={fullscreen}
             onCloseFullscreen={() => setFullscreen(false)}
@@ -277,7 +277,7 @@ function RequestArtifact({
   artifact,
   requested,
   onSubmit,
-  onCancel,
+  onSkip,
   inlineWidgets,
   fullscreen,
   onCloseFullscreen,
@@ -285,7 +285,7 @@ function RequestArtifact({
   artifact: Extract<CakeArtifactV1, { kind: "request" }>;
   requested: boolean;
   onSubmit?: (value: JsonValue) => void;
-  onCancel?: () => void;
+  onSkip?: () => void;
   inlineWidgets?: InlineWidgetStore;
   fullscreen: boolean;
   onCloseFullscreen(): void;
@@ -301,12 +301,7 @@ function RequestArtifact({
   const request = parsed.data;
   if (request.view.type === "form")
     return (
-      <RequestForm
-        view={request.view}
-        requested={requested}
-        onSubmit={onSubmit}
-        onCancel={onCancel}
-      />
+      <RequestForm view={request.view} requested={requested} onSubmit={onSubmit} onSkip={onSkip} />
     );
   if (!inlineWidgets)
     return (
@@ -323,7 +318,7 @@ function RequestArtifact({
       requested={requested}
       fallback={request.fallback.markdown}
       onSubmit={onSubmit}
-      onCancel={onCancel}
+      onSkip={onSkip}
       store={inlineWidgets}
       fullscreen={fullscreen}
       onCloseFullscreen={onCloseFullscreen}
@@ -335,17 +330,17 @@ function RequestForm({
   view,
   requested,
   onSubmit,
-  onCancel,
+  onSkip,
 }: {
   view: Extract<CakeRequestView, { type: "form" }>;
   requested: boolean;
   onSubmit?: (value: JsonValue) => void;
-  onCancel?: () => void;
+  onSkip?: () => void;
 }) {
   const [values, setValues] = useState<Record<string, string | number | boolean>>({});
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (requested) onSubmit?.(values);
+    onSubmit?.(values);
   };
   return (
     <form className="artifact-form" onSubmit={submit}>
@@ -398,14 +393,14 @@ function RequestForm({
           )}
         </label>
       ))}
-      {requested && (
-        <div className="artifact-actions">
-          <Button type="button" variant="outline" onClick={onCancel}>
-            Cancel
+      <div className="artifact-actions">
+        {requested && (
+          <Button type="button" variant="outline" onClick={onSkip}>
+            Skip
           </Button>
-          <Button type="submit">{view.submitLabel}</Button>
-        </div>
-      )}
+        )}
+        <Button type="submit">{view.submitLabel}</Button>
+      </div>
     </form>
   );
 }
@@ -417,7 +412,7 @@ const RequestWidget = observer(function RequestWidget({
   requested,
   fallback,
   onSubmit,
-  onCancel,
+  onSkip,
   store,
   fullscreen,
   onCloseFullscreen,
@@ -428,7 +423,7 @@ const RequestWidget = observer(function RequestWidget({
   requested: boolean;
   fallback: string;
   onSubmit?: (value: JsonValue) => void;
-  onCancel?: () => void;
+  onSkip?: () => void;
   store: InlineWidgetStore;
   fullscreen: boolean;
   onCloseFullscreen(): void;
@@ -458,12 +453,12 @@ const RequestWidget = observer(function RequestWidget({
       if (parsed.data.type === "height")
         setHeight(Math.max(120, Math.min(1_200, Math.ceil(parsed.data.value))));
       if (parsed.data.type === "error") store.reportRuntimeError(id, String(parsed.data.value));
-      if (requested && parsed.data.type === "submit") onSubmit?.(parsed.data.value);
-      if (requested && parsed.data.type === "cancel") onCancel?.();
+      if (parsed.data.type === "submit") onSubmit?.(parsed.data.value);
+      if (requested && parsed.data.type === "cancel") onSkip?.();
     };
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
-  }, [id, onCancel, onSubmit, requested, state?.compiled, store]);
+  }, [id, onSkip, onSubmit, requested, state?.compiled, store]);
   const status = state?.status ?? "building";
   const submitRepair = (instructions: string) => {
     setRepairPromptOpen(false);
@@ -490,7 +485,7 @@ const RequestWidget = observer(function RequestWidget({
                 ? "Needs attention"
                 : requested
                   ? "Waiting for you"
-                  : "Completed"}
+                  : "Inactive"}
         </span>
         <span className="inline-widget-actions">
           <button type="button" onClick={() => setSourceOpen((open) => !open)}>
@@ -738,12 +733,12 @@ function FormArtifact({
   artifact,
   requested,
   onSubmit,
-  onCancel,
+  onSkip,
 }: {
   artifact: Extract<CakeArtifactV1, { kind: "form" }>;
   requested: boolean;
   onSubmit?: (value: JsonValue) => void;
-  onCancel?: () => void;
+  onSkip?: () => void;
 }) {
   const [values, setValues] = useState<Record<string, string | number | boolean>>({});
   const submit = (event: FormEvent) => {
@@ -801,14 +796,14 @@ function FormArtifact({
           )}
         </label>
       ))}
-      {requested && (
-        <div className="artifact-actions">
-          <Button type="button" variant="outline" onClick={onCancel}>
-            Cancel
+      <div className="artifact-actions">
+        {requested && (
+          <Button type="button" variant="outline" onClick={onSkip}>
+            Skip
           </Button>
-          <Button type="submit">{artifact.payload.submitLabel}</Button>
-        </div>
-      )}
+        )}
+        <Button type="submit">{artifact.payload.submitLabel}</Button>
+      </div>
     </form>
   );
 }

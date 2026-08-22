@@ -17,7 +17,6 @@ test("presents durable artifacts, sorts a table, resolves a form, and isolates H
       recentProjectPaths: [project],
       draft: "",
       theme: "system",
-      thinkingExpanded: false,
     }),
   );
   await writeFile(
@@ -93,8 +92,8 @@ test("presents durable artifacts, sorts a table, resolves a form, and isolates H
     await expect(page.getByRole("status", { name: "Churning in progress" })).toHaveCount(0);
     await form.getByLabel("Answer *").fill("structured answer");
     await form.getByRole("button", { name: "Send response" }).click();
-    await expect(form.getByRole("button", { name: "Send response" })).not.toBeAttached();
     await expect(form.locator("header span")).toContainText("r2");
+    await expect(form.getByText("Response submitted.")).toBeAttached();
 
     const html = page.locator('[data-artifact-id="cake-s4-html"] iframe');
     await expect(html).toHaveAttribute("sandbox", "");

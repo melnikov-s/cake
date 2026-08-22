@@ -589,8 +589,8 @@ function TranscriptPart({
         <ArtifactHost
           record={record}
           requested={Boolean(request)}
-          onSubmit={(value) => void behavior.artifacts!.interaction.respond(value)}
-          onCancel={() => void behavior.artifacts!.interaction.respond(undefined, true)}
+          onSubmit={(value) => void behavior.artifacts!.interaction.answer(record, value)}
+          onSkip={() => void behavior.artifacts!.interaction.respond(undefined, true)}
           inlineWidgets={behavior.inlineWidgets}
         />
       );

@@ -344,8 +344,8 @@ const ArtifactsPanel = observer(function ArtifactsPanel({
             key={record.artifact.id}
             record={record}
             requested={Boolean(request)}
-            onSubmit={(value) => void artifacts.respond(value)}
-            onCancel={() => void artifacts.respond(undefined, true)}
+            onSubmit={(value) => void artifacts.answer(record, value)}
+            onSkip={() => void artifacts.respond(undefined, true)}
             inlineWidgets={inlineWidgets}
           />
         );

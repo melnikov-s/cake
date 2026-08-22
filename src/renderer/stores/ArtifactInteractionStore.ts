@@ -3,6 +3,7 @@ import { validateArtifactResponse, type ArtifactRecord } from "../../ipc/artifac
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import { describeError } from "../error-details";
 import type { JsonValue } from "../../ipc/json-contract";
+import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
 export interface ArtifactRequestState {
   operationId: string;
@@ -11,8 +12,11 @@ export interface ArtifactRequestState {
 }
 
 export interface ArtifactInteractionStoreProps {
-  client: Pick<DesktopClient, "respondToArtifact" | "exportArtifacts">;
+  client: Pick<DesktopClient, "respondToArtifact" | "submit" | "exportArtifacts">;
   sessionContext(): { sessionId: string } | undefined;
+  operations: SessionOperationCoordinatorStore;
+  operationOwner: string;
+  isStreaming(): boolean;
 }
 
 /** Owns blocking artifact interaction and artifact export behavior. */
@@ -47,6 +51,43 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
       this.errorDetails = described.details;
     } finally {
       this.responding = false;
+    }
+  }
+
+  /**
+   * Deliver an answer for a request artifact. While the agent is blocked on
+   * this exact request, resolve the pending operation; otherwise send the
+   * answer as a new prompt (steered mid-turn, plain when idle) so a submit
+   * never silently does nothing.
+   */
+  async answer(record: ArtifactRecord, value?: JsonValue) {
+    const live = this.request?.record.artifact.id === record.artifact.id ? this.request : undefined;
+    if (live) return this.respond(value);
+    await this.deliverLateAnswer(record, value);
+  }
+
+  private async deliverLateAnswer(record: ArtifactRecord, value: JsonValue | undefined) {
+    const context = this.props.sessionContext();
+    if (!context) throw new Error("No active session");
+    this.error = undefined;
+    this.errorDetails = undefined;
+    const title = record.artifact.title ?? record.artifact.id;
+    const text = `I answered the earlier request "${title}": ${JSON.stringify(value ?? null)}`;
+    const operationId = this.props.operations.start(this.props.operationOwner);
+    try {
+      await this.props.client.submit({
+        operationId,
+        sessionId: context.sessionId,
+        text,
+        delivery: this.props.isStreaming() ? "steer" : "prompt",
+        attachments: [],
+      });
+    } catch (error) {
+      const described = describeError(error);
+      this.error = described.message;
+      this.errorDetails = described.details;
+    } finally {
+      this.props.operations.finish(operationId);
     }
   }
 
