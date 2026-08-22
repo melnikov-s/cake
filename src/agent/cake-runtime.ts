@@ -41,17 +41,17 @@ import {
 import type { TSchema } from "@earendil-works/pi-ai";
 import { createCakeArtifactExtension } from "./artifact-extension";
 import {
-  ABORTED_TURN_NOTICE_PART_ID,
-  EMPTY_TURN_MAX_CONTINUATIONS,
-  EMPTY_TURN_NOTICE_PART_ID,
   INTERRUPTED_TURN_NOTICE_PART_ID,
-  abortedTurnContinuationPrompt,
-  decideAbortedTurnResponse,
-  decideEmptyTurnResponse,
-  emptyTurnContinuationPrompt,
+  TURN_RECOVERY_NOTICE_PART_ID,
+  TURN_RETRY_BASE_DELAY_MS,
+  TURN_RETRY_MAX_DELAY_MS,
+  classifyTurnFailure,
+  formatRetryDelay,
   interruptedTurnResumePrompt,
   shouldAutoResumeInterruptedTurn,
-} from "./empty-turn";
+  turnRetryPrompt,
+  type TurnFailure,
+} from "./turn-recovery";
 import { applyFastModePayload, supportsFastMode, type FastModeModel } from "./fast-mode";
 import { compatibilityCatalog, createCakeExtensionUiContext } from "./extension-compatibility";
 import type {
@@ -162,6 +162,8 @@ export interface CakeRuntimeOptions {
     set(enabled: boolean): Promise<void>;
   };
   generateSessionTitle?: typeof generateSessionTitle;
+  /** Base delay for the turn-recovery exponential backoff. Tests inject a small value. */
+  turnRetryBaseDelayMs?: number;
   globalControl?: {
     tools: readonly GlobalControlTool[];
     recoveryContext?: string;
@@ -875,144 +877,124 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
       (part) => part.id,
     ),
   );
-  // Detects silent provider failures: a settled turn whose final assistant
-  // message is protocol-valid but completely empty. Pi treats these as normal
-  // end-of-turn, so its transient-error auto-retry never fires; Cake continues
-  // the conversation automatically, bounded by EMPTY_TURN_MAX_CONTINUATIONS.
-  let emptyTurnContinuations = 0;
-  function handleSettledEmptyTurn() {
-    if (disposed) return;
-    const messages = session.messages;
-    const last = messages[messages.length - 1];
-    const lastAssistant = last?.role === "assistant" ? last : undefined;
-    // An empty response completed in the same window as a user stop leaves
-    // nothing to abort — respect the stop instead of auto-continuing over it.
-    const decision = decideEmptyTurnResponse(
-      lastAssistant,
-      userAbortRequested,
-      emptyTurnContinuations,
-    );
-    if (decision.action === "reset") {
-      if (emptyTurnContinuations > 0) {
-        emptyTurnContinuations = 0;
-        options.onEvent({
-          type: "part-removed",
-          sessionId: cakeSessionId,
-          partId: EMPTY_TURN_NOTICE_PART_ID,
-        });
-      }
-      return;
-    }
-    if (decision.action === "give-up") {
-      options.onEvent({
-        type: "part-updated",
-        sessionId: cakeSessionId,
-        part: {
-          id: EMPTY_TURN_NOTICE_PART_ID,
-          kind: "notice",
-          tone: "error",
-          title: `Provider returned an empty response ${decision.attempts} times`,
-          detail: "Automatic continuation stopped. Send another message to retry manually.",
-        },
-      });
-      emitSnapshotInBackground();
-      return;
-    }
-    emptyTurnContinuations = decision.attempt;
-    options.onEvent({
-      type: "part-updated",
-      sessionId: cakeSessionId,
-      part: {
-        id: EMPTY_TURN_NOTICE_PART_ID,
-        kind: "notice",
-        tone: "warning",
-        title: `Empty response — continuing (${decision.attempt}/${EMPTY_TURN_MAX_CONTINUATIONS})`,
-        detail: "The provider returned an empty response. Cake is retrying automatically.",
-      },
-    });
-    if (session.isStreaming) return;
-    void session.prompt(emptyTurnContinuationPrompt, { source: "interactive" }).catch(() => {
-      emptyTurnContinuations = 0;
-      options.onEvent({
-        type: "part-removed",
-        sessionId: cakeSessionId,
-        partId: EMPTY_TURN_NOTICE_PART_ID,
-      });
-    });
-  }
-  // Detects response streams that were cut off mid-generation: the run settles
-  // on an assistant message with stopReason "aborted" and no completed tool
-  // call. Pi treats an abort as a normal end of turn, so without this the turn
-  // stalls mid-sentence. Deliberate user stops are excluded via the flag set by
-  // abort(); teardown aborts dispose the runtime first and never reach here.
-  // Continuations are bounded by EMPTY_TURN_MAX_CONTINUATIONS and surfaced in
-  // the transcript so the retry is visible.
+  // Turn recovery: providers fail silently in three shapes — a protocol-valid
+  // but completely empty response (stopReason "stop", no content), a stream
+  // cut off mid-generation (stopReason "aborted" without a user stop), and a
+  // provider error Pi's transient retry gave up on (stopReason "error"). Pi
+  // ends the turn normally in all three, so the run stalls until nudged. Cake
+  // retries automatically with exponential backoff — unbounded attempts, the
+  // delay saturating at TURN_RETRY_MAX_DELAY_MS — and keeps every stage of the
+  // loop visible in the transcript. Deliberate user stops cancel the loop;
+  // permanently-failing errors (bad key, unknown model, …) are never retried.
+  // A rejected retry prompt is surfaced, never swallowed: silent failure here
+  // is exactly how earlier recovery loops used to vanish without a trace.
   let userAbortRequested = false;
-  let abortedTurnContinuations = 0;
-  function handleSettledAbortedTurn() {
+  let turnFailureCount = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  let retryCountdown: ReturnType<typeof setInterval> | undefined;
+  const turnRetryBaseDelayMs = Math.max(
+    1,
+    options.turnRetryBaseDelayMs ?? TURN_RETRY_BASE_DELAY_MS,
+  );
+
+  function clearRetrySchedule() {
+    if (retryTimer !== undefined) {
+      clearTimeout(retryTimer);
+      retryTimer = undefined;
+    }
+    if (retryCountdown !== undefined) {
+      clearInterval(retryCountdown);
+      retryCountdown = undefined;
+    }
+  }
+
+  function removeRecoveryNotice() {
+    clearRetrySchedule();
+    options.onEvent({
+      type: "part-removed",
+      sessionId: cakeSessionId,
+      partId: TURN_RECOVERY_NOTICE_PART_ID,
+    });
+  }
+
+  function emitRecoveryNotice(tone: "warning" | "error", title: string, detail: string) {
+    options.onEvent({
+      type: "part-updated",
+      sessionId: cakeSessionId,
+      part: { id: TURN_RECOVERY_NOTICE_PART_ID, kind: "notice", tone, title, detail },
+    });
+  }
+
+  function scheduleTurnRetry(failure: TurnFailure) {
+    clearRetrySchedule();
+    turnFailureCount += 1;
+    const attempt = turnFailureCount;
+    const delay = Math.min(turnRetryBaseDelayMs * 2 ** (attempt - 1), TURN_RETRY_MAX_DELAY_MS);
+    const scheduledAt = Date.now() + delay;
+    const detail = `${failure.detail} Retrying automatically with exponential backoff.`;
+    const title = (remainingMs: number) =>
+      `Provider failure — retrying (attempt ${attempt}) in ${formatRetryDelay(remainingMs)}`;
+    emitRecoveryNotice("warning", title(delay), detail);
+    retryCountdown = setInterval(
+      () => {
+        const remaining = scheduledAt - Date.now();
+        if (remaining > 0) emitRecoveryNotice("warning", title(remaining), detail);
+      },
+      delay > 30_000 ? 15_000 : 1_000,
+    );
+    retryTimer = setTimeout(() => {
+      clearRetrySchedule();
+      if (disposed) return;
+      if (session.isStreaming) return; // A real run started; it owns the turn now.
+      emitRecoveryNotice(
+        "warning",
+        `Provider failure — retrying now (attempt ${attempt})`,
+        failure.detail,
+      );
+      void session
+        .prompt(turnRetryPrompt(failure.kind), { source: "interactive" })
+        .catch((error: unknown) => {
+          emitRecoveryNotice(
+            "error",
+            `Retry attempt ${attempt} could not start`,
+            error instanceof Error ? error.message : String(error),
+          );
+          scheduleTurnRetry(failure);
+        });
+    }, delay);
+  }
+
+  function handleSettledTurnRecovery() {
     if (disposed) return;
     const messages = session.messages;
     const last = messages[messages.length - 1];
     const lastAssistant = last?.role === "assistant" ? last : undefined;
-    const decision = decideAbortedTurnResponse(
-      lastAssistant,
-      userAbortRequested,
-      abortedTurnContinuations,
-    );
-    if (decision.action === "reset") {
-      if (abortedTurnContinuations > 0) {
-        abortedTurnContinuations = 0;
-        options.onEvent({
-          type: "part-removed",
-          sessionId: cakeSessionId,
-          partId: ABORTED_TURN_NOTICE_PART_ID,
-        });
+    const failure = lastAssistant
+      ? classifyTurnFailure(lastAssistant, userAbortRequested)
+      : undefined;
+    if (!failure) {
+      if (turnFailureCount > 0) {
+        turnFailureCount = 0;
+        removeRecoveryNotice();
       }
       return;
     }
-    if (decision.action === "give-up") {
-      options.onEvent({
-        type: "part-updated",
-        sessionId: cakeSessionId,
-        part: {
-          id: ABORTED_TURN_NOTICE_PART_ID,
-          kind: "notice",
-          tone: "error",
-          title: `Response interrupted ${decision.attempts} times`,
-          detail: "Automatic continuation stopped. Send another message to retry manually.",
-        },
-      });
-      emitSnapshotInBackground();
-      return;
-    }
-    abortedTurnContinuations = decision.attempt;
-    options.onEvent({
-      type: "part-updated",
-      sessionId: cakeSessionId,
-      part: {
-        id: ABORTED_TURN_NOTICE_PART_ID,
-        kind: "notice",
-        tone: "warning",
-        title: `Response interrupted — continuing (${decision.attempt}/${EMPTY_TURN_MAX_CONTINUATIONS})`,
-        detail:
-          "The response stream was cut off before the model finished. Cake is retrying automatically.",
-      },
-    });
-    if (session.isStreaming) return;
-    void session.prompt(abortedTurnContinuationPrompt, { source: "interactive" }).catch(() => {
-      abortedTurnContinuations = 0;
-      options.onEvent({
-        type: "part-removed",
-        sessionId: cakeSessionId,
-        partId: ABORTED_TURN_NOTICE_PART_ID,
-      });
-    });
+    scheduleTurnRetry(failure);
   }
+
   // Resume a turn that the previous runtime instance left dangling (crash or
-  // silent teardown): the conversation ends in tool results the model never
-  // answered. Intentional aborts are excluded by the predicate.
+  // silent teardown): either the conversation ends in tool results the model
+  // never answered, or it settled on a silent provider failure. An aborted
+  // tail is excluded — at attach time it is indistinguishable from an
+  // intentional user stop, and continuing over one is not safe.
   function resumeInterruptedTurn() {
     if (disposed || session.isStreaming) return;
+    const lastEntry = session.messages[session.messages.length - 1];
+    if (lastEntry?.role === "assistant") {
+      const failure = classifyTurnFailure(lastEntry);
+      if (failure && failure.kind !== "aborted") scheduleTurnRetry(failure);
+      return;
+    }
     if (!shouldAutoResumeInterruptedTurn(session.messages)) return;
     options.onEvent({
       type: "part-updated",
@@ -1033,6 +1015,9 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     if (disposed) return;
     if (event.type === "agent_start") {
+      // A run starting by any means (user prompt, queued follow-up, retry)
+      // supersedes a pending retry; the timer must not fire underneath it.
+      clearRetrySchedule();
       // userAbortRequested is deliberately NOT reset here: auto-continuation
       // runs go through session.prompt() directly, so a reset on agent_start
       // would launder a just-recorded user stop before its settle handlers
@@ -1187,8 +1172,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
         .catch(() => undefined)
         .finally(() => {
           emitSnapshotInBackground();
-          handleSettledEmptyTurn();
-          handleSettledAbortedTurn();
+          handleSettledTurnRecovery();
         });
     }
   });
@@ -1264,6 +1248,9 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     },
     abort: () => {
       userAbortRequested = true;
+      // An intentional stop cancels any pending retry outright.
+      turnFailureCount = 0;
+      removeRecoveryNotice();
       return session.abort();
     },
     async setModel(provider, modelId) {
@@ -1427,6 +1414,7 @@ When the user asks you to create or change a Cake plugin, widget, scene, or othe
     dispose() {
       if (disposed) return;
       disposed = true;
+      clearRetrySchedule();
       sessionNamingController.abort();
       unsubscribe();
       const finish = () => {
