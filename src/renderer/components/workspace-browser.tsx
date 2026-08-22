@@ -5,6 +5,7 @@ import type { BrowseStore } from "../stores/BrowseStore";
 import type { ReviewsStore } from "../stores/ReviewsStore";
 import { Button } from "./ui/button";
 import { LoadingState } from "./ui/loading-state";
+import { EmbeddedEditorPane } from "./embedded-editor";
 import { SourceReview, reviewThreadPreview, useFileContent } from "./source-review";
 import { SourceExplorerLayout, SourceTree, sourceTree } from "./source-explorer";
 
@@ -67,6 +68,8 @@ export const WorkspaceBrowser = observer(function WorkspaceBrowser({
   onClose?: () => void;
 }) {
   const close = onClose ?? (() => store.close());
+  const embedded = chat.embeddedEditorStore;
+  const vscodeMode = embedded.mode === "vscode";
   const tree = sourceTree(store.files, (file) => file);
   const path = store.path ?? undefined;
   const threads = reviews.threads
@@ -84,9 +87,32 @@ export const WorkspaceBrowser = observer(function WorkspaceBrowser({
             <div>
               <small>Project browser · {chat.projectName}</small>
               <h1>{path ?? "Select a file"}</h1>
+              {vscodeMode && embedded.lastActivePath ? (
+                <small>VS Code is viewing {embedded.lastActivePath}</small>
+              ) : null}
+            </div>
+            <div className="change-explorer-view-toggle" role="group" aria-label="Browser mode">
+              <button
+                type="button"
+                className={vscodeMode ? "" : "active"}
+                aria-pressed={!vscodeMode}
+                onClick={() => embedded.setMode("builtin")}
+              >
+                Reader
+              </button>
+              <button
+                type="button"
+                className={vscodeMode ? "active" : ""}
+                aria-pressed={vscodeMode}
+                onClick={() => embedded.setMode("vscode")}
+              >
+                VS Code
+              </button>
             </div>
           </header>
-          {path ? (
+          {vscodeMode ? (
+            <EmbeddedEditorPane store={embedded} />
+          ) : path ? (
             <SourceFile path={path} store={store} reviews={reviews} />
           ) : (
             <div className="change-explorer-file-state">
@@ -120,7 +146,10 @@ export const WorkspaceBrowser = observer(function WorkspaceBrowser({
               <SourceTree
                 nodes={tree.children}
                 selectedPath={path}
-                onSelect={(file) => store.select(file)}
+                onSelect={(file) => {
+                  store.select(file);
+                  if (vscodeMode) void embedded.reveal(file);
+                }}
                 collapsible
               />
             </nav>

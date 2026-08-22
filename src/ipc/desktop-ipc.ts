@@ -177,12 +177,46 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     pluginId: pluginIdSchema,
     snapshot: pluginAgentSnapshotSchema,
   }),
+  z.object({
+    type: z.literal("embedded-editor-state"),
+    status: z.enum(["missing", "downloading", "starting", "ready", "failed"]),
+    message: ipcProjectionString(4_096).optional(),
+  }),
+  z.object({
+    type: z.literal("embedded-editor-activity"),
+    workspacePath: z.string().max(4_096),
+    path: ipcProjectionString(8_192),
+  }),
 ]);
 
 export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("choose-project") }),
   z.object({ type: z.literal("get-home-directory") }),
   z.object({ type: z.literal("set-editor-command"), command: z.string().max(512) }),
+  z.object({ type: z.literal("set-vscode-server-path"), path: z.string().max(4_096).optional() }),
+  z.object({ type: z.literal("get-embedded-editor-state") }),
+  z.object({ type: z.literal("install-embedded-editor"), requestId: z.uuid() }),
+  z.object({
+    type: z.literal("open-embedded-editor"),
+    requestId: z.uuid(),
+    workspacePath: z.string().max(4_096),
+  }),
+  z.object({
+    type: z.literal("update-embedded-editor-bounds"),
+    requestId: z.uuid(),
+    visible: z.boolean(),
+    x: z.number().min(-1_000_000).max(1_000_000),
+    y: z.number().min(-1_000_000).max(1_000_000),
+    width: z.number().min(0).max(100_000),
+    height: z.number().min(0).max(100_000),
+  }),
+  z.object({
+    type: z.literal("reveal-in-embedded-editor"),
+    requestId: z.uuid(),
+    workspacePath: z.string().max(4_096),
+    path: z.string().min(1).max(8_192),
+    line: z.number().int().min(0).max(10_000_000).optional(),
+  }),
   z.object({ type: z.literal("get-customization-state") }),
   z.object({ type: z.literal("get-plugin-authoring-reference") }),
   z.object({ type: z.literal("list-plugin-files") }),
@@ -451,7 +485,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     sessionId: z.string().max(256),
     resolved: z.boolean(),
   }),
-  z.object({ type: z.literal("new-window") }),
   z.object({ type: z.literal("restart-pi"), path: z.string().max(4_096) }),
   z.object({
     type: z.literal("inspect-workspace"),
@@ -585,6 +618,12 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
 
 export const desktopResponseSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("project-chosen"), path: z.string().max(4_096).optional() }),
+  z.object({
+    type: z.literal("embedded-editor-state-loaded"),
+    status: z.enum(["missing", "downloading", "starting", "ready", "failed"]),
+    message: ipcProjectionString(4_096).optional(),
+    customPath: z.string().max(4_096).optional(),
+  }),
   z.object({ type: z.literal("home-directory"), path: z.string().max(4_096) }),
   z.object({ type: z.literal("customization-state"), state: customizationStateSchema }),
   z.object({ type: z.literal("plugin-authoring-reference"), reference: z.string().max(1_000_000) }),
@@ -658,7 +697,6 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("review-thread-saved"), thread: reviewThreadSchema }),
   z.object({ type: z.literal("application-state-updated"), state: applicationStateSchema }),
-  z.object({ type: z.literal("window-created") }),
   z.object({ type: z.literal("accepted"), requestId: z.uuid() }),
   z.object({ type: z.literal("ui-response-accepted"), uiRequestId: z.uuid() }),
   z.object({ type: z.literal("artifact-response-accepted"), artifactRequestId: z.uuid() }),

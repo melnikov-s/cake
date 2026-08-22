@@ -30,6 +30,7 @@ import { loadReviewSessionProjection, runInlineWidgetRepair } from "../agent/sid
 import { Application } from "../models/Application";
 import { shouldAllowNavigation } from "./navigation-policy";
 import { PiWorkspaceDriver, type PiWorkspaceCommand } from "./pi-workspace-driver";
+import { VsCodeServerManager } from "./vscode-server-manager";
 import { ArtifactRepository } from "./artifact-repository";
 import { ReviewRepository } from "./review-repository";
 import { AtomicFileWriter } from "./atomic-file-writer";
@@ -47,6 +48,13 @@ import {
 } from "./inline-widget-protocol";
 import { PluginAgentHost, resolveAgentModel } from "./plugin-agent-host";
 import cakeIconPath from "../assets/cake.png?asset";
+// The manifest ships as a plain JSON module and is written out as the
+// extension's package.json at install time. The extension main ships as an
+// asset file so its `require(...)` calls are never inlined into this bundle
+// (an inlined `require(` would trip electron-vite's ESM-shim detection and
+// corrupt the bundle).
+import companionManifest from "../assets/vscode-companion/companion-manifest.json";
+import companionExtensionMain from "../assets/vscode-companion/extension.js?asset";
 
 app.setName("Cake");
 registerInlineWidgetScheme();
@@ -59,7 +67,6 @@ interface PiHost {
 }
 
 const windows = new Map<number, BrowserWindow>();
-const windowSlots = new Map<number, number>();
 const windowWorkspaces = new Map<number, string>();
 const piHosts = new Map<string, PiHost>();
 const sessionWorkspacePaths = new Map<string, string>();
@@ -67,7 +74,6 @@ const allowedProjectPaths = new Set<string>();
 const pendingTrustRequests = new Map<string, string>();
 const windowCustomizationRevisions = new Map<number, string>();
 const customizationHealthTimers = new Map<number, ReturnType<typeof setTimeout>>();
-let nextWindowSlot = 0;
 let applicationModel = Application.from({});
 const stateFileWriter = new AtomicFileWriter();
 
@@ -122,6 +128,13 @@ const reviewRepository = new ReviewRepository(
   cakePaths.piReviewSessions,
   (record) => loadReviewSessionProjection(record, cakePaths.piReviewSessions),
 );
+const vscodeEditor = new VsCodeServerManager({
+  root: join(app.getPath("userData"), "vscode-editor"),
+  companionManifest,
+  companionMain: companionExtensionMain,
+  customPath: () => applicationModel.vscodeServerPath,
+  broadcast,
+});
 let globalChatController: WebContents | undefined;
 const globalChatDriver = new GlobalChatDriver({
   agentDir: cakePaths.piAgent,
@@ -224,24 +237,21 @@ async function persistApplicationState() {
   );
 }
 
-function statePath(slot: number) {
-  return join(
-    app.getPath("userData"),
-    slot === 0 ? "window-state.json" : `window-state-${slot}.json`,
-  );
+function statePath() {
+  return join(app.getPath("userData"), "window-state.json");
 }
 
-async function loadWindowState(slot: number): Promise<WindowViewState> {
+async function loadWindowState(): Promise<WindowViewState> {
   try {
-    return windowViewStateSchema.parse(JSON.parse(await readFile(statePath(slot), "utf8")));
+    return windowViewStateSchema.parse(JSON.parse(await readFile(statePath(), "utf8")));
   } catch {
     return windowViewStateSchema.parse({});
   }
 }
 
-async function saveWindowState(slot: number, state: WindowViewState) {
+async function saveWindowState(state: WindowViewState) {
   const parsed = windowViewStateSchema.parse(state);
-  await stateFileWriter.write(statePath(slot), `${JSON.stringify(parsed, null, 2)}\n`);
+  await stateFileWriter.write(statePath(), `${JSON.stringify(parsed, null, 2)}\n`);
 }
 
 function setPiState(host: PiHost, state: PiHost["state"]) {
@@ -346,7 +356,7 @@ function configureApplicationBranding() {
   }
 }
 
-function createWindow(slot = nextWindowSlot++) {
+function createWindow() {
   const browserWindowOptions = {
     width: 1180,
     height: 820,
@@ -362,14 +372,17 @@ function createWindow(slot = nextWindowSlot++) {
       sandbox: true,
     },
   } as const;
-  const window = new BrowserWindow(
-    process.platform === "darwin"
+  const window = new BrowserWindow({
+    ...(process.platform === "darwin"
       ? { ...browserWindowOptions, trafficLightPosition: { x: 18, y: 18 } }
-      : browserWindowOptions,
-  );
+      : browserWindowOptions),
+    // Smoke tests drive the renderer over CDP, so the OS window never needs to
+    // be on screen. Keeping it hidden stops test runs from stealing focus and
+    // flashing windows while the machine is in use.
+    ...(process.env.CAKE_ELECTRON_SMOKE === "1" ? { show: false } : null),
+  });
   const webContentsId = window.webContents.id;
   windows.set(window.id, window);
-  windowSlots.set(webContentsId, slot);
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event, url) => {
     // Vite sometimes falls back from a module update to a full-page reload. Blocking
@@ -401,8 +414,8 @@ function createWindow(slot = nextWindowSlot++) {
   window.on("closed", () => {
     const path = windowWorkspaces.get(webContentsId);
     windows.delete(window.id);
-    windowSlots.delete(webContentsId);
     windowWorkspaces.delete(webContentsId);
+    vscodeEditor.closeForWindow(webContentsId);
     clearPendingTrustRequests(webContentsId);
     pluginAgents.disposeOwner(webContentsId);
     windowCustomizationRevisions.delete(webContentsId);
@@ -621,7 +634,6 @@ async function chooseAttachments(window: BrowserWindow): Promise<Attachment[]> {
 ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
   const request = desktopRequestSchema.parse(untrustedInput);
   const owner = BrowserWindow.fromWebContents(event.sender);
-  const slot = windowSlots.get(event.sender.id) ?? 0;
   if (request.type === "set-editor-command") {
     applicationModel.setEditorCommand(request.command);
     await persistApplicationState();
@@ -629,6 +641,48 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
       type: "application-state-updated",
       state: applicationModel.snapshot(),
     });
+  }
+  if (request.type === "set-vscode-server-path") {
+    applicationModel.setVscodeServerPath(request.path);
+    await persistApplicationState();
+    await vscodeEditor.refreshStatus();
+    return desktopResponseSchema.parse({
+      type: "application-state-updated",
+      state: applicationModel.snapshot(),
+    });
+  }
+  if (request.type === "get-embedded-editor-state")
+    return desktopResponseSchema.parse({
+      type: "embedded-editor-state-loaded",
+      ...vscodeEditor.snapshotState(),
+    });
+  if (request.type === "install-embedded-editor") {
+    await vscodeEditor.install();
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  if (request.type === "open-embedded-editor") {
+    if (!allowedProjectPaths.has(request.workspacePath))
+      throw new Error("Project path was not selected by the user");
+    await vscodeEditor.open(
+      event.sender.id,
+      () => BrowserWindow.fromWebContents(event.sender),
+      request.workspacePath,
+    );
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  if (request.type === "update-embedded-editor-bounds") {
+    vscodeEditor.updateBounds(event.sender.id, request);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  if (request.type === "reveal-in-embedded-editor") {
+    if (!allowedProjectPaths.has(request.workspacePath))
+      throw new Error("Project path was not selected by the user");
+    const { workspace, target } = await resolveWorkspaceEditorTarget(
+      request.workspacePath,
+      request.path,
+    );
+    await vscodeEditor.reveal(workspace, relative(workspace, target), request.line);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "get-customization-state")
     return desktopResponseSchema.parse({
@@ -1069,10 +1123,10 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
   if (request.type === "load-window-state")
     return desktopResponseSchema.parse({
       type: "window-state-loaded",
-      state: await loadWindowState(slot),
+      state: await loadWindowState(),
     });
   if (request.type === "save-window-state") {
-    await saveWindowState(slot, request.state);
+    await saveWindowState(request.state);
     return desktopResponseSchema.parse({ type: "window-state-saved" });
   }
   if (request.type === "load-application-state")
@@ -1186,10 +1240,6 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
       type: "application-state-updated",
       state: applicationModel.snapshot(),
     });
-  }
-  if (request.type === "new-window") {
-    createWindow();
-    return desktopResponseSchema.parse({ type: "window-created" });
   }
   if (request.type === "restart-pi") {
     if (!allowedProjectPaths.has(request.path))
@@ -1331,6 +1381,8 @@ ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
 });
 
 app.whenReady().then(async () => {
+  if (process.env.CAKE_ELECTRON_SMOKE === "1" && process.platform === "darwin" && app.dock)
+    app.dock.hide();
   configureApplicationBranding();
   handleInlineWidgetScheme();
   await pluginActivation.load();
@@ -1356,6 +1408,7 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   globalChatDriver[Symbol.dispose]();
   pluginBackends[Symbol.dispose]();
+  vscodeEditor.disposeAll();
   for (const host of piHosts.values()) host.driver[Symbol.dispose]();
   piHosts.clear();
   if (process.env.CAKE_ELECTRON_SMOKE === "1") setImmediate(() => app.exit(0));

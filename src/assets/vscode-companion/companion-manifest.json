@@ -1,0 +1,22 @@
+{
+  "name": "cake-companion",
+  "displayName": "Cake Companion",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bridges the embedded VS Code editor with Cake: reveal requests in, editor activity out.",
+  "license": "UNLICENSED",
+  "publisher": "cake",
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "cake.reveal",
+        "title": "Cake: Reveal File"
+      }
+    ]
+  },
+  "activationEvents": ["onStartupFinished"],
+  "engines": {
+    "vscode": "^1.80.0"
+  }
+}

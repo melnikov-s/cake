@@ -8,6 +8,7 @@ import type {
 import type { DesktopClient, DesktopClientEvent, PiState } from "../desktop-client";
 import { BrowseStore } from "./BrowseStore";
 import { ChangesStore } from "./ChangesStore";
+import { EmbeddedEditorStore } from "./EmbeddedEditorStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { ExtensionUiStore } from "./ExtensionUiStore";
 import type { PluginCommandStore } from "./PluginCommandStore";
@@ -25,7 +26,6 @@ export interface ProjectWorkbenchStoreProps {
     | "resolveSessions"
     | "resolveSession"
     | "chooseProject"
-    | "createWindow"
     | "forkSession"
     | "getChangelog"
     | "getHomeDirectory"
@@ -34,6 +34,12 @@ export interface ProjectWorkbenchStoreProps {
     | "listWorkspaceFiles"
     | "loadSession"
     | "navigateSession"
+    | "openEmbeddedEditor"
+    | "updateEmbeddedEditorBounds"
+    | "revealInEmbeddedEditor"
+    | "getEmbeddedEditorState"
+    | "installEmbeddedEditor"
+    | "setVscodeServerPath"
     | "openWorkspace"
     | "registerProject"
     | "readWorkspaceFile"
@@ -90,6 +96,15 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return createStore(BrowseStore, {
       client: this.client,
       projectPath: () => this.projectPath,
+    });
+  }
+
+  @child
+  get embeddedEditorStore(): EmbeddedEditorStore {
+    return createStore(EmbeddedEditorStore, {
+      client: this.client,
+      projectPath: () => this.projectPath,
+      schedulePersistence: () => this.props.persistence().schedule(),
     });
   }
 
@@ -246,14 +261,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     }
   }
 
-  async createWindow() {
-    try {
-      await this.client.createWindow();
-    } catch (error) {
-      this.setError(error);
-    }
-  }
-
   async startNewSession(path = this.projectPath) {
     if (!path) {
       await this.chooseProject();
@@ -313,6 +320,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.commandPane = undefined;
     this.changesStore.reset();
     this.browseStore.close();
+    this.embeddedEditorStore.close();
     this.props.persistence().schedule();
     session.composerStore.requestFocus();
     return true;
@@ -367,6 +375,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.commandPane = undefined;
     this.changesStore.reset();
     this.browseStore.close();
+    this.embeddedEditorStore.close();
     try {
       await this.client.openWorkspace({ operationId, path, newSession, sessionId });
       void this.client
@@ -405,6 +414,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       return;
     }
     this.browseStore.close();
+    this.embeddedEditorStore.close();
     this.reviews.activeThreadId = thread?.id;
     await this.changesStore.open(thread?.anchor.path);
   }
@@ -419,6 +429,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   dismissSecondarySurfaces() {
     this.commandPane = undefined;
     this.browseStore.close();
+    this.embeddedEditorStore.close();
     this.changesStore.close();
   }
 
@@ -610,6 +621,13 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   receive(event: DesktopClientEvent) {
+    if (
+      event.type === "embedded-editor-state-received" ||
+      event.type === "embedded-editor-activity"
+    ) {
+      this.embeddedEditorStore.receive(event);
+      return;
+    }
     if (event.type === "pi-state-changed") {
       if (
         event.workspacePath &&

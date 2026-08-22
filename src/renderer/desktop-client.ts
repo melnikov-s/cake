@@ -34,6 +34,14 @@ import type {
 
 export type PiState = "starting" | "ready" | "stopped" | "failed";
 
+export type EmbeddedEditorStatus = "missing" | "downloading" | "starting" | "ready" | "failed";
+
+export interface EmbeddedEditorStateSnapshot {
+  status: EmbeddedEditorStatus;
+  message?: string;
+  customPath?: string;
+}
+
 export type DesktopClientEvent =
   | { type: "pi-state-changed"; state: PiState; workspacePath?: string }
   | { type: "workspace-inspected"; operationId: string; path: string; trustRequired: boolean }
@@ -117,7 +125,9 @@ export type DesktopClientEvent =
   | { type: "operation-completed"; operationId: string }
   | { type: "operation-failed"; operationId?: string; message: string }
   | { type: "customization-state-changed"; state: CustomizationState }
-  | { type: "plugin-agent-event"; pluginId: string; snapshot: PluginAgentSnapshot };
+  | { type: "plugin-agent-event"; pluginId: string; snapshot: PluginAgentSnapshot }
+  | { type: "embedded-editor-state-received"; status: EmbeddedEditorStatus; message?: string }
+  | { type: "embedded-editor-activity"; workspacePath: string; path: string };
 
 export interface DesktopClient {
   chooseProject(): Promise<string | undefined>;
@@ -204,6 +214,18 @@ export interface DesktopClient {
   saveWindowState(state: WindowViewState): Promise<void>;
   loadApplicationState(): Promise<ApplicationState>;
   setEditorCommand(command: string): Promise<ApplicationState>;
+  setVscodeServerPath(path: string | undefined): Promise<ApplicationState>;
+  getEmbeddedEditorState(): Promise<EmbeddedEditorStateSnapshot>;
+  installEmbeddedEditor(): Promise<void>;
+  openEmbeddedEditor(workspacePath: string): Promise<void>;
+  updateEmbeddedEditorBounds(input: {
+    visible: boolean;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }): Promise<void>;
+  revealInEmbeddedEditor(workspacePath: string, path: string, line?: number): Promise<void>;
   setUtilityModel(model: UtilityModel | undefined): Promise<ApplicationState>;
   listSessions(): Promise<{ sessions: GlobalSessionSummary[]; reviewThreads: ReviewThread[] }>;
   loadSession(sessionId: string): Promise<SessionPreview | undefined>;
@@ -267,7 +289,6 @@ export interface DesktopClient {
   resolveSession(sessionId: string, resolved: boolean): Promise<ApplicationState>;
   resolveSessions(sessionIds: readonly string[], resolved: boolean): Promise<ApplicationState>;
   resolveCakeChatSession(sessionId: string, resolved: boolean): Promise<ApplicationState>;
-  createWindow(): Promise<void>;
   restartPi(path: string): Promise<void>;
   inspectWorkspace(input: { operationId: string; path: string }): Promise<void>;
   respondToWorkspaceTrust(input: {
@@ -444,6 +465,13 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
   if (event.type === "fatal")
     return { type: "operation-failed", operationId: event.requestId, message: event.message };
   if (event.type === "customization-state-changed") return event;
+  if (event.type === "embedded-editor-state")
+    return {
+      type: "embedded-editor-state-received",
+      status: event.status,
+      message: event.message,
+    };
+  if (event.type === "embedded-editor-activity") return event;
   return undefined;
 }
 
@@ -687,6 +715,44 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         throw new Error("Cake could not update the editor command");
       return response.state;
     },
+    async setVscodeServerPath(path) {
+      const response = await bridge.request({ type: "set-vscode-server-path", path });
+      if (response.type !== "application-state-updated")
+        throw new Error("Cake could not update the embedded editor path");
+      return response.state;
+    },
+    async getEmbeddedEditorState() {
+      const response = await bridge.request({ type: "get-embedded-editor-state" });
+      if (response.type !== "embedded-editor-state-loaded")
+        throw new Error("Cake received an invalid embedded editor state");
+      return {
+        status: response.status,
+        message: response.message,
+        customPath: response.customPath,
+      };
+    },
+    async installEmbeddedEditor() {
+      const requestId = crypto.randomUUID();
+      await accept(bridge, { type: "install-embedded-editor", requestId });
+    },
+    async openEmbeddedEditor(workspacePath) {
+      const requestId = crypto.randomUUID();
+      await accept(bridge, { type: "open-embedded-editor", requestId, workspacePath });
+    },
+    async updateEmbeddedEditorBounds(input) {
+      const requestId = crypto.randomUUID();
+      await accept(bridge, { type: "update-embedded-editor-bounds", requestId, ...input });
+    },
+    async revealInEmbeddedEditor(workspacePath, path, line) {
+      const requestId = crypto.randomUUID();
+      await accept(bridge, {
+        type: "reveal-in-embedded-editor",
+        requestId,
+        workspacePath,
+        path,
+        line,
+      });
+    },
     async setUtilityModel(model) {
       const response = await bridge.request({ type: "set-utility-model", model });
       if (response.type !== "application-state-updated")
@@ -826,10 +892,6 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       if (response.type !== "application-state-updated")
         throw new Error("Cake could not resolve the Cake Chat session");
       return response.state;
-    },
-    async createWindow() {
-      const response = await bridge.request({ type: "new-window" });
-      if (response.type !== "window-created") throw new Error("Cake could not create a window");
     },
     async restartPi(path) {
       await bridge.request({ type: "restart-pi", path });

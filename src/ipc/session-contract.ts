@@ -451,6 +451,7 @@ export const applicationStateSchema = z.object({
   fastModeSessionIds: z.array(z.string().max(256)).max(10_000).optional(),
   utilityModel: utilityModelSchema.optional(),
   editorCommand: z.string().max(512).optional(),
+  vscodeServerPath: z.string().max(4_096).optional(),
 });
 
 export const windowConversationSelectionSchema = z.discriminatedUnion("kind", [
@@ -468,6 +469,7 @@ export const windowViewStateSchema = z.object({
   activeConversation: windowConversationSelectionSchema.optional(),
   recentProjectPaths: z.array(z.string().max(4_096)).max(50).default([]),
   draft: z.string().max(262_144).default(""),
+  projectBrowserMode: z.enum(["builtin", "vscode"]).optional(),
   theme: z.enum(["system", "light", "dark"]).default("system"),
   thinkingExpanded: z.boolean().default(false),
   draftsBySession: z.record(z.string(), z.string().max(262_144)).default({}),

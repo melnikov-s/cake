@@ -10,8 +10,8 @@ import type { ChangedFile } from "../../../src/ipc/session-contract";
 import type { ProjectWorkbenchStore } from "../../../src/renderer/stores/ProjectWorkbenchStore";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
 
-vi.mock("@streamdown/code", () => ({
-  code: {
+vi.mock("@streamdown/code", () => {
+  const code = {
     getThemes: () => ["github-light", "github-dark"],
     highlight: ({ code }: { code: string }, callback: (result: unknown) => void) => {
       const result = {
@@ -24,8 +24,10 @@ vi.mock("@streamdown/code", () => ({
       callback(result);
       return result;
     },
-  },
-}));
+  };
+
+  return { createCodePlugin: () => code, code };
+});
 
 import { ChangeExplorer } from "../../../src/renderer/components/change-explorer";
 

@@ -103,6 +103,7 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
       this.props.settings().applyApplicationState(application);
       this.props.projects.restoreRecentPaths(state.recentProjectPaths);
       this.props.settings().theme = state.theme;
+      this.props.workbench().embeddedEditorStore.mode = state.projectBrowserMode ?? "builtin";
       this.restoredDraft = state.draft;
       this.restoredNewSessionDraftsByProject = { ...state.newSessionDraftsByProject };
       this.restoredThinkingExpanded = state.thinkingExpanded;
@@ -159,6 +160,7 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
       selectedSessionId: activeSession?.sessionId,
       activeConversation: this.props.shell().activeConversation,
       recentProjectPaths: this.props.projects.orderedProjectPaths.slice(),
+      projectBrowserMode: workbench.embeddedEditorStore.mode === "vscode" ? "vscode" : "builtin",
       draft: activeSession?.chatStore.draft ?? "",
       theme: this.props.settings().theme,
       thinkingExpanded: activeSession?.chatStore.thinkingExpanded ?? false,

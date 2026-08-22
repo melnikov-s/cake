@@ -19,6 +19,7 @@ export class Application extends Model {
   fastModeSessionIds: string[] = observable([]);
   utilityModel: UtilityModel | undefined;
   editorCommand = DEFAULT_EDITOR_COMMAND;
+  vscodeServerPath: string | undefined;
 
   static from(untrustedInput: unknown) {
     const model = Application.create(applicationStateSchema.parse(untrustedInput));
@@ -66,6 +67,11 @@ export class Application extends Model {
 
   setEditorCommand(command: string) {
     this.editorCommand = command.trim() || DEFAULT_EDITOR_COMMAND;
+  }
+
+  setVscodeServerPath(path: string | undefined) {
+    const trimmed = path?.trim();
+    this.vscodeServerPath = trimmed ? trimmed : undefined;
   }
 
   setSessionFastMode(sessionId: string, enabled: boolean) {

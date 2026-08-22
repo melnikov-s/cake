@@ -2,7 +2,16 @@ import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["**/dist/**", "**/out/**", "**/node_modules/**"] },
+  {
+    ignores: [
+      "**/dist/**",
+      "**/out/**",
+      "**/node_modules/**",
+      // The companion extension is a Node CJS asset executed by the embedded
+      // server's extension host, not application source.
+      "src/assets/vscode-companion/**",
+    ],
+  },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {

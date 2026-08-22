@@ -9,8 +9,8 @@ import { createStore, mount } from "r-state-tree";
 import type { ProjectWorkbenchStore } from "../../../src/renderer/stores/ProjectWorkbenchStore";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
 
-vi.mock("@streamdown/code", () => ({
-  code: {
+vi.mock("@streamdown/code", () => {
+  const code = {
     getThemes: () => ["github-light", "github-dark"],
     highlight: ({ code }: { code: string }, callback: (result: unknown) => void) => {
       const result = {
@@ -21,8 +21,10 @@ vi.mock("@streamdown/code", () => ({
       callback(result);
       return result;
     },
-  },
-}));
+  };
+
+  return { createCodePlugin: () => code, code };
+});
 
 import { WorkspaceBrowser } from "../../../src/renderer/components/workspace-browser";
 
@@ -86,7 +88,15 @@ function browserProps(store: ProjectWorkbenchStore) {
       threadStreaming: fixture.reviewThreadStreaming ?? (() => false),
       submitPending: fixture.sendPendingReviewComments,
     } as any,
-    chat: { projectName: fixture.projectName } as any,
+    chat: {
+      projectName: fixture.projectName,
+      embeddedEditorStore: {
+        mode: "builtin",
+        lastActivePath: undefined,
+        setMode: vi.fn(),
+        reveal: vi.fn(async () => undefined),
+      },
+    } as any,
   };
 }
 
