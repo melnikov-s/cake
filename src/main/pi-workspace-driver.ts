@@ -102,6 +102,7 @@ interface SubagentHandle {
   releaseRuntime: boolean;
   taskDescription: string;
   profile: SubagentProfile;
+  resolvedModel: ResolvedAgentModel;
   retain: boolean;
   status: "queued" | "running" | "complete" | "error" | "aborted";
   controller: AbortController;
@@ -943,6 +944,7 @@ export class PiWorkspaceDriver {
       releaseRuntime: false,
       taskDescription: input.task,
       profile: input.profile,
+      resolvedModel,
       retain: input.retain,
       status: this.activeSubagents < MAX_ACTIVE_SUBAGENTS ? "running" : "queued",
       controller: new AbortController(),
@@ -993,6 +995,7 @@ export class PiWorkspaceDriver {
           task: handle.taskDescription,
           profile: handle.profile,
           status: handle.status,
+          resolvedModel: handle.resolvedModel,
           error: handle.error,
         });
       })
@@ -1014,6 +1017,7 @@ export class PiWorkspaceDriver {
       status: handle.status,
       retained: input.retain,
       maxDepth: remainingSubagentDepth,
+      resolvedModel,
     });
   }
 
@@ -1275,6 +1279,7 @@ export class PiWorkspaceDriver {
       task: handle.taskDescription,
       profile: handle.profile,
       status: handle.status,
+      resolvedModel: handle.resolvedModel,
       streaming: snapshot.streaming,
       parts: snapshot.parts,
     };
@@ -1287,6 +1292,7 @@ export class PiWorkspaceDriver {
       task: handle.taskDescription,
       profile: handle.profile,
       status: handle.status,
+      resolvedModel: handle.resolvedModel,
       streaming: handle.liveStreaming,
       parts: [...handle.liveParts.values()],
     });

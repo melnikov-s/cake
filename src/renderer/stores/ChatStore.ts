@@ -124,6 +124,14 @@ export class ChatStore extends Store<ChatStoreProps> {
     return Math.max(0, (timer.endedAt ?? this.workLogTickNow) - timer.startedAt);
   }
 
+  /** Elapsed time across a protocol pair that is presented as one work-log item. */
+  workLogElapsedMsRange(startPartId: string, endPartId: string): number | undefined {
+    const start = this.workLogTimers.get(startPartId);
+    const end = this.workLogTimers.get(endPartId);
+    if (!start) return this.workLogElapsedMs(endPartId);
+    return Math.max(0, (end?.endedAt ?? this.workLogTickNow) - start.startedAt);
+  }
+
   get id() {
     return this.props.id();
   }

@@ -179,6 +179,13 @@ describe("PiWorkspaceDriver", () => {
       status: "running",
       retained: false,
       maxDepth: 0,
+      resolvedModel: {
+        requested: "current",
+        source: "current",
+        provider: "test",
+        modelId: "model",
+        thinkingLevel: "off",
+      },
     });
     expect(JSON.stringify(spawned)).not.toContain('"sessionId"');
     expect(resolveAgentModel).toHaveBeenCalledWith(
@@ -220,6 +227,13 @@ describe("PiWorkspaceDriver", () => {
     expect(child.snapshot).toHaveBeenCalledTimes(snapshotCalls);
 
     finishTask();
+    await expect(waiting).resolves.toMatchObject({
+      resolvedModel: {
+        provider: "test",
+        modelId: "model",
+        thinkingLevel: "off",
+      },
+    });
     await expect(waiting).resolves.not.toHaveProperty("sessionId");
     expect(child.dispose).toHaveBeenCalledOnce();
     driver[Symbol.dispose]();

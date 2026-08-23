@@ -1,31 +1,58 @@
+import { useState, type ReactNode } from "react";
 import { z } from "zod";
 import { jsonValueSchema } from "../../../ipc/json-contract";
+import { resolvedAgentModelSchema } from "../../../ipc/plugin-agent-contract";
 import { sessionUsageSchema, type UiPart } from "../../../ipc/session-contract";
 import { Markdown } from "./markdown";
-import type { ReactNode } from "react";
+
+const modelPreferenceSchema = z.discriminatedUnion("prefer", [
+  z.object({ prefer: z.literal("utility") }),
+  z.object({ prefer: z.literal("default") }),
+  z.object({ prefer: z.literal("current") }),
+  z.object({
+    prefer: z.literal("exact"),
+    provider: z.string(),
+    modelId: z.string(),
+    thinkingLevel: z.string().optional(),
+  }),
+]);
 
 const subagentPartSchema = z
   .object({
+    id: z.string().optional(),
     kind: z.string(),
     name: z.string().optional(),
     text: z.string().optional(),
+    input: z.string().optional(),
+    output: z.string().optional(),
     state: z.string().optional(),
   })
   .passthrough();
 
 const subagentProjectionSchema = z
   .object({
+    handleId: z.string().optional(),
     task: z.string().optional(),
     profile: z.string().optional(),
     status: z.string().optional(),
+    model: modelPreferenceSchema.optional(),
+    resolvedModel: resolvedAgentModelSchema.optional(),
+    instructions: z.string().optional(),
+    maxDepth: z.number().optional(),
+    retain: z.boolean().optional(),
+    retained: z.boolean().optional(),
     parts: z.array(subagentPartSchema).optional(),
     usage: sessionUsageSchema.optional(),
     completed: z.number().optional(),
     total: z.number().optional(),
+    error: z.string().optional(),
   })
   .passthrough();
 
-function projectionFromJson(value?: string) {
+type Projection = z.infer<typeof subagentProjectionSchema>;
+type ToolPart = Extract<UiPart, { kind: "tool" }>;
+
+function projectionFromJson(value?: string): Projection | undefined {
   if (!value) return undefined;
   try {
     const parsed = jsonValueSchema.parse(JSON.parse(value));
@@ -36,20 +63,56 @@ function projectionFromJson(value?: string) {
   }
 }
 
+function requestedModelLabel(model: Projection["model"]) {
+  if (!model) return undefined;
+  if (model.prefer === "exact") return `${model.provider}/${model.modelId}`;
+  return `${model.prefer} model`;
+}
+
+function capabilityLabel(profile: string) {
+  return profile === "worker" ? "parent-approved workspace tools" : "read/search only";
+}
+
+function displayValue(value: string) {
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2);
+  } catch {
+    return value;
+  }
+}
+
 export function SubagentTool({
   part,
+  spawnPart,
   timer,
+  expansion,
 }: {
-  part: Extract<UiPart, { kind: "tool" }>;
+  part: ToolPart;
+  spawnPart?: ToolPart;
   timer?: ReactNode;
+  expansion?: { open: boolean; toggle(): void };
 }) {
-  const input = projectionFromJson(part.input);
-  const output = projectionFromJson(part.output);
-  const task = output?.task ?? input?.task;
-  const profile = output?.profile ?? input?.profile ?? "worker";
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = expansion?.open ?? uncontrolledOpen;
+  const toggleOpen = expansion?.toggle ?? (() => setUncontrolledOpen((value) => !value));
+  const requestPart = spawnPart ?? (part.name === "subagent_spawn" ? part : undefined);
+  const request = projectionFromJson(requestPart?.input);
+  const spawnOutput = projectionFromJson(requestPart?.output);
+  const output = projectionFromJson(part.output) ?? spawnOutput;
+  const task = output?.task ?? request?.task;
+  const profile = output?.profile ?? request?.profile ?? "worker";
   const status = output?.status ?? (part.state === "running" ? "running" : part.state);
+  const resolvedModel = output?.resolvedModel ?? spawnOutput?.resolvedModel;
+  const requestedModel = request?.model;
+  const requestedModelName = requestedModelLabel(requestedModel);
+  const modelLabel = resolvedModel
+    ? `${resolvedModel.provider}/${resolvedModel.modelId}`
+    : requestedModelName;
+  const thinkingLevel =
+    resolvedModel?.thinkingLevel ??
+    (requestedModel?.prefer === "exact" ? requestedModel.thinkingLevel : undefined);
   const parts = output?.parts ?? [];
-  const recentTools = parts.filter((item) => item.kind === "tool").slice(-4);
+  const traceParts = parts.filter((item) => item.kind === "tool" || item.kind === "reasoning");
   const finalText = [...parts].reverse().find((item) => item.kind === "text" && item.text)?.text;
   const totalTokens = output?.usage?.tokens.total;
   const cost = output?.usage?.cost;
@@ -61,40 +124,123 @@ export function SubagentTool({
     part.name === "subagent_parallel"
       ? `parallel delegation${parallelCount ? ` ${parallelCount}` : ""}`
       : `${profile} subagent`;
+  const handleId = output?.handleId ?? spawnOutput?.handleId;
+  const retained = request?.retain ?? spawnOutput?.retained;
+  const maxDepth = request?.maxDepth ?? spawnOutput?.maxDepth;
 
   return (
     <div
-      className={`tool-call subagent-call rounded-xl border border-border bg-muted/35 px-4 py-3${part.state === "running" ? " subagent-running" : ""}`}
+      className={`tool-call subagent-call rounded-xl border border-border bg-muted/35 px-4 py-3${part.state === "running" ? " subagent-running" : ""}${open ? " tool-open" : ""}`}
     >
-      <div className="subagent-header">
+      <button type="button" className="subagent-summary" onClick={toggleOpen} aria-expanded={open}>
         <span className={`tool-state tool-${part.state}`} aria-label={part.state} />
         <span className="subagent-title">{title}</span>
+        {modelLabel && <span className="subagent-model">{modelLabel}</span>}
+        {thinkingLevel && <span className="subagent-thinking">{thinkingLevel}</span>}
         {timer}
         <span className="subagent-status">{status}</span>
-      </div>
+      </button>
       {task && <p className="subagent-task">{task}</p>}
-      {recentTools.length > 0 && (
-        <div className="subagent-activity" aria-label="Subagent activity">
-          {recentTools.map((item, index) => (
-            <span key={`${item.name ?? "tool"}-${index}`}>
-              <i
-                className={`tool-state tool-${item.state === "error" ? "error" : item.state === "running" ? "running" : "success"}`}
-              />
-              {item.name ?? "tool"}
-            </span>
-          ))}
-        </div>
-      )}
       {(totalTokens !== undefined || cost !== undefined) && (
         <div className="subagent-usage">
           {totalTokens?.toLocaleString()} tokens{cost !== undefined ? ` · $${cost.toFixed(4)}` : ""}
         </div>
       )}
-      {finalText && (
-        <details className="subagent-result">
-          <summary>Result</summary>
-          <Markdown className="mt-2 text-xs">{finalText}</Markdown>
-        </details>
+      {open && (
+        <div className="subagent-details">
+          <section>
+            <h4>Request</h4>
+            <dl className="subagent-metadata">
+              <div>
+                <dt>Agent</dt>
+                <dd>{profile}</dd>
+              </div>
+              <div>
+                <dt>Capabilities</dt>
+                <dd>{capabilityLabel(profile)}</dd>
+              </div>
+              <div>
+                <dt>Requested model</dt>
+                <dd>{requestedModelName ?? "Not reported"}</dd>
+              </div>
+              <div>
+                <dt>Resolved model</dt>
+                <dd>
+                  {resolvedModel
+                    ? `${resolvedModel.provider}/${resolvedModel.modelId} via ${resolvedModel.source}`
+                    : "Not reported"}
+                </dd>
+              </div>
+              <div>
+                <dt>Reasoning</dt>
+                <dd>{thinkingLevel ?? "Model default"}</dd>
+              </div>
+              {resolvedModel && resolvedModel.fallbacks.length > 0 && (
+                <div>
+                  <dt>Fallbacks</dt>
+                  <dd>
+                    {resolvedModel.fallbacks
+                      .map((fallback) => `${fallback.source}: ${fallback.reason}`)
+                      .join(", ")}
+                  </dd>
+                </div>
+              )}
+              <div>
+                <dt>Mode</dt>
+                <dd>{retained ? "retained / multi-turn" : "one-shot"}</dd>
+              </div>
+              <div>
+                <dt>Delegation depth</dt>
+                <dd>{maxDepth ?? 0}</dd>
+              </div>
+              {handleId && (
+                <div>
+                  <dt>Handle</dt>
+                  <dd title={handleId}>{handleId}</dd>
+                </div>
+              )}
+            </dl>
+            {task && (
+              <div className="subagent-payload">
+                <strong>Prompt</strong>
+                <pre>{task}</pre>
+              </div>
+            )}
+            {request?.instructions && (
+              <div className="subagent-payload">
+                <strong>Additional instructions</strong>
+                <pre>{request.instructions}</pre>
+              </div>
+            )}
+          </section>
+          {(traceParts.length > 0 || finalText || output?.error) && (
+            <section>
+              <h4>Response</h4>
+              {traceParts.length > 0 && (
+                <div className="subagent-trace" aria-label="Subagent execution trace">
+                  {traceParts.map((item, index) => (
+                    <div key={item.id ?? `${item.kind}-${index}`}>
+                      <strong>
+                        {item.kind === "tool" ? (item.name ?? "tool") : "reasoning"}
+                        {item.state ? ` · ${item.state}` : ""}
+                      </strong>
+                      {item.text && <Markdown>{item.text}</Markdown>}
+                      {item.input && <pre>{displayValue(item.input)}</pre>}
+                      {item.output && <pre>{displayValue(item.output)}</pre>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {finalText && (
+                <div className="subagent-result">
+                  <strong>Final answer</strong>
+                  <Markdown className="mt-2 text-xs">{finalText}</Markdown>
+                </div>
+              )}
+              {output?.error && <pre className="subagent-error">{output.error}</pre>}
+            </section>
+          )}
+        </div>
       )}
     </div>
   );

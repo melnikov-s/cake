@@ -3461,11 +3461,18 @@ button.reasoning-summary {
   display: grid;
   gap: 8px;
 }
-.subagent-header {
+.subagent-summary {
   display: flex;
+  width: 100%;
   min-width: 0;
   align-items: center;
   gap: 8px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
   font: 600 11px var(--font-mono);
 }
 .subagent-title {
@@ -3474,6 +3481,18 @@ button.reasoning-summary {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.subagent-model,
+.subagent-thinking {
+  max-width: 32%;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--border) 72%, transparent);
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 10px var(--font-mono);
 }
 .subagent-status,
 .subagent-usage {
@@ -3487,34 +3506,83 @@ button.reasoning-summary {
   font-size: 12px;
   line-height: 1.45;
 }
-.subagent-activity {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+.subagent-details {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  padding-top: 10px;
 }
-.subagent-activity > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid color-mix(in oklab, var(--border) 72%, transparent);
-  border-radius: 999px;
-  padding: 3px 7px;
+.subagent-details section {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+.subagent-details h4 {
+  margin: 0;
   color: var(--muted-foreground);
+  font: 700 10px var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.subagent-metadata {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.subagent-metadata > div {
+  min-width: 0;
+  border: 1px solid color-mix(in oklab, var(--border) 72%, transparent);
+  border-radius: 8px;
+  padding: 7px 9px;
+}
+.subagent-metadata dt {
+  color: var(--muted-foreground);
+  font: 9px var(--font-mono);
+  text-transform: uppercase;
+}
+.subagent-metadata dd {
+  overflow: hidden;
+  margin: 3px 0 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font: 10px var(--font-mono);
 }
-.subagent-activity .tool-state {
-  width: 5px;
-  height: 5px;
-  margin: 0;
+.subagent-payload,
+.subagent-result,
+.subagent-trace > div {
+  min-width: 0;
+}
+.subagent-payload > strong,
+.subagent-result > strong,
+.subagent-trace strong {
+  color: var(--muted-foreground);
+  font: 600 10px var(--font-mono);
+}
+.subagent-payload pre,
+.subagent-trace pre,
+.subagent-error {
+  max-height: 16rem;
+  overflow: auto;
+  margin: 5px 0 0;
+  border-radius: 8px;
+  padding: 8px;
+  background: color-mix(in oklab, var(--background) 72%, transparent);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 10px/1.45 var(--font-mono);
+}
+.subagent-trace {
+  display: grid;
+  gap: 6px;
+}
+.subagent-trace > div {
+  border-left: 2px solid color-mix(in oklab, var(--border) 72%, transparent);
+  padding-left: 8px;
 }
 .subagent-result {
   border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
   padding-top: 8px;
-}
-.subagent-result > summary {
-  cursor: pointer;
-  color: var(--muted-foreground);
-  font: 600 10px var(--font-mono);
 }
 .tool-edit {
   padding: 0 !important;

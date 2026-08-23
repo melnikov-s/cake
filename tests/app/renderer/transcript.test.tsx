@@ -119,6 +119,7 @@ function Transcript({
     workLogDiff,
     toggleWorkLogDiff: onToggleWorkLogDiff,
     workLogElapsedMs: () => undefined,
+    workLogElapsedMsRange: () => undefined,
     get workLogsExpansion() {
       return workLogState.expansion.value;
     },
@@ -606,6 +607,72 @@ describe("Transcript scrolling", () => {
       container.querySelector('.activity-group-status .work-log-running[aria-label="working"]'),
     ).not.toBeNull();
     expect(container.querySelector(".loading-state")).not.toBeNull();
+  });
+
+  it("presents a matching subagent spawn and wait as one expandable work-log item", () => {
+    const handleId = crypto.randomUUID();
+    const spawn: UiPart = {
+      id: "subagent-spawn",
+      kind: "tool",
+      name: "subagent_spawn",
+      input: JSON.stringify({
+        task: "Tell a joke",
+        profile: "worker",
+        model: {
+          prefer: "exact",
+          provider: "openai-codex",
+          modelId: "gpt-5.6-sol",
+          thinkingLevel: "max",
+        },
+      }),
+      output: JSON.stringify({ handleId, task: "Tell a joke", status: "running" }),
+      state: "success",
+    };
+    const wait: UiPart = {
+      id: "subagent-wait",
+      kind: "tool",
+      name: "subagent_wait",
+      input: JSON.stringify({ handleId }),
+      output: JSON.stringify({
+        handleId,
+        task: "Tell a joke",
+        profile: "worker",
+        status: "complete",
+        resolvedModel: {
+          requested: "exact",
+          source: "exact",
+          provider: "openai-codex",
+          modelId: "gpt-5.6-sol",
+          thinkingLevel: "max",
+          fallbacks: [],
+        },
+        parts: [
+          {
+            id: "child-answer",
+            kind: "text",
+            text: "A compact joke.",
+            status: "complete",
+          },
+        ],
+      }),
+      state: "success",
+    };
+
+    act(() =>
+      root.render(<TestTranscript sessionId="session-1" store={storeWith([spawn, wait])} />),
+    );
+    expect(container.querySelector(".activity-group > summary")?.textContent).toContain(
+      "1 tool call",
+    );
+
+    act(() => container.querySelector<HTMLElement>(".activity-group > summary")!.click());
+    expect(container.querySelectorAll(".subagent-call")).toHaveLength(1);
+    expect(container.textContent).toContain("openai-codex/gpt-5.6-sol");
+
+    act(() => container.querySelector<HTMLButtonElement>(".subagent-summary")!.click());
+    expect(container.textContent).toContain("Request");
+    expect(container.textContent).toContain("Response");
+    expect(container.textContent).toContain("A compact joke.");
   });
 
   it("keeps the completed work log neutral when an individual call failed", () => {

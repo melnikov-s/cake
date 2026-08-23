@@ -276,18 +276,48 @@ describe("Cake-owned conversation components", () => {
     expect(image).toContain("Tool output image 1");
   });
 
-  it("renders subagent work as a compact execution trace", () => {
+  it("renders the subagent request, resolved model, execution trace, and response", () => {
+    const handleId = crypto.randomUUID();
     const html = renderToStaticMarkup(
       <Tool
+        subagentSpawnPart={{
+          id: "subagent-spawn",
+          kind: "tool",
+          name: "subagent_spawn",
+          input: JSON.stringify({
+            task: "Inspect the session boundary",
+            profile: "reviewer",
+            model: {
+              prefer: "exact",
+              provider: "openai-codex",
+              modelId: "gpt-5.6-sol",
+              thinkingLevel: "max",
+            },
+            instructions: "Focus on runtime validation.",
+            retain: false,
+            maxDepth: 0,
+          }),
+          output: JSON.stringify({ handleId }),
+          state: "success",
+        }}
         part={{
-          id: "subagent-1",
+          id: "subagent-wait",
           kind: "tool",
           name: "subagent_wait",
-          input: JSON.stringify({ handleId: crypto.randomUUID() }),
+          input: JSON.stringify({ handleId }),
           output: JSON.stringify({
+            handleId,
             task: "Inspect the session boundary",
             profile: "reviewer",
             status: "complete",
+            resolvedModel: {
+              requested: "exact",
+              source: "exact",
+              provider: "openai-codex",
+              modelId: "gpt-5.6-sol",
+              thinkingLevel: "max",
+              fallbacks: [],
+            },
             parts: [
               {
                 id: "child-tool",
@@ -311,11 +341,14 @@ describe("Cake-owned conversation components", () => {
           }),
           state: "success",
         }}
+        expansion={{ open: true, toggle: () => undefined }}
       />,
     );
     expect(html).toContain("reviewer subagent");
+    expect(html).toContain("openai-codex/gpt-5.6-sol");
     expect(html).toContain("Inspect the session boundary");
-    expect(html).toContain("Subagent activity");
+    expect(html).toContain("Focus on runtime validation.");
+    expect(html).toContain("Subagent execution trace");
     expect(html).toContain("125 tokens");
     expect(html).toContain("The boundary is correctly isolated.");
   });

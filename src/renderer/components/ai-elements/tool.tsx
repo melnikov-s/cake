@@ -113,11 +113,15 @@ function editorPath(part: Extract<UiPart, { kind: "tool" }>) {
 export const ToolRunTimer = observer(function ToolRunTimer({
   store,
   partId,
+  startPartId,
 }: {
   store: ChatStore;
   partId: string;
+  startPartId?: string;
 }) {
-  const elapsedMs = store.workLogElapsedMs(partId);
+  const elapsedMs = startPartId
+    ? store.workLogElapsedMsRange(startPartId, partId)
+    : store.workLogElapsedMs(partId);
   if (elapsedMs === undefined) return null;
   return (
     <span className="tool-timer" aria-label="elapsed time">
@@ -131,17 +135,23 @@ export function Tool({
   onOpenFile,
   timer,
   expansion,
+  subagentSpawnPart,
 }: {
   part: Extract<UiPart, { kind: "tool" }>;
   onOpenFile?: (path: string) => void | Promise<void>;
   timer?: ReactNode;
   /** Controlled expansion inside a work log; uncontrolled local state otherwise. */
   expansion?: { open: boolean; toggle(): void };
+  /** The matching spawn call when Cake presents spawn + wait as one subagent run. */
+  subagentSpawnPart?: Extract<UiPart, { kind: "tool" }>;
 }) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = expansion ? expansion.open : uncontrolledOpen;
   const toggleOpen = expansion ? expansion.toggle : () => setUncontrolledOpen((value) => !value);
-  if (part.name.startsWith("subagent_")) return <SubagentTool part={part} timer={timer} />;
+  if (part.name.startsWith("subagent_"))
+    return (
+      <SubagentTool part={part} spawnPart={subagentSpawnPart} timer={timer} expansion={expansion} />
+    );
   const diff = toolDiff(part);
   const title = toolTitle(part);
   const read = part.name === "read";

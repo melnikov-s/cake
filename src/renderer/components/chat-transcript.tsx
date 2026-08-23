@@ -38,6 +38,7 @@ import {
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { UiPart } from "../../ipc/session-contract";
 import { toolDiff } from "../../utils/turn-diff";
+import { combineSubagentWorkLogParts } from "../subagent-work-log";
 import type { ArtifactInteractionStore } from "../stores/ArtifactInteractionStore";
 import type { ChatStore } from "../stores/ChatStore";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
@@ -495,11 +496,13 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   part,
   behavior,
   workLogItem = false,
+  subagentSpawnPart,
 }: {
   part: UiPart;
   behavior: CanonicalTranscriptBehavior;
   /** True when rendered inside a work log, so item expansion follows the global mode. */
   workLogItem?: boolean;
+  subagentSpawnPart?: Extract<UiPart, { kind: "tool" }>;
 }) {
   if (part.kind === "text")
     return part.role === "assistant" ? (
@@ -543,7 +546,14 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
       <Tool
         part={part}
         onOpenFile={behavior.openFileInEditor}
-        timer={<ToolRunTimer store={behavior.store} partId={part.id} />}
+        timer={
+          <ToolRunTimer
+            store={behavior.store}
+            partId={part.id}
+            startPartId={subagentSpawnPart?.id}
+          />
+        }
+        subagentSpawnPart={subagentSpawnPart}
         expansion={
           workLogItem
             ? {
@@ -593,6 +603,7 @@ function TranscriptPart(props: {
   part: UiPart;
   behavior: CanonicalTranscriptBehavior;
   workLogItem?: boolean;
+  subagentSpawnPart?: Extract<UiPart, { kind: "tool" }>;
 }) {
   return (
     <div className="transcript-part" data-part-id={props.part.id}>
@@ -649,7 +660,10 @@ const ActivityGroup = observer(function ActivityGroup({
   const open = behavior.store.workLogsExpansion !== "collapsed";
   const logRef = useRef<HTMLDivElement>(null);
   const logIsAtBottomRef = useRef(true);
-  const tools = parts.filter((part) => part.kind === "tool").length;
+  const workLogItems = combineSubagentWorkLogParts(parts);
+  const tools = workLogItems.filter(
+    (part) => part.kind === "tool" || part.kind === "subagent-work-log",
+  ).length;
   const reasoningParts = parts.filter(
     (part): part is Extract<UiPart, { kind: "reasoning" }> => part.kind === "reasoning",
   );
@@ -755,9 +769,19 @@ const ActivityGroup = observer(function ActivityGroup({
               onOpenFile={behavior.openFileInEditor}
             />
           ) : (
-            parts.map((part) => (
-              <TranscriptPart key={part.id} part={part} behavior={behavior} workLogItem />
-            ))
+            workLogItems.map((item) =>
+              item.kind === "subagent-work-log" ? (
+                <TranscriptPart
+                  key={item.id}
+                  part={item.result}
+                  subagentSpawnPart={item.spawn}
+                  behavior={behavior}
+                  workLogItem
+                />
+              ) : (
+                <TranscriptPart key={item.id} part={item} behavior={behavior} workLogItem />
+              ),
+            )
           )}
         </div>
       )}

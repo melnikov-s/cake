@@ -31,13 +31,15 @@ export class RendererErrorBoundary extends Component<
     return { error };
   }
 
-  componentDidCatch(_error: Error, info: ErrorInfo) {
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    const details = errorDetails(error, info.componentStack ?? undefined);
+    console.error("[cake] Renderer crashed:", details);
     this.setState({ componentStack: info.componentStack ?? undefined });
     if (typeof __CAKE_CUSTOMIZATION_REVISION__ !== "undefined" && __CAKE_CUSTOMIZATION_REVISION__) {
       void window.cake?.request({
         type: "customization-runtime-failed",
         revision: __CAKE_CUSTOMIZATION_REVISION__,
-        message: errorDetails(_error, info.componentStack ?? undefined),
+        message: details,
       });
     }
   }

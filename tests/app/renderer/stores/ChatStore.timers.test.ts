@@ -57,6 +57,23 @@ describe("ChatStore work log timers", () => {
     store[Symbol.dispose]();
   });
 
+  it("reports one elapsed duration across a combined spawn and wait protocol", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    let parts: UiPart[] = [toolPart("spawn", "running")];
+    const store = createChatStore(() => parts);
+
+    vi.advanceTimersByTime(1_000);
+    parts = [toolPart("spawn", "success"), toolPart("wait", "running")];
+    store["syncWorkLogTimers"]();
+    vi.advanceTimersByTime(1_500);
+    parts = [toolPart("spawn", "success"), toolPart("wait", "success")];
+    store["syncWorkLogTimers"]();
+
+    expect(store.workLogElapsedMsRange("spawn", "wait")).toBe(2_500);
+    store[Symbol.dispose]();
+  });
+
   it("never reports elapsed time for tools that were already finished when observed", () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000_000);

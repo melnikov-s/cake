@@ -48,6 +48,10 @@ describe("RendererErrorBoundary", () => {
     );
     expect(container.querySelector("pre")?.textContent).toContain("Maximum update depth exceeded");
     expect(container.querySelector("pre")?.textContent).toContain("React component stack");
+    expect(consoleError).toHaveBeenCalledWith(
+      "[cake] Renderer crashed:",
+      expect.stringContaining("Maximum update depth exceeded"),
+    );
 
     act(() => container.querySelector<HTMLButtonElement>("button")!.click());
     expect(onReload).toHaveBeenCalledOnce();
