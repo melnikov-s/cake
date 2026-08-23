@@ -340,14 +340,21 @@ export class PiWorkspaceDriver {
     void this.run(
       command.requestId,
       async () => {
-        const runtime =
-          command.type === "rename-session" ||
-          command.type === "prompt" ||
-          command.type === "compact-session" ||
-          command.type === "set-model"
-            ? (this.runtimes.get(command.sessionId) ??
-              (await this.createRuntime(false, command.sessionId)))
-            : this.runtimeFor(command.sessionId);
+        let runtime: CakeRuntime;
+        if (command.type === "prompt" && command.newSession) {
+          if (this.runtimes.has(command.sessionId))
+            throw new Error("That temporary session has already been started");
+          runtime = await this.createRuntime(true, command.sessionId);
+        } else {
+          runtime =
+            command.type === "rename-session" ||
+            command.type === "prompt" ||
+            command.type === "compact-session" ||
+            command.type === "set-model"
+              ? (this.runtimes.get(command.sessionId) ??
+                (await this.createRuntime(false, command.sessionId)))
+              : this.runtimeFor(command.sessionId);
+        }
         if (command.type === "abort") await this.agentAbort(command.sessionId);
         else if (command.type === "prompt") {
           await runtime.prompt(command.text, command.delivery, command.attachments);

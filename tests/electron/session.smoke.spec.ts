@@ -94,9 +94,17 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(page.getByLabel("Provider transport")).toHaveValue("auto");
     await expect(page.getByLabel("Default project trust")).toHaveValue("ask");
     await expect(page.getByLabel("Color theme")).toHaveValue("system");
+    const sessionCountBeforeNewChat = await page.locator(".session-item").count();
     await page.getByRole("button", { name: "New chat in project", exact: true }).click();
-    await expect(page.getByLabel("Message")).toBeVisible();
-    await expect(page.locator(".session-item.active")).toContainText("New chat");
+    const newChatComposer = page.getByLabel("Message");
+    await expect(newChatComposer).toBeVisible();
+    await expect(newChatComposer).toBeFocused();
+    await newChatComposer.pressSequentially("Immediate draft");
+    await expect(newChatComposer).toHaveValue("Immediate draft");
+    await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
+    await newChatComposer.fill("");
+    await expect(page.locator(".session-item")).toHaveCount(sessionCountBeforeNewChat);
+    await expect(page.locator(".workspace-header strong")).toHaveText("New chat");
     await expect(page.getByLabel("Back to chat")).toHaveCount(0);
     await page.evaluate(() => {
       const longTitle = `Investigate-${"very-long-session-name-".repeat(500)}`;

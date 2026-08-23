@@ -148,6 +148,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       projectName: (workspacePath) => this.projectCatalogStore.nameForPath(workspacePath),
       abort: () => this.projectWorkbenchStore.abort(),
       renameSession: (sessionId, name) => this.projectWorkbenchStore.renameSession(sessionId, name),
+      newSessionRequest: (sessionId) => this.projectWorkbenchStore.newSessionRequest(sessionId),
     });
   }
 

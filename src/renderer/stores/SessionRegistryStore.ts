@@ -23,6 +23,7 @@ export interface SessionRegistryStoreProps {
   projectName(workspacePath: string): string;
   abort(): Promise<void>;
   renameSession(sessionId: string, name: string): Promise<void>;
+  newSessionRequest?(sessionId: string): { path: string } | undefined;
 }
 
 /** Owns the keyed collection of loaded per-session Store instances for a window. */
@@ -31,6 +32,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   // Empty Pi sessions have no catalog entry, so retain their identity by project
   // until the first persisted prompt makes them discoverable.
   private readonly pendingNewSessionIdsByWorkspace: Record<string, string> = observable({});
+  private readonly temporarySessionIds: Set<string> = observable(new Set<string>());
   private readonly sessionWorkspacePaths = new Map<string, string>();
   private readonly pendingPartsBySession = new Map<string, Map<string, UiPart | null>>();
   private readonly pendingStreamingBySession = new Map<string, boolean>();
@@ -54,6 +56,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         projectName: () => this.props.projectName(target.workspacePath),
         abort: () => this.props.abort(),
         renameSession: (name) => this.props.renameSession(target.sessionId, name),
+        newSessionRequest: () => this.props.newSessionRequest?.(target.sessionId),
       }),
     );
   }
@@ -95,6 +98,31 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     this.pendingNewSessionIdsByWorkspace[workspacePath] = sessionId;
   }
 
+  prepareNewSession(workspacePath: string, sessionId: string) {
+    this.rememberSessionLocation(sessionId, workspacePath);
+    const session = this.ensure(sessionId);
+    session.markHydrated();
+    this.temporarySessionIds.add(sessionId);
+    this.rememberNewSession(workspacePath, sessionId);
+    return session;
+  }
+
+  isTemporarySession(sessionId: string) {
+    return this.temporarySessionIds.has(sessionId);
+  }
+
+  discardNewSession(workspacePath: string, sessionId: string) {
+    if (this.pendingNewSessionIdsByWorkspace[workspacePath] === sessionId)
+      delete this.pendingNewSessionIdsByWorkspace[workspacePath];
+    const index = this.targets.findIndex((target) => target.sessionId === sessionId);
+    if (index >= 0) this.targets.splice(index, 1);
+    this.temporarySessionIds.delete(sessionId);
+    this.sessionWorkspacePaths.delete(sessionId);
+    this.pendingPartsBySession.delete(sessionId);
+    this.pendingStreamingBySession.delete(sessionId);
+    this.pendingArtifactsBySession.delete(sessionId);
+  }
+
   pendingNewSessionDrafts() {
     const drafts: Record<string, string> = {};
     for (const workspacePath of Object.keys(this.pendingNewSessionIdsByWorkspace)) {
@@ -105,6 +133,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   }
 
   upsert(snapshot: SessionSnapshot) {
+    this.temporarySessionIds.delete(snapshot.sessionId);
     this.rememberSessionLocation(snapshot.sessionId, snapshot.workspacePath);
     const session = this.ensure(snapshot.sessionId);
     applySnapshot(session.model, toSessionSnapshot(snapshot));

@@ -541,10 +541,14 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   const requestedSession = options.sessionId
     ? availableSessions.find((item) => item.id === options.sessionId)
     : undefined;
-  if (options.sessionId && !requestedSession && !directSession)
+  if (options.sessionId && !options.newSession && !requestedSession && !directSession)
     throw new Error("That session is no longer available");
   const sessionManager = options.newSession
-    ? SessionManager.create(options.cwd, sessionDir)
+    ? SessionManager.create(
+        options.cwd,
+        sessionDir,
+        options.sessionId ? { id: options.sessionId } : undefined,
+      )
     : (directSession ??
       (requestedSession
         ? SessionManager.open(requestedSession.path, sessionDir, options.cwd)

@@ -408,6 +408,9 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // Keep renderer IPC and React commits current while the window is occluded.
+      // Otherwise Chromium throttles streaming updates and flushes a visible backlog on focus.
+      backgroundThrottling: false,
     },
   } as const;
   const window = new BrowserWindow({
@@ -1469,7 +1472,9 @@ async function handleCakeRequest(
   const path =
     request.type === "open-workspace" || request.type === "inspect-workspace"
       ? request.path
-      : await resolveSessionWorkspacePath(request.sessionId);
+      : request.type === "prompt" && request.newSession
+        ? request.newSession.path
+        : await resolveSessionWorkspacePath(request.sessionId);
   if (!allowedProjectPaths.has(path)) throw new Error("Project path was not selected by the user");
   if (request.type === "repair-inline-widget") {
     const repaired = await runInlineWidgetRepair({
@@ -1547,10 +1552,12 @@ async function handleCakeRequest(
     broadcast({ type: "review-thread-updated", thread });
     return desktopResponseSchema.parse({ type: "review-thread-saved", thread });
   }
-  if (request.type === "open-workspace") {
+  if (request.type === "open-workspace" || (request.type === "prompt" && request.newSession)) {
     if (inspectWorkspace(path).trustRequired && !applicationModel.isProjectTrusted(path)) {
       throw new Error("Project-local executable resources have not been trusted by the user");
     }
+  }
+  if (request.type === "open-workspace") {
     clearPendingTrustRequests(event.sender.id);
     const previous = windowWorkspaces.get(event.sender.id);
     windowWorkspaces.set(event.sender.id, path);

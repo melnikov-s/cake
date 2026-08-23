@@ -1450,16 +1450,19 @@ describe("S1 Pi runtime", () => {
     expect(fork.sessionFile.startsWith(`${sessionDir}/`)).toBe(true);
     expect(fork.sessionFile).toMatch(/\.jsonl$/);
 
+    const requestedSessionId = crypto.randomUUID();
     const isolated = await createCakeRuntime({
       cwd: directory,
       agentDir,
       sessionDir,
       trusted: false,
       newSession: true,
+      sessionId: requestedSessionId,
       requestUi: async () => undefined,
       onEvent: () => undefined,
     });
     runtimes.push(isolated);
+    expect(isolated.sessionId).toBe(requestedSessionId);
     expect(isolated.sessionId).not.toBe(second.sessionId);
     expect((await isolated.snapshot()).parts).toEqual([]);
   });

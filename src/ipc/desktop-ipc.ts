@@ -563,6 +563,11 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
       delivery: z.enum(["prompt", "steer", "follow-up"]),
       attachments: z.array(attachmentSchema).max(20),
       sessionId: z.string().max(256),
+      newSession: z
+        .object({
+          path: z.string().max(4_096),
+        })
+        .optional(),
     })
     .refine((request) => Boolean(request.text.trim() || request.attachments.length), {
       message: "A prompt requires text or an attachment",

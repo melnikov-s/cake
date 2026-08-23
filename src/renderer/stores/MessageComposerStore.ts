@@ -44,6 +44,7 @@ export interface MessageComposerStoreProps {
   renameSession(name: string): Promise<void>;
   operations: SessionOperationCoordinatorStore;
   operationOwner: string;
+  newSessionRequest?(): { path: string } | undefined;
 }
 
 /** Owns attachments, the local prompt queue, optimistic immediate prompts, and prompt delivery. */
@@ -319,7 +320,14 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     const operationId = this.props.operations.start(this.props.operationOwner);
     this.addPendingUserMessage(operationId, sessionId, text, attachments, delivery);
     try {
-      await this.props.client.submit({ operationId, sessionId, text, delivery, attachments });
+      await this.props.client.submit({
+        operationId,
+        sessionId,
+        text,
+        delivery,
+        attachments,
+        newSession: this.props.newSessionRequest?.(),
+      });
       return true;
     } catch (error) {
       this.removePendingUserMessage(operationId);

@@ -181,6 +181,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (!this.isActiveSession(sessionId) || this.activeOpenOperationId) return false;
     const session = this.sessionRegistry.findSession(sessionId);
     if (!session) return false;
+    if (this.sessionRegistry.isTemporarySession(sessionId)) return true;
     const command = session.chatStore.draft.trim().toLocaleLowerCase();
     const local =
       command === "/tree" ||
@@ -298,11 +299,45 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         pending.composerStore.requestFocus();
         return;
       }
+      if (this.sessionRegistry.isTemporarySession(pending.sessionId)) {
+        this.showCachedSession(pending.sessionId);
+        return;
+      }
       await this.openSession(pending.sessionId);
       return;
     }
-    if (path === this.projectPath) await this.openPath(path, true);
-    else await this.inspectPath(path, true);
+    const sessionId = crypto.randomUUID();
+    if (path === this.projectPath) this.showTemporarySession(path, sessionId);
+    else await this.inspectPath(path, true, sessionId);
+  }
+
+  newSessionRequest(sessionId: string) {
+    const session = this.sessionRegistry.findSession(sessionId);
+    if (!session || !this.sessionRegistry.isTemporarySession(sessionId)) return undefined;
+    return { path: session.workspacePath };
+  }
+
+  private showTemporarySession(path: string, sessionId: string) {
+    this.pendingOpen = undefined;
+    const previousSession = this.activeSession;
+    if (previousSession?.artifactInteractionStore.request)
+      void previousSession.artifactInteractionStore.respond(undefined, true);
+    const session = this.sessionRegistry.prepareNewSession(path, sessionId);
+    this.props.persistence().applySessionRestore(session, this.selectedSessionId, undefined, true);
+    this.projectPath = path;
+    this.selectedSessionId = sessionId;
+    this.markSessionRead(sessionId);
+    this.extensionUi.clear();
+    this.commandPane = undefined;
+    this.changesStore.reset();
+    this.browseStore.close();
+    this.embeddedEditorStore.close();
+    this.props.persistence().schedule();
+    session.composerStore.requestFocus();
+    void this.client
+      .registerProject(path, this.props.projects.nameFromPath(path))
+      .then((state) => this.applyApplicationState(state))
+      .catch((error) => this.setError(error));
   }
 
   async openSession(sessionId: string) {
@@ -383,7 +418,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       this.pendingOpen = undefined;
       return;
     }
-    await this.openPath(pending.path, pending.newSession, pending.sessionId);
+    if (pending.newSession)
+      this.showTemporarySession(pending.path, pending.sessionId ?? crypto.randomUUID());
+    else await this.openPath(pending.path, false, pending.sessionId);
   }
 
   private async openPath(path: string, newSession = false, sessionId?: string) {
@@ -559,8 +596,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       // Associate the hidden worktree workspace with its project immediately so
       // every surface presents it under the project's identity from the start.
       this.props.catalog.noteManagedWorktree(record.worktreePath, record.projectPath);
-      if (path === this.projectPath) await this.openPath(record.worktreePath, true);
-      else await this.inspectPath(record.worktreePath, true);
+      const sessionId = crypto.randomUUID();
+      if (path === this.projectPath) this.showTemporarySession(record.worktreePath, sessionId);
+      else await this.inspectPath(record.worktreePath, true, sessionId);
     } catch (error) {
       this.setError(error);
     } finally {
@@ -787,7 +825,11 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         return;
       this.piState = event.state;
       if (event.state === "failed" || event.state === "stopped") {
-        this.reopenAfterAgentRestart = Boolean(this.projectPath && this.session);
+        this.reopenAfterAgentRestart = Boolean(
+          this.projectPath &&
+          this.session &&
+          !this.sessionRegistry.isTemporarySession(this.session.sessionId),
+        );
         if (this.reopenAfterAgentRestart)
           this.draftAfterAgentRestart = this.activeSession?.chatStore.draft;
         this.props.operations.reset();
@@ -813,9 +855,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       const pending = this.pendingOpen;
       if (!pending || pending.inspectOperationId !== event.operationId) return;
       if (event.trustRequired) this.pendingTrustPath = event.path;
-      else {
-        void this.openPath(event.path, pending.newSession, pending.sessionId);
-      }
+      else if (pending.newSession)
+        this.showTemporarySession(event.path, pending.sessionId ?? crypto.randomUUID());
+      else void this.openPath(event.path, false, pending.sessionId);
       return;
     }
     if (

@@ -26,6 +26,54 @@ const snapshot: SessionSnapshot = {
 };
 
 describe("PiWorkspaceDriver", () => {
+  it("creates a temporary chat's Pi session only with its first prompt", async () => {
+    const events: DesktopEvent[] = [];
+    const runtime: CakeRuntime = {
+      sessionId: snapshot.sessionId,
+      sessionFile: snapshot.sessionFile,
+      snapshot: vi.fn(async () => snapshot),
+      prompt: vi.fn(async () => undefined),
+      compact: vi.fn(async () => undefined),
+      abort: vi.fn(async () => undefined),
+      setModel: vi.fn(async () => undefined),
+      setThinkingLevel: vi.fn(async () => undefined),
+      setFastMode: vi.fn(async () => undefined),
+      setPiSetting: vi.fn(async () => undefined),
+      recordReviewRun: vi.fn(),
+      login: vi.fn(async () => undefined),
+      logout: vi.fn(async () => undefined),
+      rename: vi.fn(async () => undefined),
+      fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      navigate: vi.fn(async () => undefined),
+      dispose: vi.fn(),
+    };
+    const createRuntime = vi.fn(async () => runtime);
+    const driver = new PiWorkspaceDriver({
+      ...piPaths,
+      workspacePath: "/project",
+      emit: (event) => events.push(event),
+      createRuntime,
+    });
+    const requestId = crypto.randomUUID();
+
+    driver.dispatch({
+      type: "prompt",
+      requestId,
+      sessionId: snapshot.sessionId,
+      text: "First message",
+      delivery: "prompt",
+      attachments: [],
+      newSession: { path: "/project" },
+    });
+
+    await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId }));
+    expect(createRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({ newSession: true, sessionId: snapshot.sessionId }),
+    );
+    expect(runtime.prompt).toHaveBeenCalledWith("First message", "prompt", []);
+    driver[Symbol.dispose]();
+  });
+
   it("coordinates concurrent attaches through one writable runtime", async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {

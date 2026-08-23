@@ -341,6 +341,7 @@ export interface DesktopClient {
     text: string;
     delivery: "prompt" | "steer" | "follow-up";
     attachments: Attachment[];
+    newSession?: { path: string };
   }): Promise<void>;
   abort(input: { operationId: string; sessionId: string }): Promise<void>;
   compactSession(input: {
@@ -1027,6 +1028,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         text: input.text,
         delivery: input.delivery,
         attachments: input.attachments,
+        newSession: input.newSession,
       }),
     submitReviewThread: (input) =>
       accept(bridge, {
