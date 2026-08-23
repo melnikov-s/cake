@@ -1103,6 +1103,52 @@ describe("S1 Pi runtime", () => {
     });
   });
 
+  it("keeps serving the command catalog while Pi reloads", async () => {
+    const directory = await createTemporaryDirectory();
+    const agentDir = join(directory, "agent");
+    const onEvent = vi.fn();
+    await mkdir(join(agentDir, "extensions"), { recursive: true });
+    await writeFile(
+      join(agentDir, "extensions", "catalog.ts"),
+      `export default function (pi) { pi.registerCommand("catalog-probe", { description: "probe", handler() {} }); }\n`,
+    );
+    // A slow-loading extension keeps Pi's reload in flight long enough for
+    // concurrent snapshots to land inside its context-invalidation window.
+    await writeFile(
+      join(agentDir, "extensions", "slow.ts"),
+      `export default async function () { await new Promise((resolve) => setTimeout(resolve, 400)); };\n`,
+    );
+    const runtime = await createCakeRuntime({
+      cwd: directory,
+      agentDir,
+      sessionDir: join(agentDir, "sessions"),
+      trusted: false,
+      requestUi: async () => undefined,
+      onEvent,
+    });
+    runtimes.push(runtime);
+
+    expect((await runtime.snapshot()).commands).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "catalog-probe" })]),
+    );
+
+    // Snapshots taken before, during, and after a Pi reload must all resolve
+    // and keep reporting extension commands. Reading the catalog through a
+    // captured extension ctx used to throw while the reload was in flight.
+    const reload = runtime.reload?.() ?? Promise.resolve();
+    const concurrentSnapshots = Array.from({ length: 5 }, () => runtime.snapshot());
+    await Promise.all([reload, ...concurrentSnapshots]);
+    // Snapshots taken while the reload is still in flight may legitimately
+    // report reloadPending, but they must never fail and must keep reporting
+    // extension commands.
+    for (const snapshot of await Promise.all(concurrentSnapshots)) {
+      expect(snapshot.commands).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: "catalog-probe" })]),
+      );
+    }
+    expect((await runtime.snapshot()).piSettings.reloadPending).toBe(false);
+  });
+
   it("creates and reopens an authoritative persistent Pi session", async () => {
     const directory = await createTemporaryDirectory();
     const agentDir = join(directory, "agent");

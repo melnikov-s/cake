@@ -459,14 +459,10 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   let fastMode = options.fastMode?.get() ?? false;
   let currentModel: FastModeModel | undefined;
   const fastModeEnabled = () => fastMode && supportsFastMode(currentModel);
-  let getPiCommands: () => SlashCommandInfo[] = () => [];
   interface RuntimeIdentity {
     sessionId?: string;
   }
   const runtimeIdentity: RuntimeIdentity = {};
-  const commandCatalogExtension: InlineExtension = (pi) => {
-    getPiCommands = () => pi.getCommands();
-  };
   const globalControl = options.globalControl;
   const resourceLoader = new DefaultResourceLoader(
     globalControl
@@ -478,7 +474,6 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           extensionFactories: [
             createFastModeExtension(fastModeEnabled),
             createGlobalControlExtension(globalControl),
-            commandCatalogExtension,
           ],
           appendSystemPromptOverride: (base) => [
             ...base,
@@ -522,7 +517,6 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
             ...(options.reviewContextPath
               ? [reviewContextExtension(options.reviewContextPath, () => runtimeIdentity.sessionId)]
               : []),
-            ...(options.auxiliary ? [] : [commandCatalogExtension]),
           ],
         },
   );
@@ -678,6 +672,33 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     );
   }
 
+  // Reads the live command catalog straight from Pi's current extension runner,
+  // session prompt templates, and loaded skills. Deliberately not routed through
+  // a captured extension ctx: those go stale across session reloads and would
+  // make every snapshot throw (see Pi's assertActive on captured contexts).
+  function piCommandCatalog(): SlashCommandInfo[] {
+    const extensionCommands = session.extensionRunner.getRegisteredCommands().map((command) => ({
+      name: command.invocationName,
+      description: command.description,
+      source: "extension" as const,
+      sourceInfo: command.sourceInfo,
+    }));
+    const templateCommands = session.promptTemplates.map((template) => ({
+      name: template.name,
+      description: template.description,
+      argumentHint: template.argumentHint,
+      source: "prompt" as const,
+      sourceInfo: template.sourceInfo,
+    }));
+    const skillCommands = resourceLoader.getSkills().skills.map((skill) => ({
+      name: `skill:${skill.name}`,
+      description: skill.description,
+      source: "skill" as const,
+      sourceInfo: skill.sourceInfo,
+    }));
+    return [...extensionCommands, ...templateCommands, ...skillCommands];
+  }
+
   async function makeSnapshot(): Promise<SessionSnapshot> {
     // Resolve every asynchronous projection first. Pi can continue emitting live
     // events while these are in flight, so reading mutable session state before
@@ -767,7 +788,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
             ...piBuiltinSlashCommands.filter(
               (command) => !options.slashCommands || options.slashCommands.includes(command.name),
             ),
-            ...getPiCommands(),
+            ...piCommandCatalog(),
           ].flatMap((command) => {
             const parsed = slashCommandSchema.safeParse(command);
             return parsed.success ? [parsed.data] : [];
