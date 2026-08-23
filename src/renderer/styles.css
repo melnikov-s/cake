@@ -467,33 +467,35 @@
 .project-row {
   display: flex;
   width: 100%;
-  height: 34px;
+  height: 32px;
   align-items: center;
-  color: inherit;
-  padding: 0 2px 0 5px;
+  gap: 4px;
+  padding: 0 4px;
   user-select: none;
+  color: var(--muted-foreground);
 }
 .project-label {
   display: flex;
   min-width: 0;
   flex: 1;
-  height: 30px;
+  height: 28px;
   align-items: center;
-  gap: 7px;
-  padding: 0 3px;
+  gap: 8px;
+  padding: 0 4px;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: inherit;
-  font-size: 13.5px;
+  font-size: 12px;
   font-weight: 500;
   text-align: left;
+  cursor: pointer;
 }
 .project-label:hover {
   color: var(--foreground);
 }
 .project-label:focus-visible {
-  outline: 2px solid color-mix(in oklab, var(--accent) 72%, transparent);
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 .project-label > span {
@@ -508,17 +510,21 @@
   color: color-mix(in oklab, var(--foreground) 80%, var(--muted-foreground));
 }
 .project-disclosure {
-  display: grid;
-  width: 14px;
-  min-width: 14px;
-  height: 30px;
+  display: flex;
+  width: 20px;
+  height: 20px;
   padding: 0;
   border: 0;
+  border-radius: 4px;
   background: transparent;
-  place-items: center;
-  overflow: visible;
+  align-items: center;
+  justify-content: center;
   color: var(--muted-foreground);
   transition: transform 150ms ease;
+  cursor: pointer;
+}
+.project-disclosure:hover {
+  color: var(--foreground);
 }
 .project-disclosure.collapsed {
   transform: rotate(-90deg);
@@ -531,190 +537,164 @@
   height: 12px;
 }
 .project-add {
+  display: flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--muted-foreground);
   opacity: 0;
+  transition:
+    opacity 150ms ease,
+    background 150ms ease;
 }
 .project-row:hover .project-add,
 .project-add:focus-visible {
   opacity: 1;
 }
-.session-row {
-  position: relative;
-  display: flex;
-  width: calc(100% - 25px);
-  min-width: 0;
-  min-height: 31px;
-  align-items: center;
-  margin-left: 25px;
-  padding: 6px 8px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: color-mix(in oklab, var(--foreground) 86%, var(--muted-foreground));
-  font-size: 12.5px;
-  line-height: 1.25;
-  text-align: left;
-}
-.session-row .session-title {
-  display: block;
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.session-row .session-time {
-  width: 58px;
-  flex: 0 0 58px;
-  color: var(--muted-foreground);
-  font-size: 10px;
-  font-weight: 450;
-  text-align: right;
-  white-space: nowrap;
-}
-.session-meta {
-  display: flex;
-  width: 77px;
-  flex: 0 0 77px;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-left: 8px;
-}
-.session-time-slot {
-  display: flex;
-  width: 58px;
-  flex: 0 0 58px;
-  align-items: center;
-  justify-content: flex-end;
-}
-.session-time-replaceable {
-  transition: opacity 100ms ease;
-}
-.session-status-slot {
-  display: grid;
-  width: 11px;
-  flex: 0 0 11px;
-  place-items: center;
-}
-.session-row:hover {
+.project-add:hover {
   background: var(--sidebar-hover);
   color: var(--foreground);
 }
-.session-row .session-status {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 7px;
-  border-radius: 50%;
-}
-.session-row .session-status-running {
-  background: var(--accent);
-  animation: status-pulse 1.6s ease-in-out infinite;
-}
-.session-row .session-status-unread {
-  background: oklch(0.7 0.14 155);
-  box-shadow: 0 0 0 2px color-mix(in oklab, oklch(0.7 0.14 155) 20%, transparent);
-}
-.session-row .session-review-count {
-  width: auto;
-  flex: 0 0 auto;
-  margin-left: 7px;
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--accent) 16%, transparent);
-  color: var(--accent);
-  font: 700 9px var(--font-mono);
-  white-space: nowrap;
-}
+
 .session-item {
   position: relative;
   display: flex;
+  height: 30px;
+  width: 100%;
   align-items: center;
+  border-radius: 6px;
+  font-size: 12px;
+  user-select: none;
+  color: var(--muted-foreground);
+  transition:
+    background 100ms ease,
+    color 100ms ease;
+}
+.session-item:hover {
+  background: var(--sidebar-hover);
+  color: var(--foreground);
+}
+.session-item.active {
+  background: var(--sidebar-active);
+  color: var(--foreground);
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 .session-rename-input {
-  width: calc(100% - 25px);
-  min-width: 0;
-  min-height: 31px;
-  margin-left: 25px;
-  padding: 6px 8px;
-  border: 1px solid color-mix(in oklab, var(--accent) 40%, var(--border));
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in oklab, var(--accent) 50%, transparent);
   border-radius: 6px;
   background: var(--background);
   color: var(--foreground);
-  font-size: 12.5px;
-  line-height: 1.25;
+  font-size: 12px;
+  outline: none;
 }
-.session-item .session-row {
-  width: calc(100% - 25px);
+.session-rename-input:focus {
+  box-shadow: 0 0 0 1px var(--accent);
 }
-.session-item:hover .session-row {
-  padding-right: 36px;
-}
-.session-item.active .session-row {
-  background: var(--sidebar-active);
-  color: var(--foreground);
-  font-weight: 650;
-  box-shadow:
-    inset 3px 0 0 var(--accent),
-    inset 0 0 0 1px color-mix(in oklab, var(--accent) 18%, transparent);
-}
-.session-item.active .session-row:hover {
-  background: color-mix(in oklab, var(--sidebar-active) 88%, var(--accent));
-}
-.session-item.has-session-action .session-row {
-  padding-right: 36px;
-}
-.session-resolve-action {
-  position: absolute;
-  z-index: 1;
-  right: 4px;
-  display: grid;
-  width: 26px;
-  height: 25px;
-  place-items: center;
+.session-row {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  align-items: center;
+  padding-left: 8px;
+  padding-right: 4px;
   border: 0;
-  border-radius: 6px;
   background: transparent;
-  color: var(--muted-foreground);
-  opacity: 0;
-  pointer-events: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
-.session-item:hover .session-resolve-action,
-.session-item.has-session-action .session-resolve-action,
-.session-resolve-action:focus-visible {
-  opacity: 1;
-  pointer-events: auto;
+.session-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.session-meta {
+  position: relative;
+  display: flex;
+  width: 56px;
+  flex: 0 0 56px;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+.session-time {
+  font-size: 10px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+  transition: opacity 100ms ease;
 }
 .session-item:hover .session-time-replaceable {
   opacity: 0;
 }
+.session-status {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+}
+.session-status-running {
+  background: var(--accent);
+  animation: status-pulse 1.6s ease-in-out infinite;
+}
+.session-status-unread {
+  background: oklch(0.7 0.14 155);
+  box-shadow: 0 0 0 2px color-mix(in oklab, oklch(0.7 0.14 155) 20%, transparent);
+}
+.session-resolve-action {
+  display: flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--muted-foreground);
+  transition:
+    opacity 100ms ease,
+    background 100ms ease,
+    color 100ms ease;
+}
+.session-item:not(.active) .session-resolve-action {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  opacity: 0;
+}
+.session-item:hover .session-resolve-action,
+.session-resolve-action:focus-visible {
+  opacity: 1;
+}
 .session-resolve-action:hover {
-  background: color-mix(in oklab, var(--accent) 14%, var(--sidebar-hover));
+  background: var(--sidebar-hover);
   color: var(--foreground);
 }
-.session-resolve-action:focus-visible {
-  outline: 2px solid color-mix(in oklab, var(--accent) 72%, transparent);
-  outline-offset: 1px;
-}
-.session-resolve-action svg {
-  width: 14px;
-  height: 14px;
-}
 .session-more {
-  margin: 1px 0 2px 25px;
-  padding: 5px 8px;
+  padding: 4px 8px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 4px;
   background: transparent;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 100ms ease,
+    color 100ms ease;
 }
 .session-more:hover {
   background: var(--sidebar-hover);
   color: var(--foreground);
-}
-.session-more span {
-  margin-left: 3px;
-  opacity: 0.65;
 }
 .resolved-lane {
   margin-top: 17px;

@@ -1,4 +1,5 @@
 import { observer } from "r-state-tree/react";
+import { cn } from "../lib/utils";
 import { ChevronIcon, FolderIcon, PlusIcon } from "./ui/icons";
 import { IconButton } from "./ui/icon-button";
 import { SidebarSessionItem } from "./sidebar-session-item";
@@ -36,10 +37,17 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
   const visibleSessions = sessions.slice(0, store.sessionLimit(path, resolved));
   const empty = sessions.length === 0;
   return (
-    <div className={`project-group ${empty ? "project-group-empty" : ""}`}>
-      <div className="project-row" title={path}>
+    <div className={cn("project-group mb-3 last:mb-0", empty && "project-group-empty mb-1")}>
+      <div
+        className="project-row group/proj flex h-8 w-full items-center gap-1 px-1 select-none text-muted-foreground"
+        title={path}
+      >
         <IconButton
-          className={`project-disclosure ${collapsed ? "collapsed" : ""} ${empty ? "no-sessions" : ""}`}
+          className={cn(
+            "project-disclosure size-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-transform duration-150",
+            collapsed && "collapsed -rotate-90",
+            empty && "no-sessions invisible",
+          )}
           aria-expanded={!collapsed}
           tooltip={collapsed ? "Expand" : "Collapse"}
           ariaLabel={`${collapsed ? "Expand" : "Collapse"} ${projects.nameForPath(path)}${resolved ? " resolved" : ""}`}
@@ -48,7 +56,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           <ChevronIcon />
         </IconButton>
         <button
-          className="project-label"
+          className="project-label flex min-w-0 flex-1 items-center gap-2 h-7 px-1 rounded text-left text-xs font-medium text-inherit hover:text-foreground"
           type="button"
           aria-label={
             resolved
@@ -60,11 +68,11 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           }
         >
           <FolderIcon />
-          <span>{projects.nameForPath(path)}</span>
+          <span className="truncate">{projects.nameForPath(path)}</span>
         </button>
         {!resolved && (
           <IconButton
-            className="project-add"
+            className="project-add size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity"
             tooltip="New chat"
             ariaLabel={`New chat in ${projects.nameFromPath(path)}`}
             onClick={() => onCreateSession(path)}
@@ -73,22 +81,29 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           </IconButton>
         )}
       </div>
-      {!collapsed &&
-        visibleSessions.map((session) => (
-          <SidebarSessionItem
-            key={session.id}
-            store={store}
-            chat={chat}
-            shell={shell}
-            session={session}
-            resolved={resolved}
-            onOpen={onOpenSession}
-          />
-        ))}
-      {!collapsed && sessions.length > visibleSessions.length && (
-        <button className="session-more" onClick={() => store.showMoreSessions(path, resolved)}>
-          Show more
-        </button>
+      {!collapsed && (
+        <div className="flex flex-col pl-5 space-y-0.5 mt-0.5">
+          {visibleSessions.map((session) => (
+            <SidebarSessionItem
+              key={session.id}
+              store={store}
+              chat={chat}
+              shell={shell}
+              session={session}
+              resolved={resolved}
+              onOpen={onOpenSession}
+            />
+          ))}
+          {sessions.length > visibleSessions.length && (
+            <button
+              type="button"
+              className="session-more text-left text-[11px] text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-sidebar-hover transition-colors"
+              onClick={() => store.showMoreSessions(path, resolved)}
+            >
+              Show more
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

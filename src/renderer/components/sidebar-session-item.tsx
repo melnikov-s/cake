@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { GlobalSessionSummary } from "../../ipc/session-contract";
+import { cn } from "../lib/utils";
 import { ContextMenu } from "./ui/context-menu";
 import { IconButton } from "./ui/icon-button";
 import { ResolveIcon, RestoreIcon } from "./ui/icons";
@@ -46,11 +47,18 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   return (
     <div
       data-session-id={session.id}
-      className={`session-item ${selected && canResolve ? "has-session-action" : ""} ${selected ? "active" : ""}`}
+      className={cn(
+        "session-item group relative flex h-7.5 w-full items-center rounded-md text-xs select-none transition-colors",
+        selected
+          ? "active bg-sidebar-active text-foreground font-semibold shadow-[inset_3px_0_0_var(--accent)]"
+          : "text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
+        canResolve && "can-resolve",
+        selected && canResolve && "has-session-action",
+      )}
     >
       {renamingValue !== null ? (
         <input
-          className="session-rename-input"
+          className="session-rename-input w-full h-7 rounded-md border border-accent/50 bg-background px-2 text-xs text-foreground outline-none focus:ring-1 focus:ring-accent"
           aria-label="Session name"
           value={renamingValue}
           autoFocus
@@ -62,55 +70,70 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
           }}
         />
       ) : (
-        <button
-          className="session-row"
-          aria-current={selected ? "page" : undefined}
-          onClick={() => onOpen(session.id)}
-          onContextMenu={(event) => {
-            event.preventDefault();
-            setMenu({ x: event.clientX, y: event.clientY });
-          }}
-        >
-          <span className="session-title" title={session.title}>
-            {session.title}
-          </span>
-          <span className="session-meta">
-            <span className="session-time-slot">
-              {!selected && !running && !unread ? (
-                <time
-                  className={`session-time ${canResolve ? "session-time-replaceable" : ""}`}
-                  dateTime={session.modified}
-                  title={new Date(session.modified).toLocaleString()}
-                >
-                  {store.sessionActivityTime(session.modified)}
-                </time>
-              ) : null}
+        <div className="flex h-full w-full min-w-0 items-center justify-between">
+          <button
+            type="button"
+            className="session-row flex min-w-0 flex-1 items-center h-full pl-2 pr-1 text-left bg-transparent border-0 cursor-pointer text-inherit"
+            aria-current={selected ? "page" : undefined}
+            onClick={() => onOpen(session.id)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              setMenu({ x: event.clientX, y: event.clientY });
+            }}
+          >
+            <span className="session-title min-w-0 flex-1 truncate text-left" title={session.title}>
+              {session.title}
             </span>
-            <span className="session-status-slot">
-              {activity && (
-                <i
-                  className={`session-status session-status-${activity}`}
-                  role="img"
-                  aria-label={activityLabel}
-                  title={activityLabel}
-                />
-              )}
-            </span>
-          </span>
-        </button>
-      )}
-      {canResolve && renamingValue === null && (
-        <IconButton
-          className="session-resolve-action"
-          tooltip={resolved ? "Restore" : "Resolve"}
-          ariaLabel={`${resolved ? "Restore" : "Resolve"} ${session.title}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            void store.setSessionResolved(session.id, !resolved);
-          }}
-        >
-          {resolved ? <RestoreIcon /> : <ResolveIcon />}
-        </IconButton>
+          </button>
+          <div className="session-meta relative w-14 shrink-0 flex items-center justify-center h-full">
+            {activity ? (
+              <i
+                className={cn(
+                  "session-status size-2 rounded-full shrink-0",
+                  activity === "running" && "session-status-running bg-accent animate-pulse",
+                  activity === "unread" &&
+                    "session-status-unread bg-emerald-500 ring-2 ring-emerald-500/20",
+                )}
+                role="img"
+                aria-label={activityLabel}
+                title={activityLabel}
+              />
+            ) : (
+              <>
+                {!selected && (
+                  <time
+                    className={cn(
+                      "session-time text-[10px] text-muted-foreground tabular-nums text-center whitespace-nowrap transition-opacity",
+                      canResolve && "session-time-replaceable group-hover:opacity-0",
+                    )}
+                    dateTime={session.modified}
+                    title={new Date(session.modified).toLocaleString()}
+                  >
+                    {store.sessionActivityTime(session.modified)}
+                  </time>
+                )}
+                {canResolve && (
+                  <IconButton
+                    className={cn(
+                      "session-resolve-action size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover transition-opacity",
+                      selected
+                        ? "opacity-100"
+                        : "absolute inset-0 m-auto opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+                    )}
+                    tooltip={resolved ? "Restore" : "Resolve"}
+                    ariaLabel={`${resolved ? "Restore" : "Resolve"} ${session.title}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void store.setSessionResolved(session.id, !resolved);
+                    }}
+                  >
+                    {resolved ? <RestoreIcon /> : <ResolveIcon />}
+                  </IconButton>
+                )}
+              </>
+            )}
+          </div>
+        </div>
       )}
       {menu && (
         <ContextMenu
