@@ -367,16 +367,18 @@ export const App = observer(function App() {
                       <TreeIcon />
                       <span>Tree</span>
                     </button>
-                    <button
-                      className="header-pane-toggle"
-                      type="button"
-                      aria-label="Open workspace changes"
-                      onClick={() => void store.openSessionChanges()}
-                    >
-                      <ChangesIcon />
-                      <span>Changes</span>
-                      {changes.workingTreeCount > 0 && <b>{changes.workingTreeCount}</b>}
-                    </button>
+                    {store.activeSessionExists && (
+                      <button
+                        className="header-pane-toggle"
+                        type="button"
+                        aria-label="Open workspace changes"
+                        onClick={() => void store.openSessionChanges()}
+                      >
+                        <ChangesIcon />
+                        <span>Changes</span>
+                        {changes.workingTreeCount > 0 && <b>{changes.workingTreeCount}</b>}
+                      </button>
+                    )}
                     <WorkLogControls store={session.chatStore} />
                   </div>
                   <div className="plugin-slot plugin-slot-project-session-header">

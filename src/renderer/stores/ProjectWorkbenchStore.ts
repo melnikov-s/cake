@@ -211,6 +211,12 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return this.activeSession?.model;
   }
 
+  /** False for a pending draft session; Pi only lists it after its first prompt. */
+  get activeSessionExists(): boolean {
+    const sessionId = this.selectedSessionId;
+    return sessionId !== undefined && !this.sessionRegistry.isTemporarySession(sessionId);
+  }
+
   get sessionTitle() {
     const context = this.sessionContext();
     const title = context ? this.props.catalog.find(context.sessionId)?.title : undefined;
@@ -527,6 +533,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   async openSessionChanges(threadId?: string) {
+    if (!this.activeSessionExists) return;
     this.commandPaneStore.dismiss();
     const thread = threadId
       ? this.reviews.threads.find((item) => item.id === threadId)
