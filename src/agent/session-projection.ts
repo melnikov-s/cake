@@ -271,33 +271,52 @@ function partsFromMessage(
   return [];
 }
 
-export function createLiveMessageProjector() {
+export function createLiveMessageProjector(options: { deferProviderErrors?: boolean } = {}) {
   let activeStreamId: string | undefined;
   let streamIndex = 0;
   let userIndex = 0;
+  let activeAssistantPartIds = new Set<string>();
+  let lastAssistantPartIds: string[] = [];
 
   const nextStreamId = () => `stream-${++streamIndex}`;
-
-  return (event: AgentSessionEvent): UiPart[] => {
+  const project = (event: AgentSessionEvent): UiPart[] => {
     if (event.type === "message_start" && event.message.role === "user") {
       return partsFromMessage(event.message, `live-user-${++userIndex}`);
     }
     if (event.type === "message_start" && event.message.role === "assistant") {
       activeStreamId = nextStreamId();
+      activeAssistantPartIds = new Set();
       return [];
     }
     if (event.type === "message_update") {
       activeStreamId ??= nextStreamId();
-      return partsFromMessage(event.message, activeStreamId, true);
+      const parts = partsFromMessage(event.message, activeStreamId, true);
+      for (const part of parts) activeAssistantPartIds.add(part.id);
+      return parts;
     }
     if (event.type === "message_end" && event.message.role === "assistant") {
       activeStreamId ??= nextStreamId();
-      const parts = partsFromMessage(event.message, activeStreamId);
+      // Pi decides whether an error will retry immediately after message_end.
+      // Defer its final live projection until the settled snapshot so an
+      // intermediate failure never flashes in the transcript.
+      const parts =
+        options.deferProviderErrors && event.message.stopReason === "error"
+          ? []
+          : partsFromMessage(event.message, activeStreamId);
+      for (const part of parts) activeAssistantPartIds.add(part.id);
+      lastAssistantPartIds = [...activeAssistantPartIds];
+      activeAssistantPartIds = new Set();
       activeStreamId = undefined;
       return parts;
     }
     return [];
   };
+  project.takeLastAssistantPartIds = () => {
+    const partIds = lastAssistantPartIds;
+    lastAssistantPartIds = [];
+    return partIds;
+  };
+  return project;
 }
 
 export function reviewRunPart(run: ReviewRunEntry): Extract<UiPart, { kind: "review-run" }> {
@@ -383,8 +402,25 @@ export function projectSessionEntries(
   }
   for (const run of compactedRuns.values()) append(reviewRunPart(run));
 
+  const intermediateRetryErrors = new Set<string>();
+  let nextContextRole: string | undefined;
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (!entry) continue;
+    if (
+      entry.type === "message" &&
+      entry.message.role === "assistant" &&
+      entry.message.stopReason === "error" &&
+      nextContextRole === "assistant"
+    )
+      intermediateRetryErrors.add(entry.id);
+    if (entry.type === "message") nextContextRole = entry.message.role;
+    else if (entry.type === "custom_message") nextContextRole = "custom";
+  }
+
   for (const entry of entries) {
     if (entry.type === "message") {
+      if (intermediateRetryErrors.has(entry.id)) continue;
       for (const part of partsFromMessage(entry.message, `entry-${entry.id}`, false, entry.id))
         append(part);
       continue;

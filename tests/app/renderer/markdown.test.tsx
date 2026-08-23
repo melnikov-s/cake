@@ -8,6 +8,8 @@ import { Streamdown } from "streamdown";
 import { fencedCode, Markdown } from "../../../src/renderer/components/ai-elements/markdown";
 
 vi.mock("streamdown", () => ({
+  defaultRehypePlugins: {},
+  parseMarkdownIntoBlocks: (markdown: string) => [markdown],
   Streamdown: vi.fn(({ children }: { children: string }) => <div>{children}</div>),
 }));
 
@@ -28,7 +30,7 @@ describe("Markdown", () => {
     container.remove();
   });
 
-  it("keeps Streamdown's unused static block parser stable across transcript updates", () => {
+  it("keeps Streamdown's static block parser stable across transcript updates", () => {
     act(() => root.render(<Markdown>First</Markdown>));
     const firstProps = vi.mocked(Streamdown).mock.calls.at(-1)![0];
 
@@ -37,10 +39,10 @@ describe("Markdown", () => {
 
     expect(secondProps).toMatchObject({ isAnimating: false, mode: "static", skipHtml: true });
     expect(secondProps.parseMarkdownIntoBlocksFn).toBe(firstProps.parseMarkdownIntoBlocksFn);
-    const firstBlocks = secondProps.parseMarkdownIntoBlocksFn?.("first");
-    const secondBlocks = secondProps.parseMarkdownIntoBlocksFn?.("changing content");
-    expect(secondBlocks).toBe(firstBlocks);
-    expect(secondBlocks).toEqual([]);
+    expect(secondProps.parseMarkdownIntoBlocksFn?.("first")).toEqual(["first"]);
+    expect(secondProps.parseMarkdownIntoBlocksFn?.("changing content")).toEqual([
+      "changing content",
+    ]);
   });
 
   it("creates a safe highlighted fence even when source contains backticks", () => {
@@ -51,7 +53,12 @@ describe("Markdown", () => {
 
   it("opens path-like links through onOpenFilePath and leaves web links external", () => {
     const onOpenFilePath = vi.fn();
-    act(() => root.render(<Markdown onOpenFilePath={onOpenFilePath}>text</Markdown>));
+    act(() =>
+      root.render(<Markdown onOpenFilePath={onOpenFilePath}>[file](src/modelMeta.ts)</Markdown>),
+    );
+    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
+      "[file](/__cake_workspace__/src/modelMeta.ts)",
+    );
     const anchorComponent = () => vi.mocked(Streamdown).mock.calls.at(-1)![0].components!.a!;
 
     const renderAnchor = (props: Record<string, unknown>) => {

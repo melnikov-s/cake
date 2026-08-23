@@ -39,8 +39,10 @@ export function applyPiSetting(
       ...settingsManager.getWarnings(),
       anthropicExtraUsage: update.value,
     });
-  else if (update.key === "retryEnabled") settingsManager.setRetryEnabled(update.value);
-  else if (update.key === "shellPath")
+  else if (update.key === "retryEnabled") {
+    if (!update.value) session.abortRetry();
+    settingsManager.setRetryEnabled(update.value);
+  } else if (update.key === "shellPath")
     settingsManager.setShellPath(update.value.trim() || undefined);
   else if (update.key === "shellCommandPrefix")
     settingsManager.setShellCommandPrefix(update.value.trim() || undefined);

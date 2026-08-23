@@ -3,13 +3,33 @@ import type { ComponentProps } from "react";
 import { createCodePlugin } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { createMermaidPlugin } from "@streamdown/mermaid";
-import { Streamdown, type Components, type StreamdownProps } from "streamdown";
+import {
+  parseMarkdownIntoBlocks,
+  Streamdown,
+  type Components,
+  type StreamdownProps,
+} from "streamdown";
 import { cn } from "@/lib/utils";
 
 /** Matches web-style hrefs that must never be treated as workspace file paths. */
 const nonPathHref = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i;
+const workspacePathPrefix = "/__cake_workspace__/";
 
 type AnchorProps = ComponentProps<"a"> & { node?: unknown };
+
+/** Makes bare workspace paths parseable by Streamdown's hardened link policy. */
+function prepareWorkspaceMarkdown(markdown: string) {
+  return markdown.replace(/\]\(([^)\s]+)\)/g, (match, target: string) => {
+    if (
+      nonPathHref.test(target) ||
+      target.startsWith("/") ||
+      target.startsWith("./") ||
+      target.startsWith("../")
+    )
+      return match;
+    return `](${workspacePathPrefix}${target})`;
+  });
+}
 
 function externalAnchor(allProps: AnchorProps) {
   const props = { ...allProps };
@@ -22,9 +42,6 @@ const mermaid = createMermaidPlugin({ config: { securityLevel: "strict" } });
 // and other neutral tokens too faintly in light mode.
 const code = createCodePlugin({ themes: ["github-light-high-contrast", "github-dark"] });
 const plugins = { code, math, mermaid };
-const emptyStaticBlocks: string[] = [];
-const staticBlocks: NonNullable<StreamdownProps["parseMarkdownIntoBlocksFn"]> = () =>
-  emptyStaticBlocks;
 
 type MarkdownProps = Omit<
   StreamdownProps,
@@ -42,6 +59,7 @@ type MarkdownProps = Omit<
 };
 
 export function Markdown({ children, className, onOpenFilePath, ...props }: MarkdownProps) {
+  const source = onOpenFilePath ? prepareWorkspaceMarkdown(children) : children;
   const components = useMemo<Components>(() => {
     if (!onOpenFilePath) return { a: externalAnchor };
     const openFilePath = onOpenFilePath;
@@ -49,15 +67,20 @@ export function Markdown({ children, className, onOpenFilePath, ...props }: Mark
       a(allProps: AnchorProps) {
         const href = allProps.href;
         if (!href || nonPathHref.test(href)) return externalAnchor(allProps);
-        const props = { ...allProps };
+        const workspaceHref = href.startsWith(workspacePathPrefix)
+          ? href.slice(workspacePathPrefix.length)
+          : href.startsWith("./")
+            ? href.slice(2)
+            : href;
+        const props = { ...allProps, href: workspaceHref };
         delete props.node;
         return (
           <a
             {...props}
-            title={`Open ${href} in Browse`}
+            title={`Open ${workspaceHref} in Browse`}
             onClick={(event) => {
               event.preventDefault();
-              openFilePath(href);
+              openFilePath(workspaceHref);
             }}
           />
         );
@@ -78,15 +101,13 @@ export function Markdown({ children, className, onOpenFilePath, ...props }: Mark
           download: false,
         },
       }}
-      // Streamdown mirrors parsed blocks through passive state even in static mode. The static render path does not
-      // consume those blocks, so keep their identity stable and let Store updates drive the rendered source directly.
       isAnimating={false}
       mode="static"
-      parseMarkdownIntoBlocksFn={staticBlocks}
+      parseMarkdownIntoBlocksFn={parseMarkdownIntoBlocks}
       plugins={plugins}
       skipHtml
     >
-      {children}
+      {source}
     </Streamdown>
   );
 }

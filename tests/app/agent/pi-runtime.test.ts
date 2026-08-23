@@ -632,6 +632,47 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(afterTool[0]).toMatchObject({ id: "stream-2-text-0", text: "Here is the result." });
   });
 
+  it("defers live provider errors and exposes partial parts for retry cleanup", () => {
+    const project = createLiveMessageProjector({ deferProviderErrors: true });
+    const partial = {
+      role: "assistant",
+      content: [{ type: "text", text: "Partial" }],
+    };
+    const failed = {
+      ...partial,
+      stopReason: "error",
+      errorMessage: "503 Service Unavailable",
+    };
+
+    project({ type: "message_start", message: partial } as unknown as AgentSessionEvent);
+    const update = project({
+      type: "message_update",
+      message: partial,
+      assistantMessageEvent: { type: "text_delta", delta: "Partial" },
+    } as unknown as AgentSessionEvent);
+    const end = project({ type: "message_end", message: failed } as unknown as AgentSessionEvent);
+
+    expect(update).toEqual([expect.objectContaining({ id: "stream-1-text-0" })]);
+    expect(end).toEqual([]);
+    expect(project.takeLastAssistantPartIds()).toEqual(["stream-1-text-0"]);
+    expect(project.takeLastAssistantPartIds()).toEqual([]);
+  });
+
+  it("projects final provider errors by default for isolated consumers", () => {
+    const project = createLiveMessageProjector();
+    const failed = {
+      role: "assistant",
+      content: [],
+      stopReason: "error",
+      errorMessage: "503 Service Unavailable",
+    };
+
+    project({ type: "message_start", message: failed } as unknown as AgentSessionEvent);
+    expect(
+      project({ type: "message_end", message: failed } as unknown as AgentSessionEvent),
+    ).toEqual([expect.objectContaining({ kind: "notice", title: "Model request failed" })]);
+  });
+
   it("projects a consumed user message as soon as Pi starts it", () => {
     const project = createLiveMessageProjector();
     const parts = project({
@@ -684,6 +725,38 @@ describe("Pi 0.84.0 foundation contract", () => {
     ]);
     expect(projectQueuedMessages([], [])).toEqual([]);
     expect(projectQueuedMessages([], [""])).toEqual([]);
+  });
+
+  it("collapses persisted native retry errors to the final outcome", () => {
+    const assistant = (id: string, stopReason: "error" | "stop", errorMessage?: string) => ({
+      type: "message",
+      id,
+      parentId: null,
+      timestamp: new Date(0).toISOString(),
+      message: {
+        role: "assistant",
+        content: stopReason === "stop" ? [{ type: "text", text: "Recovered" }] : [],
+        stopReason,
+        errorMessage,
+      },
+    });
+
+    const recovered = projectSessionEntries([
+      assistant("error-1", "error", "503 Service Unavailable"),
+      assistant("error-2", "error", "503 Service Unavailable"),
+      assistant("success", "stop"),
+    ] as never);
+    expect(recovered).toEqual([
+      expect.objectContaining({ kind: "text", role: "assistant", text: "Recovered" }),
+    ]);
+
+    const exhausted = projectSessionEntries([
+      assistant("error-1", "error", "503 Service Unavailable"),
+      assistant("error-2", "error", "503 Service Unavailable"),
+    ] as never);
+    expect(exhausted).toEqual([
+      expect.objectContaining({ kind: "notice", title: "Model request failed" }),
+    ]);
   });
 
   it("projects bash tool calls as commands instead of JSON arguments", () => {
