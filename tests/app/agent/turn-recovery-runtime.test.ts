@@ -159,6 +159,70 @@ describe("bounded silent-turn recovery", () => {
     ).toBe(true);
   }, 10_000);
 
+  it("retries an empty 429 through Cake without persisting the failed attempt", async () => {
+    const directory = await createTemporaryDirectory();
+    const provider = await registerFixtureProvider(directory, (requestIndex, response) => {
+      if (requestIndex === 1) {
+        response.writeHead(429, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: { message: "429 Too Many Requests" } }));
+        return;
+      }
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.write(sseChunk({ role: "assistant", content: "Recovered from throttling" }));
+      response.write(sseChunk({}, "stop"));
+      response.end("data: [DONE]\n\n");
+    });
+    const { runtime, onEvent } = await createFixtureRuntime(directory);
+
+    await runtime.prompt("Do the thing", "prompt", []);
+
+    expect(provider.requestCount()).toBe(2);
+    expect(
+      onEvent.mock.calls.some(
+        ([event]) =>
+          event?.type === "part-updated" &&
+          event.part?.id === "active-retry" &&
+          event.part.title === "Retry 1/32",
+      ),
+    ).toBe(true);
+    const transcript = await readFile((await runtime.snapshot()).sessionFile, "utf8");
+    expect(transcript).toContain("Recovered from throttling");
+    expect(transcript).not.toContain("429 Too Many Requests");
+  });
+
+  it("shows the next retry time and lets Stop cancel the pending retry", async () => {
+    const directory = await createTemporaryDirectory();
+    const provider = await registerFixtureProvider(directory, (_requestIndex, response) => {
+      response.writeHead(429, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: { message: "429 Too Many Requests" } }));
+    });
+    const { runtime, onEvent } = await createFixtureRuntime(directory);
+
+    const prompt = runtime.prompt("Do the thing", "prompt", []);
+    await vi.waitFor(() =>
+      expect(
+        onEvent.mock.calls.some(
+          ([event]) =>
+            event?.type === "part-updated" &&
+            event.part?.id === "active-retry" &&
+            event.part.title === "Retry 1/32" &&
+            event.part.detail?.includes("Next retry in 1 second") &&
+            event.part.detail?.includes("Press Stop to cancel"),
+        ),
+      ).toBe(true),
+    );
+    await runtime.abort();
+    await prompt;
+
+    expect(provider.requestCount()).toBe(1);
+    expect(
+      onEvent.mock.calls.some(
+        ([event]) => event?.type === "part-removed" && event.partId === "active-retry",
+      ),
+    ).toBe(true);
+    expect((await runtime.snapshot()).streaming).toBe(false);
+  });
+
   it("stops after one hidden continuation and surfaces one stable failure", async () => {
     const directory = await createTemporaryDirectory();
     const provider = await registerFixtureProvider(directory, (_requestIndex, response) => {

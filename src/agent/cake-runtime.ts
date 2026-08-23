@@ -57,6 +57,7 @@ import type {
   ReviewParentContext,
 } from "./sidecar-runtime";
 import { assertSessionPath } from "./session-path";
+import { RateLimitRetryController } from "./rate-limit-retry";
 import { applyPiSetting } from "./settings-translation";
 import {
   cakePluginAuthoringSkillPath,
@@ -229,6 +230,22 @@ function isAlreadyProcessingError(error: unknown): boolean {
     error instanceof Error &&
     error.message.startsWith("Agent is already processing. Specify streamingBehavior")
   );
+}
+
+function retryDelayDetail(delayMs: number, errorMessage: string): string {
+  const seconds = Math.ceil(delayMs / 1_000);
+  const duration =
+    seconds < 60
+      ? `${seconds} second${seconds === 1 ? "" : "s"}`
+      : seconds < 3_600
+        ? `${Math.ceil(seconds / 60)} minute${seconds <= 60 ? "" : "s"}`
+        : `${Math.ceil(seconds / 3_600)} hour${seconds <= 3_600 ? "" : "s"}`;
+  const retryAt = new Date(Date.now() + delayMs).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+    second: delayMs < 60_000 ? "2-digit" : undefined,
+  });
+  return `${errorMessage}\nNext retry in ${duration}, at ${retryAt}. Press Stop to cancel.`;
 }
 
 function createFastModeExtension(isEnabled: () => boolean): InlineExtension {
@@ -546,6 +563,37 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   const cakeSessionId = session.sessionManager.getSessionId();
   currentModel = session.model;
   runtimeIdentity.sessionId = cakeSessionId;
+  let rateLimitRetryTurnDepth = 0;
+  const rateLimitRetries = new RateLimitRetryController({
+    enabled: () => rateLimitRetryTurnDepth > 0 && settingsManager.getRetryEnabled(),
+    onRetry: (event) =>
+      options.onEvent({
+        type: "part-updated",
+        sessionId: cakeSessionId,
+        part: {
+          id: "active-retry",
+          kind: "notice",
+          tone: "warning",
+          title: `Retry ${event.attempt}/${event.maxAttempts}`,
+          detail: retryDelayDetail(event.delayMs, event.errorMessage),
+        },
+      }),
+    onFinished: () =>
+      options.onEvent({
+        type: "part-removed",
+        sessionId: cakeSessionId,
+        partId: "active-retry",
+      }),
+  });
+  session.agent.streamFunction = rateLimitRetries.wrap(session.agent.streamFunction);
+  async function withRateLimitRetries<T>(operation: () => Promise<T>): Promise<T> {
+    rateLimitRetryTurnDepth += 1;
+    try {
+      return await operation();
+    } finally {
+      rateLimitRetryTurnDepth -= 1;
+    }
+  }
   let disposed = false;
   let turnRecoveryFailureDetail: string | undefined;
   let reloadRequested = 0;
@@ -960,13 +1008,15 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
 
   async function continueTurnHidden(content: string) {
     try {
-      await session.sendCustomMessage(
-        {
-          customType: "cake.turn-recovery",
-          content,
-          display: false,
-        },
-        { triggerTurn: true, deliverAs: "followUp" },
+      await withRateLimitRetries(() =>
+        session.sendCustomMessage(
+          {
+            customType: "cake.turn-recovery",
+            content,
+            display: false,
+          },
+          { triggerTurn: true, deliverAs: "followUp" },
+        ),
       );
       return true;
     } catch (error) {
@@ -1125,7 +1175,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           kind: "notice",
           tone: "warning",
           title: `Retry ${event.attempt}/${event.maxAttempts}`,
-          detail: event.errorMessage,
+          detail: retryDelayDetail(event.delayMs, event.errorMessage),
         },
       });
     }
@@ -1226,7 +1276,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         const images = imageContent(item.attachments);
         if (index === 0 && !session.isStreaming) {
           try {
-            await session.prompt(content, { images, source: "interactive" });
+            await withRateLimitRetries(() =>
+              session.prompt(content, { images, source: "interactive" }),
+            );
             continue;
           } catch (error) {
             // A turn may have started between the check and this call.
@@ -1314,7 +1366,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         await session.followUp(content, images);
       } else {
         try {
-          await session.prompt(content, { images, source: "interactive" });
+          await withRateLimitRetries(() =>
+            session.prompt(content, { images, source: "interactive" }),
+          );
         } catch (error) {
           // The turn may have started between the check and this call.
           if (!isAlreadyProcessingError(error)) throw error;
@@ -1326,6 +1380,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       userAbortRequested = true;
       turnRecoveryContinuations = 0;
       removeRecoveryNotice();
+      rateLimitRetries.cancel();
       return session.abort();
     },
     async setModel(provider, modelId) {
@@ -1352,6 +1407,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     },
     async setPiSetting(update) {
       applyPiSetting(settingsManager, session, update);
+      if (update.key === "retryEnabled" && !update.value) rateLimitRetries.cancel();
       await settingsManager.flush();
       await emitSnapshot();
     },
@@ -1490,6 +1546,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       if (disposed) return;
       disposed = true;
       sessionNamingController.abort();
+      rateLimitRetries.cancel();
       unsubscribe();
       const finish = () => {
         session.dispose();

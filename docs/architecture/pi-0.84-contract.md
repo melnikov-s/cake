@@ -8,6 +8,9 @@ exercise these public APIs directly:
 - `createAgentSession()` with an in-memory session and no enabled tools;
 - `AgentSession.subscribe()`, `bindExtensions()`, `prompt()`, session identity,
   and `dispose()`;
+- the public mutable `Agent.streamFunction` plus Pi AI's
+  `createAssistantMessageEventStream()` for Cake's adapter-level, abort-aware
+  empty-429 retry wrapper;
 - `ExtensionAPI.registerCommand()` and `sendMessage()`;
 - `ExtensionCommandContext.ui.confirm()` through a Cake-owned UI adapter;
 - `message_update` text deltas and displayed custom `message_end` events at the
