@@ -451,7 +451,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       const wasStreaming = previous?.streaming ?? false;
       this.sessionRegistry.upsert(event.snapshot);
       const session = this.sessionRegistry.findSession(event.snapshot.sessionId)!;
-      session.updateActivity(event.snapshot.streaming, wasStreaming);
+      session.updateActivity(session.model.streaming, wasStreaming);
       session.composerStore.reconcile(event.snapshot.sessionId);
       if (
         event.operationId ||
@@ -471,22 +471,18 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       return;
     }
     if (event.type === "part-updated") {
-      const session = this.sessionRegistry.findSession(event.sessionId);
-      session?.model.upsertPart(event.part);
+      const session = this.sessionRegistry.upsertPart(event.sessionId, event.part);
       session?.composerStore.reconcile(event.sessionId);
       return;
     }
     if (event.type === "part-removed") {
-      this.sessionRegistry.findModel(event.sessionId)?.removePart(event.partId);
+      this.sessionRegistry.removePart(event.sessionId, event.partId);
       return;
     }
     if (event.type === "streaming-changed") {
-      const session = this.sessionRegistry.findSession(event.sessionId);
-      const wasStreaming = session?.model.streaming ?? false;
-      session?.model.setStreaming(event.streaming);
-      if (session) {
-        session.updateActivity(event.streaming, wasStreaming);
-      }
+      const wasStreaming = this.sessionRegistry.findModel(event.sessionId)?.streaming ?? false;
+      const session = this.sessionRegistry.setStreaming(event.sessionId, event.streaming);
+      if (session) session.updateActivity(event.streaming, wasStreaming);
       return;
     }
     if (event.type === "background-work-changed") {
@@ -494,7 +490,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       return;
     }
     if (event.type === "artifact-updated" || event.type === "artifact-requested") {
-      this.sessionRegistry.findModel(event.record.artifact.sessionId)?.upsertArtifact(event.record);
+      this.sessionRegistry.upsertArtifact(event.record);
       if (event.type === "artifact-updated") return;
     }
     if (event.type === "review-threads-received") {

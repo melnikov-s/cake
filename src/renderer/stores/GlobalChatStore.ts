@@ -171,15 +171,15 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       return;
     }
     if (event.type === "global-chat-part-updated") {
-      this.props.sessions().findModel(event.sessionId)?.upsertPart(event.part);
+      this.props.sessions().upsertPart(event.sessionId, event.part);
       return;
     }
     if (event.type === "global-chat-part-removed") {
-      this.props.sessions().findModel(event.sessionId)?.removePart(event.partId);
+      this.props.sessions().removePart(event.sessionId, event.partId);
       return;
     }
     if (event.type === "global-chat-streaming-changed") {
-      this.props.sessions().findModel(event.sessionId)?.setStreaming(event.streaming);
+      this.props.sessions().setStreaming(event.sessionId, event.streaming);
       return;
     }
     if (event.type === "global-chat-operation-failed") {

@@ -34,10 +34,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   private readonly sessionWorkspacePaths = new Map<string, string>();
   private readonly pendingPartsBySession = new Map<string, Map<string, UiPart | null>>();
   private readonly pendingStreamingBySession = new Map<string, boolean>();
-  private readonly pendingArtifactsBySession = new Map<
-    string,
-    Map<string, ArtifactRecord>
-  >();
+  private readonly pendingArtifactsBySession = new Map<string, Map<string, ArtifactRecord>>();
 
   @child
   get sessions(): ProjectSessionStore[] {

@@ -48,6 +48,7 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
     workspacePath: string,
     workspaceName: string,
     sessions: SessionSnapshot["sessions"],
+    retainedSessionIds: readonly string[] = [],
   ) {
     const prior = new Map(
       this.sessions
@@ -66,6 +67,11 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
       workspacePath,
       workspaceName,
     }));
+    const listedIds = new Set(workspaceSessions.map((session) => session.id));
+    for (const sessionId of retainedSessionIds) {
+      const retained = prior.get(sessionId);
+      if (retained && !listedIds.has(sessionId)) workspaceSessions.push(retained);
+    }
     const next = [...otherSessions, ...workspaceSessions];
     this.assertUniqueIds(next);
     this.sessions.splice(0, this.sessions.length, ...next);

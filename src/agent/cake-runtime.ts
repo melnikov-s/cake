@@ -631,11 +631,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     const [listedSessions, models, artifacts] = await Promise.all([
       options.auxiliary
         ? Promise.resolve([])
-        : listWorkspaceSessions(
-            options.cwd,
-            options.sessionDir,
-            Boolean(options.globalControl),
-          ),
+        : listWorkspaceSessions(options.cwd, options.sessionDir, Boolean(options.globalControl)),
       options.auxiliary ? Promise.resolve([]) : modelOptions(),
       options.auxiliary
         ? Promise.resolve([])

@@ -289,6 +289,34 @@ describe("Session", () => {
     model[Symbol.dispose]();
   });
 
+  it("does not regress an artifact when an older snapshot arrives late", () => {
+    const model = Session.create({ workspacePath: "/project", sessionId: "session-1" });
+    const record = (revision: number, markdown: string) => ({
+      artifact: {
+        protocol: "cake.artifact/v1" as const,
+        id: "artifact-1",
+        sessionId: "session-1",
+        revision,
+        kind: "markdown" as const,
+        payload: { markdown },
+        fallback: { markdown },
+      },
+      workspacePath: "/project",
+      digest: String(revision).repeat(64),
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(revision).toISOString(),
+    });
+
+    model.upsertArtifact(record(2, "new"));
+    const artifact = model.artifacts[0];
+    model.upsertArtifact(record(1, "old"));
+
+    expect(model.artifacts[0]).toBe(artifact);
+    expect(model.artifacts[0]?.revision).toBe(2);
+    expect(model.artifacts[0]?.payload).toEqual({ markdown: "new" });
+    model[Symbol.dispose]();
+  });
+
   it("keeps one review model instance while its sidecar turn settles", () => {
     const model = Session.create({ workspacePath: "/project", sessionId: "session-1" });
     const now = new Date(0).toISOString();

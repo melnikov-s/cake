@@ -729,7 +729,13 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.extensionUi.applyState(snapshot.extensionUi);
     this.pendingOpen = undefined;
     const workspaceName = this.props.projects.nameForPath(snapshot.workspacePath);
-    this.props.catalog.applyWorkspace(snapshot.workspacePath, workspaceName, snapshot.sessions);
+    const pendingSessionId = this.sessionRegistry.pendingNewSessionId(snapshot.workspacePath);
+    this.props.catalog.applyWorkspace(
+      snapshot.workspacePath,
+      workspaceName,
+      snapshot.sessions,
+      pendingSessionId ? [pendingSessionId] : [],
+    );
     this.props.projects.recordOpened(snapshot.workspacePath);
     this.props.persistence().schedule();
     void this.reviews.loadThreads(snapshot.sessionId);

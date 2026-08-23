@@ -270,7 +270,9 @@ export interface TranscriptSelectionCapture {
 /** Resolves the active browser selection against the parts this transcript
  *  owns, so every selectable surface (user messages, assistant replies, code,
  *  work logs, artifacts) can be right-clicked into a selection chat. */
-export function captureTranscriptSelection(parts: UiPart[]): TranscriptSelectionCapture | undefined {
+export function captureTranscriptSelection(
+  parts: UiPart[],
+): TranscriptSelectionCapture | undefined {
   const browser = window.getSelection();
   if (!browser || browser.rangeCount === 0 || browser.isCollapsed) return undefined;
   const range = browser.getRangeAt(0);

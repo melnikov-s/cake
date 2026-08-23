@@ -161,6 +161,36 @@ describe("GlobalChatStore", () => {
     operations[Symbol.dispose]();
   });
 
+  it("replays deltas that arrive before the opening snapshot", async () => {
+    const { store, port, sessions, operations } = createTestStore();
+    await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
+
+    store.receive({
+      type: "global-chat-part-updated",
+      sessionId: "global-1",
+      part: {
+        id: "startup-notice",
+        kind: "notice",
+        tone: "info",
+        title: "Resuming interrupted turn",
+      },
+    });
+    store.receive({
+      type: "global-chat-streaming-changed",
+      sessionId: "global-1",
+      streaming: true,
+    });
+    store.receive({ type: "global-chat-snapshot-received", snapshot });
+
+    expect(store.activeSession?.parts).toContainEqual(
+      expect.objectContaining({ id: "startup-notice" }),
+    );
+    expect(store.activeSession?.streaming).toBe(true);
+    store[Symbol.dispose]();
+    sessions[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
   it("starts a new Cake Chat session without clearing prior history", async () => {
     const { store, port, sessions, operations } = createTestStore();
     await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());

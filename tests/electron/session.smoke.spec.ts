@@ -52,7 +52,9 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
   try {
     const page = await application.firstWindow();
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByRole("button", { name: "New chat in project" })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "New chat in project", exact: true }),
+    ).toBeVisible();
     await expect(page.getByLabel("Model")).toBeVisible();
     await expect(page.getByLabel("Thinking level")).toBeVisible();
     await expect(page.locator(".workspace-settings-icon")).toBeHidden();
@@ -92,8 +94,9 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(page.getByLabel("Provider transport")).toHaveValue("auto");
     await expect(page.getByLabel("Default project trust")).toHaveValue("ask");
     await expect(page.getByLabel("Color theme")).toHaveValue("system");
-    await page.getByRole("button", { name: "New chat in project" }).click();
+    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
     await expect(page.getByLabel("Message")).toBeVisible();
+    await expect(page.locator(".session-item.active")).toContainText("New chat");
     await expect(page.getByLabel("Back to chat")).toHaveCount(0);
     await page.evaluate(() => {
       const longTitle = `Investigate-${"very-long-session-name-".repeat(500)}`;

@@ -1642,6 +1642,62 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("keeps a new session pending until Pi lists it, not merely until it has parts", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+
+    await store.startNewSession();
+    const openId = store.activeOperations.at(-1)!;
+    const pendingSnapshot = {
+      ...snapshot,
+      sessionId: "pending-session",
+      sessionFile: "",
+      sessionListed: false,
+      sessions: [
+        {
+          id: "pending-session",
+          title: "New chat",
+          created: new Date(0).toISOString(),
+          modified: new Date(0).toISOString(),
+          messageCount: 0,
+          resolved: false,
+        },
+      ],
+    };
+    desktop.emit({
+      type: "session-snapshot-received",
+      operationId: openId,
+      snapshot: pendingSnapshot,
+    });
+    desktop.emit({
+      type: "session-snapshot-received",
+      snapshot: {
+        ...pendingSnapshot,
+        parts: [
+          {
+            id: "user-1",
+            kind: "text",
+            role: "user",
+            text: "Hello",
+            status: "complete",
+          },
+        ],
+      },
+    });
+
+    expect(store.sessionRegistry.pendingNewSessionId("/project")).toBe("pending-session");
+    expect(root.sessionCatalogStore.find("pending-session")).toBeDefined();
+
+    desktop.emit({
+      type: "session-snapshot-received",
+      snapshot: { ...pendingSnapshot, sessionListed: true },
+    });
+    expect(store.sessionRegistry.pendingNewSessionId("/project")).toBeUndefined();
+    root[Symbol.dispose]();
+  });
+
   it("restores the pending new-session draft for each project", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);

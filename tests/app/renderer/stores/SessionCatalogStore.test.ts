@@ -67,6 +67,27 @@ describe("SessionCatalogStore", () => {
     store[Symbol.dispose]();
   });
 
+  it("retains an unlisted pending session during workspace refresh", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    store.replace([
+      summary("persisted", "2026-08-16T12:00:00.000Z"),
+      { ...summary("pending", "2026-08-17T12:00:00.000Z"), messageCount: 0 },
+    ]);
+
+    store.applyWorkspace(
+      "/project",
+      "Project",
+      [summary("persisted", "2026-08-16T12:00:00.000Z")],
+      ["pending"],
+    );
+
+    expect(store.projectSessions("/project").map((session) => session.id)).toEqual([
+      "pending",
+      "persisted",
+    ]);
+    store[Symbol.dispose]();
+  });
+
   it("indexes sessions by ID and project without duplicating session records", () => {
     const store = mount(createStore(SessionCatalogStore));
     store.replace([
