@@ -411,6 +411,16 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       return;
     }
     if (event.type.startsWith("global-chat-")) {
+      // Transcript deltas are the hot streaming path. Route them directly instead
+      // of waking every loaded chat's configuration workflow for every token.
+      if (
+        event.type === "global-chat-part-updated" ||
+        event.type === "global-chat-part-removed" ||
+        event.type === "global-chat-streaming-changed"
+      ) {
+        this.globalChatStore.receive(event);
+        return;
+      }
       for (const session of this.globalChatStore.loadedSessions)
         session.configurationStore.receive(event);
       this.globalChatStore.receive(event);
@@ -424,6 +434,33 @@ export class RootStore extends Store<{ client: DesktopClient }> {
           this.windowPersistence.schedule();
         }
       }
+      return;
+    }
+    // Keep high-frequency transcript events off the general event fan-out. During
+    // streaming this avoids invoking unrelated workflows and materializing their
+    // lazy child Stores once per token.
+    if (event.type === "part-updated") {
+      const session = this.sessionRegistry.upsertPart(event.sessionId, event.part);
+      const canReconcileOptimisticMessage =
+        (event.part.kind === "text" &&
+          event.part.role === "user" &&
+          event.part.status === "complete") ||
+        (event.part.kind === "attachment" && event.part.attachmentKind === "image");
+      if (canReconcileOptimisticMessage) session?.composerStore.reconcile(event.sessionId);
+      return;
+    }
+    if (event.type === "part-removed") {
+      this.sessionRegistry.removePart(event.sessionId, event.partId);
+      return;
+    }
+    if (event.type === "streaming-changed") {
+      const wasStreaming = this.sessionRegistry.findModel(event.sessionId)?.streaming ?? false;
+      const session = this.sessionRegistry.setStreaming(event.sessionId, event.streaming);
+      if (session) session.updateActivity(event.streaming, wasStreaming);
+      return;
+    }
+    if (event.type === "background-work-changed") {
+      this.sessionRegistry.findSession(event.sessionId)?.setBackgroundWorkActive(event.active);
       return;
     }
     const sessionReceivers =
@@ -469,25 +506,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         }
         void this.projectWorkbenchStore.changesStore.refresh();
       }
-      return;
-    }
-    if (event.type === "part-updated") {
-      const session = this.sessionRegistry.upsertPart(event.sessionId, event.part);
-      session?.composerStore.reconcile(event.sessionId);
-      return;
-    }
-    if (event.type === "part-removed") {
-      this.sessionRegistry.removePart(event.sessionId, event.partId);
-      return;
-    }
-    if (event.type === "streaming-changed") {
-      const wasStreaming = this.sessionRegistry.findModel(event.sessionId)?.streaming ?? false;
-      const session = this.sessionRegistry.setStreaming(event.sessionId, event.streaming);
-      if (session) session.updateActivity(event.streaming, wasStreaming);
-      return;
-    }
-    if (event.type === "background-work-changed") {
-      this.sessionRegistry.findSession(event.sessionId)?.setBackgroundWorkActive(event.active);
       return;
     }
     if (event.type === "artifact-updated" || event.type === "artifact-requested") {

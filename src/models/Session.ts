@@ -53,7 +53,10 @@ export class Session extends Model {
     const partSnapshot = part as Snapshot<Message>;
     const existing = this.parts.find((current) => current.id === part.id);
     if (existing) {
-      applySnapshot(existing, partSnapshot);
+      // Live text/reasoning updates arrive for nearly every streamed token. Updating
+      // only the fields carried by that part avoids snapshotting dozens of unrelated
+      // optional Message fields on every event.
+      if (!existing.update(part)) applySnapshot(existing, partSnapshot);
       return;
     }
     this.parts.push(Message.create(partSnapshot));

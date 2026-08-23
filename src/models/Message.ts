@@ -2,7 +2,8 @@ import { Model, id } from "r-state-tree";
 import { uiPartSchema, type ToolOutputContent, type UiPart } from "../ipc/session-contract";
 
 type TextRole = Extract<UiPart, { kind: "text" }>["role"];
-type PartStatus = Extract<UiPart, { kind: "text" }>["status"];
+type TextStatus = Extract<UiPart, { kind: "text" }>["status"];
+type PartStatus = Extract<UiPart, { kind: "text" | "reasoning" | "review-run" }>["status"];
 type ToolState = Extract<UiPart, { kind: "tool" }>["state"];
 type AttachmentKind = Extract<UiPart, { kind: "attachment" }>["attachmentKind"];
 type NoticeTone = Extract<UiPart, { kind: "notice" }>["tone"];
@@ -38,16 +39,71 @@ export class Message extends Model {
   tokensBefore: number | undefined;
   firstKeptEntryId: string | undefined;
 
+  /** Updates live transcript fields without reapplying every optional snapshot field per token. */
+  update(part: UiPart) {
+    if (part.id !== this.id || part.kind !== this.kind) return false;
+    switch (part.kind) {
+      case "text":
+        this.role = part.role;
+        this.entryId = part.entryId;
+        this.text = part.text;
+        this.status = part.status;
+        this.deliveryState = part.deliveryState;
+        return true;
+      case "reasoning":
+        this.text = part.text;
+        this.status = part.status;
+        return true;
+      case "tool":
+        this.name = part.name;
+        this.input = part.input;
+        this.output = part.output;
+        this.outputContent = part.outputContent;
+        this.artifactId = part.artifactId;
+        this.filePath = part.filePath;
+        this.diff = part.diff;
+        this.state = part.state;
+        return true;
+      case "source":
+        this.title = part.title;
+        this.url = part.url;
+        return true;
+      case "attachment":
+        this.name = part.name;
+        this.mediaType = part.mediaType;
+        this.attachmentKind = part.attachmentKind;
+        this.data = part.data;
+        return true;
+      case "notice":
+        this.tone = part.tone;
+        this.title = part.title;
+        this.detail = part.detail;
+        return true;
+      case "review-run":
+        this.operationId = part.operationId;
+        this.threadIds = part.threadIds;
+        this.commentCount = part.commentCount;
+        this.status = part.status;
+        return true;
+      case "compaction":
+        this.summary = part.summary;
+        this.tokensBefore = part.tokensBefore;
+        this.firstKeptEntryId = part.firstKeptEntryId;
+        return true;
+    }
+  }
+
   get value(): UiPart {
     switch (this.kind) {
       case "text":
+        // SAFETY: snapshots and update() keep status aligned with the part discriminant.
         return {
           id: this.id,
           kind: this.kind,
           role: this.role!,
           entryId: this.entryId,
           text: this.text!,
-          status: this.status!,
+          status: this.status as TextStatus,
           deliveryState: this.deliveryState,
         };
       case "reasoning":

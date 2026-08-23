@@ -33,6 +33,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   // until the first persisted prompt makes them discoverable.
   private readonly pendingNewSessionIdsByWorkspace: Record<string, string> = observable({});
   private readonly temporarySessionIds: Set<string> = observable(new Set<string>());
+  private readonly sessionsById = new Map<string, ProjectSessionStore>();
   private readonly sessionWorkspacePaths = new Map<string, string>();
   private readonly pendingPartsBySession = new Map<string, Map<string, UiPart | null>>();
   private readonly pendingStreamingBySession = new Map<string, boolean>();
@@ -66,7 +67,11 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   }
 
   findSession(sessionId: string) {
-    return this.sessions.find((session) => session.sessionId === sessionId);
+    const cached = this.sessionsById.get(sessionId);
+    if (cached) return cached;
+    const session = this.sessions.find((candidate) => candidate.sessionId === sessionId);
+    if (session) this.sessionsById.set(sessionId, session);
+    return session;
   }
 
   ensure(sessionId: string) {
@@ -116,6 +121,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
       delete this.pendingNewSessionIdsByWorkspace[workspacePath];
     const index = this.targets.findIndex((target) => target.sessionId === sessionId);
     if (index >= 0) this.targets.splice(index, 1);
+    this.sessionsById.delete(sessionId);
     this.temporarySessionIds.delete(sessionId);
     this.sessionWorkspacePaths.delete(sessionId);
     this.pendingPartsBySession.delete(sessionId);
