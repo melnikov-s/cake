@@ -625,29 +625,39 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   }
 
   async function makeSnapshot(): Promise<SessionSnapshot> {
+    // Resolve every asynchronous projection first. Pi can continue emitting live
+    // events while these are in flight, so reading mutable session state before
+    // an await would let an older snapshot overwrite newer renderer deltas.
+    const [listedSessions, models, artifacts] = await Promise.all([
+      options.auxiliary
+        ? Promise.resolve([])
+        : listWorkspaceSessions(
+            options.cwd,
+            options.sessionDir,
+            Boolean(options.globalControl),
+          ),
+      options.auxiliary ? Promise.resolve([]) : modelOptions(),
+      options.auxiliary
+        ? Promise.resolve([])
+        : (options.listArtifacts?.(projectArtifactPointers(session.sessionManager)) ??
+          Promise.resolve([])),
+    ]);
+
+    // Capture all mutable Pi-owned state together after the final await. Once
+    // this synchronous block starts, no live event can interleave before emit.
     const stats = session.getSessionStats();
-    const listedSessions = options.auxiliary
-      ? []
-      : await listWorkspaceSessions(
-          options.cwd,
-          options.sessionDir,
-          Boolean(options.globalControl),
-        );
-    const sessions = listedSessions.some((item) => item.id === cakeSessionId)
+    const sessionListed = listedSessions.some((item) => item.id === cakeSessionId);
+    const sessions = sessionListed
       ? listedSessions
       : [activeSessionSummary(stats.totalMessages), ...listedSessions];
     const globalSettings = settingsManager.getGlobalSettings();
     const branchParts = projectSessionEntries(session.sessionManager.getBranch());
     const queuedParts = allQueuedParts();
-    const models = options.auxiliary ? [] : await modelOptions();
-    const artifacts = options.auxiliary
-      ? []
-      : await (options.listArtifacts?.(projectArtifactPointers(session.sessionManager)) ??
-          Promise.resolve([]));
     return {
       workspacePath: options.cwd,
       sessionId: cakeSessionId,
       sessionFile: session.sessionFile ?? "",
+      sessionListed,
       parts: [
         ...branchParts,
         ...queuedParts,
@@ -696,10 +706,6 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         prompts: globalSettings.prompts ?? [],
         reloadPending: reloadCompleted < reloadRequested || Boolean(reloadInFlight),
       } satisfies PiSettings,
-      // Read last: every await happens above, so the value is captured in the
-      // same synchronous step that emits the snapshot. A snapshot that finishes
-      // after agent_settled emitted streaming=false must not resurrect a stale
-      // streaming=true in the renderer (it would stick until the next turn).
       streaming: session.isStreaming,
       diagnostics: [
         ...extensionsResult.errors.map((error) => `${error.path}: ${error.error}`),

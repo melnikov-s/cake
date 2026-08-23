@@ -380,6 +380,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       this.globalChatStore.applyApplicationState(event.state);
       return;
     }
+    if (event.type === "context-menu-action") return;
     if (event.type === "global-chat-control-requested") {
       void this.appControl
         .invoke(event.invocation)

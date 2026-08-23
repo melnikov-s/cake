@@ -27,7 +27,6 @@ import { CompactionMessage } from "@/components/compaction-message";
 import { CopyErrorDetailsButton } from "@/components/copy-error-details-button";
 import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
 import { ImagePreview } from "@/components/image-preview";
-import { ContextMenu } from "@/components/ui/context-menu";
 import { IconButton } from "@/components/ui/icon-button";
 import { LoadingState } from "@/components/ui/loading-state";
 import {
@@ -266,17 +265,12 @@ function selectionEndRect(range: Range) {
 export interface TranscriptSelectionCapture {
   selection: MessageSelectionAnchor;
   rect: MessageCommentAnchorRect;
-  x: number;
-  y: number;
 }
 
 /** Resolves the active browser selection against the parts this transcript
  *  owns, so every selectable surface (user messages, assistant replies, code,
  *  work logs, artifacts) can be right-clicked into a selection chat. */
-export function captureTranscriptSelection(
-  parts: UiPart[],
-  cursor: { x: number; y: number },
-): TranscriptSelectionCapture | undefined {
+export function captureTranscriptSelection(parts: UiPart[]): TranscriptSelectionCapture | undefined {
   const browser = window.getSelection();
   if (!browser || browser.rangeCount === 0 || browser.isCollapsed) return undefined;
   const range = browser.getRangeAt(0);
@@ -299,7 +293,7 @@ export function captureTranscriptSelection(
     part.kind === "text" ? part.entryId : undefined,
   );
   if (!selection) return undefined;
-  return { selection, rect: plainRect(selectionEndRect(range)), x: cursor.x, y: cursor.y };
+  return { selection, rect: plainRect(selectionEndRect(range)) };
 }
 
 export interface ChatTranscriptBehavior {
@@ -312,6 +306,7 @@ export interface ChatTranscriptBehavior {
   inlineWidgets?: InlineWidgetStore;
   artifacts?: { records: ArtifactRecord[]; interaction: ArtifactInteractionStore };
   messageComments?: MessageCommentsStore;
+  subscribeToChatAboutSelection?(listener: () => void): () => void;
 }
 
 interface CanonicalTranscriptBehavior extends ChatTranscriptBehavior {
@@ -724,21 +719,6 @@ const ActivityGroup = observer(function ActivityGroup({
         <div className="work-log-view-toggle" role="group" aria-label="Work log view">
           <IconButton
             className="work-log-view-option"
-            aria-pressed={behavior.workLogDiff}
-            tooltip="Diff"
-            ariaLabel="Show diff"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              if (!behavior.workLogDiff) behavior.onToggleWorkLogDiff();
-              if (behavior.store.workLogsExpansion === "collapsed")
-                behavior.store.setWorkLogsExpansion("expanded");
-            }}
-          >
-            <DiffIcon />
-          </IconButton>
-          <IconButton
-            className="work-log-view-option"
             aria-pressed={!behavior.workLogDiff}
             tooltip="Work log"
             ariaLabel="Show work log"
@@ -751,6 +731,21 @@ const ActivityGroup = observer(function ActivityGroup({
             }}
           >
             <LogIcon />
+          </IconButton>
+          <IconButton
+            className="work-log-view-option"
+            aria-pressed={behavior.workLogDiff}
+            tooltip="Diff"
+            ariaLabel="Show diff"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (!behavior.workLogDiff) behavior.onToggleWorkLogDiff();
+              if (behavior.store.workLogsExpansion === "collapsed")
+                behavior.store.setWorkLogsExpansion("expanded");
+            }}
+          >
+            <DiffIcon />
           </IconButton>
         </div>
       </summary>
@@ -877,7 +872,7 @@ export const ChatTranscript = observer(function ChatTranscript({
 }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const staticTranscriptRef = useRef<HTMLDivElement>(null);
-  const [selectionMenu, setSelectionMenu] = useState<TranscriptSelectionCapture>();
+  const pendingSelectionRef = useRef<TranscriptSelectionCapture | undefined>(undefined);
   const [draftAnchor, setDraftAnchor] = useState<MessageCommentAnchorRect>();
   const visibleParts = store.hideThinking
     ? store.parts.filter((part) => part.kind !== "reasoning")
@@ -934,55 +929,50 @@ export const ChatTranscript = observer(function ChatTranscript({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [store]);
   const error = errorOverride ?? store.error;
-  // Right-clicking any selection inside this conversation offers "Chat about
-  // this". The capture resolves the selection to a part owned by this store,
-  // so sibling or nested transcripts never react to each other's selections.
+  // Right-clicking any selection inside this conversation keeps the native
+  // Electron edit menu. The capture is held until that menu sends its
+  // "Chat about this" action back to this transcript.
   const messageComments = behavior.messageComments;
+  const openSelectionDraft = useCallback(
+    (capture: TranscriptSelectionCapture) => {
+      if (!messageComments) return;
+      messageComments.prepareDraft(capture.selection);
+      pendingSelectionRef.current = undefined;
+      setDraftAnchor(capture.rect);
+    },
+    [messageComments],
+  );
   useEffect(() => {
     if (!messageComments) return;
     const handler = (event: MouseEvent) => {
       const target = event.target;
+      pendingSelectionRef.current = undefined;
       if (!(target instanceof Node)) return;
       const targetElement = target instanceof Element ? target : target.parentElement;
-      // Editing surfaces keep their native cut/copy/paste menu.
+      // Editing surfaces are handled by the same native menu, but their text
+      // is not a message selection and therefore cannot start a selection chat.
       if (
         targetElement?.closest(
           'input, textarea, select, [contenteditable="true"], [contenteditable=""]',
         )
       )
         return;
-      const capture = captureTranscriptSelection(store.parts, {
-        x: event.clientX,
-        y: event.clientY,
-      });
-      if (!capture) return;
-      event.preventDefault();
-      setSelectionMenu(capture);
+      const capture = captureTranscriptSelection(store.parts);
+      if (capture) pendingSelectionRef.current = capture;
     };
     document.addEventListener("contextmenu", handler);
     return () => document.removeEventListener("contextmenu", handler);
   }, [messageComments, store.parts]);
-  const openSelectionDraft = (capture: TranscriptSelectionCapture) => {
-    if (!messageComments) return;
-    messageComments.prepareDraft(capture.selection);
-    setDraftAnchor(capture.rect);
-    setSelectionMenu(undefined);
-  };
+  useEffect(() => {
+    const subscribe = behavior.subscribeToChatAboutSelection;
+    if (!messageComments || !subscribe) return;
+    return subscribe(() => {
+      const capture = pendingSelectionRef.current;
+      if (capture) openSelectionDraft(capture);
+    });
+  }, [behavior.subscribeToChatAboutSelection, messageComments, openSelectionDraft]);
   const selectionOverlays = (
     <>
-      {selectionMenu && (
-        <ContextMenu
-          position={{ x: selectionMenu.x, y: selectionMenu.y }}
-          items={[
-            {
-              id: "chat-about-this",
-              label: "Chat about this",
-              onSelect: () => openSelectionDraft(selectionMenu),
-            },
-          ]}
-          onClose={() => setSelectionMenu(undefined)}
-        />
-      )}
       {draftAnchor && messageComments && (
         <MessageCommentDraftPopover
           anchor={draftAnchor}

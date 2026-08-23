@@ -398,6 +398,8 @@ export const sessionSnapshotSchema = z.object({
   workspacePath: z.string().max(4_096),
   sessionId: z.string().min(1).max(256),
   sessionFile: z.string().max(4_096),
+  /** Whether Pi's persisted session listing already contains this active session. */
+  sessionListed: z.boolean().optional(),
   parts: ipcProjectionArray(uiPartSchema, 50_000),
   model: z.object({ provider: z.string(), id: z.string(), name: z.string() }).optional(),
   fastMode: z.boolean().optional(),

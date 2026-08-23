@@ -137,10 +137,19 @@ test("selects rendered TypeScript and opens a continuous, resizable selection ch
     await expect
       .poll(() => page.evaluate(() => window.getSelection()?.toString().trim()))
       .toBe("UtilityModePreferences");
-    await page.mouse.click(selectionTarget.x, selectionTarget.y, { button: "right" });
-    const action = page.getByRole("menuitem", { name: "Chat about this" });
-    await expect(action).toBeVisible();
-    await action.click();
+    await page.evaluate(({ x, y }) => {
+      const target = document.elementFromPoint(x, y);
+      if (!target) throw new Error("Could not resolve selection target");
+      target.dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: x, clientY: y }),
+      );
+    }, selectionTarget);
+    await application.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.webContents.send("cake:event", {
+        type: "context-menu-action",
+        action: "chat-about-selection",
+      });
+    });
 
     const dialog = page.getByRole("dialog", { name: "Chat about this" });
     const input = page.getByLabel("Message about selected text");

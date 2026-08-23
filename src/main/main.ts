@@ -447,15 +447,28 @@ function createWindow() {
         { type: "separator" },
       );
     }
-    if (params.isEditable) {
+    if (params.isEditable || params.selectionText) {
       template.push(
-        { role: "cut", enabled: params.editFlags.canCut },
-        { role: "copy", enabled: params.editFlags.canCopy },
-        { role: "paste", enabled: params.editFlags.canPaste },
-        { role: "selectAll" },
+        { role: "cut", enabled: params.isEditable && params.editFlags.canCut },
+        {
+          role: "copy",
+          enabled: params.isEditable ? params.editFlags.canCopy : Boolean(params.selectionText),
+        },
+        { role: "paste", enabled: params.isEditable && params.editFlags.canPaste },
       );
-    } else if (params.selectionText) {
-      template.push({ role: "copy" }, { role: "selectAll" });
+      if (params.selectionText && !params.isEditable)
+        template.push(
+          { type: "separator" },
+          {
+            label: "Chat about this",
+            click: () =>
+              sendTo(window.webContents, {
+                type: "context-menu-action",
+                action: "chat-about-selection",
+              }),
+          },
+        );
+      template.push({ role: "selectAll" });
     }
     Menu.buildFromTemplate(template).popup({ window });
   });

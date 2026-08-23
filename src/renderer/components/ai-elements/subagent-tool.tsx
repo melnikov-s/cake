@@ -38,6 +38,7 @@ const subagentProjectionSchema = z
     model: modelPreferenceSchema.optional(),
     resolvedModel: resolvedAgentModelSchema.optional(),
     instructions: z.string().optional(),
+    fastMode: z.boolean().optional(),
     maxDepth: z.number().optional(),
     retain: z.boolean().optional(),
     retained: z.boolean().optional(),
@@ -126,6 +127,7 @@ export function SubagentTool({
       : `${profile} subagent`;
   const handleId = output?.handleId ?? spawnOutput?.handleId;
   const retained = request?.retain ?? spawnOutput?.retained;
+  const fastMode = request?.fastMode ?? spawnOutput?.fastMode ?? output?.fastMode;
   const maxDepth = request?.maxDepth ?? spawnOutput?.maxDepth;
 
   return (
@@ -188,6 +190,10 @@ export function SubagentTool({
               <div>
                 <dt>Mode</dt>
                 <dd>{retained ? "retained / multi-turn" : "one-shot"}</dd>
+              </div>
+              <div>
+                <dt>Fast mode</dt>
+                <dd>{fastMode ? "On" : "Off"}</dd>
               </div>
               <div>
                 <dt>Delegation depth</dt>

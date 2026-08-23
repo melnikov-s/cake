@@ -147,9 +147,9 @@ describe("PiWorkspaceDriver", () => {
     const resolveAgentModel = vi.fn(() => ({
       requested: "current" as const,
       source: "current" as const,
-      provider: "test",
-      modelId: "model",
-      thinkingLevel: "off" as const,
+      provider: "openai-codex",
+      modelId: "gpt-5.6-luna",
+      thinkingLevel: "max" as const,
       fallbacks: [],
     }));
     const emit = vi.fn();
@@ -168,7 +168,7 @@ describe("PiWorkspaceDriver", () => {
     if (!control) throw new Error("Expected subagent control");
 
     const spawned = await control.spawn(
-      { task: "Audit the IPC boundary", model: { prefer: "current" } },
+      { task: "Audit the IPC boundary", model: { prefer: "current" }, fastMode: true },
       parent.sessionId,
       new AbortController().signal,
     );
@@ -179,13 +179,14 @@ describe("PiWorkspaceDriver", () => {
       profile: "worker",
       status: "running",
       retained: false,
+      fastMode: true,
       maxDepth: 0,
       resolvedModel: {
         requested: "current",
         source: "current",
-        provider: "test",
-        modelId: "model",
-        thinkingLevel: "off",
+        provider: "openai-codex",
+        modelId: "gpt-5.6-luna",
+        thinkingLevel: "max",
       },
     });
     expect(JSON.stringify(spawned)).not.toContain('"sessionId"');
@@ -204,6 +205,7 @@ describe("PiWorkspaceDriver", () => {
       auxiliary: true,
       agentControl: undefined,
     });
+    expect(createdWith[1]?.fastMode?.get()).toBe(true);
     await vi.waitFor(() =>
       expect(childPrompt).toHaveBeenCalledWith("Audit the IPC boundary", "prompt", []),
     );
@@ -218,16 +220,17 @@ describe("PiWorkspaceDriver", () => {
       type: "part-updated",
       sessionId: child.sessionId,
       part: {
-        id: "child-read",
-        kind: "tool",
-        name: "read",
-        input: "src/main.ts",
-        state: "running",
+        id: "child-answer",
+        kind: "text",
+        role: "assistant",
+        entryId: undefined,
+        text: "Inspecting the boundary",
+        status: "streaming",
       },
     });
     await vi.waitFor(() =>
       expect(update).toHaveBeenCalledWith(
-        expect.objectContaining({ parts: [expect.objectContaining({ id: "child-read" })] }),
+        expect.objectContaining({ parts: [expect.objectContaining({ id: "child-answer" })] }),
       ),
     );
     expect(child.snapshot).toHaveBeenCalledTimes(snapshotCalls);
@@ -235,10 +238,11 @@ describe("PiWorkspaceDriver", () => {
     finishTask();
     await expect(waiting).resolves.toMatchObject({
       resolvedModel: {
-        provider: "test",
-        modelId: "model",
-        thinkingLevel: "off",
+        provider: "openai-codex",
+        modelId: "gpt-5.6-luna",
+        thinkingLevel: "max",
       },
+      fastMode: true,
     });
     await expect(waiting).resolves.not.toHaveProperty("sessionId");
     expect(emit).toHaveBeenCalledWith({

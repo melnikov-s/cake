@@ -135,7 +135,9 @@ delegation accepts at most eight tasks and runs at most four at once per
 workspace. A task acquires an active slot before Cake constructs its private Pi
 runtime. Cake resolves and validates every requested model against the parent
 session before constructing any child; parallel batches preflight atomically.
-Private runtimes omit project-session catalogs, model menus, command
+A task may request Fast mode only for a model advertised by Cake as supporting
+it. That setting is scoped to the private runtime and is not persisted as a
+project-session preference. Private runtimes omit project-session catalogs, model menus, command
 menus, session trees, artifact indexes, and automatic naming. Live activity is
 coalesced from child part events rather than rebuilding full session snapshots.
 Cancellation reaches active child work. One-shot handles release

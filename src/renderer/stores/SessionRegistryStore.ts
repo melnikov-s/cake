@@ -1,5 +1,6 @@
 import { Store, applySnapshot, child, createStore, observable } from "r-state-tree";
-import type { SessionPreview, SessionSnapshot } from "../../ipc/session-contract";
+import type { ArtifactRecord } from "../../ipc/artifact-contract";
+import type { SessionPreview, SessionSnapshot, UiPart } from "../../ipc/session-contract";
 import type { ReviewThread } from "../../ipc/review-contract";
 import type { DesktopClient } from "../desktop-client";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -31,6 +32,12 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   // until the first persisted prompt makes them discoverable.
   private readonly pendingNewSessionIdsByWorkspace: Record<string, string> = observable({});
   private readonly sessionWorkspacePaths = new Map<string, string>();
+  private readonly pendingPartsBySession = new Map<string, Map<string, UiPart | null>>();
+  private readonly pendingStreamingBySession = new Map<string, boolean>();
+  private readonly pendingArtifactsBySession = new Map<
+    string,
+    Map<string, ArtifactRecord>
+  >();
 
   @child
   get sessions(): ProjectSessionStore[] {
@@ -72,8 +79,12 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     return session;
   }
 
+  pendingNewSessionId(workspacePath: string) {
+    return this.pendingNewSessionIdsByWorkspace[workspacePath];
+  }
+
   pendingNewSession(workspacePath: string) {
-    const sessionId = this.pendingNewSessionIdsByWorkspace[workspacePath];
+    const sessionId = this.pendingNewSessionId(workspacePath);
     if (!sessionId) return undefined;
     const session = this.findSession(sessionId);
     if (session) return session;
@@ -100,15 +111,60 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     this.rememberSessionLocation(snapshot.sessionId, snapshot.workspacePath);
     const session = this.ensure(snapshot.sessionId);
     applySnapshot(session.model, toSessionSnapshot(snapshot));
+    session.model.applyArtifacts(snapshot.artifacts ?? []);
+    this.applyPendingEvents(session);
     session.markHydrated();
     if (
-      snapshot.parts.length > 0 &&
+      snapshot.sessionListed === true &&
       this.pendingNewSessionIdsByWorkspace[snapshot.workspacePath] === snapshot.sessionId
     ) {
       delete this.pendingNewSessionIdsByWorkspace[snapshot.workspacePath];
       this.props.persist();
     }
     return session.model;
+  }
+
+  upsertPart(sessionId: string, part: UiPart) {
+    const session = this.findSession(sessionId);
+    if (session) {
+      session.model.upsertPart(part);
+      return session;
+    }
+    this.pendingParts(sessionId).set(part.id, part);
+    return undefined;
+  }
+
+  removePart(sessionId: string, partId: string) {
+    const session = this.findSession(sessionId);
+    if (session) {
+      session.model.removePart(partId);
+      return;
+    }
+    this.pendingParts(sessionId).set(partId, null);
+  }
+
+  setStreaming(sessionId: string, streaming: boolean) {
+    const session = this.findSession(sessionId);
+    if (session) {
+      session.model.setStreaming(streaming);
+      return session;
+    }
+    this.pendingStreamingBySession.set(sessionId, streaming);
+    return undefined;
+  }
+
+  upsertArtifact(record: ArtifactRecord) {
+    const sessionId = record.artifact.sessionId;
+    const session = this.findSession(sessionId);
+    if (session) {
+      session.model.upsertArtifact(record);
+      return;
+    }
+    const records = this.pendingArtifactsBySession.get(sessionId) ?? new Map();
+    const existing = records.get(record.artifact.id);
+    if (!existing || record.artifact.revision >= existing.artifact.revision)
+      records.set(record.artifact.id, record);
+    this.pendingArtifactsBySession.set(sessionId, records);
   }
 
   hydratePreview(preview: SessionPreview) {
@@ -134,6 +190,34 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     const session = this.ensure(thread.sessionId);
     session.model.upsertReviewThread(thread);
     return session.model;
+  }
+
+  private pendingParts(sessionId: string) {
+    const parts = this.pendingPartsBySession.get(sessionId) ?? new Map<string, UiPart | null>();
+    this.pendingPartsBySession.set(sessionId, parts);
+    return parts;
+  }
+
+  private applyPendingEvents(session: ProjectSessionStore) {
+    const sessionId = session.sessionId;
+    const parts = this.pendingPartsBySession.get(sessionId);
+    if (parts) {
+      for (const [partId, part] of parts) {
+        if (part) session.model.upsertPart(part);
+        else session.model.removePart(partId);
+      }
+      this.pendingPartsBySession.delete(sessionId);
+    }
+    const streaming = this.pendingStreamingBySession.get(sessionId);
+    if (streaming !== undefined) {
+      session.model.setStreaming(streaming);
+      this.pendingStreamingBySession.delete(sessionId);
+    }
+    const artifacts = this.pendingArtifactsBySession.get(sessionId);
+    if (artifacts) {
+      session.model.applyArtifacts([...artifacts.values()]);
+      this.pendingArtifactsBySession.delete(sessionId);
+    }
   }
 
   private workspacePathFor(sessionId: string) {

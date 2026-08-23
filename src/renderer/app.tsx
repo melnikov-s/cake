@@ -501,6 +501,14 @@ export const Sidebar = observer(function Sidebar({
 
 export const App = observer(function App() {
   const root = useStore(RootStore);
+  const subscribeToChatAboutSelection = useCallback(
+    (listener: () => void) =>
+      root.client.subscribe((event) => {
+        if (event.type === "context-menu-action" && event.action === "chat-about-selection")
+          listener();
+      }),
+    [root.client],
+  );
   const store = root.projectWorkbenchStore;
   const sidebar = root.sidebarStore;
   const projects = root.projectCatalogStore;
@@ -848,6 +856,7 @@ export const App = observer(function App() {
                   },
                   waitingForUser: Boolean(extensionUi.request || artifactInteractions?.request),
                   messageComments: session.messageCommentsStore,
+                  subscribeToChatAboutSelection,
                   inlineWidgets: root.inlineWidgetStore,
                   artifacts: {
                     records: session.model.artifacts.map((artifact) => artifact.value),

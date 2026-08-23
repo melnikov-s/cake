@@ -170,6 +170,7 @@ describe("desktop client", () => {
     client.subscribe(listener);
     const requestId = crypto.randomUUID();
 
+    desktop.emit({ type: "context-menu-action", action: "chat-about-selection" });
     desktop.emit({ type: "workspace-inspected", requestId, path: "/project", trustRequired: true });
     desktop.emit({
       type: "changelog-snapshot",
@@ -186,6 +187,10 @@ describe("desktop client", () => {
       files: [],
     });
 
+    expect(listener).toHaveBeenCalledWith({
+      type: "context-menu-action",
+      action: "chat-about-selection",
+    });
     expect(listener).toHaveBeenCalledWith({
       type: "workspace-inspected",
       operationId: requestId,

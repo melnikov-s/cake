@@ -6,6 +6,7 @@ describe("subagent contract", () => {
     expect(subagentTaskSchema.parse({ task: "Inspect the adapter" })).toMatchObject({
       profile: "worker",
       model: { prefer: "current" },
+      fastMode: false,
       maxDepth: 0,
       retain: false,
     });

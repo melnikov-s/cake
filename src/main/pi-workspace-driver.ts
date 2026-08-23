@@ -6,6 +6,7 @@ import {
   type CakeRuntimeEvent,
   type RuntimeUiRequest,
 } from "../agent/cake-runtime";
+import { supportsFastMode } from "../agent/fast-mode";
 import { forkWorkspaceSession, loadPiChangelog } from "../agent/session-discovery";
 import {
   runInlineWidgetGeneration,
@@ -103,6 +104,7 @@ interface SubagentHandle {
   taskDescription: string;
   profile: SubagentProfile;
   resolvedModel: ResolvedAgentModel;
+  fastMode: boolean;
   retain: boolean;
   status: "queued" | "running" | "complete" | "error" | "aborted";
   controller: AbortController;
@@ -420,6 +422,7 @@ export class PiWorkspaceDriver {
     tools?: string[];
     remainingSubagentDepth?: number;
     auxiliary?: boolean;
+    fastMode?: boolean;
   }) {
     const createsPrivateRuntime =
       (input.target.kind === "new" || input.target.kind === "fork") &&
@@ -449,6 +452,7 @@ export class PiWorkspaceDriver {
             tools: input.tools,
             remainingSubagentDepth: input.remainingSubagentDepth,
             auxiliary: input.auxiliary,
+            fastMode: input.fastMode,
           },
         );
         if (input.target.visibility === "private") this.privateRuntimeIds.add(runtime.sessionId);
@@ -485,6 +489,7 @@ export class PiWorkspaceDriver {
             tools: input.tools,
             remainingSubagentDepth: input.remainingSubagentDepth,
             auxiliary: input.auxiliary,
+            fastMode: input.fastMode,
           },
         );
         await runtime.navigate(entryId);
@@ -748,7 +753,12 @@ export class PiWorkspaceDriver {
     sessionFile?: string,
     additionalSystemPrompt?: string,
     sessionRoot = this.sessionDir,
-    policy?: { tools?: string[]; remainingSubagentDepth?: number; auxiliary?: boolean },
+    policy?: {
+      tools?: string[];
+      remainingSubagentDepth?: number;
+      auxiliary?: boolean;
+      fastMode?: boolean;
+    },
   ) {
     if (sessionId && !sessionFile) {
       const existing = this.runtimes.get(sessionId);
@@ -779,7 +789,12 @@ export class PiWorkspaceDriver {
     sessionFile?: string,
     additionalSystemPrompt?: string,
     sessionRoot = this.sessionDir,
-    policy?: { tools?: string[]; remainingSubagentDepth?: number; auxiliary?: boolean },
+    policy?: {
+      tools?: string[];
+      remainingSubagentDepth?: number;
+      auxiliary?: boolean;
+      fastMode?: boolean;
+    },
   ) {
     const requestedArtifactSessionId = sessionId;
     let openedSessionId = sessionId;
@@ -821,7 +836,7 @@ export class PiWorkspaceDriver {
         : undefined,
       utilityModel: this.utilityModel,
       fastMode: {
-        get: () => (openedSessionId ? this.fastMode(openedSessionId) : false),
+        get: () => policy?.fastMode ?? (openedSessionId ? this.fastMode(openedSessionId) : false),
         set: async (enabled) => {
           const targetSessionId = openedSessionId;
           if (!targetSessionId) throw new Error("The Pi session is not ready for Fast mode");
@@ -965,6 +980,7 @@ export class PiWorkspaceDriver {
       taskDescription: input.task,
       profile: input.profile,
       resolvedModel,
+      fastMode: input.fastMode,
       retain: input.retain,
       status: this.activeSubagents < MAX_ACTIVE_SUBAGENTS ? "running" : "queued",
       controller: new AbortController(),
@@ -981,6 +997,7 @@ export class PiWorkspaceDriver {
         tools,
         remainingSubagentDepth,
         auxiliary: true,
+        fastMode: input.fastMode,
       });
       handle.sessionId = snapshot.sessionId;
       handle.releaseRuntime = this.privateRuntimeIds.has(snapshot.sessionId);
@@ -1039,6 +1056,7 @@ export class PiWorkspaceDriver {
       profile: input.profile,
       status: handle.status,
       retained: input.retain,
+      fastMode: input.fastMode,
       maxDepth: remainingSubagentDepth,
       resolvedModel,
     });
@@ -1076,9 +1094,17 @@ export class PiWorkspaceDriver {
         input.maxDepth,
         parentDepth === undefined ? 1 : Math.max(0, parentDepth - 1),
       );
+      const resolvedModel = this.resolveAgentModel(input.model, parentSnapshot);
+      if (
+        input.fastMode &&
+        !supportsFastMode({ provider: resolvedModel.provider, id: resolvedModel.modelId })
+      )
+        throw new Error(
+          `Fast mode is unavailable for ${resolvedModel.provider}/${resolvedModel.modelId}`,
+        );
       return {
         input,
-        resolvedModel: this.resolveAgentModel(input.model, parentSnapshot),
+        resolvedModel,
         tools: toolsForSubagentProfile(input.profile, parentTools, remainingSubagentDepth > 0),
         remainingSubagentDepth,
       };
@@ -1311,22 +1337,31 @@ export class PiWorkspaceDriver {
       profile: handle.profile,
       status: handle.status,
       resolvedModel: handle.resolvedModel,
+      fastMode: handle.fastMode,
       streaming: snapshot.streaming,
       parts: snapshot.parts,
     };
-    return jsonValueSchema.parse(snapshot.usage ? { ...result, usage: snapshot.usage } : result);
+    // UiPart permits optional properties, while Pi tool results must contain strict JSON values.
+    return jsonValueSchema.parse(
+      JSON.parse(JSON.stringify(snapshot.usage ? { ...result, usage: snapshot.usage } : result)),
+    );
   }
 
   private liveSubagentResult(handleId: string, handle: SubagentHandle) {
-    return jsonValueSchema.parse({
-      handleId,
-      task: handle.taskDescription,
-      profile: handle.profile,
-      status: handle.status,
-      resolvedModel: handle.resolvedModel,
-      streaming: handle.liveStreaming,
-      parts: [...handle.liveParts.values()],
-    });
+    return jsonValueSchema.parse(
+      JSON.parse(
+        JSON.stringify({
+          handleId,
+          task: handle.taskDescription,
+          profile: handle.profile,
+          status: handle.status,
+          resolvedModel: handle.resolvedModel,
+          fastMode: handle.fastMode,
+          streaming: handle.liveStreaming,
+          parts: [...handle.liveParts.values()],
+        }),
+      ),
+    );
   }
 
   private async withSubagentSlot(handle: SubagentHandle, run: () => Promise<void>) {

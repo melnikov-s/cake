@@ -68,11 +68,15 @@ export class Session extends Model {
     this.streaming = streaming;
   }
 
+  applyArtifacts(records: readonly ArtifactRecord[]) {
+    for (const record of records) this.upsertArtifact(record);
+  }
+
   upsertArtifact(record: ArtifactRecord) {
     const artifactSnapshot = toArtifactSnapshot(record);
     const existing = this.artifacts.find((artifact) => artifact.id === record.artifact.id);
     if (existing) {
-      applySnapshot(existing, artifactSnapshot);
+      if (record.artifact.revision >= existing.revision) applySnapshot(existing, artifactSnapshot);
       return;
     }
     this.artifacts.push(Artifact.create(artifactSnapshot));

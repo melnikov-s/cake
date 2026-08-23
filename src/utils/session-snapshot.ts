@@ -1,6 +1,5 @@
 import type { Snapshot } from "r-state-tree";
 import type { SessionPreview, SessionSnapshot } from "../ipc/session-contract";
-import { toArtifactSnapshot } from "./artifact-snapshot";
 import { modelOptionKey } from "./model-option-key";
 import type { Session } from "../models/Session";
 
@@ -28,7 +27,6 @@ export function toSessionSnapshot(snapshot: SessionSnapshot): Snapshot<Session> 
     resources: snapshot.compatibility.resources,
     resourceDiagnostics: snapshot.compatibility.diagnostics,
     tree: snapshot.tree,
-    artifacts: (snapshot.artifacts ?? []).map(toArtifactSnapshot),
   } as Snapshot<Session>;
 }
 

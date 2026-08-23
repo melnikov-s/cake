@@ -83,6 +83,7 @@ test("shows one detailed pill for a subagent spawn and result", async () => {
       thinkingLevel: "max",
     },
     instructions: "Return only the joke.",
+    fastMode: true,
     maxDepth: 0,
     retain: false,
   };
@@ -143,6 +144,7 @@ test("shows one detailed pill for a subagent spawn and result", async () => {
         profile: request.profile,
         status: "running",
         retained: false,
+        fastMode: true,
         maxDepth: 0,
         resolvedModel,
       }),
@@ -155,6 +157,7 @@ test("shows one detailed pill for a subagent spawn and result", async () => {
         profile: request.profile,
         status: "complete",
         resolvedModel,
+        fastMode: true,
         streaming: false,
         parts: [
           {
@@ -225,6 +228,9 @@ test("shows one detailed pill for a subagent spawn and result", async () => {
 
     await log.locator(".subagent-summary").click();
     await expect(log.locator(".subagent-details")).toContainText("Requested model");
+    await expect(
+      log.locator(".subagent-metadata > div").filter({ hasText: "Fast mode" }),
+    ).toContainText("On");
     await expect(log.locator(".subagent-details")).toContainText("Return only the joke.");
   } finally {
     await application.close();

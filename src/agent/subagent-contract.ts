@@ -9,6 +9,7 @@ export const subagentTaskSchema = z.object({
   profile: subagentProfileSchema.default("worker"),
   model: agentModelPreferenceSchema.default({ prefer: "current" }),
   instructions: z.string().max(32_768).optional(),
+  fastMode: z.boolean().default(false),
   maxDepth: z.number().int().min(0).max(1).default(0),
   retain: z.boolean().default(false),
 });

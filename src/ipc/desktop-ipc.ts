@@ -56,6 +56,10 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     workspacePath: z.string().max(4_096).optional(),
   }),
   z.object({
+    type: z.literal("context-menu-action"),
+    action: z.literal("chat-about-selection"),
+  }),
+  z.object({
     type: z.literal("workspace-inspected"),
     requestId: z.uuid(),
     path: z.string().max(4_096),

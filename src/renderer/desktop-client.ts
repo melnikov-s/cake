@@ -45,6 +45,7 @@ export interface EmbeddedEditorStateSnapshot {
 
 export type DesktopClientEvent =
   | { type: "pi-state-changed"; state: PiState; workspacePath?: string }
+  | { type: "context-menu-action"; action: "chat-about-selection" }
   | { type: "workspace-inspected"; operationId: string; path: string; trustRequired: boolean }
   | { type: "session-snapshot-received"; operationId?: string; snapshot: SessionSnapshot }
   | { type: "part-updated"; sessionId: string; part: UiPart }
@@ -403,6 +404,7 @@ export interface DesktopClient {
 function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
   if (event.type === "pi-state")
     return { type: "pi-state-changed", state: event.state, workspacePath: event.workspacePath };
+  if (event.type === "context-menu-action") return event;
   if (event.type === "workspace-inspected")
     return {
       type: "workspace-inspected",

@@ -935,8 +935,20 @@ describe("Transcript scrolling", () => {
     });
   }
 
-  const chatMenuItem = () =>
-    document.body.querySelector<HTMLButtonElement>(".cake-context-menu [role='menuitem']");
+  function mountedContextMenuAction() {
+    let listener: (() => void) | undefined;
+    return {
+      subscribeToChatAboutSelection(next: () => void) {
+        listener = next;
+        return () => {
+          if (listener === next) listener = undefined;
+        };
+      },
+      trigger() {
+        act(() => listener?.());
+      },
+    };
+  }
 
   function mountedComments(draftChat: ChatStore): MessageCommentsStore {
     return {
@@ -957,6 +969,7 @@ describe("Transcript scrolling", () => {
       }),
     );
     const popupChat: ChatStore = mount(comments.draftChatStoreElement);
+    const contextMenu = mountedContextMenuAction();
     act(() =>
       root.render(
         <Transcript
@@ -974,6 +987,7 @@ describe("Transcript scrolling", () => {
           isStreaming={false}
           behavior={{
             messageComments: comments,
+            subscribeToChatAboutSelection: contextMenu.subscribeToChatAboutSelection,
           }}
           empty={<div />}
         />,
@@ -982,12 +996,8 @@ describe("Transcript scrolling", () => {
 
     const content = container.querySelector<HTMLElement>(".assistant-message-content")!;
     selectWithin(content, "important");
-    expect(chatMenuItem()).toBeNull();
     rightClick(content);
-
-    const item = chatMenuItem();
-    expect(item?.textContent).toBe("Chat about this");
-    act(() => item!.click());
+    contextMenu.trigger();
 
     const dialog = document.body.querySelector<HTMLElement>(
       '[role="dialog"][aria-label="Chat about this"]',
@@ -1054,7 +1064,6 @@ describe("Transcript scrolling", () => {
     const content = container.querySelector<HTMLElement>(".assistant-message-content")!;
     // A collapsed selection keeps the default menu.
     rightClick(content);
-    expect(chatMenuItem()).toBeNull();
 
     // Right-clicking an editing surface keeps the native cut/copy/paste menu.
     selectWithin(content, "important");
@@ -1062,7 +1071,6 @@ describe("Transcript scrolling", () => {
     composerInput.append(document.createTextNode("draft text"));
     container.appendChild(composerInput);
     rightClick(composerInput);
-    expect(chatMenuItem()).toBeNull();
 
     draftChat[Symbol.dispose]();
   });
@@ -1083,6 +1091,7 @@ describe("Transcript scrolling", () => {
       }),
     );
     const comments = mountedComments(draftChat);
+    const contextMenu = mountedContextMenuAction();
     act(() =>
       root.render(
         <Transcript
@@ -1097,7 +1106,10 @@ describe("Transcript scrolling", () => {
           ]}
           sessionId="session-1"
           isStreaming={false}
-          behavior={{ messageComments: comments }}
+          behavior={{
+            messageComments: comments,
+            subscribeToChatAboutSelection: contextMenu.subscribeToChatAboutSelection,
+          }}
           empty={<div />}
         />,
       ),
@@ -1106,9 +1118,7 @@ describe("Transcript scrolling", () => {
     const message = container.querySelector<HTMLElement>(".user-message")!;
     selectWithin(message, "settings shape");
     rightClick(message);
-
-    expect(chatMenuItem()?.textContent).toBe("Chat about this");
-    act(() => chatMenuItem()!.click());
+    contextMenu.trigger();
     expect(comments.prepareDraft).toHaveBeenCalledWith(
       expect.objectContaining({ messageId: "user-1", selectedText: "settings shape" }),
     );
@@ -1134,6 +1144,7 @@ describe("Transcript scrolling", () => {
       }),
     );
     const comments = mountedComments(draftChat);
+    const contextMenu = mountedContextMenuAction();
     act(() =>
       root.render(
         <Transcript
@@ -1149,7 +1160,10 @@ describe("Transcript scrolling", () => {
           ]}
           sessionId="session-1"
           isStreaming={false}
-          behavior={{ messageComments: comments }}
+          behavior={{
+            messageComments: comments,
+            subscribeToChatAboutSelection: contextMenu.subscribeToChatAboutSelection,
+          }}
           empty={<div />}
         />,
       ),
@@ -1159,9 +1173,7 @@ describe("Transcript scrolling", () => {
     selectWithin(content, "value");
     const codeBlock = content.querySelector("[data-streamdown='code-block'], pre, code")!;
     rightClick(codeBlock);
-
-    expect(chatMenuItem()?.textContent).toBe("Chat about this");
-    act(() => chatMenuItem()!.click());
+    contextMenu.trigger();
     expect(comments.prepareDraft).toHaveBeenCalledWith(
       expect.objectContaining({ messageId: "assistant-code", selectedText: "value" }),
     );
@@ -1207,7 +1219,6 @@ describe("Transcript scrolling", () => {
     const content = container.querySelector<HTMLElement>(".assistant-message-content")!;
     selectWithin(content, "answer");
     rightClick(content);
-    expect(chatMenuItem()).toBeNull();
     draftChat[Symbol.dispose]();
   });
 
@@ -1227,6 +1238,7 @@ describe("Transcript scrolling", () => {
       }),
     );
     const comments = mountedComments(draftChat);
+    const contextMenu = mountedContextMenuAction();
     act(() =>
       root.render(
         <Transcript
@@ -1242,7 +1254,10 @@ describe("Transcript scrolling", () => {
           ]}
           sessionId="session-1"
           isStreaming={false}
-          behavior={{ messageComments: comments }}
+          behavior={{
+            messageComments: comments,
+            subscribeToChatAboutSelection: contextMenu.subscribeToChatAboutSelection,
+          }}
           empty={<div />}
         />,
       ),
@@ -1257,9 +1272,7 @@ describe("Transcript scrolling", () => {
     const content = fullscreen.querySelector<HTMLElement>(".fullscreen-surface-content")!;
     selectWithin(content, "important");
     rightClick(content);
-
-    expect(chatMenuItem()?.textContent).toBe("Chat about this");
-    act(() => chatMenuItem()!.click());
+    contextMenu.trigger();
     expect(document.body.querySelector(".fullscreen-surface")).toBe(fullscreen);
     expect(
       document.body.querySelector('[role="dialog"][aria-label="Chat about this"]'),
