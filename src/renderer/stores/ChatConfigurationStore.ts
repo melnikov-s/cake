@@ -1,5 +1,10 @@
 import { Store } from "r-state-tree";
-import type { ModelOption, ThinkingLevel } from "../../ipc/session-contract";
+import type {
+  ChatConfiguration,
+  ModelOption,
+  ModelPreset,
+  ThinkingLevel,
+} from "../../ipc/session-contract";
 import type { Session } from "../../models/Session";
 import type { DesktopClientEvent } from "../desktop-client";
 import { describeError } from "../error-details";
@@ -14,6 +19,9 @@ export interface ChatConfigurationStoreProps {
     reset(owner?: string): void;
   };
   operationOwner?: string;
+  presets(): readonly ModelPreset[];
+  openPresetSettings(): void;
+  setConfiguration(operationId: string, configuration: ChatConfiguration): Promise<void>;
   setModel(operationId: string, provider: string, modelId: string): Promise<void>;
   setThinkingLevel(operationId: string, level: ThinkingLevel): Promise<void>;
   setFastMode(operationId: string, enabled: boolean): Promise<void>;
@@ -31,6 +39,20 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   }
   get fastMode() {
     return this.fastModeOverride ?? this.session?.fastMode ?? false;
+  }
+  get presets() {
+    return this.props.presets();
+  }
+  get activePreset() {
+    const session = this.session;
+    if (!session?.model) return undefined;
+    return this.presets.find(
+      (preset) =>
+        preset.provider === session.model?.provider &&
+        preset.modelId === session.model.id &&
+        preset.thinkingLevel === session.thinkingLevel &&
+        preset.fastMode === this.fastMode,
+    );
   }
   get activeOperations() {
     return this.props.operations.active(this.props.operationOwner);
@@ -58,6 +80,26 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
     await this.run((operationId) =>
       this.props.setModel(operationId, value.slice(0, separator), value.slice(separator + 1)),
     );
+  }
+
+  async selectConfiguration(configuration: ChatConfiguration) {
+    this.fastModeOverride = configuration.fastMode;
+    const accepted = await this.run((operationId) => {
+      this.fastModeOperationId = operationId;
+      return this.props.setConfiguration(operationId, configuration);
+    });
+    if (!accepted) {
+      this.fastModeOverride = undefined;
+      this.fastModeOperationId = undefined;
+    }
+  }
+
+  async selectPreset(preset: ModelPreset) {
+    await this.selectConfiguration(preset);
+  }
+
+  openPresetSettings() {
+    this.props.openPresetSettings();
   }
 
   async selectThinkingLevel(level: ThinkingLevel) {

@@ -1,6 +1,7 @@
 import { Store, child, createStore } from "r-state-tree";
 import type { DesktopClient } from "../desktop-client";
 import { Session } from "../../models/Session";
+import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
@@ -29,7 +30,9 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   projectName(): string;
   abort(): Promise<void>;
   renameSession(name: string): Promise<void>;
-  newSessionRequest(): { path: string } | undefined;
+  modelPresets(): readonly ModelPreset[];
+  openModelPresetSettings(): void;
+  newSessionRequest(): { path: string; configuration?: ChatConfiguration } | undefined;
 }
 
 /** Owns the view and interaction workflow for one project Pi session. */
@@ -119,6 +122,14 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       session: () => this.model,
       operations: this.props.operations,
       operationOwner: `chat-configuration:${this.sessionId}`,
+      presets: this.props.modelPresets,
+      openPresetSettings: this.props.openModelPresetSettings,
+      setConfiguration: (operationId, configuration) =>
+        this.props.client.setChatConfiguration({
+          operationId,
+          sessionId: this.sessionId,
+          configuration,
+        }),
       setModel: (operationId, provider, modelId) =>
         this.props.client.setModel({ operationId, sessionId: this.sessionId, provider, modelId }),
       setThinkingLevel: (operationId, level) =>

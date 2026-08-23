@@ -122,6 +122,10 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.appShellStore.showSettings();
   }
+  showModelPresetSettings() {
+    this.settingsStore.requestModelPresetsSection();
+    this.showSettings();
+  }
 
   private showEmptyWorkbench() {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
@@ -148,6 +152,8 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       projectName: (workspacePath) => this.projectCatalogStore.nameForPath(workspacePath),
       abort: () => this.projectWorkbenchStore.abort(),
       renameSession: (sessionId, name) => this.projectWorkbenchStore.renameSession(sessionId, name),
+      modelPresets: () => this.settingsStore.modelPresets,
+      openModelPresetSettings: () => this.showModelPresetSettings(),
       newSessionRequest: (sessionId) => this.projectWorkbenchStore.newSessionRequest(sessionId),
     });
   }
@@ -236,6 +242,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       sessionRegistry: this.sessionRegistry,
       operations: this.sessionOperationCoordinator,
       projects: this.projectCatalogStore,
+      defaultConfiguration: () => this.settingsStore.defaultModelPreset,
       reviews: () => this.reviewsStore,
       extensionUi: () => this.extensionUiStore,
       pluginCommands: () => this.pluginCommandStore,
@@ -279,6 +286,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         prompt: (input) => this.client.promptGlobalChat(input),
         abort: (input) => this.client.abortGlobalChat(input),
         compact: (input) => this.client.compactGlobalChat(input),
+        setConfiguration: (input) => this.client.setGlobalChatConfiguration(input),
         setModel: (input) => this.client.setGlobalChatModel(input),
         setThinkingLevel: (input) => this.client.setGlobalChatThinkingLevel(input),
         setFastMode: (input) => this.client.setGlobalChatFastMode(input),
@@ -288,6 +296,9 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       tools: () => this.appControl.listTools(),
       sessions: () => this.sessionRegistry,
       operations: this.sessionOperationCoordinator,
+      modelPresets: () => this.settingsStore.modelPresets,
+      defaultConfiguration: () => this.settingsStore.defaultModelPreset,
+      openModelPresetSettings: () => this.showModelPresetSettings(),
     });
   }
 
@@ -379,6 +390,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     if (event.type === "application-state-changed") {
       this.projectCatalogStore.applyApplicationState(event.state);
       this.globalChatStore.applyApplicationState(event.state);
+      this.settingsStore.applyApplicationState(event.state);
       return;
     }
     if (event.type === "context-menu-action") return;

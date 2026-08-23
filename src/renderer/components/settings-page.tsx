@@ -1,13 +1,14 @@
 import { observer } from "r-state-tree/react";
 import { Button } from "./ui/button";
 import { ModelCombobox } from "./model-combobox";
+import { ModelPresetSettings } from "./model-preset-settings";
 import { ThinkingLevelSelect } from "./thinking-level-select";
 import { PluginSettings } from "./plugin-settings";
 import { SettingsLinesField } from "./settings/settings-lines-field";
 import { SettingsPackagesField } from "./settings/settings-packages-field";
 import { SettingsTextField } from "./settings/settings-text-field";
 import { SettingsToggle } from "./settings/settings-toggle";
-import { piSettingsSchema, thinkingLevelSchema } from "../../ipc/session-contract";
+import { piSettingsSchema } from "../../ipc/session-contract";
 import type { ChatConfigurationStore } from "../stores/ChatConfigurationStore";
 import type { CustomizationStore } from "../stores/CustomizationStore";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
@@ -37,6 +38,13 @@ export const SettingsPage = observer(function SettingsPage({
   const utilityModelValue = utilityModel ? `${utilityModel.provider}/${utilityModel.modelId}` : "";
   const defaultModelValue =
     pi?.defaultProvider && pi.defaultModel ? `${pi.defaultProvider}/${pi.defaultModel}` : "";
+  const availableModels = providerGroups.flatMap((group) => group.models);
+  const defaultModel = availableModels.find(
+    (model) => `${model.provider}/${model.id}` === defaultModelValue,
+  );
+  const selectedUtilityModel = availableModels.find(
+    (model) => `${model.provider}/${model.id}` === utilityModelValue,
+  );
   return (
     <div className="settings-page">
       <div className="settings-intro">
@@ -112,6 +120,8 @@ export const SettingsPage = observer(function SettingsPage({
         )}
       </section>
 
+      <ModelPresetSettings settings={settings} groups={providerGroups} />
+
       <section className="settings-section" aria-labelledby="default-model-title">
         <header>
           <div>
@@ -149,7 +159,8 @@ export const SettingsPage = observer(function SettingsPage({
               <ThinkingLevelSelect
                 ariaLabel="Default agent thinking level"
                 value={pi.defaultThinkingLevel ?? "off"}
-                levels={thinkingLevelSchema.options}
+                levels={defaultModel?.availableThinkingLevels ?? []}
+                disabled={!defaultModel}
                 variant="settings"
                 onSelect={(value) =>
                   void settings.setPiSetting({ key: "defaultThinkingLevel", value })
@@ -184,7 +195,17 @@ export const SettingsPage = observer(function SettingsPage({
                 ariaLabel="Utility model"
                 groups={providerGroups}
                 value={utilityModelValue}
-                onSelect={(value) => void settings.selectUtilityModel(value)}
+                onSelect={(value) => {
+                  const model = availableModels.find(
+                    (candidate) => `${candidate.provider}/${candidate.id}` === value,
+                  );
+                  const thinkingLevel = model?.availableThinkingLevels.includes(
+                    utilityModel?.thinkingLevel ?? "off",
+                  )
+                    ? (utilityModel?.thinkingLevel ?? "off")
+                    : model?.availableThinkingLevels[0];
+                  void settings.selectUtilityModel(value, thinkingLevel);
+                }}
                 variant="settings"
               />
               {utilityModel && (
@@ -207,8 +228,8 @@ export const SettingsPage = observer(function SettingsPage({
             <ThinkingLevelSelect
               ariaLabel="Utility model thinking level"
               value={utilityModel?.thinkingLevel ?? "off"}
-              levels={thinkingLevelSchema.options}
-              disabled={!utilityModel || settings.utilityModelSaving}
+              levels={selectedUtilityModel?.availableThinkingLevels ?? []}
+              disabled={!utilityModel || !selectedUtilityModel || settings.utilityModelSaving}
               variant="settings"
               onSelect={(level) => void settings.selectUtilityThinkingLevel(level)}
             />

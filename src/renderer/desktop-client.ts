@@ -2,6 +2,7 @@ import type { CakeDesktopBridge, DesktopEvent } from "../ipc/desktop-ipc";
 import type {
   Attachment,
   ApplicationState,
+  ChatConfiguration,
   ChangedFile,
   FileSuggestion,
   GlobalSessionSummary,
@@ -9,6 +10,7 @@ import type {
   SessionPreview,
   PiSettingUpdate,
   ThinkingLevel,
+  ModelPreset,
   UtilityModel,
   ExtensionUiEvent,
   UiPart,
@@ -236,6 +238,10 @@ export interface DesktopClient {
   }): Promise<void>;
   revealInEmbeddedEditor(workspacePath: string, path: string, line?: number): Promise<void>;
   setUtilityModel(model: UtilityModel | undefined): Promise<ApplicationState>;
+  setModelPresets(
+    presets: readonly ModelPreset[],
+    defaultPresetId?: string,
+  ): Promise<ApplicationState>;
   listSessions(): Promise<{ sessions: GlobalSessionSummary[]; reviewThreads: ReviewThread[] }>;
   loadSession(sessionId: string): Promise<SessionPreview | undefined>;
   openGlobalChat(input: {
@@ -244,6 +250,7 @@ export interface DesktopClient {
     newSession?: boolean;
     sessionId?: string;
     initialPrompt?: string;
+    configuration?: ChatConfiguration;
   }): Promise<void>;
   promptGlobalChat(input: {
     operationId: string;
@@ -267,6 +274,11 @@ export interface DesktopClient {
     operationId: string;
     sessionId: string;
     level: ThinkingLevel;
+  }): Promise<void>;
+  setGlobalChatConfiguration(input: {
+    operationId: string;
+    sessionId: string;
+    configuration: ChatConfiguration;
   }): Promise<void>;
   setGlobalChatFastMode(input: {
     operationId: string;
@@ -315,6 +327,7 @@ export interface DesktopClient {
     path: string;
     newSession?: boolean;
     sessionId?: string;
+    configuration?: ChatConfiguration;
   }): Promise<void>;
   createWorktree(input: { operationId: string; path: string }): Promise<WorktreeRecord>;
   getWorktreeStatus(input: { workspacePath: string }): Promise<WorktreeStatus | undefined>;
@@ -341,7 +354,7 @@ export interface DesktopClient {
     text: string;
     delivery: "prompt" | "steer" | "follow-up";
     attachments: Attachment[];
-    newSession?: { path: string };
+    newSession?: { path: string; configuration?: ChatConfiguration };
   }): Promise<void>;
   abort(input: { operationId: string; sessionId: string }): Promise<void>;
   compactSession(input: {
@@ -359,6 +372,11 @@ export interface DesktopClient {
     operationId: string;
     sessionId: string;
     level: ThinkingLevel;
+  }): Promise<void>;
+  setChatConfiguration(input: {
+    operationId: string;
+    sessionId: string;
+    configuration: ChatConfiguration;
   }): Promise<void>;
   setFastMode(input: { operationId: string; sessionId: string; enabled: boolean }): Promise<void>;
   setPiSetting(input: {
@@ -812,6 +830,16 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         throw new Error("Cake could not update the utility model");
       return response.state;
     },
+    async setModelPresets(presets, defaultPresetId) {
+      const response = await bridge.request({
+        type: "set-model-presets",
+        presets: [...presets],
+        defaultPresetId,
+      });
+      if (response.type !== "application-state-updated")
+        throw new Error("Cake could not update model presets");
+      return response.state;
+    },
     async listSessions() {
       const response = await bridge.request({ type: "list-sessions" });
       if (response.type !== "sessions-listed")
@@ -832,6 +860,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         newSession: input.newSession ?? false,
         sessionId: input.sessionId,
         initialPrompt: input.initialPrompt,
+        configuration: input.configuration,
       }),
     promptGlobalChat: (input) =>
       accept(bridge, {
@@ -868,6 +897,13 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         requestId: input.operationId,
         sessionId: input.sessionId,
         level: input.level,
+      }),
+    setGlobalChatConfiguration: (input) =>
+      accept(bridge, {
+        type: "set-global-chat-configuration",
+        requestId: input.operationId,
+        sessionId: input.sessionId,
+        configuration: input.configuration,
       }),
     setGlobalChatFastMode: (input) =>
       accept(bridge, {
@@ -972,6 +1008,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         path: input.path,
         newSession: input.newSession ?? false,
         sessionId: input.sessionId,
+        configuration: input.configuration,
       }),
     async createWorktree(input) {
       const response = await bridge.request({
@@ -1062,6 +1099,13 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         requestId: input.operationId,
         sessionId: input.sessionId,
         level: input.level,
+      }),
+    setChatConfiguration: (input) =>
+      accept(bridge, {
+        type: "set-chat-configuration",
+        requestId: input.operationId,
+        sessionId: input.sessionId,
+        configuration: input.configuration,
       }),
     setFastMode: (input) =>
       accept(bridge, {

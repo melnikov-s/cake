@@ -1,6 +1,12 @@
 import { Store, applySnapshot, child, createStore, observable } from "r-state-tree";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
-import type { SessionPreview, SessionSnapshot, UiPart } from "../../ipc/session-contract";
+import type {
+  ChatConfiguration,
+  ModelPreset,
+  SessionPreview,
+  SessionSnapshot,
+  UiPart,
+} from "../../ipc/session-contract";
 import type { ReviewThread } from "../../ipc/review-contract";
 import type { DesktopClient } from "../desktop-client";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -23,7 +29,11 @@ export interface SessionRegistryStoreProps {
   projectName(workspacePath: string): string;
   abort(): Promise<void>;
   renameSession(sessionId: string, name: string): Promise<void>;
-  newSessionRequest?(sessionId: string): { path: string } | undefined;
+  modelPresets?(): readonly ModelPreset[];
+  openModelPresetSettings?(): void;
+  newSessionRequest?(
+    sessionId: string,
+  ): { path: string; configuration?: ChatConfiguration } | undefined;
 }
 
 /** Owns the keyed collection of loaded per-session Store instances for a window. */
@@ -57,6 +67,8 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         projectName: () => this.props.projectName(target.workspacePath),
         abort: () => this.props.abort(),
         renameSession: (name) => this.props.renameSession(target.sessionId, name),
+        modelPresets: () => this.props.modelPresets?.() ?? [],
+        openModelPresetSettings: () => this.props.openModelPresetSettings?.(),
         newSessionRequest: () => this.props.newSessionRequest?.(target.sessionId),
       }),
     );

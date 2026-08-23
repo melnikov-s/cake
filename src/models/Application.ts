@@ -1,10 +1,13 @@
 import { Model, child, observable, toSnapshot } from "r-state-tree";
 import { Project } from "./Project";
+import { ModelPreset } from "./ModelPreset";
 import {
   applicationStateSchema,
   DEFAULT_EDITOR_COMMAND,
+  modelPresetSchema,
   utilityModelSchema,
   type ApplicationState,
+  type ModelPreset as ModelPresetSnapshot,
   type ProjectRecord,
   type UtilityModel,
 } from "../ipc/session-contract";
@@ -18,12 +21,26 @@ export class Application extends Model {
   trustedProjectPaths: string[] = observable([]);
   fastModeSessionIds: string[] = observable([]);
   utilityModel: UtilityModel | undefined;
+  @child(ModelPreset)
+  modelPresets: ModelPreset[] = [];
+  defaultModelPresetId: string | undefined;
   editorCommand = DEFAULT_EDITOR_COMMAND;
   vscodeServerPath: string | undefined;
 
   static from(untrustedInput: unknown) {
     const model = Application.create(applicationStateSchema.parse(untrustedInput));
     model.setEditorCommand(model.editorCommand);
+    model.setModelPresets(
+      model.modelPresets.map((preset) => ({
+        id: preset.id,
+        name: preset.name,
+        provider: preset.provider,
+        modelId: preset.modelId,
+        thinkingLevel: preset.thinkingLevel,
+        fastMode: preset.fastMode,
+      })),
+      model.defaultModelPresetId,
+    );
     return model;
   }
 
@@ -63,6 +80,20 @@ export class Application extends Model {
 
   setUtilityModel(model: UtilityModel | undefined) {
     this.utilityModel = model ? utilityModelSchema.parse(model) : undefined;
+  }
+
+  setModelPresets(presets: readonly ModelPresetSnapshot[], defaultPresetId?: string) {
+    const parsed = presets.map((preset) => modelPresetSchema.parse(preset));
+    if (new Set(parsed.map((preset) => preset.id)).size !== parsed.length)
+      throw new Error("Model preset IDs must be unique");
+    this.modelPresets.splice(
+      0,
+      this.modelPresets.length,
+      ...parsed.map((preset) => ModelPreset.create(preset)),
+    );
+    this.defaultModelPresetId = parsed.some((preset) => preset.id === defaultPresetId)
+      ? defaultPresetId
+      : undefined;
   }
 
   setEditorCommand(command: string) {

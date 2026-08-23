@@ -1,6 +1,7 @@
 import { Store, child, createStore, observable } from "r-state-tree";
 import type {
   ApplicationState,
+  ChatConfiguration,
   GlobalSessionSummary,
   SessionSnapshot,
   WindowViewState,
@@ -59,6 +60,7 @@ export interface ProjectWorkbenchStoreProps {
   sessionRegistry: SessionRegistryStore;
   operations: SessionOperationCoordinatorStore;
   projects: ProjectCatalogStore;
+  defaultConfiguration?(): ChatConfiguration | undefined;
   reviews(): ReviewsStore;
   extensionUi(): ExtensionUiStore;
   pluginCommands(): PluginCommandStore;
@@ -314,7 +316,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   newSessionRequest(sessionId: string) {
     const session = this.sessionRegistry.findSession(sessionId);
     if (!session || !this.sessionRegistry.isTemporarySession(sessionId)) return undefined;
-    return { path: session.workspacePath };
+    return {
+      path: session.workspacePath,
+      configuration: this.props.defaultConfiguration?.(),
+    };
   }
 
   private showTemporarySession(path: string, sessionId: string) {
@@ -438,7 +443,13 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.browseStore.close();
     this.embeddedEditorStore.close();
     try {
-      await this.client.openWorkspace({ operationId, path, newSession, sessionId });
+      await this.client.openWorkspace({
+        operationId,
+        path,
+        newSession,
+        sessionId,
+        configuration: newSession ? this.props.defaultConfiguration?.() : undefined,
+      });
       void this.client
         .registerProject(path, this.props.projects.nameFromPath(path))
         .then((state) => this.applyApplicationState(state))
@@ -789,6 +800,16 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       if (event.operationId !== this.activeOpenOperationId) {
         this.finishOperation(event.operationId);
         return false;
+      }
+      if (
+        this.activeOpenTarget?.newSession &&
+        this.activeOpenTarget.sessionId &&
+        this.activeOpenTarget.sessionId !== event.snapshot.sessionId
+      ) {
+        this.sessionRegistry.discardNewSession(
+          this.activeOpenTarget.path,
+          this.activeOpenTarget.sessionId,
+        );
       }
       if (this.activeOpenExpectsEmpty && event.snapshot.parts.length > 0) {
         this.activeOpenOperationId = undefined;

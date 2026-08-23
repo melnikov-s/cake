@@ -32,6 +32,7 @@ const snapshot: SessionSnapshot = {
       id: "gpt",
       name: "GPT",
       reasoning: true,
+      availableThinkingLevels: ["off", "medium", "high"],
       input: ["text"],
       authenticated: true,
       authTypes: [],
@@ -60,6 +61,9 @@ function createTestStore() {
       void input;
     }),
     compact: vi.fn(async (input: Parameters<GlobalChatPort["compact"]>[0]) => {
+      void input;
+    }),
+    setConfiguration: vi.fn(async (input: Parameters<GlobalChatPort["setConfiguration"]>[0]) => {
       void input;
     }),
     setModel: vi.fn(async (input: Parameters<GlobalChatPort["setModel"]>[0]) => {

@@ -2,6 +2,7 @@ import { Store, observable } from "r-state-tree";
 import {
   DEFAULT_EDITOR_COMMAND,
   type ApplicationState,
+  type ModelPreset,
   type PiSettingUpdate,
   type ThinkingLevel,
   type UtilityModel,
@@ -20,6 +21,7 @@ export interface SettingsStoreProps {
     | "logout"
     | "setEditorCommand"
     | "setUtilityModel"
+    | "setModelPresets"
   >;
   sessionContext(): { sessionId: string } | undefined;
   operations: SessionOperationCoordinatorStore;
@@ -33,6 +35,10 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   );
   utilityModel: UtilityModel | undefined;
   utilityModelSaving = false;
+  readonly modelPresets: ModelPreset[] = observable([]);
+  defaultModelPresetId: string | undefined;
+  modelPresetsSaving = false;
+  modelPresetsSectionRevision = 0;
   editorCommand = DEFAULT_EDITOR_COMMAND;
   error: string | undefined;
   errorDetails: string | undefined;
@@ -40,6 +46,10 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   private utilitySaveRevision = 0;
   private utilitySaveQueue: Promise<unknown> = Promise.resolve();
   private persistedUtilityModel: UtilityModel | undefined;
+  private modelPresetSaveRevision = 0;
+  private modelPresetSaveQueue: Promise<unknown> = Promise.resolve();
+  private persistedModelPresets: ModelPreset[] = [];
+  private persistedDefaultModelPresetId: string | undefined;
   private editorSaveRevision = 0;
   private editorSaveQueue: Promise<unknown> = Promise.resolve();
   private persistedEditorCommand = DEFAULT_EDITOR_COMMAND;
@@ -68,6 +78,57 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     this.utilityModel = state.utilityModel;
     this.persistedEditorCommand = state.editorCommand?.trim() || DEFAULT_EDITOR_COMMAND;
     this.editorCommand = this.persistedEditorCommand;
+    this.persistedModelPresets = (state.modelPresets ?? []).map((preset) => ({ ...preset }));
+    this.persistedDefaultModelPresetId = state.defaultModelPresetId;
+    if (!this.modelPresetsSaving) {
+      this.modelPresets.splice(0, this.modelPresets.length, ...this.persistedModelPresets);
+      this.defaultModelPresetId = this.persistedDefaultModelPresetId;
+    }
+  }
+
+  get defaultModelPreset() {
+    const preset = this.modelPresets.find(
+      (candidate) => candidate.id === this.defaultModelPresetId,
+    );
+    return preset
+      ? {
+          provider: preset.provider,
+          modelId: preset.modelId,
+          thinkingLevel: preset.thinkingLevel,
+          fastMode: preset.fastMode,
+        }
+      : undefined;
+  }
+
+  requestModelPresetsSection() {
+    this.modelPresetsSectionRevision += 1;
+  }
+
+  createModelPreset(preset: Omit<ModelPreset, "id">) {
+    return this.saveModelPresets([...this.modelPresets, { ...preset, id: crypto.randomUUID() }]);
+  }
+
+  updateModelPreset(preset: ModelPreset) {
+    return this.saveModelPresets(
+      this.modelPresets.map((current) => (current.id === preset.id ? preset : current)),
+    );
+  }
+
+  duplicateModelPreset(id: string) {
+    const source = this.modelPresets.find((preset) => preset.id === id);
+    if (!source) return Promise.resolve();
+    return this.createModelPreset({ ...source, name: `${source.name} copy` });
+  }
+
+  deleteModelPreset(id: string) {
+    return this.saveModelPresets(
+      this.modelPresets.filter((preset) => preset.id !== id),
+      this.defaultModelPresetId === id ? undefined : this.defaultModelPresetId,
+    );
+  }
+
+  setDefaultModelPreset(id: string | undefined) {
+    return this.saveModelPresets(this.modelPresets, id);
   }
 
   setEditorCommand(command: string) {
@@ -93,13 +154,13 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     return save;
   }
 
-  selectUtilityModel(value: string) {
+  selectUtilityModel(value: string, thinkingLevel?: ThinkingLevel) {
     const separator = value.indexOf("/");
     if (separator < 1) return Promise.resolve();
     return this.saveUtilityModel({
       provider: value.slice(0, separator),
       modelId: value.slice(separator + 1),
-      thinkingLevel: this.utilityModel?.thinkingLevel ?? "off",
+      thinkingLevel: thinkingLevel ?? this.utilityModel?.thinkingLevel ?? "off",
     });
   }
 
@@ -208,6 +269,46 @@ export class SettingsStore extends Store<SettingsStoreProps> {
         this.finish(operationId);
       }
     }
+  }
+
+  private saveModelPresets(
+    presets: readonly ModelPreset[],
+    defaultPresetId = this.defaultModelPresetId,
+  ) {
+    const revision = ++this.modelPresetSaveRevision;
+    const optimistic = presets.map((preset) => ({ ...preset }));
+    this.modelPresets.splice(0, this.modelPresets.length, ...optimistic);
+    this.defaultModelPresetId = defaultPresetId;
+    this.modelPresetsSaving = true;
+    this.error = undefined;
+    this.errorDetails = undefined;
+    const save = this.modelPresetSaveQueue
+      .catch(() => undefined)
+      .then(() => this.props.client.setModelPresets(optimistic, defaultPresetId))
+      .then((state) => {
+        this.persistedModelPresets = (state.modelPresets ?? []).map((preset) => ({ ...preset }));
+        this.persistedDefaultModelPresetId = state.defaultModelPresetId;
+        if (revision === this.modelPresetSaveRevision) {
+          this.modelPresets.splice(0, this.modelPresets.length, ...this.persistedModelPresets);
+          this.defaultModelPresetId = this.persistedDefaultModelPresetId;
+        }
+      })
+      .catch((error) => {
+        if (revision === this.modelPresetSaveRevision) {
+          this.modelPresets.splice(
+            0,
+            this.modelPresets.length,
+            ...this.persistedModelPresets.map((preset) => ({ ...preset })),
+          );
+          this.defaultModelPresetId = this.persistedDefaultModelPresetId;
+          this.reportError(error);
+        }
+      })
+      .finally(() => {
+        if (revision === this.modelPresetSaveRevision) this.modelPresetsSaving = false;
+      });
+    this.modelPresetSaveQueue = save;
+    return save;
   }
 
   private saveUtilityModel(model: UtilityModel | undefined) {

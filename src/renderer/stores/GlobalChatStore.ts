@@ -4,6 +4,8 @@ import type { JsonObject } from "../../ipc/json-contract";
 import type {
   ApplicationState,
   Attachment,
+  ChatConfiguration,
+  ModelPreset,
   SessionSnapshot,
   ThinkingLevel,
 } from "../../ipc/session-contract";
@@ -20,6 +22,7 @@ export interface GlobalChatPort {
     newSession?: boolean;
     sessionId?: string;
     initialPrompt?: string;
+    configuration?: ChatConfiguration;
   }): Promise<void>;
   prompt(input: {
     operationId: string;
@@ -29,6 +32,11 @@ export interface GlobalChatPort {
   }): Promise<void>;
   abort(input: { operationId: string; sessionId: string }): Promise<void>;
   compact(input: { operationId: string; sessionId: string; instructions?: string }): Promise<void>;
+  setConfiguration(input: {
+    operationId: string;
+    sessionId: string;
+    configuration: ChatConfiguration;
+  }): Promise<void>;
   setModel(input: {
     operationId: string;
     sessionId: string;
@@ -49,6 +57,9 @@ export interface GlobalChatStoreProps {
   tools(): ReadonlyArray<{ name: string; description: string; parameters: JsonObject }>;
   sessions(): SessionRegistryStore;
   operations: SessionOperationCoordinatorStore;
+  modelPresets?(): readonly ModelPreset[];
+  defaultConfiguration?(): ChatConfiguration | undefined;
+  openModelPresetSettings?(): void;
 }
 
 /** Owns the Cake Chat session collection, selection, and per-session Store instances. */
@@ -86,6 +97,8 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
         collection: this,
         sessions: this.props.sessions(),
         operations: this.props.operations,
+        modelPresets: () => this.props.modelPresets?.() ?? [],
+        openModelPresetSettings: () => this.props.openModelPresetSettings?.(),
       }),
     );
   }
@@ -101,7 +114,14 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   open(sessionId?: string, newSession = false, initialPrompt?: string) {
     const operationId = this.props.operations.start("cake-chat-open");
     return this.port
-      .open({ operationId, tools: this.props.tools(), sessionId, newSession, initialPrompt })
+      .open({
+        operationId,
+        tools: this.props.tools(),
+        sessionId,
+        newSession,
+        initialPrompt,
+        configuration: newSession ? this.props.defaultConfiguration?.() : undefined,
+      })
       .catch((error) => {
         this.props.operations.finish(operationId);
         this.reportError(error);

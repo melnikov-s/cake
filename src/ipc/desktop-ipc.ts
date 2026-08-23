@@ -34,6 +34,8 @@ import {
   extensionUiEventSchema,
   fileSuggestionSchema,
   globalSessionSummarySchema,
+  chatConfigurationSchema,
+  modelPresetSchema,
   piSettingUpdateSchema,
   sessionPreviewSchema,
   sessionSnapshotSchema,
@@ -400,6 +402,11 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("save-window-state"), state: windowViewStateSchema }),
   z.object({ type: z.literal("load-application-state") }),
   z.object({ type: z.literal("set-utility-model"), model: utilityModelSchema.optional() }),
+  z.object({
+    type: z.literal("set-model-presets"),
+    presets: z.array(modelPresetSchema).max(100),
+    defaultPresetId: z.uuid().optional(),
+  }),
   z.object({ type: z.literal("list-sessions") }),
   z.object({ type: z.literal("load-session"), sessionId: z.string().min(1).max(256) }),
   z.object({
@@ -418,6 +425,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     newSession: z.boolean().default(false),
     sessionId: z.string().min(1).max(256).optional(),
     initialPrompt: z.string().min(1).max(262_144).optional(),
+    configuration: chatConfigurationSchema.optional(),
   }),
   z
     .object({
@@ -453,6 +461,12 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     requestId: z.uuid(),
     sessionId: z.string().min(1).max(256),
     level: thinkingLevelSchema,
+  }),
+  z.object({
+    type: z.literal("set-global-chat-configuration"),
+    requestId: z.uuid(),
+    sessionId: z.string().min(1).max(256),
+    configuration: chatConfigurationSchema,
   }),
   z.object({
     type: z.literal("set-global-chat-fast-mode"),
@@ -554,6 +568,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     path: z.string().max(4_096),
     newSession: z.boolean().default(false),
     sessionId: z.string().min(1).max(256).optional(),
+    configuration: chatConfigurationSchema.optional(),
   }),
   z
     .object({
@@ -566,6 +581,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
       newSession: z
         .object({
           path: z.string().max(4_096),
+          configuration: chatConfigurationSchema.optional(),
         })
         .optional(),
     })
@@ -599,6 +615,12 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     requestId: z.uuid(),
     level: thinkingLevelSchema,
     sessionId: z.string().max(256),
+  }),
+  z.object({
+    type: z.literal("set-chat-configuration"),
+    requestId: z.uuid(),
+    sessionId: z.string().min(1).max(256),
+    configuration: chatConfigurationSchema,
   }),
   z.object({
     type: z.literal("set-fast-mode"),

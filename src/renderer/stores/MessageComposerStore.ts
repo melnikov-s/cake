@@ -1,5 +1,10 @@
 import { Store, observable } from "r-state-tree";
-import type { Attachment, FileSuggestion, UiPart } from "../../ipc/session-contract";
+import type {
+  Attachment,
+  ChatConfiguration,
+  FileSuggestion,
+  UiPart,
+} from "../../ipc/session-contract";
 import { parsePiBuiltinCommand } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
@@ -44,7 +49,7 @@ export interface MessageComposerStoreProps {
   renameSession(name: string): Promise<void>;
   operations: SessionOperationCoordinatorStore;
   operationOwner: string;
-  newSessionRequest?(): { path: string } | undefined;
+  newSessionRequest?(): { path: string; configuration?: ChatConfiguration } | undefined;
 }
 
 /** Owns attachments, the local prompt queue, optimistic immediate prompts, and prompt delivery. */

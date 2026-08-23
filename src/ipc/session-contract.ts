@@ -24,6 +24,17 @@ export const utilityModelSchema = z.object({
   thinkingLevel: thinkingLevelSchema,
 });
 
+export const modelPresetSchema = z.object({
+  id: z.uuid(),
+  name: z.string().trim().min(1).max(80),
+  provider: z.string().min(1).max(256),
+  modelId: z.string().min(1).max(512),
+  thinkingLevel: thinkingLevelSchema,
+  fastMode: z.boolean(),
+});
+
+export const chatConfigurationSchema = modelPresetSchema.omit({ id: true, name: true });
+
 const piResourcePathSchema = z.string().min(1).max(4_096);
 const piResourcePathsSchema = z.array(piResourcePathSchema).max(1_000);
 const piPackageSourceSchema = z.union([
@@ -220,6 +231,7 @@ export const modelOptionSchema = z.object({
   id: z.string().max(512),
   name: ipcProjectionString(1_024),
   reasoning: z.boolean(),
+  availableThinkingLevels: ipcProjectionArray(thinkingLevelSchema, 7),
   fastMode: z.boolean().optional(),
   input: ipcProjectionArray(z.enum(["text", "image"]), 2),
   authenticated: z.boolean(),
@@ -441,6 +453,8 @@ export const applicationStateSchema = z.object({
   trustedProjectPaths: z.array(z.string().max(4_096)).max(200).default([]),
   fastModeSessionIds: z.array(z.string().max(256)).max(10_000).optional(),
   utilityModel: utilityModelSchema.optional(),
+  modelPresets: z.array(modelPresetSchema).max(100).optional(),
+  defaultModelPresetId: z.uuid().optional(),
   editorCommand: z.string().max(512).optional(),
   vscodeServerPath: z.string().max(4_096).optional(),
 });
@@ -472,6 +486,8 @@ export type UiPart = z.infer<typeof uiPartSchema>;
 export type ModelOption = z.infer<typeof modelOptionSchema>;
 export type ThinkingLevel = z.infer<typeof thinkingLevelSchema>;
 export type UtilityModel = z.infer<typeof utilityModelSchema>;
+export type ModelPreset = z.infer<typeof modelPresetSchema>;
+export type ChatConfiguration = z.infer<typeof chatConfigurationSchema>;
 export type PiSettings = z.infer<typeof piSettingsSchema>;
 export type PiSettingUpdate = z.infer<typeof piSettingUpdateSchema>;
 export type SessionSnapshot = z.infer<typeof sessionSnapshotSchema>;

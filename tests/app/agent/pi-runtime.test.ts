@@ -1668,7 +1668,11 @@ export default function (pi) {
     );
     expect(firstSnapshot.models).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ provider: "fixture-provider", id: "fixture-model" }),
+        expect.objectContaining({
+          provider: "fixture-provider",
+          id: "fixture-model",
+          availableThinkingLevels: ["off"],
+        }),
       ]),
     );
 

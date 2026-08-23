@@ -50,6 +50,28 @@ describe("Application", () => {
     expect(model.snapshot().utilityModel).toBeUndefined();
   });
 
+  it("persists model presets and keeps the default reference valid", () => {
+    const model = Application.from({});
+    const preset = {
+      id: "00000000-0000-4000-8000-000000000001",
+      name: "Deep review",
+      provider: "openai",
+      modelId: "gpt-5.6",
+      thinkingLevel: "high" as const,
+      fastMode: true,
+    };
+
+    model.setModelPresets([preset], preset.id);
+    expect(model.snapshot()).toMatchObject({
+      modelPresets: [preset],
+      defaultModelPresetId: preset.id,
+    });
+
+    model.setModelPresets([], preset.id);
+    expect(model.snapshot().modelPresets).toEqual([]);
+    expect(model.snapshot().defaultModelPresetId).toBeUndefined();
+  });
+
   it("updates resolve state on projects restored from persistence", () => {
     const model = Application.from({
       schemaVersion: 1,

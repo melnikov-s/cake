@@ -63,13 +63,24 @@ describe("PiWorkspaceDriver", () => {
       text: "First message",
       delivery: "prompt",
       attachments: [],
-      newSession: { path: "/project" },
+      newSession: {
+        path: "/project",
+        configuration: {
+          provider: "openai",
+          modelId: "gpt-5.6",
+          thinkingLevel: "high",
+          fastMode: true,
+        },
+      },
     });
 
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId }));
     expect(createRuntime).toHaveBeenCalledWith(
       expect.objectContaining({ newSession: true, sessionId: snapshot.sessionId }),
     );
+    expect(runtime.setModel).toHaveBeenCalledWith("openai", "gpt-5.6");
+    expect(runtime.setThinkingLevel).toHaveBeenCalledWith("high");
+    expect(runtime.setFastMode).toHaveBeenCalledWith(true);
     expect(runtime.prompt).toHaveBeenCalledWith("First message", "prompt", []);
     driver[Symbol.dispose]();
   });

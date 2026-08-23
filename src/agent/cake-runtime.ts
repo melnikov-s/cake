@@ -39,6 +39,7 @@ import {
   type CakeArtifactV1,
 } from "../ipc/artifact-contract";
 import type { TSchema } from "@earendil-works/pi-ai";
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import { createCakeArtifactExtension } from "./artifact-extension";
 import {
   INTERRUPTED_TURN_NOTICE_PART_ID,
@@ -661,6 +662,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           id: model.id,
           name: model.name,
           reasoning: model.reasoning,
+          availableThinkingLevels: getSupportedThinkingLevels(model),
           fastMode: supportsFastMode({ provider: provider.id, id: model.id }),
           input: model.input,
           authenticated: Boolean(authentication.get(provider.id)),

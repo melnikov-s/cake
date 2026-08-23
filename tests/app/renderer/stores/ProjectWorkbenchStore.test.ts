@@ -142,6 +142,15 @@ function createDesktopClient(restoredPath?: string) {
       trustedProjectPaths: [],
       utilityModel: model,
     })),
+    setModelPresets: vi.fn(async (modelPresets, defaultModelPresetId) => ({
+      schemaVersion: 1 as const,
+      projects: [],
+      resolvedSessionIds: [],
+      resolvedCakeChatSessionIds: [],
+      trustedProjectPaths: [],
+      modelPresets: [...modelPresets],
+      defaultModelPresetId,
+    })),
     listSessions: vi.fn(async () => ({ sessions: [], reviewThreads: [] })),
     loadSession: vi.fn(async () => undefined),
     openGlobalChat: vi.fn(async () => undefined),
@@ -150,6 +159,7 @@ function createDesktopClient(restoredPath?: string) {
     compactGlobalChat: vi.fn(async () => undefined),
     setGlobalChatModel: vi.fn(async () => undefined),
     setGlobalChatThinkingLevel: vi.fn(async () => undefined),
+    setGlobalChatConfiguration: vi.fn(async () => undefined),
     setGlobalChatFastMode: vi.fn(async () => undefined),
     respondToGlobalChatControl: vi.fn(async () => undefined),
     listReviewThreads: vi.fn(async () => []),
@@ -237,6 +247,7 @@ function createDesktopClient(restoredPath?: string) {
     compactSession: vi.fn(async () => undefined),
     setModel: vi.fn(async () => undefined),
     setThinkingLevel: vi.fn(async () => undefined),
+    setChatConfiguration: vi.fn(async () => undefined),
     setFastMode: vi.fn(async () => undefined),
     setPiSetting: vi.fn(async () => undefined),
     reloadPi: vi.fn(async () => undefined),
@@ -504,6 +515,7 @@ describe("ProjectWorkbenchStore", () => {
           id: "gpt",
           name: "GPT",
           reasoning: true,
+          availableThinkingLevels: ["off", "medium"],
           input: ["text"],
           authenticated: true,
           authTypes: ["api_key"],
@@ -514,6 +526,7 @@ describe("ProjectWorkbenchStore", () => {
           id: "claude",
           name: "Claude",
           reasoning: true,
+          availableThinkingLevels: ["off", "medium"],
           input: ["text"],
           authenticated: false,
           authTypes: ["api_key", "oauth"],
@@ -704,7 +717,7 @@ describe("ProjectWorkbenchStore", () => {
       draft: "",
       theme: "system" as const,
       draftsBySession: { "unpersisted-session": "" },
-      newSessionDraftsByProject: {},
+      newSessionDraftsByProject: { "/project": "restored temporary draft" },
     }));
     const { root, store } = mountTestStore(desktop.client);
     await flush();
@@ -717,13 +730,10 @@ describe("ProjectWorkbenchStore", () => {
       trustRequired: false,
     });
 
-    expect(desktop.client.openWorkspace).toHaveBeenCalledWith(
-      expect.objectContaining({
-        path: "/project",
-        newSession: true,
-        sessionId: undefined,
-      }),
-    );
+    expect(desktop.client.openWorkspace).not.toHaveBeenCalled();
+    expect(store.activeSession?.workspacePath).toBe("/project");
+    expect(store.activeSession?.chatStore.draft).toBe("restored temporary draft");
+    expect(store.sessionRegistry.isTemporarySession(store.activeSession!.sessionId)).toBe(true);
     root[Symbol.dispose]();
   });
 
@@ -754,10 +764,53 @@ describe("ProjectWorkbenchStore", () => {
     desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot });
 
     expect(store.session?.sessionFile).toBe("/sessions/one.jsonl");
+    const openCalls = vi.mocked(desktop.client.openWorkspace).mock.calls.length;
     await store.startNewSession();
     expect(store.pendingTrustPath).toBeUndefined();
-    expect(desktop.client.openWorkspace).toHaveBeenLastCalledWith(
-      expect.objectContaining({ path: "/project", newSession: true }),
+    expect(desktop.client.openWorkspace).toHaveBeenCalledTimes(openCalls);
+    expect(store.sessionRegistry.isTemporarySession(store.activeSession!.sessionId)).toBe(true);
+    root[Symbol.dispose]();
+  });
+
+  it("applies the default model preset when creating a conversation", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+    const preset = {
+      id: "00000000-0000-4000-8000-000000000001",
+      name: "Deep review",
+      provider: "openai",
+      modelId: "gpt-5.6",
+      thinkingLevel: "high" as const,
+      fastMode: true,
+    };
+    root.settingsStore.applyApplicationState({
+      schemaVersion: 1,
+      projects: [],
+      resolvedSessionIds: [],
+      resolvedCakeChatSessionIds: [],
+      trustedProjectPaths: [],
+      modelPresets: [preset],
+      defaultModelPresetId: preset.id,
+    });
+
+    await store.startNewSession();
+    store.activeSession!.chatStore.setDraft("Start with this preset");
+    await store.activeSession!.composerStore.submit();
+
+    expect(desktop.client.submit).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        newSession: {
+          path: "/project",
+          configuration: {
+            provider: preset.provider,
+            modelId: preset.modelId,
+            thinkingLevel: preset.thinkingLevel,
+            fastMode: true,
+          },
+        },
+      }),
     );
     root[Symbol.dispose]();
   });
@@ -781,9 +834,8 @@ describe("ProjectWorkbenchStore", () => {
       path: "/other",
       trustRequired: false,
     });
-    expect(desktop.client.openWorkspace).toHaveBeenLastCalledWith(
-      expect.objectContaining({ path: "/other", newSession: true }),
-    );
+    expect(store.activeSession?.workspacePath).toBe("/other");
+    expect(store.sessionRegistry.isTemporarySession(store.activeSession!.sessionId)).toBe(true);
     root[Symbol.dispose]();
   });
 
@@ -1524,7 +1576,7 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("retains the previous transcript and rejects late snapshots while opening a new session", async () => {
+  it("shows a temporary empty chat immediately without opening a Pi session", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
@@ -1535,12 +1587,13 @@ describe("ProjectWorkbenchStore", () => {
     await openSnapshot(store, desktop, oldSnapshot);
     expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toHaveLength(1);
 
+    const openCalls = vi.mocked(desktop.client.openWorkspace).mock.calls.length;
     await store.startNewSession();
-    const openId = store.activeOperations.at(-1)!;
-    expect(store.session?.sessionId).toBe("session-1");
-    expect(
-      root.projectWorkbenchStore.activeSession!.composerStore.parts.map((part) => part.id),
-    ).toEqual(["old-tool"]);
+    const requestedSessionId = store.activeSession!.sessionId;
+    expect(desktop.client.openWorkspace).toHaveBeenCalledTimes(openCalls);
+    expect(store.sessionRegistry.isTemporarySession(requestedSessionId)).toBe(true);
+    expect(store.session?.sessionId).toBe(requestedSessionId);
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([]);
 
     desktop.emit({ type: "session-snapshot-received", snapshot: oldSnapshot });
     desktop.emit({
@@ -1548,14 +1601,37 @@ describe("ProjectWorkbenchStore", () => {
       operationId: crypto.randomUUID(),
       snapshot: oldSnapshot,
     });
+    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([]);
+
+    store.activeSession!.chatStore.setDraft("Create it now");
+    await store.activeSession!.composerStore.submit();
+    expect(desktop.client.submit).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        sessionId: requestedSessionId,
+        newSession: { path: "/project", configuration: undefined },
+      }),
+    );
+
+    const newSnapshot = {
+      ...snapshot,
+      sessionId: requestedSessionId,
+      sessionFile: "/sessions/two.jsonl",
+      parts: [
+        {
+          id: "first-user-message",
+          kind: "text" as const,
+          role: "user" as const,
+          text: "Create it now",
+          status: "complete" as const,
+        },
+      ],
+    };
+    desktop.emit({ type: "session-snapshot-received", snapshot: newSnapshot });
+    expect(store.sessionRegistry.isTemporarySession(requestedSessionId)).toBe(false);
+    expect(store.session?.sessionId).toBe(requestedSessionId);
     expect(
       root.projectWorkbenchStore.activeSession!.composerStore.parts.map((part) => part.id),
-    ).toEqual(["old-tool"]);
-
-    const newSnapshot = { ...snapshot, sessionId: "session-2", sessionFile: "/sessions/two.jsonl" };
-    desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot: newSnapshot });
-    expect(store.session?.sessionId).toBe("session-2");
-    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([]);
+    ).toEqual(["first-user-message"]);
     root[Symbol.dispose]();
   });
 
@@ -1618,30 +1694,6 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("refuses a non-empty snapshot for a newly created session", async () => {
-    const desktop = createDesktopClient();
-    const { root, store } = mountTestStore(desktop.client);
-    await flush();
-    await openSnapshot(store, desktop);
-
-    await store.startNewSession();
-    const openId = store.activeOperations.at(-1)!;
-    desktop.emit({
-      type: "session-snapshot-received",
-      operationId: openId,
-      snapshot: {
-        ...snapshot,
-        sessionId: "contaminated",
-        parts: [{ id: "foreign-tool", kind: "tool", name: "read", input: "", state: "success" }],
-      },
-    });
-
-    expect(store.session?.sessionId).toBe("session-1");
-    expect(root.projectWorkbenchStore.activeSession!.composerStore.parts).toEqual([]);
-    expect(store.error).toContain("refused to mount history");
-    root[Symbol.dispose]();
-  });
-
   it("keeps a new session pending until Pi lists it, not merely until it has parts", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
@@ -1649,15 +1701,17 @@ describe("ProjectWorkbenchStore", () => {
     await openSnapshot(store, desktop);
 
     await store.startNewSession();
-    const openId = store.activeOperations.at(-1)!;
+    const pendingSessionId = store.activeSession!.sessionId;
+    store.activeSession!.chatStore.setDraft("Hello");
+    await store.activeSession!.composerStore.submit();
     const pendingSnapshot = {
       ...snapshot,
-      sessionId: "pending-session",
+      sessionId: pendingSessionId,
       sessionFile: "",
       sessionListed: false,
       sessions: [
         {
-          id: "pending-session",
+          id: pendingSessionId,
           title: "New chat",
           created: new Date(0).toISOString(),
           modified: new Date(0).toISOString(),
@@ -1666,11 +1720,7 @@ describe("ProjectWorkbenchStore", () => {
         },
       ],
     };
-    desktop.emit({
-      type: "session-snapshot-received",
-      operationId: openId,
-      snapshot: pendingSnapshot,
-    });
+    desktop.emit({ type: "session-snapshot-received", snapshot: pendingSnapshot });
     desktop.emit({
       type: "session-snapshot-received",
       snapshot: {
@@ -1687,8 +1737,8 @@ describe("ProjectWorkbenchStore", () => {
       },
     });
 
-    expect(store.sessionRegistry.pendingNewSessionId("/project")).toBe("pending-session");
-    expect(root.sessionCatalogStore.find("pending-session")).toBeDefined();
+    expect(store.sessionRegistry.pendingNewSessionId("/project")).toBe(pendingSessionId);
+    expect(root.sessionCatalogStore.find(pendingSessionId)).toBeDefined();
 
     desktop.emit({
       type: "session-snapshot-received",
@@ -1705,12 +1755,7 @@ describe("ProjectWorkbenchStore", () => {
     await openSnapshot(store, desktop);
 
     await store.startNewSession("/project");
-    const firstOpenId = store.activeOperations.at(-1)!;
-    desktop.emit({
-      type: "session-snapshot-received",
-      operationId: firstOpenId,
-      snapshot: { ...snapshot, sessionId: "new-project", sessionFile: "" },
-    });
+    const projectTemporarySessionId = store.activeSession!.sessionId;
     store.activeSession!.chatStore.setDraft("draft for project");
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(
@@ -1725,21 +1770,12 @@ describe("ProjectWorkbenchStore", () => {
       path: "/other",
       trustRequired: false,
     });
-    const secondOpenId = store.activeOperations.at(-1)!;
-    desktop.emit({
-      type: "session-snapshot-received",
-      operationId: secondOpenId,
-      snapshot: { ...snapshot, workspacePath: "/other", sessionId: "new-other", sessionFile: "" },
-    });
     store.activeSession!.chatStore.setDraft("draft for other");
 
     await store.startNewSession("/project");
 
-    expect(store.activeSession?.sessionId).toBe("new-project");
+    expect(store.activeSession?.sessionId).toBe(projectTemporarySessionId);
     expect(store.activeSession?.chatStore.draft).toBe("draft for project");
-    expect(desktop.client.inspectWorkspace).toHaveBeenLastCalledWith(
-      expect.objectContaining({ path: "/project" }),
-    );
     root[Symbol.dispose]();
   });
 

@@ -1110,6 +1110,7 @@ async function handleCakeRequest(
       newSession: request.newSession,
       sessionId: request.sessionId,
       initialPrompt: request.initialPrompt,
+      configuration: request.configuration,
     });
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
@@ -1147,6 +1148,11 @@ async function handleCakeRequest(
   if (request.type === "set-global-chat-thinking") {
     globalChatController = event.sender;
     globalChatDriver.setThinkingLevel(request.requestId, request.sessionId, request.level);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  if (request.type === "set-global-chat-configuration") {
+    globalChatController = event.sender;
+    globalChatDriver.setConfiguration(request.requestId, request.sessionId, request.configuration);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "set-global-chat-fast-mode") {
@@ -1245,6 +1251,14 @@ async function handleCakeRequest(
     });
   if (request.type === "set-utility-model") {
     applicationModel.setUtilityModel(request.model);
+    await persistApplicationState();
+    return desktopResponseSchema.parse({
+      type: "application-state-updated",
+      state: applicationModel.snapshot(),
+    });
+  }
+  if (request.type === "set-model-presets") {
+    applicationModel.setModelPresets(request.presets, request.defaultPresetId);
     await persistApplicationState();
     return desktopResponseSchema.parse({
       type: "application-state-updated",

@@ -17,6 +17,7 @@ function model(provider: string, providerName: string, id: string, name: string)
     authTypes: [],
     input: ["text"],
     reasoning: true,
+    availableThinkingLevels: ["off", "low", "medium", "high"],
   };
 }
 

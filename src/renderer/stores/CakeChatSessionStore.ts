@@ -1,5 +1,5 @@
 import { Store, child, createStore, observable } from "r-state-tree";
-import type { Attachment } from "../../ipc/session-contract";
+import type { Attachment, ModelPreset } from "../../ipc/session-contract";
 import { parsePiBuiltinCommand } from "../../ipc/session-contract";
 import { pastedImageAttachments } from "../pasted-image-attachments";
 import { describeError } from "../error-details";
@@ -14,6 +14,8 @@ export interface CakeChatSessionStoreProps {
   collection: GlobalChatStore;
   sessions: SessionRegistryStore;
   operations: SessionOperationCoordinatorStore;
+  modelPresets(): readonly ModelPreset[];
+  openModelPresetSettings(): void;
 }
 
 /** Owns the independent draft, attachments, configuration, and turn policy for one Cake Chat session. */
@@ -122,6 +124,14 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       session: () => this.model,
       operations: this.props.operations,
       operationOwner: this.configurationOwner,
+      presets: this.props.modelPresets,
+      openPresetSettings: this.props.openModelPresetSettings,
+      setConfiguration: (operationId, configuration) =>
+        this.props.collection.port.setConfiguration({
+          operationId,
+          sessionId: this.sessionId,
+          configuration,
+        }),
       setModel: (operationId, provider, modelId) =>
         this.props.collection.port.setModel({
           operationId,

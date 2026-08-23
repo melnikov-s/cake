@@ -1,9 +1,7 @@
 import type { FormEvent, ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { Composer, ComposerToolbar } from "@/components/ai-elements/composer";
-import { FastModeToggle } from "@/components/fast-mode-toggle";
-import { ModelCombobox } from "@/components/model-combobox";
-import { ThinkingLevelSelect } from "@/components/thinking-level-select";
+import { ChatConfigurationSelector } from "@/components/chat-configuration-selector";
 import type { ChatConfigurationStore } from "../stores/ChatConfigurationStore";
 
 /** The authoritative composer frame shared by every Cake chat surface. */
@@ -24,8 +22,6 @@ export const ChatComposer = observer(function ChatComposer({
   toolbarActions: ReactNode;
   className?: string;
 }) {
-  const session = configuration?.session;
-  const selectedModel = session?.model;
   return (
     <Composer
       className={`workbench-composer${className ? ` ${className}` : ""}`}
@@ -36,29 +32,7 @@ export const ChatComposer = observer(function ChatComposer({
       <ComposerToolbar className="composer-toolbar">
         <div className="composer-context">
           {toolbarLeading}
-          {configuration && (
-            <>
-              <ModelCombobox
-                ariaLabel="Model"
-                groups={configuration.connectedModelsByProvider}
-                value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""}
-                onSelect={(value) => void configuration.selectModel(value)}
-              />
-              <ThinkingLevelSelect
-                ariaLabel="Thinking level"
-                value={session?.thinkingLevel ?? "off"}
-                levels={session?.availableThinkingLevels ?? ["off"]}
-                onSelect={(level) => void configuration.selectThinkingLevel(level)}
-              />
-              {session?.fastModeAvailable && (
-                <FastModeToggle
-                  enabled={configuration.fastMode}
-                  disabled={session.streaming || configuration.activeOperations.length > 0}
-                  onToggle={(enabled) => void configuration.selectFastMode(enabled)}
-                />
-              )}
-            </>
-          )}
+          {configuration && <ChatConfigurationSelector configuration={configuration} />}
         </div>
         <div className="composer-actions">{toolbarActions}</div>
       </ComposerToolbar>

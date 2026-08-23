@@ -63,10 +63,14 @@ describe("Chat", () => {
     const abort = vi.fn(async () => undefined);
     const configuration = {
       session: {
-        model: { provider: "openai", id: "gpt" },
+        model: { provider: "openai", id: "gpt", name: "GPT" },
         thinkingLevel: "medium",
         availableThinkingLevels: ["off", "medium"],
       },
+      activeOperations: [],
+      activePreset: undefined,
+      presets: [],
+      fastMode: false,
       connectedModelsByProvider: [
         {
           id: "openai",
@@ -74,7 +78,6 @@ describe("Chat", () => {
           models: [{ provider: "openai", id: "gpt", name: "GPT", authenticated: true }],
         },
       ],
-      selectModel: vi.fn(),
       selectThinkingLevel: vi.fn(),
     } as unknown as ChatConfigurationStore;
     store = mount(
@@ -108,7 +111,9 @@ describe("Chat", () => {
     expect(container.textContent).toContain("You · pending");
     expect(container.querySelector(".user-message-pending")).not.toBeNull();
     expect(container.querySelector('[aria-label="Churning in progress"]')).not.toBeNull();
-    expect(container.querySelector<HTMLInputElement>('[aria-label="Model"]')?.value).toBe("GPT");
+    expect(container.querySelector('[aria-label="Model configuration"]')?.textContent).toContain(
+      "GPT",
+    );
     expect(container.textContent).toContain("Medium reasoning");
 
     // While streaming, the send icon becomes a stop icon and submits are hidden.

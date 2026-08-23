@@ -17,6 +17,7 @@ const model = (provider: string, id: string, authenticated = true) => ({
   providerName: provider,
   name: id,
   reasoning: true,
+  availableThinkingLevels: ["off" as const, "high" as const],
   input: ["text" as const],
   authenticated,
   authTypes: [],
