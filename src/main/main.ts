@@ -36,6 +36,7 @@ import {
   suggestProjectFiles,
 } from "../agent/session-discovery";
 import { loadReviewSessionProjection, runInlineWidgetRepair } from "../agent/sidecar-runtime";
+import { listAgentCatalogModels } from "../agent/model-catalog";
 import { Application } from "../models/Application";
 import { shouldAllowNavigation } from "./navigation-policy";
 import { PiWorkspaceDriver, type PiWorkspaceCommand } from "./pi-workspace-driver";
@@ -1482,6 +1483,15 @@ async function handleCakeRequest(
     await requireWorktreeRecord(request.workspacePath);
     await worktrees.discard(request.workspacePath, request.keepBranch);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  // The model catalog lives in the shared agent directory, not in any session,
+  // so unsent chats can list it without resolving a session workspace path.
+  if (request.type === "list-models") {
+    return desktopResponseSchema.parse({
+      type: "models-listed",
+      requestId: request.requestId,
+      models: await listAgentCatalogModels(cakePaths.piAgent),
+    });
   }
   const path =
     request.type === "open-workspace" || request.type === "inspect-workspace"

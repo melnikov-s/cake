@@ -14,7 +14,6 @@ import { z } from "zod";
 import type {
   Attachment,
   ChatConfiguration,
-  ModelOption,
   PiSettings,
   PiSettingUpdate,
   ExtensionUiEvent,
@@ -40,7 +39,8 @@ import {
   type CakeArtifactV1,
 } from "../ipc/artifact-contract";
 import type { TSchema } from "@earendil-works/pi-ai";
-import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
+import { applyFastModePayload, supportsFastMode, type FastModeModel } from "./fast-mode";
+import { listModelOptions } from "./model-catalog";
 import { createCakeArtifactExtension } from "./artifact-extension";
 import {
   INTERRUPTED_TURN_NOTICE_PART_ID,
@@ -51,7 +51,6 @@ import {
   shouldAutoResumeInterruptedTurn,
   turnRecoveryPrompt,
 } from "./turn-recovery";
-import { applyFastModePayload, supportsFastMode, type FastModeModel } from "./fast-mode";
 import { compatibilityCatalog, createCakeExtensionUiContext } from "./extension-compatibility";
 import type {
   InlineWidgetGenerationRequest,
@@ -640,40 +639,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   });
   await session.bindExtensions({ mode: "rpc", uiContext: extensionUi });
 
-  async function modelOptions(): Promise<ModelOption[]> {
-    const providers = modelRuntime.getProviders();
-    const authentication = new Map(
-      await Promise.all(
-        providers.map(
-          async (provider) => [provider.id, await modelRuntime.checkAuth(provider.id)] as const,
-        ),
-      ),
-    );
-    return providers.flatMap((provider) =>
-      provider
-        .getModels()
-        .filter((model) => provider.id.length <= 256 && model.id.length <= 512)
-        .map((model) => ({
-          provider: provider.id,
-          providerName: provider.name,
-          id: model.id,
-          name: model.name,
-          reasoning: model.reasoning,
-          availableThinkingLevels: getSupportedThinkingLevels(model),
-          fastMode: supportsFastMode({ provider: provider.id, id: model.id }),
-          input: model.input,
-          authenticated: Boolean(authentication.get(provider.id)),
-          authSource: modelRuntime.getProviderAuthStatus(provider.id).source,
-          authLabel:
-            authentication.get(provider.id)?.source ??
-            modelRuntime.getProviderAuthStatus(provider.id).label,
-          authTypes: [
-            provider.auth.apiKey ? ("api_key" as const) : undefined,
-            provider.auth.oauth ? ("oauth" as const) : undefined,
-          ].filter((type): type is "api_key" | "oauth" => Boolean(type)),
-        })),
-    );
-  }
+  const modelOptions = () => listModelOptions(modelRuntime);
 
   // Reads the live command catalog straight from Pi's current extension runner,
   // session prompt templates, and loaded skills. Deliberately not routed through

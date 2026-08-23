@@ -35,6 +35,7 @@ import {
   fileSuggestionSchema,
   globalSessionSummarySchema,
   chatConfigurationSchema,
+  modelOptionSchema,
   modelPresetSchema,
   piSettingUpdateSchema,
   sessionPreviewSchema,
@@ -640,6 +641,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     requestId: z.uuid(),
     sessionId: z.string().max(256),
   }),
+  z.object({ type: z.literal("list-models"), requestId: z.uuid() }),
   z.object({
     type: z.literal("login"),
     requestId: z.uuid(),
@@ -702,6 +704,11 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
 
 export const desktopResponseSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("project-chosen"), path: z.string().max(4_096).optional() }),
+  z.object({
+    type: z.literal("models-listed"),
+    requestId: z.uuid(),
+    models: ipcProjectionArray(modelOptionSchema, 2_000),
+  }),
   z.object({
     type: z.literal("embedded-editor-state-loaded"),
     status: z.enum(["missing", "downloading", "starting", "ready", "failed"]),

@@ -64,10 +64,11 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
       : "Model configuration";
 
   useEffect(() => {
+    if (open) configuration.ensureCatalog();
     if (!open) return;
     if (view === "models") searchRef.current?.focus();
     else if (view === "configure") configureBackRef.current?.focus();
-  }, [open, view]);
+  }, [open, view, configuration]);
 
   const reset = () => {
     setView(selectedModel ? "current" : "models");

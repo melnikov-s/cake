@@ -34,6 +34,20 @@ function createDesktopClient(restoredPath?: string) {
   let listener: ((event: DesktopClientEvent) => void) | undefined;
   const client: DesktopClient = {
     chooseProject: vi.fn(async () => "/project"),
+    listModels: vi.fn(async () => [
+      {
+        provider: "fixture-provider",
+        providerName: "Fixture provider",
+        id: "fixture-model",
+        name: "Fixture model",
+        reasoning: false,
+        availableThinkingLevels: ["off"],
+        fastMode: false,
+        input: ["text"],
+        authenticated: true,
+        authTypes: [],
+      },
+    ]),
     getHomeDirectory: vi.fn(async () => "/home/user"),
     getCustomizationState: vi.fn(async () => ({
       schemaVersion: 1 as const,
@@ -841,6 +855,18 @@ describe("ProjectWorkbenchStore", () => {
     // A deferred chat has no runtime, so no runtime command may be sent.
     expect(desktop.client.setModel).not.toHaveBeenCalled();
     expect(desktop.client.setChatConfiguration).not.toHaveBeenCalled();
+
+    // The picker lists the session-less agent-directory catalog.
+    configuration.ensureCatalog();
+    await flush();
+    expect(desktop.client.listModels).toHaveBeenCalled();
+    expect(configuration.modelsByProvider).toEqual([
+      {
+        id: "fixture-provider",
+        name: "Fixture provider",
+        models: [expect.objectContaining({ id: "fixture-model" })],
+      },
+    ]);
     expect(store.newSessionRequest(session.sessionId)).toEqual({
       path: "/project",
       configuration: override,

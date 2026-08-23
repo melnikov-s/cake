@@ -130,6 +130,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       effectiveConfiguration: () => this.props.newSessionRequest()?.configuration,
       setPendingConfiguration: (configuration) =>
         this.props.registry.setPendingConfiguration(this.sessionId, configuration),
+      listModels: () => this.props.client.listModels(),
       setConfiguration: (operationId, configuration) =>
         this.props.client.setChatConfiguration({
           operationId,

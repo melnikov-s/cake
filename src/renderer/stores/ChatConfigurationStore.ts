@@ -1,4 +1,4 @@
-import { Store } from "r-state-tree";
+import { Store, observable } from "r-state-tree";
 import type {
   ChatConfiguration,
   ModelOption,
@@ -26,6 +26,8 @@ export interface ChatConfigurationStoreProps {
   /** The configuration the first prompt will carry (pending override or default preset). */
   effectiveConfiguration?(): ChatConfiguration | undefined;
   setPendingConfiguration?(configuration: ChatConfiguration): void;
+  /** Session-less model catalog for deferred chats that have no runtime snapshot. */
+  listModels?(): Promise<ModelOption[]>;
   setConfiguration(operationId: string, configuration: ChatConfiguration): Promise<void>;
   setModel(operationId: string, provider: string, modelId: string): Promise<void>;
   setThinkingLevel(operationId: string, level: ThinkingLevel): Promise<void>;
@@ -36,6 +38,8 @@ export interface ChatConfigurationStoreProps {
 export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   error: string | undefined;
   errorDetails: string | undefined;
+  readonly catalogModels: ModelOption[] = observable([]);
+  private catalogLoadRevision = 0;
   private fastModeOverride: boolean | undefined;
   private fastModeOperationId: string | undefined;
 
@@ -74,13 +78,30 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   }
 
   get modelsByProvider() {
+    // A runtime-backed session carries its own authoritative catalog; a
+    // deferred chat falls back to the shared agent-directory catalog.
+    const models = this.session?.models.length ? this.session.models : this.catalogModels;
     const groups = new Map<string, { name: string; models: ModelOption[] }>();
-    for (const model of this.session?.models ?? []) {
+    for (const model of models) {
       const group = groups.get(model.provider) ?? { name: model.providerName, models: [] };
       group.models.push(model);
       groups.set(model.provider, group);
     }
     return [...groups.entries()].map(([id, group]) => ({ id, ...group }));
+  }
+
+  /** Loads the session-less catalog once for deferred chats with no runtime. */
+  ensureCatalog() {
+    if (!this.deferred || this.catalogModels.length > 0) return;
+    if (!this.props.listModels) return;
+    const revision = ++this.catalogLoadRevision;
+    void this.props
+      .listModels()
+      .then((models) => {
+        if (revision === this.catalogLoadRevision)
+          this.catalogModels.splice(0, this.catalogModels.length, ...models);
+      })
+      .catch(() => undefined);
   }
 
   get connectedModelsByProvider() {

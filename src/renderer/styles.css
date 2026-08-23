@@ -4693,6 +4693,7 @@ button.reasoning-summary {
 }
 .chat-configuration-options {
   min-height: 0;
+  max-height: min(48vh, 420px);
   overflow-y: auto;
 }
 .chat-configuration-options section {

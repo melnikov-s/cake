@@ -27,6 +27,7 @@ import type {
   RepairedInlineWidget,
 } from "../ipc/inline-widget-contract";
 import type { JsonObject, JsonValue } from "../ipc/json-contract";
+import type { ModelOption } from "../ipc/session-contract";
 import type {
   PluginAgentOpenOptions,
   PluginAgentSnapshot,
@@ -142,6 +143,7 @@ export type DesktopClientEvent =
 
 export interface DesktopClient {
   chooseProject(): Promise<string | undefined>;
+  listModels(): Promise<ModelOption[]>;
   getHomeDirectory(): Promise<string>;
   getCustomizationState(): Promise<CustomizationState>;
   getPluginAuthoringReference(): Promise<string>;
@@ -562,6 +564,13 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       if (response.type !== "project-chosen")
         throw new Error("Cake received an invalid project response");
       return response.path;
+    },
+    async listModels() {
+      const requestId = crypto.randomUUID();
+      const response = await bridge.request({ type: "list-models", requestId });
+      if (response.type !== "models-listed" || response.requestId !== requestId)
+        throw new Error("Cake received an invalid model catalog response");
+      return response.models;
     },
     async getHomeDirectory() {
       const response = await bridge.request({ type: "get-home-directory" });
