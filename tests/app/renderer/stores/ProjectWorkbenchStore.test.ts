@@ -837,6 +837,29 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("keeps workspace slash commands available in a deferred new session", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    const skillCommand: SessionSnapshot["commands"][number] = {
+      name: "skill:fixture",
+      description: "Fixture skill",
+      source: "skill",
+      sourceInfo: {
+        path: "/project/.agents/skills/fixture/SKILL.md",
+        source: "project",
+        scope: "project",
+        origin: "top-level",
+      },
+    };
+    await openSnapshot(store, desktop, { ...snapshot, commands: [skillCommand] });
+
+    await store.startNewSession();
+
+    expect(store.activeSession?.chatStore.commands).toEqual([skillCommand]);
+    root[Symbol.dispose]();
+  });
+
   it("keeps model changes for an unsent chat local until the first prompt", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);

@@ -148,6 +148,24 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   prepareNewSession(workspacePath: string, sessionId: string) {
     this.rememberSessionLocation(sessionId, workspacePath);
     const session = this.ensure(sessionId);
+    // Deferred sessions have no Pi runtime snapshot until their first prompt. Seed
+    // their workspace-scoped menu from a loaded sibling so skills remain invokable.
+    if (session.model.commands.length === 0) {
+      const source = this.sessions.find(
+        (candidate) =>
+          candidate.sessionId !== sessionId &&
+          candidate.workspacePath === workspacePath &&
+          candidate.hydrated &&
+          candidate.model.commands.length > 0,
+      );
+      if (source)
+        session.model.commands.push(
+          ...source.model.commands.map((command) => ({
+            ...command,
+            sourceInfo: { ...command.sourceInfo },
+          })),
+        );
+    }
     session.markHydrated();
     this.temporarySessionIds.add(sessionId);
     this.rememberNewSession(workspacePath, sessionId);

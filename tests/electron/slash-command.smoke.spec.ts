@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
@@ -9,8 +9,14 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-slash-command-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
-  await import("node:fs/promises").then(({ mkdir }) =>
-    Promise.all([mkdir(userData, { recursive: true }), mkdir(project, { recursive: true })]),
+  const skillDirectory = join(project, ".agents", "skills", "desktop-fixture");
+  await Promise.all([
+    mkdir(userData, { recursive: true }),
+    mkdir(skillDirectory, { recursive: true }),
+  ]);
+  await writeFile(
+    join(skillDirectory, "SKILL.md"),
+    "---\nname: desktop-fixture\ndescription: Desktop fixture skill\n---\nFixture.\n",
   );
   await writeFile(
     join(userData, "window-state.json"),
@@ -34,7 +40,7 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
         },
       ],
       resolvedSessionIds: [],
-      trustedProjectPaths: [],
+      trustedProjectPaths: [project],
     }),
   );
 
@@ -63,6 +69,12 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
     await composer.fill("/tree");
     await composer.press("Enter");
     await expect(page.getByRole("complementary", { name: "Session tree" })).toBeVisible();
+
+    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await composer.fill("/skill:desktop");
+    await expect(
+      page.getByRole("option", { name: /skill:desktop-fixture Desktop fixture skill/ }),
+    ).toBeVisible();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
