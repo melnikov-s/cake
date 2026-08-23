@@ -371,7 +371,8 @@ export class PiWorkspaceDriver {
         } else if (command.type === "set-model")
           await runtime.setModel(command.provider, command.modelId);
         else if (command.type === "set-chat-configuration")
-          await runtime.applyConfiguration(command.configuration); else if (command.type === "set-thinking") await runtime.setThinkingLevel(command.level);
+          await runtime.applyConfiguration(command.configuration);
+        else if (command.type === "set-thinking") await runtime.setThinkingLevel(command.level);
         else if (command.type === "set-fast-mode") {
           if (!runtime.setFastMode) throw new Error("This Pi runtime does not support Fast mode");
           await runtime.setFastMode(command.enabled);

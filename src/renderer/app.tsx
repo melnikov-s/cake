@@ -798,7 +798,6 @@ export const App = observer(function App() {
               createPortal(
                 <>
                   <div className="header-pane-actions">
-                    <WorkLogControls store={session.chatStore} />
                     <WorktreeChip
                       store={store.worktreeStore}
                       currentProjectPath={store.projectPath}
@@ -839,6 +838,7 @@ export const App = observer(function App() {
                       <span>Changes</span>
                       {changes.workingTreeCount > 0 && <b>{changes.workingTreeCount}</b>}
                     </button>
+                    <WorkLogControls store={session.chatStore} />
                   </div>
                   <div className="plugin-slot plugin-slot-project-session-header">
                     <Slot name="project-session.header.actions" />

@@ -34,7 +34,7 @@ import {
 import { loadReviewSessionProjection, runReviewTurn } from "../../../src/agent/sidecar-runtime";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { CakeArtifactV1 } from "../../../src/ipc/artifact-contract";
-import { sessionSnapshotSchema } from "../../../src/ipc/session-contract";
+import { sessionSnapshotSchema, type SessionSnapshot } from "../../../src/ipc/session-contract";
 
 const temporaryDirectories: string[] = [];
 const runtimes: Array<FoundationRuntime | CakeRuntime> = [];
@@ -303,6 +303,72 @@ describe("Pi 0.84.0 foundation contract", () => {
         server.close((error) => (error ? reject(error) : resolve()));
       });
     }
+  });
+
+  it("applies a configuration atomically and treats unsupported fast mode as best-effort", async () => {
+    const directory = await createTemporaryDirectory();
+    await mkdir(join(directory, ".pi", "extensions"), { recursive: true });
+    await writeFile(
+      join(directory, ".pi", "extensions", "fixture-provider.ts"),
+      `export default function (pi) { pi.registerProvider("fixture-provider", ${JSON.stringify({
+        name: "Fixture provider",
+        baseUrl: "http://127.0.0.1:9/v1",
+        apiKey: "fixture",
+        api: "openai-completions",
+        models: [
+          {
+            id: "fixture-model",
+            name: "Fixture model",
+            reasoning: true,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 4_096,
+            maxTokens: 1_024,
+          },
+        ],
+      })}); }\n`,
+    );
+    const snapshots: SessionSnapshot[] = [];
+    const runtime = await createCakeRuntime({
+      cwd: directory,
+      agentDir: join(directory, "agent"),
+      sessionDir: join(directory, "sessions"),
+      trusted: true,
+      newSession: true,
+      requestUi: async () => undefined,
+      onEvent: (event) => {
+        if (event.type === "snapshot") snapshots.push(event.snapshot);
+      },
+    });
+    runtimes.push(runtime);
+
+    // A stale preset may request fast mode for a model that does not support it.
+    // The configuration must still apply and emit exactly one snapshot.
+    await expect(
+      runtime.applyConfiguration({
+        provider: "fixture-provider",
+        modelId: "fixture-model",
+        thinkingLevel: "high",
+        fastMode: true,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0]?.model).toMatchObject({
+      provider: "fixture-provider",
+      id: "fixture-model",
+    });
+    expect(snapshots[0]?.thinkingLevel).toBe("high");
+    expect(snapshots[0]?.fastMode).toBe(false);
+
+    await expect(
+      runtime.applyConfiguration({
+        provider: "fixture-provider",
+        modelId: "missing-model",
+        thinkingLevel: "off",
+        fastMode: false,
+      }),
+    ).rejects.toThrow("Unknown model fixture-provider/missing-model");
   });
 
   it("lists Cake Chat sessions directly from its dedicated session directory", async () => {

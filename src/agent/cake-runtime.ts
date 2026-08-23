@@ -1430,13 +1430,16 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       const model = modelRuntime.getModel(configuration.provider, configuration.modelId);
       if (!model)
         throw new Error(`Unknown model ${configuration.provider}/${configuration.modelId}`);
-      if (configuration.fastMode && !supportsFastMode(model))
-        throw new Error("Fast mode is unavailable for this model");
       await session.setModel(model);
       currentModel = session.model;
       session.setThinkingLevel(configuration.thinkingLevel);
-      if (options.fastMode) await options.fastMode.set(configuration.fastMode);
-      fastMode = configuration.fastMode;
+      // Fast mode is best-effort: a preset may carry a fast flag for a model that
+      // no longer supports it. Skip it instead of failing the whole configuration,
+      // matching the previous per-step setters where only fast mode could fail.
+      if (!configuration.fastMode || supportsFastMode(model)) {
+        if (options.fastMode) await options.fastMode.set(configuration.fastMode);
+        fastMode = configuration.fastMode;
+      }
       await emitSnapshot();
     },
     async setFastMode(enabled) {
