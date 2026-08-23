@@ -320,9 +320,8 @@ export class VsCodeServerManager {
     if (existing) return Promise.resolve(existing);
     const pending = this.starting.get(resolvedWorkspace);
     if (pending) return pending;
-    const started = this.startServer(resolvedWorkspace, binary).catch((error) => {
+    const started = this.startServer(resolvedWorkspace, binary).finally(() => {
       this.starting.delete(resolvedWorkspace);
-      throw error;
     });
     this.starting.set(resolvedWorkspace, started);
     return started;
@@ -385,9 +384,6 @@ export class VsCodeServerManager {
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
-    child.stdout?.pause();
-    child.stderr?.pause();
-
     const instance: ServerInstance = {
       workspacePath,
       child,
@@ -412,6 +408,11 @@ export class VsCodeServerManager {
       child.kill();
       throw error;
     }
+    // Startup readiness is detected from these streams. Pause them only after
+    // detection; pausing before waitForServerStart prevents its data listeners
+    // from ever receiving code-server's listening message.
+    child.stdout?.pause();
+    child.stderr?.pause();
 
     this.servers.set(workspacePath, instance);
     this.setStatus("ready");
