@@ -1,7 +1,6 @@
 import { observer } from "r-state-tree/react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  ChevronIcon,
   DiffIcon,
   LogIcon,
   SparkleIcon,
@@ -32,7 +31,6 @@ export const WorkLogControls = observer(function WorkLogControls({ store }: { st
             <WorkLogFullyExpandedIcon />
           )}
         </span>
-        <ChevronIcon />
       </PopoverTrigger>
 
       <PopoverContent align="end" side="bottom" offset={6} className="work-log-popover-menu">
