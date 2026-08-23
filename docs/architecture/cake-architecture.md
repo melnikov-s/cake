@@ -123,14 +123,15 @@ reasons are returned; a provider failure after execution begins never triggers
 fallback. Opportunistic internal utility work still skips when no utility model
 is configured.
 
-Cake applies one such adapter policy to empty, pre-output rate-limit responses.
-It retries the same model request with a bounded 24-hour schedule, projects each
-wait into the conversation, and propagates the active turn's abort signal so the
-normal Stop action cancels both requests and waits. It never replays a response
-after text, reasoning, or tool-call output begins, and it does not persist failed
-attempts or hidden continuation messages. The policy is in-memory: quitting Cake
-ends it. Pi's native retry behavior remains authoritative for other transient
-errors.
+Cake applies one such adapter policy to empty, pre-output rate-limit responses
+and protocol-valid successful responses with no content. It retries the exact
+same model request with a bounded exponential-backoff schedule over 24 hours,
+projects each wait into the conversation, and propagates the active turn's abort
+signal so the normal Stop action cancels both requests and waits. It never
+replays a response after text, reasoning, or tool-call output begins, and it
+does not persist failed attempts or hidden continuation messages. The policy is
+in-memory: quitting Cake ends it. Pi's native retry behavior remains
+authoritative for other transient errors.
 
 Pi agents receive focused `subagent_spawn`, `subagent_parallel`, `subagent_prompt`,
 `subagent_follow_up`, `subagent_wait`, `subagent_abort`, and `subagent_close`

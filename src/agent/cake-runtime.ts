@@ -59,7 +59,7 @@ import type {
   ReviewParentContext,
 } from "./sidecar-runtime";
 import { assertSessionPath } from "./session-path";
-import { RateLimitRetryController } from "./rate-limit-retry";
+import { ResponseRetryController } from "./response-retry";
 import { applyPiSetting } from "./settings-translation";
 import {
   cakePluginAuthoringSkillPath,
@@ -565,9 +565,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   const cakeSessionId = session.sessionManager.getSessionId();
   currentModel = session.model;
   runtimeIdentity.sessionId = cakeSessionId;
-  let rateLimitRetryTurnDepth = 0;
-  const rateLimitRetries = new RateLimitRetryController({
-    enabled: () => rateLimitRetryTurnDepth > 0 && settingsManager.getRetryEnabled(),
+  let responseRetryTurnDepth = 0;
+  const responseRetries = new ResponseRetryController({
+    enabled: () => responseRetryTurnDepth > 0 && settingsManager.getRetryEnabled(),
     onRetry: (event) =>
       options.onEvent({
         type: "part-updated",
@@ -587,13 +587,13 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         partId: "active-retry",
       }),
   });
-  session.agent.streamFunction = rateLimitRetries.wrap(session.agent.streamFunction);
-  async function withRateLimitRetries<T>(operation: () => Promise<T>): Promise<T> {
-    rateLimitRetryTurnDepth += 1;
+  session.agent.streamFunction = responseRetries.wrap(session.agent.streamFunction);
+  async function withResponseRetries<T>(operation: () => Promise<T>): Promise<T> {
+    responseRetryTurnDepth += 1;
     try {
       return await operation();
     } finally {
-      rateLimitRetryTurnDepth -= 1;
+      responseRetryTurnDepth -= 1;
     }
   }
   let disposed = false;
@@ -1004,9 +1004,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
     queuedPartIds = nextIds;
   }
-  // Pi owns provider-error retries. Cake only handles response shapes Pi sees
-  // as successful/aborted but that contain no completed response. The fallback
-  // is hidden, obeys Pi's retry setting, and is bounded to one continuation.
+  // The stream adapter replays pre-output throttling and successful empty
+  // responses. This hidden continuation remains a bounded fallback for aborted
+  // turns and for empty turns when automatic retry is disabled.
   let userAbortRequested = false;
   let turnRecoveryContinuations = 0;
 
@@ -1040,7 +1040,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
 
   async function continueTurnHidden(content: string) {
     try {
-      await withRateLimitRetries(() =>
+      await withResponseRetries(() =>
         session.sendCustomMessage(
           {
             customType: "cake.turn-recovery",
@@ -1308,7 +1308,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         const images = imageContent(item.attachments);
         if (index === 0 && !session.isStreaming) {
           try {
-            await withRateLimitRetries(() =>
+            await withResponseRetries(() =>
               session.prompt(content, { images, source: "interactive" }),
             );
             continue;
@@ -1398,7 +1398,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         await session.followUp(content, images);
       } else {
         try {
-          await withRateLimitRetries(() =>
+          await withResponseRetries(() =>
             session.prompt(content, { images, source: "interactive" }),
           );
         } catch (error) {
@@ -1412,7 +1412,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       userAbortRequested = true;
       turnRecoveryContinuations = 0;
       removeRecoveryNotice();
-      rateLimitRetries.cancel();
+      responseRetries.cancel();
       return session.abort();
     },
     async setModel(provider, modelId) {
@@ -1456,7 +1456,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     },
     async setPiSetting(update) {
       applyPiSetting(settingsManager, session, update);
-      if (update.key === "retryEnabled" && !update.value) rateLimitRetries.cancel();
+      if (update.key === "retryEnabled" && !update.value) responseRetries.cancel();
       await settingsManager.flush();
       await emitSnapshot();
     },
@@ -1595,7 +1595,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       if (disposed) return;
       disposed = true;
       sessionNamingController.abort();
-      rateLimitRetries.cancel();
+      responseRetries.cancel();
       unsubscribe();
       const finish = () => {
         session.dispose();

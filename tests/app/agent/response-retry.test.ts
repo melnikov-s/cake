@@ -6,7 +6,7 @@ import {
 } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
-import { RateLimitRetryController } from "../../../src/agent/rate-limit-retry";
+import { ResponseRetryController } from "../../../src/agent/response-retry";
 
 type StreamFunction = AgentSession["agent"]["streamFunction"];
 
@@ -57,7 +57,11 @@ function response(message: AssistantMessage) {
 const model = {} as Model<"openai-completions">;
 const context: Context = { messages: [] };
 
-describe("RateLimitRetryController", () => {
+async function streamResult(stream: ReturnType<StreamFunction>) {
+  return (await stream).result();
+}
+
+describe("ResponseRetryController", () => {
   it("retries empty 429 responses with the configured schedule", async () => {
     const notices = vi.fn();
     const finished = vi.fn();
@@ -67,7 +71,7 @@ describe("RateLimitRetryController", () => {
       assistant("stop", undefined, [{ type: "text", text: "Recovered" }]),
     ];
     const base = vi.fn<StreamFunction>(() => response(responses.shift()!));
-    const controller = new RateLimitRetryController({
+    const controller = new ResponseRetryController({
       enabled: () => true,
       onRetry: notices,
       onFinished: finished,
@@ -75,7 +79,7 @@ describe("RateLimitRetryController", () => {
       maxElapsedMs: 100,
     });
 
-    const result = await controller.wrap(base)(model, context).result();
+    const result = await streamResult(controller.wrap(base)(model, context));
 
     expect(result.content).toEqual([{ type: "text", text: "Recovered" }]);
     expect(base).toHaveBeenCalledTimes(3);
@@ -86,9 +90,38 @@ describe("RateLimitRetryController", () => {
     expect(finished).toHaveBeenCalledOnce();
   });
 
+  it("retries a well-formed empty response with the same request", async () => {
+    const notices = vi.fn();
+    const responses = [
+      assistant("stop"),
+      assistant("stop", undefined, [{ type: "text", text: "Recovered" }]),
+    ];
+    const base = vi.fn<StreamFunction>(() => response(responses.shift()!));
+    const controller = new ResponseRetryController({
+      enabled: () => true,
+      onRetry: notices,
+      onFinished: vi.fn(),
+      delaysMs: [1],
+      maxElapsedMs: 10,
+    });
+
+    const result = await streamResult(controller.wrap(base)(model, context));
+
+    expect(result.content).toEqual([{ type: "text", text: "Recovered" }]);
+    expect(base).toHaveBeenCalledTimes(2);
+    expect(base.mock.calls[1]?.[1]).toBe(context);
+    expect(notices).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attempt: 1,
+        delayMs: 1,
+        errorMessage: "The provider returned an empty response.",
+      }),
+    );
+  });
+
   it("returns a non-retryable error after exhausting the schedule", async () => {
     const base = vi.fn<StreamFunction>(() => response(assistant("error", "429 Too Many Requests")));
-    const controller = new RateLimitRetryController({
+    const controller = new ResponseRetryController({
       enabled: () => true,
       onRetry: vi.fn(),
       onFinished: vi.fn(),
@@ -96,11 +129,30 @@ describe("RateLimitRetryController", () => {
       maxElapsedMs: 50,
     });
 
-    const result = await controller.wrap(base)(model, context).result();
+    const result = await streamResult(controller.wrap(base)(model, context));
 
     expect(base).toHaveBeenCalledTimes(2);
     expect(result.errorMessage).toBe(
       "Automatic provider-throttling retries stopped after the retry window (1 retry).",
+    );
+  });
+
+  it("returns an error after exhausting empty-response retries", async () => {
+    const base = vi.fn<StreamFunction>(() => response(assistant("stop")));
+    const controller = new ResponseRetryController({
+      enabled: () => true,
+      onRetry: vi.fn(),
+      onFinished: vi.fn(),
+      delaysMs: [1, 100],
+      maxElapsedMs: 50,
+    });
+
+    const result = await streamResult(controller.wrap(base)(model, context));
+
+    expect(base).toHaveBeenCalledTimes(2);
+    expect(result.stopReason).toBe("error");
+    expect(result.errorMessage).toBe(
+      "Automatic empty-response retries stopped after the retry window (1 retry).",
     );
   });
 
@@ -116,7 +168,7 @@ describe("RateLimitRetryController", () => {
       });
       return stream;
     });
-    const controller = new RateLimitRetryController({
+    const controller = new ResponseRetryController({
       enabled: () => true,
       onRetry: vi.fn(),
       onFinished: vi.fn(),
@@ -124,7 +176,7 @@ describe("RateLimitRetryController", () => {
       maxElapsedMs: 1,
     });
 
-    const result = await controller.wrap(base)(model, context).result();
+    const result = await streamResult(controller.wrap(base)(model, context));
 
     expect(result.errorMessage).toContain("stopped to avoid replaying work");
     expect(base).toHaveBeenCalledOnce();

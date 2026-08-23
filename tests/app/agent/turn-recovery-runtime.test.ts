@@ -94,31 +94,7 @@ async function createFixtureRuntime(directory: string, onEvent = vi.fn()) {
   return { runtime, onEvent };
 }
 
-describe("bounded silent-turn recovery", () => {
-  it("makes one hidden continuation and recovers without adding a user message", async () => {
-    const directory = await createTemporaryDirectory();
-    const provider = await registerFixtureProvider(directory, (requestIndex, response) => {
-      response.writeHead(200, { "content-type": "text/event-stream" });
-      if (requestIndex === 1) response.write(sseChunk({ role: "assistant" }, "stop"));
-      else {
-        response.write(sseChunk({ role: "assistant", content: "Recovered answer" }));
-        response.write(sseChunk({}, "stop"));
-      }
-      response.end("data: [DONE]\n\n");
-    });
-    const { runtime } = await createFixtureRuntime(directory);
-
-    await runtime.prompt("Do the thing", "prompt", []);
-    await vi.waitFor(() => expect(provider.requestCount()).toBe(2), { timeout: 5_000 });
-
-    const transcript = await readFile((await runtime.snapshot()).sessionFile, "utf8");
-    expect(transcript).toContain('"type":"custom_message"');
-    expect(transcript).toContain('"customType":"cake.turn-recovery"');
-    expect(transcript).toContain('"display":false');
-    expect(transcript.match(/"role":"user"/g)).toHaveLength(1);
-    expect(transcript).toContain("Recovered answer");
-  });
-
+describe("response retry and recovery", () => {
   it("leaves provider errors to Pi and removes intermediate retry messages", async () => {
     const directory = await createTemporaryDirectory();
     const provider = await registerFixtureProvider(directory, (requestIndex, response) => {
@@ -223,68 +199,30 @@ describe("bounded silent-turn recovery", () => {
     expect((await runtime.snapshot()).streaming).toBe(false);
   });
 
-  it("stops after one hidden continuation and surfaces one stable failure", async () => {
+  it("retries a well-formed empty response with backoff without persisting it", async () => {
     const directory = await createTemporaryDirectory();
-    const provider = await registerFixtureProvider(directory, (_requestIndex, response) => {
+    const provider = await registerFixtureProvider(directory, (requestIndex, response) => {
       response.writeHead(200, { "content-type": "text/event-stream" });
-      response.write(sseChunk({ role: "assistant" }, "stop"));
+      if (requestIndex === 1) response.write(sseChunk({ role: "assistant" }, "stop"));
+      else response.write(sseChunk({ role: "assistant", content: "Recovered" }, "stop"));
       response.end("data: [DONE]\n\n");
     });
     const { runtime, onEvent } = await createFixtureRuntime(directory);
 
     await runtime.prompt("Do the thing", "prompt", []);
-    await vi.waitFor(() => expect(provider.requestCount()).toBe(2), { timeout: 5_000 });
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    expect(provider.requestCount()).toBe(2);
-    const failures = onEvent.mock.calls.filter(
-      ([event]) =>
-        event?.type === "part-updated" && event.part?.id === TURN_RECOVERY_NOTICE_PART_ID,
-    );
-    expect(failures).toHaveLength(1);
-    expect(failures[0]?.[0].part.title).toBe("Response could not be completed");
-  });
-
-  it("does not restart exhausted recovery when the failed session is reopened", async () => {
-    const directory = await createTemporaryDirectory();
-    const provider = await registerFixtureProvider(directory, (_requestIndex, response) => {
-      response.writeHead(200, { "content-type": "text/event-stream" });
-      response.write(sseChunk({ role: "assistant" }, "stop"));
-      response.end("data: [DONE]\n\n");
-    });
-    const { runtime } = await createFixtureRuntime(directory);
-
-    await runtime.prompt("Do the thing", "prompt", []);
-    await vi.waitFor(() => expect(provider.requestCount()).toBe(2), { timeout: 5_000 });
-    const sessionFile = (await runtime.snapshot()).sessionFile;
-    runtime.dispose();
-    runtimes.splice(runtimes.indexOf(runtime), 1);
-
-    const reopenedEvents = vi.fn();
-    const reopened = await createCakeRuntime({
-      cwd: directory,
-      agentDir: join(directory, "agent"),
-      sessionDir: join(directory, "sessions"),
-      trusted: true,
-      sessionFile,
-      requestUi: async () => undefined,
-      onEvent: reopenedEvents,
-    });
-    runtimes.push(reopened);
-    await new Promise((resolve) => setTimeout(resolve, 200));
 
     expect(provider.requestCount()).toBe(2);
     expect(
-      (await reopened.snapshot()).parts.some(
-        (part) => part.kind === "notice" && part.id === TURN_RECOVERY_NOTICE_PART_ID,
-      ),
-    ).toBe(true);
-    expect(
-      reopenedEvents.mock.calls.some(
+      onEvent.mock.calls.some(
         ([event]) =>
-          event?.type === "part-updated" && event.part?.id === TURN_RECOVERY_NOTICE_PART_ID,
+          event?.type === "part-updated" &&
+          event.part?.id === "active-retry" &&
+          event.part.detail?.includes("The provider returned an empty response"),
       ),
     ).toBe(true);
+    const transcript = await readFile((await runtime.snapshot()).sessionFile, "utf8");
+    expect(transcript).toContain("Recovered");
+    expect(transcript).not.toContain("cake.turn-recovery");
   });
 
   it("obeys the Automatic retry setting", async () => {

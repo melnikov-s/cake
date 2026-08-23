@@ -7,21 +7,21 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 
 type StreamFunction = AgentSession["agent"]["streamFunction"];
 
-export const RATE_LIMIT_RETRY_DELAYS_MS = [
+export const RESPONSE_RETRY_DELAYS_MS = [
   1_000, 3_000, 10_000, 30_000, 60_000, 120_000, 300_000, 600_000, 1_800_000, 3_600_000,
 ] as const;
-export const RATE_LIMIT_RETRY_MAX_ELAPSED_MS = 24 * 60 * 60 * 1_000;
+export const RESPONSE_RETRY_MAX_ELAPSED_MS = 24 * 60 * 60 * 1_000;
 
-export interface RateLimitRetryNotice {
+export interface ResponseRetryNotice {
   attempt: number;
   maxAttempts: number;
   delayMs: number;
   errorMessage: string;
 }
 
-interface RateLimitRetryOptions {
+interface ResponseRetryOptions {
   enabled(): boolean;
-  onRetry(notice: RateLimitRetryNotice): void;
+  onRetry(notice: ResponseRetryNotice): void;
   onFinished(): void;
   delaysMs?: readonly number[];
   maxElapsedMs?: number;
@@ -55,6 +55,15 @@ function isEmptyRateLimit(message: AssistantMessage, meaningfulOutput: boolean) 
   return !meaningfulOutput && message.content.length === 0 && isRateLimit(message);
 }
 
+function isEmptySuccessfulResponse(message: AssistantMessage, meaningfulOutput: boolean) {
+  return (
+    !meaningfulOutput &&
+    message.stopReason === "stop" &&
+    !message.errorMessage &&
+    message.content.length === 0
+  );
+}
+
 function nonReplayableRateLimitMessage(message: AssistantMessage): AssistantMessage {
   return {
     ...message,
@@ -73,25 +82,30 @@ function abortedMessage(message: AssistantMessage): AssistantMessage {
   };
 }
 
-function exhaustedMessage(message: AssistantMessage, attempts: number): AssistantMessage {
+function exhaustedMessage(
+  message: AssistantMessage,
+  attempts: number,
+  reason: "rate-limit" | "empty-response",
+): AssistantMessage {
+  const label = reason === "rate-limit" ? "provider-throttling" : "empty-response";
   return {
     ...message,
     content: [],
     stopReason: "error",
-    errorMessage: `Automatic provider-throttling retries stopped after the retry window (${attempts} ${attempts === 1 ? "retry" : "retries"}).`,
+    errorMessage: `Automatic ${label} retries stopped after the retry window (${attempts} ${attempts === 1 ? "retry" : "retries"}).`,
   };
 }
 
-export class RateLimitRetryController {
+export class ResponseRetryController {
   private readonly waits = new Set<AbortController>();
-  private readonly options: RateLimitRetryOptions;
+  private readonly options: ResponseRetryOptions;
   private readonly plan: ReturnType<typeof retryPlan>;
   private readonly maxElapsedMs: number;
 
-  constructor(options: RateLimitRetryOptions) {
+  constructor(options: ResponseRetryOptions) {
     this.options = options;
-    this.maxElapsedMs = options.maxElapsedMs ?? RATE_LIMIT_RETRY_MAX_ELAPSED_MS;
-    this.plan = retryPlan(options.delaysMs ?? RATE_LIMIT_RETRY_DELAYS_MS, this.maxElapsedMs);
+    this.maxElapsedMs = options.maxElapsedMs ?? RESPONSE_RETRY_MAX_ELAPSED_MS;
+    this.plan = retryPlan(options.delaysMs ?? RESPONSE_RETRY_DELAYS_MS, this.maxElapsedMs);
   }
 
   wrap(baseStream: StreamFunction): StreamFunction {
@@ -135,9 +149,49 @@ export class RateLimitRetryController {
           continue;
         }
         if (event.type === "done") {
-          output.push(event);
-          finish();
-          return;
+          if (
+            !this.options.enabled() ||
+            !isEmptySuccessfulResponse(event.message, meaningfulOutput)
+          ) {
+            output.push(event);
+            finish();
+            return;
+          }
+
+          const nextAttempt = retries + 1;
+          const delayMs = this.plan.delaysMs[Math.min(retries, this.plan.delaysMs.length - 1)];
+          if (
+            delayMs === undefined ||
+            nextAttempt > this.plan.maxAttempts ||
+            Date.now() + delayMs > startedAt + this.maxElapsedMs
+          ) {
+            const exhausted = exhaustedMessage(event.message, retries, "empty-response");
+            output.push({ type: "error", reason: "error", error: exhausted });
+            finish();
+            return;
+          }
+
+          retries = nextAttempt;
+          this.options.onRetry({
+            attempt: retries,
+            maxAttempts: this.plan.maxAttempts,
+            delayMs,
+            errorMessage: "The provider returned an empty response.",
+          });
+          shouldRetry = await this.wait(delayMs, streamOptions?.signal);
+          if (!shouldRetry) {
+            const stopped = streamOptions?.signal?.aborted
+              ? abortedMessage(event.message)
+              : event.message;
+            output.push(
+              stopped.stopReason === "aborted"
+                ? { type: "error", reason: "aborted", error: stopped }
+                : { type: "done", reason: "stop", message: stopped },
+            );
+            finish();
+            return;
+          }
+          break;
         }
         if (event.type !== "error") {
           meaningfulOutput = true;
@@ -175,7 +229,7 @@ export class RateLimitRetryController {
           output.push({
             type: "error",
             reason: "error",
-            error: exhaustedMessage(event.error, retries),
+            error: exhaustedMessage(event.error, retries, "rate-limit"),
           });
           finish();
           return;
