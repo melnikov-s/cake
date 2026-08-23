@@ -137,6 +137,7 @@ export function Tool({
   expansion,
   subagentSpawnPart,
   live = false,
+  omitDiff,
 }: {
   part: Extract<UiPart, { kind: "tool" }>;
   onOpenFile?: (path: string) => void | Promise<void>;
@@ -147,6 +148,7 @@ export function Tool({
   subagentSpawnPart?: Extract<UiPart, { kind: "tool" }>;
   /** True while this conversation's runtime may still be producing subagent work. */
   live?: boolean;
+  omitDiff?: boolean;
 }) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = expansion ? expansion.open : uncontrolledOpen;
@@ -161,7 +163,7 @@ export function Tool({
         expansion={expansion}
       />
     );
-  const diff = toolDiff(part);
+  const diff = omitDiff ? undefined : toolDiff(part);
   const title = toolTitle(part);
   const read = part.name === "read";
   const bash = part.name === "bash" && part.input ? part.input : undefined;

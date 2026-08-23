@@ -28,7 +28,8 @@ import { CopyErrorDetailsButton } from "@/components/copy-error-details-button";
 import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
 import { ImagePreview } from "@/components/image-preview";
 import { IconButton } from "@/components/ui/icon-button";
-import { LoadingState } from "@/components/ui/loading-state";
+import { ChevronIcon } from "@/components/ui/icons";
+import { formatElapsed, LoadingState } from "@/components/ui/loading-state";
 import {
   MessageCommentDraftPopover,
   MessageCommentThreadPopover,
@@ -481,7 +482,8 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   behavior,
   workLogItem = false,
   subagentSpawnPart,
-  live = false,
+  live,
+  omitToolDiff,
 }: {
   part: UiPart;
   behavior: CanonicalTranscriptBehavior;
@@ -490,6 +492,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   subagentSpawnPart?: Extract<UiPart, { kind: "tool" }>;
   /** True while this conversation's runtime may still be producing subagent work. */
   live?: boolean;
+  omitToolDiff?: boolean;
 }) {
   if (part.kind === "text")
     return part.role === "assistant" ? (
@@ -542,6 +545,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         }
         subagentSpawnPart={subagentSpawnPart}
         live={live}
+        omitDiff={omitToolDiff}
         expansion={
           workLogItem
             ? {
@@ -593,6 +597,7 @@ function TranscriptPart(props: {
   workLogItem?: boolean;
   subagentSpawnPart?: Extract<UiPart, { kind: "tool" }>;
   live?: boolean;
+  omitToolDiff?: boolean;
 }) {
   return (
     <div className="transcript-part" data-part-id={props.part.id}>
@@ -647,6 +652,7 @@ const ActivityGroup = observer(function ActivityGroup({
   isStreaming: boolean;
 }) {
   const open = behavior.store.workLogsExpansion !== "collapsed";
+  const [activityStripOpen, setActivityStripOpen] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
   const logIsAtBottomRef = useRef(true);
   const workLogItems = combineSubagentWorkLogParts(parts);
@@ -680,6 +686,18 @@ const ActivityGroup = observer(function ActivityGroup({
       : tools === 0
         ? "Reasoning"
         : `${tools} tool ${tools === 1 ? "call" : "calls"}`;
+  const activityCountLabel =
+    tools === 0
+      ? "Reasoning"
+      : `${tools} tool ${tools === 1 ? "call" : "calls"}${reasoningHasContent ? " · reasoning" : ""}`;
+  const elapsedMs =
+    parts.length > 0
+      ? behavior.store.workLogElapsedMsRange(parts[0]!.id, parts[parts.length - 1]!.id)
+      : undefined;
+  const elapsedLabel = elapsedMs !== undefined ? formatElapsed(elapsedMs) : undefined;
+  const activityStripLabel = elapsedLabel
+    ? `${activityCountLabel} · ${elapsedLabel}`
+    : activityCountLabel;
   const activityVersion = JSON.stringify(parts);
   const live = behavior.store.liveWorkPossible;
   useLayoutEffect(() => {
@@ -725,11 +743,58 @@ const ActivityGroup = observer(function ActivityGroup({
           }}
         >
           {showDiff ? (
-            <WorkLogDiff
-              parts={parts}
-              streaming={activityIsRunning}
-              onOpenFile={behavior.openFileInEditor}
-            />
+            <div className="work-log-diff-view">
+              <div className="work-log-activity-strip">
+                <button
+                  type="button"
+                  className="work-log-activity-strip-toggle"
+                  aria-expanded={activityStripOpen}
+                  onClick={() => setActivityStripOpen((val) => !val)}
+                >
+                  <span className="work-log-activity-strip-summary">
+                    <span className="work-log-activity-strip-badge">Activity</span>
+                    <span>{activityStripLabel}</span>
+                  </span>
+                  <span className="work-log-activity-strip-action">
+                    <span>{activityStripOpen ? "Hide steps" : "View steps"}</span>
+                    <ChevronIcon
+                      className={`work-log-strip-chevron${activityStripOpen ? " open" : ""}`}
+                    />
+                  </span>
+                </button>
+                {activityStripOpen && (
+                  <div className="work-log-activity-strip-items">
+                    {workLogItems.map((item) =>
+                      item.kind === "subagent-work-log" ? (
+                        <TranscriptPart
+                          key={item.id}
+                          part={item.result}
+                          subagentSpawnPart={item.spawn}
+                          live={live}
+                          behavior={behavior}
+                          workLogItem
+                          omitToolDiff
+                        />
+                      ) : (
+                        <TranscriptPart
+                          key={item.id}
+                          part={item}
+                          live={live}
+                          behavior={behavior}
+                          workLogItem
+                          omitToolDiff
+                        />
+                      ),
+                    )}
+                  </div>
+                )}
+              </div>
+              <WorkLogDiff
+                parts={parts}
+                streaming={activityIsRunning}
+                onOpenFile={behavior.openFileInEditor}
+              />
+            </div>
           ) : (
             workLogItems.map((item) =>
               item.kind === "subagent-work-log" ? (

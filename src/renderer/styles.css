@@ -3365,6 +3365,84 @@
 .activity-group > div > .tool-call {
   background: color-mix(in oklab, var(--card) 45%, transparent);
 }
+.work-log-diff-view {
+  display: grid;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  gap: 8px;
+}
+.work-log-activity-strip {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--border) 72%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--card) 60%, transparent);
+}
+.work-log-activity-strip-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: 11px/1.4 var(--font-mono);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+.work-log-activity-strip-toggle:hover {
+  background: color-mix(in oklab, var(--muted) 60%, transparent);
+  color: var(--foreground);
+}
+.work-log-activity-strip-summary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.work-log-activity-strip-badge {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.work-log-activity-strip-action {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+}
+.work-log-strip-chevron {
+  transition: transform 0.15s ease;
+}
+.work-log-strip-chevron.open {
+  transform: rotate(180deg);
+}
+.work-log-activity-strip-items {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
+  background: color-mix(in oklab, var(--muted) 25%, transparent);
+}
+.work-log-activity-strip-items .tool-call {
+  background: color-mix(in oklab, var(--card) 60%, transparent);
+}
 .work-log-diff {
   display: grid;
   width: 100%;
