@@ -757,6 +757,39 @@ describe("Pi 0.84.0 foundation contract", () => {
     ]);
   });
 
+  it("projects an expanded Pi skill invocation separately from its user arguments", () => {
+    const project = createLiveMessageProjector();
+    const parts = project({
+      type: "message_start",
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: '<skill name="pdf-tools" location="/skills/pdf-tools/SKILL.md">\nReferences are relative to /skills/pdf-tools.\n\n# PDF tools\n\nExtract text from PDFs.\n</skill>\n\nExtract report.pdf',
+          },
+        ],
+        timestamp: 0,
+      },
+    } as AgentSessionEvent);
+
+    expect(parts).toEqual([
+      {
+        id: "live-user-1-skill",
+        kind: "skill",
+        name: "pdf-tools",
+        content:
+          "References are relative to /skills/pdf-tools.\n\n# PDF tools\n\nExtract text from PDFs.",
+      },
+      expect.objectContaining({
+        id: "live-user-1-text",
+        kind: "text",
+        role: "user",
+        text: "Extract report.pdf",
+      }),
+    ]);
+  });
+
   it("projects Pi queue state with stable delivery labels and duplicate identities", () => {
     expect(
       projectQueuedMessages(["Change direction", "Change direction"], ["Do this next"]),

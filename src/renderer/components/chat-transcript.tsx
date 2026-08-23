@@ -73,6 +73,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   const latestUserPartId = store.parts.findLast(
     (part) =>
       (part.kind === "text" && part.role === "user") ||
+      part.kind === "skill" ||
       (part.kind === "attachment" && part.attachmentKind === "image"),
   )?.id;
   const itemCountRef = useRef(items.length);

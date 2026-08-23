@@ -209,7 +209,7 @@ describe("Session", () => {
     model[Symbol.dispose]();
   });
 
-  it("hydrates queued delivery and compaction transcript parts", () => {
+  it("hydrates queued delivery, skill, and compaction transcript parts", () => {
     const model = Session.create();
     applySnapshot(
       model,
@@ -225,6 +225,12 @@ describe("Session", () => {
             deliveryState: "queued",
           },
           {
+            id: "skill-1",
+            kind: "skill",
+            name: "pdf-tools",
+            content: "Extract text from PDFs.",
+          },
+          {
             id: "compaction-1",
             kind: "compaction",
             summary: "Earlier work",
@@ -237,6 +243,11 @@ describe("Session", () => {
 
     expect(model.uiParts).toEqual([
       expect.objectContaining({ kind: "text", deliveryState: "queued" }),
+      expect.objectContaining({
+        kind: "skill",
+        name: "pdf-tools",
+        content: "Extract text from PDFs.",
+      }),
       expect.objectContaining({
         kind: "compaction",
         summary: "Earlier work",

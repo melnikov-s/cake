@@ -2342,6 +2342,60 @@
      scrollable above the fixed composer dock instead of trapped beneath it. */
   padding: 0 24px 200px;
 }
+.skill-message {
+  width: min(100%, 42rem);
+}
+.skill-message details {
+  min-width: 0;
+}
+.skill-message summary {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid color-mix(in oklab, var(--accent) 30%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--card) 88%, var(--accent));
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font: 11px var(--font-mono);
+  list-style: none;
+}
+.skill-message summary::-webkit-details-marker {
+  display: none;
+}
+.skill-message summary:hover {
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--border));
+  color: var(--foreground);
+}
+.skill-message summary svg {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+.skill-message summary strong {
+  overflow: hidden;
+  color: var(--foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skill-message-hint {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.skill-message details[open] .skill-message-hint {
+  display: none;
+}
+.skill-message-content {
+  max-height: 32rem;
+  margin-top: 8px;
+  overflow: auto;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  font-size: 0.88rem;
+}
 .compaction-message details {
   overflow: hidden;
   border: 1px solid color-mix(in oklab, var(--accent) 24%, var(--border));

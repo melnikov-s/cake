@@ -300,6 +300,30 @@ describe("Transcript scrolling", () => {
     ]);
   });
 
+  it("renders a skill load as an expandable indicator instead of a user message", () => {
+    const parts: UiPart[] = [
+      {
+        id: "skill-1",
+        kind: "skill",
+        name: "pdf-tools",
+        content: "# PDF tools\n\nExtract text from PDFs.",
+      },
+    ];
+
+    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts)} />));
+
+    const skill = container.querySelector<HTMLDetailsElement>(".skill-message details");
+    expect(skill?.querySelector("summary")?.textContent).toContain("Skill loadedpdf-tools");
+    expect(skill?.open).toBe(false);
+    expect(container.querySelector(".user-message")).toBeNull();
+
+    act(() => skill?.querySelector<HTMLElement>("summary")?.click());
+    expect(skill?.open).toBe(true);
+    expect(skill?.querySelector(".skill-message-content")?.textContent).toContain(
+      "Extract text from PDFs.",
+    );
+  });
+
   it("adds separation when an error notice immediately follows a user message", () => {
     const parts: UiPart[] = [
       { id: "user-1", kind: "text", role: "user", text: "Hello?", status: "complete" },

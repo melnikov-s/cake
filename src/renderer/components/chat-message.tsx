@@ -79,6 +79,7 @@ export function chatWorkIsActive(
   const latestUserIndex = parts.findLastIndex(
     (part) =>
       (part.kind === "text" && part.role === "user") ||
+      part.kind === "skill" ||
       (part.kind === "attachment" && part.attachmentKind === "image"),
   );
   return latestUserIndex < 0 || latestUserIndex === parts.length - 1;

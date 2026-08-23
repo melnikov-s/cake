@@ -15,6 +15,7 @@ export class Message extends Model {
   role: TextRole | undefined;
   entryId: string | undefined;
   text: string | undefined;
+  content: string | undefined;
   status: PartStatus | undefined;
   deliveryState: DeliveryState | undefined;
   name: string | undefined;
@@ -49,6 +50,10 @@ export class Message extends Model {
         this.text = part.text;
         this.status = part.status;
         this.deliveryState = part.deliveryState;
+        return true;
+      case "skill":
+        this.name = part.name;
+        this.content = part.content;
         return true;
       case "reasoning":
         this.text = part.text;
@@ -106,6 +111,8 @@ export class Message extends Model {
           status: this.status as TextStatus,
           deliveryState: this.deliveryState,
         };
+      case "skill":
+        return { id: this.id, kind: this.kind, name: this.name!, content: this.content! };
       case "reasoning":
         return uiPartSchema.parse({
           id: this.id,

@@ -13,6 +13,7 @@ import {
   type CanonicalTranscriptBehavior,
 } from "./chat-message";
 import { ReviewRunMessage } from "./chat-transcript-elements";
+import { SkillMessage } from "./skill-message";
 
 const TranscriptPartContent = observer(function TranscriptPartContent({
   part,
@@ -37,6 +38,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
     ) : (
       <ChatTextMessage part={part} onOpenFilePath={behavior.openFilePath} />
     );
+  if (part.kind === "skill") return <SkillMessage part={part} />;
   if (part.kind === "reasoning")
     return (
       <Reasoning

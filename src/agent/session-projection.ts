@@ -1,4 +1,5 @@
 import {
+  parseSkillBlock,
   type AgentSessionEvent,
   type SessionEntry,
   type SessionManager,
@@ -137,7 +138,24 @@ function partsFromMessage(
   if (role === "user") {
     const parts: UiPart[] = [];
     const text = textFromContent(content);
-    if (text)
+    const skill = parseSkillBlock(text);
+    if (skill) {
+      parts.push({
+        id: `${baseId}-skill`,
+        kind: "skill",
+        name: skill.name,
+        content: skill.content,
+      });
+      if (skill.userMessage)
+        parts.push({
+          id: `${baseId}-text`,
+          kind: "text",
+          role: "user",
+          entryId,
+          text: skill.userMessage,
+          status: "complete",
+        });
+    } else if (text)
       parts.push({
         id: `${baseId}-text`,
         kind: "text",

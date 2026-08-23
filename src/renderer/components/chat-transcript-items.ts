@@ -11,8 +11,7 @@ export function errorNoticeFollowsUser(items: TranscriptItem[], index: number) {
   return (
     item?.kind === "notice" &&
     item.tone === "error" &&
-    previous?.kind === "text" &&
-    previous.role === "user"
+    ((previous?.kind === "text" && previous.role === "user") || previous?.kind === "skill")
   );
 }
 

@@ -171,6 +171,12 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     ...partBase,
+    kind: z.literal("skill"),
+    name: ipcProjectionString(256),
+    content: boundedText,
+  }),
+  z.object({
+    ...partBase,
     kind: z.literal("reasoning"),
     text: boundedText,
     status: z.enum(["streaming", "complete"]),
