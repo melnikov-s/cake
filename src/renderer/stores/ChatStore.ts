@@ -57,6 +57,7 @@ export class ChatStore extends Store<ChatStoreProps> {
   private localWorkLogViewMode: WorkLogViewMode = "auto";
   private localWorkLogsExpansion: WorkLogsExpansion = "collapsed";
   readonly workLogItemOverrides = observable(new Map<string, boolean>());
+  readonly workLogGroupOverrides = observable(new Map<string, boolean>());
   submittingLocally = false;
   loadingStartedAt: number | undefined;
   readonly workLogTimers = observable(new Map<string, WorkLogTimerState>());
@@ -256,6 +257,7 @@ export class ChatStore extends Store<ChatStoreProps> {
       this.localWorkLogsExpansion = expansion;
     }
     this.workLogItemOverrides.clear();
+    this.workLogGroupOverrides.clear();
   }
 
   /** Ctrl+O cycles: collapsed → expanded (items collapsed) → fully expanded → collapsed. */
@@ -267,6 +269,20 @@ export class ChatStore extends Store<ChatStoreProps> {
           ? "fully-expanded"
           : "collapsed";
     this.setWorkLogsExpansion(next);
+  }
+
+  /** Effective open state of a work log group (turn). */
+  workLogGroupOpen(groupId: string, hasDiff: boolean): boolean {
+    const override = this.workLogGroupOverrides.get(groupId);
+    if (override !== undefined) return override;
+    if (this.workLogsExpansion === "collapsed") return false;
+    // In diff mode, non-diff work logs stay collapsed by default
+    if (this.workLogViewMode === "diff" && !hasDiff) return false;
+    return true;
+  }
+
+  setWorkLogGroupOpen(groupId: string, open: boolean) {
+    this.workLogGroupOverrides.set(groupId, open);
   }
 
   /** Effective open state of one item inside a work log; per-item clicks override the global mode. */

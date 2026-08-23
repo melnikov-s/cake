@@ -169,4 +169,25 @@ describe("ChatStore work-log view mode and expansion", () => {
     expect(setExpansion).toHaveBeenCalledWith("fully-expanded");
     store[Symbol.dispose]();
   });
+
+  it("keeps non-diff work logs collapsed in diff view mode and allows group overrides", () => {
+    const store = createChatStore(() => Promise.resolve(true));
+    store.setWorkLogsExpansion("expanded");
+    store.setWorkLogViewMode("diff");
+
+    // In diff mode, groups with diffs open, while groups without diffs stay collapsed
+    expect(store.workLogGroupOpen("group-diff", true)).toBe(true);
+    expect(store.workLogGroupOpen("group-no-diff", false)).toBe(false);
+
+    // Manual click overrides the default for that group
+    store.setWorkLogGroupOpen("group-no-diff", true);
+    expect(store.workLogGroupOpen("group-no-diff", false)).toBe(true);
+
+    // Changing expansion clears group overrides
+    store.setWorkLogsExpansion("collapsed");
+    expect(store.workLogGroupOpen("group-no-diff", false)).toBe(false);
+    expect(store.workLogGroupOpen("group-diff", true)).toBe(false);
+
+    store[Symbol.dispose]();
+  });
 });

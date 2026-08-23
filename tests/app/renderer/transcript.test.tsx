@@ -105,6 +105,7 @@ function Transcript({
     | {
         expansion: { value: "collapsed" | "expanded" | "fully-expanded" };
         items: Map<string, boolean>;
+        groups: Map<string, boolean>;
       }
     | undefined
   >(undefined);
@@ -112,6 +113,7 @@ function Transcript({
     workLogStateRef.current = {
       expansion: observable({ value: initialExpansion }),
       items: observable(new Map()),
+      groups: observable(new Map()),
     };
   const workLogState = workLogStateRef.current;
   const store = {
@@ -131,9 +133,13 @@ function Transcript({
     get workLogItemOverrides() {
       return workLogState.items;
     },
+    get workLogGroupOverrides() {
+      return workLogState.groups;
+    },
     setWorkLogsExpansion(expansion: "collapsed" | "expanded" | "fully-expanded") {
       workLogState.expansion.value = expansion;
       workLogState.items.clear();
+      workLogState.groups.clear();
     },
     cycleWorkLogsExpansion() {
       workLogState.expansion.value =
@@ -143,6 +149,17 @@ function Transcript({
             ? "fully-expanded"
             : "collapsed";
       workLogState.items.clear();
+      workLogState.groups.clear();
+    },
+    workLogGroupOpen(groupId: string, hasDiff: boolean) {
+      const override = workLogState.groups.get(groupId);
+      if (override !== undefined) return override;
+      if (workLogState.expansion.value === "collapsed") return false;
+      if (workLogViewMode === "diff" && !hasDiff) return false;
+      return true;
+    },
+    setWorkLogGroupOpen(groupId: string, open: boolean) {
+      workLogState.groups.set(groupId, open);
     },
     workLogItemOpen(partId: string) {
       return workLogState.items.get(partId) ?? workLogState.expansion.value === "fully-expanded";

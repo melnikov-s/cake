@@ -13,11 +13,11 @@ export function WorkLogDiff({
 }) {
   const changes = workLogChanges(parts);
   if (changes.length === 0)
-    return (
+    return streaming ? (
       <div className="work-log-diff-empty" role="status">
-        {streaming ? "Waiting for file changes…" : "No file changes in this work log."}
+        Waiting for file changes…
       </div>
-    );
+    ) : null;
 
   return (
     <div className="work-log-diff" aria-label="Streaming file diff">

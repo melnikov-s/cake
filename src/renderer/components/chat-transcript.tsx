@@ -651,7 +651,12 @@ const ActivityGroup = observer(function ActivityGroup({
   behavior: CanonicalTranscriptBehavior;
   isStreaming: boolean;
 }) {
-  const open = behavior.store.workLogsExpansion !== "collapsed";
+  const changes = workLogChanges(parts);
+  const hasDiff = changes.length > 0;
+  const viewMode = behavior.store.workLogViewMode;
+  const showDiff = hasDiff && (viewMode === "diff" || viewMode === "auto");
+  const groupId = parts[0]?.id ?? "work-log";
+  const open = behavior.store.workLogGroupOpen(groupId, hasDiff);
   const [activityStripOpen, setActivityStripOpen] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
   const logIsAtBottomRef = useRef(true);
@@ -714,18 +719,12 @@ const ActivityGroup = observer(function ActivityGroup({
         {reasoningIsStreaming ? "Thinking…" : "Reasoning details not exposed"}
       </div>
     );
-  const changes = workLogChanges(parts);
-  const hasDiff = changes.length > 0;
-  const viewMode = behavior.store.workLogViewMode;
-  const showDiff = viewMode === "diff" || (viewMode === "auto" && hasDiff);
   return (
     <details className="activity-group" open={open}>
       <summary
         onClick={(event) => {
           event.preventDefault();
-          behavior.store.setWorkLogsExpansion(
-            behavior.store.workLogsExpansion === "collapsed" ? "expanded" : "collapsed",
-          );
+          behavior.store.setWorkLogGroupOpen(groupId, !open);
         }}
       >
         <span
