@@ -52,9 +52,16 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
     [configuration.connectedModelsByProvider, normalizedQuery],
   );
   const activeName = configuration.activePreset?.name ?? selectedModel?.name ?? "Choose model";
-  const summary = session
-    ? `${reasoningLabel(session.thinkingLevel)} reasoning${configuration.fastMode ? " · Fast" : ""}`
-    : "Model configuration";
+  const displayThinking = selectedModel
+    ? session?.thinkingLevel
+    : configuration.activePreset?.thinkingLevel;
+  const displayFast = selectedModel
+    ? configuration.fastMode
+    : Boolean(configuration.activePreset?.fastMode);
+  const summary =
+    session && (selectedModel || configuration.activePreset)
+      ? `${reasoningLabel(displayThinking ?? "off")} reasoning${displayFast ? " · Fast" : ""}`
+      : "Model configuration";
 
   useEffect(() => {
     if (!open) return;

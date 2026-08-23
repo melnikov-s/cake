@@ -815,6 +815,59 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("keeps model changes for an unsent chat local until the first prompt", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+
+    await store.startNewSession();
+    const session = store.activeSession!;
+    const configuration = session.configurationStore;
+    expect(configuration.deferred).toBe(true);
+
+    const override = {
+      provider: "anthropic",
+      modelId: "claude-opus-4-6",
+      thinkingLevel: "high" as const,
+      fastMode: false,
+    };
+    await configuration.selectPreset({
+      id: "00000000-0000-4000-8000-000000000002",
+      name: "Opus review",
+      ...override,
+    });
+
+    // A deferred chat has no runtime, so no runtime command may be sent.
+    expect(desktop.client.setModel).not.toHaveBeenCalled();
+    expect(desktop.client.setChatConfiguration).not.toHaveBeenCalled();
+    expect(store.newSessionRequest(session.sessionId)).toEqual({
+      path: "/project",
+      configuration: override,
+    });
+
+    session.chatStore.setDraft("Hello there");
+    await session.composerStore.submit();
+    expect(desktop.client.submit).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        newSession: { path: "/project", configuration: override },
+      }),
+    );
+
+    // The first snapshot promotes the chat to a runtime-backed session and
+    // drops the pending override.
+    desktop.emit({
+      type: "session-snapshot-received",
+      operationId: store.activeOperations.at(-1)!,
+      snapshot: { ...snapshot, sessionId: session.sessionId },
+    });
+    await flush();
+    expect(store.sessionRegistry.isTemporarySession(session.sessionId)).toBe(false);
+    expect(store.sessionRegistry.pendingConfiguration(session.sessionId)).toBeUndefined();
+
+    root[Symbol.dispose]();
+  });
+
   it("creates a new session directly in an inactive project", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);

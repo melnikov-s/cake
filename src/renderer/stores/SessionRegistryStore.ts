@@ -44,6 +44,11 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   // Empty Pi sessions have no catalog entry, so retain their identity by project
   // until the first persisted prompt makes them discoverable.
   private readonly pendingNewSessionIdsByWorkspace: Record<string, string> = observable({});
+  // A deferred new session has no runtime yet, so configuration changes are kept
+  // locally and delivered with the first prompt instead of runtime commands.
+  private readonly pendingConfigurationsBySession: Record<string, ChatConfiguration> = observable(
+    {},
+  );
   private readonly temporarySessionIds: Set<string> = observable(new Set<string>());
   private readonly sessionsById = new Map<string, ProjectSessionStore>();
   private readonly sessionWorkspacePaths = new Map<string, string>();
@@ -131,6 +136,14 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     return this.temporarySessionIds.has(sessionId);
   }
 
+  pendingConfiguration(sessionId: string) {
+    return this.pendingConfigurationsBySession[sessionId];
+  }
+
+  setPendingConfiguration(sessionId: string, configuration: ChatConfiguration) {
+    this.pendingConfigurationsBySession[sessionId] = configuration;
+  }
+
   discardNewSession(workspacePath: string, sessionId: string) {
     if (this.pendingNewSessionIdsByWorkspace[workspacePath] === sessionId)
       delete this.pendingNewSessionIdsByWorkspace[workspacePath];
@@ -138,6 +151,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     if (index >= 0) this.targets.splice(index, 1);
     this.sessionsById.delete(sessionId);
     this.temporarySessionIds.delete(sessionId);
+    delete this.pendingConfigurationsBySession[sessionId];
     this.sessionWorkspacePaths.delete(sessionId);
     this.pendingPartsBySession.delete(sessionId);
     this.pendingStreamingBySession.delete(sessionId);
@@ -155,6 +169,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
 
   upsert(snapshot: SessionSnapshot) {
     this.temporarySessionIds.delete(snapshot.sessionId);
+    delete this.pendingConfigurationsBySession[snapshot.sessionId];
     this.rememberSessionLocation(snapshot.sessionId, snapshot.workspacePath);
     const session = this.ensure(snapshot.sessionId);
     applySnapshot(session.model, toSessionSnapshot(snapshot));

@@ -126,6 +126,10 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       operationOwner: `chat-configuration:${this.sessionId}`,
       presets: this.props.modelPresets,
       openPresetSettings: this.props.openModelPresetSettings,
+      deferredNewSession: () => this.props.registry.isTemporarySession(this.sessionId),
+      effectiveConfiguration: () => this.props.newSessionRequest()?.configuration,
+      setPendingConfiguration: (configuration) =>
+        this.props.registry.setPendingConfiguration(this.sessionId, configuration),
       setConfiguration: (operationId, configuration) =>
         this.props.client.setChatConfiguration({
           operationId,

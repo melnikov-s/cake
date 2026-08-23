@@ -318,7 +318,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (!session || !this.sessionRegistry.isTemporarySession(sessionId)) return undefined;
     return {
       path: session.workspacePath,
-      configuration: this.props.defaultConfiguration?.(),
+      configuration:
+        this.sessionRegistry.pendingConfiguration(sessionId) ?? this.props.defaultConfiguration?.(),
     };
   }
 

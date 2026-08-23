@@ -21,6 +21,11 @@ export interface ChatConfigurationStoreProps {
   operationOwner?: string;
   presets(): readonly ModelPreset[];
   openPresetSettings(): void;
+  /** True while the chat is a deferred new session with no runtime yet. */
+  deferredNewSession?(): boolean;
+  /** The configuration the first prompt will carry (pending override or default preset). */
+  effectiveConfiguration?(): ChatConfiguration | undefined;
+  setPendingConfiguration?(configuration: ChatConfiguration): void;
   setConfiguration(operationId: string, configuration: ChatConfiguration): Promise<void>;
   setModel(operationId: string, provider: string, modelId: string): Promise<void>;
   setThinkingLevel(operationId: string, level: ThinkingLevel): Promise<void>;
@@ -45,7 +50,17 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   }
   get activePreset() {
     const session = this.session;
-    if (!session?.model) return undefined;
+    if (!session?.model) {
+      const pending = this.effectiveConfiguration;
+      if (!pending) return undefined;
+      return this.presets.find(
+        (preset) =>
+          preset.provider === pending.provider &&
+          preset.modelId === pending.modelId &&
+          preset.thinkingLevel === pending.thinkingLevel &&
+          preset.fastMode === pending.fastMode,
+      );
+    }
     return this.presets.find(
       (preset) =>
         preset.provider === session.model?.provider &&
@@ -74,15 +89,43 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
       .filter((group) => group.models.length > 0);
   }
 
+  get deferred() {
+    return this.props.deferredNewSession?.() ?? false;
+  }
+
+  get effectiveConfiguration() {
+    return this.props.effectiveConfiguration?.();
+  }
+
   async selectModel(value: string) {
     const separator = value.indexOf("/");
     if (separator < 1) return;
-    await this.run((operationId) =>
-      this.props.setModel(operationId, value.slice(0, separator), value.slice(separator + 1)),
-    );
+    const provider = value.slice(0, separator);
+    const modelId = value.slice(separator + 1);
+    // A deferred new session has no runtime; keep the choice locally so the
+    // first prompt carries it instead of failing to resolve an unknown session.
+    if (this.deferred) {
+      this.writePendingConfiguration({
+        ...(this.effectiveConfiguration ?? { thinkingLevel: "off", fastMode: false }),
+        provider,
+        modelId,
+      });
+      return;
+    }
+    await this.run((operationId) => this.props.setModel(operationId, provider, modelId));
   }
 
   async selectConfiguration(configuration: ChatConfiguration) {
+    if (this.deferred) {
+      // Presets carry presentation fields; persist only the runtime contract.
+      this.writePendingConfiguration({
+        provider: configuration.provider,
+        modelId: configuration.modelId,
+        thinkingLevel: configuration.thinkingLevel,
+        fastMode: configuration.fastMode,
+      });
+      return;
+    }
     this.fastModeOverride = configuration.fastMode;
     const accepted = await this.run((operationId) => {
       this.fastModeOperationId = operationId;
@@ -103,10 +146,20 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   }
 
   async selectThinkingLevel(level: ThinkingLevel) {
+    if (this.deferred) {
+      const base = this.effectiveConfiguration;
+      if (base) this.writePendingConfiguration({ ...base, thinkingLevel: level });
+      return;
+    }
     await this.run((operationId) => this.props.setThinkingLevel(operationId, level));
   }
 
   async selectFastMode(enabled: boolean) {
+    if (this.deferred) {
+      const base = this.effectiveConfiguration;
+      if (base) this.writePendingConfiguration({ ...base, fastMode: enabled });
+      return;
+    }
     if (this.fastModeOperationId) return;
     this.fastModeOverride = enabled;
     const accepted = await this.run((operationId) => {
@@ -181,6 +234,12 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
       }
       this.finish(event.operationId);
     }
+  }
+
+  private writePendingConfiguration(configuration: ChatConfiguration) {
+    this.error = undefined;
+    this.errorDetails = undefined;
+    this.props.setPendingConfiguration?.(configuration);
   }
 
   private async run(command: (operationId: string) => Promise<void>) {
