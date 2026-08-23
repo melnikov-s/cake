@@ -55,6 +55,7 @@ describe("Chat", () => {
     act(() => root.unmount());
     store?.[Symbol.dispose]();
     container.remove();
+    vi.useRealTimers();
   });
 
   it("renders the shared transcript, loading state, configuration, and composer actions", async () => {
@@ -116,6 +117,41 @@ describe("Chat", () => {
     await act(async () => stop.click());
     expect(abort).toHaveBeenCalled();
     expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("shows compact context token usage when the gauge is hovered", () => {
+    vi.useFakeTimers();
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "usage-chat",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Message Cake",
+        inputLabel: () => "Message",
+        canSubmit: () => false,
+        submit: async () => false,
+        usage: () => ({
+          tokens: { input: 20_000, output: 0, cacheRead: 0, cacheWrite: 0, total: 20_000 },
+          cost: 0,
+          context: { tokens: 20_000, contextWindow: 270_000, percent: 7.4 },
+        }),
+      }),
+    );
+
+    act(() => root.render(<Chat store={store!} />));
+
+    const gauge = container.querySelector<HTMLElement>(".session-usage")!;
+    act(() => {
+      gauge.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+      vi.advanceTimersByTime(120);
+    });
+
+    expect(document.body.querySelector<HTMLElement>('[role="tooltip"]')?.textContent).toBe(
+      "20k / 270k tokens",
+    );
   });
 
   it("shows the submit icon instead of stop while streaming when the composer has content", async () => {

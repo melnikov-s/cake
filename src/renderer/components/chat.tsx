@@ -6,6 +6,7 @@ import { ChatTranscript, type ChatTranscriptBehavior } from "@/components/chat-t
 import { QueuedPrompts } from "@/components/queued-prompts";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
 import { IconButton } from "@/components/ui/icon-button";
+import { TooltipBubble, useTooltip } from "@/components/ui/tooltip";
 import type { ChatStore } from "../stores/ChatStore";
 
 function Icon({ children }: { children: ReactNode }) {
@@ -42,10 +43,21 @@ const StopIcon = () => (
   </Icon>
 );
 
+function formatCompactTokenCount(tokens: number | null | undefined) {
+  if (tokens === null || tokens === undefined) return "Unknown";
+  if (tokens < 1_000) return tokens.toLocaleString();
+
+  const [divisor, suffix] = tokens >= 1_000_000 ? [1_000_000, "m"] : [1_000, "k"];
+  const value = tokens / divisor;
+  const decimals = value >= 100 ? 0 : value >= 10 ? 1 : 2;
+  return `${Number(value.toFixed(decimals))}${suffix}`;
+}
+
 // Observer-wrapped: reads ChatStore.usage (an observable props getter), so usage
 // updates at the end of a turn re-render the gauge even while Chat itself is idle.
 const Usage = observer(function Usage({ store }: { store: ChatStore }) {
   const usage = store.usage;
+  const { anchor, hide, show } = useTooltip();
   if (!usage) return null;
   const context = usage.context;
   const percent =
@@ -57,11 +69,22 @@ const Usage = observer(function Usage({ store }: { store: ChatStore }) {
   const contextTitle = context
     ? `${context.tokens === null ? "Unknown" : context.tokens.toLocaleString()} of ${context.contextWindow.toLocaleString()} context tokens`
     : "Context usage is unavailable";
+  const contextTokenSummary = context
+    ? `${formatCompactTokenCount(context.tokens)} / ${formatCompactTokenCount(context.contextWindow)} tokens`
+    : "Context usage unavailable";
   return (
     <div
       className="session-usage"
-      aria-label={contextLabel}
+      aria-label={`${contextLabel}; ${contextTokenSummary}`}
       title={`${contextTitle} · ${usage.tokens.total.toLocaleString()} billed tokens`}
+      tabIndex={0}
+      onMouseEnter={(event) => show(event.currentTarget)}
+      onMouseLeave={hide}
+      onMouseDown={hide}
+      onFocus={(event) => {
+        if (event.currentTarget.matches(":focus-visible")) show(event.currentTarget);
+      }}
+      onBlur={hide}
     >
       <svg className="context-gauge" viewBox="0 0 36 36" aria-hidden="true">
         <circle className="context-gauge-track" cx="18" cy="18" r="15.5" pathLength="100" />
@@ -77,6 +100,7 @@ const Usage = observer(function Usage({ store }: { store: ChatStore }) {
           {percent === undefined ? "—" : `${percent}%`}
         </text>
       </svg>
+      {anchor && <TooltipBubble label={contextTokenSummary} anchor={anchor} placement="above" />}
     </div>
   );
 });

@@ -4300,7 +4300,7 @@ button.reasoning-summary {
   background: var(--muted);
   color: var(--foreground);
 }
-.icon-button-tooltip {
+.cake-tooltip {
   position: fixed;
   z-index: 1000;
   max-width: 280px;
