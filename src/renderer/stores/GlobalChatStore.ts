@@ -1,4 +1,4 @@
-import { Store, child, createStore, observable, untracked } from "r-state-tree";
+import { Store, child, createStore, observable } from "r-state-tree";
 import type { DesktopClientEvent } from "../desktop-client";
 import type { JsonObject } from "../../ipc/json-contract";
 import type {
@@ -9,10 +9,9 @@ import type {
   SessionSnapshot,
   ThinkingLevel,
 } from "../../ipc/session-contract";
-import type { SessionRegistryStore } from "./SessionRegistryStore";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
-import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
-import type { SettingsStore } from "./SettingsStore";
+import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
+import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { CakeChatSessionStore } from "./CakeChatSessionStore";
 import { describeError } from "../error-details";
 
@@ -56,12 +55,10 @@ export interface GlobalChatPort {
 export interface GlobalChatStoreProps {
   port: GlobalChatPort;
   tools(): ReadonlyArray<{ name: string; description: string; parameters: JsonObject }>;
-  sessions(): SessionRegistryStore;
-  operations: SessionOperationCoordinatorStore;
   modelPresets?(): readonly ModelPreset[];
   defaultConfiguration?(): ChatConfiguration | undefined;
   openModelPresetSettings?(): void;
-  settings?(): SettingsStore | undefined;
+  settings?(): AppearanceSettingsStore | undefined;
   persist?(): void;
 }
 
@@ -74,14 +71,18 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   readonly summaries: SessionSnapshot["sessions"] = observable([]);
   readonly targets: string[] = observable([]);
   readonly resolvedSessionIds: string[] = observable([]);
+  private initialization: Promise<void> | undefined;
+  private selectionOpenOperationId: string | undefined;
+  private resolutionQueue: Promise<void> = Promise.resolve();
+  private readonly pendingPartsBySession = new Map<
+    string,
+    Map<string, SessionSnapshot["parts"][number] | null>
+  >();
+  private readonly pendingStreamingBySession = new Map<string, boolean>();
 
-  constructor(props: GlobalChatStore["props"]) {
-    super(props);
-    this.effect(() => {
-      untracked(() => {
-        void this.open();
-      });
-    });
+  @child
+  get operations(): SessionOperationCoordinatorStore {
+    return createStore(SessionOperationCoordinatorStore);
   }
 
   get port() {
@@ -98,8 +99,7 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
         key: sessionId,
         sessionId,
         collection: this,
-        sessions: this.props.sessions(),
-        operations: this.props.operations,
+        operations: this.operations,
         modelPresets: () => this.props.modelPresets?.() ?? [],
         openModelPresetSettings: () => this.props.openModelPresetSettings?.(),
         settings: () => this.props.settings?.(),
@@ -116,8 +116,15 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     return this.loadedSessions.find((session) => session.sessionId === sessionId);
   }
 
+  /** Explicit application startup. Repeated callers share the same initialization. */
+  initialize() {
+    if (!this.initialization) this.initialization = this.open();
+    return this.initialization;
+  }
+
   open(sessionId?: string, newSession = false, initialPrompt?: string) {
-    const operationId = this.props.operations.start("cake-chat-open");
+    const operationId = this.operations.start("cake-chat-open");
+    this.selectionOpenOperationId = operationId;
     return this.port
       .open({
         operationId,
@@ -128,8 +135,10 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
         configuration: newSession ? this.props.defaultConfiguration?.() : undefined,
       })
       .catch((error) => {
-        this.props.operations.finish(operationId);
-        this.reportError(error);
+        this.operations.finish(operationId);
+        if (this.selectionOpenOperationId === operationId)
+          this.selectionOpenOperationId = undefined;
+        if (!this.signal.aborted) this.reportError(error);
       });
   }
 
@@ -146,23 +155,32 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     this.applyResolvedState();
   }
 
-  async resolveSession(sessionId: string, resolved: boolean) {
-    try {
-      this.applyApplicationState(await this.port.resolveSession(sessionId, resolved));
-    } catch (error) {
-      this.reportError(error);
-    }
+  /** Resolution mutations are queued so an older response cannot overwrite newer application state. */
+  resolveSession(sessionId: string, resolved: boolean) {
+    return this.enqueueResolution([sessionId], resolved, false).then(() => undefined);
   }
 
-  async resolveSessions(sessionIds: readonly string[], resolved: boolean) {
-    try {
-      for (const sessionId of sessionIds)
-        this.applyApplicationState(await this.port.resolveSession(sessionId, resolved));
-      return sessionIds.length;
-    } catch (error) {
-      this.reportError(error);
-      throw error;
-    }
+  resolveSessions(sessionIds: readonly string[], resolved: boolean) {
+    const ids = [...sessionIds];
+    return this.enqueueResolution(ids, resolved, true).then(() => ids.length);
+  }
+
+  private enqueueResolution(sessionIds: readonly string[], resolved: boolean, rethrow: boolean) {
+    const run = async () => {
+      try {
+        for (const sessionId of sessionIds) {
+          const state = await this.port.resolveSession(sessionId, resolved);
+          if (this.signal.aborted) return;
+          this.applyApplicationState(state);
+        }
+      } catch (error) {
+        if (!this.signal.aborted) this.reportError(error);
+        if (rethrow) throw error;
+      }
+    };
+    const result = this.resolutionQueue.then(run, run);
+    this.resolutionQueue = result.catch(() => undefined);
+    return result;
   }
 
   openSession(sessionId: string) {
@@ -181,14 +199,15 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
 
   receive(event: DesktopClientEvent) {
     if (event.type === "global-chat-snapshot-received") {
-      this.props.sessions().upsert(event.snapshot);
       this.ensureTarget(event.snapshot.sessionId);
+      const session = this.findSession(event.snapshot.sessionId)!;
+      session.applySnapshot(event.snapshot);
+      this.applyPendingEvents(session);
+      session.receive(event);
       this.applySummaries(event.snapshot);
-      if (
-        event.operationId &&
-        this.props.operations.includes(event.operationId, "cake-chat-open")
-      ) {
+      if (event.operationId && event.operationId === this.selectionOpenOperationId) {
         this.selectedSessionId = event.snapshot.sessionId;
+        this.selectionOpenOperationId = undefined;
       } else if (!this.selectedSessionId) {
         this.selectedSessionId = event.snapshot.sessionId;
       }
@@ -196,29 +215,75 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       return;
     }
     if (event.type === "global-chat-part-updated") {
-      this.props.sessions().upsertPart(event.sessionId, event.part);
+      const session = this.findSession(event.sessionId);
+      if (session) session.upsertPart(event.part);
+      else this.pendingParts(event.sessionId).set(event.part.id, event.part);
       return;
     }
     if (event.type === "global-chat-part-removed") {
-      this.props.sessions().removePart(event.sessionId, event.partId);
+      const session = this.findSession(event.sessionId);
+      if (session) session.removePart(event.partId);
+      else this.pendingParts(event.sessionId).set(event.partId, null);
       return;
     }
     if (event.type === "global-chat-streaming-changed") {
-      this.props.sessions().setStreaming(event.sessionId, event.streaming);
+      const session = this.findSession(event.sessionId);
+      if (session) session.setStreaming(event.streaming);
+      else this.pendingStreamingBySession.set(event.sessionId, event.streaming);
       return;
     }
     if (event.type === "global-chat-operation-failed") {
-      for (const session of this.loadedSessions)
+      for (const session of this.loadedSessions) {
+        if (!this.sessionOwnsOperation(session, event.operationId)) continue;
+        session.receive(event);
         session.receiveOperationFailure(event.operationId, event.message, event.details);
-      if (this.props.operations.includes(event.operationId, "cake-chat-open")) {
+      }
+      if (event.operationId === this.selectionOpenOperationId) {
+        this.selectionOpenOperationId = undefined;
         this.error = event.message;
         this.errorDetails = event.details ?? event.message;
       }
-      this.props.operations.finish(event.operationId);
+      this.operations.finish(event.operationId);
       return;
     }
-    if (event.type === "global-chat-operation-completed")
-      this.props.operations.finish(event.operationId);
+    if (event.type === "global-chat-operation-completed") {
+      for (const session of this.loadedSessions) {
+        if (this.sessionOwnsOperation(session, event.operationId)) session.receive(event);
+      }
+      this.operations.finish(event.operationId);
+    }
+  }
+
+  private sessionOwnsOperation(session: CakeChatSessionStore, operationId: string) {
+    return (
+      this.operations.includes(operationId, session.promptOwner) ||
+      this.operations.includes(operationId, session.configurationOwner) ||
+      this.operations.includes(operationId, `cake-chat-abort:${session.sessionId}`)
+    );
+  }
+
+  private pendingParts(sessionId: string) {
+    const parts =
+      this.pendingPartsBySession.get(sessionId) ??
+      new Map<string, SessionSnapshot["parts"][number] | null>();
+    this.pendingPartsBySession.set(sessionId, parts);
+    return parts;
+  }
+
+  private applyPendingEvents(session: CakeChatSessionStore) {
+    const parts = this.pendingPartsBySession.get(session.sessionId);
+    if (parts) {
+      for (const [partId, part] of parts) {
+        if (part) session.upsertPart(part);
+        else session.removePart(partId);
+      }
+      this.pendingPartsBySession.delete(session.sessionId);
+    }
+    const streaming = this.pendingStreamingBySession.get(session.sessionId);
+    if (streaming !== undefined) {
+      session.setStreaming(streaming);
+      this.pendingStreamingBySession.delete(session.sessionId);
+    }
   }
 
   private ensureTarget(sessionId: string) {

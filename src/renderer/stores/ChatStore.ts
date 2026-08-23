@@ -78,8 +78,7 @@ export class ChatStore extends Store<ChatStoreProps> {
       () =>
         this.props
           .parts()
-          .map((part) => (part.kind === "tool" ? `${part.id}:${part.state}` : ""))
-          .join("|"),
+          .flatMap((part) => (part.kind === "tool" ? [{ id: part.id, state: part.state }] : [])),
       () => this.syncWorkLogTimers(),
     );
     this.effect(() => () => this.stopWorkLogTick());
@@ -92,7 +91,9 @@ export class ChatStore extends Store<ChatStoreProps> {
 
   private syncWorkLogTimers() {
     const now = Date.now();
+    const retainedPartIds = new Set<string>();
     for (const part of this.props.parts()) {
+      retainedPartIds.add(part.id);
       if (part.kind !== "tool") continue;
       const timer = this.workLogTimers.get(part.id);
       if (part.state === "running" || part.state === "approval") {
@@ -100,6 +101,15 @@ export class ChatStore extends Store<ChatStoreProps> {
       } else if (timer && timer.endedAt === undefined) {
         this.workLogTimers.set(part.id, { ...timer, endedAt: now });
       }
+    }
+    for (const partId of this.workLogTimers.keys()) {
+      if (!retainedPartIds.has(partId)) this.workLogTimers.delete(partId);
+    }
+    for (const partId of this.workLogItemOverrides.keys()) {
+      if (!retainedPartIds.has(partId)) this.workLogItemOverrides.delete(partId);
+    }
+    for (const groupId of this.workLogGroupOverrides.keys()) {
+      if (!retainedPartIds.has(groupId)) this.workLogGroupOverrides.delete(groupId);
     }
     this.updateWorkLogTick();
   }

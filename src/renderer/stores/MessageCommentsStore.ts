@@ -1,4 +1,4 @@
-import { Store, createStore } from "r-state-tree";
+import { Store, child, createStore } from "r-state-tree";
 import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { ReviewsStore } from "./ReviewsStore";
@@ -7,7 +7,6 @@ import { ChatStore } from "./ChatStore";
 export interface MessageCommentsStoreProps {
   sessionRegistry: SessionRegistryStore;
   reviews(): ReviewsStore;
-  draftChatStore(): ChatStore;
   context(): { sessionId: string } | undefined;
 }
 
@@ -62,12 +61,10 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
     this.draftFocusRequestRevision += 1;
   }
 
-  get draftChatStore() {
-    return this.props.draftChatStore();
-  }
-
-  get draftChatStoreElement() {
+  @child
+  get draftChatStore(): ChatStore {
     return createStore(ChatStore, {
+      key: "message-comment-draft",
       id: () => "message-comment-draft",
       parts: () => {
         const selection = this.draftSelection;

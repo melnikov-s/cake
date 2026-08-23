@@ -141,6 +141,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         ),
       );
     } catch (error) {
+      if (this.signal.aborted) return;
       this.reportError(error);
     }
   }
@@ -150,8 +151,10 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     this.errorDetails = undefined;
     try {
       const attachments = await pastedImageAttachments(files, 20 - this.attachments.length);
+      if (this.signal.aborted) return;
       this.attachments.push(...attachments);
     } catch (error) {
+      if (this.signal.aborted) return;
       this.reportError(error);
     }
   }
@@ -180,6 +183,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     }
     if (this.props.matchesPluginCommand(text)) {
       await this.props.runPluginCommand(text);
+      if (this.signal.aborted) return;
       this.props.setDraft("");
       return;
     }
@@ -236,7 +240,12 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         provider: value.slice(0, separator),
         modelId: value.slice(separator + 1),
       });
+      if (this.signal.aborted) this.finishOperation(operationId);
     } catch (error) {
+      if (this.signal.aborted) {
+        this.finishOperation(operationId);
+        return;
+      }
       this.reportError(error);
       this.finishOperation(operationId);
     }
@@ -252,6 +261,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     try {
       await this.props.renameSession(name.trim());
     } catch (error) {
+      if (this.signal.aborted) return;
       this.reportError(error);
     }
   }
@@ -282,7 +292,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     this.drainingQueue = true;
     this.queuedPrompts.splice(0, 1);
     void this.deliverQueued(entry, "prompt").finally(() => {
-      this.drainingQueue = false;
+      if (!this.signal.aborted) this.drainingQueue = false;
     });
   }
 
@@ -292,7 +302,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       sessionId !== undefined && (entry.text || entry.attachments.length > 0)
         ? await this.deliver(entry.text, entry.attachments.slice(), delivery, sessionId, false)
         : false;
-    if (!delivered) this.queuedPrompts.unshift(entry);
+    if (!delivered && !this.signal.aborted) this.queuedPrompts.unshift(entry);
   }
 
   private async deliver(
@@ -314,8 +324,16 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
           sessionId,
           instructions: builtin.args || undefined,
         });
+        if (this.signal.aborted) {
+          this.finishOperation(operationId);
+          return false;
+        }
         return true;
       } catch (error) {
+        if (this.signal.aborted) {
+          this.finishOperation(operationId);
+          return false;
+        }
         this.reportError(error);
         this.finishOperation(operationId);
         if (restoreOnError && !this.props.draft().trim()) this.props.setDraft(text);
@@ -333,8 +351,16 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         attachments,
         newSession: this.props.newSessionRequest?.(),
       });
+      if (this.signal.aborted) {
+        this.finishOperation(operationId);
+        return false;
+      }
       return true;
     } catch (error) {
+      if (this.signal.aborted) {
+        this.finishOperation(operationId);
+        return false;
+      }
       this.removePendingUserMessage(operationId);
       this.reportError(error);
       this.finishOperation(operationId);

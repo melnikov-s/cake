@@ -50,6 +50,10 @@ export class ReviewThread extends Model {
     else this.parts.push(Message.create(snapshot));
   }
 
+  setUsage(usage: ReviewThreadRecord["usage"]) {
+    this.usage = usage;
+  }
+
   get value(): ReviewThreadRecord {
     return {
       id: this.id,

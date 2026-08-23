@@ -34,6 +34,16 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   draftFocusRequestRevision = 0;
   error: string | undefined;
   errorDetails: string | undefined;
+  private readonly loadRevisions = new Map<string, number>();
+  private readonly resolutionRevisions = new Map<string, number>();
+
+  constructor(props: ReviewsStore["props"]) {
+    super(props);
+    this.effect(() => () => {
+      for (const operationId of Object.keys(this.submissionsByOperation))
+        this.props.operations.finish(operationId);
+    });
+  }
 
   private reportError(error: unknown) {
     const described = describeError(error);
@@ -72,6 +82,20 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   }
   threadStreaming(threadId: string) {
     return this.streamingThreadIds.includes(threadId);
+  }
+
+  selectThread(threadId: string) {
+    this.activeThreadId = threadId;
+  }
+
+  trySelectThread(threadId: string) {
+    if (!this.threads.some((thread) => thread.id === threadId)) return false;
+    this.selectThread(threadId);
+    return true;
+  }
+
+  clearActiveThread() {
+    this.activeThreadId = undefined;
   }
 
   prepareDraft(anchor: ReviewAnchor) {
@@ -150,7 +174,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
           !this.threadStreaming(thread.id),
         submit: async (draft) => {
           const saved = await this.replyThread(thread.id, draft);
-          if (saved) await this.submitThread(thread.id);
+          if (saved) await this.submitThread(thread.id, thread.sessionId);
           return saved;
         },
         composerVisible: () =>
@@ -177,10 +201,10 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
       });
       if (this.signal.aborted) return undefined;
       this.props.sessionRegistry.upsertReviewThread(thread);
-      await this.submitThread(thread.id);
+      await this.submitThread(thread.id, context.sessionId);
       return thread.id;
     } catch (error) {
-      this.reportError(error);
+      if (!this.signal.aborted) this.reportError(error);
       return undefined;
     }
   }
@@ -199,14 +223,17 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
       this.props.sessionRegistry.upsertReviewThread(thread);
       return true;
     } catch (error) {
-      this.reportError(error);
+      if (!this.signal.aborted) this.reportError(error);
       return false;
     }
   }
 
+  /** Repeated resolution changes are latest-wins per thread. */
   async resolveThread(threadId: string, resolved = true) {
     const context = this.props.context();
     if (!context) return false;
+    const revision = (this.resolutionRevisions.get(threadId) ?? 0) + 1;
+    this.resolutionRevisions.set(threadId, revision);
     this.clearError();
     try {
       const thread = await this.props.client.resolveReviewThread({
@@ -214,43 +241,49 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
         threadId,
         resolved,
       });
-      if (this.signal.aborted) return false;
+      if (this.signal.aborted || this.resolutionRevisions.get(threadId) !== revision) return false;
       this.props.sessionRegistry.upsertReviewThread(thread);
       return true;
     } catch (error) {
-      this.reportError(error);
+      if (!this.signal.aborted && this.resolutionRevisions.get(threadId) === revision)
+        this.reportError(error);
       return false;
     }
   }
 
+  /** Repeated loads are latest-wins per session. */
   async loadThreads(sessionId: string) {
+    const revision = (this.loadRevisions.get(sessionId) ?? 0) + 1;
+    this.loadRevisions.set(sessionId, revision);
     this.clearError();
     try {
       const threads = await this.props.client.listReviewThreads(sessionId);
-      if (!this.signal.aborted) this.props.sessionRegistry.applyReviewThreads(sessionId, threads);
+      if (this.signal.aborted || this.loadRevisions.get(sessionId) !== revision) return;
+      this.props.sessionRegistry.applyReviewThreads(sessionId, threads);
     } catch (error) {
-      if (!this.signal.aborted) this.reportError(error);
+      if (!this.signal.aborted && this.loadRevisions.get(sessionId) === revision)
+        this.reportError(error);
     }
   }
 
-  async submitThread(threadId: string) {
-    const context = this.props.context();
-    if (!context || this.submittedThreadIds().has(threadId)) return;
+  async submitThread(threadId: string, sessionId = this.props.context()?.sessionId) {
+    if (!sessionId || this.submittedThreadIds().has(threadId) || this.signal.aborted) return;
     this.clearError();
+    const session = this.props.sessionRegistry.findModel(sessionId);
     const operationId = this.props.operations.start();
     this.submissionsByOperation[operationId] = [threadId];
     try {
       await this.props.client.submitReviewThread({
         operationId,
-        sessionId: context.sessionId,
+        sessionId,
         threadId,
-        model: this.props.model(),
-        thinkingLevel: this.props.thinkingLevel(),
+        model: session?.model ?? this.props.model(),
+        thinkingLevel: session?.thinkingLevel ?? this.props.thinkingLevel(),
       });
     } catch (error) {
       delete this.submissionsByOperation[operationId];
-      this.reportError(error);
       this.props.operations.finish(operationId);
+      if (!this.signal.aborted) this.reportError(error);
     }
   }
 
@@ -268,7 +301,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
       const thread = this.props.sessionRegistry
         .findModel(event.sessionId)
         ?.reviewThreads.find((item) => item.id === event.threadId);
-      if (thread) thread.usage = event.usage;
+      thread?.setUsage(event.usage);
     } else if (event.type === "operation-completed") {
       const threadIds = this.submissionsByOperation[event.operationId];
       if (!threadIds) return;

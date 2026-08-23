@@ -87,6 +87,12 @@ const customizationHealthTimers = new Map<number, ReturnType<typeof setTimeout>>
 let applicationModel = Application.from({});
 const stateFileWriter = new AtomicFileWriter();
 
+function replaceApplicationModel(next: Application) {
+  const previous = applicationModel;
+  applicationModel = next;
+  previous[Symbol.dispose]();
+}
+
 function clearPendingTrustRequests(webContentsId: number) {
   for (const key of pendingTrustRequests.keys())
     if (key.startsWith(`${webContentsId}:`)) pendingTrustRequests.delete(key);
@@ -256,9 +262,9 @@ function appStatePath() {
 
 async function loadApplicationState() {
   try {
-    applicationModel = Application.from(JSON.parse(await readFile(appStatePath(), "utf8")));
+    replaceApplicationModel(Application.from(JSON.parse(await readFile(appStatePath(), "utf8"))));
   } catch {
-    applicationModel = Application.from({});
+    replaceApplicationModel(Application.from({}));
   }
   for (const project of applicationModel.projects) {
     allowedProjectPaths.add(project.path);
@@ -1620,6 +1626,7 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 app.on("before-quit", () => {
+  applicationModel[Symbol.dispose]();
   globalChatDriver[Symbol.dispose]();
   pluginBackends[Symbol.dispose]();
   vscodeEditor.disposeAll();

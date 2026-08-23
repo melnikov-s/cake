@@ -78,6 +78,7 @@ describe("ChatConfigurationSelector", () => {
         { id: "openai", name: "OpenAI", models: [current] },
         { id: "anthropic", name: "Anthropic", models: [next] },
       ],
+      ensureCatalog: vi.fn(),
       selectThinkingLevel: vi.fn(async () => undefined),
       selectFastMode: vi.fn(async () => undefined),
       selectConfiguration: vi.fn(async () => undefined),

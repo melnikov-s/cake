@@ -42,7 +42,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
     if (!value) return;
     const name = value.trim();
     if (!name) return;
-    void chat.renameSession(session.id, name);
+    void chat.sessionManagementStore.renameSession(session.id, name);
   };
   return (
     <div

@@ -21,16 +21,24 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
   busy = false;
   error?: string;
   plugins: PluginStatus[] = observable([]);
+  private hydration: Promise<void> | undefined;
 
-  async hydrate() {
+  hydrate() {
+    this.hydration ??= this.performHydration();
+    return this.hydration;
+  }
+
+  private async performHydration() {
     try {
       const [state, plugins] = await Promise.all([
         this.props.client.getCustomizationState(),
         this.props.client.listPlugins(),
       ]);
+      if (this.signal.aborted) return;
       this.state = state;
       this.plugins.splice(0, this.plugins.length, ...plugins);
     } catch (error) {
+      if (this.signal.aborted) return;
       this.error = error instanceof Error ? error.message : String(error);
     }
   }
@@ -48,6 +56,7 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
         this.state?.sourceRevision,
         "Rebuild customization from the recovery interface",
       );
+      if (this.signal.aborted) return;
       if (result.diagnostics.length)
         this.error = "The customization candidate did not pass its checks.";
       else
@@ -57,9 +66,10 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
           "Activate customization from the recovery interface",
         );
     } catch (error) {
+      if (this.signal.aborted) return;
       this.error = error instanceof Error ? error.message : String(error);
     } finally {
-      this.busy = false;
+      if (!this.signal.aborted) this.busy = false;
     }
   }
 
@@ -67,10 +77,13 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
     if (this.busy) return;
     this.busy = true;
     try {
-      this.state = await this.props.client.rollbackCustomization();
+      const state = await this.props.client.rollbackCustomization();
+      if (!this.signal.aborted) this.state = state;
     } catch (error) {
+      if (this.signal.aborted) return;
       this.error = error instanceof Error ? error.message : String(error);
-      this.busy = false;
+    } finally {
+      if (!this.signal.aborted) this.busy = false;
     }
   }
 
@@ -78,10 +91,13 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
     if (this.busy) return;
     this.busy = true;
     try {
-      this.state = await this.props.client.useFactoryCustomization();
+      const state = await this.props.client.useFactoryCustomization();
+      if (!this.signal.aborted) this.state = state;
     } catch (error) {
+      if (this.signal.aborted) return;
       this.error = error instanceof Error ? error.message : String(error);
-      this.busy = false;
+    } finally {
+      if (!this.signal.aborted) this.busy = false;
     }
   }
 
@@ -91,11 +107,13 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
     this.error = undefined;
     try {
       const plugins = await this.props.client.setPluginEnabled(pluginId, enabled);
+      if (this.signal.aborted) return;
       this.plugins.splice(0, this.plugins.length, ...plugins);
     } catch (error) {
+      if (this.signal.aborted) return;
       this.error = error instanceof Error ? error.message : String(error);
     } finally {
-      this.busy = false;
+      if (!this.signal.aborted) this.busy = false;
     }
   }
 
@@ -105,11 +123,13 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
     this.error = undefined;
     try {
       const plugins = await this.props.client.setActiveScene(pluginId);
+      if (this.signal.aborted) return;
       this.plugins.splice(0, this.plugins.length, ...plugins);
     } catch (error) {
+      if (this.signal.aborted) return;
       this.error = error instanceof Error ? error.message : String(error);
     } finally {
-      this.busy = false;
+      if (!this.signal.aborted) this.busy = false;
     }
   }
 
@@ -119,11 +139,13 @@ export class CustomizationStore extends Store<{ client: CustomizationClient }> {
     this.error = undefined;
     try {
       const plugins = await this.props.client.deletePlugin(pluginId);
+      if (this.signal.aborted) return;
       this.plugins.splice(0, this.plugins.length, ...plugins);
     } catch (error) {
+      if (this.signal.aborted) return;
       this.error = error instanceof Error ? error.message : String(error);
     } finally {
-      this.busy = false;
+      if (!this.signal.aborted) this.busy = false;
     }
   }
 }

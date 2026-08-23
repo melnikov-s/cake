@@ -62,7 +62,7 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
 
     await composer.fill("/tree");
     await composer.press("Enter");
-    await expect(page.getByRole("dialog", { name: "Session tree" })).toBeVisible();
+    await expect(page.getByRole("complementary", { name: "Session tree" })).toBeVisible();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

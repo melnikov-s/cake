@@ -1268,7 +1268,7 @@ describe("S1 Pi runtime", () => {
         expect.arrayContaining([expect.objectContaining({ name: "catalog-probe" })]),
       );
     }
-    expect((await runtime.snapshot()).piSettings.reloadPending).toBe(false);
+    expect((await runtime.snapshot()).piSettings?.reloadPending).toBe(false);
   });
 
   it("creates and reopens an authoritative persistent Pi session", async () => {

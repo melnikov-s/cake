@@ -1,0 +1,144 @@
+import { observer } from "r-state-tree/react";
+import { Markdown } from "@/components/ai-elements/markdown";
+import { Reasoning } from "@/components/ai-elements/reasoning";
+import { Source } from "@/components/ai-elements/source";
+import { Tool, ToolRunTimer } from "@/components/ai-elements/tool";
+import { ArtifactHost } from "@/components/artifact-host";
+import { CompactionMessage } from "@/components/compaction-message";
+import { ImagePreview } from "@/components/image-preview";
+import type { UiPart } from "../../ipc/session-contract";
+import {
+  AssistantTextMessage,
+  ChatTextMessage,
+  type CanonicalTranscriptBehavior,
+} from "./chat-message";
+import { ReviewRunMessage } from "./chat-transcript-elements";
+
+const TranscriptPartContent = observer(function TranscriptPartContent({
+  part,
+  behavior,
+  workLogItem = false,
+  subagentSpawnPart,
+  live,
+  omitToolDiff,
+}: {
+  part: UiPart;
+  behavior: CanonicalTranscriptBehavior;
+  /** True when rendered inside a work log, so item expansion follows the global mode. */
+  workLogItem?: boolean;
+  subagentSpawnPart?: Extract<UiPart, { kind: "tool" }>;
+  /** True while this conversation's runtime may still be producing subagent work. */
+  live?: boolean;
+  omitToolDiff?: boolean;
+}) {
+  if (part.kind === "text")
+    return part.role === "assistant" ? (
+      <AssistantTextMessage part={part} behavior={behavior} />
+    ) : (
+      <ChatTextMessage part={part} onOpenFilePath={behavior.openFilePath} />
+    );
+  if (part.kind === "reasoning")
+    return (
+      <Reasoning
+        open={behavior.store.workLogItemOpen(part.id)}
+        onToggle={() =>
+          behavior.store.setWorkLogItemOpen(part.id, !behavior.store.workLogItemOpen(part.id))
+        }
+        streaming={part.status === "streaming"}
+        hasContent={Boolean(part.text.trim())}
+      >
+        <Markdown onOpenFilePath={behavior.openFilePath}>{part.text}</Markdown>
+      </Reasoning>
+    );
+  if (part.kind === "tool") {
+    const record = part.artifactId
+      ? behavior.artifacts?.records.find((candidate) => candidate.artifact.id === part.artifactId)
+      : undefined;
+    if (record && behavior.artifacts) {
+      const request =
+        behavior.artifacts.interaction.request?.record.artifact.id === record.artifact.id
+          ? behavior.artifacts.interaction.request
+          : undefined;
+      return (
+        <ArtifactHost
+          record={record}
+          requested={Boolean(request)}
+          onSubmit={(value) => void behavior.artifacts!.interaction.answer(record, value)}
+          onSkip={() => void behavior.artifacts!.interaction.respond(undefined, true)}
+          inlineWidgets={behavior.inlineWidgets}
+        />
+      );
+    }
+    return (
+      <Tool
+        part={part}
+        onOpenFile={behavior.openFileInEditor}
+        timer={
+          <ToolRunTimer
+            store={behavior.store}
+            partId={part.id}
+            startPartId={subagentSpawnPart?.id}
+          />
+        }
+        subagentSpawnPart={subagentSpawnPart}
+        live={live}
+        omitDiff={omitToolDiff}
+        expansion={
+          workLogItem
+            ? {
+                open: behavior.store.workLogItemOpen(part.id),
+                toggle: () =>
+                  behavior.store.setWorkLogItemOpen(
+                    part.id,
+                    !behavior.store.workLogItemOpen(part.id),
+                  ),
+              }
+            : undefined
+        }
+      />
+    );
+  }
+  if (part.kind === "source") return <Source title={part.title} url={part.url} />;
+  if (part.kind === "attachment")
+    return part.attachmentKind === "image" && part.data ? (
+      <figure className="transcript-image">
+        <ImagePreview
+          src={`data:${part.mediaType};base64,${part.data}`}
+          alt={part.name}
+          caption={part.name}
+        />
+        <figcaption>{part.name}</figcaption>
+      </figure>
+    ) : (
+      <div className="w-fit rounded-full border border-border px-3 py-1 font-mono text-[0.68rem]">
+        {part.attachmentKind} · {part.name}
+      </div>
+    );
+  if (part.kind === "review-run")
+    return <ReviewRunMessage run={part} onOpen={behavior.onOpenReviewRun} />;
+  if (part.kind === "compaction") return <CompactionMessage part={part} />;
+  return (
+    <div className={`notice notice-${part.tone}`} role={part.tone === "error" ? "alert" : "status"}>
+      <strong>{part.title}</strong>
+      {part.detail && <span>{part.detail}</span>}
+    </div>
+  );
+});
+
+/** Marks every rendered transcript part in the DOM so right-click selection
+ *  capture can resolve any selectable surface back to its conversation part.
+ *  The wrapper is layout-invisible via `display: contents`. */
+export function TranscriptPart(props: {
+  part: UiPart;
+  behavior: CanonicalTranscriptBehavior;
+  workLogItem?: boolean;
+  subagentSpawnPart?: Extract<UiPart, { kind: "tool" }>;
+  live?: boolean;
+  omitToolDiff?: boolean;
+}) {
+  return (
+    <div className="transcript-part" data-part-id={props.part.id}>
+      <TranscriptPartContent {...props} />
+    </div>
+  );
+}

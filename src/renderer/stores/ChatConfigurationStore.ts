@@ -98,7 +98,7 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
     void this.props
       .listModels()
       .then((models) => {
-        if (revision === this.catalogLoadRevision)
+        if (!this.signal.aborted && revision === this.catalogLoadRevision)
           this.catalogModels.splice(0, this.catalogModels.length, ...models);
       })
       .catch(() => undefined);
@@ -269,8 +269,10 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
     const operationId = this.props.operations.start(this.props.operationOwner);
     try {
       await command(operationId);
+      if (this.signal.aborted) return false;
       return true;
     } catch (error) {
+      if (this.signal.aborted) return false;
       this.reportError(error);
       this.finish(operationId);
       return false;

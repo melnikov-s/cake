@@ -1,5 +1,5 @@
 import { Store, child, createStore } from "r-state-tree";
-import type { DesktopClient } from "../desktop-client";
+import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import { Session } from "../../models/Session";
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
@@ -9,7 +9,7 @@ import type { PluginCommandStore } from "./PluginCommandStore";
 import { MessageComposerStore } from "./MessageComposerStore";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { ChatStore } from "./ChatStore";
-import type { SettingsStore } from "./SettingsStore";
+import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ArtifactInteractionStore } from "./ArtifactInteractionStore";
 import { MessageCommentsStore } from "./MessageCommentsStore";
 
@@ -34,7 +34,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
   newSessionRequest(): { path: string; configuration?: ChatConfiguration } | undefined;
-  settings?(): SettingsStore | undefined;
+  settings?(): AppearanceSettingsStore | undefined;
 }
 
 /** Owns the view and interaction workflow for one project Pi session. */
@@ -42,6 +42,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   readonly model: Session;
   activity: "running" | "unread" | undefined;
   backgroundWorkActive = false;
+  private artifactRequestActive = false;
   // Drafts and review threads can create this Store before its transcript is loaded.
   hydrated = false;
 
@@ -65,6 +66,53 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
   get isStreaming() {
     return this.model.streaming;
+  }
+  private get composerOwner() {
+    return `message-composer:${this.sessionId}`;
+  }
+  private get configurationOwner() {
+    return `chat-configuration:${this.sessionId}`;
+  }
+
+  /** Routes an event only to the session subsystem that authoritatively owns it. */
+  receive(event: DesktopClientEvent) {
+    if (event.type === "artifact-requested") {
+      if (event.record.artifact.sessionId !== this.sessionId) return;
+      this.artifactRequestActive = true;
+      this.artifactInteractionStore.receive(event);
+      return;
+    }
+    if (event.type === "session-snapshot-received") {
+      if (
+        event.snapshot.sessionId === this.sessionId &&
+        this.props.operations.active(this.configurationOwner).length > 0
+      )
+        this.configurationStore.receive(event);
+      return;
+    }
+    if (event.type === "operation-completed" || event.type === "operation-failed") {
+      if (
+        event.operationId &&
+        this.props.operations.includes(event.operationId, this.composerOwner)
+      )
+        this.composerStore.receive(event);
+      if (
+        event.operationId &&
+        this.props.operations.includes(event.operationId, this.configurationOwner)
+      )
+        this.configurationStore.receive(event);
+      return;
+    }
+    if (
+      event.type === "pi-state-changed" &&
+      (event.state === "failed" || event.state === "stopped")
+    ) {
+      if (this.props.operations.active(this.composerOwner).length > 0)
+        this.composerStore.receive(event);
+      if (this.props.operations.active(this.configurationOwner).length > 0)
+        this.configurationStore.receive(event);
+      if (this.artifactRequestActive) this.artifactInteractionStore.receive(event);
+    }
   }
 
   markHydrated() {
@@ -95,6 +143,12 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     this.backgroundWorkActive = active;
   }
 
+  cancelArtifactRequest() {
+    return this.artifactRequestActive
+      ? this.artifactInteractionStore.cancelPendingRequest()
+      : undefined;
+  }
+
   @child
   get composerStore(): MessageComposerStore {
     return createStore(MessageComposerStore, {
@@ -113,7 +167,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       runPluginCommand: (input) => this.props.pluginCommands().run(input),
       renameSession: (name) => this.props.renameSession(name),
       operations: this.props.operations,
-      operationOwner: `message-composer:${this.sessionId}`,
+      operationOwner: this.composerOwner,
       newSessionRequest: this.props.newSessionRequest,
     });
   }
@@ -123,7 +177,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return createStore(ChatConfigurationStore, {
       session: () => this.model,
       operations: this.props.operations,
-      operationOwner: `chat-configuration:${this.sessionId}`,
+      operationOwner: this.configurationOwner,
       presets: this.props.modelPresets,
       openPresetSettings: this.props.openModelPresetSettings,
       deferredNewSession: () => this.props.registry.isTemporarySession(this.sessionId),
@@ -202,6 +256,9 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       operations: this.props.operations,
       operationOwner: `artifact-answer:${this.sessionId}`,
       isStreaming: () => this.isStreaming,
+      onRequestChanged: (active) => {
+        this.artifactRequestActive = active;
+      },
     });
   }
 
@@ -210,13 +267,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return createStore(MessageCommentsStore, {
       sessionRegistry: this.props.registry,
       reviews: this.props.reviews,
-      draftChatStore: () => this.messageCommentChatStore,
       context: () => ({ sessionId: this.sessionId }),
     });
-  }
-
-  @child
-  get messageCommentChatStore(): ChatStore {
-    return this.messageCommentsStore.draftChatStoreElement;
   }
 }

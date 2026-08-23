@@ -9,7 +9,7 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
   private indexedByProject = new Map<string, GlobalSessionSummary[]>();
   private resolvedSessionIds = new Set<string>();
   /** Managed worktree workspaces mapped to their parent project path. */
-  private managedWorktreeProjects = new Map<string, string>();
+  private readonly managedWorktreeProjects = observable(new Map<string, string>());
 
   /** Registers the parent project of a managed worktree workspace ahead of any listing. */
   noteManagedWorktree(workspacePath: string, projectPath: string) {

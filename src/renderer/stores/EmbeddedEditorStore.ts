@@ -38,13 +38,17 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   lastActivePath: string | undefined;
   private openedWorkspace: string | undefined;
   private boundsRevision = 0;
+  private refreshRevision = 0;
+  private installation: Promise<void> | undefined;
 
   async refresh() {
+    const revision = ++this.refreshRevision;
     try {
       const state: EmbeddedEditorStateSnapshot = await this.props.client.getEmbeddedEditorState();
-      if (this.signal.aborted) return;
+      if (this.signal.aborted || revision !== this.refreshRevision) return;
       this.applySnapshot(state);
     } catch (error) {
+      if (this.signal.aborted || revision !== this.refreshRevision) return;
       const described = describeError(error);
       this.error = described.message;
       this.errorDetails = described.details;
@@ -57,6 +61,11 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     this.props.schedulePersistence();
     if (mode === "vscode") void this.open();
     else void this.reportBounds(null);
+  }
+
+  /** Restores persisted presentation without launching an editor during hydration. */
+  restoreMode(mode: "builtin" | "vscode") {
+    this.mode = mode;
   }
 
   receive(
@@ -79,8 +88,10 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     this.errorDetails = undefined;
     try {
       await this.props.client.openEmbeddedEditor(projectPath);
+      if (this.signal.aborted || this.props.projectPath() !== projectPath) return;
       this.openedWorkspace = projectPath;
     } catch (error) {
+      if (this.signal.aborted) return;
       const described = describeError(error);
       this.error = described.message;
       this.errorDetails = described.details;
@@ -113,18 +124,27 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     try {
       await this.props.startCakeChat(prompt);
     } catch (error) {
+      if (this.signal.aborted) return;
       const described = describeError(error);
       this.error = described.message;
       this.errorDetails = described.details;
     }
   }
 
-  async install() {
+  install() {
+    this.installation ??= this.performInstall().finally(() => {
+      if (!this.signal.aborted) this.installation = undefined;
+    });
+    return this.installation;
+  }
+
+  private async performInstall() {
     this.error = undefined;
     this.errorDetails = undefined;
     try {
       await this.props.client.installEmbeddedEditor();
     } catch (error) {
+      if (this.signal.aborted) return;
       const described = describeError(error);
       this.error = described.message;
       this.errorDetails = described.details;
@@ -135,6 +155,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     try {
       await this.props.client.setVscodeServerPath(path || undefined);
     } catch (error) {
+      if (this.signal.aborted) return;
       const described = describeError(error, "Embedded editor");
       this.error = described.message;
       this.errorDetails = described.details;
@@ -160,9 +181,12 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     const projectPath = this.props.projectPath();
     if (!projectPath || this.mode !== "vscode") return;
     if (this.openedWorkspace !== projectPath) await this.open();
+    if (this.signal.aborted || this.props.projectPath() !== projectPath || this.mode !== "vscode")
+      return;
     try {
       await this.props.client.revealInEmbeddedEditor(projectPath, path, line);
     } catch (error) {
+      if (this.signal.aborted) return;
       const described = describeError(error);
       this.error = described.message;
       this.errorDetails = described.details;

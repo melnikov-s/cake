@@ -174,18 +174,20 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
     await expect(log.locator(".tool-call")).toHaveCount(1);
     await expect(log.locator(".tool-call.tool-open")).toHaveCount(0);
 
-    // Verify top-right header controls
-    const headerControls = page.locator(".work-log-header-controls");
-    await expect(headerControls).toBeVisible();
-    const autoBtn = headerControls.locator('[aria-label="Auto view mode"]');
-    const diffBtn = headerControls.locator('[aria-label="Diff view mode"]');
-    const logBtn = headerControls.locator('[aria-label="Log view mode"]');
-    const collapseBtn = headerControls.locator('[aria-label="Collapse work logs"]');
-    const semiBtn = headerControls.locator('[aria-label="Semi-expand work logs"]');
-    const fullBtn = headerControls.locator('[aria-label="Fully expand work logs"]');
+    // Verify the top-right work-log display menu.
+    await page.getByRole("button", { name: "Work log display options" }).click();
+    const controls = page.locator(".work-log-popover-menu");
+    await expect(controls).toBeVisible();
+    const autoBtn = controls.getByRole("button", { name: "Auto view mode" });
+    const diffBtn = controls.getByRole("button", { name: "Diff view mode" });
+    const logBtn = controls.getByRole("button", { name: "Log view mode" });
+    const collapseBtn = controls.getByRole("button", { name: "Collapsed work logs" });
+    const compactBtn = controls.getByRole("button", { name: "Compact work logs" });
+    const fullBtn = controls.getByRole("button", { name: "Full work logs" });
 
     await expect(autoBtn).toHaveAttribute("aria-pressed", "true");
-    await expect(semiBtn).toHaveAttribute("aria-pressed", "true");
+    await expect(collapseBtn).toHaveAttribute("aria-pressed", "true");
+    await expect(compactBtn).toHaveAttribute("aria-pressed", "false");
 
     await fullBtn.click();
     await expect(log.locator(".tool-call.tool-open")).toHaveCount(1);

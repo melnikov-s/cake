@@ -5,7 +5,7 @@ import type { ModelGroup } from "./model-combobox";
 import { ModelCombobox } from "./model-combobox";
 import { ThinkingLevelSelect } from "./thinking-level-select";
 import { Button } from "./ui/button";
-import type { SettingsStore } from "../stores/SettingsStore";
+import type { ModelPresetSettingsStore } from "../stores/ModelPresetSettingsStore";
 
 const emptyDraft = (): Omit<ModelPreset, "id"> => ({
   name: "",
@@ -19,18 +19,18 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
   settings,
   groups,
 }: {
-  settings: SettingsStore;
+  settings: ModelPresetSettingsStore;
   groups: ModelGroup[];
 }) {
   const [editingId, setEditingId] = useState<string | "new" | undefined>();
   const [draft, setDraft] = useState(emptyDraft);
 
   useEffect(() => {
-    if (!settings.modelPresetsSectionRevision) return;
+    if (!settings.sectionRequestRevision) return;
     requestAnimationFrame(() =>
       document.getElementById("model-presets-title")?.scrollIntoView({ behavior: "smooth" }),
     );
-  }, [settings.modelPresetsSectionRevision]);
+  }, [settings.sectionRequestRevision]);
 
   const begin = (preset?: ModelPreset) => {
     setEditingId(preset?.id ?? "new");
@@ -40,8 +40,8 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
     event.preventDefault();
     if (!draft.name.trim() || !draft.provider || !draft.modelId) return;
     const value = { ...draft, name: draft.name.trim() };
-    if (editingId === "new") void settings.createModelPreset(value);
-    else if (editingId) void settings.updateModelPreset({ ...value, id: editingId });
+    if (editingId === "new") void settings.createPreset(value);
+    else if (editingId) void settings.updatePreset({ ...value, id: editingId });
     setEditingId(undefined);
   };
   const modelValue = draft.provider && draft.modelId ? `${draft.provider}/${draft.modelId}` : "";
@@ -62,10 +62,10 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
         </Button>
       </header>
       <div className="model-preset-list">
-        {settings.modelPresets.length === 0 && !editingId && (
+        {settings.presets.length === 0 && !editingId && (
           <p className="settings-empty">No presets yet. Create one for your preferred setup.</p>
         )}
-        {settings.modelPresets.map((preset) => (
+        {settings.presets.map((preset) => (
           <article key={preset.id}>
             <div>
               <strong>{preset.name}</strong>
@@ -79,8 +79,8 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
                 <input
                   type="radio"
                   name="default-model-preset"
-                  checked={settings.defaultModelPresetId === preset.id}
-                  onChange={() => void settings.setDefaultModelPreset(preset.id)}
+                  checked={settings.defaultPresetId === preset.id}
+                  onChange={() => void settings.setDefaultPreset(preset.id)}
                 />{" "}
                 Default
               </label>
@@ -90,25 +90,25 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => void settings.duplicateModelPreset(preset.id)}
+                onClick={() => void settings.duplicatePreset(preset.id)}
               >
                 Duplicate
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => void settings.deleteModelPreset(preset.id)}
+                onClick={() => void settings.deletePreset(preset.id)}
               >
                 Delete
               </Button>
             </div>
           </article>
         ))}
-        {settings.defaultModelPresetId && (
+        {settings.defaultPresetId && (
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => void settings.setDefaultModelPreset(undefined)}
+            onClick={() => void settings.setDefaultPreset(undefined)}
           >
             Clear default
           </Button>
@@ -174,10 +174,7 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
             <Button variant="ghost" onClick={() => setEditingId(undefined)}>
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={!draft.name.trim() || !modelValue || settings.modelPresetsSaving}
-            >
+            <Button type="submit" disabled={!draft.name.trim() || !modelValue || settings.saving}>
               Save preset
             </Button>
           </div>

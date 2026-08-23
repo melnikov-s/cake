@@ -4,12 +4,7 @@ import {
   GlobalChatStore,
   type GlobalChatPort,
 } from "../../../../src/renderer/stores/GlobalChatStore";
-import { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
-import type { SessionSnapshot } from "../../../../src/ipc/session-contract";
-import type { DesktopClient } from "../../../../src/renderer/desktop-client";
-import type { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
-import type { PluginCommandStore } from "../../../../src/renderer/stores/PluginCommandStore";
-import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
+import type { ApplicationState, SessionSnapshot } from "../../../../src/ipc/session-contract";
 
 const snapshot: SessionSnapshot = {
   workspacePath: "/home/user",
@@ -75,7 +70,7 @@ function createTestStore() {
     setFastMode: vi.fn(async (input: Parameters<GlobalChatPort["setFastMode"]>[0]) => {
       void input;
     }),
-    resolveSession: vi.fn(async () => ({
+    resolveSession: vi.fn(async (): Promise<ApplicationState> => ({
       schemaVersion: 1 as const,
       projects: [],
       resolvedSessionIds: [],
@@ -83,25 +78,6 @@ function createTestStore() {
       trustedProjectPaths: [],
     })),
   };
-  const sessions = mount(
-    createStore(SessionRegistryStore, {
-      client: {} as DesktopClient,
-      operations: {} as SessionOperationCoordinatorStore,
-      reviews: () => ({}) as ReviewsStore,
-      pluginCommands: () => ({}) as PluginCommandStore,
-      canSubmit: () => false,
-      isActive: () => false,
-      openCommandPane: async () => undefined,
-      persist: () => undefined,
-      projectName: () => "Project",
-      abort: async () => undefined,
-      renameSession: async (sessionId: string, name: string) => {
-        void sessionId;
-        void name;
-      },
-    }),
-  );
-  const operations = mount(createStore(SessionOperationCoordinatorStore));
   const store = mount(
     createStore(GlobalChatStore, {
       port,
@@ -112,16 +88,23 @@ function createTestStore() {
           parameters: { type: "object", properties: {} },
         },
       ],
-      sessions: () => sessions,
-      operations,
     }),
   );
-  return { store, port, sessions, operations };
+  void store.initialize();
+  return { store, port };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
 }
 
 describe("GlobalChatStore", () => {
   it("hydrates the persistent transcript and submits a follow-up", async () => {
-    const { store, port, sessions, operations } = createTestStore();
+    const { store, port } = createTestStore();
     await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
     store.receive({
       type: "global-chat-snapshot-received",
@@ -161,12 +144,10 @@ describe("GlobalChatStore", () => {
       expect.objectContaining({ sessionId: "global-1", level: "high" }),
     );
     store[Symbol.dispose]();
-    sessions[Symbol.dispose]();
-    operations[Symbol.dispose]();
   });
 
   it("replays deltas that arrive before the opening snapshot", async () => {
-    const { store, port, sessions, operations } = createTestStore();
+    const { store, port } = createTestStore();
     await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
 
     store.receive({
@@ -191,12 +172,10 @@ describe("GlobalChatStore", () => {
     );
     expect(store.activeSession?.streaming).toBe(true);
     store[Symbol.dispose]();
-    sessions[Symbol.dispose]();
-    operations[Symbol.dispose]();
   });
 
   it("starts a new Cake Chat session without clearing prior history", async () => {
-    const { store, port, sessions, operations } = createTestStore();
+    const { store, port } = createTestStore();
     await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
 
     await store.startNewSession();
@@ -214,12 +193,10 @@ describe("GlobalChatStore", () => {
       }),
     );
     store[Symbol.dispose]();
-    sessions[Symbol.dispose]();
-    operations[Symbol.dispose]();
   });
 
   it("applies persisted resolved state and can restore a Cake Chat", async () => {
-    const { store, port, sessions, operations } = createTestStore();
+    const { store, port } = createTestStore();
     await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
     const now = new Date().toISOString();
     store.applyApplicationState({
@@ -258,12 +235,69 @@ describe("GlobalChatStore", () => {
     expect(port.resolveSession).toHaveBeenCalledWith("global-1", false);
     expect(store.summaries[0]?.resolved).toBe(false);
     store[Symbol.dispose]();
-    sessions[Symbol.dispose]();
-    operations[Symbol.dispose]();
+  });
+
+  it("queues resolution mutations so responses commit in invocation order", async () => {
+    const { store, port } = createTestStore();
+    await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
+    const first = deferred<Awaited<ReturnType<GlobalChatPort["resolveSession"]>>>();
+    port.resolveSession
+      .mockImplementationOnce(() => first.promise)
+      .mockResolvedValueOnce({
+        schemaVersion: 1,
+        projects: [],
+        resolvedSessionIds: [],
+        resolvedCakeChatSessionIds: ["global-1", "global-2"],
+        trustedProjectPaths: [],
+      });
+
+    const firstResolution = store.resolveSession("global-1", true);
+    const secondResolution = store.resolveSession("global-2", true);
+    await vi.waitFor(() => expect(port.resolveSession).toHaveBeenCalledTimes(1));
+    expect(port.resolveSession).not.toHaveBeenCalledWith("global-2", true);
+
+    first.resolve({
+      schemaVersion: 1,
+      projects: [],
+      resolvedSessionIds: [],
+      resolvedCakeChatSessionIds: ["global-1"],
+      trustedProjectPaths: [],
+    });
+    await Promise.all([firstResolution, secondResolution]);
+
+    expect(port.resolveSession.mock.calls.slice(-2)).toEqual([
+      ["global-1", true],
+      ["global-2", true],
+    ]);
+    expect(store.resolvedSessionIds).toEqual(["global-1", "global-2"]);
+    store[Symbol.dispose]();
+  });
+
+  it("routes operation failures only to the owning Cake Chat session", async () => {
+    const { store, port } = createTestStore();
+    await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
+    store.receive({ type: "global-chat-snapshot-received", snapshot });
+    store.receive({
+      type: "global-chat-snapshot-received",
+      snapshot: { ...snapshot, sessionId: "global-2", sessionFile: "/global-2.jsonl" },
+    });
+    const first = store.findSession("global-1")!;
+    const second = store.findSession("global-2")!;
+    const operationId = store.operations.start(first.promptOwner);
+
+    store.receive({
+      type: "global-chat-operation-failed",
+      operationId,
+      message: "first failed",
+    });
+
+    expect(first.error).toBe("first failed");
+    expect(second.error).toBeUndefined();
+    store[Symbol.dispose]();
   });
 
   it("pins unsubmitted Cake Chat sessions above submitted ones", async () => {
-    const { store, port, sessions, operations } = createTestStore();
+    const { store, port } = createTestStore();
     await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
     store.receive({
       type: "global-chat-snapshot-received",
@@ -297,12 +331,10 @@ describe("GlobalChatStore", () => {
       "submitted",
     ]);
     store[Symbol.dispose]();
-    sessions[Symbol.dispose]();
-    operations[Symbol.dispose]();
   });
 
   it("keeps independent Stores for multiple selected and background Cake Chat sessions", async () => {
-    const { store, port, sessions, operations } = createTestStore();
+    const { store, port } = createTestStore();
     await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
     store.receive({ type: "global-chat-snapshot-received", snapshot });
     store.activeSession!.chatStore.setDraft("draft one");
@@ -348,12 +380,38 @@ describe("GlobalChatStore", () => {
     expect(store.findSession("global-2")!.chatStore.draft).toBe("draft two");
     expect(store.findSession("global-1")!.streaming).toBe(true);
     store[Symbol.dispose]();
-    sessions[Symbol.dispose]();
-    operations[Symbol.dispose]();
+  });
+
+  it("lets only the latest concurrent open request control selection", async () => {
+    const { store, port } = createTestStore();
+    await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
+    store.receive({ type: "global-chat-snapshot-received", snapshot });
+
+    const firstOpen = store.openSession("global-2");
+    const firstOperationId = port.open.mock.calls.at(-1)![0].operationId;
+    const secondOpen = store.openSession("global-3");
+    const secondOperationId = port.open.mock.calls.at(-1)![0].operationId;
+    await Promise.all([firstOpen, secondOpen]);
+
+    store.receive({
+      type: "global-chat-snapshot-received",
+      operationId: secondOperationId,
+      snapshot: { ...snapshot, sessionId: "global-3", sessionFile: "/global-3.jsonl" },
+    });
+    store.receive({
+      type: "global-chat-snapshot-received",
+      operationId: firstOperationId,
+      snapshot: { ...snapshot, sessionId: "global-2", sessionFile: "/global-2.jsonl" },
+    });
+
+    expect(store.selectedSessionId).toBe("global-3");
+    expect(store.findSession("global-2")).toBeDefined();
+    expect(store.findSession("global-3")).toBeDefined();
+    store[Symbol.dispose]();
   });
 
   it("uses the shared chat store to submit pasted image attachments", async () => {
-    const { store, port, sessions, operations } = createTestStore();
+    const { store, port } = createTestStore();
     await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
     store.receive({ type: "global-chat-snapshot-received", snapshot });
     const active = store.activeSession!;
@@ -393,7 +451,5 @@ describe("GlobalChatStore", () => {
       expect.objectContaining({ kind: "attachment", name: "clipboard.png", data: "aW1hZ2U=" }),
     );
     store[Symbol.dispose]();
-    sessions[Symbol.dispose]();
-    operations[Symbol.dispose]();
   });
 });

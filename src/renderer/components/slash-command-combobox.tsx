@@ -88,10 +88,10 @@ export function SlashCommandCombobox({
 }: SlashCommandComboboxProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const suggestFilesRef = useRef(suggestFiles);
-  const onValueChangeRef = useRef(onValueChange);
   const requestRevision = useRef(0);
   const pendingCursor = useRef<number | undefined>(undefined);
   const listboxId = useId();
+  const [inputValue, setInputValue] = useState(value);
   const [cursor, setCursor] = useState(value.length);
   const [activeIndex, setActiveIndex] = useState(0);
   const [dismissedValue, setDismissedValue] = useState<string>();
@@ -100,15 +100,15 @@ export function SlashCommandCombobox({
     key: "",
     items: [],
   });
-  const draft = value.trimStart();
+  const draft = inputValue.trimStart();
   const commandPrefix = draft.slice(1).toLocaleLowerCase();
   const filteredCommands = useMemo(
     () => commands.filter((command) => command.name.toLocaleLowerCase().startsWith(commandPrefix)),
     [commands, commandPrefix],
   );
   const commandEligible = draft.startsWith("/") && !/\s/.test(draft) && filteredCommands.length > 0;
-  const commandOpen = commandEligible && dismissedValue !== value;
-  const fileMention = useMemo(() => findFileMention(value, cursor), [cursor, value]);
+  const commandOpen = commandEligible && dismissedValue !== inputValue;
+  const fileMention = useMemo(() => findFileMention(inputValue, cursor), [cursor, inputValue]);
   const fileOpen = Boolean(
     fileMention && fileResults.items.length > 0 && dismissedMention !== fileMention.key,
   );
@@ -122,22 +122,8 @@ export function SlashCommandCombobox({
   }, [suggestFiles]);
 
   useEffect(() => {
-    onValueChangeRef.current = onValueChange;
-  }, [onValueChange]);
-
-  useEffect(() => {
-    const input = inputRef.current;
-    if (!input) return;
-    const handleInput = () => {
-      setActiveIndex(0);
-      setDismissedValue(undefined);
-      setDismissedMention(undefined);
-      setCursor(input.selectionStart ?? input.value.length);
-      flushSync(() => onValueChangeRef.current(input.value));
-    };
-    input.addEventListener("input", handleInput);
-    return () => input.removeEventListener("input", handleInput);
-  }, []);
+    setInputValue(value);
+  }, [value]);
 
   useEffect(() => {
     if (!focusRequestRevision) return;
@@ -149,7 +135,7 @@ export function SlashCommandCombobox({
     if (pendingCursor.current === undefined) return;
     inputRef.current?.setSelectionRange(pendingCursor.current, pendingCursor.current);
     pendingCursor.current = undefined;
-  }, [value]);
+  }, [inputValue]);
 
   useEffect(() => {
     const revision = ++requestRevision.current;
@@ -178,14 +164,19 @@ export function SlashCommandCombobox({
       ?.scrollIntoView?.({ block: "nearest" });
   }, [listboxId, open, selectedIndex]);
 
+  const commitValue = (nextValue: string) => {
+    setInputValue(nextValue);
+    onValueChange(nextValue);
+  };
+
   const chooseCommand = (command: SlashCommand) => {
-    onValueChange(`/${command.name} `);
+    commitValue(`/${command.name} `);
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
   const executeCommand = (command: SlashCommand) => {
     const commandValue = `/${command.name}`;
-    onValueChange(commandValue);
+    commitValue(commandValue);
     onSubmit(commandValue);
   };
 
@@ -193,21 +184,21 @@ export function SlashCommandCombobox({
     if (!fileMention) return;
     const isDirectory = item.label.endsWith("/");
     const suffix = isDirectory ? "" : " ";
-    let afterCursor = value.slice(fileMention.end);
+    let afterCursor = inputValue.slice(fileMention.end);
     if (
       fileMention.token.startsWith('@"') &&
       item.value.endsWith('"') &&
       afterCursor.startsWith('"')
     )
       afterCursor = afterCursor.slice(1);
-    const nextValue = `${value.slice(0, fileMention.start)}${item.value}${suffix}${afterCursor}`;
+    const nextValue = `${inputValue.slice(0, fileMention.start)}${item.value}${suffix}${afterCursor}`;
     const trailingQuoteOffset = isDirectory && item.value.endsWith('"') ? 1 : 0;
     const nextCursor = fileMention.start + item.value.length + suffix.length - trailingQuoteOffset;
     pendingCursor.current = nextCursor;
     setCursor(nextCursor);
     setActiveIndex(0);
     setDismissedMention(undefined);
-    onValueChange(nextValue);
+    commitValue(nextValue);
     requestAnimationFrame(() => {
       inputRef.current?.focus();
     });
@@ -216,10 +207,10 @@ export function SlashCommandCombobox({
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (open && event.key === "ArrowDown") {
       event.preventDefault();
-      setActiveIndex((index) => (index + 1) % menuItems.length);
+      flushSync(() => setActiveIndex((index) => (index + 1) % menuItems.length));
     } else if (open && event.key === "ArrowUp") {
       event.preventDefault();
-      setActiveIndex((index) => (index - 1 + menuItems.length) % menuItems.length);
+      flushSync(() => setActiveIndex((index) => (index - 1 + menuItems.length) % menuItems.length));
     } else if (
       menuKind === "files" &&
       (event.key === "Enter" || event.key === "Tab") &&
@@ -239,10 +230,10 @@ export function SlashCommandCombobox({
     } else if (open && event.key === "Escape") {
       event.preventDefault();
       if (menuKind === "files") setDismissedMention(fileMention?.key);
-      else setDismissedValue(value);
+      else setDismissedValue(inputValue);
     } else if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
-      onSubmit(value);
+      onSubmit(inputValue);
     }
   };
 
@@ -311,10 +302,16 @@ export function SlashCommandCombobox({
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
         aria-activedescendant={open ? `${listboxId}-option-${selectedIndex}` : undefined}
-        value={value}
-        onChange={() => undefined}
-        onSelect={(event) => {
+        value={inputValue}
+        onChange={(event) => {
+          const nextValue = event.currentTarget.value;
+          commitValue(nextValue);
           setActiveIndex(0);
+          setDismissedValue(undefined);
+          setDismissedMention(undefined);
+          setCursor(event.currentTarget.selectionStart ?? nextValue.length);
+        }}
+        onSelect={(event) => {
           setCursor(event.currentTarget.selectionStart ?? event.currentTarget.value.length);
         }}
         onKeyDown={onKeyDown}

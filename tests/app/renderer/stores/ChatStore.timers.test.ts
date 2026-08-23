@@ -74,6 +74,39 @@ describe("ChatStore work log timers", () => {
     store[Symbol.dispose]();
   });
 
+  it("prunes timers and overrides when transcript parts are removed", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    let parts: UiPart[] = [toolPart("tool-1", "running"), toolPart("tool-2", "running")];
+    const store = createChatStore(() => parts);
+    store.setWorkLogItemOpen("tool-1", true);
+    store.setWorkLogGroupOpen("tool-1", true);
+
+    parts = [toolPart("tool-2", "success")];
+    store["syncWorkLogTimers"]();
+
+    expect(store.workLogElapsedMs("tool-1")).toBeUndefined();
+    expect(store.workLogTimers.has("tool-1")).toBe(false);
+    expect(store.workLogItemOverrides.has("tool-1")).toBe(false);
+    expect(store.workLogGroupOverrides.has("tool-1")).toBe(false);
+    expect(store.workLogElapsedMs("tool-2")).toBeGreaterThanOrEqual(0);
+    expect(vi.getTimerCount()).toBe(0);
+    store[Symbol.dispose]();
+  });
+
+  it("owns one timer per Chat instance and clears each timer on disposal", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    const first = createChatStore(() => [toolPart("first", "running")]);
+    const second = createChatStore(() => [toolPart("second", "running")]);
+
+    expect(vi.getTimerCount()).toBe(2);
+    first[Symbol.dispose]();
+    expect(vi.getTimerCount()).toBe(1);
+    second[Symbol.dispose]();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("never reports elapsed time for tools that were already finished when observed", () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000_000);

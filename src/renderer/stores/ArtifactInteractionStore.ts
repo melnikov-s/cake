@@ -17,6 +17,7 @@ export interface ArtifactInteractionStoreProps {
   operations: SessionOperationCoordinatorStore;
   operationOwner: string;
   isStreaming(): boolean;
+  onRequestChanged?(active: boolean): void;
 }
 
 /** Owns blocking artifact interaction and artifact export behavior. */
@@ -44,13 +45,26 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
         value,
         cancelled,
       });
-      if (this.request === request) this.request = undefined;
+      if (this.signal.aborted) return;
+      if (this.request === request) {
+        this.request = undefined;
+        this.props.onRequestChanged?.(false);
+      }
     } catch (error) {
+      if (this.signal.aborted) return;
       const described = describeError(error);
       this.error = described.message;
       this.errorDetails = described.details;
     } finally {
-      this.responding = false;
+      if (!this.signal.aborted) this.responding = false;
+    }
+  }
+
+  async cancelPendingRequest() {
+    if (this.request) await this.respond(undefined, true);
+    if (this.request) {
+      this.request = undefined;
+      this.props.onRequestChanged?.(false);
     }
   }
 
@@ -83,6 +97,7 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
         attachments: [],
       });
     } catch (error) {
+      if (this.signal.aborted) return;
       const described = describeError(error);
       this.error = described.message;
       this.errorDetails = described.details;
@@ -104,6 +119,7 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
       // cancellation) arrives. Replayed requests overwrite harmlessly.
       if (event.record.artifact.sessionId !== this.props.sessionContext()?.sessionId) return;
       this.request = event;
+      this.props.onRequestChanged?.(true);
       return;
     }
     if (
@@ -112,6 +128,7 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
     ) {
       this.request = undefined;
       this.responding = false;
+      this.props.onRequestChanged?.(false);
     }
   }
 }

@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { useReducer, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { ChatComposer } from "@/components/chat-composer";
 import { ImagePreview } from "@/components/image-preview";
@@ -130,8 +130,12 @@ export const Chat = observer(function Chat({
   embedded?: boolean;
   compact?: boolean;
 }) {
+  // The input keeps its DOM draft locally, while ChatStore remains canonical.
+  // Force the surrounding toolbar to re-read semantic submit state in the same event.
+  const [, draftChanged] = useReducer((revision: number) => revision + 1, 0);
   const submit = async (value?: string) => {
     await store.submit(value ?? store.draft);
+    draftChanged();
   };
   const composer = store.composerVisible && (
     <div className={embedded ? "chat-embedded-composer" : "composer-dock"}>
@@ -156,6 +160,7 @@ export const Chat = observer(function Chat({
             disabled={store.submittingLocally}
             onValueChange={(value) => {
               store.setDraft(value);
+              draftChanged();
             }}
             onPaste={(event) => {
               if (!store.canPasteImages) return;

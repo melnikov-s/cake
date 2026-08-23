@@ -981,11 +981,9 @@ describe("Transcript scrolling", () => {
         client: { createReviewThread: vi.fn() } as never,
         sessionRegistry: { findModel: () => undefined } as never,
         reviews: () => ({ configuration: undefined }) as never,
-        draftChatStore: (): ChatStore => popupChat,
         context: () => ({ workspacePath: "/project", sessionId: "session-1" }),
       }),
     );
-    const popupChat: ChatStore = mount(comments.draftChatStoreElement);
     const contextMenu = mountedContextMenuAction();
     act(() =>
       root.render(
@@ -1039,7 +1037,6 @@ describe("Transcript scrolling", () => {
     expect(input).toBe(document.activeElement);
     window.getSelection()?.removeAllRanges();
     comments[Symbol.dispose]();
-    popupChat[Symbol.dispose]();
   });
 
   it("keeps the native menu over editing surfaces and collapsed selections", () => {

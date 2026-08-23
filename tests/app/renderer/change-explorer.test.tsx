@@ -100,9 +100,19 @@ function explorerProps(store: ProjectWorkbenchStore) {
     get activeThreadId() {
       return fixture.activeReviewThreadId;
     },
-    set activeThreadId(value) {
+    selectThread(value: string) {
       fixture.activeReviewThreadId = value;
       fixture.focusReviewThread?.(value);
+    },
+    trySelectThread(value: string) {
+      if (!(fixture.reviewThreads ?? []).some((thread: { id: string }) => thread.id === value))
+        return false;
+      fixture.activeReviewThreadId = value;
+      fixture.focusReviewThread?.(value);
+      return true;
+    },
+    clearActiveThread() {
+      fixture.activeReviewThreadId = undefined;
     },
     get activeThread() {
       return fixture.activeReviewThread;

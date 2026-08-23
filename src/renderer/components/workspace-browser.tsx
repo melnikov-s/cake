@@ -49,7 +49,7 @@ const SourceFile = observer(function SourceFile({
       className="workspace-source"
       actionLabel="Ask about"
       onFocusThread={(thread) => {
-        reviews.activeThreadId = thread.id;
+        reviews.selectThread(thread.id);
         store.focusPath(thread.anchor.path);
       }}
     />
@@ -167,7 +167,7 @@ export const WorkspaceBrowser = observer(function WorkspaceBrowser({
                       <button
                         className={`${thread.status === "resolved" ? "resolved" : ""} ${reviews.activeThread?.id === thread.id ? "active" : ""}`}
                         onClick={() => {
-                          reviews.activeThreadId = thread.id;
+                          reviews.selectThread(thread.id);
                           store.focusPath(thread.anchor.path);
                         }}
                       >

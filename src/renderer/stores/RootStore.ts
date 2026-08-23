@@ -1,4 +1,4 @@
-import { Store, child, createStore } from "r-state-tree";
+import { Store, child, createStore, untracked } from "r-state-tree";
 import { jsonValueSchema } from "../../ipc/json-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import { SessionRegistryStore } from "./SessionRegistryStore";
@@ -104,6 +104,10 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     if (context) this.appShellStore.selectProjectSession(context.sessionId);
     else this.appShellStore.showWorkbench();
   }
+  returnToWorkbench() {
+    this.showWorkbench();
+    this.projectWorkbenchStore.activeSession?.composerStore.requestFocus();
+  }
   showGlobalChat(sessionId = this.globalChatStore.sessionId) {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.appShellStore.selectCakeChat(sessionId);
@@ -123,7 +127,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     this.appShellStore.showSettings();
   }
   showModelPresetSettings() {
-    this.settingsStore.requestModelPresetsSection();
+    this.settingsStore.modelPresets.requestSection();
     this.showSettings();
   }
 
@@ -147,15 +151,16 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       pluginCommands: () => this.pluginCommandStore,
       canSubmit: (sessionId) => this.projectWorkbenchStore.canSubmitSession(sessionId),
       isActive: (sessionId) => this.projectWorkbenchStore.isActiveSession(sessionId),
-      openCommandPane: (pane) => this.projectWorkbenchStore.openCommandPane(pane),
+      openCommandPane: (pane) => this.projectWorkbenchStore.commandPaneStore.open(pane),
       persist: () => this.windowPersistence.schedule(),
       projectName: (workspacePath) => this.projectCatalogStore.nameForPath(workspacePath),
       abort: () => this.projectWorkbenchStore.abort(),
-      renameSession: (sessionId, name) => this.projectWorkbenchStore.renameSession(sessionId, name),
-      modelPresets: () => this.settingsStore.modelPresets,
+      renameSession: (sessionId, name) =>
+        this.projectWorkbenchStore.sessionManagementStore.renameSession(sessionId, name),
+      modelPresets: () => this.settingsStore.modelPresets.presets,
       openModelPresetSettings: () => this.showModelPresetSettings(),
       newSessionRequest: (sessionId) => this.projectWorkbenchStore.newSessionRequest(sessionId),
-      settings: () => this.settingsStore,
+      settings: () => this.settingsStore.appearance,
     });
   }
 
@@ -192,7 +197,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       sessions: this.sessionRegistry,
       cakeChat: () => this.globalChatStore,
       setSessionResolved: (sessionId, resolved) =>
-        this.projectWorkbenchStore.resolveSession(sessionId, resolved),
+        this.projectWorkbenchStore.sessionManagementStore.resolveSession(sessionId, resolved),
       setCakeChatSessionResolved: (sessionId, resolved) =>
         this.globalChatStore.resolveSession(sessionId, resolved),
     });
@@ -240,10 +245,18 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   get projectWorkbenchStore(): ProjectWorkbenchStore {
     return createStore(ProjectWorkbenchStore, {
       client: this.client,
+      browseClient: this.client,
+      changesClient: this.client,
+      commandPaneClient: this.client,
+      embeddedEditorClient: this.client,
+      sessionForkClient: this.client,
+      sessionManagementClient: this.client,
+      worktreeClient: this.client,
+      worktreeCreationClient: this.client,
       sessionRegistry: this.sessionRegistry,
       operations: this.sessionOperationCoordinator,
       projects: this.projectCatalogStore,
-      defaultConfiguration: () => this.settingsStore.defaultModelPreset,
+      defaultConfiguration: () => this.settingsStore.modelPresets.defaultConfiguration,
       reviews: () => this.reviewsStore,
       extensionUi: () => this.extensionUiStore,
       pluginCommands: () => this.pluginCommandStore,
@@ -295,12 +308,10 @@ export class RootStore extends Store<{ client: DesktopClient }> {
           this.client.resolveCakeChatSession(sessionId, resolved),
       },
       tools: () => this.appControl.listTools(),
-      sessions: () => this.sessionRegistry,
-      operations: this.sessionOperationCoordinator,
-      modelPresets: () => this.settingsStore.modelPresets,
-      defaultConfiguration: () => this.settingsStore.defaultModelPreset,
+      modelPresets: () => this.settingsStore.modelPresets.presets,
+      defaultConfiguration: () => this.settingsStore.modelPresets.defaultConfiguration,
       openModelPresetSettings: () => this.showModelPresetSettings(),
-      settings: () => this.settingsStore,
+      settings: () => this.settingsStore.appearance,
       persist: () => this.windowPersistence.schedule(),
     });
   }
@@ -343,11 +354,11 @@ export class RootStore extends Store<{ client: DesktopClient }> {
           this.client.abort({ operationId, sessionId }),
         ),
       renameSession: (sessionId, title) =>
-        this.projectWorkbenchStore.renameSession(sessionId, title),
+        this.projectWorkbenchStore.sessionManagementStore.renameSession(sessionId, title),
       setSessionResolved: (sessionId, resolved) =>
-        this.projectWorkbenchStore.resolveSession(sessionId, resolved),
+        this.projectWorkbenchStore.sessionManagementStore.resolveSession(sessionId, resolved),
       setSessionsResolved: (sessionIds, resolved) =>
-        this.projectWorkbenchStore.resolveSessionsById(sessionIds, resolved),
+        this.projectWorkbenchStore.sessionManagementStore.resolveSessionsById(sessionIds, resolved),
       setCakeChatSessionsResolved: (sessionIds, resolved) =>
         this.globalChatStore.resolveSessions(sessionIds, resolved),
       setSessionModel: (sessionId, provider, modelId) =>
@@ -385,6 +396,9 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     );
     this.effect(() => {
       void this.customizationStore.hydrate();
+    });
+    this.effect(() => {
+      untracked(() => void this.globalChatStore.initialize());
     });
   }
 
@@ -436,8 +450,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         this.globalChatStore.receive(event);
         return;
       }
-      for (const session of this.globalChatStore.loadedSessions)
-        session.configurationStore.receive(event);
       this.globalChatStore.receive(event);
       if (
         event.type === "global-chat-snapshot-received" &&
@@ -478,16 +490,18 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       this.sessionRegistry.findSession(event.sessionId)?.setBackgroundWorkActive(event.active);
       return;
     }
-    const sessionReceivers =
-      event.type === "pi-state-changed" && event.workspacePath
-        ? this.sessionRegistry.sessions.filter(
-            (session) => session.workspacePath === event.workspacePath,
-          )
-        : this.sessionRegistry.sessions;
-    for (const session of sessionReceivers) {
-      session.configurationStore.receive(event);
-      session.composerStore.receive(event);
-      session.artifactInteractionStore.receive(event);
+    if (
+      event.type === "operation-completed" ||
+      event.type === "operation-failed" ||
+      event.type === "pi-state-changed"
+    ) {
+      const sessionReceivers =
+        event.type === "pi-state-changed" && event.workspacePath
+          ? this.sessionRegistry.sessions.filter(
+              (session) => session.workspacePath === event.workspacePath,
+            )
+          : this.sessionRegistry.sessions;
+      for (const session of sessionReceivers) session.receive(event);
     }
     this.appControlOperationStore.receive(event);
     this.projectWorkbenchStore.changesStore.receive(event);
@@ -504,6 +518,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       const wasStreaming = previous?.streaming ?? false;
       this.sessionRegistry.upsert(event.snapshot);
       const session = this.sessionRegistry.findSession(event.snapshot.sessionId)!;
+      session.receive(event);
       session.updateActivity(session.model.streaming, wasStreaming);
       session.composerStore.reconcile(event.snapshot.sessionId);
       if (
@@ -526,6 +541,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     if (event.type === "artifact-updated" || event.type === "artifact-requested") {
       this.sessionRegistry.upsertArtifact(event.record);
       if (event.type === "artifact-updated") return;
+      this.sessionRegistry.findSession(event.record.artifact.sessionId)?.receive(event);
     }
     if (event.type === "review-threads-received") {
       this.sessionRegistry.applyReviewThreads(event.sessionId, event.threads);

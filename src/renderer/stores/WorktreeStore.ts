@@ -27,11 +27,20 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   constructor(props: WorktreeStore["props"]) {
     super(props);
     this.effect(() => {
+      let active = true;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const poll = async () => {
+        await this.refresh();
+        if (!active || this.signal.aborted) return;
+        timer = setTimeout(() => void poll(), POLL_INTERVAL_MS);
+      };
       untracked(() => {
-        void this.refresh();
+        void poll();
       });
-      const timer = setInterval(() => void this.refresh(), POLL_INTERVAL_MS);
-      return () => clearInterval(timer);
+      return () => {
+        active = false;
+        if (timer !== undefined) clearTimeout(timer);
+      };
     });
   }
 
@@ -56,13 +65,13 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   }
 
   async refresh() {
-    if (this.refreshing) return;
+    if (this.refreshing || this.signal.aborted) return;
     const workspacePath = this.props.workspacePath();
     if (!workspacePath) return;
     this.refreshing = true;
     try {
       const status = await this.props.client.getWorktreeStatus({ workspacePath });
-      if (this.props.workspacePath() !== workspacePath) return;
+      if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return;
       this.status = status;
       if (!status) {
         this.phase = "idle";
@@ -72,7 +81,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     } catch {
       // Transient Git or transport failures surface through the next poll.
     } finally {
-      this.refreshing = false;
+      if (!this.signal.aborted) this.refreshing = false;
     }
   }
 
@@ -83,6 +92,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
    */
   async land(message?: string): Promise<WorktreeLandOutcome> {
     const workspacePath = this.requiredWorkspacePath();
+    if (this.isBusy) throw new Error("A worktree operation is already in progress.");
     if (this.props.isStreaming())
       throw new Error("Wait for the current reply to finish before landing.");
     this.phase = "landing";
@@ -94,6 +104,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
         message,
         autoResolve: true,
       });
+      if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return outcome;
       if (outcome.outcome === "resolving") {
         this.phase = "resolving";
         this.autoRetryLanding = true;
@@ -106,6 +117,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       }
       return outcome;
     } catch (error) {
+      if (this.signal.aborted) throw error;
       const described = describeError(error);
       this.error = described.message;
       this.phase = "idle";
@@ -116,6 +128,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   /** Deletes the worktree; keeps the branch when its commits were never merged. */
   async discard(keepUnmergedBranch: boolean) {
     const workspacePath = this.requiredWorkspacePath();
+    if (this.isBusy) throw new Error("A worktree operation is already in progress.");
     this.phase = "discarding";
     this.error = undefined;
     try {
@@ -124,9 +137,11 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
         workspacePath,
         keepBranch: keepUnmergedBranch,
       });
+      if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return;
       this.status = undefined;
       this.phase = "idle";
     } catch (error) {
+      if (this.signal.aborted) throw error;
       const described = describeError(error);
       this.error = described.message;
       this.phase = "idle";
@@ -144,6 +159,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     )
       return;
     this.autoRetryLanding = false;
+    this.phase = "idle";
     await this.land();
   }
 

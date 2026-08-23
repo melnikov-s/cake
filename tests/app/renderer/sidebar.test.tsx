@@ -5,7 +5,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Sidebar } from "../../../src/renderer/app";
+import { Sidebar } from "../../../src/renderer/components/sidebar";
 import type { ProjectWorkbenchStore } from "../../../src/renderer/stores/ProjectWorkbenchStore";
 
 function sidebarProps(store: ProjectWorkbenchStore) {

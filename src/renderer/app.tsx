@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { observer, StoreProvider, useStore } from "r-state-tree/react";
 import {
@@ -9,7 +9,6 @@ import {
   ConfirmationRequest,
   ConfirmationTitle,
 } from "@/components/ai-elements/confirmation";
-import { Markdown } from "@/components/ai-elements/markdown";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import {
@@ -17,488 +16,29 @@ import {
   BrowseIcon,
   ChangesIcon,
   ChatIcon,
-  ChevronIcon,
   FolderIcon,
-  ForwardIcon,
-  PlusIcon,
   SettingsIcon,
   SidebarIcon,
   TreeIcon,
 } from "@/components/ui/icons";
 import { LoadingState } from "@/components/ui/loading-state";
-import { ArtifactHost } from "@/components/artifact-host";
 import { ChangeExplorer } from "@/components/change-explorer";
 import { WorkspaceBrowser } from "@/components/workspace-browser";
 import { SettingsPage } from "@/components/settings-page";
-import { SessionTree } from "@/components/session-tree";
 import { PanelResizeHandle } from "@/components/panel-resize-handle";
-import { CopyErrorDetailsButton } from "@/components/copy-error-details-button";
 import { ToastHost } from "@/components/toast-host";
 import { WorktreeChip } from "@/components/worktree-chip";
 import { WorkLogControls } from "@/components/work-log-controls";
+import { Sidebar } from "@/components/sidebar";
+import { ProjectSessionPluginRail } from "@/components/project-session-plugin-rail";
+import { ErrorNotice } from "@/components/error-notice";
+import { ArtifactsPanel } from "@/components/artifacts-panel";
+import { UiDialog } from "@/components/ui-dialog";
+import { CommandPane } from "@/components/command-pane";
 import { Chat } from "@/components/chat";
-import { SidebarCakeChatGroup } from "@/components/sidebar-cake-chat-group";
-import { SidebarProjectGroup } from "@/components/sidebar-project-group";
 import { toWorkspaceRelativePath } from "../utils/workspace-relative-path";
-import type { CompatibilityResource } from "../ipc/session-contract";
-import type { ProjectWorkbenchStore } from "./stores/ProjectWorkbenchStore";
-import type { ProjectSessionStore } from "./stores/ProjectSessionStore";
-import type { ProjectCatalogStore } from "./stores/ProjectCatalogStore";
-import type { SidebarStore } from "./stores/SidebarStore";
 import { RootStore } from "./stores/RootStore";
-import type { ExtensionUiStore, UiRequestState } from "./stores/ExtensionUiStore";
-import type { InlineWidgetStore } from "./stores/InlineWidgetStore";
-import type { GlobalChatStore } from "./stores/GlobalChatStore";
-import type { AppShellStore } from "./stores/AppShellStore";
 import { Slot } from "./plugin-runtime";
-
-function ProjectSessionPluginRail({ side }: { side: "left" | "right" }) {
-  return (
-    <aside
-      className={`project-session-plugin-rail project-session-plugin-rail-${side}`}
-      aria-label={`${side === "left" ? "Left" : "Right"} session plugins`}
-    >
-      <div className="plugin-slot project-session-rail-slot project-session-rail-slot-top">
-        <Slot name={`project-session.${side}.top`} />
-      </div>
-      <div className="plugin-slot project-session-rail-slot project-session-rail-slot-middle">
-        <Slot name={`project-session.${side}.middle`} />
-      </div>
-      <div className="plugin-slot project-session-rail-slot project-session-rail-slot-bottom">
-        <Slot name={`project-session.${side}.bottom`} />
-      </div>
-    </aside>
-  );
-}
-
-const compatibilityResourceKinds: CompatibilityResource["kind"][] = [
-  "extension",
-  "skill",
-  "prompt",
-  "package",
-];
-
-// Observer-wrapped: reads ProjectWorkbenchStore.commandPane and
-// session.compatibility resources/diagnostics directly, which the App observer
-// does not read, so pane content must track those reads itself.
-const CommandPane = observer(function CommandPane({
-  store,
-  extensionUi,
-}: {
-  store: ProjectWorkbenchStore;
-  extensionUi: ExtensionUiStore;
-}) {
-  if (!store.commandPane || !store.session) return null;
-  const title =
-    store.commandPane === "tree"
-      ? "Session tree"
-      : store.commandPane === "changelog"
-        ? "Pi changelog"
-        : "Pi resources";
-  const resourceGroups =
-    store.commandPane === "resources"
-      ? compatibilityResourceKinds.map((kind) => ({
-          kind,
-          resources: store.session!.compatibility.resources.filter((item) => item.kind === kind),
-        }))
-      : [];
-  const diagnostics =
-    store.commandPane === "resources"
-      ? [
-          ...new Map(
-            [
-              ...store.session.compatibility.diagnostics,
-              ...extensionUi.compatibilityDiagnostics,
-            ].map((item) => [item.id, item]),
-          ).values(),
-        ]
-      : [];
-  return (
-    <aside className="command-pane secondary-surface" aria-labelledby="command-pane-title">
-      <header>
-        <div>
-          <h2 id="command-pane-title">{title}</h2>
-          {store.commandPane === "tree" && (
-            <span>Navigate or fork without rewriting Pi history</span>
-          )}
-          {store.commandPane === "changelog" && <span>Version history for this agent runtime</span>}
-        </div>
-        <div>
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={`Close ${title}`}
-            onClick={() => store.closeCommandPane()}
-          >
-            Close
-          </Button>
-        </div>
-      </header>
-      {store.commandPane === "tree" ? (
-        store.session.tree.length > 0 ? (
-          <SessionTree
-            nodes={store.session.tree}
-            onNavigate={(id) => void store.navigateTo(id)}
-            onFork={(id) => void store.forkAt(id)}
-          />
-        ) : (
-          <p>This session has no branches yet.</p>
-        )
-      ) : store.commandPane === "changelog" ? (
-        store.changelogLoading ? (
-          <LoadingState label="Loading changelog" />
-        ) : (
-          <Markdown className="pi-changelog">
-            {store.changelogMarkdown || "No changelog entries found."}
-          </Markdown>
-        )
-      ) : (
-        <div className="resource-catalog">
-          {diagnostics.length > 0 && (
-            <section className="resource-diagnostics">
-              <h3>Diagnostics</h3>
-              {diagnostics.map((item) => (
-                <div key={item.id} className={`notice notice-${item.severity}`}>
-                  <strong>{item.method ?? item.source}</strong>
-                  <span>
-                    {item.message}
-                    {item.path ? `\n${item.path}` : ""}
-                  </span>
-                </div>
-              ))}
-            </section>
-          )}
-          {resourceGroups.map((group) => (
-            <section key={group.kind}>
-              <h3>
-                {group.kind[0]!.toUpperCase() + group.kind.slice(1)}s{" "}
-                <span>{group.resources.length}</span>
-              </h3>
-              {group.resources.length === 0 ? (
-                <p>None discovered.</p>
-              ) : (
-                group.resources.map((resource) => (
-                  <article key={resource.id}>
-                    <div>
-                      <strong>{resource.name}</strong>
-                      <small>
-                        {resource.scope} · {resource.origin}
-                      </small>
-                    </div>
-                    {resource.description && <p>{resource.description}</p>}
-                    {resource.commands.length > 0 && (
-                      <p>
-                        <b>Commands</b>{" "}
-                        {resource.commands.map((command) => `/${command}`).join(", ")}
-                      </p>
-                    )}
-                    {resource.tools.length > 0 && (
-                      <p>
-                        <b>Tools</b> {resource.tools.join(", ")}
-                      </p>
-                    )}
-                    <code title={resource.path}>{resource.source}</code>
-                  </article>
-                ))
-              )}
-            </section>
-          ))}
-        </div>
-      )}
-    </aside>
-  );
-});
-
-function ErrorNotice({
-  title,
-  message,
-  details = message,
-}: {
-  title: string;
-  message: string;
-  details?: string;
-}) {
-  return (
-    <div className="notice notice-error" role="alert">
-      <strong>{title}</strong>
-      <span>{message}</span>
-      {details && details !== message && (
-        <details className="notice-error-details">
-          <summary>Technical details</summary>
-          <pre>{details}</pre>
-        </details>
-      )}
-      <CopyErrorDetailsButton details={details} />
-    </div>
-  );
-}
-
-const ArtifactsPanel = observer(function ArtifactsPanel({
-  session,
-  inlineWidgets,
-}: {
-  session: ProjectSessionStore;
-  inlineWidgets: InlineWidgetStore;
-}) {
-  const artifacts = session.artifactInteractionStore;
-  const records = session.model.artifacts.map((artifact) => artifact.value);
-  if (records.length === 0) return null;
-  const linked = new Set(
-    session.canonicalParts.flatMap((part) =>
-      part.kind === "tool" && part.artifactId ? [part.artifactId] : [],
-    ),
-  );
-  const unlinked = records.filter((record) => !linked.has(record.artifact.id));
-  if (unlinked.length === 0) return null;
-  return (
-    <section className="artifacts-panel" aria-label="Session artifacts">
-      {unlinked.map((record) => {
-        const request =
-          artifacts.request?.record.artifact.id === record.artifact.id
-            ? artifacts.request
-            : undefined;
-        return (
-          <ArtifactHost
-            key={record.artifact.id}
-            record={record}
-            requested={Boolean(request)}
-            onSubmit={(value) => void artifacts.answer(record, value)}
-            onSkip={() => void artifacts.respond(undefined, true)}
-            inlineWidgets={inlineWidgets}
-          />
-        );
-      })}
-    </section>
-  );
-});
-
-function UiDialog({
-  request,
-  extensionUi,
-}: {
-  request: UiRequestState;
-  extensionUi: ExtensionUiStore;
-}) {
-  const [value, setValue] = useState(
-    request.kind === "confirm" ? "true" : (request.initialValue ?? ""),
-  );
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    void extensionUi.respond(value);
-  };
-  return (
-    <Confirmation
-      state="requested"
-      role="alertdialog"
-      aria-labelledby="ui-title"
-      aria-describedby="ui-message"
-    >
-      <ConfirmationRequest>
-        <form onSubmit={submit}>
-          <ConfirmationTitle id="ui-title">{request.title}</ConfirmationTitle>
-          <ConfirmationDescription id="ui-message">{request.message}</ConfirmationDescription>
-          {request.kind === "select" ? (
-            <select
-              className="dialog-field"
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              required
-            >
-              <option value="">Select…</option>
-              {request.options?.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          ) : request.multiline ? (
-            <textarea
-              className="dialog-field dialog-editor"
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              placeholder={request.placeholder}
-              autoFocus
-            />
-          ) : request.kind !== "confirm" ? (
-            <input
-              className="dialog-field"
-              type={request.kind === "secret" ? "password" : "text"}
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              placeholder={request.placeholder}
-              autoFocus
-            />
-          ) : null}
-          <ConfirmationActions>
-            <ConfirmationAction
-              variant="outline"
-              onClick={() => void extensionUi.respond(undefined, true)}
-            >
-              Cancel
-            </ConfirmationAction>
-            {request.kind === "confirm" && (
-              <ConfirmationAction
-                variant="outline"
-                onClick={() => void extensionUi.respond("false")}
-              >
-                Decline
-              </ConfirmationAction>
-            )}
-            <ConfirmationAction type="submit">
-              {request.kind === "confirm" ? "Confirm" : "Continue"}
-            </ConfirmationAction>
-          </ConfirmationActions>
-        </form>
-      </ConfirmationRequest>
-    </Confirmation>
-  );
-}
-
-export const Sidebar = observer(function Sidebar({
-  store,
-  projects,
-  chat,
-  cakeChat,
-  shell,
-  onOpenSettings,
-  onOpenCakeChat,
-  onCreateCakeChat,
-  onOpenSession,
-  onCreateSession,
-  onChooseProject,
-  onToggle,
-}: {
-  store: SidebarStore;
-  projects: ProjectCatalogStore;
-  chat: ProjectWorkbenchStore;
-  cakeChat: GlobalChatStore;
-  shell: AppShellStore;
-  onOpenSettings: () => void;
-  onOpenCakeChat(sessionId?: string): void;
-  onCreateCakeChat(): void;
-  onOpenSession(sessionId: string): void;
-  onCreateSession(workspacePath: string): void;
-  onChooseProject(): void;
-  onToggle: () => void;
-}) {
-  const projectPaths = projects.orderedProjectPaths;
-  return (
-    <aside className="sidebar">
-      <div className="sidebar-window-tools">
-        <IconButton tooltip="Toggle sidebar" onClick={onToggle}>
-          <SidebarIcon />
-        </IconButton>
-        <IconButton tooltip="Back" disabled>
-          <BackIcon />
-        </IconButton>
-        <IconButton tooltip="Forward" disabled>
-          <ForwardIcon />
-        </IconButton>
-      </div>
-      <div className="plugin-slot plugin-slot-sidebar-header">
-        <Slot name="global.sidebar.header" />
-      </div>
-      <div className="sidebar-scroll">
-        <SidebarCakeChatGroup
-          store={store}
-          cakeChat={cakeChat}
-          shell={shell}
-          resolved={false}
-          onOpenCakeChat={onOpenCakeChat}
-          onCreateCakeChat={onCreateCakeChat}
-        />
-        <div className="section-heading projects-heading">
-          <span>Projects</span>
-          <div>
-            <IconButton tooltip="Add project" onClick={onChooseProject}>
-              <PlusIcon />
-            </IconButton>
-          </div>
-        </div>
-        {projectPaths.length === 0 ? (
-          <p className="sidebar-empty">Add a folder to start a project.</p>
-        ) : (
-          projectPaths.map((path) => (
-            <SidebarProjectGroup
-              key={path}
-              store={store}
-              projects={projects}
-              chat={chat}
-              shell={shell}
-              path={path}
-              resolved={false}
-              onCreateSession={onCreateSession}
-              onOpenSession={onOpenSession}
-            />
-          ))
-        )}
-        {store.hasResolvedSessions && (
-          <section className="resolved-lane" aria-labelledby="resolved-lane-heading">
-            <div className="section-heading lane-heading" id="resolved-lane-heading">
-              <button
-                className="lane-toggle"
-                type="button"
-                aria-expanded={store.resolvedLaneExpanded}
-                aria-controls="resolved-lane-content"
-                aria-label={`${store.resolvedLaneExpanded ? "Collapse" : "Expand"} Resolved`}
-                onClick={() => store.toggleResolvedLane()}
-              >
-                <span
-                  className={`lane-disclosure ${store.resolvedLaneExpanded ? "" : "collapsed"}`}
-                >
-                  <ChevronIcon />
-                </span>
-                <span>Resolved</span>
-              </button>
-            </div>
-            {store.resolvedLaneExpanded && (
-              <div id="resolved-lane-content" className="resolved-lane-content">
-                <SidebarCakeChatGroup
-                  store={store}
-                  cakeChat={cakeChat}
-                  shell={shell}
-                  resolved={true}
-                  onOpenCakeChat={onOpenCakeChat}
-                  onCreateCakeChat={onCreateCakeChat}
-                />
-                {projectPaths.map((path) => (
-                  <SidebarProjectGroup
-                    key={`resolved:${path}`}
-                    store={store}
-                    projects={projects}
-                    chat={chat}
-                    shell={shell}
-                    path={path}
-                    resolved={true}
-                    onCreateSession={onCreateSession}
-                    onOpenSession={onOpenSession}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-      </div>
-      <div className="sidebar-footer">
-        <div className="plugin-slot plugin-slot-sidebar-footer">
-          <Slot name="global.sidebar.footer" />
-        </div>
-        <IconButton
-          className={
-            shell.selection.kind === "settings"
-              ? "sidebar-settings-icon active"
-              : "sidebar-settings-icon"
-          }
-          tooltip="Open settings"
-          aria-current={shell.selection.kind === "settings" ? "page" : undefined}
-          onClick={onOpenSettings}
-        >
-          <SettingsIcon />
-        </IconButton>
-      </div>
-    </aside>
-  );
-});
 
 export const App = observer(function App() {
   const root = useStore(RootStore);
@@ -558,16 +98,15 @@ export const App = observer(function App() {
   const [sessionHeaderHost, setSessionHeaderHost] = useState<HTMLDivElement | null>(null);
   const sidebarMax = Math.max(
     240,
-    window.innerWidth - (store.commandPane ? commandPaneWidth : 0) - 360,
+    window.innerWidth - (store.commandPaneStore.pane ? commandPaneWidth : 0) - 360,
   );
   const commandPaneMax = Math.max(
     320,
     window.innerWidth - (sidebarCollapsed ? 0 : sidebarWidth) - 360,
   );
   const returnToWorkbench = useCallback(() => {
-    root.showWorkbench();
-    store.activeSession?.composerStore.requestFocus();
-  }, [root, store]);
+    root.returnToWorkbench();
+  }, [root]);
   const toggleSidebar = useCallback(() => setSidebarCollapsed((value) => !value), []);
   const openSettings = useCallback(() => root.showSettings(), [root]);
   const openCakeChat = useCallback(
@@ -595,11 +134,11 @@ export const App = observer(function App() {
     void root.chooseProject();
   }, [root]);
   useEffect(() => {
-    document.documentElement.dataset.theme = settings.theme;
+    document.documentElement.dataset.theme = settings.appearance.theme;
     return () => {
       delete document.documentElement.dataset.theme;
     };
-  }, [settings.theme]);
+  }, [settings.appearance.theme]);
   useEffect(() => {
     document.title = extensionUi.title ? `${extensionUi.title} · Cake` : "Cake";
   }, [extensionUi.title]);
@@ -607,7 +146,7 @@ export const App = observer(function App() {
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (browse.path !== undefined || changes.path !== undefined) returnToWorkbench();
-      else if (store.commandPane) store.closeCommandPane();
+      else if (store.commandPaneStore.pane) store.commandPaneStore.close();
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
@@ -641,7 +180,7 @@ export const App = observer(function App() {
   };
   return (
     <main
-      className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${store.commandPane ? "right-pane-open" : ""} ${resizingPanel ? "is-resizing" : ""}`}
+      className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${store.commandPaneStore.pane ? "right-pane-open" : ""} ${resizingPanel ? "is-resizing" : ""}`}
       style={shellStyle}
     >
       <Sidebar
@@ -802,7 +341,7 @@ export const App = observer(function App() {
                       store={store.worktreeStore}
                       currentProjectPath={store.projectPath}
                       onCreateWorktree={(projectPath) => {
-                        store.requestCreateWorktreeSession(projectPath);
+                        store.worktreeCreationStore.request(projectPath);
                       }}
                       onFinished={(projectPath) => {
                         void root.createSession(projectPath);
@@ -819,11 +358,11 @@ export const App = observer(function App() {
                       <span>Browse</span>
                     </button>
                     <button
-                      className={`header-pane-toggle${store.commandPane === "tree" ? " active" : ""}`}
+                      className={`header-pane-toggle${store.commandPaneStore.pane === "tree" ? " active" : ""}`}
                       type="button"
                       aria-label="Session tree"
-                      aria-pressed={store.commandPane === "tree"}
-                      onClick={() => store.toggleCommandPane("tree")}
+                      aria-pressed={store.commandPaneStore.pane === "tree"}
+                      onClick={() => store.commandPaneStore.toggle("tree")}
                     >
                       <TreeIcon />
                       <span>Tree</span>
@@ -852,7 +391,7 @@ export const App = observer(function App() {
                 store={session.chatStore}
                 transcriptBehavior={{
                   onFork: (entryId) => {
-                    void store.forkAt(entryId);
+                    void store.sessionForkStore.forkAt(entryId);
                   },
                   openFileInEditor: (path) => root.openFileInEditor(session.workspacePath, path),
                   openFilePath: (path) => {
@@ -915,7 +454,7 @@ export const App = observer(function App() {
         )}
       </section>
       <CommandPane store={store} extensionUi={extensionUi} />
-      {store.commandPane && (
+      {store.commandPaneStore.pane && (
         <PanelResizeHandle
           className="command-pane-resize-handle"
           label="Resize command pane"
@@ -957,7 +496,7 @@ export const App = observer(function App() {
           </Confirmation>
         </div>
       )}
-      {store.createWorktreePrompt && (
+      {store.worktreeCreationStore.promptPath && (
         <div className="dialog-backdrop">
           <Confirmation
             state="requested"
@@ -982,11 +521,11 @@ export const App = observer(function App() {
               <ConfirmationActions>
                 <ConfirmationAction
                   variant="outline"
-                  onClick={() => store.cancelCreateWorktreePrompt()}
+                  onClick={() => store.worktreeCreationStore.cancel()}
                 >
                   Cancel
                 </ConfirmationAction>
-                <ConfirmationAction onClick={() => void store.confirmCreateWorktreePrompt()}>
+                <ConfirmationAction onClick={() => void store.worktreeCreationStore.confirm()}>
                   Create worktree
                 </ConfirmationAction>
               </ConfirmationActions>
@@ -994,7 +533,7 @@ export const App = observer(function App() {
           </Confirmation>
         </div>
       )}
-      {store.forkPrompt && (
+      {store.sessionForkStore.prompt && (
         <div className="dialog-backdrop">
           <Confirmation
             state="requested"
@@ -1013,17 +552,19 @@ export const App = observer(function App() {
               <ConfirmationActions>
                 <ConfirmationAction
                   variant="ghost"
-                  onClick={() => void store.resolveForkPrompt("cancel")}
+                  onClick={() => void store.sessionForkStore.resolvePrompt("cancel")}
                 >
                   Cancel
                 </ConfirmationAction>
                 <ConfirmationAction
                   variant="outline"
-                  onClick={() => void store.resolveForkPrompt("existing")}
+                  onClick={() => void store.sessionForkStore.resolvePrompt("existing")}
                 >
                   Use the existing worktree
                 </ConfirmationAction>
-                <ConfirmationAction onClick={() => void store.resolveForkPrompt("new-worktree")}>
+                <ConfirmationAction
+                  onClick={() => void store.sessionForkStore.resolvePrompt("new-worktree")}
+                >
                   Branch off a new worktree
                 </ConfirmationAction>
               </ConfirmationActions>

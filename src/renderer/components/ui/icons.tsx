@@ -1,9 +1,18 @@
 import type { ReactNode } from "react";
 
-function Icon({ children, size = 16 }: { children: ReactNode; size?: number }) {
+function Icon({
+  children,
+  size = 16,
+  className,
+}: {
+  children: ReactNode;
+  size?: number;
+  className?: string;
+}) {
   return (
     <svg
       aria-hidden="true"
+      className={className}
       width={size}
       height={size}
       viewBox="0 0 24 24"
@@ -56,8 +65,8 @@ export const SidebarIcon = () => (
     <path d="M9 4v16" />
   </Icon>
 );
-export const ChevronIcon = () => (
-  <Icon size={13}>
+export const ChevronIcon = ({ className }: { className?: string }) => (
+  <Icon size={13} className={className}>
     <path d="m8 10 4 4 4-4" />
   </Icon>
 );

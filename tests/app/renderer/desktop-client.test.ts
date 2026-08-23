@@ -31,6 +31,8 @@ function createBridge() {
           draft: "",
           recentProjectPaths: [],
           theme: "system",
+          workLogViewMode: "auto",
+          workLogsExpansion: "collapsed",
           draftsBySession: {},
           newSessionDraftsByProject: {},
         },

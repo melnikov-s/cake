@@ -8,6 +8,8 @@ import { SettingsLinesField } from "./settings/settings-lines-field";
 import { SettingsPackagesField } from "./settings/settings-packages-field";
 import { SettingsTextField } from "./settings/settings-text-field";
 import { SettingsToggle } from "./settings/settings-toggle";
+import { SettingsAppearanceSection } from "./settings-appearance-section";
+import { SettingsProvidersSection } from "./settings-providers-section";
 import { piSettingsSchema } from "../../ipc/session-contract";
 import type { ChatConfigurationStore } from "../stores/ChatConfigurationStore";
 import type { CustomizationStore } from "../stores/CustomizationStore";
@@ -32,9 +34,13 @@ export const SettingsPage = observer(function SettingsPage({
   const authNotice = store.activeSession?.canonicalParts.find(
     (part) => part.kind === "notice" && part.id === "auth-status",
   );
+  const providers = settings.providers;
+  const utility = settings.utilityModel;
+  const editor = settings.editor;
+  const appearance = settings.appearance;
   const error = settings.error ?? configuration?.error ?? store.error;
   const providerGroups = configuration?.modelsByProvider ?? [];
-  const utilityModel = settings.utilityModel;
+  const utilityModel = utility.model;
   const utilityModelValue = utilityModel ? `${utilityModel.provider}/${utilityModel.modelId}` : "";
   const defaultModelValue =
     pi?.defaultProvider && pi.defaultModel ? `${pi.defaultProvider}/${pi.defaultModel}` : "";
@@ -120,7 +126,7 @@ export const SettingsPage = observer(function SettingsPage({
         )}
       </section>
 
-      <ModelPresetSettings settings={settings} groups={providerGroups} />
+      <ModelPresetSettings settings={settings.modelPresets} groups={providerGroups} />
 
       <section className="settings-section" aria-labelledby="default-model-title">
         <header>
@@ -143,7 +149,7 @@ export const SettingsPage = observer(function SettingsPage({
                 onSelect={(value) => {
                   const separator = value.indexOf("/");
                   if (separator > 0)
-                    void settings.setPiSetting({
+                    void providers.setPiSetting({
                       key: "defaultModel",
                       provider: value.slice(0, separator),
                       modelId: value.slice(separator + 1),
@@ -163,7 +169,7 @@ export const SettingsPage = observer(function SettingsPage({
                 disabled={!defaultModel}
                 variant="settings"
                 onSelect={(value) =>
-                  void settings.setPiSetting({ key: "defaultThinkingLevel", value })
+                  void providers.setPiSetting({ key: "defaultThinkingLevel", value })
                 }
               />
             </label>
@@ -204,7 +210,7 @@ export const SettingsPage = observer(function SettingsPage({
                   )
                     ? (utilityModel?.thinkingLevel ?? "off")
                     : model?.availableThinkingLevels[0];
-                  void settings.selectUtilityModel(value, thinkingLevel);
+                  void utility.select(value, thinkingLevel);
                 }}
                 variant="settings"
               />
@@ -213,8 +219,8 @@ export const SettingsPage = observer(function SettingsPage({
                   variant="ghost"
                   size="sm"
                   type="button"
-                  disabled={settings.utilityModelSaving}
-                  onClick={() => void settings.clearUtilityModel()}
+                  disabled={utility.saving}
+                  onClick={() => void utility.clear()}
                 >
                   Clear
                 </Button>
@@ -229,9 +235,9 @@ export const SettingsPage = observer(function SettingsPage({
               ariaLabel="Utility model thinking level"
               value={utilityModel?.thinkingLevel ?? "off"}
               levels={selectedUtilityModel?.availableThinkingLevels ?? []}
-              disabled={!utilityModel || !selectedUtilityModel || settings.utilityModelSaving}
+              disabled={!utilityModel || !selectedUtilityModel || utility.saving}
               variant="settings"
-              onSelect={(level) => void settings.selectUtilityThinkingLevel(level)}
+              onSelect={(level) => void utility.selectThinkingLevel(level)}
             />
           </label>
         </div>
@@ -251,19 +257,19 @@ export const SettingsPage = observer(function SettingsPage({
               label="Auto-compact"
               description="Compact context automatically when it gets too large."
               checked={pi.autoCompact}
-              onChange={(value) => void settings.setPiSetting({ key: "autoCompact", value })}
+              onChange={(value) => void providers.setPiSetting({ key: "autoCompact", value })}
             />
             <SettingsToggle
               label="Automatic retry"
               description="Retry transient provider failures automatically."
               checked={pi.retryEnabled}
-              onChange={(value) => void settings.setPiSetting({ key: "retryEnabled", value })}
+              onChange={(value) => void providers.setPiSetting({ key: "retryEnabled", value })}
             />
             <SettingsToggle
               label="Hide thinking"
               description="Hide reasoning blocks in assistant responses."
               checked={pi.hideThinkingBlock}
-              onChange={(value) => void settings.setPiSetting({ key: "hideThinkingBlock", value })}
+              onChange={(value) => void providers.setPiSetting({ key: "hideThinkingBlock", value })}
             />
             <label>
               <span>
@@ -273,7 +279,7 @@ export const SettingsPage = observer(function SettingsPage({
                 aria-label="Steering mode"
                 value={pi.steeringMode}
                 onChange={(event) =>
-                  void settings.setPiSetting({
+                  void providers.setPiSetting({
                     key: "steeringMode",
                     value: piSettingsSchema.shape.steeringMode.parse(event.target.value),
                   })
@@ -291,7 +297,7 @@ export const SettingsPage = observer(function SettingsPage({
                 aria-label="Follow-up mode"
                 value={pi.followUpMode}
                 onChange={(event) =>
-                  void settings.setPiSetting({
+                  void providers.setPiSetting({
                     key: "followUpMode",
                     value: piSettingsSchema.shape.followUpMode.parse(event.target.value),
                   })
@@ -321,20 +327,20 @@ export const SettingsPage = observer(function SettingsPage({
               description="Custom shell executable. Leave empty to use Pi’s platform default."
               value={pi.shellPath}
               placeholder="/bin/zsh"
-              onApply={(value) => void settings.setPiSetting({ key: "shellPath", value })}
+              onApply={(value) => void providers.setPiSetting({ key: "shellPath", value })}
             />
             <SettingsTextField
               label="Shell command prefix"
               description="Command prepended to every Pi shell invocation."
               value={pi.shellCommandPrefix}
               placeholder="Optional"
-              onApply={(value) => void settings.setPiSetting({ key: "shellCommandPrefix", value })}
+              onApply={(value) => void providers.setPiSetting({ key: "shellCommandPrefix", value })}
             />
             <SettingsLinesField
               label="npm command"
               description="Command and arguments used for package operations, one argument per line."
               value={pi.npmCommand}
-              onApply={(value) => void settings.setPiSetting({ key: "npmCommand", value })}
+              onApply={(value) => void providers.setPiSetting({ key: "npmCommand", value })}
             />
           </div>
         ) : (
@@ -354,9 +360,9 @@ export const SettingsPage = observer(function SettingsPage({
           <SettingsTextField
             label="Editor command"
             description="Executable used to open files. VS Code is the default (code)."
-            value={settings.editorCommand}
+            value={editor.command}
             placeholder="code"
-            onApply={(value) => void settings.setEditorCommand(value)}
+            onApply={(value) => void editor.setCommand(value)}
           />
         </div>
       </section>
@@ -375,7 +381,7 @@ export const SettingsPage = observer(function SettingsPage({
             size="sm"
             type="button"
             disabled={!store.session}
-            onClick={() => void settings.reloadPi()}
+            onClick={() => void providers.reloadPi()}
           >
             {pi?.reloadPending ? "Reload queued" : "Reload Pi"}
           </Button>
@@ -384,25 +390,25 @@ export const SettingsPage = observer(function SettingsPage({
           <div className="settings-fields">
             <SettingsPackagesField
               value={pi.packages}
-              onApply={(value) => void settings.setPiSetting({ key: "packages", value })}
+              onApply={(value) => void providers.setPiSetting({ key: "packages", value })}
             />
             <SettingsLinesField
               label="Extension paths"
               description="One path, glob, inclusion, or exclusion per line."
               value={pi.extensions}
-              onApply={(value) => void settings.setPiSetting({ key: "extensions", value })}
+              onApply={(value) => void providers.setPiSetting({ key: "extensions", value })}
             />
             <SettingsLinesField
               label="Skill paths"
               description="One path, glob, inclusion, or exclusion per line."
               value={pi.skills}
-              onApply={(value) => void settings.setPiSetting({ key: "skills", value })}
+              onApply={(value) => void providers.setPiSetting({ key: "skills", value })}
             />
             <SettingsLinesField
               label="Prompt paths"
               description="One path, glob, inclusion, or exclusion per line."
               value={pi.prompts}
-              onApply={(value) => void settings.setPiSetting({ key: "prompts", value })}
+              onApply={(value) => void providers.setPiSetting({ key: "prompts", value })}
             />
           </div>
         ) : (
@@ -425,20 +431,20 @@ export const SettingsPage = observer(function SettingsPage({
               label="Auto-resize images"
               description="Resize large images for better model compatibility."
               checked={pi.autoResizeImages}
-              onChange={(value) => void settings.setPiSetting({ key: "autoResizeImages", value })}
+              onChange={(value) => void providers.setPiSetting({ key: "autoResizeImages", value })}
             />
             <SettingsToggle
               label="Block images"
               description="Prevent images from being sent to model providers."
               checked={pi.blockImages}
-              onChange={(value) => void settings.setPiSetting({ key: "blockImages", value })}
+              onChange={(value) => void providers.setPiSetting({ key: "blockImages", value })}
             />
             <SettingsToggle
               label="Skill commands"
               description="Register discovered skills as /skill:name commands."
               checked={pi.enableSkillCommands}
               onChange={(value) =>
-                void settings.setPiSetting({ key: "enableSkillCommands", value })
+                void providers.setPiSetting({ key: "enableSkillCommands", value })
               }
             />
             <SettingsToggle
@@ -446,7 +452,7 @@ export const SettingsPage = observer(function SettingsPage({
               description="Show notices for significant prompt-cache misses."
               checked={pi.showCacheMissNotices}
               onChange={(value) =>
-                void settings.setPiSetting({ key: "showCacheMissNotices", value })
+                void providers.setPiSetting({ key: "showCacheMissNotices", value })
               }
             />
           </div>
@@ -472,7 +478,7 @@ export const SettingsPage = observer(function SettingsPage({
                 aria-label="Provider transport"
                 value={pi.transport}
                 onChange={(event) =>
-                  void settings.setPiSetting({
+                  void providers.setPiSetting({
                     key: "transport",
                     value: piSettingsSchema.shape.transport.parse(event.target.value),
                   })
@@ -492,7 +498,7 @@ export const SettingsPage = observer(function SettingsPage({
                 aria-label="HTTP idle timeout"
                 value={pi.httpIdleTimeoutMs}
                 onChange={(event) =>
-                  void settings.setPiSetting({
+                  void providers.setPiSetting({
                     key: "httpIdleTimeoutMs",
                     value: Number(event.target.value),
                   })
@@ -528,7 +534,7 @@ export const SettingsPage = observer(function SettingsPage({
                 aria-label="Default project trust"
                 value={pi.defaultProjectTrust}
                 onChange={(event) =>
-                  void settings.setPiSetting({
+                  void providers.setPiSetting({
                     key: "defaultProjectTrust",
                     value: piSettingsSchema.shape.defaultProjectTrust.parse(event.target.value),
                   })
@@ -544,7 +550,7 @@ export const SettingsPage = observer(function SettingsPage({
               description="Warn when subscription authentication may use paid extra usage."
               checked={pi.anthropicExtraUsageWarning}
               onChange={(value) =>
-                void settings.setPiSetting({ key: "anthropicExtraUsageWarning", value })
+                void providers.setPiSetting({ key: "anthropicExtraUsageWarning", value })
               }
             />
             <SettingsToggle
@@ -552,7 +558,7 @@ export const SettingsPage = observer(function SettingsPage({
               description="Send Pi’s anonymous version/update ping after detected updates."
               checked={pi.enableInstallTelemetry}
               onChange={(value) =>
-                void settings.setPiSetting({ key: "enableInstallTelemetry", value })
+                void providers.setPiSetting({ key: "enableInstallTelemetry", value })
               }
             />
           </div>
@@ -561,137 +567,12 @@ export const SettingsPage = observer(function SettingsPage({
         )}
       </section>
 
-      <section className="settings-section" aria-labelledby="providers-title">
-        <header>
-          <div>
-            <h2 id="providers-title">Providers</h2>
-            <p>Connect the accounts and API keys that make models available to Pi.</p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            type="button"
-            disabled={!store.session || settings.refreshingModels}
-            onClick={() => void settings.refreshModels()}
-          >
-            {settings.refreshingModels ? "Refreshing…" : "Refresh models"}
-          </Button>
-        </header>
-        {providerGroups.length === 0 ? (
-          <p className="settings-empty">Provider details will appear after a chat is open.</p>
-        ) : (
-          <div className="provider-list">
-            {providerGroups.map((provider) => {
-              const authenticated = provider.models.some((model) => model.authenticated);
-              const authenticatedModel = provider.models.find((model) => model.authenticated);
-              const authSource = authenticatedModel?.authSource;
-              const externallyManaged = Boolean(
-                authenticated && authSource && authSource !== "stored" && authSource !== "runtime",
-              );
-              const connectionLabel =
-                authenticatedModel?.authLabel ??
-                (authSource === "environment" ? "environment" : undefined);
-              const authTypes = [...new Set(provider.models.flatMap((model) => model.authTypes))];
-              const operation = settings.providerOperation(provider.id);
-              return (
-                <article className="provider-row" key={provider.id}>
-                  <div className="provider-identity">
-                    <span className="provider-monogram">
-                      {provider.name.slice(0, 1).toUpperCase()}
-                    </span>
-                    <span>
-                      <strong>{provider.name}</strong>
-                      <small>
-                        {provider.models.length} {provider.models.length === 1 ? "model" : "models"}
-                      </small>
-                    </span>
-                  </div>
-                  <span className={authenticated ? "provider-state connected" : "provider-state"}>
-                    <i />
-                    {operation === "login"
-                      ? "Connecting…"
-                      : operation === "logout"
-                        ? "Disconnecting…"
-                        : authenticated
-                          ? `Connected${connectionLabel ? ` · ${connectionLabel}` : ""}`
-                          : "Not connected"}
-                  </span>
-                  <div className="provider-actions">
-                    {authenticated ? (
-                      externallyManaged ? (
-                        <small
-                          className="provider-managed"
-                          title="Remove this credential from its environment or configuration source, then restart Cake."
-                        >
-                          Remove externally, then restart
-                        </small>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          type="button"
-                          disabled={Boolean(operation)}
-                          onClick={() => void settings.logout(provider.id)}
-                        >
-                          {operation === "logout" ? "Disconnecting…" : "Disconnect"}
-                        </Button>
-                      )
-                    ) : (
-                      authTypes.map((authType) => (
-                        <Button
-                          key={authType}
-                          variant={authType === "oauth" ? "default" : "outline"}
-                          size="sm"
-                          type="button"
-                          disabled={Boolean(operation)}
-                          onClick={() => void settings.authenticate(provider.id, authType)}
-                        >
-                          {operation === "login"
-                            ? "Connecting…"
-                            : authType === "oauth"
-                              ? "Connect"
-                              : "Add API key"}
-                        </Button>
-                      ))
-                    )}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      <section className="settings-section" aria-labelledby="appearance-title">
-        <header>
-          <div>
-            <h2 id="appearance-title">Appearance</h2>
-            <p>Choose how Cake looks on this device.</p>
-          </div>
-        </header>
-        <div className="settings-fields">
-          <label>
-            <span>
-              Theme<small>Follow your system or use a fixed appearance.</small>
-            </span>
-            <select
-              aria-label="Color theme"
-              value={settings.theme}
-              onChange={(event) => {
-                const theme = (["system", "light", "dark"] as const).find(
-                  (candidate) => candidate === event.target.value,
-                );
-                if (theme) settings.setTheme(theme);
-                onViewStateChange();
-              }}
-            >
-              <option value="system">System</option>
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-            </select>
-          </label>
-        </div>
-      </section>
+      <SettingsProvidersSection
+        providers={providers}
+        providerGroups={providerGroups}
+        hasSession={Boolean(store.session)}
+      />
+      <SettingsAppearanceSection appearance={appearance} onViewStateChange={onViewStateChange} />
     </div>
   );
 });

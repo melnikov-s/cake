@@ -160,7 +160,7 @@ test("selects rendered TypeScript and opens a continuous, resizable selection ch
     await expect(dialog.locator(".transcript article > div:first-child").first()).toHaveText("You");
     await expect(dialog.locator(".chat-layout-compact")).toBeVisible();
     await expect(input).toBeFocused();
-    await input.fill("Why is this interface shaped this way?");
+    await input.pressSequentially("Why is this interface shaped this way?");
     await expect(input).toHaveValue("Why is this interface shaped this way?");
     await expect(dialog.getByRole("button", { name: "Send" })).toBeEnabled();
 

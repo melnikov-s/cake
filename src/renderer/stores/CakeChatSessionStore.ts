@@ -1,49 +1,92 @@
-import { Store, child, createStore, observable } from "r-state-tree";
-import type { Attachment, ModelPreset } from "../../ipc/session-contract";
+import { Store, applySnapshot, child, createStore, observable } from "r-state-tree";
+import { Session } from "../../models/Session";
+import type { Attachment, ModelPreset, SessionSnapshot } from "../../ipc/session-contract";
 import { parsePiBuiltinCommand } from "../../ipc/session-contract";
 import { pastedImageAttachments } from "../pasted-image-attachments";
 import { describeError } from "../error-details";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { ChatStore } from "./ChatStore";
 import type { GlobalChatStore } from "./GlobalChatStore";
-import type { SettingsStore } from "./SettingsStore";
+import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
-import type { SessionRegistryStore } from "./SessionRegistryStore";
+import type { DesktopClientEvent } from "../desktop-client";
+import { toSessionSnapshot } from "../../utils/session-snapshot";
 
 export interface CakeChatSessionStoreProps {
   sessionId: string;
   collection: GlobalChatStore;
-  sessions: SessionRegistryStore;
   operations: SessionOperationCoordinatorStore;
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
-  settings?(): SettingsStore | undefined;
+  settings?(): AppearanceSettingsStore | undefined;
   persist?(): void;
 }
 
 /** Owns the independent draft, attachments, configuration, and turn policy for one Cake Chat session. */
 export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
+  readonly model: Session;
   attachments: Attachment[] = observable([]);
   error: string | undefined;
   errorDetails: string | undefined;
 
+  constructor(props: CakeChatSessionStore["props"]) {
+    super(props);
+    this.model = Session.create({ sessionId: props.sessionId });
+    this.effect(() => () => {
+      this.props.operations.reset(this.promptOwner);
+      this.props.operations.reset(this.configurationOwner);
+      this.props.operations.reset(`cake-chat-abort:${this.sessionId}`);
+      this.model[Symbol.dispose]();
+    });
+  }
+
   get sessionId() {
     return this.props.sessionId;
   }
-  get model() {
-    return this.props.sessions.findModel(this.sessionId);
-  }
   get parts() {
-    return this.model?.uiParts ?? [];
+    return this.model.uiParts;
   }
   get streaming() {
-    return this.model?.streaming ?? false;
+    return this.model.streaming;
   }
   get promptOwner() {
     return `cake-chat-prompt:${this.sessionId}`;
   }
   get configurationOwner() {
     return `cake-chat-configuration:${this.sessionId}`;
+  }
+
+  applySnapshot(snapshot: SessionSnapshot) {
+    applySnapshot(this.model, toSessionSnapshot(snapshot));
+  }
+
+  upsertPart(part: SessionSnapshot["parts"][number]) {
+    this.model.upsertPart(part);
+  }
+
+  removePart(partId: string) {
+    this.model.removePart(partId);
+  }
+
+  setStreaming(streaming: boolean) {
+    this.model.setStreaming(streaming);
+  }
+
+  receive(event: DesktopClientEvent) {
+    if (event.type === "global-chat-snapshot-received") {
+      if (
+        event.snapshot.sessionId === this.sessionId &&
+        this.props.operations.active(this.configurationOwner).length > 0
+      )
+        this.configurationStore.receive(event);
+      return;
+    }
+    if (
+      (event.type === "global-chat-operation-completed" ||
+        event.type === "global-chat-operation-failed") &&
+      this.props.operations.includes(event.operationId, this.configurationOwner)
+    )
+      this.configurationStore.receive(event);
   }
 
   async submit(text: string) {
@@ -67,6 +110,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         });
         return true;
       } catch (error) {
+        if (this.signal.aborted) return false;
         this.props.operations.finish(operationId);
         this.reportError(error);
         return false;
@@ -81,9 +125,11 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
           sessionId: this.sessionId,
           instructions: builtin.args || undefined,
         });
+        if (this.signal.aborted) return false;
         this.attachments.splice(0);
         return true;
       } catch (error) {
+        if (this.signal.aborted) return false;
         this.props.operations.finish(operationId);
         this.reportError(error);
         return false;
@@ -100,6 +146,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       });
       return true;
     } catch (error) {
+      if (this.signal.aborted) return false;
       this.attachments.push(...attachments);
       this.props.operations.finish(operationId);
       this.reportError(error);
@@ -113,6 +160,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       const attachments = await pastedImageAttachments(files, 20 - this.attachments.length);
       if (!this.signal.aborted) this.attachments.push(...attachments);
     } catch (error) {
+      if (this.signal.aborted) return;
       this.reportError(error);
     }
   }
@@ -165,7 +213,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       streaming: () => this.streaming,
       submitting: () => this.props.operations.active(this.promptOwner).length > 0,
       configuration: () => this.configurationStore,
-      commands: () => this.model?.commands ?? [],
+      commands: () => this.model.commands,
       placeholder: () => "Ask Cake to find or control a task…",
       inputLabel: () => "Message Cake Chat",
       canSubmit: (draft) => Boolean(draft.trim() || this.attachments.length > 0),
@@ -174,8 +222,8 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       attachments: () => this.attachments,
       addPastedImages: (files) => this.addPastedImages(files),
       removeAttachment: (index) => this.removeAttachment(index),
-      usage: () => this.model?.usage,
-      hideThinking: () => Boolean(this.model?.piSettings?.hideThinkingBlock),
+      usage: () => this.model.usage,
+      hideThinking: () => Boolean(this.model.piSettings?.hideThinkingBlock),
       error: () => ({
         message: this.configurationStore.error ?? this.error,
         details: this.configurationStore.errorDetails ?? this.errorDetails,
@@ -201,6 +249,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     try {
       await this.props.collection.port.abort({ operationId, sessionId: this.sessionId });
     } catch (error) {
+      if (this.signal.aborted) return;
       this.props.operations.finish(operationId);
       this.reportError(error);
     }

@@ -209,14 +209,16 @@ The window Store hierarchy mirrors the product surfaces:
 - `WindowPersistenceCoordinatorStore` hydrates and saves view state that spans the
   shell, sidebar, workbench, settings, and loaded sessions. It coordinates
   those owners without absorbing their state.
-- `ProjectWorkbenchStore` owns project inspection, its collection-local
-  last-opened session,
-  command panes, and its `BrowseStore` and `ChangesStore` children. It
-  coordinates project-level workflows without re-exporting session behavior.
+- `ProjectWorkbenchStore` coordinates project activation and its focused
+  workflow children: `CommandPaneStore`, `SessionManagementStore`,
+  `SessionForkStore`, `WorktreeCreationStore`, `BrowseStore`, `ChangesStore`,
+  `EmbeddedEditorStore`, and `WorktreeStore`. Each child owns its own operation
+  state and lifetime; the workbench does not re-export one-for-one child APIs.
 - The root-scoped `SessionRegistryStore` preserves one keyed
-  `ProjectSessionStore` for every loaded session ID so background events, Cake
-  Chat, and navigation share session identity. The workspace path remains
-  routing/storage context for the Pi runtime, not part of session identity.
+  `ProjectSessionStore` for every loaded project-session ID so background
+  project events and navigation share session identity. The workspace path
+  remains routing/storage context for the Pi runtime, not part of session
+  identity. Cake Chat never enters this registry.
 - Each `ProjectSessionStore` owns that session's activity, `Session`,
   message composer, chat configuration, artifacts, and message comments. Its
   `ChatStore` is the common conversation-facing state boundary: it presents the
@@ -233,7 +235,9 @@ The window Store hierarchy mirrors the product surfaces:
 - The Cake Chat collection owns one keyed `CakeChatSessionStore` per loaded
   meta-session. Each session retains its own draft, attachments, configuration,
   transcript projection, streaming state, and live Pi runtime while another
-  Cake Chat session is selected.
+  Cake Chat session is selected. A `CakeChatSessionStore` directly owns its Pi
+  `Session`; its snapshots and deltas route through the Cake Chat collection,
+  independently of project-session registry and workbench lifetimes.
 
 UI and application controls invoke semantic `RootStore` intents such as
 `openSession`, `createSession`, or `showGlobalChat`. The root performs any

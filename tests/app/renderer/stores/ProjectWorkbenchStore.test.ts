@@ -41,9 +41,9 @@ function createDesktopClient(restoredPath?: string) {
         id: "fixture-model",
         name: "Fixture model",
         reasoning: false,
-        availableThinkingLevels: ["off"],
+        availableThinkingLevels: ["off" as const],
         fastMode: false,
-        input: ["text"],
+        input: ["text" as const],
         authenticated: true,
         authTypes: [],
       },
@@ -130,6 +130,8 @@ function createDesktopClient(restoredPath?: string) {
       recentProjectPaths: restoredPath ? [restoredPath] : [],
       draft: "saved",
       theme: "system" as const,
+      workLogViewMode: "auto" as const,
+      workLogsExpansion: "collapsed" as const,
       draftsBySession: {},
       newSessionDraftsByProject: {},
     })),
@@ -442,6 +444,7 @@ describe("ProjectWorkbenchStore", () => {
     });
 
     expect(root.appShellStore.selection).toEqual({ kind: "cake-chat", sessionId: "cake-chat-1" });
+    expect(root.sessionRegistry.findSession("cake-chat-1")).toBeUndefined();
     root[Symbol.dispose]();
   });
 
@@ -567,29 +570,29 @@ describe("ProjectWorkbenchStore", () => {
     const { root } = mountTestStore(desktop.client);
     await flush();
 
-    expect(root.settingsStore.utilityModel).toBeUndefined();
-    await root.settingsStore.selectUtilityModel("openai/gpt-5-mini");
+    expect(root.settingsStore.utilityModel.model).toBeUndefined();
+    await root.settingsStore.utilityModel.select("openai/gpt-5-mini");
     expect(desktop.client.setUtilityModel).toHaveBeenLastCalledWith({
       provider: "openai",
       modelId: "gpt-5-mini",
       thinkingLevel: "off",
     });
-    expect(root.settingsStore.utilityModel).toEqual({
+    expect(root.settingsStore.utilityModel.model).toEqual({
       provider: "openai",
       modelId: "gpt-5-mini",
       thinkingLevel: "off",
     });
 
-    await root.settingsStore.selectUtilityThinkingLevel("low");
+    await root.settingsStore.utilityModel.selectThinkingLevel("low");
     expect(desktop.client.setUtilityModel).toHaveBeenLastCalledWith({
       provider: "openai",
       modelId: "gpt-5-mini",
       thinkingLevel: "low",
     });
 
-    await root.settingsStore.clearUtilityModel();
+    await root.settingsStore.utilityModel.clear();
     expect(desktop.client.setUtilityModel).toHaveBeenLastCalledWith(undefined);
-    expect(root.settingsStore.utilityModel).toBeUndefined();
+    expect(root.settingsStore.utilityModel.model).toBeUndefined();
     root[Symbol.dispose]();
   });
 
@@ -599,8 +602,8 @@ describe("ProjectWorkbenchStore", () => {
     await flush();
     await openSnapshot(store, desktop);
 
-    await root.settingsStore.setPiSetting({ key: "autoCompact", value: false });
-    const operationId = root.settingsStore.activeOperations.at(-1)!;
+    await root.settingsStore.providers.setPiSetting({ key: "autoCompact", value: false });
+    const operationId = root.settingsStore.providers.activeOperations.at(-1)!;
     expect(store.isBusy).toBe(false);
     expect(desktop.client.setPiSetting).toHaveBeenCalledWith({
       operationId,
@@ -608,27 +611,27 @@ describe("ProjectWorkbenchStore", () => {
       update: { key: "autoCompact", value: false },
     });
     desktop.emit({ type: "operation-completed", operationId });
-    expect(root.settingsStore.activeOperations).not.toContain(operationId);
+    expect(root.settingsStore.providers.activeOperations).not.toContain(operationId);
 
-    await root.settingsStore.reloadPi();
-    const reloadOperationId = root.settingsStore.activeOperations.at(-1)!;
+    await root.settingsStore.providers.reloadPi();
+    const reloadOperationId = root.settingsStore.providers.activeOperations.at(-1)!;
     expect(desktop.client.reloadPi).toHaveBeenCalledWith({
       operationId: reloadOperationId,
       sessionId: "session-1",
     });
     desktop.emit({ type: "operation-completed", operationId: reloadOperationId });
 
-    expect(root.settingsStore.refreshingModels).toBe(false);
-    const refreshPromise = root.settingsStore.refreshModels();
-    expect(root.settingsStore.refreshingModels).toBe(true);
-    const refreshOperationId = root.settingsStore.activeOperations.at(-1)!;
+    expect(root.settingsStore.providers.refreshingModels).toBe(false);
+    const refreshPromise = root.settingsStore.providers.refreshModels();
+    expect(root.settingsStore.providers.refreshingModels).toBe(true);
+    const refreshOperationId = root.settingsStore.providers.activeOperations.at(-1)!;
     expect(desktop.client.refreshModels).toHaveBeenCalledWith({
       operationId: refreshOperationId,
       sessionId: "session-1",
     });
     desktop.emit({ type: "operation-completed", operationId: refreshOperationId });
     await refreshPromise;
-    expect(root.settingsStore.refreshingModels).toBe(false);
+    expect(root.settingsStore.providers.refreshingModels).toBe(false);
     root[Symbol.dispose]();
   });
 
@@ -638,9 +641,9 @@ describe("ProjectWorkbenchStore", () => {
     await flush();
     await openSnapshot(store, desktop);
 
-    await root.settingsStore.logout("openai-codex");
-    const operationId = root.settingsStore.activeOperations.at(-1)!;
-    expect(root.settingsStore.providerOperation("openai-codex")).toBe("logout");
+    await root.settingsStore.providers.logout("openai-codex");
+    const operationId = root.settingsStore.providers.activeOperations.at(-1)!;
+    expect(root.settingsStore.providers.providerOperation("openai-codex")).toBe("logout");
     expect(desktop.client.logout).toHaveBeenCalledWith(
       expect.objectContaining({ operationId, provider: "openai-codex" }),
     );
@@ -650,10 +653,10 @@ describe("ProjectWorkbenchStore", () => {
       operationId,
       message: "Credential store delete failed",
     });
-    expect(root.settingsStore.providerOperation("openai-codex")).toBeUndefined();
+    expect(root.settingsStore.providers.providerOperation("openai-codex")).toBeUndefined();
     expect(root.settingsStore.error).toBe("Credential store delete failed");
 
-    await root.settingsStore.logout("openai-codex");
+    await root.settingsStore.providers.logout("openai-codex");
     expect(desktop.client.logout).toHaveBeenCalledTimes(2);
     root[Symbol.dispose]();
   });
@@ -691,6 +694,8 @@ describe("ProjectWorkbenchStore", () => {
       recentProjectPaths: ["/project"],
       draft: "",
       theme: "system" as const,
+      workLogViewMode: "auto" as const,
+      workLogsExpansion: "collapsed" as const,
       draftsBySession: {},
       newSessionDraftsByProject: {},
     }));
@@ -730,6 +735,8 @@ describe("ProjectWorkbenchStore", () => {
       recentProjectPaths: ["/project"],
       draft: "",
       theme: "system" as const,
+      workLogViewMode: "auto" as const,
+      workLogsExpansion: "collapsed" as const,
       draftsBySession: { "unpersisted-session": "" },
       newSessionDraftsByProject: { "/project": "restored temporary draft" },
     }));
@@ -1202,7 +1209,7 @@ describe("ProjectWorkbenchStore", () => {
       path: "docs/plan.md",
       previousPath: "PLAN.md",
     });
-    expect(store.commandPane).toBeUndefined();
+    expect(store.commandPaneStore.pane).toBeUndefined();
     store.changesStore.close();
     expect(store.changesStore.path).toBeUndefined();
     root[Symbol.dispose]();
@@ -1971,6 +1978,8 @@ describe("ProjectWorkbenchStore", () => {
       recentProjectPaths: projects.map((project) => project.path),
       draft: "",
       theme: "system" as const,
+      workLogViewMode: "auto" as const,
+      workLogsExpansion: "collapsed" as const,
       draftsBySession: {},
       newSessionDraftsByProject: {},
     }));
@@ -2249,7 +2258,7 @@ describe("ProjectWorkbenchStore", () => {
     const { root, store } = mountTestStore(desktop.client);
     await flush();
 
-    await store.renameSession("session-2", " New title ");
+    await store.sessionManagementStore.renameSession("session-2", " New title ");
 
     expect(desktop.client.renameSession).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: "session-2", name: "New title" }),
@@ -2276,7 +2285,7 @@ describe("ProjectWorkbenchStore", () => {
       ],
     });
 
-    await store.renameCurrentSession("Renamed everywhere");
+    await store.sessionManagementStore.renameSession("session-1", "Renamed everywhere");
     const operationId = store.activeOperations.at(-1)!;
     expect(root.sidebarStore.projectSessions("/project")[0]?.title).toBe("Renamed everywhere");
     expect(store.sessionTitle).toBe("Renamed everywhere");
@@ -2299,14 +2308,14 @@ describe("ProjectWorkbenchStore", () => {
     store.activeSession!.chatStore.setDraft("/tree");
     await root.projectWorkbenchStore.activeSession!.composerStore.submit();
 
-    expect(store.commandPane).toBe("tree");
+    expect(store.commandPaneStore.pane).toBe("tree");
     expect(desktop.client.submit).not.toHaveBeenCalled();
 
-    store.closeCommandPane();
+    store.commandPaneStore.close();
     store.activeSession!.chatStore.setDraft("/changelog");
     await root.projectWorkbenchStore.activeSession!.composerStore.submit();
 
-    expect(store.commandPane).toBe("changelog");
+    expect(store.commandPaneStore.pane).toBe("changelog");
     expect(desktop.client.getChangelog).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: "session-1" }),
     );
@@ -2319,17 +2328,37 @@ describe("ProjectWorkbenchStore", () => {
       sessionId: "session-1",
       markdown: "# Changelog\n\n## 0.84.0",
     });
-    expect(store.changelogMarkdown).toContain("0.84.0");
+    expect(store.commandPaneStore.changelogMarkdown).toContain("0.84.0");
 
-    store.closeCommandPane();
+    store.commandPaneStore.close();
     store.activeSession!.chatStore.setDraft("/skill:review");
     await root.projectWorkbenchStore.activeSession!.composerStore.submit();
 
     expect(desktop.client.submit).toHaveBeenCalledWith(
       expect.objectContaining({ text: "/skill:review", delivery: "prompt" }),
     );
-    expect(store.commandPane).toBeUndefined();
+    expect(store.commandPaneStore.pane).toBeUndefined();
     expect(store.activeSession!.chatStore.draft).toBe("");
+    root[Symbol.dispose]();
+  });
+
+  it("releases changelog loading state when the correlated operation fails", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop, snapshot);
+
+    const loading = store.commandPaneStore.open("changelog");
+    const operationId = store.activeOperations.at(-1)!;
+    expect(store.commandPaneStore.changelogLoading).toBe(true);
+
+    desktop.emit({ type: "operation-failed", operationId, message: "Changelog failed" });
+    await loading;
+
+    expect(store.commandPaneStore.changelogLoading).toBe(false);
+    expect(store.error).toBe("Changelog failed");
+    await store.commandPaneStore.refreshChangelog();
+    expect(desktop.client.getChangelog).toHaveBeenCalledTimes(2);
     root[Symbol.dispose]();
   });
 
@@ -2351,13 +2380,13 @@ describe("ProjectWorkbenchStore", () => {
       ],
     });
 
-    await store.navigateTo("user-entry");
+    await store.commandPaneStore.navigateTo("user-entry");
 
     expect(desktop.client.navigateSession).toHaveBeenCalledWith(
       expect.objectContaining({ entryId: "user-entry" }),
     );
     expect(store.activeSession!.chatStore.draft).toBe("Original user message\nwith formatting");
-    expect(store.commandPane).toBeUndefined();
+    expect(store.commandPaneStore.pane).toBeUndefined();
     root[Symbol.dispose]();
   });
 

@@ -17,7 +17,9 @@ function createHarness() {
     updateEmbeddedEditorBounds: vi.fn(async () => undefined),
     revealInEmbeddedEditor: vi.fn(async () => undefined),
   };
-  const startCakeChat = vi.fn(async (_prompt: string) => undefined);
+  const startCakeChat = vi.fn(async (prompt: string) => {
+    void prompt;
+  });
   const store = mount(
     createStore(EmbeddedEditorStore, {
       client,

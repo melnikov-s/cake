@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { ReviewThread } from "../../../../src/ipc/review-contract";
 import type { DesktopClient } from "../../../../src/renderer/desktop-client";
 import { MessageCommentsStore } from "../../../../src/renderer/stores/MessageCommentsStore";
-import type { ChatStore } from "../../../../src/renderer/stores/ChatStore";
 import { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
 import type { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
 import type { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
@@ -33,11 +32,9 @@ describe("MessageCommentsStore", () => {
       createStore(MessageCommentsStore, {
         sessionRegistry: cache,
         reviews: () => ({ configuration: undefined }) as unknown as ReviewsStore,
-        draftChatStore: () => popupChat,
         context: () => ({ workspacePath: "/project", sessionId: "session-1" }),
       }),
     );
-    const popupChat: ChatStore = mount(store.draftChatStoreElement);
     store.prepareDraft({
       messageId: "assistant-1",
       selectedText: "value",
@@ -55,7 +52,6 @@ describe("MessageCommentsStore", () => {
     expect(store.draftChatStore.draft).toBe("Why this value?");
     expect(store.draftChatStore.focusRequestRevision).toBe(1);
     store[Symbol.dispose]();
-    popupChat[Symbol.dispose]();
     cache[Symbol.dispose]();
   });
 
@@ -111,11 +107,9 @@ describe("MessageCommentsStore", () => {
             threadStreaming: () => false,
             resolveThread: vi.fn(),
           }) as unknown as ReviewsStore,
-        draftChatStore: () => popupChat,
         context: () => ({ workspacePath: "/project", sessionId: "session-1" }),
       }),
     );
-    const popupChat: ChatStore = mount(store.draftChatStoreElement);
 
     store.prepareDraft({
       messageId: "assistant-1",
@@ -148,7 +142,6 @@ describe("MessageCommentsStore", () => {
     ]);
 
     store[Symbol.dispose]();
-    popupChat[Symbol.dispose]();
     cache[Symbol.dispose]();
   });
 });
