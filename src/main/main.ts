@@ -74,7 +74,6 @@ interface PiHost {
   path: string;
   driver: PiWorkspaceDriver;
   state: "starting" | "ready" | "stopped" | "failed";
-  idleTimer?: ReturnType<typeof setTimeout>;
 }
 
 const windows = new Map<number, BrowserWindow>();
@@ -311,7 +310,6 @@ function launchPi(path: string) {
   const existing = piHosts.get(path);
   if (existing && existing.state !== "failed" && existing.state !== "stopped") return existing;
   if (existing) {
-    if (existing.idleTimer) clearTimeout(existing.idleTimer);
     existing.driver[Symbol.dispose]();
     piHosts.delete(path);
   }
@@ -349,20 +347,7 @@ function launchPi(path: string) {
 }
 
 function dispatchToPi(path: string, command: PiWorkspaceCommand) {
-  const host = launchPi(path);
-  if (host.idleTimer) clearTimeout(host.idleTimer);
-  host.driver.dispatch(command);
-}
-
-function scheduleIdle(path: string) {
-  const host = piHosts.get(path);
-  if (!host || [...windowWorkspaces.values()].includes(path)) return;
-  if (host.idleTimer) clearTimeout(host.idleTimer);
-  host.idleTimer = setTimeout(() => {
-    if ([...windowWorkspaces.values()].includes(path)) return;
-    host.driver[Symbol.dispose]();
-    piHosts.delete(path);
-  }, 5 * 60_000);
+  launchPi(path).driver.dispatch(command);
 }
 
 function configureApplicationBranding() {
@@ -515,7 +500,6 @@ function createWindow() {
     if (healthTimer) clearTimeout(healthTimer);
     customizationHealthTimers.delete(webContentsId);
     if (path) piHosts.get(path)?.driver.cancelPendingRequests();
-    if (path) scheduleIdle(path);
   });
   void loadSelectedRenderer(window, pluginActivation.startupRenderer());
   return window;
@@ -1583,9 +1567,7 @@ async function handleCakeRequest(
   }
   if (request.type === "open-workspace") {
     clearPendingTrustRequests(event.sender.id);
-    const previous = windowWorkspaces.get(event.sender.id);
     windowWorkspaces.set(event.sender.id, path);
-    if (previous && previous !== path) scheduleIdle(previous);
   }
   if (request.type === "respond-ui") {
     dispatchToPi(path, request);
