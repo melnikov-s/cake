@@ -143,6 +143,11 @@ export type DesktopClientEvent =
 
 export interface DesktopClient {
   chooseProject(): Promise<string | undefined>;
+  showSessionContextMenu(input: {
+    sessionId: string;
+    x: number;
+    y: number;
+  }): Promise<"rename" | undefined>;
   listModels(): Promise<ModelOption[]>;
   getHomeDirectory(): Promise<string>;
   getCustomizationState(): Promise<CustomizationState>;
@@ -564,6 +569,12 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       if (response.type !== "project-chosen")
         throw new Error("Cake received an invalid project response");
       return response.path;
+    },
+    async showSessionContextMenu(input) {
+      const response = await bridge.request({ type: "show-session-context-menu", ...input });
+      if (response.type !== "session-context-menu-closed")
+        throw new Error("Cake received an invalid session context menu response");
+      return response.action;
     },
     async listModels() {
       const requestId = crypto.randomUUID();

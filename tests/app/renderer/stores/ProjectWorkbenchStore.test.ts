@@ -34,6 +34,7 @@ function createDesktopClient(restoredPath?: string) {
   let listener: ((event: DesktopClientEvent) => void) | undefined;
   const client: DesktopClient = {
     chooseProject: vi.fn(async () => "/project"),
+    showSessionContextMenu: vi.fn(async () => undefined),
     listModels: vi.fn(async () => [
       {
         provider: "fixture-provider",

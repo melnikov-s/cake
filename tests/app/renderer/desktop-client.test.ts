@@ -15,6 +15,8 @@ function createBridge() {
     if (input.type === "respond-ui")
       return { type: "ui-response-accepted", uiRequestId: input.uiRequestId };
     if (input.type === "choose-project") return { type: "project-chosen", path: "/project" };
+    if (input.type === "show-session-context-menu")
+      return { type: "session-context-menu-closed", action: "rename" };
     if (input.type === "get-home-directory") return { type: "home-directory", path: "/home/user" };
     if (input.type === "choose-attachments") return { type: "attachments-chosen", attachments: [] };
     if (input.type === "suggest-files")
@@ -67,6 +69,15 @@ describe("desktop client", () => {
     const operationId = crypto.randomUUID();
 
     expect(await client.chooseProject()).toBe("/project");
+    expect(await client.showSessionContextMenu({ sessionId: "session", x: 12, y: 34 })).toBe(
+      "rename",
+    );
+    expect(desktop.request).toHaveBeenCalledWith({
+      type: "show-session-context-menu",
+      sessionId: "session",
+      x: 12,
+      y: 34,
+    });
     expect(await client.listSessions()).toEqual({ sessions: [], reviewThreads: [] });
     expect(await client.loadSession("session")).toBeUndefined();
     expect(await client.suggestFiles("/project", "app")).toEqual([

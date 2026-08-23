@@ -192,6 +192,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   @child
   get sidebarStore(): SidebarStore {
     return createStore(SidebarStore, {
+      client: this.client,
       projects: this.projectCatalogStore,
       catalog: this.sessionCatalogStore,
       sessions: this.sessionRegistry,

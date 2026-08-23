@@ -2,7 +2,6 @@ import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { GlobalSessionSummary } from "../../ipc/session-contract";
 import { cn } from "../lib/utils";
-import { ContextMenu } from "./ui/context-menu";
 import { IconButton } from "./ui/icon-button";
 import { ResolveIcon, RestoreIcon } from "./ui/icons";
 import type { AppShellStore } from "../stores/AppShellStore";
@@ -18,7 +17,7 @@ export interface SidebarSessionItemProps {
   onOpen(sessionId: string): void;
 }
 
-/** One project session row in the sidebar; owns its own rename draft and context menu. */
+/** One project session row in the sidebar; owns its own rename draft. */
 export const SidebarSessionItem = observer(function SidebarSessionItem({
   store,
   chat,
@@ -28,7 +27,6 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   onOpen,
 }: SidebarSessionItemProps) {
   const [renamingValue, setRenamingValue] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const selected =
     shell.selection.kind === "project-session" && shell.selection.sessionId === session.id;
   const activity = store.sessionActivity(session.id);
@@ -78,7 +76,11 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
             onClick={() => onOpen(session.id)}
             onContextMenu={(event) => {
               event.preventDefault();
-              setMenu({ x: event.clientX, y: event.clientY });
+              void store
+                .showSessionContextMenu(session.id, event.clientX, event.clientY)
+                .then((action) => {
+                  if (action === "rename") setRenamingValue(session.title);
+                });
             }}
           >
             <span className="session-title min-w-0 flex-1 truncate text-left" title={session.title}>
@@ -134,26 +136,6 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
             )}
           </div>
         </div>
-      )}
-      {menu && (
-        <ContextMenu
-          position={menu}
-          onClose={() => setMenu(null)}
-          items={[
-            {
-              id: "rename",
-              label: "Rename",
-              onSelect: () => setRenamingValue(session.title),
-            },
-            {
-              id: "copy-session-id",
-              label: "Copy Session ID",
-              onSelect: () => {
-                void navigator.clipboard.writeText(session.id);
-              },
-            },
-          ]}
-        />
       )}
     </div>
   );

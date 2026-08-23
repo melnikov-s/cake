@@ -4,8 +4,10 @@ import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { GlobalChatStore } from "./GlobalChatStore";
+import type { DesktopClient } from "../desktop-client";
 
 export interface SidebarStoreProps {
+  client: Pick<DesktopClient, "showSessionContextMenu">;
   projects: ProjectCatalogStore;
   catalog: SessionCatalogStore;
   sessions: SessionRegistryStore;
@@ -33,6 +35,10 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   get sessions() {
     return this.props.catalog.sessions;
+  }
+
+  showSessionContextMenu(sessionId: string, x: number, y: number) {
+    return this.props.client.showSessionContextMenu({ sessionId, x, y });
   }
 
   projectSessions(workspacePath: string, resolved = false) {

@@ -418,8 +418,8 @@ function createWindow() {
   windows.set(window.id, window);
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("context-menu", (_event, params) => {
-    // Only pop the native menu where editing actions apply; plain right-clicks
-    // (e.g. session rows) are handled by the renderer's own context menus.
+    // Context-specific application menus are requested by the renderer. This
+    // fallback covers Chromium editing, selection, spelling, and link actions.
     if (!params.isEditable && !params.selectionText && !params.misspelledWord && !params.linkURL)
       return;
     const template: Electron.MenuItemConstructorOptions[] = [];
@@ -728,6 +728,30 @@ async function handleCakeRequest(
 ): Promise<DesktopResponse> {
   const request = desktopRequestSchema.parse(untrustedInput);
   const owner = BrowserWindow.fromWebContents(event.sender);
+  if (request.type === "show-session-context-menu") {
+    if (!owner) return desktopResponseSchema.parse({ type: "session-context-menu-closed" });
+    const action = await new Promise<"rename" | undefined>((resolve) => {
+      let completed = false;
+      const finish = (selected?: "rename") => {
+        if (completed) return;
+        completed = true;
+        resolve(selected);
+      };
+      Menu.buildFromTemplate([
+        { label: "Rename", click: () => finish("rename") },
+        {
+          label: "Copy Session ID",
+          click: () => clipboard.writeText(request.sessionId),
+        },
+      ]).popup({
+        window: owner,
+        x: request.x,
+        y: request.y,
+        callback: () => finish(),
+      });
+    });
+    return desktopResponseSchema.parse({ type: "session-context-menu-closed", action });
+  }
   if (request.type === "set-editor-command") {
     applicationModel.setEditorCommand(request.command);
     await persistApplicationState();

@@ -213,6 +213,12 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
 
 export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("choose-project") }),
+  z.object({
+    type: z.literal("show-session-context-menu"),
+    sessionId: z.string().min(1).max(256),
+    x: z.number().int().min(-1_000_000).max(1_000_000),
+    y: z.number().int().min(-1_000_000).max(1_000_000),
+  }),
   z.object({ type: z.literal("get-home-directory") }),
   z.object({ type: z.literal("set-editor-command"), command: z.string().max(512) }),
   z.object({ type: z.literal("set-vscode-server-path"), path: z.string().max(4_096).optional() }),
@@ -704,6 +710,10 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
 
 export const desktopResponseSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("project-chosen"), path: z.string().max(4_096).optional() }),
+  z.object({
+    type: z.literal("session-context-menu-closed"),
+    action: z.literal("rename").optional(),
+  }),
   z.object({
     type: z.literal("models-listed"),
     requestId: z.uuid(),

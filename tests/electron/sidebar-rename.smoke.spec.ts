@@ -6,7 +6,7 @@ import { cakeWorkspaceSessionDirectory } from "../../src/agent/session-discovery
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("renames a project session from the sidebar context menu", async () => {
+test("uses the native context menu for project sessions", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-sidebar-rename-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -86,20 +86,10 @@ test("renames a project session from the sidebar context menu", async () => {
     await expect(sessionRow).toHaveCount(1);
 
     await sessionRow.click({ button: "right" });
-    const menu = page.getByRole("menu");
-    await expect(menu).toBeVisible();
-    await menu.getByRole("menuitem", { name: "Rename" }).click();
 
-    const renameInput = page.getByLabel("Session name");
-    await expect(renameInput).toBeFocused();
-    await expect(renameInput).toHaveValue("Original session title");
-    await renameInput.fill("");
-    await page.keyboard.type("Renamed via context menu");
-    await expect(renameInput).toHaveValue("Renamed via context menu");
-    await renameInput.press("Enter");
-
-    const renamedRow = page.locator(".session-row").filter({ hasText: "Renamed via context menu" });
-    await expect(renamedRow).toHaveCount(1);
+    // Native Electron menus are outside the renderer accessibility tree. The
+    // sidebar must no longer mount a second HTML menu over the native one.
+    await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(page.getByLabel("Session name")).toHaveCount(0);
   } finally {
     await application.close();

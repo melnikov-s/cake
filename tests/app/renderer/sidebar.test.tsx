@@ -22,6 +22,7 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       showMoreSessions: fixture.showMoreSessions,
       setSessionResolved: fixture.setSessionResolved ?? vi.fn(),
       setCakeChatSessionResolved: fixture.setCakeChatSessionResolved ?? vi.fn(),
+      showSessionContextMenu: fixture.showSessionContextMenu ?? vi.fn(),
       resolvedLaneExpanded: fixture.resolvedLaneExpanded ?? true,
       toggleResolvedLane: fixture.toggleResolvedLane ?? vi.fn(),
       isGroupCollapsed: fixture.isGroupCollapsed ?? (() => false),
@@ -736,6 +737,44 @@ describe("Sidebar projects", () => {
     });
     expect(setSessionResolved).toHaveBeenCalledWith("other", true);
     expect(openSession).not.toHaveBeenCalled();
+  });
+
+  it("opens the native session menu and begins renaming its selected action", async () => {
+    const showSessionContextMenu = vi.fn(async () => "rename" as const);
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [
+        { id: "session-1", title: "Original title", modified: new Date(0).toISOString() },
+      ],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      sessionActivityTime: vi.fn(() => "Today"),
+      nameFromPath: () => "cake",
+      showMoreSessions: vi.fn(),
+      showSessionContextMenu,
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>(".session-row")!.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 12,
+          clientY: 34,
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(showSessionContextMenu).toHaveBeenCalledWith("session-1", 12, 34);
+    expect(container.querySelector<HTMLInputElement>('[aria-label="Session name"]')?.value).toBe(
+      "Original title",
+    );
+    expect(container.querySelector('[role="menu"]')).toBeNull();
   });
 
   it("does not offer resolve or time for unread completed sessions", () => {
