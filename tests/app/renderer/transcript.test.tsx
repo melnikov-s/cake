@@ -668,11 +668,10 @@ describe("Transcript scrolling", () => {
     act(() => container.querySelector<HTMLElement>(".activity-group > summary")!.click());
     expect(container.querySelectorAll(".subagent-call")).toHaveLength(1);
     expect(container.textContent).toContain("openai-codex/gpt-5.6-sol");
+    expect(container.querySelector(".subagent-result")?.textContent).toContain("A compact joke.");
 
     act(() => container.querySelector<HTMLButtonElement>(".subagent-summary")!.click());
     expect(container.textContent).toContain("Request");
-    expect(container.textContent).toContain("Response");
-    expect(container.textContent).toContain("A compact joke.");
   });
 
   it("keeps the completed work log neutral when an individual call failed", () => {

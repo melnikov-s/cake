@@ -352,4 +352,38 @@ describe("Cake-owned conversation components", () => {
     expect(html).toContain("125 tokens");
     expect(html).toContain("The boundary is correctly isolated.");
   });
+
+  it("keeps completed subagent output visible while technical details are collapsed", () => {
+    const handleId = crypto.randomUUID();
+    const html = renderToStaticMarkup(
+      <Tool
+        part={{
+          id: "subagent-wait",
+          kind: "tool",
+          name: "subagent_wait",
+          input: JSON.stringify({ handleId }),
+          output: JSON.stringify({
+            handleId,
+            task: "Tell a joke",
+            profile: "worker",
+            status: "complete",
+            parts: [
+              {
+                id: "child-answer",
+                kind: "text",
+                role: "assistant",
+                text: "The delegated punchline.",
+                status: "complete",
+              },
+            ],
+          }),
+          state: "success",
+        }}
+        expansion={{ open: false, toggle: () => undefined }}
+      />,
+    );
+
+    expect(html).toContain('aria-label="Subagent output"');
+    expect(html).toContain("The delegated punchline.");
+  });
 });

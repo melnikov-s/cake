@@ -219,13 +219,13 @@ test("shows one detailed pill for a subagent spawn and result", async () => {
     await expect(log.locator(".subagent-call")).toHaveCount(1);
     await expect(log.locator(".subagent-summary")).toContainText("openai-codex/gpt-5.6-sol");
     await expect(log.locator(".subagent-summary")).toContainText("max");
+    await expect(log.locator(".subagent-result")).toContainText(
+      "The loop opened a bakery because it knew how to roll.",
+    );
 
     await log.locator(".subagent-summary").click();
     await expect(log.locator(".subagent-details")).toContainText("Requested model");
     await expect(log.locator(".subagent-details")).toContainText("Return only the joke.");
-    await expect(log.locator(".subagent-details")).toContainText(
-      "The loop opened a bakery because it knew how to roll.",
-    );
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

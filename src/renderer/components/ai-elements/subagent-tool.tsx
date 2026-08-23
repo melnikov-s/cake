@@ -213,9 +213,9 @@ export function SubagentTool({
               </div>
             )}
           </section>
-          {(traceParts.length > 0 || finalText || output?.error) && (
+          {(traceParts.length > 0 || output?.error) && (
             <section>
-              <h4>Response</h4>
+              <h4>Execution</h4>
               {traceParts.length > 0 && (
                 <div className="subagent-trace" aria-label="Subagent execution trace">
                   {traceParts.map((item, index) => (
@@ -231,15 +231,15 @@ export function SubagentTool({
                   ))}
                 </div>
               )}
-              {finalText && (
-                <div className="subagent-result">
-                  <strong>Final answer</strong>
-                  <Markdown className="mt-2 text-xs">{finalText}</Markdown>
-                </div>
-              )}
               {output?.error && <pre className="subagent-error">{output.error}</pre>}
             </section>
           )}
+        </div>
+      )}
+      {finalText && (
+        <div className="subagent-result" aria-label="Subagent output">
+          <strong>Output</strong>
+          <Markdown className="mt-2 text-xs">{finalText}</Markdown>
         </div>
       )}
     </div>
