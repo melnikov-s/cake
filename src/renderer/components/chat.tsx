@@ -188,9 +188,9 @@ export const Chat = observer(function Chat({
             {pluginActions}
             {(() => {
               const hasInput = store.draft.trim().length > 0 || store.attachments.length > 0;
-              // While a prompt is running, stop only applies to an empty composer;
-              // typing a new message turns the button back into queue-and-submit.
-              if (store.loading && store.canAbort && !hasInput) {
+              // While foreground or delegated work is running, stop only applies to an
+              // empty composer; typing a new message turns the button back into submit.
+              if (store.canStop && !hasInput) {
                 return (
                   <IconButton
                     className="send-button"

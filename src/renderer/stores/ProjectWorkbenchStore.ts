@@ -816,7 +816,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       event.type === "session-snapshot-received" ||
       event.type === "part-updated" ||
       event.type === "part-removed" ||
-      event.type === "streaming-changed"
+      event.type === "streaming-changed" ||
+      event.type === "background-work-changed"
     )
       return;
     if (event.type === "artifact-updated") return;

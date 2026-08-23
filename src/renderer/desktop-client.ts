@@ -50,6 +50,7 @@ export type DesktopClientEvent =
   | { type: "part-updated"; sessionId: string; part: UiPart }
   | { type: "part-removed"; sessionId: string; partId: string }
   | { type: "streaming-changed"; sessionId: string; streaming: boolean }
+  | { type: "background-work-changed"; sessionId: string; active: boolean }
   | { type: "global-chat-snapshot-received"; operationId?: string; snapshot: SessionSnapshot }
   | { type: "global-chat-part-updated"; sessionId: string; part: UiPart }
   | { type: "global-chat-part-removed"; sessionId: string; partId: string }
@@ -418,6 +419,8 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
   if (event.type === "part-updated" || event.type === "part-removed") return event;
   if (event.type === "session-streaming")
     return { type: "streaming-changed", sessionId: event.sessionId, streaming: event.streaming };
+  if (event.type === "session-background-work")
+    return { type: "background-work-changed", sessionId: event.sessionId, active: event.active };
   if (event.type === "global-chat-snapshot")
     return {
       type: "global-chat-snapshot-received",

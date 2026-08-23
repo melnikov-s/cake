@@ -1928,6 +1928,29 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("keeps an idle session stoppable while its subagent runs in the background", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop, { ...snapshot, streaming: false });
+
+    desktop.emit({
+      type: "background-work-changed",
+      sessionId: snapshot.sessionId,
+      active: true,
+    });
+    expect(store.activeSession!.chatStore.loading).toBe(false);
+    expect(store.activeSession!.chatStore.canStop).toBe(true);
+
+    desktop.emit({
+      type: "background-work-changed",
+      sessionId: snapshot.sessionId,
+      active: false,
+    });
+    expect(store.activeSession!.chatStore.canStop).toBe(false);
+    root[Symbol.dispose]();
+  });
+
   it("shows a fast persisted preview while an uncached Pi runtime activates", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);

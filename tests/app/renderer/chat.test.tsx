@@ -154,6 +154,33 @@ describe("Chat", () => {
     );
   });
 
+  it("keeps stop available while idle foreground work has a running subagent", async () => {
+    const abort = vi.fn(async () => undefined);
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "background-work-chat",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        stoppable: () => true,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Message Cake",
+        inputLabel: () => "Message",
+        canSubmit: () => false,
+        submit: async () => false,
+        abort,
+      }),
+    );
+
+    act(() => root.render(<Chat store={store!} />));
+
+    const stop = container.querySelector<HTMLButtonElement>('[aria-label="Stop"]')!;
+    expect(stop).not.toBeNull();
+    await act(async () => stop.click());
+    expect(abort).toHaveBeenCalledOnce();
+  });
+
   it("shows the submit icon instead of stop while streaming when the composer has content", async () => {
     const submit = vi.fn(async () => true);
     const abort = vi.fn(async () => undefined);

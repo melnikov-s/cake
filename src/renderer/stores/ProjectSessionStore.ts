@@ -35,6 +35,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
 export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   readonly model: Session;
   activity: "running" | "unread" | undefined;
+  backgroundWorkActive = false;
   // Drafts and review threads can create this Store before its transcript is loaded.
   hydrated = false;
 
@@ -84,6 +85,10 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     this.activity = this.props.isActive() ? undefined : "unread";
   }
 
+  setBackgroundWorkActive(active: boolean) {
+    this.backgroundWorkActive = active;
+  }
+
   @child
   get composerStore(): MessageComposerStore {
     return createStore(MessageComposerStore, {
@@ -128,6 +133,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       parts: () => this.composerStore.parts,
       streaming: () => this.isStreaming,
       submitting: () => this.composerStore.activeOperations.length > 0,
+      stoppable: () => this.backgroundWorkActive,
       configuration: () => this.configurationStore,
       commands: () => [...this.model.commands, ...this.props.pluginCommands().commands],
       placeholder: () =>

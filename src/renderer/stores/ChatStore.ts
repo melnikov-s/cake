@@ -13,6 +13,7 @@ export interface ChatStoreProps {
   parts(): UiPart[];
   streaming(): boolean;
   submitting(): boolean;
+  stoppable?(): boolean;
   configuration(): ChatConfigurationStore | undefined;
   commands(): SessionSnapshot["commands"];
   placeholder(): string;
@@ -164,6 +165,9 @@ export class ChatStore extends Store<ChatStoreProps> {
   }
   get canAbort() {
     return Boolean(this.props.abort);
+  }
+  get canStop() {
+    return this.canAbort && (this.loading || (this.props.stoppable?.() ?? false));
   }
   get canAttach() {
     return Boolean(this.props.addAttachments);

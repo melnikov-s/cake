@@ -70,6 +70,11 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("part-removed"), sessionId: z.string(), partId: z.string().max(256) }),
   z.object({ type: z.literal("session-streaming"), sessionId: z.string(), streaming: z.boolean() }),
   z.object({
+    type: z.literal("session-background-work"),
+    sessionId: z.string().min(1).max(256),
+    active: z.boolean(),
+  }),
+  z.object({
     type: z.literal("global-chat-snapshot"),
     requestId: z.uuid().optional(),
     snapshot: sessionSnapshotSchema,

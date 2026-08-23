@@ -152,10 +152,11 @@ describe("PiWorkspaceDriver", () => {
       thinkingLevel: "off" as const,
       fallbacks: [],
     }));
+    const emit = vi.fn();
     const driver = new PiWorkspaceDriver({
       ...piPaths,
       workspacePath: "/project",
-      emit: vi.fn(),
+      emit,
       resolveAgentModel,
       createRuntime: vi.fn(async (options) => {
         createdWith.push(options);
@@ -188,6 +189,11 @@ describe("PiWorkspaceDriver", () => {
       },
     });
     expect(JSON.stringify(spawned)).not.toContain('"sessionId"');
+    expect(emit).toHaveBeenCalledWith({
+      type: "session-background-work",
+      sessionId: parent.sessionId,
+      active: true,
+    });
     expect(resolveAgentModel).toHaveBeenCalledWith(
       { prefer: "current" },
       expect.objectContaining({ sessionId: parent.sessionId }),
@@ -235,6 +241,11 @@ describe("PiWorkspaceDriver", () => {
       },
     });
     await expect(waiting).resolves.not.toHaveProperty("sessionId");
+    expect(emit).toHaveBeenCalledWith({
+      type: "session-background-work",
+      sessionId: parent.sessionId,
+      active: false,
+    });
     expect(child.dispose).toHaveBeenCalledOnce();
     driver[Symbol.dispose]();
   });

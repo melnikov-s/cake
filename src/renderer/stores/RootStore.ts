@@ -488,6 +488,10 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       }
       return;
     }
+    if (event.type === "background-work-changed") {
+      this.sessionRegistry.findSession(event.sessionId)?.setBackgroundWorkActive(event.active);
+      return;
+    }
     if (event.type === "artifact-updated" || event.type === "artifact-requested") {
       this.sessionRegistry.findModel(event.record.artifact.sessionId)?.upsertArtifact(event.record);
       if (event.type === "artifact-updated") return;

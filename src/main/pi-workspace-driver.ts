@@ -305,6 +305,7 @@ export class PiWorkspaceDriver {
           requestId: command.requestId,
           snapshot: await runtime.snapshot(command.requestId),
         });
+        this.emitSessionBackgroundWork(runtime.sessionId);
         this.replayPendingArtifacts(runtime.sessionId);
       });
       return;
@@ -345,7 +346,7 @@ export class PiWorkspaceDriver {
             ? (this.runtimes.get(command.sessionId) ??
               (await this.createRuntime(false, command.sessionId)))
             : this.runtimeFor(command.sessionId);
-        if (command.type === "abort") await runtime.abort();
+        if (command.type === "abort") await this.agentAbort(command.sessionId);
         else if (command.type === "prompt") {
           await runtime.prompt(command.text, command.delivery, command.attachments);
           this.emit({ type: "session-snapshot", snapshot: await runtime.snapshot() });
@@ -554,8 +555,27 @@ export class PiWorkspaceDriver {
   }
 
   async agentAbort(sessionId: string) {
-    await this.runtimeFor(sessionId).abort();
-    return this.runtimeFor(sessionId).snapshot();
+    const runtime = this.runtimeFor(sessionId);
+    const ownedHandles = [...this.subagentHandles.values()].filter(
+      (handle) =>
+        handle.parentSessionId === sessionId &&
+        (handle.status === "queued" || handle.status === "running"),
+    );
+    for (const handle of ownedHandles) {
+      handle.controller.abort(new Error("Parent session aborted"));
+      handle.status = "aborted";
+      for (const observer of handle.observers) observer();
+    }
+    await Promise.all([
+      runtime.abort(),
+      ...ownedHandles.flatMap((handle) =>
+        handle.sessionId && this.privateRuntimeIds.has(handle.sessionId)
+          ? [this.agentAbort(handle.sessionId).then(() => undefined)]
+          : [],
+      ),
+    ]);
+    this.emitSessionBackgroundWork(sessionId);
+    return runtime.snapshot();
   }
 
   async configureAgent(
@@ -953,6 +973,7 @@ export class PiWorkspaceDriver {
       observers: new Set(),
     };
     this.subagentHandles.set(handleId, handle);
+    this.emitSessionBackgroundWork(parentSessionId);
     handle.task = this.withSubagentSlot(handle, async () => {
       let snapshot = await this.openAgent({
         target: { kind: "new", visibility: "private" },
@@ -984,6 +1005,7 @@ export class PiWorkspaceDriver {
         for (const observer of handle.observers) observer();
       });
       const finalSnapshot = await this.agentPrompt(snapshot.sessionId, input.task, "prompt");
+      if (handle.controller.signal.aborted) throw handle.controller.signal.reason;
       handle.status = "complete";
       handle.result = this.subagentResult(handleId, handle, finalSnapshot);
     })
@@ -1000,6 +1022,7 @@ export class PiWorkspaceDriver {
         });
       })
       .finally(() => {
+        this.emitSessionBackgroundWork(parentSessionId);
         if (!handle.retain) handle.unsubscribe?.();
         if (
           !handle.retain &&
@@ -1130,10 +1153,17 @@ export class PiWorkspaceDriver {
     signal.addEventListener("abort", onAbort, { once: true });
     try {
       handle.status = this.activeSubagents < MAX_ACTIVE_SUBAGENTS ? "running" : "queued";
+      this.emitSessionBackgroundWork(parentSessionId);
       let snapshot: Awaited<ReturnType<CakeRuntime["snapshot"]>> | undefined;
       handle.task = this.withSubagentSlot(handle, async () => {
-        snapshot = await this.agentPrompt(sessionId, input.text, input.delivery);
-        handle.status = "complete";
+        try {
+          snapshot = await this.agentPrompt(sessionId, input.text, input.delivery);
+          if (handle.controller.signal.aborted) throw handle.controller.signal.reason;
+          handle.status = "complete";
+        } catch (error) {
+          handle.status = handle.controller.signal.aborted ? "aborted" : "error";
+          throw error;
+        }
       });
       await handle.task;
       if (!snapshot) throw new Error("The retained subagent turn did not produce a snapshot");
@@ -1141,6 +1171,7 @@ export class PiWorkspaceDriver {
       return handle.result;
     } finally {
       signal.removeEventListener("abort", onAbort);
+      this.emitSessionBackgroundWork(parentSessionId);
     }
   }
 
@@ -1322,6 +1353,15 @@ export class PiWorkspaceDriver {
       this.activeSubagents -= 1;
       this.subagentQueue.shift()?.();
     }
+  }
+
+  private emitSessionBackgroundWork(sessionId: string) {
+    const active = [...this.subagentHandles.values()].some(
+      (handle) =>
+        handle.parentSessionId === sessionId &&
+        (handle.status === "queued" || handle.status === "running"),
+    );
+    this.emit({ type: "session-background-work", sessionId, active });
   }
 
   private scheduleSubagentResultExpiry(handleId: string, handle: SubagentHandle) {
