@@ -5193,6 +5193,9 @@ button.reasoning-summary {
 .tool-denied {
   background: oklch(0.62 0.19 28);
 }
+.tool-interrupted {
+  background: oklch(0.6 0.09 70);
+}
 .notice {
   display: grid;
   gap: 5px;

@@ -85,11 +85,14 @@ function displayValue(value: string) {
 export function SubagentTool({
   part,
   spawnPart,
+  live = false,
   timer,
   expansion,
 }: {
   part: ToolPart;
   spawnPart?: ToolPart;
+  /** True while this conversation's runtime may still be producing subagent work. */
+  live?: boolean;
   timer?: ReactNode;
   expansion?: { open: boolean; toggle(): void };
 }) {
@@ -102,7 +105,14 @@ export function SubagentTool({
   const output = projectionFromJson(part.output) ?? spawnOutput;
   const task = output?.task ?? request?.task;
   const profile = output?.profile ?? request?.profile ?? "worker";
-  const status = output?.status ?? (part.state === "running" ? "running" : part.state);
+  // A persisted receipt's embedded status is a point-in-time snapshot written
+  // by an earlier process. Only a live runtime may present "running": once the
+  // part has settled without that runtime, the part state wins over a stale
+  // "running" so restored transcripts never display stale activity.
+  const status =
+    output?.status === "running" && part.state !== "running" && !live
+      ? part.state
+      : (output?.status ?? (part.state === "running" ? "running" : part.state));
   const resolvedModel = output?.resolvedModel ?? spawnOutput?.resolvedModel;
   const requestedModel = request?.model;
   const requestedModelName = requestedModelLabel(requestedModel);

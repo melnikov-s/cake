@@ -153,6 +153,10 @@ export class ChatStore extends Store<ChatStoreProps> {
   get loading() {
     return this.streaming || this.submitting;
   }
+  /** True when the runtime may still produce work, including background subagents. */
+  get liveWorkPossible() {
+    return this.loading || (this.props.stoppable?.() ?? false);
+  }
   get configuration() {
     return this.props.configuration();
   }

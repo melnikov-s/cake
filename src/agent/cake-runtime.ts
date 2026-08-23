@@ -725,7 +725,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       ? listedSessions
       : [activeSessionSummary(stats.totalMessages), ...listedSessions];
     const globalSettings = settingsManager.getGlobalSettings();
-    const branchParts = projectSessionEntries(session.sessionManager.getBranch());
+    const branchParts = projectSessionEntries(session.sessionManager.getBranch(), undefined, {
+      live: session.isStreaming,
+    });
     const queuedParts = allQueuedParts();
     return {
       workspacePath: options.cwd,

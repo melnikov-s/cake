@@ -481,12 +481,15 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   behavior,
   workLogItem = false,
   subagentSpawnPart,
+  live = false,
 }: {
   part: UiPart;
   behavior: CanonicalTranscriptBehavior;
   /** True when rendered inside a work log, so item expansion follows the global mode. */
   workLogItem?: boolean;
   subagentSpawnPart?: Extract<UiPart, { kind: "tool" }>;
+  /** True while this conversation's runtime may still be producing subagent work. */
+  live?: boolean;
 }) {
   if (part.kind === "text")
     return part.role === "assistant" ? (
@@ -538,6 +541,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
           />
         }
         subagentSpawnPart={subagentSpawnPart}
+        live={live}
         expansion={
           workLogItem
             ? {
@@ -588,6 +592,7 @@ function TranscriptPart(props: {
   behavior: CanonicalTranscriptBehavior;
   workLogItem?: boolean;
   subagentSpawnPart?: Extract<UiPart, { kind: "tool" }>;
+  live?: boolean;
 }) {
   return (
     <div className="transcript-part" data-part-id={props.part.id}>
@@ -676,6 +681,7 @@ const ActivityGroup = observer(function ActivityGroup({
         ? "Reasoning"
         : `${tools} tool ${tools === 1 ? "call" : "calls"}`;
   const activityVersion = JSON.stringify(parts);
+  const live = behavior.store.liveWorkPossible;
   useLayoutEffect(() => {
     if (!isStreaming || !open || !logRef.current || !logIsAtBottomRef.current) return;
     logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -731,11 +737,18 @@ const ActivityGroup = observer(function ActivityGroup({
                   key={item.id}
                   part={item.result}
                   subagentSpawnPart={item.spawn}
+                  live={live}
                   behavior={behavior}
                   workLogItem
                 />
               ) : (
-                <TranscriptPart key={item.id} part={item} behavior={behavior} workLogItem />
+                <TranscriptPart
+                  key={item.id}
+                  part={item}
+                  live={live}
+                  behavior={behavior}
+                  workLogItem
+                />
               ),
             )
           )}

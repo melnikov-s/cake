@@ -185,7 +185,7 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
     artifactId: z.string().min(1).max(256).optional(),
     filePath: z.string().max(8_192).optional(),
     diff: boundedText.optional(),
-    state: z.enum(["approval", "running", "success", "error", "denied"]),
+    state: z.enum(["approval", "running", "success", "error", "denied", "interrupted"]),
   }),
   z.object({
     ...partBase,

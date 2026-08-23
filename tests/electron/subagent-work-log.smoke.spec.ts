@@ -237,3 +237,99 @@ test("shows one detailed pill for a subagent spawn and result", async () => {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
 });
+
+test("never restores an interrupted subagent as running", async () => {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-subagent-stale-smoke-"));
+  const userData = join(temporaryRoot, "user-data");
+  const project = join(temporaryRoot, "project");
+  const cakeHome = join(temporaryRoot, "cake-home");
+  const sessionId = "subagent-stale-session";
+  const handleId = "1f686b2d-c41f-44df-9ba9-e3c3b4065c6c";
+  const timestamp = new Date(0).toISOString();
+  const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
+
+  await Promise.all([
+    mkdir(userData, { recursive: true }),
+    mkdir(project, { recursive: true }),
+    mkdir(sessionDirectory, { recursive: true }),
+  ]);
+  await writeFile(
+    join(userData, "window-state.json"),
+    JSON.stringify({
+      projectPath: project,
+      selectedSessionId: sessionId,
+      activeConversation: { kind: "project-session", workspacePath: project, sessionId },
+      recentProjectPaths: [project],
+      draft: "",
+      theme: "dark",
+      draftsBySession: {},
+    }),
+  );
+  await writeFile(
+    join(userData, "application.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
+      resolvedSessionIds: [],
+      trustedProjectPaths: [],
+    }),
+  );
+  await writeFile(
+    join(sessionDirectory, `${sessionId}.jsonl`),
+    [
+      { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+      {
+        type: "message",
+        id: "user-1",
+        parentId: null,
+        timestamp,
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Delegate work." }],
+          timestamp: 0,
+        },
+      },
+      assistantToolCall("spawn-call", "user-1", timestamp, "call-spawn", "subagent_spawn", {
+        task: "Background work that never finished.",
+        profile: "worker",
+      }),
+      toolResult("spawn-result", "spawn-call", timestamp, "call-spawn", "subagent_spawn", {
+        handleId,
+        task: "Background work that never finished.",
+        profile: "worker",
+        status: "running",
+      }),
+      // The previous process quit while waiting; no result was ever recorded.
+      assistantToolCall("wait-call", "spawn-result", timestamp, "call-wait", "subagent_wait", {
+        handleId,
+      }),
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
+  );
+
+  const application = await electron.launch({
+    args: [repositoryRoot],
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      CAKE_ELECTRON_SMOKE: "1",
+      CAKE_ELECTRON_USER_DATA: userData,
+      CAKE_HOME: cakeHome,
+    },
+  });
+
+  try {
+    const page = await application.firstWindow();
+    const log = page.locator(".activity-group");
+    await expect(log).toHaveCount(1, { timeout: 20_000 });
+    await log.locator(":scope > summary").click();
+    await expect(log.locator(".subagent-call")).toHaveCount(1);
+    await expect(log.locator(".subagent-running")).toHaveCount(0);
+    await expect(log.locator(".work-log-running")).toHaveCount(0);
+    await expect(log.locator(".subagent-status")).toContainText("interrupted");
+  } finally {
+    await application.close();
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});

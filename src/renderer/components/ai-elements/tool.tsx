@@ -136,6 +136,7 @@ export function Tool({
   timer,
   expansion,
   subagentSpawnPart,
+  live = false,
 }: {
   part: Extract<UiPart, { kind: "tool" }>;
   onOpenFile?: (path: string) => void | Promise<void>;
@@ -144,13 +145,21 @@ export function Tool({
   expansion?: { open: boolean; toggle(): void };
   /** The matching spawn call when Cake presents spawn + wait as one subagent run. */
   subagentSpawnPart?: Extract<UiPart, { kind: "tool" }>;
+  /** True while this conversation's runtime may still be producing subagent work. */
+  live?: boolean;
 }) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = expansion ? expansion.open : uncontrolledOpen;
   const toggleOpen = expansion ? expansion.toggle : () => setUncontrolledOpen((value) => !value);
   if (part.name.startsWith("subagent_"))
     return (
-      <SubagentTool part={part} spawnPart={subagentSpawnPart} timer={timer} expansion={expansion} />
+      <SubagentTool
+        part={part}
+        spawnPart={subagentSpawnPart}
+        live={live}
+        timer={timer}
+        expansion={expansion}
+      />
     );
   const diff = toolDiff(part);
   const title = toolTitle(part);

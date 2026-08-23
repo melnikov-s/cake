@@ -364,6 +364,7 @@ export function projectQueuedMessages(
 export function projectSessionEntries(
   entries: readonly SessionEntry[],
   branchEntries: readonly SessionEntry[] = entries,
+  options: { live?: boolean } = {},
 ) {
   const projected: UiPart[] = [];
   const indexes = new Map<string, number>();
@@ -439,6 +440,14 @@ export function projectSessionEntries(
     const run = reviewRunEntrySchema.safeParse(entry.data);
     if (run.success) append(reviewRunPart(run.data));
   }
+  // Durable entries are settled history. A tool call still marked "running"
+  // after the full walk has no recorded result, which means the run was
+  // interrupted before the tool settled. Only a live runtime may claim
+  // "running"; restored or idle sessions must present a terminal state.
+  if (!options.live)
+    for (const [index, part] of projected.entries())
+      if (part.kind === "tool" && part.state === "running")
+        projected[index] = { ...part, state: "interrupted" };
   return projected;
 }
 

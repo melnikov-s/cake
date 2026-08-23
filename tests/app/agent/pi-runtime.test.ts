@@ -759,6 +759,62 @@ describe("Pi 0.84.0 foundation contract", () => {
     ]);
   });
 
+  it("never restores a settled transcript as running", () => {
+    const assistantToolCall = (id: string, callId: string, name: string, args: unknown) => ({
+      type: "message",
+      id,
+      parentId: null,
+      timestamp: new Date(0).toISOString(),
+      message: {
+        role: "assistant",
+        content: [{ type: "toolCall", id: callId, name, arguments: args }],
+        stopReason: "toolUse",
+      },
+    });
+    const entries = [
+      assistantToolCall("spawn-call", "call-spawn", "subagent_spawn", { task: "Work" }),
+      {
+        type: "message",
+        id: "spawn-result",
+        parentId: null,
+        timestamp: new Date(0).toISOString(),
+        message: {
+          role: "toolResult",
+          toolCallId: "call-spawn",
+          toolName: "subagent_spawn",
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                handleId: "00000000-0000-0000-0000-000000000000",
+                status: "running",
+              }),
+            },
+          ],
+          isError: false,
+          timestamp: 0,
+        },
+      },
+      // The app quit while waiting, so this call never recorded a result.
+      assistantToolCall("wait-call", "call-wait", "subagent_wait", {
+        handleId: "00000000-0000-0000-0000-000000000000",
+      }),
+    ] as never;
+
+    const restored = projectSessionEntries(entries);
+    expect(restored).toEqual([
+      expect.objectContaining({ kind: "tool", name: "subagent_spawn", state: "success" }),
+      expect.objectContaining({ kind: "tool", name: "subagent_wait", state: "interrupted" }),
+    ]);
+
+    // While the runtime is streaming, a not-yet-settled call may stay running.
+    const live = projectSessionEntries(entries, undefined, { live: true });
+    expect(live).toEqual([
+      expect.objectContaining({ kind: "tool", name: "subagent_spawn", state: "success" }),
+      expect.objectContaining({ kind: "tool", name: "subagent_wait", state: "running" }),
+    ]);
+  });
+
   it("projects bash tool calls as commands instead of JSON arguments", () => {
     const project = createLiveMessageProjector();
     const message = {
