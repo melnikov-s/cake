@@ -35,6 +35,7 @@ import { PanelResizeHandle } from "@/components/panel-resize-handle";
 import { CopyErrorDetailsButton } from "@/components/copy-error-details-button";
 import { ToastHost } from "@/components/toast-host";
 import { WorktreeChip } from "@/components/worktree-chip";
+import { WorkLogControls } from "@/components/work-log-controls";
 import { Chat } from "@/components/chat";
 import { SidebarCakeChatGroup } from "@/components/sidebar-cake-chat-group";
 import { SidebarProjectGroup } from "@/components/sidebar-project-group";
@@ -730,6 +731,13 @@ export const App = observer(function App() {
         ) : globalChat ? (
           cakeChatSession ? (
             <div className="workbench global-chat">
+              {sessionHeaderHost &&
+                createPortal(
+                  <div className="header-pane-actions">
+                    <WorkLogControls store={cakeChatSession.chatStore} />
+                  </div>,
+                  sessionHeaderHost,
+                )}
               <Chat
                 store={cakeChatSession.chatStore}
                 empty={
@@ -790,6 +798,7 @@ export const App = observer(function App() {
               createPortal(
                 <>
                   <div className="header-pane-actions">
+                    <WorkLogControls store={session.chatStore} />
                     <WorktreeChip
                       store={store.worktreeStore}
                       currentProjectPath={store.projectPath}

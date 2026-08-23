@@ -303,11 +303,8 @@ export class PiWorkspaceDriver {
         const existing = command.sessionId ? this.runtimes.get(command.sessionId) : undefined;
         const runtime =
           existing ?? (await this.createRuntime(command.newSession, command.sessionId));
-        if (!existing && command.newSession && command.configuration) {
-          await runtime.setModel(command.configuration.provider, command.configuration.modelId);
-          await runtime.setThinkingLevel(command.configuration.thinkingLevel);
-          if (runtime.setFastMode) await runtime.setFastMode(command.configuration.fastMode);
-        }
+        if (!existing && command.newSession && command.configuration)
+          await runtime.applyConfiguration(command.configuration);
         this.emit({
           type: "session-snapshot",
           requestId: command.requestId,
@@ -351,15 +348,8 @@ export class PiWorkspaceDriver {
           if (this.runtimes.has(command.sessionId))
             throw new Error("That temporary session has already been started");
           runtime = await this.createRuntime(true, command.sessionId);
-          if (command.newSession.configuration) {
-            await runtime.setModel(
-              command.newSession.configuration.provider,
-              command.newSession.configuration.modelId,
-            );
-            await runtime.setThinkingLevel(command.newSession.configuration.thinkingLevel);
-            if (runtime.setFastMode)
-              await runtime.setFastMode(command.newSession.configuration.fastMode);
-          }
+          if (command.newSession.configuration)
+            await runtime.applyConfiguration(command.newSession.configuration);
         } else {
           runtime =
             command.type === "rename-session" ||
@@ -380,11 +370,8 @@ export class PiWorkspaceDriver {
           this.emit({ type: "session-snapshot", snapshot: await runtime.snapshot() });
         } else if (command.type === "set-model")
           await runtime.setModel(command.provider, command.modelId);
-        else if (command.type === "set-chat-configuration") {
-          await runtime.setModel(command.configuration.provider, command.configuration.modelId);
-          await runtime.setThinkingLevel(command.configuration.thinkingLevel);
-          if (runtime.setFastMode) await runtime.setFastMode(command.configuration.fastMode);
-        } else if (command.type === "set-thinking") await runtime.setThinkingLevel(command.level);
+        else if (command.type === "set-chat-configuration")
+          await runtime.applyConfiguration(command.configuration); else if (command.type === "set-thinking") await runtime.setThinkingLevel(command.level);
         else if (command.type === "set-fast-mode") {
           if (!runtime.setFastMode) throw new Error("This Pi runtime does not support Fast mode");
           await runtime.setFastMode(command.enabled);

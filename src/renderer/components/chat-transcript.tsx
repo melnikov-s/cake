@@ -36,7 +36,7 @@ import {
 } from "@/components/message-comment-popover";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { UiPart } from "../../ipc/session-contract";
-import { toolDiff } from "../../utils/turn-diff";
+import { toolDiff, workLogChanges } from "../../utils/turn-diff";
 import { combineSubagentWorkLogParts } from "../subagent-work-log";
 import type { ArtifactInteractionStore } from "../stores/ArtifactInteractionStore";
 import type { ChatStore } from "../stores/ChatStore";
@@ -83,17 +83,6 @@ const ForkIcon = () => (
 const CheckIcon = () => (
   <Icon>
     <path d="m5 12 4 4L19 6" />
-  </Icon>
-);
-const DiffIcon = () => (
-  <Icon>
-    <rect x="4" y="4" width="16" height="16" rx="2" />
-    <path d="M12 4v16M7 9h3M8.5 7.5v3M14 9h3M14 15h3" />
-  </Icon>
-);
-const LogIcon = () => (
-  <Icon>
-    <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />
   </Icon>
 );
 
@@ -313,8 +302,6 @@ export interface ChatTranscriptBehavior {
 
 interface CanonicalTranscriptBehavior extends ChatTranscriptBehavior {
   store: ChatStore;
-  workLogDiff: boolean;
-  onToggleWorkLogDiff(): void;
   renderChat(store: ChatStore): ReactNode;
 }
 
@@ -703,6 +690,10 @@ const ActivityGroup = observer(function ActivityGroup({
         {reasoningIsStreaming ? "Thinking…" : "Reasoning details not exposed"}
       </div>
     );
+  const changes = workLogChanges(parts);
+  const hasDiff = changes.length > 0;
+  const viewMode = behavior.store.workLogViewMode;
+  const showDiff = viewMode === "diff" || (viewMode === "auto" && hasDiff);
   return (
     <details className="activity-group" open={open}>
       <summary
@@ -718,38 +709,6 @@ const ActivityGroup = observer(function ActivityGroup({
           aria-label={activityIsRunning ? "working" : "complete"}
         />
         Work log <small>{label}</small>
-        <div className="work-log-view-toggle" role="group" aria-label="Work log view">
-          <IconButton
-            className="work-log-view-option"
-            aria-pressed={!behavior.workLogDiff}
-            tooltip="Work log"
-            ariaLabel="Show work log"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              if (behavior.workLogDiff) behavior.onToggleWorkLogDiff();
-              if (behavior.store.workLogsExpansion === "collapsed")
-                behavior.store.setWorkLogsExpansion("expanded");
-            }}
-          >
-            <LogIcon />
-          </IconButton>
-          <IconButton
-            className="work-log-view-option"
-            aria-pressed={behavior.workLogDiff}
-            tooltip="Diff"
-            ariaLabel="Show diff"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              if (!behavior.workLogDiff) behavior.onToggleWorkLogDiff();
-              if (behavior.store.workLogsExpansion === "collapsed")
-                behavior.store.setWorkLogsExpansion("expanded");
-            }}
-          >
-            <DiffIcon />
-          </IconButton>
-        </div>
       </summary>
       {open && (
         <div
@@ -759,7 +718,7 @@ const ActivityGroup = observer(function ActivityGroup({
             logIsAtBottomRef.current = log.scrollHeight - log.clientHeight - log.scrollTop <= 1;
           }}
         >
-          {behavior.workLogDiff ? (
+          {showDiff ? (
             <WorkLogDiff
               parts={parts}
               streaming={activityIsRunning}
@@ -899,8 +858,6 @@ export const ChatTranscript = observer(function ChatTranscript({
   const transcriptBehavior: CanonicalTranscriptBehavior = {
     store,
     ...behavior,
-    workLogDiff: store.workLogDiff,
-    onToggleWorkLogDiff: () => store.toggleWorkLogDiff(),
     renderChat,
   };
   const scrollToLatest = useCallback(() => {
@@ -922,9 +879,13 @@ export const ChatTranscript = observer(function ChatTranscript({
   }, [latestUserPartId, scrollToLatest]);
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === "o") {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "o") {
         event.preventDefault();
-        store.cycleWorkLogsExpansion();
+        if (event.shiftKey) {
+          store.cycleWorkLogViewMode();
+        } else {
+          store.cycleWorkLogsExpansion();
+        }
       }
     };
     window.addEventListener("keydown", onKeyDown);

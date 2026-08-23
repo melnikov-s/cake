@@ -33,6 +33,7 @@ function runtime(nextSnapshot = snapshot): CakeRuntime {
     abort: vi.fn(async () => undefined),
     setModel: vi.fn(async () => undefined),
     setThinkingLevel: vi.fn(async () => undefined),
+    applyConfiguration: vi.fn(async () => undefined),
     setPiSetting: vi.fn(async () => undefined),
     recordReviewRun: vi.fn(),
     login: vi.fn(async () => undefined),

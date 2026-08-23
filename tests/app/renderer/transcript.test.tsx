@@ -86,8 +86,8 @@ function Transcript({
   isSubmitting?: boolean;
   hideThinking?: boolean;
   behavior: ChatTranscriptBehavior & {
-    workLogDiff?: boolean;
-    onToggleWorkLogDiff?(): void;
+    workLogViewMode?: "auto" | "diff" | "log";
+    workLogsExpansion?: "collapsed" | "expanded" | "fully-expanded";
   };
   empty?: React.ReactNode;
   footer?: React.ReactNode;
@@ -96,17 +96,21 @@ function Transcript({
   errorTitle?: string;
 }) {
   const {
-    workLogDiff = false,
-    onToggleWorkLogDiff = () => undefined,
+    workLogViewMode = "auto",
+    workLogsExpansion: initialExpansion = "collapsed",
     ...transcriptBehavior
   } = behavior;
   // Expansion state must survive prop-only re-renders, like a real ChatStore.
   const workLogStateRef = useRef<
-    { expansion: { value: string }; items: Map<string, boolean> } | undefined
+    | {
+        expansion: { value: "collapsed" | "expanded" | "fully-expanded" };
+        items: Map<string, boolean>;
+      }
+    | undefined
   >(undefined);
   if (!workLogStateRef.current)
     workLogStateRef.current = {
-      expansion: observable({ value: "collapsed" }),
+      expansion: observable({ value: initialExpansion }),
       items: observable(new Map()),
     };
   const workLogState = workLogStateRef.current;
@@ -116,8 +120,9 @@ function Transcript({
     streaming: isStreaming,
     submitting: isSubmitting,
     hideThinking,
-    workLogDiff,
-    toggleWorkLogDiff: onToggleWorkLogDiff,
+    workLogViewMode,
+    setWorkLogViewMode: () => undefined,
+    cycleWorkLogViewMode: () => undefined,
     workLogElapsedMs: () => undefined,
     workLogElapsedMsRange: () => undefined,
     get workLogsExpansion() {
@@ -126,7 +131,7 @@ function Transcript({
     get workLogItemOverrides() {
       return workLogState.items;
     },
-    setWorkLogsExpansion(expansion: string) {
+    setWorkLogsExpansion(expansion: "collapsed" | "expanded" | "fully-expanded") {
       workLogState.expansion.value = expansion;
       workLogState.items.clear();
     },
@@ -521,8 +526,8 @@ describe("Transcript scrolling", () => {
     ).not.toBeNull();
   });
 
-  it("switches an expanded work log between its activity and streaming diff views", () => {
-    const running: UiPart = {
+  it("switches an expanded work log between auto, diff, and log view modes", () => {
+    const editPart: UiPart = {
       id: "tool-edit",
       kind: "tool",
       name: "edit",
@@ -533,53 +538,48 @@ describe("Transcript scrolling", () => {
       filePath: "src/app.ts",
       state: "running",
     };
-    const onToggleWorkLogDiff = vi.fn();
-    const render = (workLogDiff: boolean, part: UiPart = running) =>
+    const readPart: UiPart = {
+      id: "tool-read",
+      kind: "tool",
+      name: "read",
+      input: JSON.stringify({ path: "README.md" }),
+      state: "success",
+      output: "README text",
+    };
+
+    const render = (viewMode: "auto" | "diff" | "log", part: UiPart = editPart) =>
       root.render(
         <Transcript
           parts={[part]}
           sessionId="session-1"
           isStreaming
           behavior={{
-            workLogDiff,
-            onToggleWorkLogDiff,
+            workLogsExpansion: "expanded",
+            workLogViewMode: viewMode,
           }}
           empty={<div />}
         />,
       );
 
-    act(() => render(false));
-    act(() => container.querySelector<HTMLElement>(".activity-group > summary")!.click());
-    const viewToggle = container.querySelector<HTMLElement>(".work-log-view-toggle")!;
-    const diffToggle = viewToggle.querySelector<HTMLButtonElement>('[aria-label="Show diff"]')!;
-    const logToggle = viewToggle.querySelector<HTMLButtonElement>('[aria-label="Show work log"]')!;
-    expect(diffToggle.getAttribute("aria-pressed")).toBe("false");
-    expect(logToggle.getAttribute("aria-pressed")).toBe("true");
-    act(() => diffToggle.click());
-    expect(onToggleWorkLogDiff).toHaveBeenCalledOnce();
-    expect(container.querySelector(".activity-group")?.matches("[open]")).toBe(true);
-
-    act(() => render(true));
+    // In auto mode with edit parts (has diff), renders diff view
+    act(() => render("auto", editPart));
     expect(container.querySelector(".work-log-diff")).not.toBeNull();
     expect(container.querySelector(".tool-call")).toBeNull();
     expect(container.querySelector(".work-log-diff")?.textContent).toContain("fresh");
-    expect(
-      container
-        .querySelector<HTMLButtonElement>('[aria-label="Show diff"]')
-        ?.getAttribute("aria-pressed"),
-    ).toBe("true");
-    expect(
-      container
-        .querySelector<HTMLButtonElement>('[aria-label="Show work log"]')
-        ?.getAttribute("aria-pressed"),
-    ).toBe("false");
 
-    act(() => render(true, { ...running, diff: "-4 old\n+4 updated" }));
-    expect(container.querySelector(".work-log-diff")?.textContent).toContain("updated");
+    // In auto mode with only read parts (no diff), renders log view
+    act(() => render("auto", readPart));
+    expect(container.querySelector(".work-log-diff")).toBeNull();
+    expect(container.querySelector(".tool-call")).not.toBeNull();
 
-    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Show work log"]')!.click());
-    expect(onToggleWorkLogDiff).toHaveBeenCalledTimes(2);
-    act(() => render(false));
+    // In explicit diff mode, renders diff view
+    act(() => render("diff", editPart));
+    expect(container.querySelector(".work-log-diff")).not.toBeNull();
+    expect(container.querySelector(".tool-call")).toBeNull();
+
+    // In explicit log mode, renders tool-call items even if edits exist
+    act(() => render("log", editPart));
+    expect(container.querySelector(".work-log-diff")).toBeNull();
     expect(container.querySelector(".tool-call")).not.toBeNull();
   });
 
@@ -1307,7 +1307,7 @@ describe("Transcript scrolling", () => {
     };
     const configuration = {
       session: {
-        model: { provider: "openai", id: "gpt" },
+        model: { provider: "openai", id: "gpt", name: "GPT" },
         thinkingLevel: "medium",
         availableThinkingLevels: ["off", "medium"],
       },
@@ -1318,6 +1318,8 @@ describe("Transcript scrolling", () => {
           models: [{ provider: "openai", id: "gpt", name: "GPT", authenticated: true }],
         },
       ],
+      activeOperations: [],
+      presets: [],
       selectModel: vi.fn(),
       selectThinkingLevel: vi.fn(),
     } as unknown as ChatConfigurationStore;
@@ -1384,8 +1386,8 @@ describe("Transcript scrolling", () => {
     expect(chat?.textContent).not.toContain("Resolve chat");
     expect(chat?.textContent).not.toContain("Reopen chat");
     expect(chat?.querySelector(".chat-embedded-workbench-composer")).not.toBeNull();
-    expect(chat?.querySelector<HTMLInputElement>('[aria-label="Model"]')?.value).toBe("GPT");
-    expect(chat?.querySelector('[aria-label="Thinking level"]')?.textContent).toContain(
+    expect(chat?.querySelector('[aria-label="Model configuration"]')?.textContent).toContain("GPT");
+    expect(chat?.querySelector('[aria-label="Model configuration"]')?.textContent).toContain(
       "Medium reasoning",
     );
 

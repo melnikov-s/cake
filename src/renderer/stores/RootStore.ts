@@ -155,6 +155,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       modelPresets: () => this.settingsStore.modelPresets,
       openModelPresetSettings: () => this.showModelPresetSettings(),
       newSessionRequest: (sessionId) => this.projectWorkbenchStore.newSessionRequest(sessionId),
+      settings: () => this.settingsStore,
     });
   }
 
@@ -299,6 +300,8 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       modelPresets: () => this.settingsStore.modelPresets,
       defaultConfiguration: () => this.settingsStore.defaultModelPreset,
       openModelPresetSettings: () => this.showModelPresetSettings(),
+      settings: () => this.settingsStore,
+      persist: () => this.windowPersistence.schedule(),
     });
   }
 

@@ -99,3 +99,34 @@ export const TreeIcon = () => (
     <path d="M8 19h4a2 2 0 0 0 2-2v-3.5" />
   </Icon>
 );
+export const SparkleIcon = () => (
+  <Icon size={14}>
+    <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z" />
+  </Icon>
+);
+export const DiffIcon = () => (
+  <Icon size={14}>
+    <rect x="4" y="4" width="16" height="16" rx="2" />
+    <path d="M12 4v16M7 9h3M8.5 7.5v3M14 9h3M14 15h3" />
+  </Icon>
+);
+export const LogIcon = () => (
+  <Icon size={14}>
+    <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />
+  </Icon>
+);
+export const WorkLogCollapsedIcon = () => (
+  <Icon size={13}>
+    <path d="m9 6 6 6-6 6" />
+  </Icon>
+);
+export const WorkLogSemiExpandedIcon = () => (
+  <Icon size={13}>
+    <path d="m6 9 6 6 6-6" />
+  </Icon>
+);
+export const WorkLogFullyExpandedIcon = () => (
+  <Icon size={13}>
+    <path d="m7 7 5 5 5-5M7 13l5 5 5-5" />
+  </Icon>
+);

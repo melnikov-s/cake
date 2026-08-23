@@ -6,6 +6,8 @@ import {
   type PiSettingUpdate,
   type ThinkingLevel,
   type UtilityModel,
+  type WorkLogViewMode,
+  type WorkLogsExpansion,
 } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -30,6 +32,8 @@ export interface SettingsStoreProps {
 /** Owns model, reasoning, Pi preference, and provider-authentication workflows. */
 export class SettingsStore extends Store<SettingsStoreProps> {
   theme: "system" | "light" | "dark" = "system";
+  workLogViewMode: WorkLogViewMode = "auto";
+  workLogsExpansion: WorkLogsExpansion = "collapsed";
   providerOperations: Record<string, { provider: string; kind: "login" | "logout" }> = observable(
     {},
   );
@@ -71,6 +75,30 @@ export class SettingsStore extends Store<SettingsStoreProps> {
 
   setTheme(theme: "system" | "light" | "dark") {
     this.theme = theme;
+  }
+
+  setWorkLogViewMode(mode: WorkLogViewMode) {
+    this.workLogViewMode = mode;
+  }
+
+  cycleWorkLogViewMode() {
+    const next: WorkLogViewMode =
+      this.workLogViewMode === "auto" ? "diff" : this.workLogViewMode === "diff" ? "log" : "auto";
+    this.setWorkLogViewMode(next);
+  }
+
+  setWorkLogsExpansion(expansion: WorkLogsExpansion) {
+    this.workLogsExpansion = expansion;
+  }
+
+  cycleWorkLogsExpansion() {
+    const next: WorkLogsExpansion =
+      this.workLogsExpansion === "collapsed"
+        ? "expanded"
+        : this.workLogsExpansion === "expanded"
+          ? "fully-expanded"
+          : "collapsed";
+    this.setWorkLogsExpansion(next);
   }
 
   applyApplicationState(state: ApplicationState) {

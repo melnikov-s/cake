@@ -334,6 +334,8 @@ describe("process IPC", () => {
       recentProjectPaths: [],
       draft: "",
       theme: "system",
+      workLogViewMode: "auto",
+      workLogsExpansion: "collapsed",
       draftsBySession: {},
       newSessionDraftsByProject: {},
     });

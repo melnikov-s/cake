@@ -13,6 +13,7 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 import type { ReviewsStore } from "./ReviewsStore";
 import type { PluginCommandStore } from "./PluginCommandStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
+import type { SettingsStore } from "./SettingsStore";
 import { ProjectSessionStore, type SessionTarget } from "./ProjectSessionStore";
 import { toSessionPreviewSnapshot, toSessionSnapshot } from "../../utils/session-snapshot";
 
@@ -34,6 +35,7 @@ export interface SessionRegistryStoreProps {
   newSessionRequest?(
     sessionId: string,
   ): { path: string; configuration?: ChatConfiguration } | undefined;
+  settings?(): SettingsStore | undefined;
 }
 
 /** Owns the keyed collection of loaded per-session Store instances for a window. */
@@ -70,6 +72,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         modelPresets: () => this.props.modelPresets?.() ?? [],
         openModelPresetSettings: () => this.props.openModelPresetSettings?.(),
         newSessionRequest: () => this.props.newSessionRequest?.(target.sessionId),
+        settings: () => this.props.settings?.(),
       }),
     );
   }

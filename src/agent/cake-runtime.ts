@@ -13,6 +13,7 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import type {
   Attachment,
+  ChatConfiguration,
   ModelOption,
   PiSettings,
   PiSettingUpdate,
@@ -422,6 +423,8 @@ export interface CakeRuntime {
   abort(): Promise<void>;
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: ThinkingLevel): Promise<void>;
+  /** Applies a full chat configuration atomically, emitting a single snapshot. */
+  applyConfiguration(configuration: ChatConfiguration): Promise<void>;
   setFastMode?(enabled: boolean): Promise<void>;
   syncFastMode?(): Promise<void>;
   setPiSetting(update: PiSettingUpdate): Promise<void>;
@@ -1421,6 +1424,19 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       session.setThinkingLevel(level);
       await emitSnapshot();
     },
+    async applyConfiguration(configuration) {
+      const model = modelRuntime.getModel(configuration.provider, configuration.modelId);
+      if (!model)
+        throw new Error(`Unknown model ${configuration.provider}/${configuration.modelId}`);
+      if (configuration.fastMode && !supportsFastMode(model))
+        throw new Error("Fast mode is unavailable for this model");
+      await session.setModel(model);
+      currentModel = session.model;
+      session.setThinkingLevel(configuration.thinkingLevel);
+      if (options.fastMode) await options.fastMode.set(configuration.fastMode);
+      fastMode = configuration.fastMode;
+      await emitSnapshot();
+    },
     async setFastMode(enabled) {
       if (enabled && !supportsFastMode(session.model))
         throw new Error("Fast mode is unavailable for the current model");
@@ -1429,8 +1445,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       await emitSnapshot();
     },
     async syncFastMode() {
+      // Syncs state only; callers publish the synced state in their own snapshot
+      // so a freshly created runtime never emits its pre-configuration model.
       if (options.fastMode) fastMode = options.fastMode.get();
-      await emitSnapshot();
     },
     async setPiSetting(update) {
       applyPiSetting(settingsManager, session, update);

@@ -12,6 +12,7 @@ import type {
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
+import type { SettingsStore } from "./SettingsStore";
 import { CakeChatSessionStore } from "./CakeChatSessionStore";
 import { describeError } from "../error-details";
 
@@ -60,6 +61,8 @@ export interface GlobalChatStoreProps {
   modelPresets?(): readonly ModelPreset[];
   defaultConfiguration?(): ChatConfiguration | undefined;
   openModelPresetSettings?(): void;
+  settings?(): SettingsStore | undefined;
+  persist?(): void;
 }
 
 /** Owns the Cake Chat session collection, selection, and per-session Store instances. */
@@ -99,6 +102,8 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
         operations: this.props.operations,
         modelPresets: () => this.props.modelPresets?.() ?? [],
         openModelPresetSettings: () => this.props.openModelPresetSettings?.(),
+        settings: () => this.props.settings?.(),
+        persist: () => this.props.persist?.(),
       }),
     );
   }

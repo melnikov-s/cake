@@ -6,6 +6,7 @@ import { describeError } from "../error-details";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { ChatStore } from "./ChatStore";
 import type { GlobalChatStore } from "./GlobalChatStore";
+import type { SettingsStore } from "./SettingsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 
@@ -16,6 +17,8 @@ export interface CakeChatSessionStoreProps {
   operations: SessionOperationCoordinatorStore;
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
+  settings?(): SettingsStore | undefined;
+  persist?(): void;
 }
 
 /** Owns the independent draft, attachments, configuration, and turn policy for one Cake Chat session. */
@@ -178,6 +181,17 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         details: this.configurationStore.errorDetails ?? this.errorDetails,
         title: "Cake Chat failed",
       }),
+      persist: () => this.props.persist?.(),
+      workLogViewMode: () => this.props.settings?.()?.workLogViewMode,
+      setWorkLogViewMode: (mode) => {
+        this.props.settings?.()?.setWorkLogViewMode(mode);
+        this.props.persist?.();
+      },
+      workLogsExpansion: () => this.props.settings?.()?.workLogsExpansion,
+      setWorkLogsExpansion: (expansion) => {
+        this.props.settings?.()?.setWorkLogsExpansion(expansion);
+        this.props.persist?.();
+      },
     });
   }
 

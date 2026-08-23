@@ -9,6 +9,7 @@ import type { PluginCommandStore } from "./PluginCommandStore";
 import { MessageComposerStore } from "./MessageComposerStore";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { ChatStore } from "./ChatStore";
+import type { SettingsStore } from "./SettingsStore";
 import { ArtifactInteractionStore } from "./ArtifactInteractionStore";
 import { MessageCommentsStore } from "./MessageCommentsStore";
 
@@ -33,6 +34,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
   newSessionRequest(): { path: string; configuration?: ChatConfiguration } | undefined;
+  settings?(): SettingsStore | undefined;
 }
 
 /** Owns the view and interaction workflow for one project Pi session. */
@@ -174,6 +176,16 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         details: this.composerStore.errorDetails ?? this.configurationStore.errorDetails,
       }),
       persist: () => this.props.persist(),
+      workLogViewMode: () => this.props.settings?.()?.workLogViewMode,
+      setWorkLogViewMode: (mode) => {
+        this.props.settings?.()?.setWorkLogViewMode(mode);
+        this.props.persist();
+      },
+      workLogsExpansion: () => this.props.settings?.()?.workLogsExpansion,
+      setWorkLogsExpansion: (expansion) => {
+        this.props.settings?.()?.setWorkLogsExpansion(expansion);
+        this.props.persist();
+      },
     });
   }
 

@@ -468,6 +468,9 @@ export const windowConversationSelectionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("cake-chat"), sessionId: z.string().min(1).max(256) }),
 ]);
 
+export const workLogViewModeSchema = z.enum(["auto", "diff", "log"]);
+export const workLogsExpansionSchema = z.enum(["collapsed", "expanded", "fully-expanded"]);
+
 export const windowViewStateSchema = z.object({
   projectPath: z.string().max(4_096).optional(),
   selectedSessionId: z.string().max(256).optional(),
@@ -476,10 +479,14 @@ export const windowViewStateSchema = z.object({
   draft: z.string().max(262_144).default(""),
   projectBrowserMode: z.enum(["builtin", "vscode"]).optional(),
   theme: z.enum(["system", "light", "dark"]).default("system"),
+  workLogViewMode: workLogViewModeSchema.default("auto"),
+  workLogsExpansion: workLogsExpansionSchema.default("collapsed"),
   draftsBySession: z.record(z.string(), z.string().max(262_144)).default({}),
   newSessionDraftsByProject: z.record(z.string(), z.string().max(262_144)).default({}),
 });
 
+export type WorkLogViewMode = z.infer<typeof workLogViewModeSchema>;
+export type WorkLogsExpansion = z.infer<typeof workLogsExpansionSchema>;
 export type FileSuggestion = z.infer<typeof fileSuggestionSchema>;
 export type Attachment = z.infer<typeof attachmentSchema>;
 export type UiPart = z.infer<typeof uiPartSchema>;

@@ -57,11 +57,8 @@ export class GlobalChatDriver {
     this.tools = tools;
     void this.run(requestId, async () => {
       const runtime = await this.ensureRuntime(Boolean(target.newSession), target.sessionId);
-      if (target.newSession && target.configuration) {
-        await runtime.setModel(target.configuration.provider, target.configuration.modelId);
-        await runtime.setThinkingLevel(target.configuration.thinkingLevel);
-        if (runtime.setFastMode) await runtime.setFastMode(target.configuration.fastMode);
-      }
+      if (target.newSession && target.configuration)
+        await runtime.applyConfiguration(target.configuration);
       if (target.initialPrompt) await runtime.prompt(target.initialPrompt, "prompt", []);
       this.emitSnapshot(await runtime.snapshot(requestId), requestId);
     });
@@ -92,9 +89,7 @@ export class GlobalChatDriver {
   setConfiguration(requestId: string, sessionId: string, configuration: ChatConfiguration) {
     void this.run(requestId, async () => {
       const runtime = await this.ensureRuntime(false, sessionId);
-      await runtime.setModel(configuration.provider, configuration.modelId);
-      await runtime.setThinkingLevel(configuration.thinkingLevel);
-      if (runtime.setFastMode) await runtime.setFastMode(configuration.fastMode);
+      await runtime.applyConfiguration(configuration);
     });
   }
 

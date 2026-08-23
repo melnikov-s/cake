@@ -4,6 +4,8 @@ import type {
   FileSuggestion,
   SessionSnapshot,
   UiPart,
+  WorkLogViewMode,
+  WorkLogsExpansion,
 } from "../../ipc/session-contract";
 import type { QueuedPrompt } from "./MessageComposerStore";
 import type { ChatConfigurationStore } from "./ChatConfigurationStore";
@@ -36,6 +38,10 @@ export interface ChatStoreProps {
   hideThinking?(): boolean;
   error?(): { message?: string; details?: string; title?: string };
   persist?(): void;
+  workLogViewMode?(): WorkLogViewMode | undefined;
+  setWorkLogViewMode?(mode: WorkLogViewMode): void;
+  workLogsExpansion?(): WorkLogsExpansion | undefined;
+  setWorkLogsExpansion?(expansion: WorkLogsExpansion): void;
 }
 
 export interface WorkLogTimerState {
@@ -43,14 +49,13 @@ export interface WorkLogTimerState {
   endedAt?: number;
 }
 
-/** Global work-log expansion: collapsed, expanded with items collapsed, or fully expanded. */
-export type WorkLogsExpansion = "collapsed" | "expanded" | "fully-expanded";
+export type { WorkLogViewMode, WorkLogsExpansion };
 
 /** Common state and behavior contract for every Cake conversation surface. */
 export class ChatStore extends Store<ChatStoreProps> {
   draft = "";
-  workLogDiff = false;
-  workLogsExpansion: WorkLogsExpansion = "collapsed";
+  private localWorkLogViewMode: WorkLogViewMode = "auto";
+  private localWorkLogsExpansion: WorkLogsExpansion = "collapsed";
   readonly workLogItemOverrides = observable(new Map<string, boolean>());
   submittingLocally = false;
   loadingStartedAt: number | undefined;
@@ -217,22 +222,41 @@ export class ChatStore extends Store<ChatStoreProps> {
     this.props.persist?.();
   }
 
-  setWorkLogDiff(showDiff: boolean) {
-    this.workLogDiff = showDiff;
+  get workLogViewMode(): WorkLogViewMode {
+    return this.props.workLogViewMode?.() ?? this.localWorkLogViewMode;
   }
 
-  toggleWorkLogDiff() {
-    this.setWorkLogDiff(!this.workLogDiff);
+  setWorkLogViewMode(mode: WorkLogViewMode) {
+    if (this.props.setWorkLogViewMode) {
+      this.props.setWorkLogViewMode(mode);
+    } else {
+      this.localWorkLogViewMode = mode;
+    }
+  }
+
+  /** Ctrl+Shift+O cycles: auto → diff → log → auto. */
+  cycleWorkLogViewMode() {
+    const next: WorkLogViewMode =
+      this.workLogViewMode === "auto" ? "diff" : this.workLogViewMode === "diff" ? "log" : "auto";
+    this.setWorkLogViewMode(next);
+  }
+
+  get workLogsExpansion(): WorkLogsExpansion {
+    return this.props.workLogsExpansion?.() ?? this.localWorkLogsExpansion;
   }
 
   setWorkLogsExpansion(expansion: WorkLogsExpansion) {
-    this.workLogsExpansion = expansion;
+    if (this.props.setWorkLogsExpansion) {
+      this.props.setWorkLogsExpansion(expansion);
+    } else {
+      this.localWorkLogsExpansion = expansion;
+    }
     this.workLogItemOverrides.clear();
   }
 
   /** Ctrl+O cycles: collapsed → expanded (items collapsed) → fully expanded → collapsed. */
   cycleWorkLogsExpansion() {
-    const next =
+    const next: WorkLogsExpansion =
       this.workLogsExpansion === "collapsed"
         ? "expanded"
         : this.workLogsExpansion === "expanded"

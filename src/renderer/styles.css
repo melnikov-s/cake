@@ -793,7 +793,48 @@
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
+}
+.work-log-header-controls {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  margin-right: 4px;
+  -webkit-app-region: no-drag;
+}
+.work-log-segmented-group {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid color-mix(in oklab, var(--border) 78%, transparent);
+  border-radius: 7px;
+  background: color-mix(in oklab, var(--muted) 45%, transparent);
+}
+.work-log-control-btn {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+.work-log-control-btn:hover {
+  background: color-mix(in oklab, var(--muted) 90%, transparent);
+  color: var(--foreground);
+}
+.work-log-control-btn.active,
+.work-log-control-btn[aria-pressed="true"] {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px color-mix(in oklab, black 12%, transparent);
 }
 .workspace-header-actions {
   display: flex;

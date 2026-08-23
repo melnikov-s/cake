@@ -173,6 +173,37 @@ test("does not mount collapsed work-log activity until it is expanded", async ()
     await expect(log).toHaveAttribute("open", "");
     await expect(log.locator(".tool-call")).toHaveCount(1);
     await expect(log.locator(".tool-call.tool-open")).toHaveCount(0);
+
+    // Verify top-right header controls
+    const headerControls = page.locator(".work-log-header-controls");
+    await expect(headerControls).toBeVisible();
+    const autoBtn = headerControls.locator('[aria-label="Auto view mode"]');
+    const diffBtn = headerControls.locator('[aria-label="Diff view mode"]');
+    const logBtn = headerControls.locator('[aria-label="Log view mode"]');
+    const collapseBtn = headerControls.locator('[aria-label="Collapse work logs"]');
+    const semiBtn = headerControls.locator('[aria-label="Semi-expand work logs"]');
+    const fullBtn = headerControls.locator('[aria-label="Fully expand work logs"]');
+
+    await expect(autoBtn).toHaveAttribute("aria-pressed", "true");
+    await expect(semiBtn).toHaveAttribute("aria-pressed", "true");
+
+    await fullBtn.click();
+    await expect(log.locator(".tool-call.tool-open")).toHaveCount(1);
+    await expect(fullBtn).toHaveAttribute("aria-pressed", "true");
+
+    await collapseBtn.click();
+    await expect(log).not.toHaveAttribute("open", "");
+    await expect(collapseBtn).toHaveAttribute("aria-pressed", "true");
+
+    // Cycle view mode via shortcut Control+Shift+O
+    await page.keyboard.press("Control+Shift+O");
+    await expect(diffBtn).toHaveAttribute("aria-pressed", "true");
+
+    await page.keyboard.press("Control+Shift+O");
+    await expect(logBtn).toHaveAttribute("aria-pressed", "true");
+
+    await page.keyboard.press("Control+Shift+O");
+    await expect(autoBtn).toHaveAttribute("aria-pressed", "true");
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

@@ -98,3 +98,75 @@ describe("ChatStore loading timer", () => {
     store[Symbol.dispose]();
   });
 });
+
+describe("ChatStore work-log view mode and expansion", () => {
+  it("manages local workLogViewMode and cycles auto -> diff -> log -> auto", () => {
+    const store = createChatStore(() => Promise.resolve(true));
+    expect(store.workLogViewMode).toBe("auto");
+
+    store.cycleWorkLogViewMode();
+    expect(store.workLogViewMode).toBe("diff");
+
+    store.cycleWorkLogViewMode();
+    expect(store.workLogViewMode).toBe("log");
+
+    store.cycleWorkLogViewMode();
+    expect(store.workLogViewMode).toBe("auto");
+
+    store.setWorkLogViewMode("diff");
+    expect(store.workLogViewMode).toBe("diff");
+    store[Symbol.dispose]();
+  });
+
+  it("manages local workLogsExpansion and cycles collapsed -> expanded -> fully-expanded -> collapsed", () => {
+    const store = createChatStore(() => Promise.resolve(true));
+    expect(store.workLogsExpansion).toBe("collapsed");
+    expect(store.workLogItemOpen("item-1")).toBe(false);
+
+    store.cycleWorkLogsExpansion();
+    expect(store.workLogsExpansion).toBe("expanded");
+    expect(store.workLogItemOpen("item-1")).toBe(false);
+
+    store.setWorkLogItemOpen("item-1", true);
+    expect(store.workLogItemOpen("item-1")).toBe(true);
+
+    store.cycleWorkLogsExpansion();
+    expect(store.workLogsExpansion).toBe("fully-expanded");
+    // In fully-expanded, overrides are cleared and all items are open
+    expect(store.workLogItemOpen("item-1")).toBe(true);
+    expect(store.workLogItemOpen("item-2")).toBe(true);
+
+    store.cycleWorkLogsExpansion();
+    expect(store.workLogsExpansion).toBe("collapsed");
+    expect(store.workLogItemOpen("item-1")).toBe(false);
+    store[Symbol.dispose]();
+  });
+
+  it("delegates view mode and expansion to props when provided", () => {
+    let mode: "auto" | "diff" | "log" = "log";
+    let expansion: "collapsed" | "expanded" | "fully-expanded" = "expanded";
+    const setMode = vi.fn((next: typeof mode) => {
+      mode = next;
+    });
+    const setExpansion = vi.fn((next: typeof expansion) => {
+      expansion = next;
+    });
+
+    const store = createChatStore(() => Promise.resolve(true), {
+      workLogViewMode: () => mode,
+      setWorkLogViewMode: setMode,
+      workLogsExpansion: () => expansion,
+      setWorkLogsExpansion: setExpansion,
+    });
+
+    expect(store.workLogViewMode).toBe("log");
+    expect(store.workLogsExpansion).toBe("expanded");
+
+    store.setWorkLogViewMode("diff");
+    expect(setMode).toHaveBeenCalledWith("diff");
+
+    store.setWorkLogsExpansion("fully-expanded");
+    expect(setExpansion).toHaveBeenCalledWith("fully-expanded");
+    store[Symbol.dispose]();
+  });
+});
