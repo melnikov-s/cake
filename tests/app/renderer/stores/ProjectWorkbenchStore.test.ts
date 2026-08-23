@@ -1781,57 +1781,45 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("keeps a new session pending until Pi lists it, not merely until it has parts", async () => {
+  it("allows another new session as soon as the first prompt is accepted", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop);
 
     await store.startNewSession();
-    const pendingSessionId = store.activeSession!.sessionId;
+    const startedSessionId = store.activeSession!.sessionId;
     store.activeSession!.chatStore.setDraft("Hello");
     await store.activeSession!.composerStore.submit();
+
+    expect(store.sessionRegistry.pendingNewSessionId("/project")).toBeUndefined();
+    expect(store.sessionRegistry.isTemporarySession(startedSessionId)).toBe(false);
+
     const pendingSnapshot = {
       ...snapshot,
-      sessionId: pendingSessionId,
-      sessionFile: "",
+      sessionId: startedSessionId,
+      sessionFile: "/sessions/started.jsonl",
       sessionListed: false,
       sessions: [
         {
-          id: pendingSessionId,
+          id: startedSessionId,
           title: "New chat",
           created: new Date(0).toISOString(),
           modified: new Date(0).toISOString(),
-          messageCount: 0,
+          messageCount: 1,
           resolved: false,
         },
       ],
     };
     desktop.emit({ type: "session-snapshot-received", snapshot: pendingSnapshot });
-    desktop.emit({
-      type: "session-snapshot-received",
-      snapshot: {
-        ...pendingSnapshot,
-        parts: [
-          {
-            id: "user-1",
-            kind: "text",
-            role: "user",
-            text: "Hello",
-            status: "complete",
-          },
-        ],
-      },
-    });
+    expect(root.sessionCatalogStore.find(startedSessionId)).toBeDefined();
+    expect(store.sessionRegistry.retainedNewSessionIds("/project")).toContain(startedSessionId);
 
-    expect(store.sessionRegistry.pendingNewSessionId("/project")).toBe(pendingSessionId);
-    expect(root.sessionCatalogStore.find(pendingSessionId)).toBeDefined();
+    await store.startNewSession();
 
-    desktop.emit({
-      type: "session-snapshot-received",
-      snapshot: { ...pendingSnapshot, sessionListed: true },
-    });
-    expect(store.sessionRegistry.pendingNewSessionId("/project")).toBeUndefined();
+    expect(store.activeSession?.sessionId).not.toBe(startedSessionId);
+    expect(store.sessionRegistry.isTemporarySession(store.activeSession!.sessionId)).toBe(true);
+    expect(root.sessionCatalogStore.find(startedSessionId)).toBeDefined();
     root[Symbol.dispose]();
   });
 

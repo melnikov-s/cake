@@ -41,9 +41,12 @@ export interface SessionRegistryStoreProps {
 /** Owns the keyed collection of loaded per-session Store instances for a window. */
 export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   readonly targets: SessionTarget[] = observable([]);
-  // Empty Pi sessions have no catalog entry, so retain their identity by project
-  // until the first persisted prompt makes them discoverable.
+  // Keep one unsent draft per workspace so returning through the new-session action
+  // restores it. Once its first prompt is accepted, it is no longer a pending draft.
   private readonly pendingNewSessionIdsByWorkspace: Record<string, string> = observable({});
+  // Pi may take time to include a newly started session in its disk-backed listing.
+  // Retain all such sessions independently from the one unsent draft per workspace.
+  private readonly unlistedNewSessionIds: Set<string> = observable(new Set<string>());
   // A deferred new session has no runtime yet, so configuration changes are kept
   // locally and delivered with the first prompt instead of runtime commands.
   private readonly pendingConfigurationsBySession: Record<string, ChatConfiguration> = observable(
@@ -123,6 +126,25 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     this.pendingNewSessionIdsByWorkspace[workspacePath] = sessionId;
   }
 
+  markNewSessionStarted(workspacePath: string, sessionId: string) {
+    const wasDeferred =
+      this.temporarySessionIds.has(sessionId) ||
+      this.pendingNewSessionIdsByWorkspace[workspacePath] === sessionId;
+    if (!wasDeferred) return;
+    this.temporarySessionIds.delete(sessionId);
+    delete this.pendingConfigurationsBySession[sessionId];
+    if (this.pendingNewSessionIdsByWorkspace[workspacePath] === sessionId)
+      delete this.pendingNewSessionIdsByWorkspace[workspacePath];
+    this.unlistedNewSessionIds.add(sessionId);
+    this.props.persist();
+  }
+
+  retainedNewSessionIds(workspacePath: string) {
+    return [...this.unlistedNewSessionIds].filter(
+      (sessionId) => this.sessionWorkspacePaths.get(sessionId) === workspacePath,
+    );
+  }
+
   prepareNewSession(workspacePath: string, sessionId: string) {
     this.rememberSessionLocation(sessionId, workspacePath);
     const session = this.ensure(sessionId);
@@ -151,6 +173,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     if (index >= 0) this.targets.splice(index, 1);
     this.sessionsById.delete(sessionId);
     this.temporarySessionIds.delete(sessionId);
+    this.unlistedNewSessionIds.delete(sessionId);
     delete this.pendingConfigurationsBySession[sessionId];
     this.sessionWorkspacePaths.delete(sessionId);
     this.pendingPartsBySession.delete(sessionId);
@@ -168,21 +191,21 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   }
 
   upsert(snapshot: SessionSnapshot) {
-    this.temporarySessionIds.delete(snapshot.sessionId);
-    delete this.pendingConfigurationsBySession[snapshot.sessionId];
     this.rememberSessionLocation(snapshot.sessionId, snapshot.workspacePath);
+    if (this.temporarySessionIds.has(snapshot.sessionId))
+      this.markNewSessionStarted(snapshot.workspacePath, snapshot.sessionId);
+    else {
+      this.temporarySessionIds.delete(snapshot.sessionId);
+      delete this.pendingConfigurationsBySession[snapshot.sessionId];
+    }
     const session = this.ensure(snapshot.sessionId);
     applySnapshot(session.model, toSessionSnapshot(snapshot));
     session.model.applyArtifacts(snapshot.artifacts ?? []);
     this.applyPendingEvents(session);
     session.markHydrated();
-    if (
-      snapshot.sessionListed === true &&
-      this.pendingNewSessionIdsByWorkspace[snapshot.workspacePath] === snapshot.sessionId
-    ) {
-      delete this.pendingNewSessionIdsByWorkspace[snapshot.workspacePath];
+    if (snapshot.sessionListed === true && this.unlistedNewSessionIds.delete(snapshot.sessionId))
       this.props.persist();
-    }
+    else if (snapshot.sessionListed === false) this.unlistedNewSessionIds.add(snapshot.sessionId);
     return session.model;
   }
 

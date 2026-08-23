@@ -620,12 +620,11 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.extensionUi.applyState(snapshot.extensionUi);
     this.pendingOpen = undefined;
     const workspaceName = this.props.projects.nameForPath(snapshot.workspacePath);
-    const pendingSessionId = this.sessionRegistry.pendingNewSessionId(snapshot.workspacePath);
     this.props.catalog.applyWorkspace(
       snapshot.workspacePath,
       workspaceName,
       snapshot.sessions,
-      pendingSessionId ? [pendingSessionId] : [],
+      this.sessionRegistry.retainedNewSessionIds(snapshot.workspacePath),
     );
     this.props.projects.recordOpened(snapshot.workspacePath);
     this.props.persistence().schedule();

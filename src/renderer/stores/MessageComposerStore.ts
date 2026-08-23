@@ -343,18 +343,20 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     const operationId = this.props.operations.start(this.props.operationOwner);
     this.addPendingUserMessage(operationId, sessionId, text, attachments, delivery);
     try {
+      const newSession = this.props.newSessionRequest?.();
       await this.props.client.submit({
         operationId,
         sessionId,
         text,
         delivery,
         attachments,
-        newSession: this.props.newSessionRequest?.(),
+        newSession,
       });
       if (this.signal.aborted) {
         this.finishOperation(operationId);
         return false;
       }
+      if (newSession) this.props.sessionRegistry.markNewSessionStarted(newSession.path, sessionId);
       return true;
     } catch (error) {
       if (this.signal.aborted) {
