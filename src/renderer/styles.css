@@ -509,7 +509,9 @@
   flex: 0 0 auto;
   color: color-mix(in oklab, var(--foreground) 80%, var(--muted-foreground));
 }
-.project-disclosure {
+/* Outranks the late ".icon-button { width: 30px }" base rule so the chevron
+   stays a compact 20px hit target tight against the folder label. */
+.icon-button.project-disclosure {
   display: flex;
   width: 20px;
   height: 20px;
@@ -536,7 +538,8 @@
   width: 12px;
   height: 12px;
 }
-.project-add {
+/* Same override as the disclosure: keeps the add button at its intended size. */
+.icon-button.project-add {
   display: flex;
   width: 24px;
   height: 24px;

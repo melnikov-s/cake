@@ -82,7 +82,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
         )}
       </div>
       {!collapsed && (
-        <div className="flex flex-col pl-5 space-y-0.5 mt-0.5">
+        <div className="flex flex-col pl-6 space-y-0.5 mt-0.5">
           {visibleSessions.map((session) => (
             <SidebarSessionItem
               key={session.id}
