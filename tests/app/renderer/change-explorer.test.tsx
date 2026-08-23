@@ -2,13 +2,46 @@
  * @vitest-environment jsdom
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { act } from "react";
+import React, { act, forwardRef, useImperativeHandle } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore, mount } from "r-state-tree";
 import type { ChangedFile } from "../../../src/ipc/session-contract";
 import type { ProjectWorkbenchStore } from "../../../src/renderer/stores/ProjectWorkbenchStore";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
+
+vi.mock("@/components/ai-elements/conversation", () => ({
+  VirtualizedConversation: forwardRef(function MockVirtualizedConversation(
+    props: {
+      className?: string;
+      data: ChangedFile[];
+      itemContent: (index: number, item: ChangedFile) => React.ReactNode;
+      rangeChanged?: (range: { startIndex: number; endIndex: number }) => void;
+      role?: string;
+      "aria-label"?: string;
+    },
+    ref,
+  ) {
+    useImperativeHandle(ref, () => ({
+      scrollToIndex: ({ index }: { index: number }) =>
+        document
+          .querySelector<HTMLElement>(`[data-change-path="${props.data[index]?.path}"]`)
+          ?.scrollIntoView?.({ block: "start" }),
+    }));
+    return (
+      <div
+        className={props.className}
+        role={props.role}
+        aria-label={props["aria-label"]}
+        onScroll={() => props.rangeChanged?.({ startIndex: 1, endIndex: 1 })}
+      >
+        {props.data.map((item, index) => (
+          <React.Fragment key={item.path}>{props.itemContent(index, item)}</React.Fragment>
+        ))}
+      </div>
+    );
+  }),
+}));
 
 vi.mock("@streamdown/code", () => {
   const code = {

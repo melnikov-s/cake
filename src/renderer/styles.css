@@ -1498,7 +1498,7 @@
 .change-explorer-file-section {
   padding-bottom: 24px;
 }
-.change-explorer-file-section + .change-explorer-file-section {
+.change-explorer-file-section.has-divider {
   border-top: 1px solid var(--border);
 }
 .change-explorer-diff-file-header {
@@ -1536,7 +1536,7 @@
   font-style: normal;
   font-weight: 700;
 }
-.change-explorer-all-diff > .change-explorer-file-section > .change-explorer-embedded-diff {
+.change-explorer-all-diff .change-explorer-file-section > .change-explorer-embedded-diff {
   overflow: visible;
   padding: 0;
 }
@@ -3334,8 +3334,12 @@
   max-width: 100%;
   min-width: 0;
 }
-.activity-group > div > .tool-call {
+.activity-group > div > .tool-call,
+.work-log-items .tool-call {
   background: color-mix(in oklab, var(--card) 45%, transparent);
+}
+.work-log-items .work-log-item {
+  padding-bottom: 8px;
 }
 .work-log-diff-view {
   display: grid;
@@ -3406,11 +3410,12 @@
   transform: rotate(180deg);
 }
 .work-log-activity-strip-items {
-  display: grid;
-  gap: 6px;
   padding: 8px 10px 10px;
   border-top: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
   background: color-mix(in oklab, var(--muted) 25%, transparent);
+}
+.work-log-activity-strip-items .work-log-item {
+  padding-bottom: 6px;
 }
 .work-log-activity-strip-items .tool-call {
   background: color-mix(in oklab, var(--card) 60%, transparent);

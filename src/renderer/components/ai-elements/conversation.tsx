@@ -7,6 +7,7 @@ import {
   forwardRef,
   type ComponentProps,
   type ForwardedRef,
+  type AriaRole,
   type Key,
   type ReactElement,
   type ReactNode,
@@ -54,9 +55,13 @@ export interface VirtualizedConversationProps<Item> {
   computeItemKey: (index: number, item: Item) => Key;
   itemContent: (index: number, item: Item) => ReactNode;
   components?: VirtuosoProps<Item, unknown>["components"];
+  customScrollParent?: HTMLElement;
   atBottomStateChange?: (atBottom: boolean) => void;
   followOutput?: FollowOutput;
   initialTopMostItemIndex?: IndexLocationWithAlign | number;
+  rangeChanged?: VirtuosoProps<Item, unknown>["rangeChanged"];
+  role?: AriaRole;
+  "aria-label"?: string;
 }
 
 function VirtualizedConversationInner<Item>(
@@ -66,9 +71,13 @@ function VirtualizedConversationInner<Item>(
     computeItemKey,
     itemContent,
     components,
+    customScrollParent,
     atBottomStateChange,
     followOutput,
     initialTopMostItemIndex,
+    rangeChanged,
+    role,
+    "aria-label": ariaLabel,
   }: VirtualizedConversationProps<Item>,
   ref: ForwardedRef<VirtualizedConversationHandle>,
 ) {
@@ -81,9 +90,13 @@ function VirtualizedConversationInner<Item>(
       itemContent={itemContent}
       increaseViewportBy={{ top: 320, bottom: 480 }}
       {...(components === undefined ? {} : { components })}
+      {...(customScrollParent === undefined ? {} : { customScrollParent })}
       {...(atBottomStateChange === undefined ? {} : { atBottomStateChange })}
       {...(followOutput === undefined ? {} : { followOutput })}
       {...(initialTopMostItemIndex === undefined ? {} : { initialTopMostItemIndex })}
+      {...(rangeChanged === undefined ? {} : { rangeChanged })}
+      {...(role === undefined ? {} : { role })}
+      {...(ariaLabel === undefined ? {} : { "aria-label": ariaLabel })}
     />
   );
 }

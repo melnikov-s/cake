@@ -13,7 +13,7 @@ async function git(cwd: string, ...args: string[]) {
   await execFileAsync("git", args, { cwd });
 }
 
-test("renders all changed files in one scrollable diff and synchronizes file navigation", async () => {
+test("virtualizes the scrollable diff and synchronizes file navigation", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-changes-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -125,9 +125,9 @@ test("renders all changed files in one scrollable diff and synchronizes file nav
 
     const diff = page.locator(".change-explorer-all-diff");
     await expect(diff).toBeVisible({ timeout: 20_000 });
-    await expect(diff.locator(".change-explorer-file-section")).toHaveCount(2);
+    await expect(diff.locator(".change-explorer-file-section")).toHaveCount(1);
     await expect(diff).toContainText("export const values");
-    await expect(diff).toContainText("# Plan");
+    await expect(diff).not.toContainText("# Plan");
 
     const firstButton = page
       .locator('nav[aria-label="Changed files"] button')
@@ -135,13 +135,16 @@ test("renders all changed files in one scrollable diff and synchronizes file nav
     const planButton = page
       .locator('nav[aria-label="Changed files"] button')
       .filter({ hasText: "PLAN.md" });
-    await firstButton.click();
-    await expect(firstButton).toHaveClass(/active/);
     await diff.evaluate((element) => {
       element.scrollTop = element.scrollHeight;
       element.dispatchEvent(new Event("scroll"));
     });
+    await expect(diff).toContainText("# Plan");
     await expect(planButton).toHaveClass(/active/);
+
+    await firstButton.click();
+    await expect(firstButton).toHaveClass(/active/);
+    await expect.poll(() => diff.evaluate((element) => element.scrollTop)).toBe(0);
 
     await planButton.click();
     await expect(planButton).toHaveClass(/active/);

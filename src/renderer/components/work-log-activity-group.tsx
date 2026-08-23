@@ -1,6 +1,7 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { observer } from "r-state-tree/react";
 import { diffStats } from "@/components/ai-elements/diff-view";
+import { VirtualizedConversation } from "@/components/ai-elements/conversation";
 import { WorkLogDiff } from "@/components/ai-elements/work-log-diff";
 import { ChevronIcon } from "@/components/ui/icons";
 import { formatElapsed } from "@/components/ui/loading-state";
@@ -26,7 +27,12 @@ export const ActivityGroup = observer(function ActivityGroup({
   const groupId = parts[0]?.id ?? "work-log";
   const open = behavior.store.workLogGroupOpen(groupId, hasDiff);
   const [activityStripOpen, setActivityStripOpen] = useState(false);
+  const [logElement, setLogElement] = useState<HTMLDivElement | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
+  const attachLog = useCallback((element: HTMLDivElement | null) => {
+    logRef.current = element;
+    setLogElement(element);
+  }, []);
   const logIsAtBottomRef = useRef(true);
   const workLogItems = combineSubagentWorkLogParts(parts);
   const tools = workLogItems.filter(
@@ -73,6 +79,28 @@ export const ActivityGroup = observer(function ActivityGroup({
     : activityCountLabel;
   const activityVersion = JSON.stringify(parts);
   const live = behavior.store.liveWorkPossible;
+  const renderWorkLogItem = (item: (typeof workLogItems)[number], omitToolDiff = false) => (
+    <div className="work-log-item">
+      {item.kind === "subagent-work-log" ? (
+        <TranscriptPart
+          part={item.result}
+          subagentSpawnPart={item.spawn}
+          live={live}
+          behavior={behavior}
+          workLogItem
+          omitToolDiff={omitToolDiff}
+        />
+      ) : (
+        <TranscriptPart
+          part={item}
+          live={live}
+          behavior={behavior}
+          workLogItem
+          omitToolDiff={omitToolDiff}
+        />
+      )}
+    </div>
+  );
   useLayoutEffect(() => {
     if (!isStreaming || !open || !logRef.current || !logIsAtBottomRef.current) return;
     logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -103,7 +131,7 @@ export const ActivityGroup = observer(function ActivityGroup({
       </summary>
       {open && (
         <div
-          ref={logRef}
+          ref={attachLog}
           onScroll={(event) => {
             const log = event.currentTarget;
             logIsAtBottomRef.current = log.scrollHeight - log.clientHeight - log.scrollTop <= 1;
@@ -129,31 +157,15 @@ export const ActivityGroup = observer(function ActivityGroup({
                     />
                   </span>
                 </button>
-                {activityStripOpen && (
-                  <div className="work-log-activity-strip-items">
-                    {workLogItems.map((item) =>
-                      item.kind === "subagent-work-log" ? (
-                        <TranscriptPart
-                          key={item.id}
-                          part={item.result}
-                          subagentSpawnPart={item.spawn}
-                          live={live}
-                          behavior={behavior}
-                          workLogItem
-                          omitToolDiff
-                        />
-                      ) : (
-                        <TranscriptPart
-                          key={item.id}
-                          part={item}
-                          live={live}
-                          behavior={behavior}
-                          workLogItem
-                          omitToolDiff
-                        />
-                      ),
-                    )}
-                  </div>
+                {activityStripOpen && logElement && (
+                  <VirtualizedConversation
+                    className="work-log-activity-strip-items"
+                    customScrollParent={logElement}
+                    data={workLogItems}
+                    computeItemKey={(_index, item) => item.id}
+                    followOutput={isStreaming ? "auto" : false}
+                    itemContent={(_index, item) => renderWorkLogItem(item, true)}
+                  />
                 )}
               </div>
               <WorkLogDiff
@@ -163,25 +175,15 @@ export const ActivityGroup = observer(function ActivityGroup({
               />
             </div>
           ) : (
-            workLogItems.map((item) =>
-              item.kind === "subagent-work-log" ? (
-                <TranscriptPart
-                  key={item.id}
-                  part={item.result}
-                  subagentSpawnPart={item.spawn}
-                  live={live}
-                  behavior={behavior}
-                  workLogItem
-                />
-              ) : (
-                <TranscriptPart
-                  key={item.id}
-                  part={item}
-                  live={live}
-                  behavior={behavior}
-                  workLogItem
-                />
-              ),
+            logElement && (
+              <VirtualizedConversation
+                className="work-log-items"
+                customScrollParent={logElement}
+                data={workLogItems}
+                computeItemKey={(_index, item) => item.id}
+                followOutput={isStreaming ? "auto" : false}
+                itemContent={(_index, item) => renderWorkLogItem(item)}
+              />
             )
           )}
         </div>
