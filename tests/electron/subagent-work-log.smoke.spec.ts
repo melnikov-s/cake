@@ -64,7 +64,7 @@ function toolResult(
   };
 }
 
-test("shows one detailed pill for a subagent spawn and result", async () => {
+test("opens a released subagent in a read-only popup chat", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-subagent-work-log-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -219,19 +219,20 @@ test("shows one detailed pill for a subagent spawn and result", async () => {
     await expect(log.locator(":scope > summary")).toContainText("1 tool call");
 
     await log.locator(":scope > summary").click();
-    await expect(log.locator(".subagent-call")).toHaveCount(1);
-    await expect(log.locator(".subagent-summary")).toContainText("openai-codex/gpt-5.6-sol");
-    await expect(log.locator(".subagent-summary")).toContainText("max");
-    await expect(log.locator(".subagent-result")).toContainText(
+    const subagent = log.locator(".subagent-call");
+    await expect(subagent).toHaveCount(1);
+    await expect(subagent).toContainText("Tell one short programming joke");
+    await expect(subagent).toContainText("openai-codex/gpt-5.6-sol");
+    await expect(subagent).toContainText("Released");
+    await expect(subagent).not.toContainText(
       "The loop opened a bakery because it knew how to roll.",
     );
 
-    await log.locator(".subagent-summary").click();
-    await expect(log.locator(".subagent-details")).toContainText("Requested model");
-    await expect(
-      log.locator(".subagent-metadata > div").filter({ hasText: "Fast mode" }),
-    ).toContainText("On");
-    await expect(log.locator(".subagent-details")).toContainText("Return only the joke.");
+    await subagent.getByRole("button", { name: "Open worker subagent chat" }).click();
+    const popup = page.getByRole("dialog", { name: "worker subagent" });
+    await expect(popup).toContainText("Released");
+    await expect(popup).toContainText("The loop opened a bakery because it knew how to roll.");
+    await expect(popup.locator("textarea")).toHaveCount(0);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
@@ -327,7 +328,7 @@ test("never restores an interrupted subagent as running", async () => {
     await expect(log.locator(".subagent-call")).toHaveCount(1);
     await expect(log.locator(".subagent-running")).toHaveCount(0);
     await expect(log.locator(".work-log-running")).toHaveCount(0);
-    await expect(log.locator(".subagent-status")).toContainText("interrupted");
+    await expect(log.locator(".subagent-call")).toContainText("released");
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

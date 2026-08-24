@@ -8,6 +8,7 @@ import {
 import { Markdown } from "../../../../../src/renderer/components/ai-elements/markdown";
 import { Reasoning } from "../../../../../src/renderer/components/ai-elements/reasoning";
 import { Tool } from "../../../../../src/renderer/components/ai-elements/tool";
+import type { DesktopClient } from "../../../../../src/renderer/desktop-client";
 import { SubagentActivityStore } from "../../../../../src/renderer/stores/SubagentActivityStore";
 
 describe("Cake-owned conversation components", () => {
@@ -278,7 +279,7 @@ describe("Cake-owned conversation components", () => {
     expect(image).toContain("Tool output image 1");
   });
 
-  it("renders the subagent request, resolved model, execution trace, and response", () => {
+  it("keeps completed subagent details in a compact released row", () => {
     const handleId = crypto.randomUUID();
     const html = renderToStaticMarkup(
       <Tool
@@ -349,15 +350,22 @@ describe("Cake-owned conversation components", () => {
     expect(html).toContain("reviewer subagent");
     expect(html).toContain("openai-codex/gpt-5.6-sol");
     expect(html).toContain("Inspect the session boundary");
-    expect(html).toContain("Focus on runtime validation.");
-    expect(html).toContain("Subagent execution trace");
-    expect(html).toContain("125 tokens");
-    expect(html).toContain("The boundary is correctly isolated.");
+    expect(html).toContain("Last activity: read");
+    expect(html).toContain("Released");
+    expect(html).not.toContain("Focus on runtime validation.");
+    expect(html).not.toContain("The boundary is correctly isolated.");
   });
 
   it("renders first-class live activity without a subagent wait call", () => {
     const handleId = crypto.randomUUID();
-    const subagents = mount(createStore(SubagentActivityStore, { sessionId: "parent" }));
+    // SAFETY: This focused renderer test exercises only the two subagent intents supplied here.
+    const client = {
+      steerSubagent: async () => undefined,
+      abortSubagent: async () => undefined,
+    } as unknown as DesktopClient;
+    const subagents = mount(
+      createStore(SubagentActivityStore, { sessionId: "parent", client, parts: () => [] }),
+    );
     subagents.receive({
       type: "subagent-activity-received",
       activity: {
@@ -408,7 +416,7 @@ describe("Cake-owned conversation components", () => {
 
     expect(html).toContain("Inspect the live boundary");
     expect(html).toContain("openai-codex/gpt-5.6-sol");
-    expect(html).toContain("src/main.ts");
+    expect(html).toContain("Running read");
     expect(html).toContain("running");
     subagents[Symbol.dispose]();
   });
@@ -452,15 +460,16 @@ describe("Cake-owned conversation components", () => {
       />,
     );
 
-    expect(html).toContain("Parallel delegation");
+    expect(html).toContain("Delegated work");
     expect(html).toContain("2/2 complete");
     expect(html).toContain("Inspect storage");
     expect(html).toContain("Review rendering");
-    expect(html).toContain("Storage is sound.");
-    expect(html).toContain("Rendering is sound.");
+    expect(html).toContain("Released");
+    expect(html).not.toContain("Storage is sound.");
+    expect(html).not.toContain("Rendering is sound.");
   });
 
-  it("keeps completed subagent output visible while technical details are collapsed", () => {
+  it("moves completed subagent output out of the inline work log", () => {
     const handleId = crypto.randomUUID();
     const html = renderToStaticMarkup(
       <Tool
@@ -490,7 +499,8 @@ describe("Cake-owned conversation components", () => {
       />,
     );
 
-    expect(html).toContain('aria-label="Subagent output"');
-    expect(html).toContain("The delegated punchline.");
+    expect(html).toContain("Tell a joke");
+    expect(html).toContain("Released");
+    expect(html).not.toContain("The delegated punchline.");
   });
 });

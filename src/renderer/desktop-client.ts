@@ -358,6 +358,8 @@ export interface DesktopClient {
     entryId: string;
     workspacePath: string;
   }): Promise<{ sessionId: string; workspacePath: string }>;
+  steerSubagent(input: { parentSessionId: string; handleId: string; text: string }): Promise<void>;
+  abortSubagent(input: { parentSessionId: string; handleId: string }): Promise<void>;
   submit(input: {
     operationId: string;
     sessionId: string;
@@ -1083,6 +1085,18 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         throw new Error("Cake could not fork the session into a new worktree");
       return { sessionId: response.sessionId, workspacePath: response.workspacePath };
     },
+    steerSubagent: (input) =>
+      accept(bridge, {
+        type: "steer-subagent",
+        requestId: crypto.randomUUID(),
+        ...input,
+      }),
+    abortSubagent: (input) =>
+      accept(bridge, {
+        type: "abort-subagent",
+        requestId: crypto.randomUUID(),
+        ...input,
+      }),
     submit: (input) =>
       accept(bridge, {
         type: "prompt",

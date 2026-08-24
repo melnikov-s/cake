@@ -1349,7 +1349,18 @@ export class PiWorkspaceDriver {
     });
   }
 
-  private async abortSubagent(handleId: string, parentSessionId: string) {
+  steerSubagent(handleId: string, parentSessionId: string, text: string) {
+    const handle = this.subagentHandle(handleId, parentSessionId);
+    if (handle.status !== "running" || !handle.sessionId)
+      throw new Error("That subagent is no longer available to steer");
+    void this.agentPrompt(handle.sessionId, text, "steer").catch((error) => {
+      if (this.subagentHandles.get(handleId) !== handle) return;
+      handle.error = error instanceof Error ? error.message : String(error);
+      this.emitSubagentActivity(handleId, handle);
+    });
+  }
+
+  async abortSubagent(handleId: string, parentSessionId: string) {
     const handle = this.subagentHandle(handleId, parentSessionId);
     handle.controller.abort(new Error("Subagent aborted"));
     handle.status = "aborted";

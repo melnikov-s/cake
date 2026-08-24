@@ -650,7 +650,7 @@ describe("Transcript scrolling", () => {
     expect(container.querySelector(".loading-state")).not.toBeNull();
   });
 
-  it("presents a matching subagent spawn and wait as one expandable work-log item", () => {
+  it("presents a matching subagent spawn and wait as one compact work-log item", () => {
     const handleId = crypto.randomUUID();
     const spawn: UiPart = {
       id: "subagent-spawn",
@@ -709,10 +709,9 @@ describe("Transcript scrolling", () => {
     act(() => container.querySelector<HTMLElement>(".activity-group > summary")!.click());
     expect(container.querySelectorAll(".subagent-call")).toHaveLength(1);
     expect(container.textContent).toContain("openai-codex/gpt-5.6-sol");
-    expect(container.querySelector(".subagent-result")?.textContent).toContain("A compact joke.");
-
-    act(() => container.querySelector<HTMLButtonElement>(".subagent-summary")!.click());
-    expect(container.textContent).toContain("Request");
+    expect(container.textContent).toContain("Tell a joke");
+    expect(container.textContent).toContain("Released");
+    expect(container.textContent).not.toContain("A compact joke.");
   });
 
   it("keeps the completed work log neutral when an individual call failed", () => {

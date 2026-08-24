@@ -153,12 +153,16 @@ it. That setting is scoped to the private runtime and is not persisted as a
 project-session preference. Private runtimes omit project-session catalogs, model menus, command
 menus, session trees, artifact indexes, and automatic naming. Live activity is
 coalesced from child part events rather than rebuilding full session snapshots.
-Cancellation reaches active child work. One-shot handles release
-their private runtime automatically after capturing the result; multi-turn
-continuation requires `retain: true`. Closing a private parent also releases
-its private descendants. Cake projects live child tool activity, usage, cost,
-and the final answer through the parent tool call rather than exposing a second
-transcript.
+Cancellation reaches active child work. While a child turn is active, Cake may
+open its projected parts through the shared `Chat` component and route explicit
+user steer or abort intents through the parent-scoped handle; the renderer never
+receives or attaches to the private Pi session identity. One-shot handles release
+their private runtime automatically after capturing the result, at which point
+the same popup becomes a read-only projection reconstructed from the parent
+transcript. Multi-turn continuation requires `retain: true`. Closing a private
+parent also releases its private descendants. Cake projects live child tool
+activity, usage, cost, and the final answer through the parent tool call rather
+than exposing a second transcript.
 
 The Changes surface reads the current staged, unstaged, deleted, renamed, and
 untracked workspace state directly through Git. Cake does not create checkpoint

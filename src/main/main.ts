@@ -1498,6 +1498,16 @@ async function handleCakeRequest(
     await worktrees.discard(request.workspacePath, request.keepBranch);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
+  if (request.type === "steer-subagent" || request.type === "abort-subagent") {
+    const path = await resolveSessionWorkspacePath(request.parentSessionId);
+    if (!allowedProjectPaths.has(path))
+      throw new Error("Project path was not selected by the user");
+    const driver = launchPi(path).driver;
+    if (request.type === "steer-subagent")
+      driver.steerSubagent(request.handleId, request.parentSessionId, request.text);
+    else await driver.abortSubagent(request.handleId, request.parentSessionId);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
   // The model catalog lives in the shared agent directory, not in any session,
   // so unsent chats can list it without resolving a session workspace path.
   if (request.type === "list-models") {

@@ -259,6 +259,8 @@ function createDesktopClient(restoredPath?: string) {
     openEmbeddedEditor: vi.fn(async () => undefined),
     updateEmbeddedEditorBounds: vi.fn(async () => undefined),
     revealInEmbeddedEditor: vi.fn(async () => undefined),
+    steerSubagent: vi.fn(async () => undefined),
+    abortSubagent: vi.fn(async () => undefined),
     submit: vi.fn(async () => undefined),
     abort: vi.fn(async () => undefined),
     compactSession: vi.fn(async () => undefined),

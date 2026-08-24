@@ -84,6 +84,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         }
         subagentSpawnPart={subagentSpawnPart}
         subagents={behavior.subagents}
+        renderChat={behavior.renderChat}
         live={live}
         omitDiff={omitToolDiff}
         expansion={

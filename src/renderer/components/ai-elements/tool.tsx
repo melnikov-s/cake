@@ -138,6 +138,7 @@ export function Tool({
   expansion,
   subagentSpawnPart,
   subagents,
+  renderChat,
   live = false,
   omitDiff,
 }: {
@@ -149,6 +150,7 @@ export function Tool({
   /** The matching spawn call when Cake presents spawn + wait as one subagent run. */
   subagentSpawnPart?: Extract<UiPart, { kind: "tool" }>;
   subagents?: SubagentActivityStore;
+  renderChat?(store: ChatStore): ReactNode;
   /** True while this conversation's runtime may still be producing subagent work. */
   live?: boolean;
   omitDiff?: boolean;
@@ -162,6 +164,7 @@ export function Tool({
         part={part}
         spawnPart={subagentSpawnPart}
         subagents={subagents}
+        renderChat={renderChat}
         live={live}
         timer={timer}
         expansion={expansion}

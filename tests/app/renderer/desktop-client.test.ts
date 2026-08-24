@@ -99,6 +99,13 @@ describe("desktop client", () => {
         { kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" },
       ],
     });
+    const handleId = crypto.randomUUID();
+    await client.steerSubagent({
+      parentSessionId: "session",
+      handleId,
+      text: "Check cancellation too",
+    });
+    await client.abortSubagent({ parentSessionId: "session", handleId });
     await client.compactSession({ operationId, sessionId: "session" });
     await client.compactGlobalChat({
       operationId,
@@ -149,6 +156,19 @@ describe("desktop client", () => {
       ],
     });
     expect(desktop.request).toHaveBeenCalledWith({ type: "load-session", sessionId: "session" });
+    expect(desktop.request).toHaveBeenCalledWith({
+      type: "steer-subagent",
+      requestId: expect.any(String),
+      parentSessionId: "session",
+      handleId,
+      text: "Check cancellation too",
+    });
+    expect(desktop.request).toHaveBeenCalledWith({
+      type: "abort-subagent",
+      requestId: expect.any(String),
+      parentSessionId: "session",
+      handleId,
+    });
     expect(desktop.request).toHaveBeenCalledWith({
       type: "compact-session",
       requestId: operationId,

@@ -320,6 +320,11 @@ describe("PiWorkspaceDriver", () => {
     );
     expect(child.snapshot).toHaveBeenCalledTimes(snapshotCalls);
 
+    driver.steerSubagent(handleId, parent.sessionId, "Also inspect cancellation");
+    await vi.waitFor(() =>
+      expect(childPrompt).toHaveBeenCalledWith("Also inspect cancellation", "steer", []),
+    );
+
     finishTask();
     await expect(waiting).resolves.toMatchObject({
       resolvedModel: {

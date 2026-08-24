@@ -156,7 +156,11 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
 
   @child
   get subagentActivityStore(): SubagentActivityStore {
-    return createStore(SubagentActivityStore, { sessionId: this.sessionId });
+    return createStore(SubagentActivityStore, {
+      sessionId: this.sessionId,
+      client: this.props.client,
+      parts: () => this.canonicalParts,
+    });
   }
 
   @child

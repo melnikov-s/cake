@@ -172,14 +172,16 @@ function useDismissablePopover(surfaceRef: RefObject<HTMLDivElement | null>, onC
   }, [onClose, surfaceRef]);
 }
 
-function PopoverShell({
+export function ChatPopover({
   anchor,
   title,
+  eyebrow = "Chat",
   onClose,
   children,
 }: {
   anchor: HTMLElement | MessageCommentAnchorRect;
   title: string;
+  eyebrow?: string;
   onClose(): void;
   children: ReactNode;
 }) {
@@ -195,7 +197,7 @@ function PopoverShell({
     >
       <header className="message-comment-titlebar" onPointerDown={startDrag}>
         <div>
-          <span>Selection</span>
+          <span>{eyebrow}</span>
           <strong>{title}</strong>
         </div>
         <IconButton tooltip={`Close ${title.toLowerCase()}`} onClick={onClose}>
@@ -220,9 +222,9 @@ export const MessageCommentDraftPopover = observer(function MessageCommentDraftP
   onClose(): void;
 }) {
   return (
-    <PopoverShell anchor={anchor} title="Chat about this" onClose={onClose}>
+    <ChatPopover anchor={anchor} title="Chat about this" eyebrow="Selection" onClose={onClose}>
       {renderChat(chatStore)}
-    </PopoverShell>
+    </ChatPopover>
   );
 });
 
@@ -241,8 +243,8 @@ export const MessageCommentThreadPopover = observer(function MessageCommentThrea
 }) {
   const chat = store.chatStore(thread.id);
   return (
-    <PopoverShell anchor={anchor} title="Selection chat" onClose={onClose}>
+    <ChatPopover anchor={anchor} title="Selection chat" eyebrow="Selection" onClose={onClose}>
       {chat && renderChat(chat)}
-    </PopoverShell>
+    </ChatPopover>
   );
 });

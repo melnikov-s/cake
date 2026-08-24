@@ -584,6 +584,19 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     sessionId: z.string().min(1).max(256).optional(),
     configuration: chatConfigurationSchema.optional(),
   }),
+  z.object({
+    type: z.literal("steer-subagent"),
+    requestId: z.uuid(),
+    parentSessionId: z.string().min(1).max(256),
+    handleId: z.uuid(),
+    text: z.string().min(1).max(262_144),
+  }),
+  z.object({
+    type: z.literal("abort-subagent"),
+    requestId: z.uuid(),
+    parentSessionId: z.string().min(1).max(256),
+    handleId: z.uuid(),
+  }),
   z
     .object({
       type: z.literal("prompt"),
