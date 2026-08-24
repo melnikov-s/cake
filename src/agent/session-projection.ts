@@ -454,9 +454,30 @@ export function projectSessionEntries(
       });
       continue;
     }
-    if (entry.type !== "custom" || entry.customType !== reviewRunEntryType) continue;
-    const run = reviewRunEntrySchema.safeParse(entry.data);
-    if (run.success) append(reviewRunPart(run.data));
+    if (entry.type !== "custom") continue;
+    if (entry.customType === "cake.artifact/v1") {
+      const pointer = artifactPointerSchema.safeParse(entry.data);
+      if (
+        pointer.success &&
+        pointer.data.kind === "request" &&
+        !projected.some(
+          (part) => part.kind === "tool" && part.artifactId === pointer.data.artifactId,
+        )
+      )
+        append({
+          id: `entry-${entry.id}-artifact`,
+          kind: "tool",
+          name: "ui_request",
+          input: "",
+          artifactId: pointer.data.artifactId,
+          state: "success",
+        });
+      continue;
+    }
+    if (entry.customType === reviewRunEntryType) {
+      const run = reviewRunEntrySchema.safeParse(entry.data);
+      if (run.success) append(reviewRunPart(run.data));
+    }
   }
   // Durable entries are settled history. A tool call still marked "running"
   // after the full walk has no recorded result, which means the run was

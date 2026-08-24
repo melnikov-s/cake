@@ -18,7 +18,15 @@ export const ArtifactsPanel = observer(function ArtifactsPanel({
       part.kind === "tool" && part.artifactId ? [part.artifactId] : [],
     ),
   );
-  const unlinked = records.filter((record) => !linked.has(record.artifact.id));
+  // Settled request artifacts belong to their branch-local transcript part and
+  // must not float to the end of a different branch. A currently blocking
+  // request may appear here briefly until its durable pointer is projected.
+  const activeRequestId = artifacts.request?.record.artifact.id;
+  const unlinked = records.filter(
+    (record) =>
+      !linked.has(record.artifact.id) &&
+      (record.artifact.kind !== "request" || record.artifact.id === activeRequestId),
+  );
   if (unlinked.length === 0) return null;
   return (
     <section className="artifacts-panel" aria-label="Session artifacts">

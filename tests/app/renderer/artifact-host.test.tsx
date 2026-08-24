@@ -8,9 +8,11 @@ vi.mock("mermaid", () => ({
   default: { initialize: vi.fn(), render: vi.fn(async () => ({ svg: "<svg role='img'></svg>" })) },
 }));
 import { ArtifactHost } from "../../../src/renderer/components/artifact-host";
+import { ArtifactsPanel } from "../../../src/renderer/components/artifacts-panel";
 import type { ArtifactRecord } from "../../../src/ipc/artifact-contract";
 import type { DesktopClient } from "../../../src/renderer/desktop-client";
 import { InlineWidgetStore } from "../../../src/renderer/stores/InlineWidgetStore";
+import type { ProjectSessionStore } from "../../../src/renderer/stores/ProjectSessionStore";
 
 function record(artifact: ArtifactRecord["artifact"]): ArtifactRecord {
   return {
@@ -84,7 +86,7 @@ describe("ArtifactHost", () => {
       responseSchema: { type: "object" as const },
       view: {
         type: "form" as const,
-        fields: [{ id: "answer", label: "Answer", type: "text" as const, required: true }],
+        fields: [{ id: "answer", label: "Answer", type: "text" as const }],
         submitLabel: "Send",
       },
       fallback: { markdown: "Answer" },
@@ -127,6 +129,91 @@ describe("ArtifactHost", () => {
     expect(frame.getAttribute("sandbox")).toBe("");
     expect(frame.getAttribute("srcdoc")).toContain("default-src 'none'");
     expect(document.body.textContent).not.toContain("owned");
+  });
+
+  it("does not float a request from another branch to the transcript footer", () => {
+    const request = {
+      protocol: "cake.request/v1" as const,
+      id: "branch-request",
+      title: "Branch request",
+      responseSchema: { type: "object" as const },
+      view: {
+        type: "form" as const,
+        fields: [{ id: "answer", label: "Answer", type: "text" as const }],
+        submitLabel: "Send",
+      },
+      fallback: { markdown: "Answer." },
+    };
+    const artifact = record({
+      protocol: "cake.artifact/v1",
+      id: request.id,
+      sessionId: "session",
+      revision: 1,
+      kind: "request",
+      payload: { request },
+      fallback: request.fallback,
+      interaction: { mode: "request", responseSchema: request.responseSchema },
+    });
+    const session = {
+      canonicalParts: [],
+      model: { artifacts: [{ value: artifact }] },
+      artifactInteractionStore: { request: undefined },
+    } as unknown as ProjectSessionStore;
+
+    act(() =>
+      root.render(<ArtifactsPanel session={session} inlineWidgets={{} as InlineWidgetStore} />),
+    );
+    expect(container.querySelector('[data-artifact-id="branch-request"]')).toBeNull();
+  });
+
+  it("keeps form fields optional and lets select fields accept freeform text", () => {
+    const submit = vi.fn();
+    const request = {
+      protocol: "cake.request/v1" as const,
+      id: "optional-select",
+      title: "Choose or type",
+      responseSchema: {
+        type: "object" as const,
+        properties: { choice: { type: "string" as const } },
+      },
+      view: {
+        type: "form" as const,
+        fields: [
+          {
+            id: "choice",
+            label: "Choice",
+            type: "select" as const,
+            options: [{ value: "listed", label: "Listed option" }],
+          },
+        ],
+        submitLabel: "Send",
+      },
+      fallback: { markdown: "Choose or type." },
+    };
+    const artifact = record({
+      protocol: "cake.artifact/v1",
+      id: request.id,
+      sessionId: "session",
+      revision: 1,
+      kind: "request",
+      payload: { request },
+      fallback: request.fallback,
+      interaction: { mode: "request", responseSchema: request.responseSchema },
+    });
+
+    act(() => root.render(<ArtifactHost record={artifact} requested onSubmit={submit} />));
+    const input = container.querySelector<HTMLInputElement>("input[list]")!;
+    expect(input.required).toBe(false);
+    expect(container.textContent).not.toContain("Choice *");
+    expect(container.querySelector("datalist option")?.getAttribute("value")).toBe("listed");
+    act(() => {
+      setInputValue(input, "anything else");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      (container.querySelector("form") as HTMLFormElement).dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true }),
+      );
+    });
+    expect(submit).toHaveBeenCalledWith({ choice: "anything else" });
   });
 
   it("renders a custom request in the script sandbox and accepts its token-bound submission", async () => {

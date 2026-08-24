@@ -962,12 +962,11 @@ describe("ProjectWorkbenchStore", () => {
       title: "Answer",
       responseSchema: {
         type: "object" as const,
-        required: ["answer"],
         properties: { answer: { type: "string" as const } },
       },
       view: {
         type: "form" as const,
-        fields: [{ id: "answer", label: "Answer", type: "text" as const, required: true }],
+        fields: [{ id: "answer", label: "Answer", type: "text" as const }],
         submitLabel: "Send",
       },
       fallback: { markdown: "Answer" },
@@ -1009,7 +1008,7 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("cancels a pending artifact request before replacing the active session", async () => {
+  it("keeps a pending artifact request alive when the user changes sessions", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
@@ -1021,12 +1020,11 @@ describe("ProjectWorkbenchStore", () => {
       title: "Answer",
       responseSchema: {
         type: "object" as const,
-        required: ["answer"],
         properties: { answer: { type: "string" as const } },
       },
       view: {
         type: "form" as const,
-        fields: [{ id: "answer", label: "Answer", type: "text" as const, required: true }],
+        fields: [{ id: "answer", label: "Answer", type: "text" as const }],
         submitLabel: "Send",
       },
       fallback: { markdown: "Answer" },
@@ -1053,16 +1051,11 @@ describe("ProjectWorkbenchStore", () => {
       artifactRequestId: crypto.randomUUID(),
       record,
     });
-    expect(
-      root.projectWorkbenchStore.activeSession!.artifactInteractionStore.request,
-    ).toBeDefined();
+    const requestingSession = root.projectWorkbenchStore.activeSession!;
+    expect(requestingSession.artifactInteractionStore.request).toBeDefined();
     await store.startNewSession();
-    expect(desktop.client.respondToArtifact).toHaveBeenCalledWith(
-      expect.objectContaining({ operationId, cancelled: true }),
-    );
-    expect(
-      root.projectWorkbenchStore.activeSession!.artifactInteractionStore.request,
-    ).toBeUndefined();
+    expect(desktop.client.respondToArtifact).not.toHaveBeenCalled();
+    expect(requestingSession.artifactInteractionStore.request).toBeDefined();
     root[Symbol.dispose]();
   });
 
@@ -1078,7 +1071,6 @@ describe("ProjectWorkbenchStore", () => {
       title: "Answer",
       responseSchema: {
         type: "object" as const,
-        required: ["answer"],
         properties: { answer: { type: "string" as const, minLength: 1 } },
       },
       view: {
@@ -1111,7 +1103,9 @@ describe("ProjectWorkbenchStore", () => {
       record,
     });
 
-    await root.projectWorkbenchStore.activeSession!.artifactInteractionStore.respond({});
+    await root.projectWorkbenchStore.activeSession!.artifactInteractionStore.respond({
+      answer: 42,
+    });
     expect(desktop.client.respondToArtifact).not.toHaveBeenCalled();
     expect(
       root.projectWorkbenchStore.activeSession!.artifactInteractionStore.request,

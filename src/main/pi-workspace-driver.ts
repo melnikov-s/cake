@@ -716,6 +716,7 @@ export class PiWorkspaceDriver {
   }
 
   private requestArtifact(record: ArtifactRecord, signal: AbortSignal) {
+    if (signal.aborted) return Promise.resolve(undefined);
     const operationId = this.operationContext.getStore()?.operationId;
     if (!operationId)
       throw new Error("Pi requested an artifact response without an active Cake operation");

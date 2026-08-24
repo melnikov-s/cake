@@ -49,7 +49,6 @@ export function createCakeArtifactExtension(options: ArtifactExtensionOptions): 
         Type.Literal("checkbox"),
         Type.Literal("select"),
       ]),
-      required: Type.Optional(Type.Boolean()),
       placeholder: Type.Optional(Type.String()),
       options: Type.Optional(
         Type.Array(Type.Object({ value: Type.String(), label: Type.String() })),
@@ -100,7 +99,7 @@ export function createCakeArtifactExtension(options: ArtifactExtensionOptions): 
       name: "ui_request",
       label: "Request user input",
       description:
-        "Display a cake.request/v1 form or sandboxed custom widget and wait for one schema-validated response or cancellation.",
+        "Display a cake.request/v1 form or sandboxed custom widget and wait for one schema-validated response or explicit user cancellation. Form fields are always optional, and select fields accept either a listed option or freeform text.",
       parameters,
       async execute(_toolCallId, params, signal, _onUpdate, ctx) {
         const request = parseRequestInput(params.request);
@@ -119,7 +118,12 @@ export function createCakeArtifactExtension(options: ArtifactExtensionOptions): 
           ctx.sessionManager.getSessionId(),
         );
         appendPointer(record);
-        const value = await options.requestArtifact(record, signal ?? new AbortController().signal);
+        const requestSignal = signal ?? new AbortController().signal;
+        const value = await options.requestArtifact(record, requestSignal);
+        if (value === undefined && requestSignal.aborted)
+          throw requestSignal.reason instanceof Error
+            ? requestSignal.reason
+            : new Error("The request ended because its turn was interrupted");
         if (value === undefined)
           return {
             content: [{ type: "text", text: `The user cancelled request ${request.id}.` }],
@@ -284,15 +288,14 @@ export function createCakeArtifactExtension(options: ArtifactExtensionOptions): 
           title: "S4 response",
           responseSchema: {
             type: "object" as const,
-            required: ["answer"],
-            properties: { answer: { type: "string" as const, minLength: 1 } },
+            properties: { answer: { type: "string" as const } },
           },
           view: {
             type: "form" as const,
-            fields: [{ id: "answer", label: "Answer", type: "text" as const, required: true }],
+            fields: [{ id: "answer", label: "Answer", type: "text" as const }],
             submitLabel: "Send response",
           },
-          fallback: { markdown: "S4 response form: **Answer** (required)." },
+          fallback: { markdown: "S4 response form: **Answer**." },
         };
         const form = await persist(
           {

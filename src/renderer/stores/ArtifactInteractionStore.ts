@@ -60,14 +60,6 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
     }
   }
 
-  async cancelPendingRequest() {
-    if (this.request) await this.respond(undefined, true);
-    if (this.request) {
-      this.request = undefined;
-      this.props.onRequestChanged?.(false);
-    }
-  }
-
   /**
    * Deliver an answer for a request artifact. While the agent is blocked on
    * this exact request, resolve the pending operation; otherwise send the

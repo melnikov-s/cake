@@ -379,8 +379,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   private showTemporarySession(path: string, sessionId: string) {
     this.pendingOpen = undefined;
-    const previousSession = this.activeSession;
-    void previousSession?.cancelArtifactRequest();
     const session = this.sessionRegistry.prepareNewSession(path, sessionId);
     this.props.persistence().applySessionRestore(session, this.selectedSessionId, undefined, true);
     this.projectPath = path;
@@ -490,8 +488,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   private async openPath(path: string, newSession = false, sessionId?: string) {
     const revision = ++this.openRevision;
-    const artifactCancellation = this.activeSession?.cancelArtifactRequest();
-    if (artifactCancellation) await artifactCancellation;
     if (this.signal.aborted || revision !== this.openRevision) return;
     const operationId = this.startOperation();
     this.activeOpenOperationId = operationId;

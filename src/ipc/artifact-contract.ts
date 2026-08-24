@@ -108,7 +108,6 @@ const formArtifactSchema = z.object({
           id: idSchema,
           label: z.string().min(1).max(512),
           type: z.enum(["text", "textarea", "number", "checkbox", "select"]),
-          required: z.boolean().default(false),
           placeholder: z.string().max(512).optional(),
           options: z
             .array(z.object({ value: z.string().max(256), label: z.string().max(512) }))

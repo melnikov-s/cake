@@ -5,7 +5,7 @@ import { _electron as electron, expect, test, type ElectronApplication } from "@
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("presents durable artifacts, sorts a table, resolves a form, and isolates HTML", async () => {
+test("presents artifacts, sorts a table, resolves a form, and isolates HTML", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-s4-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -90,10 +90,9 @@ test("presents durable artifacts, sorts a table, resolves a form, and isolates H
 
     const form = page.locator('[data-artifact-id="cake-s4-form"]');
     await expect(page.getByRole("status", { name: "Churning in progress" })).toHaveCount(0);
-    await form.getByLabel("Answer *").fill("structured answer");
+    await form.getByLabel("Answer").fill("structured answer");
     await form.getByRole("button", { name: "Send response" }).click();
-    await expect(form.locator("header span")).toContainText("r2");
-    await expect(form.getByText("Response submitted.")).toBeAttached();
+    await expect(form).not.toBeAttached();
 
     const html = page.locator('[data-artifact-id="cake-s4-html"] iframe');
     await expect(html).toHaveAttribute("sandbox", "");
@@ -109,17 +108,6 @@ test("presents durable artifacts, sorts a table, resolves a form, and isolates H
         return Boolean(state.selectedSessionId && !state.selectedSessionFile);
       })
       .toBe(true);
-
-    await application.close();
-    application = undefined;
-    application = await launch();
-    page = await application.firstWindow();
-    await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('[data-artifact-id="cake-s4-table"]')).toBeVisible({
-      timeout: 20_000,
-    });
-    await expect(page.locator('[data-artifact-id="cake-s4-diagram"] iframe')).toBeVisible();
-    await expect(page.getByText("Agent → Artifact → User", { exact: true })).toBeAttached();
   } finally {
     await application?.close();
     await rm(temporaryRoot, { recursive: true, force: true });

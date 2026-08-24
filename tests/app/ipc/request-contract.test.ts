@@ -7,7 +7,6 @@ const base = {
   title: "Choose deployment",
   responseSchema: {
     type: "object",
-    required: ["choice"],
     properties: { choice: { enum: ["staging", "production"] } },
   },
   fallback: { markdown: "Choose staging or production." },
@@ -45,7 +44,17 @@ describe("cake.request/v1 contract", () => {
     ).toBe("widget");
   });
 
-  it("rejects unknown protocols, views, and missing response schemas", () => {
+  it("rejects required form fields, unknown protocols, views, and missing schemas", () => {
+    expect(() =>
+      parseRequestInput({
+        ...base,
+        responseSchema: { ...base.responseSchema, required: ["choice"] },
+        view: {
+          type: "form",
+          fields: [{ id: "choice", label: "Environment", type: "select", required: true }],
+        },
+      }),
+    ).toThrow();
     expect(() =>
       parseRequestInput({
         ...base,

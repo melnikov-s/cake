@@ -12,7 +12,6 @@ const formFieldSchema = z.object({
   id: requestIdSchema,
   label: z.string().min(1).max(512),
   type: z.enum(["text", "textarea", "number", "checkbox", "select"]),
-  required: z.boolean().default(false),
   placeholder: z.string().max(512).optional(),
   options: z
     .array(z.object({ value: z.string().max(256), label: z.string().max(512) }))
@@ -42,7 +41,19 @@ export const cakeRequestV1Schema = z
     view: requestViewSchema,
     fallback: z.object({ markdown: z.string().min(1).max(1_048_576) }),
   })
-  .strict();
+  .strict()
+  .superRefine((request, context) => {
+    if (
+      request.view.type === "form" &&
+      request.responseSchema.type === "object" &&
+      request.responseSchema.required?.length
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["responseSchema", "required"],
+        message: "Form fields are optional and cannot be required by the response schema",
+      });
+  });
 
 export type CakeRequestV1 = z.infer<typeof cakeRequestV1Schema>;
 export type CakeRequestView = z.infer<typeof requestViewSchema>;

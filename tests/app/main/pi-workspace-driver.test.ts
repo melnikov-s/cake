@@ -1270,6 +1270,7 @@ describe("PiWorkspaceDriver", () => {
     const events: DesktopEvent[] = [];
     let options: CakeRuntimeOptions | undefined;
     let response: unknown = "pending";
+    let preAbortedResponse: unknown = "pending";
     const requestSpec = {
       protocol: "cake.request/v1" as const,
       id: "form-1",
@@ -1277,7 +1278,7 @@ describe("PiWorkspaceDriver", () => {
       responseSchema: { type: "object" as const },
       view: {
         type: "form" as const,
-        fields: [{ id: "answer", label: "Answer", type: "text" as const, required: true }],
+        fields: [{ id: "answer", label: "Answer", type: "text" as const }],
         submitLabel: "Send",
       },
       fallback: { markdown: "Answer" },
@@ -1310,6 +1311,9 @@ describe("PiWorkspaceDriver", () => {
       snapshot: vi.fn(async () => snapshot),
       prompt: vi.fn(async () => {
         const record = await options!.persistArtifact!(artifact);
+        const preAborted = new AbortController();
+        preAborted.abort();
+        preAbortedResponse = await options!.requestArtifact!(record, preAborted.signal);
         response = await options!.requestArtifact!(record, new AbortController().signal);
       }),
       compact: vi.fn(async () => undefined),
@@ -1361,10 +1365,13 @@ describe("PiWorkspaceDriver", () => {
     await vi.waitFor(() =>
       expect(events.some((event) => event.type === "artifact-requested")).toBe(true),
     );
-    const request = events.find(
+    const requests = events.filter(
       (event): event is Extract<DesktopEvent, { type: "artifact-requested" }> =>
         event.type === "artifact-requested",
-    )!;
+    );
+    expect(preAbortedResponse).toBeUndefined();
+    expect(requests).toHaveLength(1);
+    const request = requests[0]!;
     expect(events.some((event) => event.type === "artifact-updated")).toBe(true);
     // Reopening the session replays the still-pending request so a freshly
     // attached renderer can answer it.

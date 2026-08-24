@@ -148,12 +148,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     this.backgroundWorkActive = active;
   }
 
-  cancelArtifactRequest() {
-    return this.artifactRequestActive
-      ? this.artifactInteractionStore.cancelPendingRequest()
-      : undefined;
-  }
-
   @child
   get subagentActivityStore(): SubagentActivityStore {
     return createStore(SubagentActivityStore, {

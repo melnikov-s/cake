@@ -914,6 +914,35 @@ describe("Pi 0.84.0 foundation contract", () => {
     ]);
   });
 
+  it("projects an unlinked artifact pointer as its own branch-local transcript part", () => {
+    const pointer = {
+      type: "custom",
+      id: "request-pointer",
+      parentId: null,
+      timestamp: new Date(0).toISOString(),
+      customType: "cake.artifact/v1",
+      data: {
+        protocol: "cake.artifact/v1",
+        artifactId: "request-1",
+        sessionId: "session-1",
+        revision: 1,
+        kind: "request",
+        digest: "a".repeat(64),
+        fallback: { markdown: "Answer." },
+      },
+    } as never;
+
+    expect(projectSessionEntries([pointer])).toEqual([
+      expect.objectContaining({
+        id: "entry-request-pointer-artifact",
+        kind: "tool",
+        name: "ui_request",
+        artifactId: "request-1",
+      }),
+    ]);
+    expect(projectSessionEntries([], [pointer])).toEqual([]);
+  });
+
   it("projects bash tool calls as commands instead of JSON arguments", () => {
     const project = createLiveMessageProjector();
     const message = {
