@@ -25,7 +25,7 @@ state, and development boundaries behind these principles.
 
 - Read `docs/architecture/cake-architecture.md` before changing architecture or
   feature ownership.
-- For renderer state work, read the available `r-state-tree` skill and the references it routes to before editing.
+- Before implementing or changing any renderer behavior that introduces, reads, writes, persists, or coordinates application state, read the available `r-state-tree` skill and the references it routes to before editing.
 - For plugins, scenes, widgets, or plugin recovery, read the available
   `cake-plugin-authoring` skill before editing.
 
@@ -62,10 +62,61 @@ state, and development boundaries behind these principles.
 - Prefer updating every caller, test, and document in the same change over carrying an old interface forward.
 - Do not add tests solely to assert that a feature or DOM element removed outright is absent. Remove obsolete tests for removed features; test absence only when conditional or state-dependent absence is itself the behavior under contract.
 
-## UI composition and reuse
+## Renderer implementation standard
 
-- Before introducing any UI element, first inspect the existing renderer components and compose the closest existing primitive or product component. Start with `src/renderer/components`, especially `components/ui` for primitives and `components/ai-elements` for conversation, Markdown, code, tool, and source surfaces; also inspect `src/renderer/cake.ts` for the components already exposed to plugins.
-- Do not recreate an existing control, source viewer, syntax highlighter, layout primitive, or interaction under a new name. Extend the authoritative component when a shared capability is missing, then update all consumers that need it.
+Before implementing renderer UI:
+
+1. Inspect `src/renderer/components`, especially `components/ui` for primitives
+   and `components/ai-elements` for conversation, Markdown, code, tool, and
+   source surfaces. Also inspect `src/renderer/cake.ts` for components exposed
+   to plugins.
+2. Identify the existing primitive, product component, Store, and Model that
+   own the behavior. Existing one-off implementations are migration debt, not
+   precedent.
+3. If the work touches application state, read the `r-state-tree` skill before
+   editing and classify every state value by authority, owner, lifetime,
+   persistence boundary, and concurrency policy.
+
+### Tailwind and styling
+
+- Tailwind utilities are the default and authoritative styling mechanism for
+  renderer components.
+- Do not add product-specific or component-specific selectors to
+  `src/renderer/styles.css`. Do not create component stylesheets, CSS modules,
+  CSS-in-JS, or inline styles for static presentation.
+- `styles.css` is limited to Tailwind directives, theme variables and mappings,
+  base element rules, keyframes, third-party integration selectors, and
+  browser or Electron behavior that Tailwind cannot express.
+- Dynamic geometry may use a narrowly typed React style object, preferably to
+  set CSS custom properties. It must not encode static colors, spacing,
+  typography, borders, shadows, or other ordinary presentation.
+- Compose conditional classes with `cn()` from
+  `src/renderer/lib/utils.ts`. Do not manually concatenate class strings.
+- Reuse existing semantic theme tokens. A new semantic color requires light
+  and dark variables plus an `@theme inline` mapping. Do not hard-code product
+  colors in components.
+- Existing semantic CSS classes are migration debt. Do not copy them when
+  creating or changing a feature; migrate the touched presentation to Tailwind
+  when practical.
+
+### Components and controls
+
+- Compose the closest existing primitive or product component before creating
+  a component. Do not recreate an existing control, source viewer, syntax
+  highlighter, layout primitive, or interaction under another name.
+- Do not create a feature-local button, input, select, textarea, dialog,
+  popover, tooltip, toggle, loading treatment, code viewer, or source viewer
+  when an authoritative component exists.
+- Raw interactive elements are allowed inside the implementation of an
+  authoritative shared primitive, or when the required native semantics cannot
+  be represented by an existing primitive. If a shared capability is missing,
+  extend the authoritative primitive and update all consumers that need it.
+- Add a component only when it has a genuinely distinct responsibility that
+  cannot be expressed by composing or extending the existing component set.
+- A feature source file exports exactly one named React component.
+  Independently meaningful subcomponents belong in separate files. Exceptions
+  are cohesive compound primitive APIs, the centralized icon catalog, and tiny
+  private render helpers with no independent responsibility.
 - Every chat of every kind—project-session, Cake Chat, pop-up, selection,
   comment, review, inline, modal, plugin, recovery, secondary, and any future
   chat surface—must render the authoritative `Chat` component from
@@ -75,8 +126,15 @@ state, and development boundaries behind these principles.
   component, transcript, input, composer, message renderer, Store contract, or
   chat-specific control set. Surface-specific framing and context may wrap the
   shared chat, but must not replace its conversation behavior or controls.
-- Add a new component only when the element has a genuinely distinct responsibility that cannot be expressed by composing or extending the existing component set.
-- Keep one named React component per source file by default. Small anonymous render callbacks are fine, but independently named pages, fields, panels, and controls belong in their own files unless colocation has a concrete technical benefit.
+
+### Icons
+
+- `src/renderer/components/ui/icons.tsx` is the sole icon authority.
+- Do not define inline SVGs, SVG path data, icon wrapper components, Unicode
+  glyph substitutes, or feature-local icon components. Add a missing icon to
+  the shared catalog and reuse it.
+- Decorative icons must be `aria-hidden`. Icon-only actions must use the shared
+  `IconButton` and provide a tooltip and accessible name.
 
 ## Renderer state architecture
 

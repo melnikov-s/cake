@@ -6,42 +6,9 @@ import { ChatTranscript, type ChatTranscriptBehavior } from "@/components/chat-t
 import { QueuedPrompts } from "@/components/queued-prompts";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
 import { IconButton } from "@/components/ui/icon-button";
+import { PaperclipIcon, SendIcon, StopIcon } from "@/components/ui/icons";
 import { TooltipBubble, useTooltip } from "@/components/ui/tooltip";
 import type { ChatStore } from "../stores/ChatStore";
-
-function Icon({ children }: { children: ReactNode }) {
-  return (
-    <svg
-      aria-hidden="true"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {children}
-    </svg>
-  );
-}
-
-const PaperclipIcon = () => (
-  <Icon>
-    <path d="m20.5 11.5-8.9 8.9a6 6 0 0 1-8.5-8.5l9.6-9.6a4 4 0 0 1 5.7 5.7l-9.6 9.6a2 2 0 1 1-2.8-2.8l8.9-8.9" />
-  </Icon>
-);
-const SendIcon = () => (
-  <Icon>
-    <path d="m5 12 7-7 7 7M12 19V5" />
-  </Icon>
-);
-const StopIcon = () => (
-  <Icon>
-    <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none" />
-  </Icon>
-);
 
 function formatCompactTokenCount(tokens: number | null | undefined) {
   if (tokens === null || tokens === undefined) return "Unknown";

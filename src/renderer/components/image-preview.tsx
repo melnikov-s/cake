@@ -1,23 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconButton } from "@/components/ui/icon-button";
-
-function CloseIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-    >
-      <path d="m6 6 12 12M18 6 6 18" />
-    </svg>
-  );
-}
+import { CloseIcon } from "@/components/ui/icons";
 
 /**
  * Renders an image inside a button that opens the same image enlarged in a

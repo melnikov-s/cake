@@ -4,15 +4,7 @@ import type { WorktreeStore } from "../stores/WorktreeStore";
 import { Button } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { cn } from "@/lib/utils";
-
-const BranchIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <circle cx="4" cy="3.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
-    <circle cx="4" cy="12.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
-    <circle cx="12" cy="5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
-    <path d="M4 5.3v5.4M12 6.8c0 2.5-2.5 3.2-5.5 3.6" stroke="currentColor" strokeWidth="1.4" />
-  </svg>
-);
+import { BranchIcon } from "./ui/icons";
 
 export interface WorktreeChipProps {
   store: WorktreeStore;

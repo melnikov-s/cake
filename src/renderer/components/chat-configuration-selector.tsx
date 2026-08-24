@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { ModelOption, ThinkingLevel } from "../../ipc/session-contract";
 import { FastModeToggle } from "./fast-mode-toggle";
+import { ChevronDownIcon } from "./ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import type { ChatConfigurationStore } from "../stores/ChatConfigurationStore";
 
@@ -128,17 +129,7 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
           <strong>{activeName}</strong>
           <small>{summary}</small>
         </span>
-        <svg
-          aria-hidden="true"
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
+        <ChevronDownIcon size={13} />
       </PopoverTrigger>
       <PopoverContent
         side="top"

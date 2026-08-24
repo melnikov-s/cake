@@ -312,16 +312,14 @@ describe("Transcript scrolling", () => {
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts)} />));
 
-    const skill = container.querySelector<HTMLDetailsElement>(".skill-message details");
+    const skill = container.querySelector<HTMLDetailsElement>("details");
     expect(skill?.querySelector("summary")?.textContent).toContain("Skill loadedpdf-tools");
     expect(skill?.open).toBe(false);
     expect(container.querySelector(".user-message")).toBeNull();
 
     act(() => skill?.querySelector<HTMLElement>("summary")?.click());
     expect(skill?.open).toBe(true);
-    expect(skill?.querySelector(".skill-message-content")?.textContent).toContain(
-      "Extract text from PDFs.",
-    );
+    expect(skill?.textContent).toContain("Extract text from PDFs.");
   });
 
   it("adds separation when an error notice immediately follows a user message", () => {

@@ -13,6 +13,7 @@ import { Markdown } from "@/components/ai-elements/markdown";
 import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
 import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
 import { IconButton } from "@/components/ui/icon-button";
+import { ChatIcon, CheckIcon, CopyIcon, ForkIcon } from "@/components/ui/icons";
 import {
   MessageCommentThreadPopover,
   type MessageCommentAnchorRect,
@@ -24,49 +25,6 @@ import type { ChatStore } from "../stores/ChatStore";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import type { MessageCommentsStore, MessageSelectionAnchor } from "../stores/MessageCommentsStore";
 import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
-
-function Icon({ children }: { children: ReactNode }) {
-  return (
-    <svg
-      aria-hidden="true"
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {children}
-    </svg>
-  );
-}
-
-const ChatIcon = () => (
-  <Icon>
-    <path d="M20 15a3 3 0 0 1-3 3H8l-5 3 1.7-5.1A7 7 0 0 1 4 13V8a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3z" />
-  </Icon>
-);
-const CopyIcon = () => (
-  <Icon>
-    <rect x="8" y="8" width="11" height="11" rx="2" />
-    <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
-  </Icon>
-);
-const ForkIcon = () => (
-  <Icon>
-    <circle cx="6" cy="5" r="2" />
-    <circle cx="18" cy="5" r="2" />
-    <circle cx="12" cy="19" r="2" />
-    <path d="M6 7v2a4 4 0 0 0 4 4h2M18 7v2a4 4 0 0 1-4 4h-2v4" />
-  </Icon>
-);
-const CheckIcon = () => (
-  <Icon>
-    <path d="m5 12 4 4L19 6" />
-  </Icon>
-);
 
 export function chatWorkIsActive(
   parts: UiPart[],
@@ -410,7 +368,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
               ariaLabel={`Open selection chat ${index + 1}`}
               onClick={(event) => setOpenThread({ id: thread.id, anchor: event.currentTarget })}
             >
-              <ChatIcon />
+              <ChatIcon size={15} />
               <b>{thread.messageCount}</b>
             </IconButton>
           ),

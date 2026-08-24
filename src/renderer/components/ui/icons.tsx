@@ -4,10 +4,12 @@ function Icon({
   children,
   size = 16,
   className,
+  strokeWidth = 1.8,
 }: {
   children: ReactNode;
   size?: number;
   className?: string;
+  strokeWidth?: number;
 }) {
   return (
     <svg
@@ -18,11 +20,31 @@ function Icon({
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.8"
+      strokeWidth={strokeWidth}
       strokeLinecap="round"
       strokeLinejoin="round"
     >
       {children}
+    </svg>
+  );
+}
+
+export function EditorIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      aria-hidden="true"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h8.25L20 10.25V18.5A1.5 1.5 0 0 1 18.5 20h-13A1.5 1.5 0 0 1 4 18.5z" />
+      <path d="M13.5 4v6.5H20M8 16h2M8 12.5h2" />
+      <path d="m14.5 17.5 4.25-4.25a1.06 1.06 0 0 1 1.5 1.5L16 19h-1.5z" />
     </svg>
   );
 }
@@ -44,9 +66,66 @@ export const PlusIcon = () => (
     <path d="M12 5v14M5 12h14" />
   </Icon>
 );
-export const ChatIcon = () => (
-  <Icon>
+export const ExpandIcon = () => (
+  <Icon size={15}>
+    <path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5" />
+  </Icon>
+);
+export const LightningIcon = () => (
+  <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M13.4 2 4 13.1h6.6L9.7 22 20 9.7h-6.8L13.4 2Z" />
+  </svg>
+);
+export const BranchIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <circle cx="4" cy="3.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+    <circle cx="4" cy="12.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+    <circle cx="12" cy="5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+    <path d="M4 5.3v5.4M12 6.8c0 2.5-2.5 3.2-5.5 3.6" stroke="currentColor" strokeWidth="1.4" />
+  </svg>
+);
+export const AddCommentIcon = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M8 3.25v9.5M3.25 8h9.5" />
+  </svg>
+);
+export const ChatIcon = ({ size = 16 }: { size?: number }) => (
+  <Icon size={size}>
     <path d="M20 15a3 3 0 0 1-3 3H8l-5 3 1.7-5.1A7 7 0 0 1 4 13V8a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3z" />
+  </Icon>
+);
+export const CopyIcon = () => (
+  <Icon size={15}>
+    <rect x="8" y="8" width="11" height="11" rx="2" />
+    <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+  </Icon>
+);
+export const ForkIcon = () => (
+  <Icon size={15}>
+    <circle cx="6" cy="5" r="2" />
+    <circle cx="18" cy="5" r="2" />
+    <circle cx="12" cy="19" r="2" />
+    <path d="M6 7v2a4 4 0 0 0 4 4h2M18 7v2a4 4 0 0 1-4 4h-2v4" />
+  </Icon>
+);
+export const CheckIcon = () => (
+  <Icon size={15}>
+    <path d="m5 12 4 4L19 6" />
+  </Icon>
+);
+export const SteerIcon = () => (
+  <Icon size={13} strokeWidth={2}>
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+  </Icon>
+);
+export const EditIcon = () => (
+  <Icon size={13} strokeWidth={2}>
+    <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+  </Icon>
+);
+export const RemoveIcon = () => (
+  <Icon size={13} strokeWidth={2}>
+    <path d="M18 6 6 18M6 6l12 12" />
   </Icon>
 );
 export const BackIcon = () => (
@@ -68,6 +147,37 @@ export const SidebarIcon = () => (
 export const ChevronIcon = ({ className }: { className?: string }) => (
   <Icon size={13} className={className}>
     <path d="m8 10 4 4 4-4" />
+  </Icon>
+);
+export const ChevronDownIcon = ({ size = 14 }: { size?: number }) => (
+  <Icon size={size} strokeWidth={2}>
+    <path d="m6 9 6 6 6-6" />
+  </Icon>
+);
+export const PaperclipIcon = () => (
+  <Icon>
+    <path d="m20.5 11.5-8.9 8.9a6 6 0 0 1-8.5-8.5l9.6-9.6a4 4 0 0 1 5.7 5.7l-9.6 9.6a2 2 0 1 1-2.8-2.8l8.9-8.9" />
+  </Icon>
+);
+export const SendIcon = () => (
+  <Icon>
+    <path d="m5 12 7-7 7 7M12 19V5" />
+  </Icon>
+);
+export const StopIcon = () => (
+  <Icon>
+    <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none" />
+  </Icon>
+);
+export const CloseIcon = ({
+  size = 20,
+  strokeWidth = 1.8,
+}: {
+  size?: number;
+  strokeWidth?: number;
+}) => (
+  <Icon size={size} strokeWidth={strokeWidth}>
+    <path d="m6 6 12 12M18 6 6 18" />
   </Icon>
 );
 export const ResolveIcon = () => (
@@ -111,6 +221,12 @@ export const TreeIcon = () => (
 export const SparkleIcon = () => (
   <Icon size={14}>
     <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z" />
+  </Icon>
+);
+export const SkillIcon = () => (
+  <Icon size={14}>
+    <path d="m12 3 1.4 4.1L17.5 8.5l-4.1 1.4L12 14l-1.4-4.1-4.1-1.4 4.1-1.4z" />
+    <path d="m18.5 14 .8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" />
   </Icon>
 );
 export const DiffIcon = () => (

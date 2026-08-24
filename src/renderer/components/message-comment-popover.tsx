@@ -12,6 +12,7 @@ import {
 import { createPortal } from "react-dom";
 import { observer } from "r-state-tree/react";
 import { IconButton } from "@/components/ui/icon-button";
+import { CloseIcon } from "@/components/ui/icons";
 import type { ReviewThread } from "../../models/ReviewThread";
 import type { ChatStore } from "../stores/ChatStore";
 import type { MessageCommentsStore } from "../stores/MessageCommentsStore";
@@ -21,23 +22,6 @@ export interface MessageCommentAnchorRect {
   right: number;
   bottom: number;
   left: number;
-}
-
-function CloseIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.9"
-      strokeLinecap="round"
-    >
-      <path d="m6 6 12 12M18 6 6 18" />
-    </svg>
-  );
 }
 
 function anchorRect(anchor: HTMLElement | MessageCommentAnchorRect) {
@@ -201,7 +185,7 @@ export function ChatPopover({
           <strong>{title}</strong>
         </div>
         <IconButton tooltip={`Close ${title.toLowerCase()}`} onClick={onClose}>
-          <CloseIcon />
+          <CloseIcon size={16} strokeWidth={1.9} />
         </IconButton>
       </header>
       {children}

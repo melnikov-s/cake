@@ -5,6 +5,7 @@ import type { ReviewThread } from "../../models/ReviewThread";
 import type { ReviewsStore } from "../stores/ReviewsStore";
 import { extractSourceSelection } from "./source-selection";
 import { IconButton } from "./ui/icon-button";
+import { AddCommentIcon } from "./ui/icons";
 import { highlightSource, syntaxTokenStyle, type HighlightTokens } from "./ai-elements/code";
 import { ReviewDraftCard } from "./review-draft-card";
 import { ReviewThreadCard } from "./review-thread-card";
@@ -173,9 +174,7 @@ export const SourceReview = observer(function SourceReview({
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={(event) => openFromLineAction(event.currentTarget, index, line)}
               >
-                <svg viewBox="0 0 16 16" aria-hidden="true">
-                  <path d="M8 3.25v9.5M3.25 8h9.5" />
-                </svg>
+                <AddCommentIcon />
               </IconButton>
               {index + 1}
             </span>

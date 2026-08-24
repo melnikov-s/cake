@@ -5,6 +5,7 @@ import type { ReviewAnchor, ReviewPoint } from "../../ipc/review-contract";
 import { parseDiff } from "./ai-elements/diff-view";
 import { syntaxTokenStyle, useHighlightedSource } from "./ai-elements/code";
 import { IconButton } from "./ui/icon-button";
+import { AddCommentIcon } from "./ui/icons";
 import type { ChangesStore } from "../stores/ChangesStore";
 import type { ReviewsStore } from "../stores/ReviewsStore";
 import { ReviewDraftCard } from "./review-draft-card";
@@ -133,9 +134,7 @@ export const HighlightedDiff = observer(function HighlightedDiff({
                       openFromLineAction(event.currentTarget, index, line.content)
                     }
                   >
-                    <svg viewBox="0 0 16 16" aria-hidden="true">
-                      <path d="M8 3.25v9.5M3.25 8h9.5" />
-                    </svg>
+                    <AddCommentIcon />
                   </IconButton>
                 )}
                 {line.oldNumber}

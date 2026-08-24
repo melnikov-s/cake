@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { IconButton } from "../ui/icon-button";
+import { EditorIcon } from "../ui/icons";
 import { syntaxTokenStyle, useHighlightedSource } from "./code";
-import { EditorIcon } from "./editor-icon";
 
 export type DiffLine = {
   key: string;

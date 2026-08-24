@@ -1,42 +1,8 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { IconButton } from "@/components/ui/icon-button";
+import { CloseIcon, ExpandIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
-
-function ExpandIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5" />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-    >
-      <path d="m6 6 12 12M18 6 6 18" />
-    </svg>
-  );
-}
 
 export function FullscreenButton({
   className,
