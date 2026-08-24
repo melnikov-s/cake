@@ -406,6 +406,7 @@ export const App = observer(function App() {
                   },
                   waitingForUser: Boolean(extensionUi.request || artifactInteractions?.request),
                   messageComments: session.messageCommentsStore,
+                  subagents: session.subagentActivityStore,
                   subscribeToChatAboutSelection,
                   inlineWidgets: root.inlineWidgetStore,
                   artifacts: {

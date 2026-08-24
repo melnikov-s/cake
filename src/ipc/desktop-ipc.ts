@@ -51,6 +51,7 @@ import {
   worktreeRecordSchema,
   worktreeStatusSchema,
 } from "./worktree-contract";
+import { subagentActivitySchema } from "./subagent-activity-contract";
 
 export const desktopEventSchema = z.discriminatedUnion("type", [
   z.object({
@@ -80,6 +81,12 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     type: z.literal("session-background-work"),
     sessionId: z.string().min(1).max(256),
     active: z.boolean(),
+  }),
+  z.object({ type: z.literal("subagent-activity"), activity: subagentActivitySchema }),
+  z.object({
+    type: z.literal("subagent-activity-removed"),
+    parentSessionId: z.string().min(1).max(256),
+    handleId: z.uuid(),
   }),
   z.object({
     type: z.literal("global-chat-snapshot"),

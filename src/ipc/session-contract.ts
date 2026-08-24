@@ -499,6 +499,7 @@ export type UiPart = z.infer<typeof uiPartSchema>;
 export type ModelOption = z.infer<typeof modelOptionSchema>;
 export type ThinkingLevel = z.infer<typeof thinkingLevelSchema>;
 export type UtilityModel = z.infer<typeof utilityModelSchema>;
+export type SessionUsage = z.infer<typeof sessionUsageSchema>;
 export type ModelPreset = z.infer<typeof modelPresetSchema>;
 export type ChatConfiguration = z.infer<typeof chatConfigurationSchema>;
 export type PiSettings = z.infer<typeof piSettingsSchema>;

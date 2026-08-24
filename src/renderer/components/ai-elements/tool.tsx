@@ -13,6 +13,7 @@ import { EditorIcon } from "./editor-icon";
 import { languageForSource } from "./code";
 import { fencedCode, Markdown } from "./markdown";
 import { SubagentTool } from "./subagent-tool";
+import type { SubagentActivityStore } from "../../stores/SubagentActivityStore";
 import { ImagePreview } from "@/components/image-preview";
 
 function parseJson(value: string) {
@@ -136,6 +137,7 @@ export function Tool({
   timer,
   expansion,
   subagentSpawnPart,
+  subagents,
   live = false,
   omitDiff,
 }: {
@@ -146,6 +148,7 @@ export function Tool({
   expansion?: { open: boolean; toggle(): void };
   /** The matching spawn call when Cake presents spawn + wait as one subagent run. */
   subagentSpawnPart?: Extract<UiPart, { kind: "tool" }>;
+  subagents?: SubagentActivityStore;
   /** True while this conversation's runtime may still be producing subagent work. */
   live?: boolean;
   omitDiff?: boolean;
@@ -158,6 +161,7 @@ export function Tool({
       <SubagentTool
         part={part}
         spawnPart={subagentSpawnPart}
+        subagents={subagents}
         live={live}
         timer={timer}
         expansion={expansion}

@@ -491,6 +491,14 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       this.sessionRegistry.findSession(event.sessionId)?.setBackgroundWorkActive(event.active);
       return;
     }
+    if (event.type === "subagent-activity-received") {
+      this.sessionRegistry.findSession(event.activity.parentSessionId)?.receive(event);
+      return;
+    }
+    if (event.type === "subagent-activity-removed") {
+      this.sessionRegistry.findSession(event.parentSessionId)?.receive(event);
+      return;
+    }
     if (
       event.type === "operation-completed" ||
       event.type === "operation-failed" ||

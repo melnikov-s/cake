@@ -195,12 +195,14 @@ export interface CakeRuntimeOptions {
       input: SubagentTaskInput,
       parentSessionId: string,
       signal: AbortSignal,
+      anchorPartId?: string,
     ): Promise<JsonValue>;
     parallel(
       input: ParallelSubagentTasksInput,
       parentSessionId: string,
       signal: AbortSignal,
       onUpdate?: (value: JsonValue) => void,
+      anchorPartId?: string,
     ): Promise<JsonValue>;
     prompt(
       input: { handleId: string; text: string; delivery: "prompt" | "follow-up" },
@@ -296,8 +298,13 @@ function createAgentControlExtension(
       description:
         "Use only when the user explicitly requested subagents or delegation. Start one isolated, parent-owned subagent with an explicit capability profile. Delegation depth is zero and completed runtimes are released by default; set retain only for intentional multi-turn work.",
       schema: subagentTaskSchema,
-      run: (value: SubagentTask, parent: string, signal: AbortSignal) =>
-        control.spawn(value, parent, signal),
+      run: (
+        value: SubagentTask,
+        parent: string,
+        signal: AbortSignal,
+        _onUpdate?: (value: JsonValue) => void,
+        anchorPartId?: string,
+      ) => control.spawn(value, parent, signal, anchorPartId),
     },
     {
       name: "subagent_parallel",
@@ -309,7 +316,8 @@ function createAgentControlExtension(
         parent: string,
         signal: AbortSignal,
         onUpdate?: (value: JsonValue) => void,
-      ) => control.parallel(value, parent, signal, onUpdate),
+        anchorPartId?: string,
+      ) => control.parallel(value, parent, signal, onUpdate, anchorPartId),
     },
     {
       name: "subagent_prompt",
@@ -375,6 +383,7 @@ function createAgentControlExtension(
             parent,
             signal ?? new AbortController().signal,
             update,
+            `tool-${_toolCallId}`,
           );
           return {
             content: [{ type: "text", text: formatUnknown(result, 24_000) }],

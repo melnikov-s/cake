@@ -257,6 +257,16 @@ describe("PiWorkspaceDriver", () => {
     });
     expect(JSON.stringify(spawned)).not.toContain('"sessionId"');
     expect(emit).toHaveBeenCalledWith({
+      type: "subagent-activity",
+      activity: expect.objectContaining({
+        parentSessionId: parent.sessionId,
+        handleId: expect.any(String),
+        task: "Audit the IPC boundary",
+        status: "running",
+        parts: [],
+      }),
+    });
+    expect(emit).toHaveBeenCalledWith({
       type: "session-background-work",
       sessionId: parent.sessionId,
       active: true,
@@ -299,6 +309,15 @@ describe("PiWorkspaceDriver", () => {
         expect.objectContaining({ parts: [expect.objectContaining({ id: "child-answer" })] }),
       ),
     );
+    await vi.waitFor(() =>
+      expect(emit).toHaveBeenCalledWith({
+        type: "subagent-activity",
+        activity: expect.objectContaining({
+          handleId,
+          parts: [expect.objectContaining({ id: "child-answer" })],
+        }),
+      }),
+    );
     expect(child.snapshot).toHaveBeenCalledTimes(snapshotCalls);
 
     finishTask();
@@ -311,6 +330,13 @@ describe("PiWorkspaceDriver", () => {
       fastMode: true,
     });
     await expect(waiting).resolves.not.toHaveProperty("sessionId");
+    await vi.waitFor(() =>
+      expect(emit).toHaveBeenCalledWith({
+        type: "subagent-activity-removed",
+        parentSessionId: parent.sessionId,
+        handleId,
+      }),
+    );
     expect(emit).toHaveBeenCalledWith({
       type: "session-background-work",
       sessionId: parent.sessionId,

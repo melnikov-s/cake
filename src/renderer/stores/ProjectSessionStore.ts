@@ -12,6 +12,7 @@ import { ChatStore } from "./ChatStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ArtifactInteractionStore } from "./ArtifactInteractionStore";
 import { MessageCommentsStore } from "./MessageCommentsStore";
+import { SubagentActivityStore } from "./SubagentActivityStore";
 
 export interface SessionTarget {
   workspacePath: string;
@@ -76,6 +77,10 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
 
   /** Routes an event only to the session subsystem that authoritatively owns it. */
   receive(event: DesktopClientEvent) {
+    if (event.type === "subagent-activity-received" || event.type === "subagent-activity-removed") {
+      this.subagentActivityStore.receive(event);
+      return;
+    }
     if (event.type === "artifact-requested") {
       if (event.record.artifact.sessionId !== this.sessionId) return;
       this.artifactRequestActive = true;
@@ -147,6 +152,11 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return this.artifactRequestActive
       ? this.artifactInteractionStore.cancelPendingRequest()
       : undefined;
+  }
+
+  @child
+  get subagentActivityStore(): SubagentActivityStore {
+    return createStore(SubagentActivityStore, { sessionId: this.sessionId });
   }
 
   @child

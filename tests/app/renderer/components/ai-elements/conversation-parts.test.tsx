@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { createStore, mount } from "r-state-tree";
 import { describe, expect, it } from "vitest";
 import {
   Composer,
@@ -7,6 +8,7 @@ import {
 import { Markdown } from "../../../../../src/renderer/components/ai-elements/markdown";
 import { Reasoning } from "../../../../../src/renderer/components/ai-elements/reasoning";
 import { Tool } from "../../../../../src/renderer/components/ai-elements/tool";
+import { SubagentActivityStore } from "../../../../../src/renderer/stores/SubagentActivityStore";
 
 describe("Cake-owned conversation components", () => {
   it("renders GFM tables, task lists, safe links, and code blocks", () => {
@@ -351,6 +353,111 @@ describe("Cake-owned conversation components", () => {
     expect(html).toContain("Subagent execution trace");
     expect(html).toContain("125 tokens");
     expect(html).toContain("The boundary is correctly isolated.");
+  });
+
+  it("renders first-class live activity without a subagent wait call", () => {
+    const handleId = crypto.randomUUID();
+    const subagents = mount(createStore(SubagentActivityStore, { sessionId: "parent" }));
+    subagents.receive({
+      type: "subagent-activity-received",
+      activity: {
+        parentSessionId: "parent",
+        anchorPartId: "tool-live-spawn",
+        handleId,
+        revision: 1,
+        task: "Inspect the live boundary",
+        profile: "reviewer",
+        status: "running",
+        resolvedModel: {
+          requested: "current",
+          source: "current",
+          provider: "openai-codex",
+          modelId: "gpt-5.6-sol",
+          thinkingLevel: "medium",
+          fallbacks: [],
+        },
+        fastMode: false,
+        retained: false,
+        streaming: true,
+        parts: [
+          {
+            id: "child-read",
+            kind: "tool",
+            name: "read",
+            input: "src/main.ts",
+            state: "running",
+          },
+        ],
+      },
+    });
+
+    const html = renderToStaticMarkup(
+      <Tool
+        subagents={subagents}
+        part={{
+          id: "tool-live-spawn",
+          kind: "tool",
+          name: "subagent_spawn",
+          input: JSON.stringify({ task: "Inspect the live boundary", profile: "reviewer" }),
+          output: JSON.stringify({ handleId, status: "running" }),
+          state: "success",
+        }}
+        expansion={{ open: true, toggle: () => undefined }}
+      />,
+    );
+
+    expect(html).toContain("Inspect the live boundary");
+    expect(html).toContain("openai-codex/gpt-5.6-sol");
+    expect(html).toContain("src/main.ts");
+    expect(html).toContain("running");
+    subagents[Symbol.dispose]();
+  });
+
+  it("renders every recorded child from a historical parallel delegation", () => {
+    const html = renderToStaticMarkup(
+      <Tool
+        part={{
+          id: "tool-parallel",
+          kind: "tool",
+          name: "subagent_parallel",
+          input: JSON.stringify({
+            tasks: [
+              { task: "Inspect storage", profile: "scout" },
+              { task: "Review rendering", profile: "reviewer" },
+            ],
+          }),
+          output: JSON.stringify({
+            completed: 2,
+            total: 2,
+            results: [
+              {
+                handleId: crypto.randomUUID(),
+                task: "Inspect storage",
+                profile: "scout",
+                status: "complete",
+                parts: [{ id: "storage-result", kind: "text", text: "Storage is sound." }],
+              },
+              {
+                handleId: crypto.randomUUID(),
+                task: "Review rendering",
+                profile: "reviewer",
+                status: "complete",
+                parts: [{ id: "render-result", kind: "text", text: "Rendering is sound." }],
+              },
+            ],
+          }),
+          state: "success",
+        }}
+        expansion={{ open: true, toggle: () => undefined }}
+      />,
+    );
+
+    expect(html).toContain("Parallel delegation");
+    expect(html).toContain("2/2 complete");
+    expect(html).toContain("Inspect storage");
+    expect(html).toContain("Review rendering");
+    expect(html).toContain("Storage is sound.");
+    expect(html).toContain("Rendering is sound.");
   });
 
   it("keeps completed subagent output visible while technical details are collapsed", () => {

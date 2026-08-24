@@ -23,6 +23,7 @@ import type { ArtifactInteractionStore } from "../stores/ArtifactInteractionStor
 import type { ChatStore } from "../stores/ChatStore";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import type { MessageCommentsStore, MessageSelectionAnchor } from "../stores/MessageCommentsStore";
+import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
 
 function Icon({ children }: { children: ReactNode }) {
   return (
@@ -279,6 +280,7 @@ export interface ChatTranscriptBehavior {
   inlineWidgets?: InlineWidgetStore;
   artifacts?: { records: ArtifactRecord[]; interaction: ArtifactInteractionStore };
   messageComments?: MessageCommentsStore;
+  subagents?: SubagentActivityStore;
   subscribeToChatAboutSelection?(listener: () => void): () => void;
 }
 
