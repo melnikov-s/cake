@@ -26,6 +26,8 @@ export interface GlobalChatDriverOptions {
   recoveryContext?(): string | undefined;
   fastMode?(sessionId: string): boolean;
   setFastMode?(sessionId: string, enabled: boolean): Promise<void>;
+  sessionResolved?(sessionId: string): boolean;
+  setSessionResolved?(sessionId: string, resolved: boolean): Promise<void>;
   createRuntime?: typeof createCakeRuntime;
 }
 
@@ -160,6 +162,19 @@ export class GlobalChatDriver {
       // Cake Chat sessions have no rename workflow, so /name is not offered there.
       slashCommands: ["compact", "model"],
       requestUi: async () => undefined,
+      currentSessionControl: {
+        resolved: () => {
+          const targetSessionId = runtimeIdentity.sessionId ?? sessionId;
+          return targetSessionId
+            ? (this.options.sessionResolved?.(targetSessionId) ?? false)
+            : false;
+        },
+        setResolved: async (resolved) => {
+          const targetSessionId = runtimeIdentity.sessionId ?? sessionId;
+          if (!targetSessionId) throw new Error("The Cake Chat session is not ready");
+          await this.options.setSessionResolved?.(targetSessionId, resolved);
+        },
+      },
       fastMode: {
         get: () => {
           const targetSessionId = runtimeIdentity.sessionId ?? sessionId;

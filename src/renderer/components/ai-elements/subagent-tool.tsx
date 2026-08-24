@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import type { UiPart } from "../../../ipc/session-contract";
+import { toolOperationName } from "../../../utils/cake-tool";
 import { historicalSubagentRuns, type SubagentRun } from "../../../utils/subagent-runs";
 import type { SubagentActivityStore } from "../../stores/SubagentActivityStore";
 import type { ChatStore } from "../../stores/ChatStore";
@@ -61,7 +62,7 @@ export const SubagentTool = observer(function SubagentTool({
   const completedCount = runs.filter((run) => run.status === "complete").length;
   const popupRun = popup ? runs.find((run) => run.key === popup.key) : undefined;
   const popupChat = popupRun && subagents ? subagents.chatStore(popupRun.key) : undefined;
-  const parallel = part.name === "subagent_parallel";
+  const parallel = toolOperationName(part) === "subagents.parallel";
 
   return (
     <div

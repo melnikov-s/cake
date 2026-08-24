@@ -83,8 +83,9 @@ function createTestStore() {
       port,
       tools: () => [
         {
-          name: "get_app_state",
-          description: "Read app state",
+          command: "app.state",
+          topic: "app",
+          summary: "Read app state",
           parameters: { type: "object", properties: {} },
         },
       ],
@@ -185,8 +186,9 @@ describe("GlobalChatStore", () => {
         newSession: true,
         tools: [
           {
-            name: "get_app_state",
-            description: "Read app state",
+            command: "app.state",
+            topic: "app",
+            summary: "Read app state",
             parameters: { type: "object", properties: {} },
           },
         ],

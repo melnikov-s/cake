@@ -21,7 +21,14 @@ function assistantToolCall(
     timestamp,
     message: {
       role: "assistant",
-      content: [{ type: "toolCall", id: toolCallId, name, arguments: argumentsValue }],
+      content: [
+        {
+          type: "toolCall",
+          id: toolCallId,
+          name: "cake",
+          arguments: { command: name, input: argumentsValue },
+        },
+      ],
       api: "openai-codex-responses",
       provider: "openai-codex",
       model: "gpt-5.6-sol",
@@ -55,9 +62,9 @@ function toolResult(
     message: {
       role: "toolResult",
       toolCallId,
-      toolName,
+      toolName: "cake",
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      details: result,
+      details: { protocol: "cake.operation/v1", command: toolName, result },
       isError: false,
       timestamp: 2,
     },
@@ -137,8 +144,15 @@ test("opens a released subagent in a read-only popup chat", async () => {
           timestamp: 0,
         },
       },
-      assistantToolCall("spawn-call", "user-1", timestamp, "call-spawn", "subagent_spawn", request),
-      toolResult("spawn-result", "spawn-call", timestamp, "call-spawn", "subagent_spawn", {
+      assistantToolCall(
+        "spawn-call",
+        "user-1",
+        timestamp,
+        "call-spawn",
+        "subagents.spawn",
+        request,
+      ),
+      toolResult("spawn-result", "spawn-call", timestamp, "call-spawn", "subagents.spawn", {
         handleId,
         task: request.task,
         profile: request.profile,
@@ -148,10 +162,10 @@ test("opens a released subagent in a read-only popup chat", async () => {
         maxDepth: 0,
         resolvedModel,
       }),
-      assistantToolCall("wait-call", "spawn-result", timestamp, "call-wait", "subagent_wait", {
+      assistantToolCall("wait-call", "spawn-result", timestamp, "call-wait", "subagents.wait", {
         handleId,
       }),
-      toolResult("wait-result", "wait-call", timestamp, "call-wait", "subagent_wait", {
+      toolResult("wait-result", "wait-call", timestamp, "call-wait", "subagents.wait", {
         handleId,
         task: request.task,
         profile: request.profile,
@@ -290,18 +304,18 @@ test("never restores an interrupted subagent as running", async () => {
           timestamp: 0,
         },
       },
-      assistantToolCall("spawn-call", "user-1", timestamp, "call-spawn", "subagent_spawn", {
+      assistantToolCall("spawn-call", "user-1", timestamp, "call-spawn", "subagents.spawn", {
         task: "Background work that never finished.",
         profile: "worker",
       }),
-      toolResult("spawn-result", "spawn-call", timestamp, "call-spawn", "subagent_spawn", {
+      toolResult("spawn-result", "spawn-call", timestamp, "call-spawn", "subagents.spawn", {
         handleId,
         task: "Background work that never finished.",
         profile: "worker",
         status: "running",
       }),
       // The previous process quit while waiting; no result was ever recorded.
-      assistantToolCall("wait-call", "spawn-result", timestamp, "call-wait", "subagent_wait", {
+      assistantToolCall("wait-call", "spawn-result", timestamp, "call-wait", "subagents.wait", {
         handleId,
       }),
     ]

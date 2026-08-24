@@ -84,7 +84,8 @@ describe("SubagentActivityStore", () => {
       {
         id: "tool-spawn",
         kind: "tool",
-        name: "subagent_spawn",
+        name: "cake",
+        command: "subagents.spawn",
         input: JSON.stringify({ task: "Tell a joke", profile: "worker" }),
         output: JSON.stringify({ handleId, status: "running" }),
         state: "success",
@@ -92,7 +93,8 @@ describe("SubagentActivityStore", () => {
       {
         id: "tool-wait",
         kind: "tool",
-        name: "subagent_wait",
+        name: "cake",
+        command: "subagents.wait",
         input: JSON.stringify({ handleId }),
         output: JSON.stringify({
           handleId,

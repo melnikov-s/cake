@@ -185,6 +185,8 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
     ...partBase,
     kind: z.literal("tool"),
     name: ipcProjectionString(256),
+    /** Inner Cake operation discriminator when the outer model-visible tool is `cake`. */
+    command: ipcProjectionString(256).optional(),
     input: boundedText,
     output: boundedText.optional(),
     outputContent: toolOutputContentArraySchema.optional(),

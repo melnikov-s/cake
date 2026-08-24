@@ -64,8 +64,9 @@ describe("GlobalChatDriver", () => {
 
     driver.open(openId, [
       {
-        name: "open_session",
-        description: "Open a session",
+        command: "sessions.open",
+        topic: "sessions",
+        summary: "Open a session",
         parameters: { type: "object", properties: {} },
       },
     ]);
@@ -119,8 +120,9 @@ describe("GlobalChatDriver", () => {
       crypto.randomUUID(),
       [
         {
-          name: "get_app_state",
-          description: "Read state",
+          command: "app.state",
+          topic: "app",
+          summary: "Read state",
           parameters: { type: "object", properties: {} },
         },
       ],
@@ -157,8 +159,9 @@ describe("GlobalChatDriver", () => {
       crypto.randomUUID(),
       [
         {
-          name: "get_app_state",
-          description: "Read state",
+          command: "app.state",
+          topic: "app",
+          summary: "Read state",
           parameters: { type: "object", properties: {} },
         },
       ],
@@ -189,8 +192,9 @@ describe("GlobalChatDriver", () => {
       openId,
       [
         {
-          name: "get_app_state",
-          description: "Read state",
+          command: "app.state",
+          topic: "app",
+          summary: "Read state",
           parameters: { type: "object", properties: {} },
         },
       ],
@@ -218,8 +222,9 @@ describe("GlobalChatDriver", () => {
       openId,
       [
         {
-          name: "get_app_state",
-          description: "Read state",
+          command: "app.state",
+          topic: "app",
+          summary: "Read state",
           parameters: { type: "object", properties: {} },
         },
       ],
@@ -258,8 +263,9 @@ describe("GlobalChatDriver", () => {
       crypto.randomUUID(),
       [
         {
-          name: "get_app_state",
-          description: "Read state",
+          command: "app.state",
+          topic: "app",
+          summary: "Read state",
           parameters: { type: "object", properties: {} },
         },
       ],
@@ -269,8 +275,9 @@ describe("GlobalChatDriver", () => {
       crypto.randomUUID(),
       [
         {
-          name: "get_app_state",
-          description: "Read state",
+          command: "app.state",
+          topic: "app",
+          summary: "Read state",
           parameters: { type: "object", properties: {} },
         },
       ],
@@ -304,15 +311,17 @@ describe("GlobalChatDriver", () => {
 
     driver.open(crypto.randomUUID(), [
       {
-        name: "get_app_state",
-        description: "Read state",
+        command: "app.state",
+        topic: "app",
+        summary: "Read state",
         parameters: { type: "object", properties: {} },
       },
     ]);
     driver.open(crypto.randomUUID(), [
       {
-        name: "get_app_state",
-        description: "Read state",
+        command: "app.state",
+        topic: "app",
+        summary: "Read state",
         parameters: { type: "object", properties: {} },
       },
     ]);
@@ -339,8 +348,9 @@ describe("GlobalChatDriver", () => {
     });
     driver.open(crypto.randomUUID(), [
       {
-        name: "get_customization_state",
-        description: "Read customization",
+        command: "customizations.state",
+        topic: "customizations",
+        summary: "Read customization",
         parameters: { type: "object", properties: {} },
       },
     ]);

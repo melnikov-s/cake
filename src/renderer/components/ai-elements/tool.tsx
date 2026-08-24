@@ -5,6 +5,7 @@ import { z } from "zod";
 import { jsonObjectSchema, jsonValueSchema } from "../../../ipc/json-contract";
 import type { ToolOutputContent, UiPart } from "../../../ipc/session-contract";
 import type { ChatStore } from "../../stores/ChatStore";
+import { toolOperationName } from "../../../utils/cake-tool";
 import { toolDiff } from "../../../utils/turn-diff";
 import { IconButton } from "../ui/icon-button";
 import { EditorIcon } from "../ui/icons";
@@ -39,14 +40,15 @@ function toolPath(part: Extract<UiPart, { kind: "tool" }>) {
 }
 
 function toolTitle(part: Extract<UiPart, { kind: "tool" }>) {
-  if (part.name === "edit" && part.filePath) return `edit ${part.filePath}`;
+  const operationName = toolOperationName(part);
+  if (operationName === "edit" && part.filePath) return `edit ${part.filePath}`;
 
   const parsed = parseJson(part.input);
   const structuredResult = jsonObjectSchema.safeParse(parsed);
   const structured = structuredResult.success ? structuredResult.data : undefined;
   const parsedString = z.string().safeParse(parsed);
   const detail =
-    part.name === "bash"
+    operationName === "bash"
       ? part.input
       : (toolPath(part) ??
         ["command", "query", "pattern", "url"]
@@ -54,7 +56,7 @@ function toolTitle(part: Extract<UiPart, { kind: "tool" }>) {
           .find((result) => result.success)?.data ??
         (parsedString.success ? parsedString.data : parsed === undefined ? part.input : ""));
   const summary = oneLine(detail);
-  return summary ? `${part.name} ${summary}` : part.name;
+  return summary ? `${operationName} ${summary}` : operationName;
 }
 
 function toolCode(value: string, className: string, highlightCode: boolean) {
@@ -181,7 +183,7 @@ export function Tool({
     if (expansion) expansion.toggle();
     else setUncontrolledOpen((value) => !value);
   };
-  if (part.name.startsWith("subagent_"))
+  if (toolOperationName(part).startsWith("subagents."))
     return (
       <SubagentTool
         part={part}

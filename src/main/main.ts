@@ -175,6 +175,12 @@ const globalChatDriver = new GlobalChatDriver({
     applicationModel.setSessionFastMode(sessionId, enabled);
     await persistApplicationState();
   },
+  sessionResolved: (sessionId) => applicationModel.resolvedCakeChatSessionIds.includes(sessionId),
+  setSessionResolved: async (sessionId, resolved) => {
+    applicationModel.setCakeChatSessionResolved(sessionId, resolved);
+    await persistApplicationState();
+    broadcast({ type: "application-state-changed", state: applicationModel.snapshot() });
+  },
   emit: (event) => {
     if (
       event.type === "global-chat-control-request" &&
@@ -335,6 +341,12 @@ function launchPi(path: string) {
     setFastMode: async (sessionId, enabled) => {
       applicationModel.setSessionFastMode(sessionId, enabled);
       await persistApplicationState();
+    },
+    sessionResolved: (sessionId) => applicationModel.resolvedSessionIds.includes(sessionId),
+    setSessionResolved: async (sessionId, resolved) => {
+      applicationModel.setSessionsResolved([sessionId], resolved);
+      await persistApplicationState();
+      broadcast({ type: "application-state-changed", state: applicationModel.snapshot() });
     },
     resolveAgentModel: (preference, snapshot) =>
       resolveAgentModel(preference, snapshot, applicationModel.utilityModel),

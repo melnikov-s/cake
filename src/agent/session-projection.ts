@@ -90,6 +90,18 @@ export function toolResultDiff(_toolName: string, result: unknown) {
   return typeof diff === "string" ? diff : undefined;
 }
 
+export function cakeOperationCommand(value: unknown) {
+  if (typeof value !== "object" || value === null) return undefined;
+  const direct = Reflect.get(value, "command");
+  if (typeof direct === "string" && direct.length <= 256) return direct;
+  const details = Reflect.get(value, "details");
+  if (typeof details === "object" && details !== null) {
+    const command = Reflect.get(details, "command");
+    if (typeof command === "string" && command.length <= 256) return command;
+  }
+  return undefined;
+}
+
 export function toolArtifactId(value: unknown) {
   if (typeof value !== "object" || value === null) return undefined;
   const direct = Reflect.get(value, "artifactId");
@@ -100,6 +112,11 @@ export function toolArtifactId(value: unknown) {
       ? Reflect.get(details, "artifactId")
       : undefined;
   if (typeof detailedId === "string") return detailedId;
+  const result =
+    typeof details === "object" && details !== null ? Reflect.get(details, "result") : undefined;
+  const resultId =
+    typeof result === "object" && result !== null ? Reflect.get(result, "artifactId") : undefined;
+  if (typeof resultId === "string") return resultId;
   const artifact = Reflect.get(value, "artifact");
   const artifactId =
     typeof artifact === "object" && artifact !== null ? Reflect.get(artifact, "id") : undefined;
@@ -231,6 +248,7 @@ function partsFromMessage(
             id: boundedProjectionKey(`tool-${String(Reflect.get(item, "id"))}`),
             kind: "tool",
             name,
+            command: name === "cake" ? cakeOperationCommand(args) : undefined,
             input: formatToolInput(name, args),
             artifactId: toolArtifactId(args),
             filePath: toolFilePath(name, args),
@@ -265,6 +283,7 @@ function partsFromMessage(
         id: boundedProjectionKey(`tool-${String(Reflect.get(message, "toolCallId"))}`),
         kind: "tool",
         name,
+        command: name === "cake" ? cakeOperationCommand({ details }) : undefined,
         input: "",
         output: textFromContent(content) || formatUnknown(details),
         outputContent: projectToolOutputContent(content),
@@ -467,7 +486,8 @@ export function projectSessionEntries(
         append({
           id: `entry-${entry.id}-artifact`,
           kind: "tool",
-          name: "ui_request",
+          name: "cake",
+          command: "requests.open",
           input: "",
           artifactId: pointer.data.artifactId,
           state: "success",

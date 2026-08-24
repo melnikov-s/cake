@@ -292,7 +292,8 @@ describe("Cake-owned conversation components", () => {
         subagentSpawnPart={{
           id: "subagent-spawn",
           kind: "tool",
-          name: "subagent_spawn",
+          name: "cake",
+          command: "subagents.spawn",
           input: JSON.stringify({
             task: "Inspect the session boundary",
             profile: "reviewer",
@@ -312,7 +313,8 @@ describe("Cake-owned conversation components", () => {
         part={{
           id: "subagent-wait",
           kind: "tool",
-          name: "subagent_wait",
+          name: "cake",
+          command: "subagents.wait",
           input: JSON.stringify({ handleId }),
           output: JSON.stringify({
             handleId,
@@ -411,7 +413,8 @@ describe("Cake-owned conversation components", () => {
         part={{
           id: "tool-live-spawn",
           kind: "tool",
-          name: "subagent_spawn",
+          name: "cake",
+          command: "subagents.spawn",
           input: JSON.stringify({ task: "Inspect the live boundary", profile: "reviewer" }),
           output: JSON.stringify({ handleId, status: "running" }),
           state: "success",
@@ -433,7 +436,8 @@ describe("Cake-owned conversation components", () => {
         part={{
           id: "tool-parallel",
           kind: "tool",
-          name: "subagent_parallel",
+          name: "cake",
+          command: "subagents.parallel",
           input: JSON.stringify({
             tasks: [
               { task: "Inspect storage", profile: "scout" },
@@ -482,7 +486,8 @@ describe("Cake-owned conversation components", () => {
         part={{
           id: "subagent-wait",
           kind: "tool",
-          name: "subagent_wait",
+          name: "cake",
+          command: "subagents.wait",
           input: JSON.stringify({ handleId }),
           output: JSON.stringify({
             handleId,

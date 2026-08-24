@@ -15,10 +15,21 @@ import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { CakeChatSessionStore } from "./CakeChatSessionStore";
 import { describeError } from "../error-details";
 
+export interface CakeControlTool {
+  command: string;
+  topic: string;
+  summary: string;
+  guidance?: readonly string[];
+  parameters: JsonObject;
+  examples?: readonly { input?: JsonObject; description?: string }[];
+  result?: string;
+  limitations?: readonly string[];
+}
+
 export interface GlobalChatPort {
   open(input: {
     operationId: string;
-    tools: ReadonlyArray<{ name: string; description: string; parameters: JsonObject }>;
+    tools: ReadonlyArray<CakeControlTool>;
     newSession?: boolean;
     sessionId?: string;
     initialPrompt?: string;
@@ -54,7 +65,7 @@ export interface GlobalChatPort {
 
 export interface GlobalChatStoreProps {
   port: GlobalChatPort;
-  tools(): ReadonlyArray<{ name: string; description: string; parameters: JsonObject }>;
+  tools(): ReadonlyArray<CakeControlTool>;
   modelPresets?(): readonly ModelPreset[];
   defaultConfiguration?(): ChatConfiguration | undefined;
   openModelPresetSettings?(): void;

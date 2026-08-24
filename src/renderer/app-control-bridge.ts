@@ -10,55 +10,63 @@ import {
   type PluginStatus,
 } from "../plugin/plugin-contract";
 
-const sessionIdTargetSchema = z.object({ sessionId: z.string().min(1).max(256) });
+const sessionIdTargetSchema = z.object({ sessionId: z.string().min(1).max(256) }).strict();
 
 const emptyArgumentsSchema = z.object({}).strict();
 const pluginStatusesSchema = z.array(pluginStatusSchema).max(1_000);
-const pluginFileSchema = z.object({
-  pluginId: pluginIdSchema,
-  path: z.string().min(1).max(8_192).describe("Path relative to the plugin directory."),
-});
+const pluginFileSchema = z
+  .object({
+    pluginId: pluginIdSchema,
+    path: z.string().min(1).max(8_192).describe("Path relative to the plugin directory."),
+  })
+  .strict();
 const appControlArgumentSchemas = {
   get_app_state: emptyArgumentsSchema,
   get_customization_state: emptyArgumentsSchema,
   get_plugin_authoring_reference: emptyArgumentsSchema,
   list_plugin_files: emptyArgumentsSchema,
-  create_plugin: z.object({
-    pluginId: pluginIdSchema,
-    name: z.string().trim().min(1).max(128),
-    renderer: z.boolean().default(true),
-    backend: z.boolean().default(false),
-    scene: z.boolean().default(false),
-    expectedWorkingRevision: z.string().regex(/^[a-f0-9]{64}$/),
-  }),
+  create_plugin: z
+    .object({
+      pluginId: pluginIdSchema,
+      name: z.string().trim().min(1).max(128),
+      renderer: z.boolean().default(true),
+      backend: z.boolean().default(false),
+      scene: z.boolean().default(false),
+      expectedWorkingRevision: z.string().regex(/^[a-f0-9]{64}$/),
+    })
+    .strict(),
   read_plugin_file: pluginFileSchema,
   write_plugin_file: pluginFileSchema.extend({
     content: z.string().max(2_000_000),
     expectedWorkingRevision: z.string().regex(/^[a-f0-9]{64}$/),
   }),
-  validate_customization: z.object({
-    expectedBaseRevision: z
-      .string()
-      .regex(/^[a-f0-9]{64}$/)
-      .optional(),
-    expectedSourceRevision: z
-      .string()
-      .regex(/^[a-f0-9]{64}$/)
-      .optional(),
-    request: z.string().trim().min(1).max(8_192),
-  }),
-  activate_customization: z.object({
-    revision: z.string().regex(/^[a-f0-9]{64}$/),
-    expectedSourceRevision: z.string().regex(/^[a-f0-9]{64}$/),
-    request: z.string().trim().min(1).max(8_192),
-  }),
+  validate_customization: z
+    .object({
+      expectedBaseRevision: z
+        .string()
+        .regex(/^[a-f0-9]{64}$/)
+        .optional(),
+      expectedSourceRevision: z
+        .string()
+        .regex(/^[a-f0-9]{64}$/)
+        .optional(),
+      request: z.string().trim().min(1).max(8_192),
+    })
+    .strict(),
+  activate_customization: z
+    .object({
+      revision: z.string().regex(/^[a-f0-9]{64}$/),
+      expectedSourceRevision: z.string().regex(/^[a-f0-9]{64}$/),
+      request: z.string().trim().min(1).max(8_192),
+    })
+    .strict(),
   rollback_customization: emptyArgumentsSchema,
   use_factory_customization: emptyArgumentsSchema,
-  set_plugin_enabled: z.object({ pluginId: pluginIdSchema, enabled: z.boolean() }),
-  set_active_scene: z.object({ pluginId: pluginIdSchema.optional() }),
+  set_plugin_enabled: z.object({ pluginId: pluginIdSchema, enabled: z.boolean() }).strict(),
+  set_active_scene: z.object({ pluginId: pluginIdSchema.optional() }).strict(),
   get_session_status: sessionIdTargetSchema,
   open_session: sessionIdTargetSchema,
-  create_session: z.object({ workspacePath: z.string().min(1).max(4_096) }),
+  create_session: z.object({ workspacePath: z.string().min(1).max(4_096) }).strict(),
   send_session_message: sessionIdTargetSchema.extend({
     text: z.string().trim().min(1).max(100_000),
     delivery: z.enum(["prompt", "follow-up", "steer"]).optional(),
@@ -66,14 +74,18 @@ const appControlArgumentSchemas = {
   abort_session: sessionIdTargetSchema,
   rename_session: sessionIdTargetSchema.extend({ title: z.string().trim().min(1).max(500) }),
   set_session_resolved: sessionIdTargetSchema.extend({ resolved: z.boolean() }),
-  set_sessions_resolved: z.object({
-    sessionIds: z.array(z.string().min(1).max(256)).min(1).max(10_000),
-    resolved: z.boolean(),
-  }),
-  set_cake_chat_sessions_resolved: z.object({
-    sessionIds: z.array(z.string().min(1).max(256)).min(1).max(10_000),
-    resolved: z.boolean(),
-  }),
+  set_sessions_resolved: z
+    .object({
+      sessionIds: z.array(z.string().min(1).max(256)).min(1).max(10_000),
+      resolved: z.boolean(),
+    })
+    .strict(),
+  set_cake_chat_sessions_resolved: z
+    .object({
+      sessionIds: z.array(z.string().min(1).max(256)).min(1).max(10_000),
+      resolved: z.boolean(),
+    })
+    .strict(),
   set_session_model: sessionIdTargetSchema.extend({
     provider: z.string().trim().min(1).max(100),
     modelId: z.string().trim().min(1).max(200),
@@ -81,7 +93,7 @@ const appControlArgumentSchemas = {
 } as const;
 
 function invocation<Name extends keyof typeof appControlArgumentSchemas>(name: Name) {
-  return z.object({ name: z.literal(name), arguments: appControlArgumentSchemas[name] });
+  return z.object({ name: z.literal(name), arguments: appControlArgumentSchemas[name] }).strict();
 }
 
 export const appControlInvocationSchema = z.discriminatedUnion("name", [
@@ -111,120 +123,6 @@ export const appControlInvocationSchema = z.discriminatedUnion("name", [
 ]);
 
 export type AppControlInvocation = z.infer<typeof appControlInvocationSchema>;
-
-export const appControlToolCatalog = [
-  tool(
-    "get_app_state",
-    "Read Cake's current selection and a compact summary of projects and recent or active sessions.",
-    appControlArgumentSchemas.get_app_state,
-  ),
-  tool(
-    "get_customization_state",
-    "Read the exact customization source/head revisions, recovery diagnostics, last-known-good revision, and installed plugin status.",
-    appControlArgumentSchemas.get_customization_state,
-  ),
-  tool(
-    "get_plugin_authoring_reference",
-    "Read Cake's exact, version-matched plugin API and authoring guide. Always call this before creating or changing a plugin; do not probe the compiler to discover APIs.",
-    appControlArgumentSchemas.get_plugin_authoring_reference,
-  ),
-  tool(
-    "list_plugin_files",
-    "List plugin-owned source files and return exact optimistic working and build revisions. Call before creating or writing plugin source.",
-    appControlArgumentSchemas.list_plugin_files,
-  ),
-  tool(
-    "create_plugin",
-    "Create a manifest and safe starter modules for one plugin. For normal widgets use renderer=true and scene=false. Set scene=true only when the user explicitly asks to replace Cake's entire scene.",
-    appControlArgumentSchemas.create_plugin,
-  ),
-  tool(
-    "read_plugin_file",
-    "Read one text file from an exact plugin directory.",
-    appControlArgumentSchemas.read_plugin_file,
-  ),
-  tool(
-    "write_plugin_file",
-    "Atomically create or replace one plugin-owned text file, rejecting the write if plugin source changed since the supplied revision. Never create a scene module for ordinary widget work.",
-    appControlArgumentSchemas.write_plugin_file,
-  ),
-  tool(
-    "validate_customization",
-    "Typecheck and bundle current plugin source without activating or reloading it. Fix all diagnostics, then validate again. Validation is safe for iteration and must not be used as API reflection; read the authoring reference instead.",
-    appControlArgumentSchemas.validate_customization,
-  ),
-  tool(
-    "activate_customization",
-    "Activate one already validated, unchanged revision. Call only after the requested implementation is complete and validation succeeded; this reloads Cake and may start trusted plugin backends.",
-    appControlArgumentSchemas.activate_customization,
-  ),
-  tool(
-    "rollback_customization",
-    "Roll back a broken or unwanted customization to the retained last-known-good renderer.",
-    appControlArgumentSchemas.rollback_customization,
-  ),
-  tool(
-    "use_factory_customization",
-    "Select immutable Cake factory UI without deleting editable plugin source or persistence.",
-    appControlArgumentSchemas.use_factory_customization,
-  ),
-  tool(
-    "set_plugin_enabled",
-    "Enable or disable one exact plugin. Disabling preserves its source and persistence and requires rebuilding scene references.",
-    appControlArgumentSchemas.set_plugin_enabled,
-  ),
-  tool(
-    "set_active_scene",
-    "Choose an enabled plugin's optional scene as the whole-app scene, or omit pluginId to use Cake's default scene. Ordinary widgets do not need this.",
-    appControlArgumentSchemas.set_active_scene,
-  ),
-  tool(
-    "get_session_status",
-    "Inspect whether a known session is selected, running, unread, or idle.",
-    appControlArgumentSchemas.get_session_status,
-  ),
-  tool(
-    "open_session",
-    "Open a known Cake session in its project.",
-    appControlArgumentSchemas.open_session,
-  ),
-  tool(
-    "create_session",
-    "Start a new session in a known Cake project and open it.",
-    appControlArgumentSchemas.create_session,
-  ),
-  tool(
-    "send_session_message",
-    "Send an instruction to a known session without opening it. Use only when the user explicitly asks to send or delegate work.",
-    appControlArgumentSchemas.send_session_message,
-  ),
-  tool(
-    "abort_session",
-    "Stop a known session that is currently running.",
-    appControlArgumentSchemas.abort_session,
-  ),
-  tool("rename_session", "Rename a known session.", appControlArgumentSchemas.rename_session),
-  tool(
-    "set_session_resolved",
-    "Resolve or restore a known session.",
-    appControlArgumentSchemas.set_session_resolved,
-  ),
-  tool(
-    "set_sessions_resolved",
-    "Resolve or restore an explicit set of known sessions by ID.",
-    appControlArgumentSchemas.set_sessions_resolved,
-  ),
-  tool(
-    "set_cake_chat_sessions_resolved",
-    "Resolve or restore an explicit set of known global Cake Chat sessions by ID.",
-    appControlArgumentSchemas.set_cake_chat_sessions_resolved,
-  ),
-  tool(
-    "set_session_model",
-    "Change the model for one known session. Use provider and model IDs returned by Cake settings.",
-    appControlArgumentSchemas.set_session_model,
-  ),
-] as const;
 
 export interface AppControlHost {
   currentSession(): { workspacePath: string; sessionId: string } | undefined;
@@ -378,6 +276,21 @@ export type AppControlResult =
       modelId: string;
       status: "changing";
     }
+  | {
+      ok: true;
+      command: "sessions.list";
+      name: "sessions.list";
+      sessions: AppControlSession[];
+      attentionSessions: AppControlSession[];
+    }
+  | {
+      ok: true;
+      command: "sessions.resolve";
+      name: "sessions.resolve";
+      targets: Array<{ kind: "project" | "cake-chat"; sessionId: string }>;
+      resolved: boolean;
+      sessionCount: number;
+    }
   | { ok: false; name: AppControlInvocation["name"]; error: string };
 
 interface SessionTarget {
@@ -387,13 +300,190 @@ interface SessionTarget {
 
 const recentSessionLimit = 20;
 
+const sessionResolutionSchema = z
+  .object({
+    targets: z
+      .array(
+        z.object({
+          kind: z.enum(["project", "cake-chat"]),
+          sessionId: z.string().min(1).max(256),
+        }),
+      )
+      .min(1)
+      .max(10_000),
+    resolved: z.boolean(),
+  })
+  .strict();
+
+const modelControlOperations = [
+  operation(
+    "app.state",
+    "app",
+    "Inspect Cake's current selection and bounded project and session summaries.",
+    appControlArgumentSchemas.get_app_state,
+  ),
+  operation(
+    "sessions.list",
+    "sessions",
+    "List bounded recent and attention-worthy project sessions.",
+    emptyArgumentsSchema,
+  ),
+  operation(
+    "sessions.info",
+    "sessions",
+    "Inspect one explicitly targeted project session.",
+    appControlArgumentSchemas.get_session_status,
+  ),
+  operation(
+    "sessions.open",
+    "sessions",
+    "Open one explicitly targeted project session.",
+    appControlArgumentSchemas.open_session,
+  ),
+  operation(
+    "sessions.create",
+    "sessions",
+    "Create and open a session in a known project.",
+    appControlArgumentSchemas.create_session,
+  ),
+  operation(
+    "sessions.send",
+    "sessions",
+    "Send a message to one explicitly targeted session without opening it.",
+    appControlArgumentSchemas.send_session_message,
+  ),
+  operation(
+    "sessions.abort",
+    "sessions",
+    "Stop one explicitly targeted running session.",
+    appControlArgumentSchemas.abort_session,
+  ),
+  operation(
+    "sessions.resolve",
+    "sessions",
+    "Idempotently resolve or restore explicit project or Cake Chat targets.",
+    sessionResolutionSchema,
+  ),
+  operation(
+    "customizations.state",
+    "customizations",
+    "Inspect exact customization revisions, recovery diagnostics, and plugin status.",
+    appControlArgumentSchemas.get_customization_state,
+  ),
+  operation(
+    "customizations.authoring-reference",
+    "customizations",
+    "Read the exact version-matched authoring reference. Always do this before changing plugin source.",
+    appControlArgumentSchemas.get_plugin_authoring_reference,
+  ),
+  operation(
+    "customizations.files",
+    "customizations",
+    "List plugin-owned files and exact optimistic revisions.",
+    appControlArgumentSchemas.list_plugin_files,
+  ),
+  operation(
+    "customizations.create-plugin",
+    "customizations",
+    "Create a strict plugin manifest and starter modules.",
+    appControlArgumentSchemas.create_plugin,
+  ),
+  operation(
+    "customizations.read-file",
+    "customizations",
+    "Read one plugin-owned text file.",
+    appControlArgumentSchemas.read_plugin_file,
+  ),
+  operation(
+    "customizations.write-file",
+    "customizations",
+    "Write one plugin-owned file with optimistic revision validation.",
+    appControlArgumentSchemas.write_plugin_file,
+  ),
+  operation(
+    "customizations.validate",
+    "customizations",
+    "Typecheck and bundle exact plugin source without activation.",
+    appControlArgumentSchemas.validate_customization,
+  ),
+  operation(
+    "customizations.activate",
+    "customizations",
+    "Activate one validated unchanged customization revision.",
+    appControlArgumentSchemas.activate_customization,
+  ),
+  operation(
+    "customizations.rollback",
+    "customizations",
+    "Roll back to the retained last-known-good customization.",
+    appControlArgumentSchemas.rollback_customization,
+  ),
+  operation(
+    "customizations.use-factory",
+    "customizations",
+    "Use immutable factory UI while preserving editable source and persistence.",
+    appControlArgumentSchemas.use_factory_customization,
+  ),
+  operation(
+    "customizations.set-plugin-enabled",
+    "customizations",
+    "Enable or disable one exact plugin while preserving source and persistence.",
+    appControlArgumentSchemas.set_plugin_enabled,
+  ),
+  operation(
+    "customizations.set-active-scene",
+    "customizations",
+    "Select an enabled plugin scene or Cake's default scene.",
+    appControlArgumentSchemas.set_active_scene,
+  ),
+] as const;
+
+const commandToLegacyName = {
+  "app.state": "get_app_state",
+  "sessions.info": "get_session_status",
+  "sessions.open": "open_session",
+  "sessions.create": "create_session",
+  "sessions.send": "send_session_message",
+  "sessions.abort": "abort_session",
+  "customizations.state": "get_customization_state",
+  "customizations.authoring-reference": "get_plugin_authoring_reference",
+  "customizations.files": "list_plugin_files",
+  "customizations.create-plugin": "create_plugin",
+  "customizations.read-file": "read_plugin_file",
+  "customizations.write-file": "write_plugin_file",
+  "customizations.validate": "validate_customization",
+  "customizations.activate": "activate_customization",
+  "customizations.rollback": "rollback_customization",
+  "customizations.use-factory": "use_factory_customization",
+  "customizations.set-plugin-enabled": "set_plugin_enabled",
+  "customizations.set-active-scene": "set_active_scene",
+} as const;
+
+function operation(command: string, topic: string, summary: string, schema: z.ZodType) {
+  return {
+    command,
+    topic,
+    summary,
+    guidance:
+      topic === "customizations"
+        ? [
+            "Read customizations.authoring-reference before changing plugin source, then inspect files and revisions, validate until clean, and activate only the completed valid revision.",
+            "Ordinary widgets are renderer plugins; create or select a scene only when the user explicitly requests whole-application replacement.",
+          ]
+        : undefined,
+    parameters: z.toJSONSchema(schema, { io: "input", target: "draft-7" }),
+    examples: [],
+    result: "A bounded authoritative Cake application result.",
+  };
+}
+
 export class AppControlBridge {
   constructor(private readonly host: AppControlHost) {}
 
   listTools() {
-    return appControlToolCatalog.map((tool) => ({
-      ...tool,
-      parameters: jsonObjectSchema.parse(tool.parameters),
+    return modelControlOperations.map((definition) => ({
+      ...definition,
+      parameters: jsonObjectSchema.parse(definition.parameters),
     }));
   }
 
@@ -419,7 +509,66 @@ export class AppControlBridge {
   }
 
   async invoke(untrustedInput: unknown): Promise<AppControlResult> {
-    const invocation = appControlInvocationSchema.parse(untrustedInput);
+    const gatewayInvocation = z
+      .object({ name: z.string(), arguments: jsonObjectSchema })
+      .strict()
+      .parse(untrustedInput);
+    if (gatewayInvocation.name === "sessions.list") {
+      const state = this.getAppState();
+      return toStrictJson({
+        ok: true,
+        command: "sessions.list",
+        name: "sessions.list",
+        sessions: state.recentSessions,
+        attentionSessions: state.attentionSessions,
+      });
+    }
+    if (gatewayInvocation.name === "sessions.resolve") {
+      const input = sessionResolutionSchema.parse(gatewayInvocation.arguments);
+      const projectIds = input.targets
+        .filter((target) => target.kind === "project")
+        .map((target) => target.sessionId);
+      const cakeChatIds = input.targets
+        .filter((target) => target.kind === "cake-chat")
+        .map((target) => target.sessionId);
+      const unknownProject = projectIds.find((sessionId) => !this.knownSession(sessionId));
+      if (unknownProject)
+        return {
+          ok: false,
+          name: "set_sessions_resolved",
+          error: `Cake could not find session ${unknownProject}.`,
+        };
+      const knownCakeChatIds = new Set(this.host.cakeChatSessions().map((session) => session.id));
+      const unknownCakeChat = cakeChatIds.find((sessionId) => !knownCakeChatIds.has(sessionId));
+      if (unknownCakeChat)
+        return {
+          ok: false,
+          name: "set_cake_chat_sessions_resolved",
+          error: `Cake could not find Cake Chat session ${unknownCakeChat}.`,
+        };
+      const [projectCount, cakeChatCount] = await Promise.all([
+        projectIds.length
+          ? this.host.setSessionsResolved([...new Set(projectIds)], input.resolved)
+          : 0,
+        cakeChatIds.length
+          ? this.host.setCakeChatSessionsResolved([...new Set(cakeChatIds)], input.resolved)
+          : 0,
+      ]);
+      return toStrictJson({
+        ok: true,
+        command: "sessions.resolve",
+        name: "sessions.resolve",
+        targets: input.targets,
+        resolved: input.resolved,
+        sessionCount: projectCount + cakeChatCount,
+      });
+    }
+    const legacyName = Object.entries(commandToLegacyName).find(
+      ([command]) => command === gatewayInvocation.name,
+    )?.[1];
+    const invocation = appControlInvocationSchema.parse(
+      legacyName ? { name: legacyName, arguments: gatewayInvocation.arguments } : gatewayInvocation,
+    );
     if (invocation.name === "get_app_state")
       return { ok: true, name: invocation.name, state: this.getAppState() };
     if (invocation.name === "get_customization_state") {
@@ -674,14 +823,6 @@ export class AppControlBridge {
     };
     return activity ? { ...result, activity } : result;
   }
-}
-
-function tool(name: AppControlInvocation["name"], description: string, argumentsSchema: z.ZodType) {
-  return {
-    name,
-    description,
-    parameters: z.toJSONSchema(argumentsSchema, { io: "input", target: "draft-7" }),
-  } as const;
 }
 
 function toStrictJson<T>(value: T): T {

@@ -21,19 +21,18 @@ describe("subagent contract", () => {
       "bash",
       "edit",
       "write",
-      "ui_widget",
+      "cake",
       "custom_tool",
-      "subagent",
-      "subagent_spawn",
       "agent_open",
     ];
-    expect(toolsForSubagentProfile("reviewer", parentTools, false)).toEqual([
+    expect(toolsForSubagentProfile("reviewer", parentTools)).toEqual([
       "read",
       "grep",
       "find",
       "ls",
+      "cake",
     ]);
-    expect(toolsForSubagentProfile("worker", parentTools, false)).toEqual([
+    expect(toolsForSubagentProfile("worker", parentTools)).toEqual([
       "read",
       "grep",
       "find",
@@ -41,7 +40,7 @@ describe("subagent contract", () => {
       "bash",
       "edit",
       "write",
-      "ui_widget",
+      "cake",
     ]);
   });
 });

@@ -4,7 +4,6 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createCakeArtifactExtension } from "../../../src/agent/artifact-extension";
 import {
   createCakeRuntime,
   piRuntimeVersion,
@@ -33,7 +32,6 @@ import {
 } from "../../../src/agent/session-projection";
 import { loadReviewSessionProjection, runReviewTurn } from "../../../src/agent/sidecar-runtime";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import type { CakeArtifactV1 } from "../../../src/ipc/artifact-contract";
 import { sessionSnapshotSchema, type SessionSnapshot } from "../../../src/ipc/session-contract";
 
 const temporaryDirectories: string[] = [];
@@ -90,87 +88,12 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(systemPrompt).toContain("You are an expert coding assistant operating inside pi");
     expect(systemPrompt).toContain("## Cake desktop environment");
     expect(systemPrompt).toContain("Mermaid diagrams directly in the transcript");
-    expect(systemPrompt).toContain("Use ui_widget");
-    expect(systemPrompt).toContain("do not write React or HTML yourself");
+    expect(systemPrompt).toContain("Call `cake widgets`");
+    expect(systemPrompt).toContain("Call `cake requests`");
+    expect(systemPrompt).toContain("Use `cake subagents` only for user-requested delegation");
     expect(systemPrompt).toContain("PowerPoint presentations, PDFs, spreadsheets");
-    expect(systemPrompt).toContain("Use ui_request only when the running turn must block");
-    expect(systemPrompt).toContain("cake.request/v1");
-    expect(systemPrompt).toContain("stores the implementation outside this conversation context");
     expect(systemPrompt).toContain("use Markdown links with absolute paths so Cake can open them");
-    expect(activeTools).toContain("ui_widget");
-  });
-
-  it("keeps delegated widget source out of the primary tool result and artifact pointer", async () => {
-    type RegisteredTool = {
-      name: string;
-      execute(
-        toolCallId: string,
-        params: unknown,
-        signal: AbortSignal | undefined,
-        onUpdate: undefined,
-        ctx: {
-          model?: { provider: string; id: string };
-          sessionManager: { getSessionId(): string };
-        },
-      ): Promise<{ content: Array<{ type: string; text: string }>; details: unknown }>;
-    };
-    let widgetTool: RegisteredTool | undefined;
-    const pointers: Array<{ type: string; data: unknown }> = [];
-    const persisted: CakeArtifactV1[] = [];
-    const source = "export default () => <strong>Private source</strong>";
-    const extension = createCakeArtifactExtension({
-      persistArtifact: async (artifact) => {
-        persisted.push(artifact);
-        return {
-          artifact,
-          workspacePath: "/project",
-          digest: "a".repeat(64),
-          createdAt: new Date(0).toISOString(),
-          updatedAt: new Date(0).toISOString(),
-        };
-      },
-      requestArtifact: async () => undefined,
-      generateInlineWidget: async () => ({
-        language: "react",
-        source,
-        generationSessionId: "generation-1",
-      }),
-    });
-    (extension as unknown as (pi: unknown) => void)({
-      registerTool(tool: unknown) {
-        const registered = tool as RegisteredTool;
-        if (registered.name === "ui_widget") widgetTool = registered;
-      },
-      registerCommand() {},
-      appendEntry(type: string, data: unknown) {
-        pointers.push({ type, data });
-      },
-    } as never);
-    if (!widgetTool) throw new Error("Expected ui_widget to be registered");
-
-    const result = await widgetTool.execute(
-      "call-1",
-      {
-        widget: {
-          id: "widget-1",
-          title: "Comparison",
-          brief: "Compare these values",
-          data: [1, 2],
-          fallback: { markdown: "Values 1 and 2." },
-        },
-      },
-      undefined,
-      undefined,
-      {
-        model: { provider: "fixture", id: "model" },
-        sessionManager: { getSessionId: () => "session-1" },
-      },
-    );
-
-    expect(persisted[0]).toMatchObject({ kind: "widget", payload: { source } });
-    expect(JSON.stringify(result)).not.toContain(source);
-    expect(JSON.stringify(pointers)).not.toContain(source);
-    expect(result.details).toEqual({ artifactId: "widget-1" });
+    expect(activeTools).toContain("cake");
   });
 
   it("keeps session listing alive when Pi's first-message title exceeds Cake's IPC limit", async () => {
@@ -871,7 +794,10 @@ describe("Pi 0.84.0 foundation contract", () => {
       },
     });
     const entries = [
-      assistantToolCall("spawn-call", "call-spawn", "subagent_spawn", { task: "Work" }),
+      assistantToolCall("spawn-call", "call-spawn", "cake", {
+        command: "subagents.spawn",
+        input: { task: "Work" },
+      }),
       {
         type: "message",
         id: "spawn-result",
@@ -880,7 +806,15 @@ describe("Pi 0.84.0 foundation contract", () => {
         message: {
           role: "toolResult",
           toolCallId: "call-spawn",
-          toolName: "subagent_spawn",
+          toolName: "cake",
+          details: {
+            protocol: "cake.operation/v1",
+            command: "subagents.spawn",
+            result: {
+              handleId: "00000000-0000-0000-0000-000000000000",
+              status: "running",
+            },
+          },
           content: [
             {
               type: "text",
@@ -895,22 +829,43 @@ describe("Pi 0.84.0 foundation contract", () => {
         },
       },
       // The app quit while waiting, so this call never recorded a result.
-      assistantToolCall("wait-call", "call-wait", "subagent_wait", {
-        handleId: "00000000-0000-0000-0000-000000000000",
+      assistantToolCall("wait-call", "call-wait", "cake", {
+        command: "subagents.wait",
+        input: { handleId: "00000000-0000-0000-0000-000000000000" },
       }),
     ] as never;
 
     const restored = projectSessionEntries(entries);
     expect(restored).toEqual([
-      expect.objectContaining({ kind: "tool", name: "subagent_spawn", state: "success" }),
-      expect.objectContaining({ kind: "tool", name: "subagent_wait", state: "interrupted" }),
+      expect.objectContaining({
+        kind: "tool",
+        name: "cake",
+        command: "subagents.spawn",
+        state: "success",
+      }),
+      expect.objectContaining({
+        kind: "tool",
+        name: "cake",
+        command: "subagents.wait",
+        state: "interrupted",
+      }),
     ]);
 
     // While the runtime is streaming, a not-yet-settled call may stay running.
     const live = projectSessionEntries(entries, undefined, { live: true });
     expect(live).toEqual([
-      expect.objectContaining({ kind: "tool", name: "subagent_spawn", state: "success" }),
-      expect.objectContaining({ kind: "tool", name: "subagent_wait", state: "running" }),
+      expect.objectContaining({
+        kind: "tool",
+        name: "cake",
+        command: "subagents.spawn",
+        state: "success",
+      }),
+      expect.objectContaining({
+        kind: "tool",
+        name: "cake",
+        command: "subagents.wait",
+        state: "running",
+      }),
     ]);
   });
 
@@ -936,7 +891,8 @@ describe("Pi 0.84.0 foundation contract", () => {
       expect.objectContaining({
         id: "entry-request-pointer-artifact",
         kind: "tool",
-        name: "ui_request",
+        name: "cake",
+        command: "requests.open",
         artifactId: "request-1",
       }),
     ]);
@@ -1104,20 +1060,11 @@ describe("S1 Pi runtime", () => {
 
     const parentContext = runtime.getReviewParentContext?.();
     const tools = parentContext?.activeTools ?? [];
-    expect(tools).toEqual(
-      expect.arrayContaining([
-        "subagent_spawn",
-        "subagent_parallel",
-        "subagent_prompt",
-        "subagent_follow_up",
-        "subagent_wait",
-        "subagent_abort",
-        "subagent_close",
-      ]),
-    );
+    expect(tools).toEqual(expect.arrayContaining(["cake"]));
+    expect(tools.filter((tool) => tool === "cake")).toHaveLength(1);
     expect(tools).not.toEqual(expect.arrayContaining(["agent_open", "agent_prompt", "agent_wait"]));
     expect(parentContext?.systemPrompt).toContain(
-      "Do not use subagent tools unless the user explicitly asks",
+      "Use `cake subagents` only for user-requested delegation",
     );
   });
 
@@ -1154,8 +1101,9 @@ describe("S1 Pi runtime", () => {
       globalControl: {
         tools: [
           {
-            name: "get_app_state",
-            description: "Read Cake application state.",
+            command: "app.state",
+            topic: "app",
+            summary: "Read Cake application state.",
             parameters: { type: "object", properties: {} },
           },
         ],
@@ -1166,20 +1114,14 @@ describe("S1 Pi runtime", () => {
     runtimes.push(runtime);
 
     const context = runtime.getReviewParentContext?.();
-    expect(context?.activeTools).toContain("get_app_state");
+    expect(context?.activeTools).toContain("cake");
     expect(context?.activeTools).toContain("bash");
     expect(context?.activeTools).toContain("read");
     expect(context?.activeTools).toContain("edit");
     expect(context?.systemPrompt).toContain("You are Cake Chat, the built-in assistant of Cake");
     expect(context?.systemPrompt).toContain("treat it as read-only");
-    expect(context?.systemPrompt).toContain("that request authorizes the complete authoring loop");
-    expect(context?.systemPrompt).toContain("fix the source and validate again autonomously");
-    expect(context?.systemPrompt).toContain("Validation never changes the running UI");
-    expect(context?.systemPrompt).toContain("Do not stop to report ordinary authoring diagnostics");
-    expect(context?.systemPrompt).toContain(
-      "collision-free layout as an authoring acceptance criterion",
-    );
-    expect(context?.systemPrompt).toContain("from 320 CSS pixels through wide desktop sizes");
+    expect(context?.systemPrompt).toContain("call `cake customizations`");
+    expect(context?.systemPrompt).not.toContain("customizations.write-file");
   });
 
   it("opens the OpenAI Codex browser login URL", async () => {
@@ -1782,7 +1724,7 @@ describe("S3 Pi ecosystem compatibility", () => {
       expect(snapshot.compatibility.resources).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ kind: "skill", name: "cake-plugin-authoring" }),
-          expect.objectContaining({ kind: "extension", tools: ["ui_request"] }),
+          expect.objectContaining({ kind: "extension", tools: ["cake"] }),
         ]),
       );
       expect(

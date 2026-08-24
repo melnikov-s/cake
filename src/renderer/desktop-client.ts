@@ -256,7 +256,16 @@ export interface DesktopClient {
   loadSession(sessionId: string): Promise<SessionPreview | undefined>;
   openGlobalChat(input: {
     operationId: string;
-    tools: ReadonlyArray<{ name: string; description: string; parameters: JsonObject }>;
+    tools: ReadonlyArray<{
+      command: string;
+      topic: string;
+      summary: string;
+      guidance?: readonly string[];
+      parameters: JsonObject;
+      examples?: readonly { input?: JsonObject; description?: string }[];
+      result?: string;
+      limitations?: readonly string[];
+    }>;
     newSession?: boolean;
     sessionId?: string;
     initialPrompt?: string;
@@ -884,7 +893,12 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       accept(bridge, {
         type: "open-global-chat",
         requestId: input.operationId,
-        tools: [...input.tools],
+        tools: input.tools.map((tool) => ({
+          ...tool,
+          guidance: tool.guidance ? [...tool.guidance] : undefined,
+          examples: tool.examples?.map((example) => ({ ...example })),
+          limitations: tool.limitations ? [...tool.limitations] : undefined,
+        })),
         newSession: input.newSession ?? false,
         sessionId: input.sessionId,
         initialPrompt: input.initialPrompt,

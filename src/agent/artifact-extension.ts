@@ -1,16 +1,12 @@
-import { Type } from "@earendil-works/pi-ai";
 import type { InlineExtension } from "@earendil-works/pi-coding-agent";
-import { z } from "zod";
 import { jsonValueSchema, type JsonValue } from "../ipc/json-contract";
 import {
-  MAX_ARTIFACT_INPUT_BYTES,
   artifactPointerSchema,
   parseArtifactInput,
   validateArtifactResponse,
   type ArtifactRecord,
   type CakeArtifactV1,
 } from "../ipc/artifact-contract";
-import { parseRequestInput } from "../ipc/request-contract";
 import type {
   InlineWidgetGenerationRequest,
   InlineWidgetGenerationResult,
@@ -26,55 +22,6 @@ export interface ArtifactExtensionOptions {
 
 export function createCakeArtifactExtension(options: ArtifactExtensionOptions): InlineExtension {
   return (pi) => {
-    const widgetBriefSchema = z
-      .object({
-        id: z
-          .string()
-          .min(1)
-          .max(256)
-          .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
-        title: z.string().min(1).max(512),
-        brief: z.string().min(1).max(262_144),
-        data: z.unknown().optional(),
-        fallback: z.object({ markdown: z.string().min(1).max(MAX_ARTIFACT_INPUT_BYTES) }),
-      })
-      .strict();
-    const formField = Type.Object({
-      id: Type.String(),
-      label: Type.String(),
-      type: Type.Union([
-        Type.Literal("text"),
-        Type.Literal("textarea"),
-        Type.Literal("number"),
-        Type.Literal("checkbox"),
-        Type.Literal("select"),
-      ]),
-      placeholder: Type.Optional(Type.String()),
-      options: Type.Optional(
-        Type.Array(Type.Object({ value: Type.String(), label: Type.String() })),
-      ),
-    });
-    const parameters = Type.Object({
-      request: Type.Object({
-        protocol: Type.Literal("cake.request/v1"),
-        id: Type.String(),
-        title: Type.String(),
-        responseSchema: Type.Any(),
-        view: Type.Union([
-          Type.Object({
-            type: Type.Literal("form"),
-            fields: Type.Array(formField),
-            submitLabel: Type.Optional(Type.String()),
-          }),
-          Type.Object({
-            type: Type.Literal("widget"),
-            language: Type.Union([Type.Literal("html"), Type.Literal("react")]),
-            source: Type.String(),
-          }),
-        ]),
-        fallback: Type.Object({ markdown: Type.String() }),
-      }),
-    });
     const persist = async (input: unknown, sessionId: string) => {
       const artifact = parseArtifactInput(input);
       if (artifact.sessionId !== sessionId)
@@ -95,112 +42,6 @@ export function createCakeArtifactExtension(options: ArtifactExtensionOptions): 
         }),
       );
     };
-    pi.registerTool({
-      name: "ui_request",
-      label: "Request user input",
-      description:
-        "Display a cake.request/v1 form or sandboxed custom widget and wait for one schema-validated response or explicit user cancellation. Form fields are always optional, and select fields accept either a listed option or freeform text.",
-      parameters,
-      async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-        const request = parseRequestInput(params.request);
-        const record = await persist(
-          {
-            protocol: "cake.artifact/v1",
-            id: request.id,
-            sessionId: ctx.sessionManager.getSessionId(),
-            revision: 1,
-            kind: "request",
-            title: request.title,
-            payload: { request },
-            fallback: request.fallback,
-            interaction: { mode: "request", responseSchema: request.responseSchema },
-          },
-          ctx.sessionManager.getSessionId(),
-        );
-        appendPointer(record);
-        const requestSignal = signal ?? new AbortController().signal;
-        const value = await options.requestArtifact(record, requestSignal);
-        if (value === undefined && requestSignal.aborted)
-          throw requestSignal.reason instanceof Error
-            ? requestSignal.reason
-            : new Error("The request ended because its turn was interrupted");
-        if (value === undefined)
-          return {
-            content: [{ type: "text", text: `The user cancelled request ${request.id}.` }],
-            details: { artifactId: record.artifact.id, cancelled: true },
-          };
-        const validated = validateArtifactResponse(
-          request.responseSchema,
-          jsonValueSchema.parse(value),
-        );
-        return {
-          content: [
-            {
-              type: "text",
-              text: `The user submitted a validated response for request ${request.id}: ${formatUnknown(validated, 8_000)}`,
-            },
-          ],
-          details: { artifactId: record.artifact.id, cancelled: false, value: validated },
-        };
-      },
-    });
-    if (options.generateInlineWidget)
-      pi.registerTool({
-        name: "ui_widget",
-        label: "Create visual presentation",
-        description:
-          "Delegate a one-off inline React presentation from a self-contained brief. Cake stores the generated source outside the conversation context.",
-        parameters: Type.Object({
-          widget: Type.Object({
-            id: Type.String(),
-            title: Type.String(),
-            brief: Type.String(),
-            data: Type.Optional(Type.Any()),
-            fallback: Type.Object({ markdown: Type.String() }),
-          }),
-        }),
-        async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-          const widget = widgetBriefSchema.parse(params.widget);
-          const serialized = JSON.stringify(widget);
-          const maximumWidgetBriefBytes = 262_144;
-          if (new TextEncoder().encode(serialized).byteLength > maximumWidgetBriefBytes) {
-            throw new Error(`Widget brief exceeds the ${maximumWidgetBriefBytes}-byte limit`);
-          }
-          const generated = await options.generateInlineWidget!({
-            brief: widget.brief,
-            data: widget.data,
-            fallback: widget.fallback.markdown,
-            model: ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : undefined,
-            signal,
-          });
-          const record = await persist(
-            {
-              protocol: "cake.artifact/v1",
-              id: widget.id,
-              sessionId: ctx.sessionManager.getSessionId(),
-              revision: 1,
-              kind: "widget",
-              title: widget.title,
-              payload: {
-                language: generated.language,
-                source: generated.source,
-                brief: serialized,
-                generationSessionId: generated.generationSessionId,
-              },
-              fallback: widget.fallback,
-              interaction: { mode: "present" },
-            },
-            ctx.sessionManager.getSessionId(),
-          );
-          appendPointer(record);
-          return {
-            content: [
-              { type: "text", text: `Displayed the delegated widget ${record.artifact.id}.` },
-            ],
-            details: { artifactId: record.artifact.id },
-          };
-        },
-      });
     pi.registerCommand("cake-artifacts", {
       description: "Exercise Cake's built-in artifact renderers and structured response path",
       async handler(_args, ctx) {

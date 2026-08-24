@@ -31,7 +31,12 @@ import {
   piBuiltinSlashCommands,
   slashCommandSchema,
 } from "../ipc/session-contract";
-import { jsonValueSchema, type JsonObject, type JsonValue } from "../ipc/json-contract";
+import {
+  jsonObjectSchema,
+  jsonValueSchema,
+  type JsonObject,
+  type JsonValue,
+} from "../ipc/json-contract";
 import {
   artifactRecordSchema,
   type ArtifactRecord,
@@ -42,6 +47,13 @@ import type { TSchema } from "@earendil-works/pi-ai";
 import { applyFastModePayload, supportsFastMode, type FastModeModel } from "./fast-mode";
 import { listModelOptions } from "./model-catalog";
 import { createCakeArtifactExtension } from "./artifact-extension";
+import { createCakeArtifactOperations } from "./cake-artifact-operations";
+import {
+  CakeOperationRegistry,
+  cakeToolDescription,
+  cakeToolEnvelopeSchema,
+  type CakeOperationDefinition,
+} from "./cake-operation-registry";
 import {
   INTERRUPTED_TURN_NOTICE_PART_ID,
   TURN_RECOVERY_MAX_AUTO_CONTINUATIONS,
@@ -69,13 +81,12 @@ import { generateSessionTitle } from "./utility-model";
 import {
   parallelSubagentSchema,
   subagentTaskSchema,
-  type ParallelSubagentTasks,
   type ParallelSubagentTasksInput,
-  type SubagentTask,
   type SubagentTaskInput,
 } from "./subagent-contract";
 import {
   boundedProjectionKey,
+  cakeOperationCommand,
   createLiveMessageProjector,
   formatToolInput,
   formatToolResult,
@@ -98,16 +109,17 @@ import {
 } from "./session-projection";
 
 export const piRuntimeVersion = "0.84.0" as const;
+const cakeMediumSystemPrompt = `You are Cake’s agent in a browser-based desktop app, not a terminal. Use its Markdown, media, and interactive HTML/React widgets to communicate richly. Call \`cake widgets\` when interactivity or visuals help, especially when requested. Call \`cake requests\` to conduct interviews or present interactive forms, questionnaires, choices, and confirmations; prefer them to tedious text-only back-and-forth. Use \`cake subagents\` only for user-requested delegation or parallel work.`;
+
 const cakeChatSystemPrompt = `## Cake Chat
+
+${cakeMediumSystemPrompt}
 
 You are Cake Chat, the built-in assistant of Cake, a desktop application powered by Pi. You are the user's home base with two jobs: a general-purpose agent for their machine, and an operator of Cake itself.
 
 Machine work: your working directory is the user's home directory and you have the full standard toolset (read, edit, bash, and the rest). Use it for configuration changes, file management, Git, subprocesses, and any other work on the machine.
 
-Cake work: you also have curated application tools for the running Cake app. Their effects exist only inside the app and cannot be produced any other way — do not try to simulate them in a shell:
-- get_app_state and get_session_status report live state (selection, running/unread activity, resolved flags) that exists only in the app, never on disk.
-- open_session, create_session, send_session_message, abort_session, rename_session, set_session_resolved, set_sessions_resolved, set_cake_chat_sessions_resolved, and set_session_model act on sessions.
-- The customization and plugin tools author, validate, activate, roll back, enable, disable, and inspect Cake customizations.
+Cake work: use the \`cake\` gateway for curated capabilities of the running app. Its effects exist only inside Cake and cannot be produced in a shell. Call it without a command for available topics and call a known topic directly for its complete protocol.
 
 Session transcripts are Pi JSONL files under the Cake home directory:
 - Project sessions: ~/.cake/pi/sessions/--<workspace path with separators replaced by dashes>--/
@@ -120,21 +132,17 @@ Earlier messages are part of the conversation; resolve follow-up references from
 
 For Cake customizations, choose the execution path deliberately: deterministic network, filesystem, Git, Bash, and subprocess work belongs in an unrestricted plugin backend; bounded summaries, classification, and extraction belong in usePluginCompletion; open-ended multi-turn tool work belongs in usePluginAgent. Delegated inline widgets never receive these trusted capabilities.
 
-When the user asks you to create or change a Cake plugin, widget, scene, or other customization, that request authorizes the complete authoring loop. First call get_plugin_authoring_reference; it is the exact API for this Cake version, so never use compiler errors or speculative writes to discover the API. Inspect customization state and plugin files, create or edit plugin-owned source, validate it, and inspect every diagnostic. Ordinary widgets are renderer plugins and must not create or select a scene. A plugin scene is only for an explicit request to replace the whole application scene. Slot namespaces are ownership boundaries: global.* is application chrome across Cake Chat, project sessions, and settings, while project-session.* exists only inside a selected project session. project-session.header.actions is the toolbar/menu row. Persistent session panels use the normal-flow project-session.left.top, project-session.left.middle, project-session.left.bottom, project-session.right.top, project-session.right.middle, and project-session.right.bottom rails; "top right of the session" means project-session.right.top. Rail contributions reserve space and must not position themselves over the conversation. Header slots are fixed-height action rows; contribute a compact trigger there. When temporary UI should intentionally overlap, use Cake's Popover, PopoverTrigger, and PopoverContent instead of plugin-owned absolute or fixed positioning. A failed typecheck or bundle is intermediate authoring feedback: fix the source and validate again autonomously. Validation never changes the running UI. Call activate_customization only after the requested implementation is complete and validation succeeds. Do not stop to report ordinary authoring diagnostics or ask whether the user wants you to fix them. Treat responsive, collision-free layout as an authoring acceptance criterion: custom scenes and widgets must reflow without overlapping text, controls, icons, navigation, or Cake-owned children from 320 CSS pixels through wide desktop sizes and with long labels or values. Use normal-flow flex or grid layout that wraps, reserve space for icons and decorations, and avoid absolute or fixed positioning for structural content. Stop only when the customization succeeds or you are genuinely blocked by missing user intent, unavailable capability, or a conflict you cannot safely resolve. A failure reported for a previously activated customization is a recovery event that you may surface before the user requests repair; once they ask for repair, carry that repair through the same autonomous edit-validate-activate loop.`;
+For Cake customizations, call \`cake customizations\` and follow that version-matched protocol before changing plugin source.`;
 
 const cakeProjectSystemPrompt = `## Cake desktop environment
 
-You are running inside Cake, a desktop interface powered by Pi. Your messages, tool activity, and rich outputs are rendered in Cake rather than Pi's terminal UI. Keep the conversation as the primary interface and continue using Pi's tools, skills, extensions, project context, and session behavior normally. Do not direct the user to terminal-only UI controls.
+${cakeMediumSystemPrompt}
+
+Keep the conversation as the primary interface and continue using Pi's tools, skills, extensions, project context, and session behavior normally. Do not direct the user to terminal-only UI controls.
 
 Cake streams GitHub-flavored Markdown, syntax-highlighted code blocks, mathematical notation, and Mermaid diagrams directly in the transcript. Prefer these inline formats when they communicate the result clearly. Do not use an artifact merely to style content that Markdown, tables, code blocks, math, or Mermaid can express.
 
 For standalone deliverables such as PowerPoint presentations, PDFs, spreadsheets, documents, images, audio, or video, use the available Pi tools and skills and link the resulting workspace file in Markdown. Do not recreate a file deliverable as decorative HTML.
-
-Cake can delegate one-off visual explanations to a separate widget agent. Use ui_widget when an interactive or highly visual presentation materially improves the explanation and Markdown, a table, or Mermaid is insufficient. Provide a self-contained presentation brief, all required data, and a readable Markdown fallback; do not write React or HTML yourself. Generated React widgets may use the approved, bundled D3 modules ('d3' or 'd3-*') for local SVG/canvas/DOM visualizations; they still have no network, parent, Cake, Node, Electron, or filesystem access. Cake generates and stores the implementation outside this conversation context, then renders the sandboxed widget at the tool-call position. Prefer ordinary transcript content for simple or primarily textual explanations.
-
-Do not use subagent tools unless the user explicitly asks for subagents, delegation, or parallel agent work. The presence of delegation tools is not permission to use them. Handle ordinary research, implementation, review, and testing yourself.
-
-Use ui_request only when the running turn must block and receive validated user input. Pass one cake.request/v1 request with a unique ID, a responseSchema, a readable Markdown fallback, and either a form view or a widget view. Every form field is optional, so its responseSchema must accept an empty object; never mark fields or response properties as required. Select fields automatically accept either a listed option or freeform text. Prefer the form view for ordinary fields. Use a widget view only for a genuinely visual interaction; HTML widget source calls cakeRequest.submit(value) or cakeRequest.cancel(), while a React widget component receives { submit, cancel } props. Custom request widgets have the same isolation as inline widgets. Do not call ui_request for content that can be presented in the assistant message.
 
 When referencing workspace files, use Markdown links with absolute paths so Cake can open them.`;
 export interface RuntimeUiRequest {
@@ -185,6 +193,10 @@ export interface CakeRuntimeOptions {
     set(enabled: boolean): Promise<void>;
   };
   generateSessionTitle?: typeof generateSessionTitle;
+  currentSessionControl?: {
+    resolved(): boolean;
+    setResolved(resolved: boolean): Promise<void>;
+  };
   globalControl?: {
     tools: readonly GlobalControlTool[];
     recoveryContext?: string;
@@ -222,9 +234,14 @@ export interface CakeRuntimeOptions {
 }
 
 export interface GlobalControlTool {
-  name: string;
-  description: string;
+  command: string;
+  topic: string;
+  summary: string;
+  guidance?: readonly string[];
   parameters: JsonObject;
+  examples?: readonly { input?: JsonObject; description?: string }[];
+  result?: string;
+  limitations?: readonly string[];
 }
 
 /** Pi throws this when a plain prompt arrives while the agent turn is streaming. */
@@ -259,139 +276,189 @@ function createFastModeExtension(isEnabled: () => boolean): InlineExtension {
   };
 }
 
-function createGlobalControlExtension(
+function createGlobalControlOperations(
   control: NonNullable<CakeRuntimeOptions["globalControl"]>,
-): InlineExtension {
-  return (pi) => {
-    for (const tool of control.tools) {
-      pi.registerTool({
-        name: tool.name,
-        label: tool.name.replaceAll("_", " "),
-        description: tool.description,
-        // SAFETY: appControlToolCatalog produced this JSON Schema through
-        // z.toJSONSchema; Pi's TSchema input consumes that same schema shape.
-        parameters: tool.parameters as TSchema,
-        async execute(_toolCallId, params, signal) {
-          const result = await control.invoke(
-            { name: tool.name, arguments: jsonValueSchema.parse(params) },
-            signal ?? new AbortController().signal,
-          );
-          return {
-            content: [{ type: "text", text: formatUnknown(result, 24_000) }],
-            details: result,
-          };
-        },
-      });
-    }
-  };
+): CakeOperationDefinition[] {
+  return control.tools.map((tool) => ({
+    command: tool.command,
+    topic: tool.topic,
+    summary: tool.summary,
+    guidance: tool.guidance,
+    inputSchema: z.record(z.string(), jsonValueSchema),
+    inputJsonSchema: tool.parameters,
+    examples: tool.examples ?? [],
+    result: tool.result ?? "A bounded result from Cake's authoritative application control.",
+    limitations: tool.limitations,
+    async execute(input, context) {
+      const result = await control.invoke(
+        { name: tool.command, arguments: jsonValueSchema.parse(input) },
+        context.signal,
+      );
+      const object = jsonObjectSchema.safeParse(result);
+      if (!object.success) return result;
+      const semanticResult = Object.fromEntries(
+        Object.entries(object.data).filter(([key]) => key !== "name"),
+      );
+      return { ...semanticResult, command: tool.command };
+    },
+  }));
 }
 
-function createAgentControlExtension(
+function createAgentControlOperations(
   control: NonNullable<CakeRuntimeOptions["agentControl"]>,
   parentSessionId: () => string | undefined,
-): InlineExtension {
+): CakeOperationDefinition[] {
   const promptSchema = z.object({ handleId: z.uuid(), text: z.string().min(1).max(262_144) });
   const handleSchema = z.object({ handleId: z.uuid() });
-  const tools = [
-    {
-      name: "subagent_spawn",
-      description:
-        "Use only when the user explicitly requested subagents or delegation. Start one isolated, parent-owned subagent with an explicit capability profile. Delegation depth is zero and completed runtimes are released by default; set retain only for intentional multi-turn work.",
-      schema: subagentTaskSchema,
-      run: (
-        value: SubagentTask,
-        parent: string,
-        signal: AbortSignal,
-        _onUpdate?: (value: JsonValue) => void,
-        anchorPartId?: string,
-      ) => control.spawn(value, parent, signal, anchorPartId),
-    },
-    {
-      name: "subagent_parallel",
-      description:
-        "Use only when the user explicitly requested parallel agent work. Run up to eight bounded subagent tasks with a workspace-wide active concurrency limit and return all results.",
-      schema: parallelSubagentSchema,
-      run: (
-        value: ParallelSubagentTasks,
-        parent: string,
-        signal: AbortSignal,
-        onUpdate?: (value: JsonValue) => void,
-        anchorPartId?: string,
-      ) => control.parallel(value, parent, signal, onUpdate, anchorPartId),
-    },
-    {
-      name: "subagent_prompt",
-      description: "Send a normal prompt to an idle subagent and wait for its turn.",
-      schema: promptSchema,
-      run: (value: z.infer<typeof promptSchema>, parent: string, signal: AbortSignal) =>
-        control.prompt({ ...value, delivery: "prompt" }, parent, signal),
-    },
-    {
-      name: "subagent_follow_up",
-      description: "Queue a follow-up for a subagent using Pi's normal queue policy.",
-      schema: promptSchema,
-      run: (value: z.infer<typeof promptSchema>, parent: string, signal: AbortSignal) =>
-        control.prompt({ ...value, delivery: "follow-up" }, parent, signal),
-    },
-    {
-      name: "subagent_wait",
-      description:
-        "Wait for a subagent and stream its latest tool activity, usage, and final result.",
-      schema: handleSchema,
-      run: (
-        value: z.infer<typeof handleSchema>,
-        parent: string,
-        signal: AbortSignal,
-        onUpdate?: (value: JsonValue) => void,
-      ) => control.wait(value.handleId, parent, signal, onUpdate),
-    },
-    {
-      name: "subagent_abort",
-      description: "Abort active work in a subagent.",
-      schema: handleSchema,
-      run: (value: z.infer<typeof handleSchema>, parent: string) =>
-        control.abort(value.handleId, parent),
-    },
-    {
-      name: "subagent_close",
-      description: "Release a subagent handle and its hidden runtime when it is no longer needed.",
-      schema: handleSchema,
-      run: (value: z.infer<typeof handleSchema>, parent: string) =>
-        control.close(value.handleId, parent),
-    },
+  const guidance = [
+    "Use subagents only when the user explicitly requested delegation, subagents, or parallel agent work.",
+    "Handles are parent-owned. Delegation depth defaults to zero and is capped at one; parallel batches contain at most eight tasks.",
   ];
+  const operation = <Input>(definition: {
+    command: string;
+    summary: string;
+    schema: z.ZodType<Input>;
+    example: JsonObject;
+    run(
+      input: Input,
+      parent: string,
+      signal: AbortSignal,
+      onUpdate?: (value: JsonValue) => void,
+      anchorPartId?: string,
+    ): Promise<JsonValue>;
+  }): CakeOperationDefinition => ({
+    command: definition.command,
+    topic: "subagents",
+    summary: definition.summary,
+    guidance,
+    inputSchema: definition.schema,
+    examples: [{ input: definition.example }],
+    result:
+      "A bounded handle, activity projection, or final delegated result with attributed usage.",
+    limitations: [
+      "Recursive delegation is unavailable unless this runtime was explicitly granted remaining depth.",
+    ],
+    async execute(input, context) {
+      const parent = parentSessionId();
+      if (!parent) throw new Error("The parent Cake session is not ready");
+      // SAFETY: CakeOperationRegistry parsed input with this definition's schema.
+      return definition.run(
+        input as Input,
+        parent,
+        context.signal,
+        context.onUpdate,
+        `tool-${context.toolCallId}`,
+      );
+    },
+  });
+  return [
+    operation({
+      command: "subagents.spawn",
+      summary:
+        "Start one isolated parent-owned subagent with an explicit capability profile and model selection.",
+      schema: subagentTaskSchema,
+      example: {
+        task: "Inspect the authentication flow",
+        profile: "scout",
+        model: { prefer: "current" },
+        fastMode: false,
+        maxDepth: 0,
+        retain: false,
+      },
+      run: (input, parent, signal, _onUpdate, anchor) =>
+        control.spawn(input, parent, signal, anchor),
+    }),
+    operation({
+      command: "subagents.parallel",
+      summary: "Run up to eight bounded subagent tasks with workspace-wide bounded concurrency.",
+      schema: parallelSubagentSchema,
+      example: {
+        tasks: [
+          {
+            task: "Inspect tests",
+            profile: "scout",
+            model: { prefer: "current" },
+            fastMode: false,
+            maxDepth: 0,
+            retain: false,
+          },
+        ],
+      },
+      run: (input, parent, signal, onUpdate, anchor) =>
+        control.parallel(input, parent, signal, onUpdate, anchor),
+    }),
+    operation({
+      command: "subagents.prompt",
+      summary: "Send a normal prompt to an idle retained subagent and wait for its turn.",
+      schema: promptSchema,
+      example: { handleId: "00000000-0000-4000-8000-000000000000", text: "Continue" },
+      run: (input, parent, signal) =>
+        control.prompt({ ...input, delivery: "prompt" }, parent, signal),
+    }),
+    operation({
+      command: "subagents.follow-up",
+      summary: "Queue a follow-up using Pi's normal queue policy.",
+      schema: promptSchema,
+      example: { handleId: "00000000-0000-4000-8000-000000000000", text: "Also inspect callers" },
+      run: (input, parent, signal) =>
+        control.prompt({ ...input, delivery: "follow-up" }, parent, signal),
+    }),
+    operation({
+      command: "subagents.wait",
+      summary: "Wait for a subagent and stream its latest activity, usage, and final result.",
+      schema: handleSchema,
+      example: { handleId: "00000000-0000-4000-8000-000000000000" },
+      run: (input, parent, signal, onUpdate) =>
+        control.wait(input.handleId, parent, signal, onUpdate),
+    }),
+    operation({
+      command: "subagents.abort",
+      summary: "Cancel active work in a subagent.",
+      schema: handleSchema,
+      example: { handleId: "00000000-0000-4000-8000-000000000000" },
+      run: (input, parent) => control.abort(input.handleId, parent),
+    }),
+    operation({
+      command: "subagents.close",
+      summary: "Release a subagent handle and its hidden runtime.",
+      schema: handleSchema,
+      example: { handleId: "00000000-0000-4000-8000-000000000000" },
+      run: (input, parent) => control.close(input.handleId, parent),
+    }),
+  ];
+}
+
+function createCakeGatewayExtension(
+  definitions: (pi: {
+    appendEntry(type: string, data: JsonValue): void;
+  }) => CakeOperationDefinition[],
+): InlineExtension {
   return (pi) => {
-    for (const tool of tools) {
-      // SAFETY: Pi's TSchema input and Zod's JSON Schema output share the JSON Schema shape used by every Cake inline extension.
-      const parameters = z.toJSONSchema(tool.schema) as TSchema;
-      pi.registerTool({
-        name: tool.name,
-        label: tool.name.replaceAll("_", " "),
-        description: tool.description,
-        parameters,
-        async execute(_toolCallId, params, signal, onUpdate) {
-          const parent = parentSessionId();
-          if (!parent) throw new Error("The parent Cake session is not ready");
-          const update = (value: JsonValue) =>
-            onUpdate?.({
-              content: [{ type: "text", text: formatUnknown(value, 24_000) }],
-              details: value,
-            });
-          // SAFETY: Each run callback is paired with the schema that parsed this value in the local tools table above.
-          const result = await tool.run(
-            tool.schema.parse(params) as never,
-            parent,
-            signal ?? new AbortController().signal,
-            update,
-            `tool-${_toolCallId}`,
-          );
-          return {
-            content: [{ type: "text", text: formatUnknown(result, 24_000) }],
-            details: result,
-          };
-        },
-      });
-    }
+    const registry = new CakeOperationRegistry(definitions(pi));
+    pi.registerTool({
+      name: "cake",
+      label: "Cake",
+      description: cakeToolDescription,
+      // SAFETY: Pi's TSchema and Zod's JSON Schema output share the JSON Schema shape used by Cake extensions.
+      parameters: z.toJSONSchema(cakeToolEnvelopeSchema, {
+        io: "input",
+        target: "draft-7",
+      }) as TSchema,
+      async execute(toolCallId, params, signal, onUpdate, runtime) {
+        const update = (value: JsonValue) =>
+          onUpdate?.({
+            content: [{ type: "text", text: formatUnknown(value, 24_000) }],
+            details: value,
+          });
+        const result = await registry.invoke(params, {
+          signal: signal ?? new AbortController().signal,
+          toolCallId,
+          onUpdate: update,
+          runtime,
+        });
+        return { content: [{ type: "text", text: result.text }], details: result.details };
+      },
+    });
   };
 }
 
@@ -467,6 +534,178 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         updatedAt: new Date().toISOString(),
       }));
   const requestArtifact = options.requestArtifact ?? (async () => undefined);
+  interface RuntimeOperationApi {
+    info(): JsonValue;
+    usage(): JsonValue;
+    contextStatus(): JsonValue;
+    compact(instructions?: string): Promise<JsonValue>;
+    rename(title: string): Promise<JsonValue>;
+    setModel(provider: string, modelId: string, reasoning?: ThinkingLevel): Promise<JsonValue>;
+    setResolved(resolved: boolean): Promise<JsonValue>;
+  }
+  interface RuntimeOperationApiReference {
+    current?: RuntimeOperationApi;
+  }
+  const operationApi: RuntimeOperationApiReference = {};
+  const localOperations = (): CakeOperationDefinition[] => {
+    const api = () => {
+      if (!operationApi.current) throw new Error("The Cake session is not ready");
+      return operationApi.current;
+    };
+    const empty = z.object({}).strict();
+    const operations: CakeOperationDefinition[] = [
+      {
+        command: "session.info",
+        topic: "sessions",
+        summary:
+          "Return minimal identity, workspace, resolution, and model information for the calling session.",
+        guidance: [
+          "Singular session.* operations always target the calling session and never accept a sessionId.",
+        ],
+        inputSchema: empty,
+        examples: [{}],
+        result: "sessionId, title, workspacePath, resolved, and provider/model/reasoning only.",
+        execute: async () => api().info(),
+      },
+      {
+        command: "session.rename",
+        topic: "sessions",
+        summary: "Rename the calling session.",
+        guidance: [
+          "Singular session.* operations always target the calling session and never accept a sessionId.",
+        ],
+        inputSchema: z.object({ title: z.string().trim().min(1).max(500) }).strict(),
+        examples: [{ input: { title: "Authentication refactor" } }],
+        result: "The calling session ID and committed title.",
+        execute: (input) => {
+          // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
+          return api().rename((input as { title: string }).title);
+        },
+      },
+      {
+        command: "session.resolve",
+        topic: "sessions",
+        summary: "Idempotently resolve or restore the calling session.",
+        guidance: [
+          "Singular session.* operations always target the calling session and never accept a sessionId.",
+        ],
+        inputSchema: z.object({ resolved: z.boolean() }).strict(),
+        examples: [{ input: { resolved: true } }],
+        result: "The calling session ID and committed resolved value.",
+        execute: (input) => {
+          // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
+          return api().setResolved((input as { resolved: boolean }).resolved);
+        },
+      },
+      {
+        command: "session.usage",
+        topic: "sessions",
+        summary:
+          "Return normalized provider-reported token usage and cost for the calling session.",
+        guidance: ["Usage is advisory and is not a hard spending-limit mechanism."],
+        inputSchema: empty,
+        examples: [{}],
+        result: "Normalized token counts, reported cost in USD, and honest pricing coverage.",
+        execute: async () => api().usage(),
+      },
+      {
+        command: "session.set-model",
+        topic: "sessions",
+        summary: "Set the calling session's exact provider, model, and optional reasoning level.",
+        guidance: [
+          "Singular session.* operations always target the calling session and never accept a sessionId.",
+        ],
+        inputSchema: z
+          .object({
+            provider: z.string().min(1).max(256),
+            id: z.string().min(1).max(512),
+            reasoning: z
+              .enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"])
+              .optional(),
+          })
+          .strict(),
+        examples: [{ input: { provider: "openai", id: "gpt-5", reasoning: "high" } }],
+        result: "The committed model and reasoning selection.",
+        execute: (input) => {
+          // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
+          const value = input as { provider: string; id: string; reasoning?: ThinkingLevel };
+          return api().setModel(value.provider, value.id, value.reasoning);
+        },
+      },
+      {
+        command: "context.status",
+        topic: "context",
+        summary: "Inspect estimated current context use through Pi's public usage facilities.",
+        inputSchema: empty,
+        examples: [{}],
+        result: "tokens, limit, remaining, utilization, and measurement only.",
+        execute: async () => api().contextStatus(),
+      },
+      {
+        command: "context.compact",
+        topic: "context",
+        summary: "Invoke Pi's normal compaction mechanism for the calling session.",
+        inputSchema: z.object({ instructions: z.string().max(262_144).optional() }).strict(),
+        examples: [
+          {
+            input: { instructions: "Preserve implementation decisions and pending verification." },
+          },
+        ],
+        result: "A completed compaction status.",
+        limitations: ["Cake does not create a separate summary or transcript representation."],
+        execute: (input) => {
+          // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
+          return api().compact((input as { instructions?: string }).instructions);
+        },
+      },
+      {
+        command: "notifications.send",
+        topic: "notifications",
+        summary: "Send a bounded user notification through Cake's normal notification surface.",
+        inputSchema: z
+          .object({
+            title: z.string().min(1).max(256),
+            body: z.string().min(1).max(2_000),
+            level: z.enum(["info", "success", "warning", "error"]).default("info"),
+          })
+          .strict(),
+        examples: [
+          {
+            input: {
+              title: "Authentication refactor complete",
+              body: "The implementation and focused tests are ready for review.",
+              level: "success",
+            },
+          },
+        ],
+        result: "A sent status after Cake accepts the notification.",
+        limitations: [
+          "Notifications do not impersonate user input or enter another session transcript.",
+        ],
+        async execute(input, context) {
+          // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
+          const value = input as {
+            title: string;
+            body: string;
+            level: "info" | "success" | "warning" | "error";
+          };
+          // SAFETY: createCakeGatewayExtension supplies Pi's validated tool execution context.
+          const runtime = context.runtime as {
+            ui?: { notify(message: string, level: "info" | "warning" | "error"): void };
+          };
+          if (!runtime.ui) throw new Error("Cake notifications are unavailable in this runtime");
+          runtime.ui.notify(
+            `${value.title}: ${value.body}`,
+            value.level === "success" ? "info" : value.level,
+          );
+          return { status: "sent" };
+        },
+      },
+    ];
+    return options.currentSessionControl
+      ? operations
+      : operations.filter((operation) => operation.command !== "session.resolve");
+  };
   let fastMode = options.fastMode?.get() ?? false;
   let currentModel: FastModeModel | undefined;
   const fastModeEnabled = () => fastMode && supportsFastMode(currentModel);
@@ -474,6 +713,15 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     sessionId?: string;
   }
   const runtimeIdentity: RuntimeIdentity = {};
+  const readOnlyAuxiliary =
+    Boolean(options.auxiliary) &&
+    !(options.tools ?? []).some((tool) => tool === "bash" || tool === "edit" || tool === "write");
+  const filterRuntimeOperations = (definitions: CakeOperationDefinition[]) =>
+    readOnlyAuxiliary
+      ? definitions.filter((definition) =>
+          ["session.info", "session.usage", "context.status"].includes(definition.command),
+        )
+      : definitions;
   const globalControl = options.globalControl;
   const resourceLoader = new DefaultResourceLoader(
     globalControl
@@ -484,7 +732,24 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           additionalSkillPaths: [cakePluginAuthoringSkillPath()],
           extensionFactories: [
             createFastModeExtension(fastModeEnabled),
-            createGlobalControlExtension(globalControl),
+            createCakeGatewayExtension((pi) =>
+              filterRuntimeOperations([
+                ...localOperations(),
+                ...createGlobalControlOperations(globalControl),
+                ...createCakeArtifactOperations(pi, {
+                  persistArtifact,
+                  requestArtifact,
+                  generateInlineWidget: options.generateInlineWidget,
+                }),
+                ...(options.agentControl
+                  ? createAgentControlOperations(
+                      options.agentControl,
+                      () => runtimeIdentity.sessionId,
+                    )
+                  : []),
+              ]),
+            ),
+            createCakeArtifactExtension({ persistArtifact, requestArtifact }),
           ],
           appendSystemPromptOverride: (base) => [
             ...base,
@@ -517,14 +782,23 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           noThemes: options.auxiliary,
           extensionFactories: [
             createFastModeExtension(fastModeEnabled),
-            createCakeArtifactExtension({
-              persistArtifact,
-              requestArtifact,
-              generateInlineWidget: options.generateInlineWidget,
-            }),
-            ...(options.agentControl
-              ? [createAgentControlExtension(options.agentControl, () => runtimeIdentity.sessionId)]
-              : []),
+            createCakeGatewayExtension((pi) =>
+              filterRuntimeOperations([
+                ...localOperations(),
+                ...createCakeArtifactOperations(pi, {
+                  persistArtifact,
+                  requestArtifact,
+                  generateInlineWidget: options.generateInlineWidget,
+                }),
+                ...(options.agentControl
+                  ? createAgentControlOperations(
+                      options.agentControl,
+                      () => runtimeIdentity.sessionId,
+                    )
+                  : []),
+              ]),
+            ),
+            createCakeArtifactExtension({ persistArtifact, requestArtifact }),
             ...(options.reviewContextPath
               ? [reviewContextExtension(options.reviewContextPath, () => runtimeIdentity.sessionId)]
               : []),
@@ -941,6 +1215,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     string,
     {
       input: string;
+      command?: string;
       artifactId?: string;
       filePath?: string;
       diff?: string;
@@ -1111,6 +1386,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     if (event.type === "tool_execution_start") {
       const call = {
         input: formatToolInput(event.toolName, event.args),
+        command: event.toolName === "cake" ? cakeOperationCommand(event.args) : undefined,
         artifactId: toolArtifactId(event.args),
         filePath: toolFilePath(event.toolName, event.args),
       };
@@ -1130,6 +1406,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     if (event.type === "tool_execution_update") {
       const call = activeToolCalls.get(event.toolCallId) ?? {
         input: formatToolInput(event.toolName, event.args),
+        command: event.toolName === "cake" ? cakeOperationCommand(event.args) : undefined,
         artifactId: toolArtifactId(event.args),
         filePath: toolFilePath(event.toolName, event.args),
         diff: undefined,
@@ -1161,6 +1438,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           id: boundedProjectionKey(`tool-${event.toolCallId}`),
           kind: "tool",
           name: event.toolName,
+          command:
+            call?.command ??
+            (event.toolName === "cake" ? cakeOperationCommand(event.result) : undefined),
           input: call?.input ?? "",
           output: formatToolResult(event.result),
           artifactId: toolArtifactId(event.result) ?? call?.artifactId,
@@ -1305,6 +1585,77 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     }
     emitSnapshotInBackground();
   }
+
+  operationApi.current = {
+    info() {
+      const stats = session.getSessionStats();
+      return jsonValueSchema.parse({
+        sessionId: cakeSessionId,
+        title: activeSessionSummary(stats.totalMessages).title,
+        workspacePath: options.cwd,
+        resolved: options.currentSessionControl?.resolved() ?? false,
+        model: {
+          provider: session.model?.provider ?? "unknown",
+          id: session.model?.id ?? "unknown",
+          reasoning: session.thinkingLevel,
+        },
+      });
+    },
+    usage() {
+      const stats = session.getSessionStats();
+      return jsonValueSchema.parse({
+        inputTokens: stats.tokens.input,
+        outputTokens: stats.tokens.output,
+        cacheReadTokens: stats.tokens.cacheRead,
+        cacheWriteTokens: stats.tokens.cacheWrite,
+        reportedCostUsd: stats.cost,
+        pricingCoverage: options.agentControl ? "partial" : session.model ? "complete" : "unknown",
+      });
+    },
+    contextStatus() {
+      const context = session.getSessionStats().contextUsage;
+      const tokens = context?.tokens ?? 0;
+      const limit = context?.contextWindow ?? 1;
+      return jsonValueSchema.parse({
+        tokens,
+        limit,
+        remaining: Math.max(0, limit - tokens),
+        utilization: tokens / limit,
+        measurement: "estimated",
+      });
+    },
+    async compact(instructions) {
+      await runCompact(instructions);
+      return { status: "compacted" };
+    },
+    async rename(title) {
+      session.setSessionName(title.trim());
+      await emitSnapshot();
+      return {
+        sessionId: cakeSessionId,
+        title: session.sessionManager.getSessionName() ?? title.trim(),
+      };
+    },
+    async setResolved(resolved) {
+      if (!options.currentSessionControl)
+        throw new Error("This Cake runtime cannot change session resolution");
+      await options.currentSessionControl.setResolved(resolved);
+      return { sessionId: cakeSessionId, resolved };
+    },
+    async setModel(provider, modelId, reasoning) {
+      const model = modelRuntime.getModel(provider, modelId);
+      if (!model) throw new Error(`Unknown model ${provider}/${modelId}`);
+      await session.setModel(model);
+      currentModel = session.model;
+      if (reasoning) session.setThinkingLevel(reasoning);
+      await emitSnapshot();
+      return {
+        provider,
+        id: modelId,
+        reasoning: session.thinkingLevel,
+      };
+    },
+  };
 
   return {
     sessionId: cakeSessionId,

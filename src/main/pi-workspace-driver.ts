@@ -151,6 +151,8 @@ export interface PiWorkspaceDriverOptions {
   utilityModel?: () => UtilityModel | undefined;
   fastMode?(sessionId: string): boolean;
   setFastMode?(sessionId: string, enabled: boolean): Promise<void>;
+  sessionResolved?(sessionId: string): boolean;
+  setSessionResolved?(sessionId: string, resolved: boolean): Promise<void>;
   pluginResources?: { skills: string[]; prompts: string[]; extensions: string[] };
   resolveAgentModel?: (
     preference: AgentModelPreference,
@@ -178,6 +180,8 @@ export class PiWorkspaceDriver {
   private readonly utilityModel: () => UtilityModel | undefined;
   private readonly fastMode: (sessionId: string) => boolean;
   private readonly setFastMode: (sessionId: string, enabled: boolean) => Promise<void>;
+  private readonly sessionResolved: (sessionId: string) => boolean;
+  private readonly setSessionResolved: (sessionId: string, resolved: boolean) => Promise<void>;
   private readonly pluginResources: { skills: string[]; prompts: string[]; extensions: string[] };
   private readonly runtimes = new Map<string, CakeRuntime>();
   private readonly runtimePromises = new Map<string, Promise<CakeRuntime>>();
@@ -222,6 +226,8 @@ export class PiWorkspaceDriver {
     this.utilityModel = options.utilityModel ?? (() => undefined);
     this.fastMode = options.fastMode ?? (() => false);
     this.setFastMode = options.setFastMode ?? (async () => undefined);
+    this.sessionResolved = options.sessionResolved ?? (() => false);
+    this.setSessionResolved = options.setSessionResolved ?? (async () => undefined);
     this.pluginResources = options.pluginResources ?? { skills: [], prompts: [], extensions: [] };
     this.resolveAgentModel =
       options.resolveAgentModel ??
@@ -859,6 +865,13 @@ export class PiWorkspaceDriver {
             this.reviewRepository.reviewContextPath!(this.workspacePath, activeSessionId)
         : undefined,
       utilityModel: this.utilityModel,
+      currentSessionControl: {
+        resolved: () => (openedSessionId ? this.sessionResolved(openedSessionId) : false),
+        setResolved: async (resolved) => {
+          if (!openedSessionId) throw new Error("The Pi session is not ready");
+          await this.setSessionResolved(openedSessionId, resolved);
+        },
+      },
       fastMode: {
         get: () => policy?.fastMode ?? (openedSessionId ? this.fastMode(openedSessionId) : false),
         set: async (enabled) => {
@@ -1141,7 +1154,7 @@ export class PiWorkspaceDriver {
       return {
         input,
         resolvedModel,
-        tools: toolsForSubagentProfile(input.profile, parentTools, remainingSubagentDepth > 0),
+        tools: toolsForSubagentProfile(input.profile, parentTools),
         remainingSubagentDepth,
       };
     });

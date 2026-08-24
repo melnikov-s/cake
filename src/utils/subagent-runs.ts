@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { jsonValueSchema } from "../ipc/json-contract";
 import { resolvedAgentModelSchema } from "../ipc/plugin-agent-contract";
+import { toolOperationName } from "./cake-tool";
 import {
   sessionUsageSchema,
   uiPartSchema,
@@ -23,6 +24,7 @@ const runPayloadSchema = z
     error: z.string().optional(),
   })
   .passthrough();
+const gatewayInputSchema = z.object({ input: z.unknown() }).passthrough();
 const payloadSchema = runPayloadSchema
   .extend({
     tasks: z.array(runPayloadSchema).optional(),
@@ -56,7 +58,8 @@ function payload(value?: string): Payload | undefined {
   if (!value) return undefined;
   try {
     const parsed = jsonValueSchema.parse(JSON.parse(value));
-    const result = payloadSchema.safeParse(parsed);
+    const gateway = gatewayInputSchema.safeParse(parsed);
+    const result = payloadSchema.safeParse(gateway.success ? gateway.data.input : parsed);
     return result.success ? result.data : undefined;
   } catch {
     return undefined;
@@ -110,7 +113,7 @@ export function historicalSubagentRuns(parts: readonly UiPart[]) {
 
   for (const part of parts) {
     if (part.kind !== "tool") continue;
-    if (part.name === "subagent_spawn") {
+    if (toolOperationName(part) === "subagents.spawn") {
       const request = payload(part.input);
       const output = payload(part.output);
       const source = output ?? request;
@@ -120,7 +123,7 @@ export function historicalSubagentRuns(parts: readonly UiPart[]) {
       if (run.handleId) spawnByHandle.set(run.handleId, { part, request, output });
       continue;
     }
-    if (part.name === "subagent_wait") {
+    if (toolOperationName(part) === "subagents.wait") {
       const input = payload(part.input);
       const output = payload(part.output);
       const handleId = output?.handleId ?? input?.handleId;
@@ -131,7 +134,7 @@ export function historicalSubagentRuns(parts: readonly UiPart[]) {
       runs.set(run.key, run);
       continue;
     }
-    if (part.name === "subagent_parallel") {
+    if (toolOperationName(part) === "subagents.parallel") {
       const request = payload(part.input);
       const output = payload(part.output);
       const results = output?.results ?? (output?.latest ? [output.latest] : []);

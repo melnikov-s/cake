@@ -429,9 +429,22 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     tools: z
       .array(
         z.object({
-          name: z.string().min(1).max(256),
-          description: z.string().min(1).max(2_048),
+          command: z.string().min(1).max(256),
+          topic: z.string().min(1).max(256),
+          summary: z.string().min(1).max(2_048),
+          guidance: z.array(z.string().max(4_096)).max(50).optional(),
           parameters: jsonObjectSchema,
+          examples: z
+            .array(
+              z.object({
+                input: jsonObjectSchema.optional(),
+                description: z.string().max(2_048).optional(),
+              }),
+            )
+            .max(20)
+            .optional(),
+          result: z.string().max(4_096).optional(),
+          limitations: z.array(z.string().max(4_096)).max(50).optional(),
         }),
       )
       .min(1)

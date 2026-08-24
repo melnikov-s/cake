@@ -133,9 +133,8 @@ does not persist failed attempts or hidden continuation messages. The policy is
 in-memory: quitting Cake ends it. Pi's native retry behavior remains
 authoritative for other transient errors.
 
-Pi agents receive focused `subagent_spawn`, `subagent_parallel`, `subagent_prompt`,
-`subagent_follow_up`, `subagent_wait`, `subagent_abort`, and `subagent_close`
-tools backed by the same coordinator. Project agents use these tools only when
+Pi agents receive one Cake-owned `cake` gateway. Its progressively disclosed
+`subagents.*` operations are backed by the same coordinator. Project agents use these tools only when
 the user explicitly requests subagents, delegation, or parallel agent work;
 tool availability alone is not authorization. Subagents are hidden, parent-owned
 workers, never project sessions: the tool contract cannot attach, fork, select
@@ -282,7 +281,7 @@ privileges.
 
 - Artifacts cross a versioned, bounded protocol. Markdown and structured kinds
   are validated; raw HTML runs in an isolated frame with restrictive policy.
-- Delegated inline widgets begin as compact `ui_widget` presentation briefs.
+- Delegated inline widgets begin as compact `cake widgets.present` presentation briefs.
   Generation and repair run in separate tool-less Pi sessions; generated source
   stays in Cake's artifact repository rather than the project-session context.
   Electron main compiles that source and runs it in a script-enabled,

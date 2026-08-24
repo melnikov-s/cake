@@ -706,7 +706,8 @@ describe("Transcript scrolling", () => {
     const spawn: UiPart = {
       id: "subagent-spawn",
       kind: "tool",
-      name: "subagent_spawn",
+      name: "cake",
+      command: "subagents.spawn",
       input: JSON.stringify({
         task: "Tell a joke",
         profile: "worker",
@@ -723,7 +724,8 @@ describe("Transcript scrolling", () => {
     const wait: UiPart = {
       id: "subagent-wait",
       kind: "tool",
-      name: "subagent_wait",
+      name: "cake",
+      command: "subagents.wait",
       input: JSON.stringify({ handleId }),
       output: JSON.stringify({
         handleId,

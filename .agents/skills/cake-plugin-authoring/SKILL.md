@@ -179,7 +179,7 @@ replaced by a plugin.
 
 ## Authoring workflow
 
-1. Read `get_plugin_authoring_reference`, then inspect customization state,
+1. Call `cake customizations`, then use `customizations.authoring-reference` before inspecting customization state,
    current plugin files, diagnostics,
    persisted snapshots when relevant, and the last-known-good revision.
 2. Inspect the current public exports and choose the smallest existing Cake
@@ -189,12 +189,12 @@ replaced by a plugin.
    requests whole-application replacement. Cake is greenfield: update all callers
    and tests together and do not add compatibility shims.
 4. In global chat, retain the original `sourceRevision`; make each
-   `write_plugin_file` call with the latest `workingRevision`; then call
-   `validate_customization` with the original base and latest source revisions
+   `customizations.write-file` call with the latest `workingRevision`; then call
+   `customizations.validate` with the original base and latest source revisions
    plus concise provenance. On a stale revision, reread and merge semantically.
 5. Treat typecheck, bundle, and backend-start diagnostics as intermediate
    authoring feedback. Repair and repeat validation autonomously. Call
-   `activate_customization` only after the requested implementation is complete,
+   `customizations.activate` only after the requested implementation is complete,
    unless blocked by missing intent, unavailable host capability, or an unsafe
    concurrent conflict.
 6. Verify automatic registration, each intended slot, commands, reactive Store

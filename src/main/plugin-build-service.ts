@@ -343,6 +343,7 @@ export class PluginBuildService {
           ],
         },
         plugins: [policyPlugin(source, this.sourceRoot, this.runtimeRoot), react(), tailwindcss()],
+        worker: { format: "es" },
         build: {
           outDir: directory,
           emptyOutDir: true,

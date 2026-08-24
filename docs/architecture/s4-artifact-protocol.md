@@ -36,7 +36,7 @@ is 1,048,576 UTF-8 bytes.
 
 ## Tools and interaction lifecycle
 
-The built-in Pi extension registers `ui_request`, which accepts one
+The built-in `cake` gateway exposes `requests.open`, which accepts one
 `cake.request/v1`, persists it at the tool-call position, and waits for one
 schema-validated response or cancellation. Its `view` is either a Cake-rendered
 form definition or a sandboxed HTML/React widget. The form view is preferred for
@@ -75,7 +75,7 @@ Cake-owned Markdown component.
 ## Delegated inline widgets and repair
 
 The primary agent creates a one-off visual explanation with the non-blocking
-`ui_widget` tool. Its tool input contains a stable message-scoped ID, title,
+`widgets.present` Cake operation. Its tool input contains a stable message-scoped ID, title,
 self-contained presentation brief, required data, and readable Markdown
 fallback. The primary agent does not author React or HTML. The brief remains in
 the Pi transcript, while the generated implementation does not enter the

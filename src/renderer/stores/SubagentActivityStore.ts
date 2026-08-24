@@ -1,6 +1,7 @@
 import { Store, child, createStore, observable } from "r-state-tree";
 import type { SubagentActivity } from "../../ipc/subagent-activity-contract";
 import type { UiPart } from "../../ipc/session-contract";
+import { toolOperationName } from "../../utils/cake-tool";
 import {
   historicalSubagentRuns,
   subagentHandleFromTool,
@@ -66,7 +67,7 @@ export class SubagentActivityStore extends Store<{
 
   runsForTool(part: ToolPart, spawnPart?: ToolPart) {
     const anchorPartId = spawnPart?.id ?? part.id;
-    if (part.name === "subagent_parallel")
+    if (toolOperationName(part) === "subagents.parallel")
       return this.runs.filter((run) => run.anchorPartId === anchorPartId);
     const handleId = subagentHandleFromTool(part) ?? subagentHandleFromTool(spawnPart);
     const run = handleId ? this.run(handleId) : undefined;

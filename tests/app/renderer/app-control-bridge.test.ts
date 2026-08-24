@@ -3,11 +3,7 @@ import { observable } from "r-state-tree";
 import { jsonValueSchema } from "../../../src/ipc/json-contract";
 import type { GlobalSessionSummary, ProjectRecord } from "../../../src/ipc/session-contract";
 import type { CustomizationState, PluginStatus } from "../../../src/plugin/plugin-contract";
-import {
-  AppControlBridge,
-  appControlToolCatalog,
-  type AppControlHost,
-} from "../../../src/renderer/app-control-bridge";
+import { AppControlBridge, type AppControlHost } from "../../../src/renderer/app-control-bridge";
 
 const projects: ProjectRecord[] = [
   {
@@ -167,31 +163,29 @@ function createBridge(
 }
 
 describe("AppControlBridge", () => {
-  it("publishes the curated tool catalog", () => {
-    expect(appControlToolCatalog.map((tool) => tool.name)).toEqual([
-      "get_app_state",
-      "get_customization_state",
-      "get_plugin_authoring_reference",
-      "list_plugin_files",
-      "create_plugin",
-      "read_plugin_file",
-      "write_plugin_file",
-      "validate_customization",
-      "activate_customization",
-      "rollback_customization",
-      "use_factory_customization",
-      "set_plugin_enabled",
-      "set_active_scene",
-      "get_session_status",
-      "open_session",
-      "create_session",
-      "send_session_message",
-      "abort_session",
-      "rename_session",
-      "set_session_resolved",
-      "set_sessions_resolved",
-      "set_cake_chat_sessions_resolved",
-      "set_session_model",
+  it("publishes the curated operation catalog", () => {
+    const { bridge } = createBridge();
+    expect(bridge.listTools().map((operation) => operation.command)).toEqual([
+      "app.state",
+      "sessions.list",
+      "sessions.info",
+      "sessions.open",
+      "sessions.create",
+      "sessions.send",
+      "sessions.abort",
+      "sessions.resolve",
+      "customizations.state",
+      "customizations.authoring-reference",
+      "customizations.files",
+      "customizations.create-plugin",
+      "customizations.read-file",
+      "customizations.write-file",
+      "customizations.validate",
+      "customizations.activate",
+      "customizations.rollback",
+      "customizations.use-factory",
+      "customizations.set-plugin-enabled",
+      "customizations.set-active-scene",
     ]);
   });
 
