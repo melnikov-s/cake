@@ -43,25 +43,6 @@ vi.mock("@/components/ai-elements/conversation", () => ({
   }),
 }));
 
-vi.mock("@streamdown/code", () => {
-  const code = {
-    getThemes: () => ["github-light", "github-dark"],
-    highlight: ({ code }: { code: string }, callback: (result: unknown) => void) => {
-      const result = {
-        tokens: code
-          .split("\n")
-          .map((line) => [
-            { content: line, htmlStyle: { color: "#123456", "--shiki-dark": "#abcdef" } },
-          ]),
-      };
-      callback(result);
-      return result;
-    },
-  };
-
-  return { createCodePlugin: () => code, code };
-});
-
 import { ChangeExplorer } from "../../../src/renderer/components/change-explorer";
 
 const changes: ChangedFile[] = [

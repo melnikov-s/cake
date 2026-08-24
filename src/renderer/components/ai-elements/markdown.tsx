@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import type { ComponentProps } from "react";
-import { createCodePlugin } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { createMermaidPlugin } from "@streamdown/mermaid";
 import {
@@ -9,6 +8,7 @@ import {
   type Components,
   type StreamdownProps,
 } from "streamdown";
+import { syntaxHighlighter } from "@/lib/syntax-highlighter";
 import { cn } from "@/lib/utils";
 
 /** Matches web-style hrefs that must never be treated as workspace file paths. */
@@ -38,10 +38,8 @@ function externalAnchor(allProps: AnchorProps) {
 }
 
 const mermaid = createMermaidPlugin({ config: { securityLevel: "strict" } });
-// Use a high-contrast light theme; the default github-light renders punctuation
-// and other neutral tokens too faintly in light mode.
-const code = createCodePlugin({ themes: ["github-light-high-contrast", "github-dark"] });
-const plugins = { code, math, mermaid };
+const plugins = { code: syntaxHighlighter, math, mermaid };
+const pluginsWithoutCode = { math, mermaid };
 
 type MarkdownProps = Omit<
   StreamdownProps,
@@ -54,11 +52,19 @@ type MarkdownProps = Omit<
   | "skipHtml"
 > & {
   children: string;
+  /** Defers expensive highlighting while content is still changing. */
+  highlightCode?: boolean;
   /** Invoked when the reader clicks a link whose target is a file path instead of a web URL. */
   onOpenFilePath?(path: string): void;
 };
 
-export function Markdown({ children, className, onOpenFilePath, ...props }: MarkdownProps) {
+export function Markdown({
+  children,
+  className,
+  highlightCode = true,
+  onOpenFilePath,
+  ...props
+}: MarkdownProps) {
   const source = onOpenFilePath ? prepareWorkspaceMarkdown(children) : children;
   const components = useMemo<Components>(() => {
     if (!onOpenFilePath) return { a: externalAnchor };
@@ -104,7 +110,7 @@ export function Markdown({ children, className, onOpenFilePath, ...props }: Mark
       isAnimating={false}
       mode="static"
       parseMarkdownIntoBlocksFn={parseMarkdownIntoBlocks}
-      plugins={plugins}
+      plugins={highlightCode ? plugins : pluginsWithoutCode}
       skipHtml
     >
       {source}

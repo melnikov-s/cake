@@ -117,6 +117,7 @@ describe("Cake-owned conversation components", () => {
           diff: "-4 const old = true;\n+4 const fresh = true;",
           state: "success",
         }}
+        expansion={{ open: true, toggle: () => undefined }}
       />,
     );
     expect(html).toContain("edit src/app.ts");
@@ -148,8 +149,8 @@ describe("Cake-owned conversation components", () => {
     );
     expect(running).toContain('aria-expanded="false"');
     expect(failed).toContain('aria-expanded="false"');
-    expect(running).toMatch(/class="tool-details" hidden/);
-    expect(failed).toMatch(/class="tool-details" hidden/);
+    expect(running).not.toContain('class="tool-details"');
+    expect(failed).not.toContain('class="tool-details"');
   });
 
   it("uses state indicators without redundant visible state labels", () => {
@@ -198,6 +199,7 @@ describe("Cake-owned conversation components", () => {
           input: 'for file in *.ts; do\n  echo "$file"\ndone',
           state: "success",
         }}
+        expansion={{ open: true, toggle: () => undefined }}
       />,
     );
     expect(html).toContain('title="bash for file in *.ts; do echo &quot;$file&quot; done"');
@@ -218,6 +220,7 @@ describe("Cake-owned conversation components", () => {
           output: "export const value: boolean = true;",
           state: "success",
         }}
+        expansion={{ open: true, toggle: () => undefined }}
       />,
     );
     expect(html).toContain('title="read src/app.ts"');
@@ -238,6 +241,7 @@ describe("Cake-owned conversation components", () => {
           output: "# Cake\n\nA desktop app",
           state: "success",
         }}
+        expansion={{ open: true, toggle: () => undefined }}
       />,
     );
     expect(html).toContain('data-language="markdown"');
@@ -257,6 +261,7 @@ describe("Cake-owned conversation components", () => {
           outputContent: [{ type: "text", text: '{"ok":true}' }],
           state: "success",
         }}
+        expansion={{ open: true, toggle: () => undefined }}
       />,
     );
     expect(text).toContain('data-language="text"');
@@ -273,6 +278,7 @@ describe("Cake-owned conversation components", () => {
           outputContent: [{ type: "image", data: "AA==", mimeType: "image/png" }],
           state: "success",
         }}
+        expansion={{ open: true, toggle: () => undefined }}
       />,
     );
     expect(image).toContain('src="data:image/png;base64,AA=="');

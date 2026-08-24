@@ -598,7 +598,8 @@ describe("Transcript scrolling", () => {
     const tool = container.querySelector<HTMLElement>(".tool-call")!;
     const toolToggle = tool.querySelector<HTMLButtonElement>(".tool-summary")!;
     expect(toolToggle.getAttribute("aria-expanded")).toBe("false");
-    toolToggle.click();
+    expect(tool.querySelector(".tool-details")).toBeNull();
+    act(() => toolToggle.click());
     // Signal-driven commits can be dropped in reused vitest workers, so re-render
     // explicitly and retry until the DOM reflects the store's item override.
     await waitFor(() => {

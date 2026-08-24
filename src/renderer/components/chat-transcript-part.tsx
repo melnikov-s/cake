@@ -49,7 +49,12 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         streaming={part.status === "streaming"}
         hasContent={Boolean(part.text.trim())}
       >
-        <Markdown onOpenFilePath={behavior.openFilePath}>{part.text}</Markdown>
+        <Markdown
+          highlightCode={part.status !== "streaming"}
+          onOpenFilePath={behavior.openFilePath}
+        >
+          {part.text}
+        </Markdown>
       </Reasoning>
     );
   if (part.kind === "tool") {

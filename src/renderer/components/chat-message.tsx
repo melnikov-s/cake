@@ -83,7 +83,9 @@ export const ChatTextMessage = forwardRef<
         ref={contentRef}
         className={assistant ? "assistant-message-content" : "user-message"}
       >
-        <Markdown onOpenFilePath={onOpenFilePath}>{part.text}</Markdown>
+        <Markdown highlightCode={part.status !== "streaming"} onOpenFilePath={onOpenFilePath}>
+          {part.text}
+        </Markdown>
       </MessageContent>
       {children}
     </Message>
@@ -273,7 +275,11 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
     return () => window.clearTimeout(timeout);
   }, [copied]);
 
-  const content = () => <Markdown onOpenFilePath={behavior.openFilePath}>{part.text}</Markdown>;
+  const content = () => (
+    <Markdown highlightCode={part.status !== "streaming"} onOpenFilePath={behavior.openFilePath}>
+      {part.text}
+    </Markdown>
+  );
 
   useLayoutEffect(() => {
     const key = `${part.id}:${part.entryId ?? ""}`;

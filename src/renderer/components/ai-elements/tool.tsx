@@ -1,5 +1,5 @@
 /* Adapted from Vercel AI Elements tool.tsx at 0c1f5e8c75273f0e95c8faa031544a8aa2bb1a5b (Apache-2.0). Uses Cake tool states. */
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { z } from "zod";
 import { jsonObjectSchema, jsonValueSchema } from "../../../ipc/json-contract";
@@ -57,25 +57,34 @@ function toolTitle(part: Extract<UiPart, { kind: "tool" }>) {
   return summary ? `${part.name} ${summary}` : part.name;
 }
 
-function toolCode(value: string, className: string) {
+function toolCode(value: string, className: string, highlightCode: boolean) {
   const parsed = parseJson(value);
   const source = parsed === undefined ? value : JSON.stringify(parsed, null, 2);
   const language = parsed === undefined ? "text" : "json";
-  return <Markdown className={className}>{fencedCode(source, language)}</Markdown>;
+  return (
+    <Markdown className={className} highlightCode={highlightCode}>
+      {fencedCode(source, language)}
+    </Markdown>
+  );
 }
 
-function toolText(value: string, className: string, language = "text") {
-  return <Markdown className={className}>{fencedCode(value, language)}</Markdown>;
+function toolText(value: string, className: string, language: string, highlightCode: boolean) {
+  return (
+    <Markdown className={className} highlightCode={highlightCode}>
+      {fencedCode(value, language)}
+    </Markdown>
+  );
 }
 
 function toolOutputContent(
   content: readonly ToolOutputContent[],
   className: string,
-  language = "text",
+  language: string,
+  highlightCode: boolean,
 ) {
   return content.map((item, index) =>
     item.type === "text" ? (
-      <Markdown className={className} key={`text-${index}`}>
+      <Markdown className={className} highlightCode={highlightCode} key={`text-${index}`}>
         {fencedCode(item.text, language)}
       </Markdown>
     ) : (
@@ -89,19 +98,25 @@ function toolOutputContent(
   );
 }
 
-function toolOutput(part: Extract<UiPart, { kind: "tool" }>, className: string, language = "text") {
+function toolOutput(
+  part: Extract<UiPart, { kind: "tool" }>,
+  className: string,
+  language: string,
+  highlightCode: boolean,
+) {
   if (part.outputContent && part.outputContent.length > 0)
-    return toolOutputContent(part.outputContent, className, language);
+    return toolOutputContent(part.outputContent, className, language, highlightCode);
   if (part.output === undefined) return null;
-  return toolText(part.output, className, language);
+  return toolText(part.output, className, language, highlightCode);
 }
 
-function readToolCode(part: Extract<UiPart, { kind: "tool" }>) {
+function readToolCode(part: Extract<UiPart, { kind: "tool" }>, highlightCode: boolean) {
   const path = toolPath(part);
   return toolOutput(
     part,
     "tool-output tool-code-input tool-read-output mt-3 text-xs",
     path ? languageForSource(path) : "text",
+    highlightCode,
   );
 }
 
@@ -157,7 +172,15 @@ export function Tool({
 }) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = expansion ? expansion.open : uncontrolledOpen;
-  const toggleOpen = expansion ? expansion.toggle : () => setUncontrolledOpen((value) => !value);
+  const [detailsMounted, setDetailsMounted] = useState(open);
+  useEffect(() => {
+    if (open) setDetailsMounted(true);
+  }, [open]);
+  const toggleOpen = () => {
+    if (!open) setDetailsMounted(true);
+    if (expansion) expansion.toggle();
+    else setUncontrolledOpen((value) => !value);
+  };
   if (part.name.startsWith("subagent_"))
     return (
       <SubagentTool
@@ -207,29 +230,40 @@ export function Tool({
           </IconButton>
         )}
       </div>
-      {/* Keep Streamdown mounted: mounting it during a Virtuoso resize can feed its passive update back into measurement. */}
-      {hasDetails && (
+      {/* Once opened, keep details mounted so later toggles do not feed Streamdown's passive update back into Virtuoso measurement. */}
+      {hasDetails && detailsMounted && (
         <div className="tool-details" hidden={!open}>
           {read ? (
-            readToolCode(part)
+            readToolCode(part, part.state !== "running")
           ) : diff ? (
             <DiffView
               diff={diff}
               filePath={part.filePath}
               label={part.state === "running" ? "Proposed edit" : "Applied edit"}
+              highlightCode={part.state !== "running"}
             />
           ) : bash ? (
-            <Markdown className="tool-input tool-bash-input mt-3 text-xs">
+            <Markdown
+              className="tool-input tool-bash-input mt-3 text-xs"
+              highlightCode={part.state !== "running"}
+            >
               {fencedCode(bash, "bash")}
             </Markdown>
           ) : (
-            part.input && toolCode(part.input, "tool-input tool-code-input mt-3 text-xs")
+            part.input &&
+            toolCode(
+              part.input,
+              "tool-input tool-code-input mt-3 text-xs",
+              part.state !== "running",
+            )
           )}
           {!diff &&
             !read &&
             toolOutput(
               part,
               "tool-output tool-code-input mt-3 border-t border-border pt-3 text-xs",
+              "text",
+              part.state !== "running",
             )}
         </div>
       )}

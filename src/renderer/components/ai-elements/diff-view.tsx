@@ -71,18 +71,20 @@ export function DiffView({
   filePath,
   label = "Changes",
   onOpenFile,
+  highlightCode = true,
 }: {
   diff: string;
   filePath?: string;
   label?: string;
   onOpenFile?: (path: string) => void | Promise<void>;
+  highlightCode?: boolean;
 }) {
   const lines = useMemo(() => parseDiff(diff), [diff]);
   const source = useMemo(
     () => lines.map((line) => (line.kind === "meta" ? "" : line.content)).join("\n"),
     [lines],
   );
-  const tokens = useHighlightedSource(filePath ?? "", source);
+  const tokens = useHighlightedSource(filePath ?? "", source, highlightCode);
   const stats = diffStats(diff);
   return (
     <section className="diff-view" aria-label={`${label}${filePath ? ` to ${filePath}` : ""}`}>

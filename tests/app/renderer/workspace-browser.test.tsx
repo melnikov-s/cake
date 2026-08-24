@@ -9,23 +9,6 @@ import { createStore, mount } from "r-state-tree";
 import type { ProjectWorkbenchStore } from "../../../src/renderer/stores/ProjectWorkbenchStore";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
 
-vi.mock("@streamdown/code", () => {
-  const code = {
-    getThemes: () => ["github-light", "github-dark"],
-    highlight: ({ code }: { code: string }, callback: (result: unknown) => void) => {
-      const result = {
-        tokens: code
-          .split("\n")
-          .map((line) => [{ content: line, htmlStyle: { color: "#123456" } }]),
-      };
-      callback(result);
-      return result;
-    },
-  };
-
-  return { createCodePlugin: () => code, code };
-});
-
 import { WorkspaceBrowser } from "../../../src/renderer/components/workspace-browser";
 
 function browserProps(store: ProjectWorkbenchStore) {

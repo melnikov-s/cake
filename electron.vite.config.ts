@@ -45,6 +45,7 @@ export default defineConfig({
       },
     },
     plugins: [react(), tailwindcss()],
+    worker: { format: "es" },
     build: {
       rollupOptions: { input: resolve(import.meta.dirname, "src/renderer/index.html") },
     },

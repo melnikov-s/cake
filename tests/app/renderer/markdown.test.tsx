@@ -45,6 +45,12 @@ describe("Markdown", () => {
     ]);
   });
 
+  it("omits the code plugin while changing content should not be highlighted", () => {
+    act(() => root.render(<Markdown highlightCode={false}>```ts\nconst value = 1\n```</Markdown>));
+
+    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].plugins?.code).toBeUndefined();
+  });
+
   it("creates a safe highlighted fence even when source contains backticks", () => {
     expect(fencedCode("const sample = ```nested```;", "tsx")).toBe(
       "````tsx\nconst sample = ```nested```;\n````",

@@ -1,11 +1,11 @@
 /* Inspired by Vercel AI Elements code-block.tsx at 0c1f5e8c75273f0e95c8faa031544a8aa2bb1a5b (Apache-2.0). */
-import { code } from "@streamdown/code";
 import { useEffect, useState, type CSSProperties, type ComponentProps } from "react";
+import { syntaxHighlighter } from "@/lib/syntax-highlighter";
 import { cn } from "@/lib/utils";
 
-export type HighlightResult = ReturnType<typeof code.highlight>;
+export type HighlightResult = ReturnType<typeof syntaxHighlighter.highlight>;
 export type HighlightTokens = NonNullable<HighlightResult>["tokens"];
-type HighlightLanguage = Parameters<typeof code.highlight>[0]["language"];
+type HighlightLanguage = Parameters<typeof syntaxHighlighter.highlight>[0]["language"];
 
 type HighlightToken = HighlightTokens[number][number];
 
@@ -67,7 +67,7 @@ export function highlightSource(
   apply: (tokens: HighlightTokens) => void,
 ) {
   const accept = (result: NonNullable<HighlightResult>) => apply(result.tokens);
-  const immediate = code.highlight(
+  const immediate = syntaxHighlighter.highlight(
     // Use a high-contrast light theme for source diffs; github-light renders
     // punctuation and other neutral TypeScript tokens too faintly here.
     {
@@ -80,18 +80,19 @@ export function highlightSource(
   if (immediate) accept(immediate);
 }
 
-export function useHighlightedSource(path: string, source: string) {
+export function useHighlightedSource(path: string, source: string, enabled = true) {
   const [tokens, setTokens] = useState<HighlightTokens>();
   useEffect(() => {
     let active = true;
     setTokens(undefined);
-    highlightSource(path, source, (next) => {
-      if (active) setTokens(next);
-    });
+    if (enabled)
+      highlightSource(path, source, (next) => {
+        if (active) setTokens(next);
+      });
     return () => {
       active = false;
     };
-  }, [path, source]);
+  }, [enabled, path, source]);
   return tokens;
 }
 
