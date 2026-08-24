@@ -98,7 +98,7 @@ export function Markdown({
       {...props}
       components={components}
       className={cn(
-        "markdown-content min-w-0 max-w-full break-words [overflow-wrap:anywhere]",
+        "markdown-content min-w-0 max-w-full break-words [overflow-wrap:anywhere] [&_[data-streamdown=code-block-body]]:overflow-x-hidden [&_[data-streamdown=code-block-body]_pre]:whitespace-pre-wrap [&_[data-streamdown=code-block-body]_pre]:[overflow-wrap:anywhere]",
         className,
       )}
       controls={{

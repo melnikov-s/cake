@@ -45,6 +45,17 @@ describe("Markdown", () => {
     ]);
   });
 
+  it("wraps fenced code instead of horizontally scrolling", () => {
+    act(() => root.render(<Markdown>```md\nA very long line\n```</Markdown>));
+
+    const className = vi.mocked(Streamdown).mock.calls.at(-1)![0].className;
+    expect(className).toContain("[&_[data-streamdown=code-block-body]]:overflow-x-hidden");
+    expect(className).toContain("[&_[data-streamdown=code-block-body]_pre]:whitespace-pre-wrap");
+    expect(className).toContain(
+      "[&_[data-streamdown=code-block-body]_pre]:[overflow-wrap:anywhere]",
+    );
+  });
+
   it("omits the code plugin while changing content should not be highlighted", () => {
     act(() => root.render(<Markdown highlightCode={false}>```ts\nconst value = 1\n```</Markdown>));
 
