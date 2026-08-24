@@ -60,6 +60,7 @@ export interface VirtualizedConversationProps<Item> {
   followOutput?: FollowOutput;
   initialTopMostItemIndex?: IndexLocationWithAlign | number;
   rangeChanged?: VirtuosoProps<Item, unknown>["rangeChanged"];
+  scrollerRef?: VirtuosoProps<Item, unknown>["scrollerRef"];
   role?: AriaRole;
   "aria-label"?: string;
 }
@@ -76,6 +77,7 @@ function VirtualizedConversationInner<Item>(
     followOutput,
     initialTopMostItemIndex,
     rangeChanged,
+    scrollerRef,
     role,
     "aria-label": ariaLabel,
   }: VirtualizedConversationProps<Item>,
@@ -95,6 +97,7 @@ function VirtualizedConversationInner<Item>(
       {...(followOutput === undefined ? {} : { followOutput })}
       {...(initialTopMostItemIndex === undefined ? {} : { initialTopMostItemIndex })}
       {...(rangeChanged === undefined ? {} : { rangeChanged })}
+      {...(scrollerRef === undefined ? {} : { scrollerRef })}
       {...(role === undefined ? {} : { role })}
       {...(ariaLabel === undefined ? {} : { "aria-label": ariaLabel })}
     />

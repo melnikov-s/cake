@@ -54,8 +54,11 @@ export const ChatTranscript = observer(function ChatTranscript({
   renderChat(store: ChatStore): ReactNode;
 }) {
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
+  const virtualScrollerRef = useRef<HTMLElement | null>(null);
   const staticTranscriptRef = useRef<HTMLDivElement>(null);
   const pendingSelectionRef = useRef<TranscriptSelectionCapture | undefined>(undefined);
+  const followTurnRef = useRef<string | undefined>(undefined);
+  const followOutputRef = useRef(true);
   const [draftAnchor, setDraftAnchor] = useState<MessageCommentAnchorRect>();
   const visibleParts = store.hideThinking
     ? store.parts.filter((part) => part.kind !== "reasoning")
@@ -70,12 +73,25 @@ export const ChatTranscript = observer(function ChatTranscript({
     ...groupTranscriptParts(visibleParts),
     ...(showAssistantLoading ? [{ kind: "loading-state" as const, id: "loading-state" }] : []),
   ];
-  const latestUserPartId = store.parts.findLast(
+  const latestUserPartIndex = visibleParts.findLastIndex(
     (part) =>
       (part.kind === "text" && part.role === "user") ||
       part.kind === "skill" ||
       (part.kind === "attachment" && part.attachmentKind === "image"),
+  );
+  const latestUserPartId = visibleParts[latestUserPartIndex]?.id;
+  const firstResponsePartId =
+    latestUserPartIndex >= 0 ? visibleParts[latestUserPartIndex + 1]?.id : undefined;
+  const responseStartItemId = items.find((item) =>
+    item.kind === "activity-group"
+      ? item.parts.some((part) => part.id === firstResponsePartId)
+      : item.id === firstResponsePartId,
   )?.id;
+  const followKey = `${store.id}:${latestUserPartId ?? ""}`;
+  if (followTurnRef.current !== followKey) {
+    followTurnRef.current = followKey;
+    followOutputRef.current = true;
+  }
   const itemCountRef = useRef(items.length);
   itemCountRef.current = items.length;
   const transcriptBehavior: CanonicalTranscriptBehavior = {
@@ -100,6 +116,41 @@ export const ChatTranscript = observer(function ChatTranscript({
     const frame = requestAnimationFrame(scrollToLatest);
     return () => cancelAnimationFrame(frame);
   }, [latestUserPartId, scrollToLatest]);
+  const setVirtualScroller = useCallback((scroller: HTMLElement | null | Window) => {
+    virtualScrollerRef.current = scroller instanceof HTMLElement ? scroller : null;
+  }, []);
+  useEffect(() => {
+    const scroller = virtualScrollerRef.current;
+    if (!scroller) return;
+    const stopFollowing = () => {
+      followOutputRef.current = false;
+    };
+    const stopFollowingForScrollbar = (event: PointerEvent) => {
+      if (event.clientX >= scroller.getBoundingClientRect().right - 16) stopFollowing();
+    };
+    scroller.addEventListener("wheel", stopFollowing, { passive: true });
+    scroller.addEventListener("touchmove", stopFollowing, { passive: true });
+    scroller.addEventListener("pointerdown", stopFollowingForScrollbar);
+    return () => {
+      scroller.removeEventListener("wheel", stopFollowing);
+      scroller.removeEventListener("touchmove", stopFollowing);
+      scroller.removeEventListener("pointerdown", stopFollowingForScrollbar);
+    };
+  });
+  const followStreamingOutput = useCallback((isAtBottom: boolean) => {
+    if (!isAtBottom || !followOutputRef.current) return false;
+    const scroller = virtualScrollerRef.current;
+    const responseStart = scroller?.querySelector<HTMLElement>("[data-response-start]");
+    if (
+      scroller &&
+      responseStart &&
+      responseStart.getBoundingClientRect().top <= scroller.getBoundingClientRect().top + 1
+    ) {
+      followOutputRef.current = false;
+      return false;
+    }
+    return "auto" as const;
+  }, []);
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "o") {
@@ -172,6 +223,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   const renderItem = (item: TranscriptItem, index: number) => (
     <div
       key={item.id}
+      data-response-start={item.id === responseStartItemId ? "" : undefined}
       className={`transcript-item${errorNoticeFollowsUser(items, index) ? " transcript-item-error-after-user" : ""}`}
     >
       {item.kind === "activity-group" ? (
@@ -235,11 +287,12 @@ export const ChatTranscript = observer(function ChatTranscript({
       {selectionOverlays}
       <VirtualizedConversation
         ref={virtuosoRef}
-        className="transcript"
+        className="transcript [overflow-anchor:none]"
         data={items}
         computeItemKey={(_index, item) => item.id}
         initialTopMostItemIndex={{ index: items.length - 1, align: "end" }}
-        followOutput={(isAtBottom) => (isAtBottom ? "auto" : false)}
+        followOutput={followStreamingOutput}
+        scrollerRef={setVirtualScroller}
         components={{
           List: TranscriptList,
           Footer: () => (

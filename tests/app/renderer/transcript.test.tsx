@@ -20,17 +20,23 @@ vi.mock("@/components/ai-elements/conversation", () => ({
       className?: string;
       data: Array<{ id: string }>;
       itemContent: (index: number, item: { id: string }) => React.ReactNode;
+      scrollerRef?: (element: HTMLElement | null) => void;
     },
     ref,
   ) {
+    const scrollerRef = useRef<HTMLDivElement>(null);
     virtualizedProps.current = props as unknown as Record<string, unknown>;
     useImperativeHandle(ref, () => ({ scrollToIndex }));
     useEffect(() => {
+      props.scrollerRef?.(scrollerRef.current);
       virtualizedLifecycle("mounted");
-      return () => virtualizedLifecycle("unmounted");
+      return () => {
+        props.scrollerRef?.(null);
+        virtualizedLifecycle("unmounted");
+      };
     }, []);
     return (
-      <div className={props.className}>
+      <div ref={scrollerRef} className={props.className}>
         {props.data.map((item, index) => (
           <React.Fragment key={item.id}>{props.itemContent(index, item)}</React.Fragment>
         ))}
@@ -274,6 +280,52 @@ describe("Transcript scrolling", () => {
     ) => "auto" | false;
     expect(followOutput(true)).toBe("auto");
     expect(followOutput(false)).toBe(false);
+  });
+
+  it("stops following once the response beginning reaches the viewport top", () => {
+    const parts: UiPart[] = [
+      { id: "user-1", kind: "text", role: "user", text: "Explain", status: "complete" },
+      {
+        id: "assistant-1",
+        kind: "text",
+        role: "assistant",
+        text: "A long answer",
+        status: "streaming",
+      },
+    ];
+
+    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts, true)} />));
+    const transcript = container.querySelector<HTMLElement>(".transcript")!;
+    const response = transcript.querySelector<HTMLElement>("[data-response-start]")!;
+    vi.spyOn(transcript, "getBoundingClientRect").mockReturnValue({ top: 40 } as DOMRect);
+    vi.spyOn(response, "getBoundingClientRect").mockReturnValue({ top: 40 } as DOMRect);
+    const followOutput = virtualizedProps.current?.followOutput as (
+      isAtBottom: boolean,
+    ) => "auto" | false;
+
+    expect(followOutput(true)).toBe(false);
+  });
+
+  it("does not resume following after the user wheels the transcript", () => {
+    const parts: UiPart[] = [
+      { id: "user-1", kind: "text", role: "user", text: "Explain", status: "complete" },
+      {
+        id: "assistant-1",
+        kind: "text",
+        role: "assistant",
+        text: "Answer",
+        status: "streaming",
+      },
+    ];
+
+    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts, true)} />));
+    const transcript = container.querySelector<HTMLElement>(".transcript")!;
+    act(() => transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true })));
+    const followOutput = virtualizedProps.current?.followOutput as (
+      isAtBottom: boolean,
+    ) => "auto" | false;
+
+    expect(followOutput(true)).toBe(false);
   });
 
   it("renders a review notification at its persisted transcript position", () => {
