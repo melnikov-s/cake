@@ -1,7 +1,7 @@
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   VsCodeServerManager,
   type CompanionManifest,
@@ -28,6 +28,29 @@ describe("VsCodeServerManager startup", () => {
   afterEach(async () => {
     manager?.disposeAll();
     if (root) await rm(root, { recursive: true, force: true });
+  });
+
+  it("retains bounds reported before the native view exists", () => {
+    manager = new VsCodeServerManager({
+      root: "/unused",
+      companionManifest,
+      companionMain: "/unused/companion.js",
+      customPath: () => undefined,
+      broadcast: () => undefined,
+    });
+    const view = { setVisible: vi.fn(), setBounds: vi.fn() };
+
+    manager.updateBounds(17, {
+      visible: true,
+      x: 10.4,
+      y: 62.2,
+      width: 901.8,
+      height: 700.6,
+    });
+    manager["applyRequestedBounds"](17, view as never);
+
+    expect(view.setVisible).toHaveBeenCalledWith(true);
+    expect(view.setBounds).toHaveBeenCalledWith({ x: 10, y: 62, width: 902, height: 701 });
   });
 
   it("observes the listening message before pausing output and clears startup bookkeeping", async () => {

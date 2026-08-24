@@ -94,6 +94,8 @@ interface ViewEntry {
   view: WebContentsView;
 }
 
+type ViewBounds = { visible: boolean; x: number; y: number; width: number; height: number };
+
 /** The sideloaded companion extension's package.json contract. */
 export interface CompanionManifest {
   name: string;
@@ -125,6 +127,8 @@ export class VsCodeServerManager {
   private servers = new Map<string, ServerInstance>();
   private starting = new Map<string, Promise<ServerInstance>>();
   private views = new Map<number, ViewEntry>();
+  /** Latest renderer-owned rect, retained when it arrives before the native view exists. */
+  private requestedBounds = new Map<number, ViewBounds>();
   private companionPorts = new Map<string, number>();
   private bridge: HttpServer | undefined;
   private bridgePort: number | undefined;
@@ -245,6 +249,7 @@ export class VsCodeServerManager {
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: false },
     });
     this.views.set(webContentsId, { workspacePath: resolved, view });
+    this.applyRequestedBounds(webContentsId, view);
     instance.viewers += 1;
     this.cancelEviction(instance);
 
@@ -258,25 +263,31 @@ export class VsCodeServerManager {
       throw error;
     }
     window.contentView.addChildView(view);
+    // A newer rect may have arrived while loadURL was pending.
+    this.applyRequestedBounds(webContentsId, view);
     this.touch(instance);
   }
 
   /** Positions or hides the native view for one window. Bounds are DIPs relative to the content area. */
-  updateBounds(
-    webContentsId: number,
-    bounds: { visible: boolean; x: number; y: number; width: number; height: number },
-  ) {
+  updateBounds(webContentsId: number, bounds: ViewBounds) {
+    this.requestedBounds.set(webContentsId, bounds);
     const entry = this.views.get(webContentsId);
     if (!entry) return;
-    entry.view.setVisible(bounds.visible && bounds.width > 0 && bounds.height > 0);
-    entry.view.setBounds({
+    this.applyRequestedBounds(webContentsId, entry.view);
+    const instance = this.servers.get(entry.workspacePath);
+    if (instance) this.touch(instance);
+  }
+
+  private applyRequestedBounds(webContentsId: number, view: WebContentsView) {
+    const bounds = this.requestedBounds.get(webContentsId);
+    if (!bounds) return;
+    view.setVisible(bounds.visible && bounds.width > 0 && bounds.height > 0);
+    view.setBounds({
       x: Math.round(bounds.x),
       y: Math.round(bounds.y),
       width: Math.round(bounds.width),
       height: Math.round(bounds.height),
     });
-    const instance = this.servers.get(entry.workspacePath);
-    if (instance) this.touch(instance);
   }
 
   /** Asks the workspace's companion extension to reveal a file at a line. */
@@ -292,6 +303,7 @@ export class VsCodeServerManager {
 
   /** Detaches one window's view and lets its former server go idle. */
   closeForWindow(webContentsId: number) {
+    this.requestedBounds.delete(webContentsId);
     const entry = this.views.get(webContentsId);
     if (!entry) return;
     this.views.delete(webContentsId);
@@ -305,6 +317,7 @@ export class VsCodeServerManager {
   disposeAll() {
     for (const [, entry] of this.views) entry.view.setVisible(false);
     this.views.clear();
+    this.requestedBounds.clear();
     for (const [, instance] of this.servers) this.disposeServer(instance);
     this.servers.clear();
     this.starting.clear();
