@@ -112,6 +112,13 @@ describe("ArtifactHost", () => {
       ),
     );
     expect(submit).toHaveBeenCalledWith({ answer: "yes" });
+    const submittedInput = container.querySelector("input") as HTMLInputElement;
+    expect(submittedInput.disabled).toBe(true);
+    expect(submittedInput.value).toBe("yes");
+    expect(container.textContent).toContain("Submitted");
+    expect([...container.querySelectorAll("button")].map((b) => b.textContent)).not.toContain(
+      "Submit",
+    );
 
     const html = record({
       protocol: "cake.artifact/v1",
@@ -200,7 +207,11 @@ describe("ArtifactHost", () => {
 
     act(() => root.render(<ArtifactHost record={artifact} requested onSubmit={submit} />));
     const radios = [...container.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
-    expect(radios.map((radio) => radio.value)).toEqual(["listed"]);
+    const customInput = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Choice other option"]',
+    )!;
+    expect(radios).toHaveLength(2);
+    expect(customInput).not.toBeNull();
     expect(container.querySelector("form")).not.toBeNull();
     act(() => {
       radios[0]!.click();
@@ -209,9 +220,70 @@ describe("ArtifactHost", () => {
       );
     });
     expect(submit).toHaveBeenCalledWith({ choice: "listed" });
-    expect(container.querySelector("form")).toBeNull();
+    expect((container.querySelector('input[type="radio"]') as HTMLInputElement).disabled).toBe(
+      true,
+    );
+    expect(customInput.disabled).toBe(true);
     expect(container.textContent).toContain("Submitted");
-    expect(container.textContent).toContain("Listed option");
+    expect([...container.querySelectorAll("button")].map((b) => b.textContent)).not.toContain(
+      "Submit",
+    );
+  });
+
+  it("always offers a deterministic other option for select fields", () => {
+    const submit = vi.fn();
+    const request = {
+      protocol: "cake.request/v1" as const,
+      id: "other-select",
+      title: "Choose or type",
+      responseSchema: {
+        type: "object" as const,
+        properties: { choice: { type: "string" as const } },
+      },
+      view: {
+        type: "form" as const,
+        fields: [
+          {
+            id: "choice",
+            label: "Choice",
+            type: "select" as const,
+            options: [
+              { value: "a", label: "Option A" },
+              { value: "b", label: "Option B" },
+            ],
+          },
+        ],
+      },
+      fallback: { markdown: "Choose or type." },
+    };
+    const artifact = record({
+      protocol: "cake.artifact/v1",
+      id: request.id,
+      sessionId: "session",
+      revision: 1,
+      kind: "request",
+      payload: { request },
+      fallback: request.fallback,
+      interaction: { mode: "request", responseSchema: request.responseSchema },
+    });
+
+    act(() => root.render(<ArtifactHost record={artifact} onSubmit={submit} />));
+    const customInput = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Choice other option"]',
+    )!;
+    act(() => {
+      setInputValue(customInput, "my own answer");
+      customInput.dispatchEvent(new Event("input", { bubbles: true }));
+      (container.querySelector("form") as HTMLFormElement).dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true }),
+      );
+    });
+    expect(submit).toHaveBeenCalledWith({ choice: "my own answer" });
+    expect(
+      (container.querySelector('input[type="radio"][aria-label="Other"]') as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(customInput.value).toBe("my own answer");
   });
 
   it("renders a custom request in the script sandbox and accepts its token-bound submission", async () => {

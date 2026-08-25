@@ -1,4 +1,5 @@
-import { useId, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { CheckIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
@@ -15,68 +16,72 @@ export interface ArtifactFormField {
 type ArtifactFormValue = string | number | boolean;
 
 const inputClassName =
-  "w-full rounded-md border border-border bg-background text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "w-full rounded-md border border-border bg-background text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
+const radioRowClassName = cn(
+  "flex items-center gap-2.5 rounded-md border px-2.5 py-1.5 text-sm text-foreground hover:bg-muted",
+  "has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-inset has-[input:focus-visible]:ring-ring",
+);
 
-function describeAnswer(field: ArtifactFormField, value: ArtifactFormValue | undefined): string {
-  if (field.type === "checkbox") return value ? "Yes" : "No";
-  const text = String(value ?? "");
-  if (!text) return "—";
-  if (field.type === "select")
-    return field.options?.find((option) => option.value === text)?.label ?? text;
-  return text;
+const answersSchema = z.record(z.string(), z.union([z.string(), z.number(), z.boolean()]));
+
+function answersRecord(value: JsonValue | undefined): Record<string, ArtifactFormValue> | null {
+  const parsed = answersSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 /** Shared answer form for form artifacts and form-view request artifacts.
- *  Select fields render every option as a radio row, the actions are the
- *  static Skip/Submit pair, and a submitted form is replaced by a summary of
- *  the submitted answers. */
+ *  Select fields render every option as a radio row plus a deterministic
+ *  "Other" row with a free-text input, the actions are the static Skip/Submit
+ *  pair, and once an answer has been submitted the form stays visible but
+ *  disabled with the submitted values so it cannot be submitted again. */
 export function ArtifactForm({
   fields,
   requested,
+  submittedAnswer,
   onSubmit,
   onSkip,
 }: {
   fields: ArtifactFormField[];
   requested: boolean;
+  submittedAnswer?: JsonValue;
   onSubmit?: (value: JsonValue) => void;
   onSkip?: () => void;
 }) {
   const [values, setValues] = useState<Record<string, ArtifactFormValue>>({});
-  const [answers, setAnswers] = useState<Record<string, ArtifactFormValue> | null>(null);
+  const [localAnswers, setLocalAnswers] = useState<Record<string, ArtifactFormValue> | null>(null);
+  const [customRows, setCustomRows] = useState<ReadonlySet<string>>(new Set());
+  const otherInputs = useRef(new Map<string, HTMLInputElement>());
   const group = useId();
+  const answers = answersRecord(submittedAnswer) ?? localAnswers;
+  const submitted = answers !== null;
+  const shown = answers ?? values;
+  const isCustomRow = (field: ArtifactFormField) => {
+    if (customRows.has(field.id)) return true;
+    const text = String(shown[field.id] ?? "");
+    return text !== "" && !field.options?.some((option) => option.value === text);
+  };
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    setAnswers({ ...values });
+    if (submitted) return;
+    setLocalAnswers({ ...values });
     onSubmit?.(values);
   };
-  if (answers)
-    return (
-      <div aria-label="Submitted answers" className="grid gap-2" role="status">
-        <p className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+  return (
+    <form className="grid gap-3" onSubmit={submit}>
+      {submitted && (
+        <p className="flex items-center gap-1.5 text-sm font-medium text-foreground" role="status">
           <CheckIcon />
           Submitted
         </p>
-        <dl className="grid gap-1 text-sm">
-          {fields.map((field) => (
-            <div key={field.id} className="flex gap-2">
-              <dt className="text-muted-foreground">{field.label}</dt>
-              <dd className="font-medium text-foreground">
-                {describeAnswer(field, answers[field.id])}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-    );
-  return (
-    <form className="grid gap-3" onSubmit={submit}>
+      )}
       {fields.map((field) =>
         field.type === "checkbox" ? (
           <label key={field.id} className="flex items-center gap-2.5 text-sm text-foreground">
             <input
               type="checkbox"
               className="accent-primary"
-              checked={Boolean(values[field.id])}
+              disabled={submitted}
+              checked={Boolean(shown[field.id])}
               onChange={(event) => setValues({ ...values, [field.id]: event.target.checked })}
             />
             {field.label}
@@ -94,7 +99,8 @@ export function ArtifactForm({
                 id={`${group}-${field.id}`}
                 className={cn(inputClassName, "min-h-28 resize-y py-2")}
                 placeholder={field.placeholder}
-                value={String(values[field.id] ?? "")}
+                disabled={submitted}
+                value={String(shown[field.id] ?? "")}
                 onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}
               />
             ) : field.type === "select" ? (
@@ -103,21 +109,61 @@ export function ArtifactForm({
                   <label
                     key={option.value}
                     className={cn(
-                      "flex cursor-pointer items-center gap-2.5 rounded-md border px-2.5 py-1.5 text-sm text-foreground hover:bg-muted",
-                      values[field.id] === option.value ? "border-ring bg-muted" : "border-border",
+                      radioRowClassName,
+                      "cursor-pointer",
+                      shown[field.id] === option.value ? "border-ring bg-muted" : "border-border",
                     )}
                   >
                     <input
                       type="radio"
                       name={`${group}-${field.id}`}
-                      className="accent-primary"
+                      className="accent-primary outline-none"
                       value={option.value}
-                      checked={values[field.id] === option.value}
-                      onChange={() => setValues({ ...values, [field.id]: option.value })}
+                      disabled={submitted}
+                      checked={shown[field.id] === option.value}
+                      onChange={() => {
+                        setCustomRows((rows) => {
+                          if (!rows.has(field.id)) return rows;
+                          const next = new Set(rows);
+                          next.delete(field.id);
+                          return next;
+                        });
+                        setValues({ ...values, [field.id]: option.value });
+                      }}
                     />
                     <span>{option.label}</span>
                   </label>
                 ))}
+                <div
+                  className={cn(
+                    radioRowClassName,
+                    isCustomRow(field) ? "border-ring bg-muted" : "border-border",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name={`${group}-${field.id}`}
+                    className="accent-primary outline-none"
+                    aria-label="Other"
+                    disabled={submitted}
+                    checked={isCustomRow(field)}
+                    onChange={() => otherInputs.current.get(field.id)?.focus()}
+                  />
+                  <input
+                    type="text"
+                    aria-label={`${field.label} other option`}
+                    placeholder="Other…"
+                    className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                    disabled={submitted}
+                    value={isCustomRow(field) ? String(shown[field.id] ?? "") : ""}
+                    onChange={(event) => {
+                      setCustomRows((rows) =>
+                        rows.has(field.id) ? rows : new Set(rows).add(field.id),
+                      );
+                      setValues({ ...values, [field.id]: event.target.value });
+                    }}
+                  />
+                </div>
               </div>
             ) : (
               <input
@@ -125,7 +171,8 @@ export function ArtifactForm({
                 type={field.type}
                 className={cn(inputClassName, "h-9 px-2.5")}
                 placeholder={field.placeholder}
-                value={String(values[field.id] ?? "")}
+                disabled={submitted}
+                value={String(shown[field.id] ?? "")}
                 onChange={(event) =>
                   setValues({
                     ...values,
@@ -138,14 +185,16 @@ export function ArtifactForm({
           </div>
         ),
       )}
-      <div className="flex justify-end gap-2">
-        {requested && (
-          <Button variant="outline" onClick={onSkip}>
-            Skip
-          </Button>
-        )}
-        <Button type="submit">Submit</Button>
-      </div>
+      {!submitted && (
+        <div className="flex justify-end gap-2">
+          {requested && (
+            <Button variant="outline" onClick={onSkip}>
+              Skip
+            </Button>
+          )}
+          <Button type="submit">Submit</Button>
+        </div>
+      )}
     </form>
   );
 }

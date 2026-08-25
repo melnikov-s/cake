@@ -40,6 +40,7 @@ export const ArtifactsPanel = observer(function ArtifactsPanel({
             key={record.artifact.id}
             record={record}
             requested={Boolean(request)}
+            submittedAnswer={artifacts.submittedAnswer(record.artifact)}
             onSubmit={(value) => void artifacts.answer(record, value)}
             onSkip={() => void artifacts.respond(undefined, true)}
             inlineWidgets={inlineWidgets}

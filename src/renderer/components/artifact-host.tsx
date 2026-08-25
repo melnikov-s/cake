@@ -18,6 +18,7 @@ export { downloadArtifactMarkdown } from "./table-artifact";
 interface ArtifactHostProps {
   record: ArtifactRecord;
   requested?: boolean;
+  submittedAnswer?: JsonValue;
   onSubmit?(value: JsonValue): void;
   onSkip?(): void;
   inlineWidgets?: InlineWidgetStore;
@@ -26,6 +27,7 @@ interface ArtifactHostProps {
 export const ArtifactHost = observer(function ArtifactHost({
   record,
   requested = false,
+  submittedAnswer,
   onSubmit,
   onSkip,
   inlineWidgets,
@@ -52,12 +54,7 @@ export const ArtifactHost = observer(function ArtifactHost({
   return (
     <article className="artifact" data-artifact-id={artifact.id} data-artifact-kind={artifact.kind}>
       <header>
-        <div>
-          <strong>{artifact.title ?? artifact.id}</strong>
-          <span>
-            {artifact.kind} · r{artifact.revision}
-          </span>
-        </div>
+        <strong>{artifact.title ?? artifact.id}</strong>
         {widget && (
           <FullscreenButton
             className="artifact-fullscreen-button"
@@ -75,6 +72,7 @@ export const ArtifactHost = observer(function ArtifactHost({
           <ArtifactForm
             fields={artifact.payload.fields}
             requested={requested}
+            submittedAnswer={submittedAnswer}
             onSubmit={onSubmit}
             onSkip={onSkip}
           />
@@ -96,6 +94,7 @@ export const ArtifactHost = observer(function ArtifactHost({
           <RequestArtifact
             artifact={artifact}
             requested={requested}
+            submittedAnswer={submittedAnswer}
             onSubmit={onSubmit}
             onSkip={onSkip}
             inlineWidgets={inlineWidgets}

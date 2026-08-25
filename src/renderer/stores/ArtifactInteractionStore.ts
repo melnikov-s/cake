@@ -1,4 +1,4 @@
-import { Store } from "r-state-tree";
+import { observable, Store } from "r-state-tree";
 import { validateArtifactResponse, type ArtifactRecord } from "../../ipc/artifact-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import { describeError } from "../error-details";
@@ -26,6 +26,14 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
   responding = false;
   error: string | undefined;
   errorDetails: string | undefined;
+  /** Answers already submitted for an artifact revision, keyed by
+   *  `artifactId:revision`, so a re-mounted form renders as submitted
+   *  instead of offering a second submission. */
+  readonly submittedAnswers = observable(new Map<string, JsonValue>());
+
+  submittedAnswer(artifact: { id: string; revision: number }): JsonValue | undefined {
+    return this.submittedAnswers.get(`${artifact.id}:${artifact.revision}`);
+  }
 
   async respond(value?: JsonValue, cancelled = false) {
     const request = this.request;
@@ -50,6 +58,11 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
         this.request = undefined;
         this.props.onRequestChanged?.(false);
       }
+      if (!cancelled)
+        this.submittedAnswers.set(
+          `${request.record.artifact.id}:${request.record.artifact.revision}`,
+          value ?? null,
+        );
     } catch (error) {
       if (this.signal.aborted) return;
       const described = describeError(error);
@@ -88,6 +101,8 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
         delivery: this.props.isStreaming() ? "steer" : "prompt",
         attachments: [],
       });
+      if (this.signal.aborted) return;
+      this.submittedAnswers.set(`${record.artifact.id}:${record.artifact.revision}`, value ?? null);
     } catch (error) {
       if (this.signal.aborted) return;
       const described = describeError(error);

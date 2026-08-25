@@ -8,6 +8,7 @@ import { RequestWidget } from "./request-widget";
 export function RequestArtifact({
   artifact,
   requested,
+  submittedAnswer,
   onSubmit,
   onSkip,
   inlineWidgets,
@@ -16,6 +17,7 @@ export function RequestArtifact({
 }: {
   artifact: Extract<CakeArtifactV1, { kind: "request" }>;
   requested: boolean;
+  submittedAnswer?: JsonValue;
   onSubmit?: (value: JsonValue) => void;
   onSkip?: () => void;
   inlineWidgets?: InlineWidgetStore;
@@ -36,6 +38,7 @@ export function RequestArtifact({
       <ArtifactForm
         fields={request.view.fields}
         requested={requested}
+        submittedAnswer={submittedAnswer}
         onSubmit={onSubmit}
         onSkip={onSkip}
       />

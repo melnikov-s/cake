@@ -2408,21 +2408,11 @@
   background: var(--card);
   box-shadow: 0 12px 40px -32px hsl(var(--shadow) / 0.35);
 }
-.artifact > header > div {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  gap: 9px;
-}
 .artifact > header strong {
   overflow: hidden;
   font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.artifact > header span {
-  color: var(--muted-foreground);
-  font: 10px var(--font-mono);
 }
 .artifact-fullscreen-button {
   width: 28px;

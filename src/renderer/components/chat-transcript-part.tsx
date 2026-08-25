@@ -71,6 +71,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         <ArtifactHost
           record={record}
           requested={Boolean(request)}
+          submittedAnswer={behavior.artifacts.interaction.submittedAnswer(record.artifact)}
           onSubmit={(value) => void behavior.artifacts!.interaction.answer(record, value)}
           onSkip={() => void behavior.artifacts!.interaction.respond(undefined, true)}
           inlineWidgets={behavior.inlineWidgets}
