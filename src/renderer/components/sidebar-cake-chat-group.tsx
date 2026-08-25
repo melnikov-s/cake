@@ -57,9 +57,9 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
           className="project-label flex min-w-0 flex-1 items-center gap-2 h-7 px-1 rounded text-left text-xs font-medium text-inherit hover:text-foreground"
           type="button"
           aria-label={
-            collapsed ? `Expand Cake Chat${resolved ? " resolved" : ""}` : "Open Cake Chat"
+            collapsed ? `Expand Cake Chat${resolved ? " resolved" : ""}` : "New Cake Chat"
           }
-          onClick={() => (resolved ? store.toggleGroupCollapsed(collapseKey) : onOpenCakeChat())}
+          onClick={() => (resolved ? store.toggleGroupCollapsed(collapseKey) : onCreateCakeChat())}
         >
           <CakeIcon />
           <span className="truncate">Cake Chat</span>
