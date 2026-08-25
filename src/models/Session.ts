@@ -57,9 +57,24 @@ export class Session extends Model {
       // only the fields carried by that part avoids snapshotting dozens of unrelated
       // optional Message fields on every event.
       if (!existing.update(part)) applySnapshot(existing, partSnapshot);
+      this.removeDuplicateArtifactParts(part, existing.id);
       return;
     }
+    this.removeDuplicateArtifactParts(part, part.id);
     this.parts.push(Message.create(partSnapshot));
+  }
+
+  private removeDuplicateArtifactParts(part: UiPart, keepId: string) {
+    if (part.kind !== "tool" || !part.artifactId) return;
+    for (let index = this.parts.length - 1; index >= 0; index -= 1) {
+      const current = this.parts[index];
+      if (
+        current?.id !== keepId &&
+        current?.kind === "tool" &&
+        current.artifactId === part.artifactId
+      )
+        this.parts.splice(index, 1);
+    }
   }
 
   removePart(partId: string) {

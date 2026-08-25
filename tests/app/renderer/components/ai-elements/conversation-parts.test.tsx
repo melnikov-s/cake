@@ -189,6 +189,37 @@ describe("Cake-owned conversation components", () => {
     expect(error).not.toContain("<small>error</small>");
   });
 
+  it("does not repeat a Cake topic or operation in its tool title", () => {
+    const topic = renderToStaticMarkup(
+      <Tool
+        part={{
+          id: "cake-requests",
+          kind: "tool",
+          name: "cake",
+          command: "requests",
+          input: JSON.stringify({ command: "requests", input: { request: {} } }),
+          state: "success",
+        }}
+      />,
+    );
+    const operation = renderToStaticMarkup(
+      <Tool
+        part={{
+          id: "cake-requests-open",
+          kind: "tool",
+          name: "cake",
+          command: "requests.open",
+          input: JSON.stringify({ command: "requests.open", input: { request: {} } }),
+          state: "success",
+        }}
+      />,
+    );
+    expect(topic).toContain('title="requests"');
+    expect(topic).not.toContain('title="requests requests"');
+    expect(operation).toContain('title="requests.open"');
+    expect(operation).not.toContain('title="requests.open requests.open"');
+  });
+
   it("renders bash commands as highlighted shell code instead of JSON", () => {
     const html = renderToStaticMarkup(
       <Tool

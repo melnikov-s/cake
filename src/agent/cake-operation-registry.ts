@@ -177,8 +177,6 @@ export class CakeOperationRegistry {
     }
     const topicHelp = this.topicHelp(command);
     if (topicHelp !== undefined) {
-      if (envelope.input !== undefined)
-        throw new Error(`Cake topic ${command} does not accept input`);
       return {
         text: topicHelp,
         details: { protocol: CAKE_OPERATION_PROTOCOL, command, result: topicHelp },

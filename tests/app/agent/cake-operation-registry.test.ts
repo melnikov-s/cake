@@ -74,14 +74,20 @@ describe("Cake operation registry", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it("rejects topic input and invalid operation input before execution", async () => {
-    const execute = vi.fn(async () => ({ status: "ok" }));
-    const available = registry(execute);
-    await expect(available.invoke({ command: "context", input: {} }, context())).rejects.toThrow(
-      "does not accept input",
+  it("returns topic help even when a caller supplies operation-shaped input", async () => {
+    const available = registry();
+    const result = await available.invoke(
+      { command: "context", input: { instructions: "Keep decisions" } },
+      context(),
     );
+    expect(result.text).toContain("context.compact");
+    expect(result.text).toContain('"instructions"');
+  });
+
+  it("rejects invalid operation input before execution", async () => {
+    const execute = vi.fn(async () => ({ status: "ok" }));
     await expect(
-      available.invoke({ command: "context.compact", input: { extra: true } }, context()),
+      registry(execute).invoke({ command: "context.compact", input: { extra: true } }, context()),
     ).rejects.toThrow();
     expect(execute).not.toHaveBeenCalled();
   });

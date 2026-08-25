@@ -51,9 +51,11 @@ function toolTitle(part: Extract<UiPart, { kind: "tool" }>) {
     operationName === "bash"
       ? part.input
       : (toolPath(part) ??
-        ["command", "query", "pattern", "url"]
-          .map((key) => z.string().safeParse(structured?.[key]))
-          .find((result) => result.success)?.data ??
+        (part.name === "cake"
+          ? undefined
+          : ["command", "query", "pattern", "url"]
+              .map((key) => z.string().safeParse(structured?.[key]))
+              .find((result) => result.success)?.data) ??
         (parsedString.success ? parsedString.data : parsed === undefined ? part.input : ""));
   const summary = oneLine(detail);
   return summary ? `${operationName} ${summary}` : operationName;

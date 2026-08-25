@@ -19,6 +19,7 @@ export class Message extends Model {
   status: PartStatus | undefined;
   deliveryState: DeliveryState | undefined;
   name: string | undefined;
+  command: string | undefined;
   input: string | undefined;
   output: string | undefined;
   outputContent: ToolOutputContent[] | undefined;
@@ -61,6 +62,7 @@ export class Message extends Model {
         return true;
       case "tool":
         this.name = part.name;
+        this.command = part.command;
         this.input = part.input;
         this.output = part.output;
         this.outputContent = part.outputContent;
@@ -125,6 +127,7 @@ export class Message extends Model {
           id: this.id,
           kind: this.kind,
           name: this.name!,
+          command: this.command,
           input: this.input!,
           output: this.output,
           outputContent: this.outputContent,

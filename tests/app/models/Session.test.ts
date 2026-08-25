@@ -171,6 +171,37 @@ describe("Session", () => {
     model[Symbol.dispose]();
   });
 
+  it("replaces a pointer-projected artifact with its live tool call", () => {
+    const model = Session.create();
+    model.upsertPart({
+      id: "entry-request-pointer-artifact",
+      kind: "tool",
+      name: "cake",
+      command: "requests.open",
+      input: "",
+      artifactId: "request-1",
+      state: "success",
+    });
+    model.upsertPart({
+      id: "tool-request-call",
+      kind: "tool",
+      name: "cake",
+      command: "requests.open",
+      input: JSON.stringify({ command: "requests.open" }),
+      artifactId: "request-1",
+      state: "success",
+    });
+
+    expect(model.uiParts).toEqual([
+      expect.objectContaining({
+        id: "tool-request-call",
+        command: "requests.open",
+        artifactId: "request-1",
+      }),
+    ]);
+    model[Symbol.dispose]();
+  });
+
   it("creates and updates persisted review-run parts", () => {
     const model = Session.create();
     applySnapshot(
