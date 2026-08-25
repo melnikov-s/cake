@@ -34,6 +34,7 @@ export class Message extends Model {
   data: string | undefined;
   tone: NoticeTone | undefined;
   detail: string | undefined;
+  retryAt: number | undefined;
   operationId: string | undefined;
   threadIds: string[] | undefined;
   commentCount: number | undefined;
@@ -85,6 +86,7 @@ export class Message extends Model {
         this.tone = part.tone;
         this.title = part.title;
         this.detail = part.detail;
+        this.retryAt = part.retryAt;
         return true;
       case "review-run":
         this.operationId = part.operationId;
@@ -154,6 +156,7 @@ export class Message extends Model {
           tone: this.tone!,
           title: this.title!,
           detail: this.detail,
+          retryAt: this.retryAt,
         };
       case "review-run":
         return uiPartSchema.parse({

@@ -70,7 +70,7 @@ import type {
   ReviewParentContext,
 } from "./sidecar-runtime";
 import { assertSessionPath } from "./session-path";
-import { ResponseRetryController } from "./response-retry";
+import { ResponseRetryController, type ResponseRetryNotice } from "./response-retry";
 import { applyPiSetting } from "./settings-translation";
 import {
   cakePluginAuthoringSkillPath,
@@ -282,20 +282,15 @@ function isAlreadyProcessingError(error: unknown): boolean {
   );
 }
 
-function retryDelayDetail(delayMs: number, errorMessage: string): string {
-  const seconds = Math.ceil(delayMs / 1_000);
-  const duration =
-    seconds < 60
-      ? `${seconds} second${seconds === 1 ? "" : "s"}`
-      : seconds < 3_600
-        ? `${Math.ceil(seconds / 60)} minute${seconds <= 60 ? "" : "s"}`
-        : `${Math.ceil(seconds / 3_600)} hour${seconds <= 3_600 ? "" : "s"}`;
-  const retryAt = new Date(Date.now() + delayMs).toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-    second: delayMs < 60_000 ? "2-digit" : undefined,
-  });
-  return `${errorMessage}\nNext retry in ${duration}, at ${retryAt}. Press Stop to cancel.`;
+function retryNotice(event: ResponseRetryNotice): Extract<UiPart, { kind: "notice" }> {
+  return {
+    id: "active-retry",
+    kind: "notice",
+    tone: "warning",
+    title: `Retry ${event.attempt}/${event.maxAttempts}`,
+    detail: event.errorMessage,
+    retryAt: Date.now() + event.delayMs,
+  };
 }
 
 function createFastModeExtension(isEnabled: () => boolean): InlineExtension {
@@ -884,13 +879,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       options.onEvent({
         type: "part-updated",
         sessionId: cakeSessionId,
-        part: {
-          id: "active-retry",
-          kind: "notice",
-          tone: "warning",
-          title: `Retry ${event.attempt}/${event.maxAttempts}`,
-          detail: retryDelayDetail(event.delayMs, event.errorMessage),
-        },
+        part: retryNotice(event),
       }),
     onFinished: () =>
       options.onEvent({
@@ -1487,13 +1476,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       options.onEvent({
         type: "part-updated",
         sessionId: cakeSessionId,
-        part: {
-          id: "active-retry",
-          kind: "notice",
-          tone: "warning",
-          title: `Retry ${event.attempt}/${event.maxAttempts}`,
-          detail: retryDelayDetail(event.delayMs, event.errorMessage),
-        },
+        part: retryNotice(event),
       });
     }
     if (event.type === "auto_retry_end")

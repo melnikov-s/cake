@@ -215,6 +215,7 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
     tone: z.enum(["info", "warning", "error"]),
     title: ipcProjectionString(512),
     detail: boundedText.optional(),
+    retryAt: z.number().int().nonnegative().optional(),
   }),
   z.object({
     ...partBase,
@@ -491,6 +492,7 @@ export const windowViewStateSchema = z.object({
   workLogsExpansion: workLogsExpansionSchema.default("collapsed"),
   draftsBySession: z.record(z.string(), z.string().max(262_144)).default({}),
   newSessionDraftsByProject: z.record(z.string(), z.string().max(262_144)).default({}),
+  lastChatConfiguration: chatConfigurationSchema.optional(),
 });
 
 export type WorkLogViewMode = z.infer<typeof workLogViewModeSchema>;

@@ -13,6 +13,7 @@ import {
   type CanonicalTranscriptBehavior,
 } from "./chat-message";
 import { ReviewRunMessage } from "./chat-transcript-elements";
+import { RetryNotice } from "./retry-notice";
 import { SkillMessage } from "./skill-message";
 
 const TranscriptPartContent = observer(function TranscriptPartContent({
@@ -126,12 +127,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   if (part.kind === "review-run")
     return <ReviewRunMessage run={part} onOpen={behavior.onOpenReviewRun} />;
   if (part.kind === "compaction") return <CompactionMessage part={part} />;
-  return (
-    <div className={`notice notice-${part.tone}`} role={part.tone === "error" ? "alert" : "status"}>
-      <strong>{part.title}</strong>
-      {part.detail && <span>{part.detail}</span>}
-    </div>
-  );
+  return <RetryNotice part={part} />;
 });
 
 /** Marks every rendered transcript part in the DOM so right-click selection

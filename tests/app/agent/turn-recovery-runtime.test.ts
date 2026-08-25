@@ -182,8 +182,9 @@ describe("response retry and recovery", () => {
             event?.type === "part-updated" &&
             event.part?.id === "active-retry" &&
             event.part.title === "Retry 1/32" &&
-            event.part.detail?.includes("Next retry in 1 second") &&
-            event.part.detail?.includes("Press Stop to cancel"),
+            Boolean(event.part.detail) &&
+            typeof event.part.retryAt === "number" &&
+            Number.isFinite(event.part.retryAt),
         ),
       ).toBe(true),
     );
