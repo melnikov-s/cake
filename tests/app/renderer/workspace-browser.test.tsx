@@ -11,7 +11,7 @@ import { ChatStore } from "../../../src/renderer/stores/ChatStore";
 
 import { WorkspaceBrowser } from "../../../src/renderer/components/workspace-browser";
 
-function browserProps(store: ProjectWorkbenchStore) {
+function browserProps(store: ProjectWorkbenchStore, mode: "builtin" | "vscode" = "builtin") {
   const fixture = store as unknown as Record<string, any>;
   let draftAnchor: any;
   const draftChatStore = mount(
@@ -74,9 +74,14 @@ function browserProps(store: ProjectWorkbenchStore) {
     chat: {
       projectName: fixture.projectName,
       embeddedEditorStore: {
-        mode: "builtin",
+        mode,
+        status: "ready",
+        error: undefined,
         lastActivePath: undefined,
         setMode: vi.fn(),
+        refresh: vi.fn(async () => undefined),
+        open: vi.fn(async () => undefined),
+        reportBounds: vi.fn(async () => undefined),
         reveal: vi.fn(async () => undefined),
       },
     } as any,
@@ -88,7 +93,13 @@ describe("WorkspaceBrowser", () => {
   let root: Root;
 
   beforeEach(() => {
-    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+    Object.assign(globalThis, {
+      IS_REACT_ACT_ENVIRONMENT: true,
+      ResizeObserver: class {
+        observe() {}
+        disconnect() {}
+      },
+    });
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -138,6 +149,29 @@ describe("WorkspaceBrowser", () => {
         .click(),
     );
     expect(selectWorkspaceFile).toHaveBeenCalledWith("PLAN.md");
+  });
+
+  it("gives VS Code the full browser width and provides a Back to Cake action", async () => {
+    const closeWorkspaceBrowser = vi.fn();
+    const store = {
+      workspaceFiles: ["src/app.ts"],
+      workspaceBrowserPath: "src/app.ts",
+      workspaceFilesLoading: false,
+      projectName: "cake",
+      reviewThreads: [],
+      closeWorkspaceBrowser,
+    } as unknown as ProjectWorkbenchStore;
+
+    await act(async () => root.render(<WorkspaceBrowser {...browserProps(store, "vscode")} />));
+
+    expect(container.querySelector('[aria-label="Project files"]')).toBeNull();
+    expect(container.querySelector(".workspace-browser")?.classList).toContain("without-sidebar");
+    const back = [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent === "Back to Cake",
+    );
+    expect(back).toBeDefined();
+    act(() => back!.click());
+    expect(closeWorkspaceBrowser).toHaveBeenCalledOnce();
   });
 
   it("anchors questions to ordinary source lines rather than a diff", async () => {

@@ -91,23 +91,30 @@ export const WorkspaceBrowser = observer(function WorkspaceBrowser({
                 <small>VS Code is viewing {embedded.lastActivePath}</small>
               ) : null}
             </div>
-            <div className="change-explorer-view-toggle" role="group" aria-label="Browser mode">
-              <button
-                type="button"
-                className={vscodeMode ? "" : "active"}
-                aria-pressed={!vscodeMode}
-                onClick={() => embedded.setMode("builtin")}
-              >
-                Reader
-              </button>
-              <button
-                type="button"
-                className={vscodeMode ? "active" : ""}
-                aria-pressed={vscodeMode}
-                onClick={() => embedded.setMode("vscode")}
-              >
-                VS Code
-              </button>
+            <div className="workspace-browser-header-actions">
+              <div className="change-explorer-view-toggle" role="group" aria-label="Browser mode">
+                <button
+                  type="button"
+                  className={vscodeMode ? "" : "active"}
+                  aria-pressed={!vscodeMode}
+                  onClick={() => embedded.setMode("builtin")}
+                >
+                  Reader
+                </button>
+                <button
+                  type="button"
+                  className={vscodeMode ? "active" : ""}
+                  aria-pressed={vscodeMode}
+                  onClick={() => embedded.setMode("vscode")}
+                >
+                  VS Code
+                </button>
+              </div>
+              {vscodeMode ? (
+                <Button variant="ghost" size="sm" onClick={close}>
+                  Back to Cake
+                </Button>
+              ) : null}
             </div>
           </header>
           {vscodeMode ? (
@@ -129,79 +136,81 @@ export const WorkspaceBrowser = observer(function WorkspaceBrowser({
         </>
       }
       sidebar={
-        <>
-          <header>
-            <div>
-              <strong>Project files</strong>
-              <small>{store.loading ? "Loading" : `${store.files.length} files`}</small>
-            </div>
-            <div className="change-explorer-actions">
-              <Button variant="ghost" size="sm" onClick={close}>
-                Done
-              </Button>
-            </div>
-          </header>
-          <div className="change-explorer-sidebar-body">
-            <nav aria-label="Project files">
-              <SourceTree
-                nodes={tree.children}
-                selectedPath={path}
-                onSelect={(file) => {
-                  store.select(file);
-                  if (vscodeMode) void embedded.reveal(file);
-                }}
-                collapsible
-              />
-            </nav>
-            <section className="review-thread-index" aria-label="Code questions">
-              <header>
-                <strong>Questions</strong>
-                <span>{threads.length}</span>
-              </header>
-              {threads.length === 0 ? (
-                <p>Select a line or some code to ask Cake about it.</p>
-              ) : (
-                <ol>
-                  {threads.map((thread) => (
-                    <li key={thread.id}>
-                      <button
-                        className={`${thread.status === "resolved" ? "resolved" : ""} ${reviews.activeThread?.id === thread.id ? "active" : ""}`}
-                        onClick={() => {
-                          reviews.selectThread(thread.id);
-                          store.focusPath(thread.anchor.path);
-                        }}
-                      >
-                        <i
-                          className={
-                            thread.status === "resolved"
-                              ? "resolved"
+        vscodeMode ? undefined : (
+          <>
+            <header>
+              <div>
+                <strong>Project files</strong>
+                <small>{store.loading ? "Loading" : `${store.files.length} files`}</small>
+              </div>
+              <div className="change-explorer-actions">
+                <Button variant="ghost" size="sm" onClick={close}>
+                  Done
+                </Button>
+              </div>
+            </header>
+            <div className="change-explorer-sidebar-body">
+              <nav aria-label="Project files">
+                <SourceTree
+                  nodes={tree.children}
+                  selectedPath={path}
+                  onSelect={(file) => {
+                    store.select(file);
+                    if (vscodeMode) void embedded.reveal(file);
+                  }}
+                  collapsible
+                />
+              </nav>
+              <section className="review-thread-index" aria-label="Code questions">
+                <header>
+                  <strong>Questions</strong>
+                  <span>{threads.length}</span>
+                </header>
+                {threads.length === 0 ? (
+                  <p>Select a line or some code to ask Cake about it.</p>
+                ) : (
+                  <ol>
+                    {threads.map((thread) => (
+                      <li key={thread.id}>
+                        <button
+                          className={`${thread.status === "resolved" ? "resolved" : ""} ${reviews.activeThread?.id === thread.id ? "active" : ""}`}
+                          onClick={() => {
+                            reviews.selectThread(thread.id);
+                            store.focusPath(thread.anchor.path);
+                          }}
+                        >
+                          <i
+                            className={
+                              thread.status === "resolved"
+                                ? "resolved"
+                                : thread.pending
+                                  ? "pending"
+                                  : "replied"
+                            }
+                          />
+                          <span>
+                            <strong>{reviewThreadPreview(thread, "Code question")}</strong>
+                            <small>
+                              {thread.anchor.path} · L
+                              {thread.anchor.start.newLine ?? thread.anchor.start.oldLine}
+                            </small>
+                          </span>
+                          <em>
+                            {thread.status === "resolved"
+                              ? "Resolved"
                               : thread.pending
-                                ? "pending"
-                                : "replied"
-                          }
-                        />
-                        <span>
-                          <strong>{reviewThreadPreview(thread, "Code question")}</strong>
-                          <small>
-                            {thread.anchor.path} · L
-                            {thread.anchor.start.newLine ?? thread.anchor.start.oldLine}
-                          </small>
-                        </span>
-                        <em>
-                          {thread.status === "resolved"
-                            ? "Resolved"
-                            : thread.pending
-                              ? "Pending"
-                              : "Replied"}
-                        </em>
-                      </button>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </section>
-          </div>
-        </>
+                                ? "Pending"
+                                : "Replied"}
+                          </em>
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
+            </div>
+          </>
+        )
       }
     />
   );

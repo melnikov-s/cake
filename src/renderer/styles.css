@@ -1347,6 +1347,9 @@
   background: var(--background);
   color: var(--foreground);
 }
+.change-explorer.without-sidebar {
+  grid-template-columns: minmax(0, 1fr);
+}
 .explorer-resize-handle {
   right: calc(var(--explorer-sidebar-width) - 5px);
 }
@@ -1400,7 +1403,8 @@
   min-width: 0;
   flex: 1;
 }
-.change-explorer-file > header > .change-explorer-view-toggle {
+.change-explorer-file > header > .change-explorer-view-toggle,
+.workspace-browser-header-actions > .change-explorer-view-toggle {
   display: flex;
   flex: none;
   gap: 2px;
@@ -1408,6 +1412,13 @@
   border: 1px solid var(--border);
   border-radius: 7px;
   background: color-mix(in oklab, var(--muted) 65%, transparent);
+  -webkit-app-region: no-drag;
+}
+.change-explorer-file > header > .workspace-browser-header-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
   -webkit-app-region: no-drag;
 }
 .change-explorer-view-toggle button {

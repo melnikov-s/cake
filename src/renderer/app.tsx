@@ -145,7 +145,11 @@ export const App = observer(function App() {
   useEffect(() => {
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (browse.path !== undefined || changes.path !== undefined) returnToWorkbench();
+      if (browse.path !== undefined) {
+        if (store.embeddedEditorStore.mode !== "vscode") returnToWorkbench();
+        return;
+      }
+      if (changes.path !== undefined) returnToWorkbench();
       else if (store.commandPaneStore.pane) store.commandPaneStore.close();
     };
     window.addEventListener("keydown", closeOnEscape);
