@@ -3,7 +3,7 @@
  */
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DiffView } from "../../../../../src/renderer/components/ai-elements/diff-view";
 import { languageForSource } from "../../../../../src/renderer/components/ai-elements/code";
 
@@ -44,6 +44,26 @@ describe("DiffView", () => {
     expect(rows[0]?.querySelector("code")?.textContent).toBe("+  const value = true;");
     expect(rows[1]?.querySelector("code")?.textContent).toBe("+\treturn value;");
     expect(container.querySelector(".syntax-token")).not.toBeNull();
+  });
+
+  it("copies the file path from the diff header", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    act(() => {
+      root.render(<DiffView filePath="src/app.ts" diff="@@ -1 +1 @@\n-old\n+new" />);
+    });
+
+    const copy = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Copy src/app.ts"]',
+    )!;
+    await act(async () => copy.click());
+
+    expect(writeText).toHaveBeenCalledWith("src/app.ts");
+    expect(copy.getAttribute("aria-label")).toBe("Copied src/app.ts");
   });
 
   it("maps common source extensions to syntax languages", () => {

@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { CopyFilePathButton } from "@/components/copy-file-path-button";
 import { IconButton } from "../ui/icon-button";
 import { EditorIcon } from "../ui/icons";
 import { syntaxTokenStyle, useHighlightedSource } from "./code";
@@ -89,7 +90,10 @@ export function DiffView({
   return (
     <section className="diff-view" aria-label={`${label}${filePath ? ` to ${filePath}` : ""}`}>
       <header>
-        <code title={filePath}>{filePath ?? label}</code>
+        <div className="group/path flex min-w-0 items-center gap-1">
+          <code title={filePath}>{filePath ?? label}</code>
+          {filePath && <CopyFilePathButton path={filePath} />}
+        </div>
         <span>
           <b>+{stats.additions}</b>
           <i>−{stats.deletions}</i>

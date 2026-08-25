@@ -16,6 +16,7 @@ import { fencedCode, Markdown } from "./markdown";
 import { SubagentTool } from "./subagent-tool";
 import type { SubagentActivityStore } from "../../stores/SubagentActivityStore";
 import { ImagePreview } from "@/components/image-preview";
+import { CopyFilePathButton } from "@/components/copy-file-path-button";
 
 function parseJson(value: string) {
   try {
@@ -204,25 +205,28 @@ export function Tool({
   const hasDetails = Boolean(
     diff || bash || part.input || part.output || part.outputContent?.length,
   );
-  const path = onOpenFile ? editorPath(part) : undefined;
+  const filePath = editorPath(part);
+  const path = onOpenFile ? filePath : undefined;
   return (
     <div
       className={`tool-call rounded-xl border border-border bg-muted/35 px-4 py-3${diff ? " tool-edit" : ""}${open ? " tool-open" : ""}`}
     >
       <div className="tool-summary-row">
-        <button
-          type="button"
-          className="tool-summary cursor-pointer font-mono text-xs font-semibold"
-          onClick={toggleOpen}
-          aria-expanded={open}
-          disabled={!hasDetails}
-        >
-          <span className={`tool-state tool-${part.state}`} aria-label={part.state} />
-          <span className="tool-title" title={title}>
-            {title}
-          </span>
-        </button>
-        {timer}
+        <div className="group/path flex min-w-0 flex-1 items-center">
+          <button
+            type="button"
+            className="tool-summary cursor-pointer font-mono text-xs font-semibold"
+            onClick={toggleOpen}
+            aria-expanded={open}
+            disabled={!hasDetails}
+          >
+            <span className={`tool-state tool-${part.state}`} aria-label={part.state} />
+            <span className="tool-title" title={title}>
+              {title}
+            </span>
+          </button>
+          {filePath && <CopyFilePathButton path={filePath} />}
+        </div>
         {path && (
           <IconButton
             className="tool-editor-button"
@@ -233,6 +237,7 @@ export function Tool({
             <EditorIcon />
           </IconButton>
         )}
+        {timer}
       </div>
       {/* Once opened, keep details mounted so later toggles do not feed Streamdown's passive update back into Virtuoso measurement. */}
       {hasDetails && detailsMounted && (
