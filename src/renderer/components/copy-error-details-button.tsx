@@ -20,7 +20,12 @@ export function CopyErrorDetailsButton({ details }: { details: string }) {
         ? "Copy failed"
         : "Copy full error details";
   return (
-    <Button className="copy-error-details" variant="outline" size="sm" onClick={() => void copy()}>
+    <Button
+      className="copy-error-details mt-0.5 w-fit"
+      variant="outline"
+      size="sm"
+      onClick={() => void copy()}
+    >
       {label}
     </Button>
   );
