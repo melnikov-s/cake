@@ -15,17 +15,23 @@ installations.
 │   ├── models-cache.json
 │   ├── settings.json
 │   ├── sessions/
+│   ├── resolved-sessions/
 │   ├── review-sessions/
 │   └── global-chat/
-│       └── sessions/
+│       ├── sessions/
+│       └── resolved-sessions/
 ```
 
 Every production Pi adapter call receives `agentDir` and `sessionDir`
-explicitly. Workspace sessions list, create, continue, open, preview, and fork
-only beneath Pi's encoded per-workspace directories in `pi/sessions`. Review,
-inline-discussion and Cake Chat sessions have narrower roots under `pi/`, and direct
-session-file opens are validated against the relevant Cake root. Pi still owns
-the session engine and JSONL format.
+explicitly. Workspace sessions create, continue, open, preview, and fork only
+beneath Pi's encoded per-workspace directories in `pi/sessions`. Resolving a
+settled session disposes its live runtime and atomically moves its transcript to
+the matching Cake-owned `resolved-sessions` archive; Pi receives only the active
+root. Restoring or messaging that session moves it back before Pi opens it.
+Cake lists and searches both roots, and archive location is the resolution
+authority. Review, inline-discussion and Cake Chat sessions have narrower roots
+under `pi/`, and direct session-file opens are validated against the relevant
+active Cake root. Pi still owns the session engine and JSONL format.
 
 Code-review and transcript-comment anchors and submission metadata share the
 Cake review repository and one sidecar-session pattern. Their agent replies live

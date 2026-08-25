@@ -135,6 +135,7 @@ export interface PiWorkspaceDriverOptions {
   workspacePath: string;
   agentDir: string;
   sessionDir: string;
+  resolvedSessionDir?: string;
   widgetSessionDir?: string;
   pluginAgentSessionDir?: string;
   emit(event: DesktopEvent): void;
@@ -165,6 +166,7 @@ export class PiWorkspaceDriver {
   private readonly emitEvent: PiWorkspaceDriverOptions["emit"];
   private readonly agentDir: string;
   private readonly sessionDir: string;
+  private readonly resolvedSessionDir: string | undefined;
   private readonly widgetSessionDir: string;
   private readonly pluginAgentSessionDir: string;
   private readonly createRuntimeImpl: typeof createCakeRuntime;
@@ -210,6 +212,7 @@ export class PiWorkspaceDriver {
     this.workspacePath = options.workspacePath;
     this.agentDir = options.agentDir;
     this.sessionDir = options.sessionDir;
+    this.resolvedSessionDir = options.resolvedSessionDir;
     this.widgetSessionDir =
       options.widgetSessionDir ?? resolve(options.sessionDir, "..", "widget-sessions");
     this.pluginAgentSessionDir =
@@ -412,6 +415,29 @@ export class PiWorkspaceDriver {
       },
       command.sessionId,
     );
+  }
+
+  async releaseSessionForArchive(sessionId: string) {
+    if (this.runtimePromises.has(sessionId))
+      throw new Error("Cake cannot resolve a session while it is opening");
+    const runtime = this.runtimes.get(sessionId);
+    if (!runtime) return;
+    const snapshot = await runtime.snapshot();
+    if (snapshot.streaming) throw new Error("Cake cannot resolve a session while it is running");
+    if (!snapshot.sessionFile)
+      throw new Error("Cake cannot resolve an empty session before it has been persisted");
+    for (const [handleId, handle] of this.subagentHandles) {
+      if (handle.parentSessionId !== sessionId) continue;
+      this.removeSubagentHandle(handleId, handle);
+      handle.controller.abort(new Error("Parent session resolved"));
+      if (handle.cleanupTimer) clearTimeout(handle.cleanupTimer);
+      if (handle.releaseRuntime && handle.sessionId) this.releaseAgent(handle.sessionId);
+    }
+    runtime.dispose();
+    this.runtimes.delete(sessionId);
+    this.runtimeListeners.delete(sessionId);
+    this.runtimeSubagentDepth.delete(sessionId);
+    this.activeAgentTurns.delete(sessionId);
   }
 
   [Symbol.dispose]() {
@@ -833,6 +859,7 @@ export class PiWorkspaceDriver {
       cwd: this.workspacePath,
       agentDir: this.agentDir,
       sessionDir: sessionRoot,
+      resolvedSessionDir: sessionRoot === this.sessionDir ? this.resolvedSessionDir : undefined,
       trusted: this.trusted,
       newSession,
       sessionId,

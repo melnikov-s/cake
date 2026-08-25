@@ -319,7 +319,7 @@ describe("Pi 0.84.0 foundation contract", () => {
         .join("\n") + "\n",
     );
 
-    const summaries = await listWorkspaceSessions(directory, sessionDir, true);
+    const summaries = await listWorkspaceSessions(directory, sessionDir, { direct: true });
 
     expect(summaries).toEqual([
       expect.objectContaining({ id: "cake-chat", title: "Repair my plugins" }),
@@ -1124,7 +1124,8 @@ describe("S1 Pi runtime", () => {
     expect(context?.systemPrompt).toContain("Unlike a project session");
     expect(context?.systemPrompt).toContain("Use `cake sessions` for live, bounded discovery");
     expect(context?.systemPrompt).toContain("Search transcript files with rg, grep, or jq");
-    expect(context?.systemPrompt).toContain("does not encode Cake-owned state");
+    expect(context?.systemPrompt).toContain("Resolved project sessions");
+    expect(context?.systemPrompt).toContain("archived and read-only");
     expect(context?.systemPrompt).toContain("Treat it as read-only");
     expect(context?.systemPrompt).toContain("This is a capability map");
     expect(context?.systemPrompt).toContain("call `cake customizations`");

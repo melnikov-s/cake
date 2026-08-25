@@ -22,6 +22,7 @@ interface RuntimeIdentity {
 export interface GlobalChatDriverOptions {
   agentDir: string;
   sessionDir: string;
+  resolvedSessionDir?: string;
   emit(event: DesktopEvent): void;
   recoveryContext?(): string | undefined;
   fastMode?(sessionId: string): boolean;
@@ -126,6 +127,22 @@ export class GlobalChatDriver {
     this.pendingControl.get(controlRequestId)?.settle(result);
   }
 
+  async releaseSessionForArchive(sessionId: string) {
+    if (this.runtimePromises.has(sessionId))
+      throw new Error("Cake Chat cannot resolve a session while it is opening");
+    if (this.streamingSessionIds.has(sessionId))
+      throw new Error("Cake Chat cannot resolve a session while it is running");
+    const runtime = this.runtimes.get(sessionId);
+    if (runtime) {
+      const snapshot = await runtime.snapshot();
+      if (snapshot.streaming)
+        throw new Error("Cake Chat cannot resolve a session while it is running");
+      if (!snapshot.sessionFile)
+        throw new Error("Cake Chat cannot resolve an empty session before it has been persisted");
+    }
+    this.disposeRuntime(sessionId, "Cake Chat archived this session.");
+  }
+
   refreshRecoveryContext() {
     for (const sessionId of this.runtimes.keys()) {
       if (this.streamingSessionIds.has(sessionId))
@@ -157,6 +174,7 @@ export class GlobalChatDriver {
       agentDir: this.options.agentDir,
       trusted: true,
       sessionDir: this.options.sessionDir,
+      resolvedSessionDir: this.options.resolvedSessionDir,
       newSession,
       sessionId,
       // Cake Chat sessions have no rename workflow, so /name is not offered there.
@@ -292,14 +310,14 @@ export class GlobalChatDriver {
     }
   }
 
-  private disposeRuntime(sessionId: string) {
+  private disposeRuntime(sessionId: string, note = "Cake Chat refreshed this session.") {
     this.runtimes.get(sessionId)?.dispose();
     this.runtimes.delete(sessionId);
     this.streamingSessionIds.delete(sessionId);
     this.recoveryContextRefreshPending.delete(sessionId);
     for (const [controlRequestId, pending] of this.pendingControl) {
       if (pending.sessionId !== sessionId) continue;
-      pending.settle({ ok: false, error: "Cake Chat refreshed this session." });
+      pending.settle({ ok: false, error: note });
       this.pendingControl.delete(controlRequestId);
     }
   }

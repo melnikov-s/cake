@@ -28,7 +28,7 @@ import {
 } from "../ipc/session-contract";
 import {
   cakeWorkspaceSessionDirectory,
-  findWorkspaceSessionFile,
+  findSessionFile,
   forkWorkspaceSession,
   inspectWorkspace,
   listWorkspaceSessions,
@@ -47,6 +47,7 @@ import { AtomicFileWriter } from "./atomic-file-writer";
 import { WorktreeService } from "./worktree-service";
 import { GlobalChatDriver } from "./global-chat-driver";
 import { resolveCakePaths } from "./cake-paths";
+import { SessionArchiveRepository } from "./session-archive-repository";
 import { PluginBuildService } from "./plugin-build-service";
 import { PluginActivationService } from "./plugin-activation-service";
 import { PluginPersistenceRepository } from "./plugin-persistence-repository";
@@ -101,6 +102,7 @@ function clearPendingTrustRequests(webContentsId: number) {
 if (process.env.CAKE_ELECTRON_USER_DATA)
   app.setPath("userData", process.env.CAKE_ELECTRON_USER_DATA);
 const cakePaths = resolveCakePaths();
+const sessionArchive = new SessionArchiveRepository();
 const applicationRoot = app.getAppPath();
 const authoringRoot = resolve(
   process.env.CAKE_AUTHORING_ROOT ||
@@ -156,6 +158,7 @@ let globalChatController: WebContents | undefined;
 const globalChatDriver = new GlobalChatDriver({
   agentDir: cakePaths.piAgent,
   sessionDir: cakePaths.piGlobalChatSessions,
+  resolvedSessionDir: cakePaths.piGlobalChatResolvedSessions,
   recoveryContext: () => {
     const state = pluginActivation.snapshot();
     if (!state.recoveryRequired && state.diagnostics.length === 0) return undefined;
@@ -176,11 +179,7 @@ const globalChatDriver = new GlobalChatDriver({
     await persistApplicationState();
   },
   sessionResolved: (sessionId) => applicationModel.resolvedCakeChatSessionIds.includes(sessionId),
-  setSessionResolved: async (sessionId, resolved) => {
-    applicationModel.setCakeChatSessionResolved(sessionId, resolved);
-    await persistApplicationState();
-    broadcast({ type: "application-state-changed", state: applicationModel.snapshot() });
-  },
+  setSessionResolved: (sessionId, resolved) => setCakeChatSessionResolution(sessionId, resolved),
   emit: (event) => {
     if (
       event.type === "global-chat-control-request" &&
@@ -211,20 +210,61 @@ function broadcast(event: DesktopEvent) {
   for (const window of windows.values()) sendTo(window.webContents, event);
 }
 
-/**
- * Submitting a prompt into a resolved session reopens it: the session becomes
- * unresolved, the change is persisted, and every window learns about it so the
- * session moves back into the active sidebar lane.
- */
-async function reopenSessionForPrompt(sessionId: string, cakeChat: boolean) {
-  const resolvedIds = cakeChat
-    ? applicationModel.resolvedCakeChatSessionIds
-    : applicationModel.resolvedSessionIds;
-  if (!resolvedIds.includes(sessionId)) return;
-  if (cakeChat) applicationModel.setCakeChatSessionResolved(sessionId, false);
-  else applicationModel.setSessionsResolved([sessionId], false);
+async function setCakeChatSessionResolution(sessionId: string, resolved: boolean) {
+  if (resolved) {
+    await globalChatDriver.releaseSessionForArchive(sessionId);
+    await sessionArchive.resolve(sessionId, {
+      cwd: homedir(),
+      activeRoot: cakePaths.piGlobalChatSessions,
+      resolvedRoot: cakePaths.piGlobalChatResolvedSessions,
+      direct: true,
+    });
+  } else {
+    await sessionArchive.restore(sessionId, {
+      cwd: homedir(),
+      activeRoot: cakePaths.piGlobalChatSessions,
+      resolvedRoot: cakePaths.piGlobalChatResolvedSessions,
+      direct: true,
+    });
+  }
+  applicationModel.setCakeChatSessionResolved(sessionId, resolved);
   await persistApplicationState();
   broadcast({ type: "application-state-changed", state: applicationModel.snapshot() });
+}
+
+async function setProjectSessionResolution(
+  sessionId: string,
+  resolved: boolean,
+  knownWorkspacePath?: string,
+) {
+  const workspacePath = knownWorkspacePath ?? (await resolveSessionWorkspacePath(sessionId));
+  if (resolved) {
+    await piHosts.get(workspacePath)?.driver.releaseSessionForArchive(sessionId);
+    await sessionArchive.resolve(sessionId, {
+      cwd: workspacePath,
+      activeRoot: cakePaths.piSessions,
+      resolvedRoot: cakePaths.piResolvedSessions,
+    });
+  } else {
+    await sessionArchive.restore(sessionId, {
+      cwd: workspacePath,
+      activeRoot: cakePaths.piSessions,
+      resolvedRoot: cakePaths.piResolvedSessions,
+    });
+  }
+  applicationModel.setSessionsResolved([sessionId], resolved);
+  await persistApplicationState();
+  broadcast({ type: "application-state-changed", state: applicationModel.snapshot() });
+}
+
+async function restoreCakeChatSessionForUse(sessionId: string) {
+  if (applicationModel.resolvedCakeChatSessionIds.includes(sessionId))
+    await setCakeChatSessionResolution(sessionId, false);
+}
+
+async function restoreProjectSessionForUse(workspacePath: string, sessionId: string) {
+  if (applicationModel.resolvedSessionIds.includes(sessionId))
+    await setProjectSessionResolution(sessionId, false, workspacePath);
 }
 
 function rememberSessionLocation(workspacePath: string, sessionId: string) {
@@ -237,13 +277,19 @@ function rememberSessionLocation(workspacePath: string, sessionId: string) {
 async function resolveSessionWorkspacePath(sessionId: string) {
   const cached = sessionWorkspacePaths.get(sessionId);
   if (cached && allowedProjectPaths.has(cached)) return cached;
+  const worktreePaths = (await worktrees.records()).map((record) => record.worktreePath);
+  const workspacePaths = [
+    ...new Set([...applicationModel.projects.map((project) => project.path), ...worktreePaths]),
+  ];
   const matches = (
     await Promise.all(
-      applicationModel.projects.map(async (project) => {
-        if (!allowedProjectPaths.has(project.path)) return undefined;
+      workspacePaths.map(async (workspacePath) => {
+        if (!allowedProjectPaths.has(workspacePath)) return undefined;
         try {
-          const sessions = await listWorkspaceSessions(project.path, cakePaths.piSessions);
-          return sessions.some((session) => session.id === sessionId) ? project.path : undefined;
+          const sessions = await listWorkspaceSessions(workspacePath, cakePaths.piSessions, {
+            resolvedSessionDir: cakePaths.piResolvedSessions,
+          });
+          return sessions.some((session) => session.id === sessionId) ? workspacePath : undefined;
         } catch {
           return undefined;
         }
@@ -272,12 +318,40 @@ async function loadApplicationState() {
   } catch {
     replaceApplicationModel(Application.from({}));
   }
+  const worktreeRecords = await worktrees.records();
   for (const project of applicationModel.projects) {
     allowedProjectPaths.add(project.path);
     // Worktree paths derive from registered projects, so re-allow them on boot.
-    for (const record of await worktrees.records())
+    for (const record of worktreeRecords)
       if (record.projectPath === project.path) allowedProjectPaths.add(record.worktreePath);
   }
+  const previousResolvedIds = [...applicationModel.resolvedSessionIds].sort();
+  const previousResolvedCakeChatIds = [...applicationModel.resolvedCakeChatSessionIds].sort();
+  const projectSessionLists = await Promise.all(
+    [...allowedProjectPaths].map((workspacePath) =>
+      listWorkspaceSessions(workspacePath, cakePaths.piSessions, {
+        resolvedSessionDir: cakePaths.piResolvedSessions,
+      }).catch(() => []),
+    ),
+  );
+  applicationModel.replaceResolvedSessions(
+    projectSessionLists
+      .flat()
+      .filter((session) => session.resolved)
+      .map((session) => session.id),
+  );
+  const cakeChatSessions = await listWorkspaceSessions(homedir(), cakePaths.piGlobalChatSessions, {
+    direct: true,
+    resolvedSessionDir: cakePaths.piGlobalChatResolvedSessions,
+  }).catch(() => []);
+  applicationModel.replaceResolvedCakeChatSessions(
+    cakeChatSessions.filter((session) => session.resolved).map((session) => session.id),
+  );
+  const changed =
+    previousResolvedIds.join("\n") !== [...applicationModel.resolvedSessionIds].sort().join("\n") ||
+    previousResolvedCakeChatIds.join("\n") !==
+      [...applicationModel.resolvedCakeChatSessionIds].sort().join("\n");
+  if (changed) await persistApplicationState();
 }
 
 async function persistApplicationState() {
@@ -329,6 +403,7 @@ function launchPi(path: string) {
     workspacePath: path,
     agentDir: cakePaths.piAgent,
     sessionDir: cakePaths.piSessions,
+    resolvedSessionDir: cakePaths.piResolvedSessions,
     widgetSessionDir: cakePaths.piWidgetSessions,
     pluginAgentSessionDir: cakePaths.piPluginAgentSessions,
     emit: broadcast,
@@ -343,11 +418,8 @@ function launchPi(path: string) {
       await persistApplicationState();
     },
     sessionResolved: (sessionId) => applicationModel.resolvedSessionIds.includes(sessionId),
-    setSessionResolved: async (sessionId, resolved) => {
-      applicationModel.setSessionsResolved([sessionId], resolved);
-      await persistApplicationState();
-      broadcast({ type: "application-state-changed", state: applicationModel.snapshot() });
-    },
+    setSessionResolved: (sessionId, resolved) =>
+      setProjectSessionResolution(sessionId, resolved, path),
     resolveAgentModel: (preference, snapshot) =>
       resolveAgentModel(preference, snapshot, applicationModel.utilityModel),
     openExternal: async (url) => {
@@ -1133,6 +1205,7 @@ async function handleCakeRequest(
   }
   if (request.type === "open-global-chat") {
     globalChatController = event.sender;
+    if (request.sessionId) await restoreCakeChatSessionForUse(request.sessionId);
     globalChatDriver.open(request.requestId, request.tools, {
       newSession: request.newSession,
       sessionId: request.sessionId,
@@ -1143,7 +1216,7 @@ async function handleCakeRequest(
   }
   if (request.type === "prompt-global-chat") {
     globalChatController = event.sender;
-    await reopenSessionForPrompt(request.sessionId, true);
+    await restoreCakeChatSessionForUse(request.sessionId);
     globalChatDriver.prompt(
       request.requestId,
       request.sessionId,
@@ -1298,17 +1371,19 @@ async function handleCakeRequest(
       await Promise.all(
         applicationModel.projects.map(async (project) => {
           try {
-            return (await listWorkspaceSessions(project.path, cakePaths.piSessions)).map(
-              (session) => {
-                rememberSessionLocation(project.path, session.id);
-                return {
-                  ...session,
-                  resolved: resolvedSessionIds.has(session.id),
-                  workspacePath: project.path,
-                  workspaceName: project.name,
-                };
-              },
-            );
+            return (
+              await listWorkspaceSessions(project.path, cakePaths.piSessions, {
+                resolvedSessionDir: cakePaths.piResolvedSessions,
+              })
+            ).map((session) => {
+              rememberSessionLocation(project.path, session.id);
+              return {
+                ...session,
+                resolved: resolvedSessionIds.has(session.id),
+                workspacePath: project.path,
+                workspaceName: project.name,
+              };
+            });
           } catch {
             return [];
           }
@@ -1323,18 +1398,20 @@ async function handleCakeRequest(
           );
           if (!project || !allowedProjectPaths.has(record.worktreePath)) return [];
           try {
-            return (await listWorkspaceSessions(record.worktreePath, cakePaths.piSessions)).map(
-              (session) => {
-                rememberSessionLocation(record.worktreePath, session.id);
-                return {
-                  ...session,
-                  resolved: resolvedSessionIds.has(session.id),
-                  workspacePath: record.worktreePath,
-                  projectPath: project.path,
-                  workspaceName: project.name,
-                };
-              },
-            );
+            return (
+              await listWorkspaceSessions(record.worktreePath, cakePaths.piSessions, {
+                resolvedSessionDir: cakePaths.piResolvedSessions,
+              })
+            ).map((session) => {
+              rememberSessionLocation(record.worktreePath, session.id);
+              return {
+                ...session,
+                resolved: resolvedSessionIds.has(session.id),
+                workspacePath: record.worktreePath,
+                projectPath: project.path,
+                workspaceName: project.name,
+              };
+            });
           } catch {
             return [];
           }
@@ -1353,7 +1430,7 @@ async function handleCakeRequest(
   }
   if (request.type === "fork-worktree-session") {
     const record = await requireWorktreeRecord(request.workspacePath);
-    const sourceFile = await findWorkspaceSessionFile(
+    const sourceFile = await findSessionFile(
       record.worktreePath,
       request.sessionId,
       cakePaths.piSessions,
@@ -1426,24 +1503,33 @@ async function handleCakeRequest(
     });
   }
   if (request.type === "resolve-session") {
-    applicationModel.setSessionsResolved([request.sessionId], request.resolved);
-    await persistApplicationState();
+    await setProjectSessionResolution(request.sessionId, request.resolved);
     return desktopResponseSchema.parse({
       type: "application-state-updated",
       state: applicationModel.snapshot(),
     });
   }
   if (request.type === "resolve-sessions") {
-    applicationModel.setSessionsResolved(request.sessionIds, request.resolved);
-    await persistApplicationState();
+    const outcomes = await Promise.allSettled(
+      request.sessionIds.map((sessionId) =>
+        setProjectSessionResolution(sessionId, request.resolved),
+      ),
+    );
+    const failures = outcomes.filter((outcome) => outcome.status === "rejected");
+    if (failures.length > 0) {
+      const firstReason = failures[0]!.reason;
+      const cause = firstReason instanceof Error ? firstReason.message : String(firstReason);
+      throw new Error(
+        `Cake could not update ${failures.length} of ${request.sessionIds.length} sessions: ${cause}`,
+      );
+    }
     return desktopResponseSchema.parse({
       type: "application-state-updated",
       state: applicationModel.snapshot(),
     });
   }
   if (request.type === "resolve-cake-chat-session") {
-    applicationModel.setCakeChatSessionResolved(request.sessionId, request.resolved);
-    await persistApplicationState();
+    await setCakeChatSessionResolution(request.sessionId, request.resolved);
     return desktopResponseSchema.parse({
       type: "application-state-updated",
       state: applicationModel.snapshot(),
@@ -1573,7 +1659,12 @@ async function handleCakeRequest(
   if (request.type === "load-session") {
     return desktopResponseSchema.parse({
       type: "session-loaded",
-      session: await loadWorkspaceSessionPreview(path, request.sessionId, cakePaths.piSessions),
+      session: await loadWorkspaceSessionPreview(
+        path,
+        request.sessionId,
+        cakePaths.piSessions,
+        cakePaths.piResolvedSessions,
+      ),
     });
   }
   if (request.type === "list-review-threads") {
@@ -1620,6 +1711,7 @@ async function handleCakeRequest(
   if (request.type === "open-workspace") {
     clearPendingTrustRequests(event.sender.id);
     windowWorkspaces.set(event.sender.id, path);
+    if (request.sessionId) await restoreProjectSessionForUse(path, request.sessionId);
   }
   if (request.type === "respond-ui") {
     dispatchToPi(path, request);
@@ -1641,7 +1733,7 @@ async function handleCakeRequest(
       markdown: await artifactRepository.exportMarkdown(path, request.sessionId),
     });
   }
-  if (request.type === "prompt") await reopenSessionForPrompt(request.sessionId, false);
+  if (request.type === "prompt") await restoreProjectSessionForUse(path, request.sessionId);
   dispatchToPi(path, request);
   return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
 }

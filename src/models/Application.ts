@@ -115,6 +115,18 @@ export class Application extends Model {
     return this.fastModeSessionIds.includes(sessionId);
   }
 
+  replaceResolvedSessions(sessionIds: readonly string[]) {
+    this.resolvedSessionIds.splice(0, this.resolvedSessionIds.length, ...new Set(sessionIds));
+  }
+
+  replaceResolvedCakeChatSessions(sessionIds: readonly string[]) {
+    this.resolvedCakeChatSessionIds.splice(
+      0,
+      this.resolvedCakeChatSessionIds.length,
+      ...new Set(sessionIds),
+    );
+  }
+
   setCakeChatSessionResolved(sessionId: string, resolved: boolean) {
     const index = this.resolvedCakeChatSessionIds.indexOf(sessionId);
     if (resolved && index === -1) this.resolvedCakeChatSessionIds.push(sessionId);

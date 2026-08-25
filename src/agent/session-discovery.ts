@@ -5,7 +5,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { CombinedAutocompleteProvider } from "@earendil-works/pi-tui";
 import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import {
   SESSION_TITLE_MAX_LENGTH,
   type FileSuggestion,
@@ -70,33 +70,65 @@ export async function suggestProjectFiles(options: {
     .map(({ value, label, description }) => ({ value, label, description }));
 }
 
+export interface ListWorkspaceSessionsOptions {
+  direct?: boolean;
+  resolvedSessionDir?: string;
+}
+
 export async function listWorkspaceSessions(
   cwd: string,
   sessionDir: string,
-  direct = false,
+  options: ListWorkspaceSessionsOptions = {},
 ): Promise<SessionSummary[]> {
-  const sessions = await SessionManager.list(
-    cwd,
-    direct ? resolve(sessionDir) : cakeWorkspaceSessionDirectory(cwd, sessionDir),
-  );
-  const idsByPath = new Map(sessions.map((item) => [item.path, item.id]));
-  return sessions.map((item) => ({
+  const directory = options.direct
+    ? resolve(sessionDir)
+    : cakeWorkspaceSessionDirectory(cwd, sessionDir);
+  const active = (await SessionManager.list(cwd, directory)).map((item) => ({
+    item,
+    resolved: false,
+  }));
+  const archived = options.resolvedSessionDir
+    ? (
+        await SessionManager.list(
+          cwd,
+          options.direct
+            ? resolve(options.resolvedSessionDir)
+            : cakeWorkspaceSessionDirectory(cwd, options.resolvedSessionDir),
+        )
+      ).map((item) => ({ item, resolved: true }))
+    : [];
+  const sessions = [...active, ...archived];
+  const ids = sessions.map(({ item }) => item.id);
+  if (new Set(ids).size !== ids.length) {
+    console.warn(
+      `[cake] Session ID collision across active and resolved namespaces: ${ids.join(", ")}`,
+    );
+    throw new Error("Session ID collision detected across active and resolved namespaces");
+  }
+  const idsByFilename = new Map(sessions.map(({ item }) => [basename(item.path), item.id]));
+  return sessions.map(({ item, resolved }) => ({
     id: item.id,
     title: (item.name || item.firstMessage || "New chat").slice(0, SESSION_TITLE_MAX_LENGTH),
     created: item.created.toISOString(),
     modified: item.modified.toISOString(),
     messageCount: item.messageCount,
-    parentSessionId: item.parentSessionPath ? idsByPath.get(item.parentSessionPath) : undefined,
-    resolved: false,
+    parentSessionId: item.parentSessionPath
+      ? idsByFilename.get(basename(item.parentSessionPath))
+      : undefined,
+    resolved,
   }));
 }
 
-export async function findWorkspaceSessionFile(
+export async function findSessionFile(
   cwd: string,
   sessionId: string,
   sessionDir: string,
+  direct = false,
 ): Promise<string | undefined> {
-  const sessions = await SessionManager.list(cwd, cakeWorkspaceSessionDirectory(cwd, sessionDir));
+  const sessions = await SessionManager.list(
+    cwd,
+    direct ? resolve(sessionDir) : cakeWorkspaceSessionDirectory(cwd, sessionDir),
+  );
   return sessions.find((session) => session.id === sessionId)?.path;
 }
 
@@ -104,12 +136,26 @@ export async function loadWorkspaceSessionPreview(
   cwd: string,
   sessionId: string,
   sessionDir: string,
+  resolvedSessionDir?: string,
 ): Promise<SessionPreview | undefined> {
-  const workspaceSessionDir = cakeWorkspaceSessionDirectory(cwd, sessionDir);
-  const sessions = await SessionManager.list(cwd, workspaceSessionDir);
-  const target = sessions.find((session) => session.id === sessionId);
+  const activeDirectory = cakeWorkspaceSessionDirectory(cwd, sessionDir);
+  const active = await SessionManager.list(cwd, activeDirectory);
+  const activeTarget = active.find((session) => session.id === sessionId);
+  const resolvedDirectory = resolvedSessionDir
+    ? cakeWorkspaceSessionDirectory(cwd, resolvedSessionDir)
+    : undefined;
+  const resolvedTarget = resolvedDirectory
+    ? (await SessionManager.list(cwd, resolvedDirectory)).find(
+        (session) => session.id === sessionId,
+      )
+    : undefined;
+  const target = activeTarget ?? resolvedTarget;
   if (!target) return undefined;
-  const manager = SessionManager.open(target.path, workspaceSessionDir, cwd);
+  const manager = SessionManager.open(
+    target.path,
+    activeTarget ? activeDirectory : resolvedDirectory!,
+    cwd,
+  );
   return {
     workspacePath: cwd,
     sessionId,

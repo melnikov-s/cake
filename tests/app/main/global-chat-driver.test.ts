@@ -103,6 +103,32 @@ describe("GlobalChatDriver", () => {
     driver[Symbol.dispose]();
   });
 
+  it("releases a settled runtime for archival but rejects a streaming session", async () => {
+    const settled = runtime();
+    const createRuntime = vi.fn(async () => settled);
+    const driver = new GlobalChatDriver({
+      agentDir: "/cake/pi",
+      sessionDir: "/cake/pi/global-chat/sessions",
+      emit: () => undefined,
+      createRuntime,
+    });
+    driver.open(crypto.randomUUID(), [], { sessionId: "global-1" });
+    await vi.waitFor(() => expect(createRuntime).toHaveBeenCalledOnce());
+
+    await driver.releaseSessionForArchive("global-1");
+    expect(settled.dispose).toHaveBeenCalledOnce();
+
+    const streaming = runtime({ ...snapshot, sessionId: "global-2", streaming: true });
+    createRuntime.mockResolvedValueOnce(streaming);
+    driver.open(crypto.randomUUID(), [], { sessionId: "global-2" });
+    await vi.waitFor(() => expect(createRuntime).toHaveBeenCalledTimes(2));
+    await expect(driver.releaseSessionForArchive("global-2")).rejects.toThrow(
+      "while it is running",
+    );
+    expect(streaming.dispose).not.toHaveBeenCalled();
+    driver[Symbol.dispose]();
+  });
+
   it("applies model and reasoning selections to the persistent runtime", async () => {
     const events: DesktopEvent[] = [];
     const cakeRuntime = runtime();
