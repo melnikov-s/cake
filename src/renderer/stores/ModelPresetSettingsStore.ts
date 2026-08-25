@@ -1,5 +1,5 @@
 import { Store, observable } from "r-state-tree";
-import type { ApplicationState, ModelPreset } from "../../ipc/session-contract";
+import type { ApplicationState, ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
 import type { DesktopClient } from "../desktop-client";
 import { describeError } from "../error-details";
 
@@ -7,10 +7,14 @@ export interface ModelPresetSettingsStoreProps {
   client: Pick<DesktopClient, "setModelPresets">;
 }
 
-/** Owns the model-preset collection, default selection, and serial save queue. */
+/**
+ * Owns the model-preset collection, the default new-session configuration
+ * (default preset, else the last used chat configuration), and the serial save queue.
+ */
 export class ModelPresetSettingsStore extends Store<ModelPresetSettingsStoreProps> {
   readonly presets: ModelPreset[] = observable([]);
   defaultPresetId: string | undefined;
+  lastUsedConfiguration: ChatConfiguration | undefined;
   saving = false;
   sectionRequestRevision = 0;
   error: string | undefined;
@@ -29,14 +33,32 @@ export class ModelPresetSettingsStore extends Store<ModelPresetSettingsStoreProp
 
   get defaultConfiguration() {
     const preset = this.presets.find((candidate) => candidate.id === this.defaultPresetId);
-    return preset
-      ? {
-          provider: preset.provider,
-          modelId: preset.modelId,
-          thinkingLevel: preset.thinkingLevel,
-          fastMode: preset.fastMode,
-        }
-      : undefined;
+    if (preset)
+      return {
+        provider: preset.provider,
+        modelId: preset.modelId,
+        thinkingLevel: preset.thinkingLevel,
+        fastMode: preset.fastMode,
+      } satisfies ChatConfiguration;
+    return this.lastUsedConfiguration ? { ...this.lastUsedConfiguration } : undefined;
+  }
+
+  /** Records the configuration a chat is actually running with for the no-default fallback. */
+  recordUsage(configuration: ChatConfiguration) {
+    const current = this.lastUsedConfiguration;
+    if (
+      current &&
+      current.provider === configuration.provider &&
+      current.modelId === configuration.modelId &&
+      current.thinkingLevel === configuration.thinkingLevel &&
+      current.fastMode === configuration.fastMode
+    )
+      return;
+    this.lastUsedConfiguration = { ...configuration };
+  }
+
+  restoreLastUsed(configuration: ChatConfiguration | undefined) {
+    this.lastUsedConfiguration = configuration ? { ...configuration } : undefined;
   }
 
   requestSection() {
@@ -44,11 +66,17 @@ export class ModelPresetSettingsStore extends Store<ModelPresetSettingsStoreProp
   }
 
   createPreset(preset: Omit<ModelPreset, "id">) {
-    return this.save([...this.presets, { ...preset, id: crypto.randomUUID() }]);
+    return this.save(
+      [...this.presets, { ...preset, id: crypto.randomUUID() }],
+      this.defaultPresetId,
+    );
   }
 
   updatePreset(preset: ModelPreset) {
-    return this.save(this.presets.map((current) => (current.id === preset.id ? preset : current)));
+    return this.save(
+      this.presets.map((current) => (current.id === preset.id ? preset : current)),
+      this.defaultPresetId,
+    );
   }
 
   duplicatePreset(id: string) {
@@ -68,7 +96,7 @@ export class ModelPresetSettingsStore extends Store<ModelPresetSettingsStoreProp
     return this.save(this.presets, id);
   }
 
-  private save(presets: readonly ModelPreset[], defaultPresetId = this.defaultPresetId) {
+  private save(presets: readonly ModelPreset[], defaultPresetId: string | undefined) {
     const revision = ++this.saveRevision;
     const optimistic = presets.map((preset) => ({ ...preset }));
     this.presets.splice(0, this.presets.length, ...optimistic);

@@ -55,7 +55,10 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
       <header>
         <div>
           <h2 id="model-presets-title">Model Presets</h2>
-          <p>Save a model, reasoning level, and Fast mode as one reusable configuration.</p>
+          <p>
+            Save a model, reasoning level, and Fast mode as one reusable configuration. New sessions
+            use the default preset, or your last selected model when no default is set.
+          </p>
         </div>
         <Button size="sm" type="button" onClick={() => begin()}>
           New preset

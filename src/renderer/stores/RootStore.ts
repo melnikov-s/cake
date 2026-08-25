@@ -1,5 +1,6 @@
 import { Store, child, createStore, untracked } from "r-state-tree";
 import { jsonValueSchema } from "../../ipc/json-contract";
+import type { SessionSnapshot } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import { SessionRegistryStore } from "./SessionRegistryStore";
 import { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
@@ -403,6 +404,18 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     });
   }
 
+  /** Tracks the most recent chat configuration so new sessions can fall back to it. */
+  private recordLastChatConfiguration(snapshot: SessionSnapshot) {
+    if (!snapshot.model) return;
+    this.settingsStore.modelPresets.recordUsage({
+      provider: snapshot.model.provider,
+      modelId: snapshot.model.id,
+      thinkingLevel: snapshot.thinkingLevel,
+      fastMode: snapshot.fastMode ?? false,
+    });
+    this.windowPersistence.schedule();
+  }
+
   private receive(event: DesktopClientEvent) {
     this.customizationStore.receive(event);
     if (event.type === "application-state-changed") {
@@ -452,14 +465,14 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         return;
       }
       this.globalChatStore.receive(event);
-      if (
-        event.type === "global-chat-snapshot-received" &&
-        this.appShellStore.selection.kind === "cake-chat"
-      ) {
-        const requestedSessionId = this.appShellStore.selection.sessionId;
-        if (!requestedSessionId || requestedSessionId === event.snapshot.sessionId) {
-          this.appShellStore.selectCakeChat(event.snapshot.sessionId);
-          this.windowPersistence.schedule();
+      if (event.type === "global-chat-snapshot-received") {
+        this.recordLastChatConfiguration(event.snapshot);
+        if (this.appShellStore.selection.kind === "cake-chat") {
+          const requestedSessionId = this.appShellStore.selection.sessionId;
+          if (!requestedSessionId || requestedSessionId === event.snapshot.sessionId) {
+            this.appShellStore.selectCakeChat(event.snapshot.sessionId);
+            this.windowPersistence.schedule();
+          }
         }
       }
       return;
@@ -518,6 +531,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     this.settingsStore.receive(event);
     this.extensionUiStore.receive(event);
     if (event.type === "session-snapshot-received") {
+      this.recordLastChatConfiguration(event.snapshot);
       const previousSessionId = this.projectWorkbenchStore.session?.sessionId;
       const newSession = event.operationId
         ? this.projectWorkbenchStore.isOpeningNewSession(event.operationId)
