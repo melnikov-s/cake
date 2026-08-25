@@ -91,7 +91,7 @@ test("presents artifacts, sorts a table, resolves a form, and isolates HTML", as
     const form = page.locator('[data-artifact-id="cake-s4-form"]');
     await expect(page.getByRole("status", { name: "Churning in progress" })).toHaveCount(0);
     await form.getByLabel("Answer").fill("structured answer");
-    await form.getByRole("button", { name: "Send response" }).click();
+    await form.getByRole("button", { name: "Submit" }).click();
     await expect(form).not.toBeAttached();
 
     const html = page.locator('[data-artifact-id="cake-s4-html"] iframe');

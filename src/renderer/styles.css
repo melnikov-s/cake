@@ -2520,35 +2520,6 @@
   border-radius: 8px;
   background: white;
 }
-.artifact-form {
-  display: grid;
-  gap: 11px;
-}
-.artifact-form label {
-  display: grid;
-  gap: 5px;
-  font-size: 12px;
-}
-.artifact-form input:not([type="checkbox"]),
-.artifact-form textarea,
-.artifact-form select {
-  width: 100%;
-  min-height: 38px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: var(--background);
-  color: var(--foreground);
-}
-.artifact-form textarea {
-  min-height: 7rem;
-  resize: vertical;
-}
-.artifact-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
 .artifact-body img,
 .artifact-body video {
   max-width: 100%;

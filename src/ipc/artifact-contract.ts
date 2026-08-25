@@ -117,7 +117,6 @@ const formArtifactSchema = z.object({
       )
       .min(1)
       .max(200),
-    submitLabel: z.string().max(128).default("Submit"),
   }),
 });
 const mediaArtifactSchema = z.object({

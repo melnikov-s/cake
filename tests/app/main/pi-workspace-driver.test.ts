@@ -1279,7 +1279,6 @@ describe("PiWorkspaceDriver", () => {
       view: {
         type: "form" as const,
         fields: [{ id: "answer", label: "Answer", type: "text" as const }],
-        submitLabel: "Send",
       },
       fallback: { markdown: "Answer" },
     };

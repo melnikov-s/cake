@@ -23,7 +23,6 @@ export const requestViewSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("form"),
     fields: z.array(formFieldSchema).min(1).max(200),
-    submitLabel: z.string().max(128).default("Submit"),
   }),
   z.object({
     type: z.literal("widget"),

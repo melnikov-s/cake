@@ -134,7 +134,6 @@ export function createCakeArtifactExtension(options: ArtifactExtensionOptions): 
           view: {
             type: "form" as const,
             fields: [{ id: "answer", label: "Answer", type: "text" as const }],
-            submitLabel: "Send response",
           },
           fallback: { markdown: "S4 response form: **Answer**." },
         };

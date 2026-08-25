@@ -1,8 +1,8 @@
 import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
 import type { JsonValue } from "../../ipc/json-contract";
 import { cakeRequestV1Schema } from "../../ipc/request-contract";
+import { ArtifactForm } from "./artifact-form";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
-import { RequestForm } from "./request-form";
 import { RequestWidget } from "./request-widget";
 
 export function RequestArtifact({
@@ -33,7 +33,12 @@ export function RequestArtifact({
   const request = parsed.data;
   if (request.view.type === "form")
     return (
-      <RequestForm view={request.view} requested={requested} onSubmit={onSubmit} onSkip={onSkip} />
+      <ArtifactForm
+        fields={request.view.fields}
+        requested={requested}
+        onSubmit={onSubmit}
+        onSkip={onSkip}
+      />
     );
   if (!inlineWidgets)
     return (

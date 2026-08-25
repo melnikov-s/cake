@@ -7,9 +7,9 @@ import type { JsonValue } from "../../ipc/json-contract";
 
 import { cakeRequestV1Schema } from "../../ipc/request-contract";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
+import { ArtifactForm } from "./artifact-form";
 import { RequestArtifact, WidgetArtifact } from "./artifact-widget";
 import { DiagramArtifact } from "./diagram-artifact";
-import { FormArtifact } from "./form-artifact";
 import { HtmlArtifact } from "./html-artifact";
 import { MediaArtifact } from "./media-artifact";
 import { TableArtifact } from "./table-artifact";
@@ -72,8 +72,8 @@ export const ArtifactHost = observer(function ArtifactHost({
         {artifact.kind === "table" ? <TableArtifact artifact={artifact} /> : null}
         {artifact.kind === "diagram" ? <DiagramArtifact artifact={artifact} /> : null}
         {artifact.kind === "form" ? (
-          <FormArtifact
-            artifact={artifact}
+          <ArtifactForm
+            fields={artifact.payload.fields}
             requested={requested}
             onSubmit={onSubmit}
             onSkip={onSkip}

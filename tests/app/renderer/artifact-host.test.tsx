@@ -87,7 +87,6 @@ describe("ArtifactHost", () => {
       view: {
         type: "form" as const,
         fields: [{ id: "answer", label: "Answer", type: "text" as const }],
-        submitLabel: "Send",
       },
       fallback: { markdown: "Answer" },
     };
@@ -140,7 +139,6 @@ describe("ArtifactHost", () => {
       view: {
         type: "form" as const,
         fields: [{ id: "answer", label: "Answer", type: "text" as const }],
-        submitLabel: "Send",
       },
       fallback: { markdown: "Answer." },
     };
@@ -166,7 +164,7 @@ describe("ArtifactHost", () => {
     expect(container.querySelector('[data-artifact-id="branch-request"]')).toBeNull();
   });
 
-  it("keeps form fields optional and lets select fields accept freeform text", () => {
+  it("renders select fields as radios and shows the submitted answers once", () => {
     const submit = vi.fn();
     const request = {
       protocol: "cake.request/v1" as const,
@@ -186,7 +184,6 @@ describe("ArtifactHost", () => {
             options: [{ value: "listed", label: "Listed option" }],
           },
         ],
-        submitLabel: "Send",
       },
       fallback: { markdown: "Choose or type." },
     };
@@ -202,18 +199,19 @@ describe("ArtifactHost", () => {
     });
 
     act(() => root.render(<ArtifactHost record={artifact} requested onSubmit={submit} />));
-    const input = container.querySelector<HTMLInputElement>("input[list]")!;
-    expect(input.required).toBe(false);
-    expect(container.textContent).not.toContain("Choice *");
-    expect(container.querySelector("datalist option")?.getAttribute("value")).toBe("listed");
+    const radios = [...container.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+    expect(radios.map((radio) => radio.value)).toEqual(["listed"]);
+    expect(container.querySelector("form")).not.toBeNull();
     act(() => {
-      setInputValue(input, "anything else");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
+      radios[0]!.click();
       (container.querySelector("form") as HTMLFormElement).dispatchEvent(
         new Event("submit", { bubbles: true, cancelable: true }),
       );
     });
-    expect(submit).toHaveBeenCalledWith({ choice: "anything else" });
+    expect(submit).toHaveBeenCalledWith({ choice: "listed" });
+    expect(container.querySelector("form")).toBeNull();
+    expect(container.textContent).toContain("Submitted");
+    expect(container.textContent).toContain("Listed option");
   });
 
   it("renders a custom request in the script sandbox and accepts its token-bound submission", async () => {
