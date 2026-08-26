@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { artifactRecordSchema } from "./artifact-contract";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
+import { sourceLocationSchema } from "./source-location";
 
 export const SESSION_TITLE_MAX_LENGTH = 1_024;
 
@@ -142,6 +143,14 @@ export const attachmentSchema = z.discriminatedUnion("kind", [
     mimeType: z.string().max(128),
     data: z.string().max(20_000_000),
   }),
+  z.object({
+    kind: z.literal("source"),
+    name: z.string().max(512),
+    location: sourceLocationSchema,
+    selectedText: ipcProjectionString(48_000),
+    contextBefore: ipcProjectionString(8_000),
+    contextAfter: ipcProjectionString(8_000),
+  }),
 ]);
 
 const partBase = { id: z.string().min(1).max(256) };
@@ -204,8 +213,9 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
     kind: z.literal("attachment"),
     name: ipcProjectionString(512),
     mediaType: z.string().max(128),
-    attachmentKind: z.enum(["file", "image"]),
+    attachmentKind: z.enum(["file", "image", "source"]),
     data: z.string().max(20_000_000).optional(),
+    location: sourceLocationSchema.optional(),
   }),
   z.object({
     ...partBase,

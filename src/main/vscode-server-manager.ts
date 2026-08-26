@@ -47,8 +47,10 @@ const bridgeMessageSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("selection"),
+    action: z.enum(["ask", "add-to-project-chat"]),
     workspace: z.string().min(1).max(4_096),
     path: z.string().min(1).max(8_192),
+    documentVersion: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     startLine: z.number().int().nonnegative(),
     startColumn: z.number().int().nonnegative(),
     endLine: z.number().int().nonnegative(),
@@ -75,8 +77,10 @@ interface BroadcastTarget {
       | { type: "embedded-editor-activity"; workspacePath: string; path: string }
       | {
           type: "embedded-editor-selection";
+          action: "ask" | "add-to-project-chat";
           workspacePath: string;
           path: string;
+          documentVersion: number;
           startLine: number;
           startColumn: number;
           endLine: number;
@@ -608,8 +612,10 @@ export class VsCodeServerManager {
     }
     this.props.broadcast({
       type: "embedded-editor-selection",
+      action: message.data.action,
       workspacePath: message.data.workspace,
       path: message.data.path,
+      documentVersion: message.data.documentVersion,
       startLine: message.data.startLine,
       startColumn: message.data.startColumn,
       endLine: message.data.endLine,

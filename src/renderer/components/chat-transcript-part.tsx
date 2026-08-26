@@ -15,6 +15,7 @@ import {
 import { ReviewRunMessage } from "./chat-transcript-elements";
 import { RetryNotice } from "./retry-notice";
 import { SkillMessage } from "./skill-message";
+import { SourceAttachment } from "./source-attachment";
 
 const TranscriptPartContent = observer(function TranscriptPartContent({
   part,
@@ -113,7 +114,12 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   }
   if (part.kind === "source") return <Source title={part.title} url={part.url} />;
   if (part.kind === "attachment")
-    return part.attachmentKind === "image" && part.data ? (
+    return part.attachmentKind === "source" && part.data && part.location ? (
+      <SourceAttachment
+        attachment={{ name: part.name, location: part.location, selectedText: part.data }}
+        onOpen={behavior.openSourceLocation}
+      />
+    ) : part.attachmentKind === "image" && part.data ? (
       <figure className="transcript-image">
         <ImagePreview
           src={`data:${part.mediaType};base64,${part.data}`}

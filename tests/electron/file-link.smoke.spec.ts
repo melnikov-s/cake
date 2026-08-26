@@ -117,8 +117,10 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       },
       {
         type: "embedded-editor-selection",
+        action: "ask",
         workspacePath: project,
         path: "src/modelMeta.ts",
+        documentVersion: 1,
         startLine: 0,
         startColumn: 13,
         endLine: 0,
@@ -137,6 +139,43 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
     await page.getByRole("button", { name: "Project chat" }).click();
     await expect(drawerInput).toHaveValue("Chat from the IDE drawer");
+    await drawerInput.fill("");
+    await application.evaluate(
+      ({ BrowserWindow }, event) => {
+        for (const window of BrowserWindow.getAllWindows())
+          window.webContents.send("cake:event", event);
+      },
+      {
+        type: "embedded-editor-selection",
+        action: "add-to-project-chat",
+        workspacePath: project,
+        path: "src/modelMeta.ts",
+        documentVersion: 2,
+        startLine: 0,
+        startColumn: 13,
+        endLine: 0,
+        endColumn: 17,
+        selectedText: "meta",
+        contextBefore: "",
+        contextAfter: "",
+      },
+    );
+    await expect(page.getByText("src/modelMeta.ts:1:14-1:18", { exact: true })).toBeVisible();
+    await expect(drawerInput).toBeFocused();
+    await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
+    await page
+      .locator("details")
+      .filter({ hasText: "src/modelMeta.ts:1:14-1:18" })
+      .evaluate((details: HTMLDetailsElement) => {
+        details.open = true;
+      });
+    await expect(page.getByText("meta", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open in VS Code" })).toBeEnabled();
+    await page
+      .getByRole("button", { name: "Remove src/modelMeta.ts:1:14-1:18" })
+      .evaluate((button: HTMLButtonElement) => button.click());
+    await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
+    await drawerInput.fill("Chat from the IDE drawer");
 
     await page.getByRole("button", { name: "Back to Agent" }).click();
     await expect(page.getByText("Phase 4 — Model references")).toBeVisible();

@@ -15,7 +15,11 @@
       },
       {
         "command": "cake.askAboutSelection",
-        "title": "Cake: Ask About Selection"
+        "title": "Cake: Ask Cake About Selection"
+      },
+      {
+        "command": "cake.addSelectionToProjectChat",
+        "title": "Cake: Add Selection to Project Chat"
       },
       {
         "command": "cake.previousChange",
@@ -42,9 +46,14 @@
           "group": "navigation@100"
         },
         {
+          "command": "cake.addSelectionToProjectChat",
+          "when": "editorHasSelection && resourceScheme == file",
+          "group": "navigation@101"
+        },
+        {
           "command": "cake.openCompleteChange",
           "when": "resourceScheme == file",
-          "group": "navigation@101"
+          "group": "navigation@102"
         }
       ],
       "editor/title": [

@@ -124,6 +124,61 @@ describe("Chat", () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
+  it("shows source attachments as inspectable, removable VS Code context", async () => {
+    const openSourceLocation = vi.fn();
+    const removeAttachment = vi.fn();
+    const source = {
+      kind: "source" as const,
+      name: "src/main.ts",
+      location: {
+        path: "src/main.ts",
+        documentVersion: 4,
+        range: {
+          start: { line: 2, column: 3 },
+          end: { line: 3, column: 7 },
+        },
+      },
+      selectedText: "const answer =\n  calculate();",
+      contextBefore: "",
+      contextAfter: "",
+    };
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "source-chat",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Message Cake",
+        inputLabel: () => "Message",
+        canSubmit: () => true,
+        submit: async () => true,
+        attachments: () => [source],
+        removeAttachment,
+      }),
+    );
+
+    act(() => root.render(<Chat store={store!} transcriptBehavior={{ openSourceLocation }} />));
+    const details = container.querySelector("details")!;
+    expect(details.textContent).toContain("src/main.ts:3:4-4:8");
+    act(() => {
+      details.open = true;
+    });
+    expect(details.textContent).toContain("const answer");
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("button:not([aria-label])")!.click();
+    });
+    expect(openSourceLocation).toHaveBeenCalledWith(source.location);
+    await act(async () => {
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Remove src/main.ts:3:4-4:8"]')!
+        .click();
+    });
+    expect(removeAttachment).toHaveBeenCalledWith(0);
+  });
+
   it("shows compact context token usage when the gauge is hovered", () => {
     vi.useFakeTimers();
     store = mount(

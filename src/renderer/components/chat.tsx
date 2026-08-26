@@ -5,6 +5,7 @@ import { ImagePreview } from "@/components/image-preview";
 import { ChatTranscript, type ChatTranscriptBehavior } from "@/components/chat-transcript";
 import { QueuedPrompts } from "@/components/queued-prompts";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
+import { SourceAttachment } from "@/components/source-attachment";
 import { IconButton } from "@/components/ui/icon-button";
 import { PaperclipIcon, SendIcon, StopIcon } from "@/components/ui/icons";
 import { TooltipBubble, useTooltip } from "@/components/ui/tooltip";
@@ -195,7 +196,14 @@ export const Chat = observer(function Chat({
         {store.attachments.length > 0 && (
           <div className="attachment-list">
             {store.attachments.map((attachment, index) =>
-              attachment.kind === "image" ? (
+              attachment.kind === "source" ? (
+                <SourceAttachment
+                  key={`${attachment.kind}-${attachment.name}-${index}`}
+                  attachment={attachment}
+                  onOpen={transcriptBehavior?.openSourceLocation}
+                  onRemove={() => store.removeAttachment(index)}
+                />
+              ) : attachment.kind === "image" ? (
                 <div
                   className="image-attachment"
                   key={`${attachment.kind}-${attachment.name}-${index}`}

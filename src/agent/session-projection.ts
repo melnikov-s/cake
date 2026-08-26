@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { artifactPointerSchema, type ArtifactPointer } from "../ipc/artifact-contract";
 import {
+  attachmentSchema,
   toolOutputContentArraySchema,
   type Attachment,
   type SessionTreeEntry,
@@ -142,6 +143,24 @@ export function textFromContent(content: unknown): string {
     .join("\n");
 }
 
+const sourceAttachmentPattern =
+  /(?:^|\n)<cake-source-attachment>(.*?)<\/cake-source-attachment>(?:\n|$)/gs;
+
+function parseSourceAttachmentBlocks(text: string) {
+  const attachments: Extract<Attachment, { kind: "source" }>[] = [];
+  const visibleText = text.replace(sourceAttachmentPattern, (_match, encoded: string) => {
+    try {
+      const parsed = attachmentSchema.safeParse(JSON.parse(encoded));
+      if (!parsed.success || parsed.data.kind !== "source") return _match;
+      attachments.push(parsed.data);
+      return "\n";
+    } catch {
+      return _match;
+    }
+  });
+  return { text: visibleText.trim(), attachments };
+}
+
 function partsFromMessage(
   message: unknown,
   baseId: string,
@@ -154,7 +173,8 @@ function partsFromMessage(
 
   if (role === "user") {
     const parts: UiPart[] = [];
-    const text = textFromContent(content);
+    const parsedSource = parseSourceAttachmentBlocks(textFromContent(content));
+    const text = parsedSource.text;
     const skill = parseSkillBlock(text);
     if (skill) {
       parts.push({
@@ -181,6 +201,17 @@ function partsFromMessage(
         text,
         status: "complete",
       });
+    parsedSource.attachments.forEach((attachment, index) => {
+      parts.push({
+        id: `${baseId}-source-attachment-${index}`,
+        kind: "attachment",
+        name: attachment.name,
+        mediaType: "text/plain",
+        attachmentKind: "source",
+        data: attachment.selectedText,
+        location: attachment.location,
+      });
+    });
     if (Array.isArray(content)) {
       content.forEach((item, index) => {
         if (typeof item === "object" && item !== null && Reflect.get(item, "type") === "image") {
@@ -519,10 +550,13 @@ export function imageContent(attachments: Attachment[]) {
 }
 
 export function promptText(text: string, attachments: Attachment[]) {
-  const mentions = attachments
-    .filter((item) => item.kind === "file")
-    .map((item) => `@${item.path}`);
-  return mentions.length ? `${text}\n\n${mentions.join("\n")}` : text;
+  const additions = attachments.flatMap((item) => {
+    if (item.kind === "file") return [`@${item.path}`];
+    if (item.kind !== "source") return [];
+    const encoded = JSON.stringify(item).replaceAll("<", "\\u003c");
+    return [`<cake-source-attachment>${encoded}</cake-source-attachment>`];
+  });
+  return additions.length ? `${text}${text ? "\n\n" : ""}${additions.join("\n")}` : text;
 }
 
 function sourceTitle(url: string) {

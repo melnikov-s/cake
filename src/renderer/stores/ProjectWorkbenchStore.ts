@@ -559,8 +559,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     await this.embeddedEditorStore.show(location);
   }
 
-  /** Opens Cake's existing code-chat draft for a selection made in embedded VS Code. */
-  private async openEmbeddedEditorSelection(
+  /** Routes a VS Code selection to either contextual code chat or the project composer. */
+  private async handleEmbeddedEditorSelection(
     event: Extract<DesktopClientEvent, { type: "embedded-editor-selection" }>,
   ) {
     if (
@@ -574,6 +574,27 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (!this.embeddedEditorStore.visible)
       await this.embeddedEditorStore.show({ path: event.path });
     if (this.signal.aborted || event.workspacePath !== this.projectPath) return;
+    const location: SourceLocation = {
+      path: event.path,
+      documentVersion: event.documentVersion,
+      range: {
+        start: { line: event.startLine, column: event.startColumn },
+        end: { line: event.endLine, column: event.endColumn },
+      },
+    };
+    if (event.action === "add-to-project-chat") {
+      this.reviews.cancelDraft();
+      this.reviews.clearActiveThread();
+      this.activeSession?.composerStore.addSourceAttachment({
+        kind: "source",
+        name: event.path.slice(-512),
+        location,
+        selectedText: event.selectedText,
+        contextBefore: event.contextBefore,
+        contextAfter: event.contextAfter,
+      });
+      return;
+    }
     const anchor: ReviewAnchor = {
       path: event.path,
       view: "file",
@@ -719,7 +740,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       return;
     }
     if (event.type === "embedded-editor-selection") {
-      void this.openEmbeddedEditorSelection(event);
+      void this.handleEmbeddedEditorSelection(event);
       return;
     }
     if (event.type === "pi-state-changed") {

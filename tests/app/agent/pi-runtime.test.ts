@@ -26,6 +26,7 @@ import {
   createLiveMessageProjector,
   formatToolResult,
   formatUnknown,
+  promptText,
   projectQueuedMessages,
   projectSessionEntries,
   toolResultContent,
@@ -747,6 +748,47 @@ describe("Pi 0.84.0 foundation contract", () => {
     ]);
     expect(projectQueuedMessages([], [])).toEqual([]);
     expect(projectQueuedMessages([], [""])).toEqual([]);
+  });
+
+  it("round-trips structured source attachments through the Pi transcript", () => {
+    const attachment = {
+      kind: "source" as const,
+      name: "src/main.ts",
+      location: {
+        path: "src/main.ts",
+        documentVersion: 9,
+        range: {
+          start: { line: 4, column: 2 },
+          end: { line: 5, column: 8 },
+        },
+      },
+      selectedText: "const answer =\n  calculate();",
+      contextBefore: "function run() {",
+      contextAfter: "}",
+    };
+    const text = promptText("Explain this", [attachment]);
+    expect(text).toContain("<cake-source-attachment>");
+
+    expect(
+      projectSessionEntries([
+        {
+          type: "message",
+          id: "user-source",
+          parentId: null,
+          timestamp: new Date(0).toISOString(),
+          message: { role: "user", content: [{ type: "text", text }], timestamp: 0 },
+        },
+      ] as never),
+    ).toEqual([
+      expect.objectContaining({ kind: "text", role: "user", text: "Explain this" }),
+      expect.objectContaining({
+        kind: "attachment",
+        attachmentKind: "source",
+        name: "src/main.ts",
+        data: "const answer =\n  calculate();",
+        location: attachment.location,
+      }),
+    ]);
   });
 
   it("collapses persisted native retry errors to the final outcome", () => {

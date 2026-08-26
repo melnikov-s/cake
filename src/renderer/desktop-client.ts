@@ -147,8 +147,10 @@ export type DesktopClientEvent =
   | { type: "embedded-editor-activity"; workspacePath: string; path: string }
   | {
       type: "embedded-editor-selection";
+      action: "ask" | "add-to-project-chat";
       workspacePath: string;
       path: string;
+      documentVersion: number;
       startLine: number;
       startColumn: number;
       endLine: number;

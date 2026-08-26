@@ -220,8 +220,10 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("embedded-editor-selection"),
+    action: z.enum(["ask", "add-to-project-chat"]),
     workspacePath: z.string().max(4_096),
     path: ipcProjectionString(8_192),
+    documentVersion: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     startLine: z.number().int().nonnegative(),
     startColumn: z.number().int().nonnegative(),
     endLine: z.number().int().nonnegative(),

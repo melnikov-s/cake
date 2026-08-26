@@ -146,6 +146,18 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     }
   }
 
+  addSourceAttachment(attachment: Extract<Attachment, { kind: "source" }>) {
+    const duplicate = this.attachments.some(
+      (current) =>
+        current.kind === "source" &&
+        current.location.path === attachment.location.path &&
+        current.location.documentVersion === attachment.location.documentVersion &&
+        JSON.stringify(current.location.range) === JSON.stringify(attachment.location.range),
+    );
+    if (!duplicate) this.attachments.push(attachment);
+    this.requestFocus();
+  }
+
   async addPastedImages(files: readonly File[]) {
     this.error = undefined;
     this.errorDetails = undefined;
@@ -420,20 +432,32 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     attachments: Attachment[],
     delivery: "prompt" | "steer" | "follow-up",
   ) {
-    const imageParts: UiPart[] = attachments.flatMap((attachment, index) =>
-      attachment.kind === "image"
-        ? [
-            {
-              id: `optimistic-user-${operationId}-attachment-${index}`,
-              kind: "attachment" as const,
-              name: attachment.name,
-              mediaType: attachment.mimeType,
-              attachmentKind: "image" as const,
-              data: attachment.data,
-            },
-          ]
-        : [],
-    );
+    const attachmentParts = attachments.flatMap((attachment, index): UiPart[] => {
+      if (attachment.kind === "image")
+        return [
+          {
+            id: `optimistic-user-${operationId}-attachment-${index}`,
+            kind: "attachment" as const,
+            name: attachment.name,
+            mediaType: attachment.mimeType,
+            attachmentKind: "image" as const,
+            data: attachment.data,
+          },
+        ];
+      if (attachment.kind === "source")
+        return [
+          {
+            id: `optimistic-user-${operationId}-attachment-${index}`,
+            kind: "attachment" as const,
+            name: attachment.name,
+            mediaType: "text/plain",
+            attachmentKind: "source" as const,
+            data: attachment.selectedText,
+            location: attachment.location,
+          },
+        ];
+      return [];
+    });
     const deliveryState =
       delivery === "steer"
         ? ("steering" as const)
@@ -453,15 +477,22 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
             },
           ]
         : []),
-      ...imageParts,
+      ...attachmentParts,
     ];
-    const firstImageData = imageParts[0]?.kind === "attachment" ? imageParts[0].data : undefined;
+    const firstAttachment =
+      attachmentParts[0]?.kind === "attachment" ? attachmentParts[0] : undefined;
     const earlierPendingCount = this.pendingUserMessages.filter(
       (pending) =>
         pending.sessionId === sessionId &&
         pending.text === text &&
         (Boolean(text) ||
-          pending.parts.some((part) => part.kind === "attachment" && part.data === firstImageData)),
+          pending.parts.some(
+            (part) =>
+              part.kind === "attachment" &&
+              firstAttachment !== undefined &&
+              part.attachmentKind === firstAttachment.attachmentKind &&
+              part.data === firstAttachment.data,
+          )),
     ).length;
     this.pendingUserMessages.push({
       operationId,
@@ -491,12 +522,16 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
           part.status === "complete" &&
           part.text === text,
       ).length;
-    const image = parts.find(
-      (part): part is Extract<UiPart, { kind: "attachment" }> =>
-        part.kind === "attachment" && part.attachmentKind === "image",
+    const attachment = parts.find(
+      (part): part is Extract<UiPart, { kind: "attachment" }> => part.kind === "attachment",
     );
-    return image?.data
-      ? canonical.filter((part) => part.kind === "attachment" && part.data === image.data).length
+    return attachment?.data
+      ? canonical.filter(
+          (part) =>
+            part.kind === "attachment" &&
+            part.attachmentKind === attachment.attachmentKind &&
+            part.data === attachment.data,
+        ).length
       : 0;
   }
 }

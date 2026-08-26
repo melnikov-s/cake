@@ -1253,8 +1253,10 @@ describe("ProjectWorkbenchStore", () => {
 
     desktop.emit({
       type: "embedded-editor-selection",
+      action: "ask",
       workspacePath: "/project",
       path: "src/main.ts",
+      documentVersion: 7,
       startLine: 4,
       startColumn: 2,
       endLine: 5,
@@ -1276,6 +1278,63 @@ describe("ProjectWorkbenchStore", () => {
       contextAfter: "}",
       diff: "",
     });
+    root[Symbol.dispose]();
+  });
+
+  it("adds an exact VS Code selection to the project-chat composer", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+    await store.embeddedEditorStore.show();
+    const focusRevision = store.activeSession!.composerStore.focusRequestRevision;
+    root.reviewsStore.prepareDraft({
+      path: "old.ts",
+      view: "file",
+      start: { diffLine: 0, newLine: 1, column: 0 },
+      end: { diffLine: 0, newLine: 1, column: 1 },
+      selectedText: "x",
+      contextBefore: "",
+      contextAfter: "",
+      diff: "",
+    });
+
+    desktop.emit({
+      type: "embedded-editor-selection",
+      action: "add-to-project-chat",
+      workspacePath: "/project",
+      path: "src/main.ts",
+      documentVersion: 12,
+      startLine: 4,
+      startColumn: 2,
+      endLine: 5,
+      endColumn: 8,
+      selectedText: "const answer =\n  calculate();",
+      contextBefore: "function run() {",
+      contextAfter: "}",
+    });
+    await flush();
+
+    expect(root.reviewsStore.draftAnchor).toBeUndefined();
+    expect(store.activeSession!.composerStore.attachments).toEqual([
+      {
+        kind: "source",
+        name: "src/main.ts",
+        location: {
+          path: "src/main.ts",
+          documentVersion: 12,
+          range: {
+            start: { line: 4, column: 2 },
+            end: { line: 5, column: 8 },
+          },
+        },
+        selectedText: "const answer =\n  calculate();",
+        contextBefore: "function run() {",
+        contextAfter: "}",
+      },
+    ]);
+    expect(store.activeSession!.composerStore.focusRequestRevision).toBe(focusRevision + 1);
+    expect(store.embeddedEditorStore.visible).toBe(true);
     root[Symbol.dispose]();
   });
 

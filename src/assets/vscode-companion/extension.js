@@ -279,33 +279,35 @@ function activate(context) {
   changeStatus.command = "cake.nextChange";
   context.subscriptions.push(changeStatus, ...Object.values(changeDecorations));
 
-  const askAboutSelection = () => {
+  const sendSelection = (action) => {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.uri.scheme !== "file") {
-      void vscode.window.showInformationMessage("Open a workspace file before asking Cake.");
+      void vscode.window.showInformationMessage("Open a workspace file before using Cake.");
       return;
     }
     const relativePath = workspaceRelative(editor.document.uri.fsPath);
     if (!relativePath) {
-      void vscode.window.showInformationMessage("Cake can only discuss files in this project.");
+      void vscode.window.showInformationMessage("Cake can only use files in this project.");
       return;
     }
     const selection = editor.selection;
     const selectedText = editor.document.getText(selection);
     if (!selectedText) {
-      void vscode.window.showInformationMessage("Select some code to ask Cake about it.");
+      void vscode.window.showInformationMessage("Select some code before using Cake.");
       return;
     }
     if (selectedText.length > MAX_SELECTION_LENGTH) {
       void vscode.window.showWarningMessage(
-        "That selection is too large. Select a smaller region before asking Cake.",
+        "That selection is too large. Select a smaller region before using Cake.",
       );
       return;
     }
     const lines = editor.document.getText().split(/\r?\n/);
     postBridge({
       type: "selection",
+      action,
       path: relativePath,
+      documentVersion: editor.document.version,
       startLine: selection.start.line,
       startColumn: selection.start.character,
       endLine: selection.end.line,
@@ -321,6 +323,8 @@ function activate(context) {
         .slice(0, MAX_CONTEXT_LENGTH),
     });
   };
+  const askAboutSelection = () => sendSelection("ask");
+  const addSelectionToProjectChat = () => sendSelection("add-to-project-chat");
 
   const reveal = async (payload) => {
     const relativePath = String(payload.path || "");
@@ -412,6 +416,7 @@ function activate(context) {
     },
     vscode.commands.registerCommand("cake.reveal", (payload) => reveal(payload || {})),
     vscode.commands.registerCommand("cake.askAboutSelection", askAboutSelection),
+    vscode.commands.registerCommand("cake.addSelectionToProjectChat", addSelectionToProjectChat),
     vscode.commands.registerCommand("cake.previousChange", () => navigateChange(vscode, -1)),
     vscode.commands.registerCommand("cake.nextChange", () => navigateChange(vscode, 1)),
     vscode.commands.registerCommand("cake.openCompleteChange", () => openCompleteChange(vscode)),
