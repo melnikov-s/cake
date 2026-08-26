@@ -1,4 +1,6 @@
+import { useState, type CSSProperties } from "react";
 import { observer } from "r-state-tree/react";
+import { cn } from "../lib/utils";
 import type { ChatTranscriptBehavior } from "./chat-message";
 import type { ChatStore } from "../stores/ChatStore";
 import type { EmbeddedEditorStore } from "../stores/EmbeddedEditorStore";
@@ -7,6 +9,7 @@ import { BackIcon } from "./ui/icons";
 import { Button } from "./ui/button";
 import { Chat } from "./chat";
 import { EmbeddedEditorPane } from "./embedded-editor";
+import { PanelResizeHandle } from "./panel-resize-handle";
 
 function anchorTitle(anchor: NonNullable<ReviewsStore["draftAnchor"]>) {
   const start = anchor.start.newLine ?? anchor.start.oldLine;
@@ -19,15 +22,24 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   editor,
   reviews,
   projectChat,
+  sessionTitle,
   transcriptBehavior,
   onBack,
 }: {
   editor: EmbeddedEditorStore;
   reviews: ReviewsStore;
   projectChat: ChatStore;
+  sessionTitle: string;
   transcriptBehavior: ChatTranscriptBehavior;
   onBack(): void;
 }) {
+  const [chatSidebarWidth, setChatSidebarWidth] = useState(420);
+  const [resizing, setResizing] = useState(false);
+  const chatSidebarMax = Math.max(320, window.innerWidth - 480);
+  const visibleChatSidebarWidth = Math.min(chatSidebarWidth, chatSidebarMax);
+  const workspaceStyle: CSSProperties & Record<"--ide-chat-sidebar-width", string> = {
+    "--ide-chat-sidebar-width": `${visibleChatSidebarWidth}px`,
+  };
   const draftAnchor = reviews.draftAnchor;
   const activeThread = reviews.activeThreadId
     ? reviews.threads.find(
@@ -47,20 +59,39 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   };
 
   return (
-    <main className="flex h-screen min-h-0 w-screen overflow-hidden bg-background text-foreground">
+    <main
+      className={cn(
+        "relative flex h-screen min-h-0 w-screen overflow-hidden bg-background text-foreground",
+        resizing && "cursor-col-resize select-none",
+      )}
+      style={workspaceStyle}
+    >
       <section className="min-w-0 flex-1" aria-label="VS Code workspace">
         <EmbeddedEditorPane store={editor} />
       </section>
-      <aside className="flex w-[min(420px,42vw)] min-w-[320px] flex-col border-l border-border bg-background shadow-[-12px_0_32px_color-mix(in_oklab,var(--foreground)_8%,transparent)]">
+      <PanelResizeHandle
+        className="right-[calc(var(--ide-chat-sidebar-width)-5px)]"
+        label="Resize current session sidebar"
+        value={visibleChatSidebarWidth}
+        min={320}
+        max={chatSidebarMax}
+        edge="right"
+        onChange={setChatSidebarWidth}
+        onResizeStart={() => setResizing(true)}
+        onResizeEnd={() => setResizing(false)}
+      />
+      <aside className="flex w-[var(--ide-chat-sidebar-width)] min-w-0 flex-col border-l border-border bg-background shadow-[-12px_0_32px_color-mix(in_oklab,var(--foreground)_8%,transparent)]">
         <header className="flex min-h-14 items-center justify-between gap-3 border-b border-border px-3 py-2">
           <div className="min-w-0">
             <strong className="block truncate text-sm">
-              {contextualAnchor ? "Chat about selection" : "Cake Agent"}
+              {contextualAnchor ? "Chat about selection" : sessionTitle}
             </strong>
             <span className="block truncate font-mono text-[11px] text-muted-foreground">
               {contextualAnchor
                 ? anchorTitle(contextualAnchor)
-                : (editor.lastActivePath ?? "Project chat")}
+                : editor.lastActivePath
+                  ? `${editor.lastActivePath} · Current session`
+                  : "Current session"}
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -76,7 +107,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
           </div>
         </header>
         <div className="min-h-0 flex-1">
-          <Chat store={chat} transcriptBehavior={transcriptBehavior} />
+          <Chat className="h-full" store={chat} transcriptBehavior={transcriptBehavior} />
         </div>
       </aside>
     </main>

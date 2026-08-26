@@ -1284,6 +1284,81 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("opens embedded VS Code directly from the project workbench", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop, snapshot, [
+      { path: "PLAN.md", status: "modified", additions: 1, deletions: 0, diff: "+plan" },
+    ]);
+    await store.changesStore.open("PLAN.md");
+    store.commandPaneStore.toggle("tree");
+
+    await store.openIde();
+
+    expect(store.embeddedEditorStore.visible).toBe(true);
+    expect(store.changesStore.path).toBeUndefined();
+    expect(store.commandPaneStore.pane).toBeUndefined();
+    expect(desktop.client.openEmbeddedEditor).toHaveBeenCalledWith("/project");
+    root[Symbol.dispose]();
+  });
+
+  it("opens embedded VS Code before a brand-new chat has been persisted by Pi", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+    await store.startNewSession();
+    expect(store.activeSessionExists).toBe(false);
+    vi.mocked(desktop.client.openEmbeddedEditor).mockClear();
+
+    await store.openIde();
+
+    expect(store.embeddedEditorStore.visible).toBe(true);
+    expect(desktop.client.openEmbeddedEditor).toHaveBeenCalledWith("/project");
+    root[Symbol.dispose]();
+  });
+
+  it("keeps the active VS Code file and selection as visible project-chat context", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+    desktop.emit({ type: "pi-state-changed", state: "ready" });
+    await store.embeddedEditorStore.show();
+
+    desktop.emit({
+      type: "embedded-editor-activity",
+      workspacePath: "/project",
+      path: "src/main.ts",
+      documentVersion: 8,
+      startLine: 10,
+      startColumn: 2,
+      endLine: 10,
+      endColumn: 8,
+      selectedText: "answer",
+      contextBefore: "const ",
+      contextAfter: " = 42;",
+    });
+    await flush();
+
+    const context = expect.objectContaining({
+      kind: "source",
+      location: expect.objectContaining({ path: "src/main.ts", documentVersion: 8 }),
+      selectedText: "answer",
+    });
+    expect(store.activeSession!.composerStore.visibleAttachments).toEqual([context]);
+    store.activeSession!.chatStore.setDraft("What do I have selected?");
+    await store.activeSession!.composerStore.submit();
+    expect(desktop.client.submit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "What do I have selected?",
+        attachments: [context],
+      }),
+    );
+    root[Symbol.dispose]();
+  });
+
   it("opens a Cake code-chat draft for a selection made in embedded VS Code", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);

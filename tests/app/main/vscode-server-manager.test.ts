@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -36,6 +36,7 @@ describe("VsCodeServerManager startup", () => {
       companionManifest,
       companionMain: "/unused/companion.js",
       customPath: () => undefined,
+      preferredTheme: async () => "dark",
       broadcast: () => undefined,
     });
     const view = { setVisible: vi.fn(), setBounds: vi.fn() };
@@ -69,10 +70,46 @@ describe("VsCodeServerManager startup", () => {
       companionManifest,
       companionMain,
       customPath: () => undefined,
+      preferredTheme: async () => "dark",
       broadcast: () => undefined,
     });
     await expect(manager["serverFor"](root, binary)).resolves.toBeDefined();
     expect(manager["starting"].size).toBe(0);
     expect(manager.status).toBe("ready");
+  });
+
+  it("disables duplicate workspace trust and seeds a theme without replacing theme choices", async () => {
+    root = await mkdtemp(join(tmpdir(), "cake-vscode-manager-"));
+    manager = new VsCodeServerManager({
+      root,
+      companionManifest,
+      companionMain: "/unused/companion.js",
+      customPath: () => undefined,
+      preferredTheme: async () => "dark",
+      broadcast: () => undefined,
+    });
+    const userDataDir = join(root, "profile");
+
+    await manager["ensureEditorPreferences"](userDataDir);
+    const settingsPath = join(userDataDir, "User", "settings.json");
+    expect(JSON.parse(await readFile(settingsPath, "utf8"))).toEqual({
+      "security.workspace.trust.enabled": false,
+      "workbench.colorTheme": "Default Dark Modern",
+      "workbench.startupEditor": "none",
+    });
+
+    await writeFile(
+      settingsPath,
+      JSON.stringify({
+        "security.workspace.trust.enabled": true,
+        "workbench.colorTheme": "Solarized Light",
+      }),
+    );
+    await manager["ensureEditorPreferences"](userDataDir);
+    expect(JSON.parse(await readFile(settingsPath, "utf8"))).toEqual({
+      "security.workspace.trust.enabled": false,
+      "workbench.colorTheme": "Solarized Light",
+      "workbench.startupEditor": "none",
+    });
   });
 });

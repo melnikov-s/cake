@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, request as httpRequest, type Server as HttpServer } from "node:http";
 import net from "node:net";
-import { copyFile, mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { WebContentsView, BrowserWindow } from "electron";
 import { z } from "zod";
@@ -25,6 +25,11 @@ const IDLE_EVICT_MS = 3 * 60_000;
 const MAX_RUNNING_SERVERS = 3;
 const START_TIMEOUT = 45_000;
 const COMPANION_START_TIMEOUT = 5_000;
+const editorPreferencesSchema = z.looseObject({
+  "security.workspace.trust.enabled": z.boolean().optional(),
+  "workbench.colorTheme": z.string().optional(),
+  "workbench.startupEditor": z.string().optional(),
+});
 
 export type EmbeddedEditorStatus = "missing" | "downloading" | "starting" | "ready" | "failed";
 
@@ -44,6 +49,14 @@ const bridgeMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("activity"),
     workspace: z.string().min(1).max(4_096),
     path: z.string().min(1).max(8_192),
+    documentVersion: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    startLine: z.number().int().nonnegative(),
+    startColumn: z.number().int().nonnegative(),
+    endLine: z.number().int().nonnegative(),
+    endColumn: z.number().int().nonnegative(),
+    selectedText: z.string().max(48_000),
+    contextBefore: z.string().max(8_000),
+    contextAfter: z.string().max(8_000),
   }),
   z.object({
     type: z.literal("selection"),
@@ -74,7 +87,19 @@ interface BroadcastTarget {
           status: EmbeddedEditorStatus;
           message?: string;
         }
-      | { type: "embedded-editor-activity"; workspacePath: string; path: string }
+      | {
+          type: "embedded-editor-activity";
+          workspacePath: string;
+          path: string;
+          documentVersion: number;
+          startLine: number;
+          startColumn: number;
+          endLine: number;
+          endColumn: number;
+          selectedText: string;
+          contextBefore: string;
+          contextAfter: string;
+        }
       | {
           type: "embedded-editor-selection";
           action: "ask" | "add-to-project-chat";
@@ -100,6 +125,7 @@ export interface VsCodeServerManagerProps extends BroadcastTarget {
   /** Path to the companion extension main script (copied verbatim). */
   companionMain: string;
   customPath(): string | undefined;
+  preferredTheme(): Promise<"light" | "dark">;
 }
 
 /**
@@ -400,6 +426,7 @@ export class VsCodeServerManager {
     const token = randomBytes(24).toString("hex");
     const userDataDir = join(this.props.root, "user-data", workspaceHash(workspacePath));
     await mkdir(userDataDir, { recursive: true });
+    await this.ensureEditorPreferences(userDataDir);
     const flavor = serverFlavor(binary);
 
     const child = spawn(
@@ -412,6 +439,7 @@ export class VsCodeServerManager {
             `127.0.0.1:${port}`,
             "--auth",
             "none",
+            "--disable-workspace-trust",
             "--extensions-dir",
             extensionDir,
             "--user-data-dir",
@@ -425,6 +453,7 @@ export class VsCodeServerManager {
             `127.0.0.1:${port}`,
             "--connection-token",
             token,
+            "--disable-workspace-trust",
             "--extensions-dir",
             extensionDir,
             "--user-data-dir",
@@ -601,6 +630,14 @@ export class VsCodeServerManager {
         type: "embedded-editor-activity",
         workspacePath: message.data.workspace,
         path: message.data.path,
+        documentVersion: message.data.documentVersion,
+        startLine: message.data.startLine,
+        startColumn: message.data.startColumn,
+        endLine: message.data.endLine,
+        endColumn: message.data.endColumn,
+        selectedText: message.data.selectedText,
+        contextBefore: message.data.contextBefore,
+        contextAfter: message.data.contextAfter,
       });
       return;
     }
@@ -624,6 +661,47 @@ export class VsCodeServerManager {
       contextBefore: message.data.contextBefore,
       contextAfter: message.data.contextAfter,
     });
+  }
+
+  private async ensureEditorPreferences(userDataDir: string) {
+    const userDir = join(userDataDir, "User");
+    const settingsPath = join(userDir, "settings.json");
+    await mkdir(userDir, { recursive: true });
+    let raw: string | undefined;
+    try {
+      raw = await readFile(settingsPath, "utf8");
+    } catch {
+      // The per-workspace profile has not been initialized yet.
+    }
+    let settings: z.infer<typeof editorPreferencesSchema> = {};
+    if (raw !== undefined) {
+      try {
+        const parsed = editorPreferencesSchema.safeParse(JSON.parse(raw));
+        if (!parsed.success) return;
+        settings = parsed.data;
+      } catch {
+        // Preserve user-authored JSONC or malformed settings instead of replacing them.
+        return;
+      }
+    }
+    let changed = false;
+    if (settings["security.workspace.trust.enabled"] !== false) {
+      // Cake already gates project resources through its own persisted trust decision.
+      settings["security.workspace.trust.enabled"] = false;
+      changed = true;
+    }
+    if (settings["workbench.colorTheme"] === undefined) {
+      settings["workbench.colorTheme"] =
+        (await this.props.preferredTheme()) === "dark"
+          ? "Default Dark Modern"
+          : "Default Light Modern";
+      changed = true;
+    }
+    if (settings["workbench.startupEditor"] === undefined) {
+      settings["workbench.startupEditor"] = "none";
+      changed = true;
+    }
+    if (changed) await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
   }
 
   private async syncCompanionExtension() {

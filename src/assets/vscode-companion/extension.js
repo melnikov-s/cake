@@ -17,6 +17,7 @@ const CHANGE_FLASH_MS = 1_800;
 
 let revealServer;
 let activitySubscription;
+let activityTimer;
 let changeStatus;
 let temporaryTimer;
 let agentChanges = [];
@@ -66,6 +67,39 @@ function workspaceRelative(filePath) {
   )
     return undefined;
   return relativePath.split(path.sep).join("/");
+}
+
+function sendEditorActivity(vscode, editor = vscode.window.activeTextEditor) {
+  if (!editor || editor.document.uri.scheme !== "file") return;
+  const relativePath = workspaceRelative(editor.document.uri.fsPath);
+  if (!relativePath) return;
+  const selection = editor.selection;
+  const selectedText = editor.document.getText(selection).slice(0, MAX_SELECTION_LENGTH);
+  const lines = editor.document.getText().split(/\r?\n/);
+  postBridge({
+    type: "activity",
+    path: relativePath,
+    documentVersion: editor.document.version,
+    startLine: selection.start.line,
+    startColumn: selection.start.character,
+    endLine: selection.end.line,
+    endColumn: selection.end.character,
+    selectedText,
+    contextBefore: lines
+      .slice(Math.max(0, selection.start.line - 3), selection.start.line)
+      .join("\n")
+      .slice(-MAX_CONTEXT_LENGTH),
+    contextAfter: lines
+      .slice(selection.end.line + 1, selection.end.line + 4)
+      .join("\n")
+      .slice(0, MAX_CONTEXT_LENGTH),
+  });
+}
+
+function scheduleEditorActivity(vscode, editor = vscode.window.activeTextEditor) {
+  if (activityTimer) clearTimeout(activityTimer);
+  activityTimer = setTimeout(() => sendEditorActivity(vscode, editor), 75);
+  activityTimer.unref?.();
 }
 
 function readBody(request) {
@@ -407,6 +441,7 @@ function activate(context) {
     {
       dispose: () => {
         activitySubscription?.dispose();
+        if (activityTimer) clearTimeout(activityTimer);
         if (temporaryTimer) clearTimeout(temporaryTimer);
         for (const decoration of revealDecorations) decoration.dispose();
         revealDecorations.clear();
@@ -425,18 +460,27 @@ function activate(context) {
       applyChangeDecorations(vscode);
     }),
     vscode.window.onDidChangeVisibleTextEditors(() => applyChangeDecorations(vscode)),
+    vscode.window.onDidChangeTextEditorSelection((event) =>
+      scheduleEditorActivity(vscode, event.textEditor),
+    ),
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      if (event.document === vscode.window.activeTextEditor?.document)
+        scheduleEditorActivity(vscode);
+    }),
   );
 
-  activitySubscription = vscode.window.onDidChangeActiveTextEditor((editor) => {
-    if (!editor) return;
-    const relativePath = workspaceRelative(editor.document.uri.fsPath);
-    if (relativePath) postBridge({ type: "activity", path: relativePath });
+  activitySubscription = vscode.window.onDidChangeActiveTextEditor((editor) =>
+    scheduleEditorActivity(vscode, editor),
+  );
+  revealServer.listen(0, "127.0.0.1", () => {
+    postHello(HELLO_RETRIES);
+    sendEditorActivity(vscode);
   });
-  revealServer.listen(0, "127.0.0.1", () => postHello(HELLO_RETRIES));
 }
 
 function deactivate() {
   activitySubscription?.dispose();
+  if (activityTimer) clearTimeout(activityTimer);
   if (temporaryTimer) clearTimeout(temporaryTimer);
   for (const decoration of revealDecorations) decoration.dispose();
   revealDecorations.clear();

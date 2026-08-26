@@ -369,17 +369,22 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     };
   }
 
+  private closeEmbeddedEditor() {
+    this.activeSession?.composerStore.setEditorContextAttachment(undefined);
+    this.embeddedEditorStore.close();
+  }
+
   private showTemporarySession(path: string, sessionId: string) {
     this.pendingOpen = undefined;
     const session = this.sessionRegistry.prepareNewSession(path, sessionId);
     this.props.persistence().applySessionRestore(session, this.selectedSessionId, undefined, true);
+    this.closeEmbeddedEditor();
     this.projectPath = path;
     this.selectedSessionId = sessionId;
     this.markSessionRead(sessionId);
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
     this.changesStore.reset();
-    this.embeddedEditorStore.close();
     this.props.persistence().schedule();
     session.composerStore.requestFocus();
     void this.client
@@ -424,13 +429,13 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const session = this.sessionRegistry.findSession(sessionId);
     // An identity-only registry entry must not replace the visible session.
     if (!session || !session.hydrated) return false;
+    this.closeEmbeddedEditor();
     this.projectPath = session.workspacePath;
     this.selectedSessionId = sessionId;
     this.markSessionRead(sessionId);
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
     this.changesStore.reset();
-    this.embeddedEditorStore.close();
     this.props.persistence().schedule();
     session.composerStore.requestFocus();
     return true;
@@ -486,7 +491,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
     this.changesStore.reset();
-    this.embeddedEditorStore.close();
+    this.closeEmbeddedEditor();
     try {
       await this.client.openWorkspace({
         operationId,
@@ -546,14 +551,22 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       });
       return;
     }
-    this.embeddedEditorStore.close();
+    this.closeEmbeddedEditor();
     if (thread) this.reviews.selectThread(thread.id);
     else this.reviews.clearActiveThread();
     await this.changesStore.open(thread?.anchor.path);
   }
 
+  async openIde() {
+    if (!this.activeSession || !this.projectPath) return;
+    this.commandPaneStore.dismiss();
+    this.changesStore.close();
+    this.reviews.clearActiveThread();
+    await this.embeddedEditorStore.show();
+  }
+
   async openFileInIde(location: SourceLocation) {
-    if (!this.activeSessionExists) return;
+    if (!this.activeSession || !this.projectPath) return;
     this.commandPaneStore.dismiss();
     this.changesStore.close();
     await this.embeddedEditorStore.show(location);
@@ -620,7 +633,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   dismissSecondarySurfaces() {
     this.commandPaneStore.dismiss();
-    this.embeddedEditorStore.close();
+    this.closeEmbeddedEditor();
     this.changesStore.close();
   }
 
@@ -737,6 +750,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       event.type === "embedded-editor-activity"
     ) {
       this.embeddedEditorStore.receive(event);
+      if (event.type === "embedded-editor-activity" && event.workspacePath === this.projectPath)
+        this.activeSession?.composerStore.setEditorContextAttachment(
+          this.embeddedEditorStore.activeContextAttachment,
+        );
       return;
     }
     if (event.type === "embedded-editor-selection") {

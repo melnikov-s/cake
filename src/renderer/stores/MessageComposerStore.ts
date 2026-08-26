@@ -55,6 +55,7 @@ export interface MessageComposerStoreProps {
 /** Owns attachments, the local prompt queue, optimistic immediate prompts, and prompt delivery. */
 export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   attachments: Attachment[] = observable([]);
+  editorContextAttachment: Extract<Attachment, { kind: "source" }> | undefined;
   pendingUserMessages: PendingUserMessage[] = observable([]);
   queuedPrompts: QueuedPrompt[] = observable([]);
   focusRequestRevision = 0;
@@ -146,6 +147,24 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     }
   }
 
+  get visibleAttachments() {
+    const context = this.editorContextAttachment;
+    if (!context) return this.attachments;
+    return [
+      context,
+      ...this.attachments.filter(
+        (attachment) =>
+          attachment.kind !== "source" ||
+          attachment.location.path !== context.location.path ||
+          JSON.stringify(attachment.location.range) !== JSON.stringify(context.location.range),
+      ),
+    ];
+  }
+
+  setEditorContextAttachment(attachment: Extract<Attachment, { kind: "source" }> | undefined) {
+    this.editorContextAttachment = attachment;
+  }
+
   addSourceAttachment(attachment: Extract<Attachment, { kind: "source" }>) {
     const duplicate = this.attachments.some(
       (current) =>
@@ -177,6 +196,13 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   }
 
   removeAttachment(index: number) {
+    if (this.editorContextAttachment) {
+      if (index === 0) {
+        this.editorContextAttachment = undefined;
+        return;
+      }
+      index -= 1;
+    }
     this.attachments.splice(index, 1);
   }
 
@@ -212,17 +238,29 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     }
     const sessionId = this.props.sessionId();
     if (!sessionId) return;
-    const attachments = this.attachments.slice();
+    const explicitAttachments = this.attachments.slice();
+    const attachments = this.editorContextAttachment
+      ? [
+          this.editorContextAttachment,
+          ...explicitAttachments.filter(
+            (attachment) =>
+              attachment.kind !== "source" ||
+              attachment.location.path !== this.editorContextAttachment?.location.path ||
+              JSON.stringify(attachment.location.range) !==
+                JSON.stringify(this.editorContextAttachment?.location.range),
+          ),
+        ]
+      : explicitAttachments;
     if (deliveryOverride === undefined && this.props.isStreaming()) {
       // While streaming, submissions queue locally and stay editable above the composer.
-      if (text || attachments.length > 0) {
+      if (text || explicitAttachments.length > 0) {
         this.props.setDraft("");
         this.attachments.splice(0);
         this.queuedPrompts.push({ id: crypto.randomUUID(), text, attachments });
       }
       return;
     }
-    if (text || attachments.length > 0) {
+    if (text || explicitAttachments.length > 0) {
       this.props.setDraft("");
       this.attachments.splice(0);
       await this.deliver(text, attachments, deliveryOverride ?? "prompt", sessionId, true);

@@ -9,6 +9,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  nativeTheme,
   shell,
   type WebContents,
 } from "electron";
@@ -149,6 +150,11 @@ const vscodeEditor = new VsCodeServerManager({
   companionManifest,
   companionMain: companionExtensionMain,
   customPath: () => applicationModel.vscodeServerPath,
+  preferredTheme: async () => {
+    const preference = (await loadWindowState()).theme;
+    if (preference === "dark" || preference === "light") return preference;
+    return nativeTheme.shouldUseDarkColors ? "dark" : "light";
+  },
   broadcast,
 });
 let globalChatController: WebContents | undefined;

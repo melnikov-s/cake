@@ -1,6 +1,6 @@
 import { Store } from "r-state-tree";
 import type { SourceLocation } from "../../ipc/source-location";
-import type { UiPart } from "../../ipc/session-contract";
+import type { Attachment, UiPart } from "../../ipc/session-contract";
 import { agentChanges } from "../../utils/agent-changes";
 import type {
   DesktopClient,
@@ -37,8 +37,9 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   customPath: string | undefined;
   error: string | undefined;
   errorDetails: string | undefined;
-  /** Most recent workspace-relative path the user was editing inside VS Code. */
+  /** Most recent workspace-relative path and visible selection inside VS Code. */
   lastActivePath: string | undefined;
+  activeContextAttachment: Extract<Attachment, { kind: "source" }> | undefined;
   private openedWorkspace: string | undefined;
   private boundsRevision = 0;
   private refreshRevision = 0;
@@ -71,7 +72,23 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
       this.applySnapshot({ status: event.status, message: event.message });
       return;
     }
-    if (event.workspacePath === this.props.projectPath()) this.lastActivePath = event.path;
+    if (event.workspacePath !== this.props.projectPath()) return;
+    this.lastActivePath = event.path;
+    this.activeContextAttachment = {
+      kind: "source",
+      name: event.path.slice(-512),
+      location: {
+        path: event.path,
+        documentVersion: event.documentVersion,
+        range: {
+          start: { line: event.startLine, column: event.startColumn },
+          end: { line: event.endLine, column: event.endColumn },
+        },
+      },
+      selectedText: event.selectedText,
+      contextBefore: event.contextBefore,
+      contextAfter: event.contextAfter,
+    };
   }
 
   async show(location?: SourceLocation) {
@@ -230,6 +247,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     this.hide();
     this.openedWorkspace = undefined;
     this.lastActivePath = undefined;
+    this.activeContextAttachment = undefined;
     this.sentChangesFingerprint = undefined;
     this.changeSyncPending = false;
   }

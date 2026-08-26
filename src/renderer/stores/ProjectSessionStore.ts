@@ -226,7 +226,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       canSubmit: () => this.canSubmit,
       submit: () => this.composerStore.submit(),
       abort: () => this.props.abort(),
-      attachments: () => this.composerStore.attachments,
+      attachments: () => this.composerStore.visibleAttachments,
       addAttachments: () => this.composerStore.addAttachments(),
       addPastedImages: (files) => this.composerStore.addPastedImages(files),
       removeAttachment: (index) => this.composerStore.removeAttachment(index),

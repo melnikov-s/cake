@@ -144,7 +144,19 @@ export type DesktopClientEvent =
   | { type: "application-state-changed"; state: ApplicationState }
   | { type: "plugin-agent-event"; pluginId: string; snapshot: PluginAgentSnapshot }
   | { type: "embedded-editor-state-received"; status: EmbeddedEditorStatus; message?: string }
-  | { type: "embedded-editor-activity"; workspacePath: string; path: string }
+  | {
+      type: "embedded-editor-activity";
+      workspacePath: string;
+      path: string;
+      documentVersion: number;
+      startLine: number;
+      startColumn: number;
+      endLine: number;
+      endColumn: number;
+      selectedText: string;
+      contextBefore: string;
+      contextAfter: string;
+    }
   | {
       type: "embedded-editor-selection";
       action: "ask" | "add-to-project-chat";

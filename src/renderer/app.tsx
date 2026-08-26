@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import {
   BackIcon,
+  BrowseIcon,
   ChangesIcon,
   ChatIcon,
   FolderIcon,
@@ -199,6 +200,7 @@ export const App = observer(function App() {
           editor={store.embeddedEditorStore}
           reviews={reviews}
           projectChat={session.chatStore}
+          sessionTitle={store.sessionTitle}
           transcriptBehavior={projectTranscriptBehavior}
           onBack={returnToWorkbench}
         />
@@ -383,6 +385,15 @@ export const App = observer(function App() {
                       }}
                       notify={root.toastStore.show}
                     />
+                    <button
+                      className="header-pane-toggle"
+                      type="button"
+                      aria-label="Open VS Code"
+                      onClick={() => void store.openIde()}
+                    >
+                      <BrowseIcon />
+                      <span>VS Code</span>
+                    </button>
                     <button
                       className={`header-pane-toggle${store.commandPaneStore.pane === "tree" ? " active" : ""}`}
                       type="button"

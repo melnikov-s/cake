@@ -97,11 +97,22 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     expect(await link.getAttribute("title")).toBe("Open src/modelMeta.ts in VS Code");
     const agentInput = page.getByRole("combobox", { name: "Message" });
     await agentInput.fill("Keep this IDE draft");
+    await page.getByRole("button", { name: "Open VS Code" }).click();
+    await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
+    await page.getByRole("button", { name: "Back to Agent" }).click();
+    await expect(page.getByText("Phase 4 — Model references")).toBeVisible();
+    await expect(agentInput).toHaveValue("Keep this IDE draft");
 
     await link.click();
 
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
-    await expect(page.getByText("Cake Agent", { exact: true })).toBeVisible();
+    await expect(page.getByText("Current session", { exact: true })).toBeVisible();
+    await expect(page.locator(".transcript").getByText(/Phase 4 — Model references/)).toBeVisible();
+    const resizeHandle = page.getByRole("separator", { name: "Resize current session sidebar" });
+    await expect(resizeHandle).toHaveAttribute("aria-valuenow", "420");
+    await resizeHandle.focus();
+    await resizeHandle.press("ArrowLeft");
+    await expect(resizeHandle).toHaveAttribute("aria-valuenow", "436");
     const drawerInput = page.getByRole("combobox", { name: "Message" });
     await expect(drawerInput).toHaveValue("Keep this IDE draft");
     await drawerInput.focus();
@@ -109,6 +120,30 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await drawerInput.fill("Chat from the IDE drawer");
     await expect(drawerInput).toHaveValue("Chat from the IDE drawer");
     await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
+
+    await application.evaluate(
+      ({ BrowserWindow }, event) => {
+        for (const window of BrowserWindow.getAllWindows())
+          window.webContents.send("cake:event", event);
+      },
+      {
+        type: "embedded-editor-activity",
+        workspacePath: project,
+        path: "src/modelMeta.ts",
+        documentVersion: 1,
+        startLine: 0,
+        startColumn: 13,
+        endLine: 0,
+        endColumn: 17,
+        selectedText: "meta",
+        contextBefore: "",
+        contextAfter: "",
+      },
+    );
+    await expect(page.getByText("src/modelMeta.ts:1:14-1:18", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Back to Agent" }).click();
+    await link.click();
+    await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
 
     await application.evaluate(
       ({ BrowserWindow }, event) => {
