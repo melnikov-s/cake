@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import {
   Conversation,
@@ -59,6 +59,8 @@ export const ChatTranscript = observer(function ChatTranscript({
   const pendingSelectionRef = useRef<TranscriptSelectionCapture | undefined>(undefined);
   const followTurnRef = useRef<string | undefined>(undefined);
   const followOutputRef = useRef(true);
+  const latestUserRef = useRef<{ storeId: string; partId?: string } | undefined>(undefined);
+  const restoredScrollTop = useMemo(() => store.transcriptScrollTop, [store]);
   const [draftAnchor, setDraftAnchor] = useState<MessageCommentAnchorRect>();
   const visibleParts = store.hideThinking
     ? store.parts.filter((part) => part.kind !== "reasoning")
@@ -109,34 +111,58 @@ export const ChatTranscript = observer(function ChatTranscript({
     if (staticTranscriptRef.current)
       staticTranscriptRef.current.scrollTop = staticTranscriptRef.current.scrollHeight;
   }, []);
-  useLayoutEffect(scrollToLatest, [store.id, scrollToLatest]);
   useEffect(() => {
-    if (!latestUserPartId) return;
+    const previous = latestUserRef.current;
+    latestUserRef.current = { storeId: store.id, partId: latestUserPartId };
+    if (
+      !latestUserPartId ||
+      !previous ||
+      previous.storeId !== store.id ||
+      previous.partId === latestUserPartId
+    )
+      return;
+    store.setTranscriptScrollTop(undefined);
     scrollToLatest();
     const frame = requestAnimationFrame(scrollToLatest);
     return () => cancelAnimationFrame(frame);
-  }, [latestUserPartId, scrollToLatest]);
+  }, [latestUserPartId, scrollToLatest, store]);
   const setVirtualScroller = useCallback((scroller: HTMLElement | null | Window) => {
     virtualScrollerRef.current = scroller instanceof HTMLElement ? scroller : null;
   }, []);
   useEffect(() => {
     const scroller = virtualScrollerRef.current;
     if (!scroller) return;
+    let pendingScrollTop: number | undefined;
+    let saveTimer: ReturnType<typeof setTimeout> | undefined;
+    const flushScrollState = () => {
+      if (saveTimer !== undefined) clearTimeout(saveTimer);
+      saveTimer = undefined;
+      if (pendingScrollTop !== undefined) store.setTranscriptScrollTop(pendingScrollTop);
+      pendingScrollTop = undefined;
+    };
+    const saveScrollState = () => {
+      pendingScrollTop = scroller.scrollTop;
+      if (saveTimer !== undefined) clearTimeout(saveTimer);
+      saveTimer = setTimeout(flushScrollState, 100);
+    };
     const stopFollowing = () => {
       followOutputRef.current = false;
     };
     const stopFollowingForScrollbar = (event: PointerEvent) => {
       if (event.clientX >= scroller.getBoundingClientRect().right - 16) stopFollowing();
     };
+    scroller.addEventListener("scroll", saveScrollState, { passive: true });
     scroller.addEventListener("wheel", stopFollowing, { passive: true });
     scroller.addEventListener("touchmove", stopFollowing, { passive: true });
     scroller.addEventListener("pointerdown", stopFollowingForScrollbar);
     return () => {
+      scroller.removeEventListener("scroll", saveScrollState);
       scroller.removeEventListener("wheel", stopFollowing);
       scroller.removeEventListener("touchmove", stopFollowing);
       scroller.removeEventListener("pointerdown", stopFollowingForScrollbar);
+      flushScrollState();
     };
-  });
+  }, [store]);
   const followStreamingOutput = useCallback((isAtBottom: boolean) => {
     if (!isAtBottom || !followOutputRef.current) return false;
     const scroller = virtualScrollerRef.current;
@@ -286,11 +312,15 @@ export const ChatTranscript = observer(function ChatTranscript({
     <>
       {selectionOverlays}
       <VirtualizedConversation
+        key={store.id}
         ref={virtuosoRef}
         className="transcript [overflow-anchor:none]"
         data={items}
         computeItemKey={(_index, item) => item.id}
-        initialTopMostItemIndex={{ index: items.length - 1, align: "end" }}
+        initialScrollTop={restoredScrollTop}
+        initialTopMostItemIndex={
+          restoredScrollTop === undefined ? { index: items.length - 1, align: "end" } : undefined
+        }
         followOutput={followStreamingOutput}
         scrollerRef={setVirtualScroller}
         components={{

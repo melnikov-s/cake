@@ -122,6 +122,7 @@ function Transcript({
       groups: observable(new Map()),
     };
   const workLogState = workLogStateRef.current;
+  const transcriptScrollTopsRef = useRef(new Map<string, number>());
   const store = {
     id: sessionId,
     parts,
@@ -172,6 +173,13 @@ function Transcript({
     },
     setWorkLogItemOpen(partId: string, open: boolean) {
       workLogState.items.set(partId, open);
+    },
+    get transcriptScrollTop() {
+      return transcriptScrollTopsRef.current.get(sessionId);
+    },
+    setTranscriptScrollTop(scrollTop: number | undefined) {
+      if (scrollTop !== undefined) transcriptScrollTopsRef.current.set(sessionId, scrollTop);
+      else transcriptScrollTopsRef.current.delete(sessionId);
     },
     error: undefined,
   } as unknown as ChatStore;
@@ -862,7 +870,7 @@ describe("Transcript scrolling", () => {
     expect(container.querySelector(".loading-state")).toBe(loadingState);
   });
 
-  it("updates a selected session without remounting the virtualized transcript", () => {
+  it("restores each selected session's virtualized scroll state", () => {
     const first: UiPart = {
       id: "assistant-1",
       kind: "text",
@@ -879,11 +887,23 @@ describe("Transcript scrolling", () => {
     };
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([first])} />));
-    scrollToIndex.mockClear();
+    act(() => {
+      const transcript = container.querySelector<HTMLElement>(".transcript");
+      if (transcript) transcript.scrollTop = 240;
+      transcript?.dispatchEvent(new Event("scroll"));
+    });
     act(() => root.render(<TestTranscript sessionId="session-2" store={storeWith([second])} />));
+    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([first])} />));
 
-    expect(virtualizedLifecycle.mock.calls).toEqual([["mounted"]]);
-    expect(scrollToIndex).toHaveBeenCalledWith({ index: 0, align: "end", behavior: "auto" });
+    expect(virtualizedLifecycle.mock.calls).toEqual([
+      ["mounted"],
+      ["unmounted"],
+      ["mounted"],
+      ["unmounted"],
+      ["mounted"],
+    ]);
+    expect(virtualizedProps.current?.initialScrollTop).toBe(240);
+    expect(virtualizedProps.current?.initialTopMostItemIndex).toBeUndefined();
   });
 
   it("shows loading for the whole conversation turn and removes it at end-turn", () => {

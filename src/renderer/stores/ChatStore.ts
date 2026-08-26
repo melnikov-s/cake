@@ -61,6 +61,7 @@ export class ChatStore extends Store<ChatStoreProps> {
   submittingLocally = false;
   loadingStartedAt: number | undefined;
   readonly workLogTimers = observable(new Map<string, WorkLogTimerState>());
+  transcriptScrollTop: number | undefined;
   private workLogTickNow = 0;
   private workLogTickInterval: ReturnType<typeof setInterval> | undefined;
 
@@ -235,6 +236,10 @@ export class ChatStore extends Store<ChatStoreProps> {
   setDraft(value: string) {
     this.draft = value;
     this.props.persist?.();
+  }
+
+  setTranscriptScrollTop(scrollTop: number | undefined) {
+    this.transcriptScrollTop = scrollTop;
   }
 
   get workLogViewMode(): WorkLogViewMode {

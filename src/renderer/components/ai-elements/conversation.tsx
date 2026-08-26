@@ -58,6 +58,7 @@ export interface VirtualizedConversationProps<Item> {
   customScrollParent?: HTMLElement;
   atBottomStateChange?: (atBottom: boolean) => void;
   followOutput?: FollowOutput;
+  initialScrollTop?: number;
   initialTopMostItemIndex?: IndexLocationWithAlign | number;
   rangeChanged?: VirtuosoProps<Item, unknown>["rangeChanged"];
   scrollerRef?: VirtuosoProps<Item, unknown>["scrollerRef"];
@@ -75,6 +76,7 @@ function VirtualizedConversationInner<Item>(
     customScrollParent,
     atBottomStateChange,
     followOutput,
+    initialScrollTop,
     initialTopMostItemIndex,
     rangeChanged,
     scrollerRef,
@@ -95,6 +97,7 @@ function VirtualizedConversationInner<Item>(
       {...(customScrollParent === undefined ? {} : { customScrollParent })}
       {...(atBottomStateChange === undefined ? {} : { atBottomStateChange })}
       {...(followOutput === undefined ? {} : { followOutput })}
+      {...(initialScrollTop === undefined ? {} : { initialScrollTop })}
       {...(initialTopMostItemIndex === undefined ? {} : { initialTopMostItemIndex })}
       {...(rangeChanged === undefined ? {} : { rangeChanged })}
       {...(scrollerRef === undefined ? {} : { scrollerRef })}
