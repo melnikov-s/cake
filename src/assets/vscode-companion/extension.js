@@ -459,6 +459,9 @@ function activate(context) {
       for (const change of agentChanges) reviewedChanges.add(change.id);
       applyChangeDecorations(vscode);
     }),
+    vscode.commands.registerCommand("cake.toggleChatSidebar", () =>
+      postBridge({ type: "toggle-chat-sidebar" }),
+    ),
     vscode.window.onDidChangeVisibleTextEditors(() => applyChangeDecorations(vscode)),
     vscode.window.onDidChangeTextEditorSelection((event) =>
       scheduleEditorActivity(vscode, event.textEditor),

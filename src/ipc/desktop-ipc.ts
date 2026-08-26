@@ -240,6 +240,10 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     contextBefore: ipcProjectionString(8_000),
     contextAfter: ipcProjectionString(8_000),
   }),
+  z.object({
+    type: z.literal("embedded-editor-toggle-chat"),
+    workspacePath: z.string().max(4_096),
+  }),
 ]);
 
 export const desktopRequestSchema = z.discriminatedUnion("type", [

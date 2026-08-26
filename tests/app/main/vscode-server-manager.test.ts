@@ -78,6 +78,27 @@ describe("VsCodeServerManager startup", () => {
     expect(manager.status).toBe("ready");
   });
 
+  it("relays the VS Code title-bar chat-sidebar toggle to the renderer", () => {
+    const broadcast = vi.fn();
+    manager = new VsCodeServerManager({
+      root: "/unused",
+      companionManifest,
+      companionMain: "/unused/companion.js",
+      customPath: () => undefined,
+      preferredTheme: async () => "dark",
+      broadcast,
+    });
+
+    manager["handleBridgeMessage"](
+      Buffer.from(JSON.stringify({ type: "toggle-chat-sidebar", workspace: "/project" })),
+    );
+
+    expect(broadcast).toHaveBeenCalledWith({
+      type: "embedded-editor-toggle-chat",
+      workspacePath: "/project",
+    });
+  });
+
   it("disables duplicate workspace trust and seeds a theme without replacing theme choices", async () => {
     root = await mkdtemp(join(tmpdir(), "cake-vscode-manager-"));
     manager = new VsCodeServerManager({

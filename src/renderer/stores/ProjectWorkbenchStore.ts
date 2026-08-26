@@ -756,6 +756,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         );
       return;
     }
+    if (event.type === "embedded-editor-toggle-chat") {
+      if (event.workspacePath === this.projectPath) void this.embeddedEditorStore.toggleChat();
+      return;
+    }
     if (event.type === "embedded-editor-selection") {
       void this.handleEmbeddedEditorSelection(event);
       return;

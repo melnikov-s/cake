@@ -170,7 +170,8 @@ export type DesktopClientEvent =
       selectedText: string;
       contextBefore: string;
       contextAfter: string;
-    };
+    }
+  | { type: "embedded-editor-toggle-chat"; workspacePath: string };
 
 export interface DesktopClient {
   chooseProject(): Promise<string | undefined>;
@@ -592,8 +593,9 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
       status: event.status,
       message: event.message,
     };
-  if (event.type === "embedded-editor-activity" || event.type === "embedded-editor-selection")
+  if (event.type === "embedded-editor-activity" || event.type === "embedded-editor-toggle-chat")
     return event;
+  if (event.type === "embedded-editor-selection") return event;
   return undefined;
 }
 

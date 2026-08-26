@@ -46,6 +46,10 @@ const bridgeMessageSchema = z.discriminatedUnion("type", [
     port: z.number().int().min(1).max(65_535),
   }),
   z.object({
+    type: z.literal("toggle-chat-sidebar"),
+    workspace: z.string().min(1).max(4_096),
+  }),
+  z.object({
     type: z.literal("activity"),
     workspace: z.string().min(1).max(4_096),
     path: z.string().min(1).max(8_192),
@@ -100,6 +104,7 @@ interface BroadcastTarget {
           contextBefore: string;
           contextAfter: string;
         }
+      | { type: "embedded-editor-toggle-chat"; workspacePath: string }
       | {
           type: "embedded-editor-selection";
           action: "ask" | "add-to-project-chat";
@@ -623,6 +628,13 @@ export class VsCodeServerManager {
     if (!message.success) return;
     if (message.data.type === "hello") {
       this.companionPorts.set(message.data.workspace, message.data.port);
+      return;
+    }
+    if (message.data.type === "toggle-chat-sidebar") {
+      this.props.broadcast({
+        type: "embedded-editor-toggle-chat",
+        workspacePath: message.data.workspace,
+      });
       return;
     }
     if (message.data.type === "activity") {

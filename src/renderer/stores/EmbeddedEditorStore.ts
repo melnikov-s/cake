@@ -97,6 +97,15 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     if (location) await this.reveal(location);
   }
 
+  /** Toggles IDE mode from inside VS Code; hiding reports null bounds immediately. */
+  async toggleChat() {
+    if (this.visible) {
+      this.hide();
+      return;
+    }
+    await this.show();
+  }
+
   async open() {
     const projectPath = this.props.projectPath();
     if (!projectPath) throw new Error("No project is open");

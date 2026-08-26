@@ -36,9 +36,20 @@
       {
         "command": "cake.clearReviewedChanges",
         "title": "Cake: Mark Changes Reviewed"
+      },
+      {
+        "command": "cake.toggleChatSidebar",
+        "title": "Cake: Toggle Chat Sidebar",
+        "icon": "$(layout-sidebar-right)"
       }
     ],
     "menus": {
+      "web/navigation": [
+        {
+          "command": "cake.toggleChatSidebar",
+          "group": "navigation@100"
+        }
+      ],
       "editor/context": [
         {
           "command": "cake.askAboutSelection",
