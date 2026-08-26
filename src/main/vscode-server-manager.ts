@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, request as httpRequest, type Server as HttpServer } from "node:http";
 import net from "node:net";
-import { copyFile, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { WebContentsView, BrowserWindow } from "electron";
 import { z } from "zod";
@@ -701,18 +701,84 @@ export class VsCodeServerManager {
       settings["workbench.startupEditor"] = "none";
       changed = true;
     }
+    // Cake's agent is the only intended code producer here. Keep AI completion
+    // providers inert and stop the workbench from installing one into this profile.
+    if (settings["github.copilot.enable"] === undefined) {
+      settings["github.copilot.enable"] = { "*": false };
+      changed = true;
+    }
+    if (settings["extensions.autoUpdate"] === undefined) {
+      settings["extensions.autoUpdate"] = false;
+      changed = true;
+    }
+    if (settings["extensions.autoCheckUpdates"] === undefined) {
+      settings["extensions.autoCheckUpdates"] = false;
+      changed = true;
+    }
+    if (settings["extensions.ignoreRecommendations"] === undefined) {
+      settings["extensions.ignoreRecommendations"] = true;
+      changed = true;
+    }
     if (changed) await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
   }
 
   private async syncCompanionExtension() {
-    const extensionRoot = join(this.props.root, "extensions", "cake-companion");
+    const extensionsRoot = join(this.props.root, "extensions");
+    const extensionRoot = join(extensionsRoot, "cake-companion");
     await mkdir(extensionRoot, { recursive: true });
     await writeFile(
       join(extensionRoot, "package.json"),
       `${JSON.stringify(this.props.companionManifest, null, 2)}\n`,
     );
     await copyFile(this.props.companionMain, join(extensionRoot, "extension.js"));
-    return join(this.props.root, "extensions");
+    await this.pruneForeignExtensions(extensionsRoot);
+    return extensionsRoot;
+  }
+
+  /** Keeps the managed extensions root companion-only; foreign entries are deleted. */
+  private async pruneForeignExtensions(extensionsRoot: string) {
+    let entries: string[] = [];
+    try {
+      entries = await readdir(extensionsRoot);
+    } catch {
+      // The extensions root is created above before this scan.
+    }
+    let registryDirty = false;
+    for (const entry of entries) {
+      if (entry === "cake-companion" || entry === "extensions.json") continue;
+      await rm(join(extensionsRoot, entry), { recursive: true, force: true });
+      registryDirty = true;
+    }
+    let registryRaw: string | undefined;
+    try {
+      registryRaw = await readFile(join(extensionsRoot, "extensions.json"), "utf8");
+    } catch {
+      // A missing registry is rebuilt by the next extension-host scan.
+      return;
+    }
+    try {
+      const parsed = z
+        .array(z.object({ identifier: z.object({ id: z.string() }).loose() }).loose())
+        .safeParse(JSON.parse(registryRaw));
+      if (!parsed.success) return;
+      const kept = parsed.data.filter(
+        (item) => item.identifier.id.toLowerCase() === "cake.cake-companion",
+      );
+      // The managed root contains exactly one extension, so the registry is
+      // rewritten to a single canonical entry whenever anything else appeared.
+      const canonical = [
+        {
+          identifier: { id: "cake.cake-companion" },
+          version: this.props.companionManifest.version,
+          location: { scheme: "file", path: join(extensionsRoot, "cake-companion") },
+          relativeLocation: "cake-companion",
+        },
+      ];
+      if (kept.length !== 1 || registryDirty)
+        await writeFile(join(extensionsRoot, "extensions.json"), `${JSON.stringify(canonical)}\n`);
+    } catch {
+      // A malformed registry is rebuilt on the next extension-host scan.
+    }
   }
 
   private touch(instance: ServerInstance) {

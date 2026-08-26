@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -96,6 +96,10 @@ describe("VsCodeServerManager startup", () => {
       "security.workspace.trust.enabled": false,
       "workbench.colorTheme": "Default Dark Modern",
       "workbench.startupEditor": "none",
+      "github.copilot.enable": { "*": false },
+      "extensions.autoUpdate": false,
+      "extensions.autoCheckUpdates": false,
+      "extensions.ignoreRecommendations": true,
     });
 
     await writeFile(
@@ -110,6 +114,53 @@ describe("VsCodeServerManager startup", () => {
       "security.workspace.trust.enabled": false,
       "workbench.colorTheme": "Solarized Light",
       "workbench.startupEditor": "none",
+      "github.copilot.enable": { "*": false },
+      "extensions.autoUpdate": false,
+      "extensions.autoCheckUpdates": false,
+      "extensions.ignoreRecommendations": true,
     });
+  });
+
+  it("prunes foreign extensions from the managed extensions root and its registry", async () => {
+    root = await mkdtemp(join(tmpdir(), "cake-vscode-manager-"));
+    const companionMain = join(root, "companion.js");
+    await writeFile(companionMain, "module.exports = {};\n");
+    manager = new VsCodeServerManager({
+      root,
+      companionManifest,
+      companionMain,
+      customPath: () => undefined,
+      preferredTheme: async () => "dark",
+      broadcast: () => undefined,
+    });
+    const extensionsRoot = join(root, "extensions");
+    await mkdir(join(extensionsRoot, "github.copilot"), { recursive: true });
+    await mkdir(join(extensionsRoot, "cake-companion"), { recursive: true });
+    await writeFile(
+      join(extensionsRoot, "extensions.json"),
+      JSON.stringify([
+        {
+          identifier: { id: "GitHub.copilot" },
+          version: "1.0.0",
+          location: { scheme: "file", path: join(extensionsRoot, "github.copilot") },
+          relativeLocation: "github.copilot",
+        },
+        {
+          identifier: { id: "cake.cake-companion" },
+          version: "0.0.0",
+          location: { scheme: "file", path: "/stale/cake-companion" },
+          relativeLocation: "cake-companion",
+        },
+      ]),
+    );
+
+    await manager["syncCompanionExtension"]();
+
+    await expect(stat(join(extensionsRoot, "github.copilot"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    const registry = JSON.parse(await readFile(join(extensionsRoot, "extensions.json"), "utf8"));
+    expect(registry).toHaveLength(1);
+    expect(registry[0].identifier.id).toBe("cake.cake-companion");
   });
 });
