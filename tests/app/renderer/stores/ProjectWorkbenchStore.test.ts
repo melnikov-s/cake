@@ -1157,6 +1157,46 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("coalesces streamed transcript updates to one update per part per frame", async () => {
+    const desktop = createDesktopClient();
+    let flushFrame: FrameRequestCallback | undefined;
+    const requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      flushFrame = callback;
+      return 1;
+    });
+    vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+
+    const { root, store } = mountTestStore(desktop.client);
+    try {
+      await flush();
+      await openSnapshot(store, desktop);
+      for (let index = 0; index < 60; index += 1) {
+        desktop.emit({
+          type: "part-updated",
+          sessionId: "session-1",
+          part: {
+            id: "live",
+            kind: "text",
+            role: "assistant",
+            text: `token-${index}`,
+            status: "streaming",
+          },
+        });
+      }
+
+      expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
+      expect(root.sessionRegistry.findModel("session-1")?.uiParts).toEqual([]);
+      flushFrame?.(0);
+      expect(root.sessionRegistry.findModel("session-1")?.uiParts).toEqual([
+        expect.objectContaining({ id: "live", text: "token-59" }),
+      ]);
+    } finally {
+      root[Symbol.dispose]();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("uses the Git workspace snapshot instead of accumulating edit tool patches", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);

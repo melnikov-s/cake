@@ -1,6 +1,6 @@
 import { Store, child, createStore, untracked } from "r-state-tree";
 import { jsonValueSchema } from "../../ipc/json-contract";
-import type { SessionSnapshot } from "../../ipc/session-contract";
+import type { SessionSnapshot, UiPart } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import { SessionRegistryStore } from "./SessionRegistryStore";
 import { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
@@ -24,6 +24,8 @@ import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
 
 export class RootStore extends Store<{ client: DesktopClient }> {
   readonly appControl: AppControlBridge;
+  private readonly pendingProjectPartUpdates = new Map<string, Map<string, UiPart>>();
+  private projectPartFlushFrame: number | undefined;
 
   @child
   get pluginCommandStore(): PluginCommandStore {
@@ -387,6 +389,58 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     this.effect(() => {
       untracked(() => void this.globalChatStore.initialize());
     });
+    this.effect(() => () => this.cancelProjectPartFlush());
+  }
+
+  private enqueueProjectPartUpdate(sessionId: string, part: UiPart) {
+    const sessionUpdates = this.pendingProjectPartUpdates.get(sessionId) ?? new Map();
+    sessionUpdates.set(part.id, part);
+    this.pendingProjectPartUpdates.set(sessionId, sessionUpdates);
+    if (this.projectPartFlushFrame !== undefined) return;
+
+    const frame = globalThis.requestAnimationFrame?.(() => {
+      this.projectPartFlushFrame = undefined;
+      try {
+        this.flushProjectPartUpdates();
+      } catch (error) {
+        this.projectWorkbenchStore.setError(error, "Desktop event: part-updated");
+      }
+    });
+    if (frame === undefined) {
+      this.flushProjectPartUpdates();
+      return;
+    }
+    this.projectPartFlushFrame = frame;
+  }
+
+  private flushProjectPartUpdates() {
+    if (this.pendingProjectPartUpdates.size === 0) return;
+    const updates = [...this.pendingProjectPartUpdates];
+    this.pendingProjectPartUpdates.clear();
+
+    let syncAgentChanges = false;
+    for (const [sessionId, parts] of updates) {
+      for (const part of parts.values()) {
+        const session = this.sessionRegistry.upsertPart(sessionId, part);
+        const canReconcileOptimisticMessage =
+          (part.kind === "text" && part.role === "user" && part.status === "complete") ||
+          (part.kind === "attachment" && part.attachmentKind === "image");
+        if (canReconcileOptimisticMessage) session?.composerStore.reconcile(sessionId);
+        if (
+          this.projectWorkbenchStore.isActiveSession(sessionId) &&
+          (part.kind === "tool" || (part.kind === "text" && part.role === "user"))
+        )
+          syncAgentChanges = true;
+      }
+    }
+    if (syncAgentChanges) void this.projectWorkbenchStore.embeddedEditorStore.syncAgentChanges();
+  }
+
+  private cancelProjectPartFlush() {
+    if (this.projectPartFlushFrame !== undefined)
+      globalThis.cancelAnimationFrame?.(this.projectPartFlushFrame);
+    this.projectPartFlushFrame = undefined;
+    this.pendingProjectPartUpdates.clear();
   }
 
   /** Tracks the most recent chat configuration so new sessions can fall back to it. */
@@ -402,6 +456,9 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   }
 
   private receive(event: DesktopClientEvent) {
+    // Streamed token deltas are frame-coalesced below. Flush them before any other
+    // event so snapshots, removals, and streaming state retain desktop event order.
+    if (event.type !== "part-updated") this.flushProjectPartUpdates();
     this.customizationStore.receive(event);
     if (event.type === "application-state-changed") {
       this.projectCatalogStore.applyApplicationState(event.state);
@@ -466,18 +523,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     // streaming this avoids invoking unrelated workflows and materializing their
     // lazy child Stores once per token.
     if (event.type === "part-updated") {
-      const session = this.sessionRegistry.upsertPart(event.sessionId, event.part);
-      const canReconcileOptimisticMessage =
-        (event.part.kind === "text" &&
-          event.part.role === "user" &&
-          event.part.status === "complete") ||
-        (event.part.kind === "attachment" && event.part.attachmentKind === "image");
-      if (canReconcileOptimisticMessage) session?.composerStore.reconcile(event.sessionId);
-      if (
-        this.projectWorkbenchStore.isActiveSession(event.sessionId) &&
-        (event.part.kind === "tool" || (event.part.kind === "text" && event.part.role === "user"))
-      )
-        void this.projectWorkbenchStore.embeddedEditorStore.syncAgentChanges();
+      this.enqueueProjectPartUpdate(event.sessionId, event.part);
       return;
     }
     if (event.type === "part-removed") {
