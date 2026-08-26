@@ -35,9 +35,6 @@ const StatusCard = observer(function StatusCard({ store }: { store: EmbeddedEdit
             Download openvscode-server
           </Button>
         ) : null}
-        <Button variant="outline" size="sm" onClick={() => store.setMode("builtin")}>
-          Use the built-in reader
-        </Button>
       </div>
     </div>
   );
@@ -54,15 +51,10 @@ export const EmbeddedEditorPane = observer(function EmbeddedEditorPane({
   store: EmbeddedEditorStore;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const vscodeMode = store.mode === "vscode";
 
   useEffect(() => {
     void store.refresh();
   }, [store]);
-
-  useEffect(() => {
-    if (vscodeMode) void store.open();
-  }, [vscodeMode, store]);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -90,7 +82,7 @@ export const EmbeddedEditorPane = observer(function EmbeddedEditorPane({
   const showPlaceholder = store.status !== "ready" || Boolean(store.error);
 
   return (
-    <div ref={containerRef} className="embedded-editor-pane">
+    <div ref={containerRef} className="embedded-editor-pane h-full">
       {showPlaceholder ? (
         store.status === "missing" && !store.error ? (
           <StatusCard store={store} />

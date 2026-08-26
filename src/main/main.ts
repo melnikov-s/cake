@@ -1,6 +1,4 @@
-import { lstat, readFile, readdir, realpath } from "node:fs/promises";
-import { execFile, spawn } from "node:child_process";
-import { promisify } from "node:util";
+import { readFile, realpath } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import {
@@ -21,7 +19,6 @@ import {
   type DesktopResponse,
 } from "../ipc/desktop-ipc";
 import {
-  DEFAULT_EDITOR_COMMAND,
   windowViewStateSchema,
   type Attachment,
   type WindowViewState,
@@ -679,63 +676,6 @@ const imageMimeTypes = new Map([
   [".gif", "image/gif"],
   [".webp", "image/webp"],
 ]);
-const runFile = promisify(execFile);
-
-async function regularWorkspaceFiles(workspace: string, paths: string[]) {
-  const files: string[] = [];
-  for (let offset = 0; offset < paths.length; offset += 200) {
-    const batch = await Promise.all(
-      paths.slice(offset, offset + 200).map(async (path) => {
-        try {
-          const target = resolve(workspace, path);
-          const relativePath = relative(workspace, target);
-          if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath))
-            return undefined;
-          return (await lstat(target)).isFile() ? path : undefined;
-        } catch {
-          return undefined;
-        }
-      }),
-    );
-    files.push(...batch.filter((path): path is string => Boolean(path)));
-  }
-  return files;
-}
-
-async function listWorkspaceFiles(workspacePath: string) {
-  const workspace = await realpath(workspacePath);
-  try {
-    const { stdout } = await runFile(
-      "git",
-      ["-C", workspace, "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-      { encoding: "utf8", timeout: 10_000, maxBuffer: 16_000_000 },
-    );
-    const paths = stdout
-      .split("\0")
-      .filter(Boolean)
-      .slice(0, 50_000)
-      .sort((left, right) => left.localeCompare(right));
-    return regularWorkspaceFiles(workspace, paths);
-  } catch {
-    const files: string[] = [];
-    const omitted = new Set([".git", "node_modules", "dist", "out", ".cache"]);
-    const visit = async (directory: string, prefix = "") => {
-      if (files.length >= 50_000) return;
-      const entries = await readdir(directory, { withFileTypes: true });
-      await Promise.all(
-        entries.map(async (entry) => {
-          if (files.length >= 50_000 || entry.isSymbolicLink() || omitted.has(entry.name)) return;
-          const path = prefix ? `${prefix}/${entry.name}` : entry.name;
-          if (entry.isDirectory()) await visit(join(directory, entry.name), path);
-          else if (entry.isFile()) files.push(path.split(sep).join("/"));
-        }),
-      );
-    };
-    await visit(workspace);
-    return files.sort((left, right) => left.localeCompare(right)).slice(0, 50_000);
-  }
-}
-
 async function resolveWorkspaceEditorTarget(workspacePath: string, requestedPath: string) {
   if (!requestedPath.trim()) throw new Error("An editor path is required");
   const workspace = await realpath(workspacePath);
@@ -755,26 +695,6 @@ async function resolveWorkspaceEditorTarget(workspacePath: string, requestedPath
     target = join(parent, basename(candidate));
   }
   return { workspace, target: ensureInsideWorkspace(target) };
-}
-
-function launchEditor(editorCommand: string, workspace: string, target: string) {
-  const command = editorCommand.trim() || DEFAULT_EDITOR_COMMAND;
-  return new Promise<void>((resolvePromise, reject) => {
-    const child = spawn(command, [target], {
-      cwd: workspace,
-      detached: true,
-      stdio: "ignore",
-    });
-    const handleError = (error: Error) => {
-      reject(new Error(`Could not open ${command}: ${error.message}`));
-    };
-    child.once("error", handleError);
-    child.once("spawn", () => {
-      child.removeListener("error", handleError);
-      child.unref();
-      resolvePromise();
-    });
-  });
 }
 
 async function chooseAttachments(window: BrowserWindow): Promise<Attachment[]> {
@@ -836,14 +756,6 @@ async function handleCakeRequest(
     });
     return desktopResponseSchema.parse({ type: "session-context-menu-closed", action });
   }
-  if (request.type === "set-editor-command") {
-    applicationModel.setEditorCommand(request.command);
-    await persistApplicationState();
-    return desktopResponseSchema.parse({
-      type: "application-state-updated",
-      state: applicationModel.snapshot(),
-    });
-  }
   if (request.type === "set-vscode-server-path") {
     applicationModel.setVscodeServerPath(request.path);
     await persistApplicationState();
@@ -881,9 +793,28 @@ async function handleCakeRequest(
       throw new Error("Project path was not selected by the user");
     const { workspace, target } = await resolveWorkspaceEditorTarget(
       request.workspacePath,
-      request.path,
+      request.location.path,
     );
-    await vscodeEditor.reveal(workspace, relative(workspace, target), request.line);
+    await vscodeEditor.reveal(workspace, {
+      ...request.location,
+      path: relative(workspace, target),
+    });
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  if (request.type === "update-embedded-editor-changes") {
+    if (!allowedProjectPaths.has(request.workspacePath))
+      throw new Error("Project path was not selected by the user");
+    const workspace = await realpath(request.workspacePath);
+    const normalized = await Promise.allSettled(
+      request.changes.map(async (change) => {
+        const { target } = await resolveWorkspaceEditorTarget(workspace, change.path);
+        return { ...change, path: relative(workspace, target).split(sep).join("/") };
+      }),
+    );
+    await vscodeEditor.updateAgentChanges(
+      workspace,
+      normalized.flatMap((item) => (item.status === "fulfilled" ? [item.value] : [])),
+    );
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "get-customization-state")
@@ -1293,14 +1224,6 @@ async function handleCakeRequest(
       }),
     });
   }
-  if (request.type === "list-workspace-files") {
-    if (!allowedProjectPaths.has(request.workspacePath))
-      throw new Error("Project path was not selected by the user");
-    return desktopResponseSchema.parse({
-      type: "workspace-files",
-      files: await listWorkspaceFiles(request.workspacePath),
-    });
-  }
   if (request.type === "read-workspace-file") {
     if (!allowedProjectPaths.has(request.workspacePath))
       throw new Error("Project path was not selected by the user");
@@ -1313,16 +1236,6 @@ async function handleCakeRequest(
     const content = await readFile(target, "utf8");
     if (content.length > 2_000_000) throw new Error("File is too large to display");
     return desktopResponseSchema.parse({ type: "workspace-file", content });
-  }
-  if (request.type === "open-file-in-editor") {
-    if (!allowedProjectPaths.has(request.workspacePath))
-      throw new Error("Project path was not selected by the user");
-    const { workspace, target } = await resolveWorkspaceEditorTarget(
-      request.workspacePath,
-      request.path,
-    );
-    await launchEditor(applicationModel.editorCommand, workspace, target);
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "compile-inline-widget") {
     const compiled = await compileInlineWidget(

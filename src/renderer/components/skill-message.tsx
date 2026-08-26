@@ -2,8 +2,15 @@ import { Markdown } from "@/components/ai-elements/markdown";
 import { Message } from "@/components/ai-elements/message";
 import { SkillIcon } from "./ui/icons";
 import type { UiPart } from "../../ipc/session-contract";
+import type { SourceLocation } from "../../ipc/source-location";
 
-export function SkillMessage({ part }: { part: Extract<UiPart, { kind: "skill" }> }) {
+export function SkillMessage({
+  part,
+  onOpenSourceLocation,
+}: {
+  part: Extract<UiPart, { kind: "skill" }>;
+  onOpenSourceLocation?(location: SourceLocation): void;
+}) {
   return (
     <Message className="mr-auto w-[min(100%,42rem)]">
       <details className="group min-w-0">
@@ -17,7 +24,7 @@ export function SkillMessage({ part }: { part: Extract<UiPart, { kind: "skill" }
           <span className="text-[10px] text-muted-foreground group-open:hidden">View contents</span>
         </summary>
         <div className="mt-2 max-h-[32rem] overflow-auto rounded-[12px] border border-border bg-card px-4 py-[14px] text-[0.88rem]">
-          <Markdown>{part.content}</Markdown>
+          <Markdown onOpenSourceLocation={onOpenSourceLocation}>{part.content}</Markdown>
         </div>
       </details>
     </Message>

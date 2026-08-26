@@ -137,7 +137,10 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
         const anchor = this.draftAnchor;
         if (!anchor) return false;
         const threadId = await this.createThread(anchor, draft);
-        if (threadId && this.draftAnchor === anchor) this.cancelDraft();
+        if (threadId && this.draftAnchor === anchor) {
+          this.cancelDraft();
+          this.selectThread(threadId);
+        }
         return Boolean(threadId);
       },
       error: () => ({ message: this.error, details: this.errorDetails }),

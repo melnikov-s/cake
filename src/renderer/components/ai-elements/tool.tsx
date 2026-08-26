@@ -4,11 +4,12 @@ import { observer } from "r-state-tree/react";
 import { z } from "zod";
 import { jsonObjectSchema, jsonValueSchema } from "../../../ipc/json-contract";
 import type { ToolOutputContent, UiPart } from "../../../ipc/session-contract";
+import type { SourceLocation } from "../../../ipc/source-location";
 import type { ChatStore } from "../../stores/ChatStore";
 import { toolOperationName } from "../../../utils/cake-tool";
 import { toolDiff } from "../../../utils/turn-diff";
-import { IconButton } from "../ui/icon-button";
-import { EditorIcon } from "../ui/icons";
+import { toolSourceRange } from "../../../utils/agent-changes";
+import { Button } from "../ui/button";
 import { formatElapsed } from "../ui/loading-state";
 import { DiffView } from "./diff-view";
 import { languageForSource } from "./code";
@@ -40,8 +41,9 @@ function toolPath(part: Extract<UiPart, { kind: "tool" }>) {
     .find((result) => result.success)?.data;
 }
 
-function toolTitle(part: Extract<UiPart, { kind: "tool" }>) {
+function toolTitle(part: Extract<UiPart, { kind: "tool" }>, concise = false) {
   const operationName = toolOperationName(part);
+  if (concise && toolPath(part)) return operationName;
   if (operationName === "edit" && part.filePath) return `edit ${part.filePath}`;
 
   const parsed = parseJson(part.input);
@@ -125,9 +127,12 @@ function readToolCode(part: Extract<UiPart, { kind: "tool" }>, highlightCode: bo
   );
 }
 
-function editorPath(part: Extract<UiPart, { kind: "tool" }>) {
+function editorLocation(part: Extract<UiPart, { kind: "tool" }>): SourceLocation | undefined {
   if (part.name !== "read" && part.name !== "write" && part.name !== "edit") return undefined;
-  return toolPath(part);
+  const path = toolPath(part);
+  if (!path) return undefined;
+  const range = part.name === "read" ? undefined : toolSourceRange(part);
+  return { path, range };
 }
 
 /** Count-up elapsed-time chip for a work log tool item; frozen once the item finishes. */
@@ -153,7 +158,7 @@ export const ToolRunTimer = observer(function ToolRunTimer({
 
 export function Tool({
   part,
-  onOpenFile,
+  onOpenSourceLocation,
   timer,
   expansion,
   subagentSpawnPart,
@@ -163,7 +168,7 @@ export function Tool({
   omitDiff,
 }: {
   part: Extract<UiPart, { kind: "tool" }>;
-  onOpenFile?: (path: string) => void | Promise<void>;
+  onOpenSourceLocation?: (location: SourceLocation) => void | Promise<void>;
   timer?: ReactNode;
   /** Controlled expansion inside a work log; uncontrolled local state otherwise. */
   expansion?: { open: boolean; toggle(): void };
@@ -199,14 +204,15 @@ export function Tool({
       />
     );
   const diff = omitDiff ? undefined : toolDiff(part);
-  const title = toolTitle(part);
+  const location = editorLocation(part);
+  const filePath = location?.path;
+  const path = onOpenSourceLocation ? filePath : undefined;
+  const title = toolTitle(part, Boolean(path));
   const read = part.name === "read";
   const bash = part.name === "bash" && part.input ? part.input : undefined;
   const hasDetails = Boolean(
     diff || bash || part.input || part.output || part.outputContent?.length,
   );
-  const filePath = editorPath(part);
-  const path = onOpenFile ? filePath : undefined;
   return (
     <div
       className={`tool-call rounded-xl border border-border bg-muted/35 px-4 py-3${diff ? " tool-edit" : ""}${open ? " tool-open" : ""}`}
@@ -225,18 +231,19 @@ export function Tool({
               {title}
             </span>
           </button>
+          {path && onOpenSourceLocation ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-auto min-w-0 px-1 py-0 font-mono text-xs"
+              title={path}
+              onClick={() => void onOpenSourceLocation(location!)}
+            >
+              <span className="truncate">{path}</span>
+            </Button>
+          ) : null}
           {filePath && <CopyFilePathButton path={filePath} />}
         </div>
-        {path && (
-          <IconButton
-            className="tool-editor-button"
-            tooltip="Open file in editor"
-            ariaLabel={`Open ${path} in editor`}
-            onClick={() => void onOpenFile?.(path)}
-          >
-            <EditorIcon />
-          </IconButton>
-        )}
         {timer}
       </div>
       {/* Once opened, keep details mounted so later toggles do not feed Streamdown's passive update back into Virtuoso measurement. */}
@@ -250,6 +257,7 @@ export function Tool({
               filePath={part.filePath}
               label={part.state === "running" ? "Proposed edit" : "Applied edit"}
               highlightCode={part.state !== "running"}
+              onOpenSourceLocation={onOpenSourceLocation}
             />
           ) : bash ? (
             <Markdown

@@ -3,7 +3,6 @@ import { Project } from "./Project";
 import { ModelPreset } from "./ModelPreset";
 import {
   applicationStateSchema,
-  DEFAULT_EDITOR_COMMAND,
   modelPresetSchema,
   utilityModelSchema,
   type ApplicationState,
@@ -24,12 +23,10 @@ export class Application extends Model {
   @child(ModelPreset)
   modelPresets: ModelPreset[] = [];
   defaultModelPresetId: string | undefined;
-  editorCommand = DEFAULT_EDITOR_COMMAND;
   vscodeServerPath: string | undefined;
 
   static from(untrustedInput: unknown) {
     const model = Application.create(applicationStateSchema.parse(untrustedInput));
-    model.setEditorCommand(model.editorCommand);
     model.setModelPresets(
       model.modelPresets.map((preset) => ({
         id: preset.id,
@@ -94,10 +91,6 @@ export class Application extends Model {
     this.defaultModelPresetId = parsed.some((preset) => preset.id === defaultPresetId)
       ? defaultPresetId
       : undefined;
-  }
-
-  setEditorCommand(command: string) {
-    this.editorCommand = command.trim() || DEFAULT_EDITOR_COMMAND;
   }
 
   setVscodeServerPath(path: string | undefined) {

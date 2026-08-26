@@ -105,7 +105,6 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
         workLogsExpansion: state.workLogsExpansion ?? "collapsed",
       });
       this.props.settings().modelPresets.restoreLastUsed(state.lastChatConfiguration);
-      this.props.workbench().embeddedEditorStore.restoreMode(state.projectBrowserMode ?? "builtin");
       this.restoredDraft = state.draft;
       this.restoredNewSessionDraftsByProject = { ...state.newSessionDraftsByProject };
 
@@ -161,7 +160,6 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
       selectedSessionId: activeSession?.sessionId,
       activeConversation: this.props.shell().activeConversation,
       recentProjectPaths: this.props.projects.orderedProjectPaths.slice(),
-      projectBrowserMode: workbench.embeddedEditorStore.mode === "vscode" ? "vscode" : "builtin",
       draft: activeSession?.chatStore.draft ?? "",
       theme: this.props.settings().appearance.theme,
       workLogViewMode: this.props.settings().appearance.workLogViewMode,

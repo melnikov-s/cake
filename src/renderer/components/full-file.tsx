@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { observer } from "r-state-tree/react";
 import type { ChangedFile } from "../../ipc/session-contract";
-import type { BrowseStore } from "../stores/BrowseStore";
 import type { ChangesStore } from "../stores/ChangesStore";
 import type { ReviewsStore } from "../stores/ReviewsStore";
 import { parseDiff } from "./ai-elements/diff-view";
@@ -13,15 +12,13 @@ import { LoadingState } from "./ui/loading-state";
 export const FullFile = observer(function FullFile({
   change,
   reviews,
-  browse,
   store,
 }: {
   change: ChangedFile;
   reviews: ReviewsStore;
-  browse: BrowseStore;
   store: ChangesStore;
 }) {
-  const readFile = useMemo(() => (path: string) => browse.readFile(path), [browse]);
+  const readFile = useMemo(() => (path: string) => store.readFile(path), [store]);
   const content = useFileContent(change.path, readFile);
   if (content.error)
     return (

@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import {
   BackIcon,
-  BrowseIcon,
   ChangesIcon,
   ChatIcon,
   FolderIcon,
@@ -23,7 +22,7 @@ import {
 } from "@/components/ui/icons";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ChangeExplorer } from "@/components/change-explorer";
-import { WorkspaceBrowser } from "@/components/workspace-browser";
+import { IdeWorkspace } from "@/components/ide-workspace";
 import { SettingsPage } from "@/components/settings-page";
 import { PanelResizeHandle } from "@/components/panel-resize-handle";
 import { ToastHost } from "@/components/toast-host";
@@ -36,6 +35,7 @@ import { ArtifactsPanel } from "@/components/artifacts-panel";
 import { UiDialog } from "@/components/ui-dialog";
 import { CommandPane } from "@/components/command-pane";
 import { Chat } from "@/components/chat";
+import type { SourceLocation } from "../ipc/source-location";
 import { toWorkspaceRelativePath } from "../utils/workspace-relative-path";
 import { RootStore } from "./stores/RootStore";
 import { Slot } from "./plugin-runtime";
@@ -54,7 +54,6 @@ export const App = observer(function App() {
   const sidebar = root.sidebarStore;
   const projects = root.projectCatalogStore;
   const persistence = root.windowPersistence;
-  const browse = store.browseStore;
   const changes = store.changesStore;
   const reviews = root.reviewsStore;
   const settings = root.settingsStore;
@@ -145,16 +144,46 @@ export const App = observer(function App() {
   useEffect(() => {
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (browse.path !== undefined) {
-        if (store.embeddedEditorStore.mode !== "vscode") returnToWorkbench();
-        return;
-      }
-      if (changes.path !== undefined) returnToWorkbench();
+      if (store.embeddedEditorStore.visible || changes.path !== undefined) returnToWorkbench();
       else if (store.commandPaneStore.pane) store.commandPaneStore.close();
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [store, browse, changes, returnToWorkbench]);
+  }, [store, changes, returnToWorkbench]);
+
+  const openSourceLocation = useCallback(
+    (location: SourceLocation) => {
+      if (!session) return;
+      void store
+        .openFileInIde({
+          ...location,
+          path: toWorkspaceRelativePath(location.path, session.workspacePath),
+        })
+        .catch(() => undefined);
+    },
+    [session, store],
+  );
+
+  const projectTranscriptBehavior = session
+    ? {
+        onFork: (entryId: string) => {
+          void store.sessionForkStore.forkAt(entryId);
+        },
+        openSourceLocation,
+        onOpenReviewRun: (threadId?: string) => {
+          void store.openSessionChanges(threadId);
+        },
+        waitingForUser: Boolean(extensionUi.request || artifactInteractions?.request),
+        messageComments: session.messageCommentsStore,
+        subagents: session.subagentActivityStore,
+        subscribeToChatAboutSelection,
+        inlineWidgets: root.inlineWidgetStore,
+        artifacts: {
+          records: session.model.artifacts.map((artifact) => artifact.value),
+          interaction: session.artifactInteractionStore,
+        },
+      }
+    : undefined;
 
   if (!persistence.hydrated)
     return (
@@ -163,19 +192,21 @@ export const App = observer(function App() {
         <LoadingState label="Restoring Cake" />
       </main>
     );
+  if (store.embeddedEditorStore.visible && session && projectTranscriptBehavior)
+    return (
+      <StoreProvider key={`${session.workspacePath}\u0000${session.sessionId}`} store={session}>
+        <IdeWorkspace
+          editor={store.embeddedEditorStore}
+          reviews={reviews}
+          projectChat={session.chatStore}
+          transcriptBehavior={projectTranscriptBehavior}
+          onBack={returnToWorkbench}
+        />
+      </StoreProvider>
+    );
   if (changes.path !== undefined)
     return (
-      <ChangeExplorer
-        store={changes}
-        reviews={reviews}
-        browse={browse}
-        chat={store}
-        onClose={returnToWorkbench}
-      />
-    );
-  if (browse.path !== undefined)
-    return (
-      <WorkspaceBrowser store={browse} reviews={reviews} chat={store} onClose={returnToWorkbench} />
+      <ChangeExplorer store={changes} reviews={reviews} chat={store} onClose={returnToWorkbench} />
     );
 
   const shellStyle: CSSProperties & Record<"--sidebar-width" | "--right-pane-width", string> = {
@@ -353,15 +384,6 @@ export const App = observer(function App() {
                       notify={root.toastStore.show}
                     />
                     <button
-                      className="header-pane-toggle"
-                      type="button"
-                      aria-label="Browse project files"
-                      onClick={() => void store.openWorkspaceBrowser()}
-                    >
-                      <BrowseIcon />
-                      <span>Browse</span>
-                    </button>
-                    <button
                       className={`header-pane-toggle${store.commandPaneStore.pane === "tree" ? " active" : ""}`}
                       type="button"
                       aria-label="Session tree"
@@ -395,29 +417,7 @@ export const App = observer(function App() {
               <ProjectSessionPluginRail side="left" />
               <Chat
                 store={session.chatStore}
-                transcriptBehavior={{
-                  onFork: (entryId) => {
-                    void store.sessionForkStore.forkAt(entryId);
-                  },
-                  openFileInEditor: (path) => root.openFileInEditor(session.workspacePath, path),
-                  openFilePath: (path) => {
-                    void store
-                      .openWorkspaceBrowser(toWorkspaceRelativePath(path, session.workspacePath))
-                      .catch(() => undefined);
-                  },
-                  onOpenReviewRun: (threadId) => {
-                    void store.openSessionChanges(threadId);
-                  },
-                  waitingForUser: Boolean(extensionUi.request || artifactInteractions?.request),
-                  messageComments: session.messageCommentsStore,
-                  subagents: session.subagentActivityStore,
-                  subscribeToChatAboutSelection,
-                  inlineWidgets: root.inlineWidgetStore,
-                  artifacts: {
-                    records: session.model.artifacts.map((artifact) => artifact.value),
-                    interaction: session.artifactInteractionStore,
-                  },
-                }}
+                transcriptBehavior={projectTranscriptBehavior}
                 empty={
                   <div className="chat-empty">
                     <span className="cake-orbit">
@@ -433,7 +433,11 @@ export const App = observer(function App() {
                 }
                 footer={
                   <>
-                    <ArtifactsPanel session={session} inlineWidgets={root.inlineWidgetStore} />
+                    <ArtifactsPanel
+                      session={session}
+                      inlineWidgets={root.inlineWidgetStore}
+                      onOpenSourceLocation={openSourceLocation}
+                    />
                     <Slot name="project-session.transcript.after" />
                   </>
                 }

@@ -1,4 +1,6 @@
 import { Store, child, createStore } from "r-state-tree";
+import type { ReviewAnchor } from "../../ipc/review-contract";
+import type { SourceLocation } from "../../ipc/source-location";
 import type {
   ApplicationState,
   ChatConfiguration,
@@ -7,7 +9,6 @@ import type {
   WindowViewState,
 } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent, PiState } from "../desktop-client";
-import { BrowseStore, type BrowseStoreProps } from "./BrowseStore";
 import { ChangesStore, type ChangesStoreProps } from "./ChangesStore";
 import { EmbeddedEditorStore, type EmbeddedEditorStoreProps } from "./EmbeddedEditorStore";
 import type { ReviewsStore } from "./ReviewsStore";
@@ -40,7 +41,6 @@ export interface ProjectWorkbenchStoreProps {
     | "respondToWorkspaceTrust"
     | "restartPi"
   >;
-  browseClient: BrowseStoreProps["client"];
   changesClient: ChangesStoreProps["client"];
   commandPaneClient: CommandPaneStoreProps["client"];
   embeddedEditorClient: EmbeddedEditorStoreProps["client"];
@@ -92,19 +92,11 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   @child
-  get browseStore(): BrowseStore {
-    return createStore(BrowseStore, {
-      client: this.props.browseClient,
-      projectPath: () => this.projectPath,
-    });
-  }
-
-  @child
   get embeddedEditorStore(): EmbeddedEditorStore {
     return createStore(EmbeddedEditorStore, {
       client: this.props.embeddedEditorClient,
       projectPath: () => this.projectPath,
-      schedulePersistence: () => this.props.persistence().schedule(),
+      parts: () => this.activeSession?.canonicalParts ?? [],
       startCakeChat: (prompt) => this.props.startCakeChat(prompt),
     });
   }
@@ -387,7 +379,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
     this.changesStore.reset();
-    this.browseStore.close();
     this.embeddedEditorStore.close();
     this.props.persistence().schedule();
     session.composerStore.requestFocus();
@@ -439,7 +430,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
     this.changesStore.reset();
-    this.browseStore.close();
     this.embeddedEditorStore.close();
     this.props.persistence().schedule();
     session.composerStore.requestFocus();
@@ -496,7 +486,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
     this.changesStore.reset();
-    this.browseStore.close();
     this.embeddedEditorStore.close();
     try {
       await this.client.openWorkspace({
@@ -535,27 +524,81 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       ? this.reviews.threads.find((item) => item.id === threadId)
       : this.reviews.openThreads.find((item) => item.anchor.view !== "file");
     if (thread?.anchor.view === "file") {
-      await this.openWorkspaceBrowser(thread.anchor.path);
       this.reviews.selectThread(thread.id);
+      await this.openFileInIde({
+        path: thread.anchor.path,
+        range: {
+          start: {
+            line:
+              (thread.anchor.start.newLine ??
+                thread.anchor.start.oldLine ??
+                thread.anchor.start.diffLine + 1) - 1,
+            column: thread.anchor.start.column,
+          },
+          end: {
+            line:
+              (thread.anchor.end.newLine ??
+                thread.anchor.end.oldLine ??
+                thread.anchor.end.diffLine + 1) - 1,
+            column: thread.anchor.end.column,
+          },
+        },
+      });
       return;
     }
-    this.browseStore.close();
     this.embeddedEditorStore.close();
     if (thread) this.reviews.selectThread(thread.id);
     else this.reviews.clearActiveThread();
     await this.changesStore.open(thread?.anchor.path);
   }
 
-  async openWorkspaceBrowser(path?: string) {
+  async openFileInIde(location: SourceLocation) {
+    if (!this.activeSessionExists) return;
     this.commandPaneStore.dismiss();
     this.changesStore.close();
+    await this.embeddedEditorStore.show(location);
+  }
+
+  /** Opens Cake's existing code-chat draft for a selection made in embedded VS Code. */
+  private async openEmbeddedEditorSelection(
+    event: Extract<DesktopClientEvent, { type: "embedded-editor-selection" }>,
+  ) {
+    if (
+      event.workspacePath !== this.projectPath ||
+      !this.activeSessionExists ||
+      event.endLine < event.startLine
+    )
+      return;
+    this.changesStore.close();
     this.reviews.clearActiveThread();
-    await this.browseStore.open(path);
+    if (!this.embeddedEditorStore.visible)
+      await this.embeddedEditorStore.show({ path: event.path });
+    if (this.signal.aborted || event.workspacePath !== this.projectPath) return;
+    const anchor: ReviewAnchor = {
+      path: event.path,
+      view: "file",
+      start: {
+        diffLine: event.startLine,
+        oldLine: event.startLine + 1,
+        newLine: event.startLine + 1,
+        column: event.startColumn,
+      },
+      end: {
+        diffLine: event.endLine,
+        oldLine: event.endLine + 1,
+        newLine: event.endLine + 1,
+        column: event.endColumn,
+      },
+      selectedText: event.selectedText,
+      contextBefore: event.contextBefore,
+      contextAfter: event.contextAfter,
+      diff: "",
+    };
+    this.reviews.prepareDraft(anchor);
   }
 
   dismissSecondarySurfaces() {
     this.commandPaneStore.dismiss();
-    this.browseStore.close();
     this.embeddedEditorStore.close();
     this.changesStore.close();
   }
@@ -673,6 +716,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       event.type === "embedded-editor-activity"
     ) {
       this.embeddedEditorStore.receive(event);
+      return;
+    }
+    if (event.type === "embedded-editor-selection") {
+      void this.openEmbeddedEditorSelection(event);
       return;
     }
     if (event.type === "pi-state-changed") {

@@ -20,7 +20,6 @@ import { AppControlOperationStore } from "./AppControlOperationStore";
 import { ProjectCatalogStore } from "./ProjectCatalogStore";
 import { WindowPersistenceCoordinatorStore } from "./WindowPersistenceCoordinatorStore";
 import { ToastStore } from "./ToastStore";
-import { describeError } from "../error-details";
 import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
 
 export class RootStore extends Store<{ client: DesktopClient }> {
@@ -56,19 +55,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       this.appShellStore.selectProjectSession(sessionId);
     }
     await opening;
-  }
-
-  async openFileInEditor(workspacePath: string, path: string) {
-    try {
-      await this.client.openFileInEditor(workspacePath, path);
-    } catch (error) {
-      const described = describeError(error, `File: ${path}`);
-      this.toastStore.show({
-        tone: "error",
-        title: "Could not open editor",
-        message: described.message,
-      });
-    }
   }
 
   async openSessionChanges(sessionId: string) {
@@ -247,7 +233,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   get projectWorkbenchStore(): ProjectWorkbenchStore {
     return createStore(ProjectWorkbenchStore, {
       client: this.client,
-      browseClient: this.client,
       changesClient: this.client,
       commandPaneClient: this.client,
       embeddedEditorClient: this.client,
@@ -488,6 +473,11 @@ export class RootStore extends Store<{ client: DesktopClient }> {
           event.part.status === "complete") ||
         (event.part.kind === "attachment" && event.part.attachmentKind === "image");
       if (canReconcileOptimisticMessage) session?.composerStore.reconcile(event.sessionId);
+      if (
+        this.projectWorkbenchStore.isActiveSession(event.sessionId) &&
+        (event.part.kind === "tool" || (event.part.kind === "text" && event.part.role === "user"))
+      )
+        void this.projectWorkbenchStore.embeddedEditorStore.syncAgentChanges();
       return;
     }
     if (event.type === "part-removed") {
@@ -558,6 +548,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
           this.appShellStore.selectProjectSession(event.snapshot.sessionId);
         }
         void this.projectWorkbenchStore.changesStore.refresh();
+        void this.projectWorkbenchStore.embeddedEditorStore.syncAgentChanges();
       }
       return;
     }

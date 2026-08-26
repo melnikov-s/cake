@@ -18,6 +18,8 @@ import type {
 } from "../ipc/session-contract";
 import type { ArtifactRecord } from "../ipc/artifact-contract";
 import type { ReviewAnchor, ReviewThread } from "../ipc/review-contract";
+import type { SourceLocation } from "../ipc/source-location";
+import type { AgentChange } from "../ipc/agent-change";
 import type { WorktreeLandOutcome, WorktreeRecord, WorktreeStatus } from "../ipc/worktree-contract";
 import type { CustomizationState, PluginDiagnostic, PluginStatus } from "../plugin/plugin-contract";
 import type {
@@ -142,7 +144,19 @@ export type DesktopClientEvent =
   | { type: "application-state-changed"; state: ApplicationState }
   | { type: "plugin-agent-event"; pluginId: string; snapshot: PluginAgentSnapshot }
   | { type: "embedded-editor-state-received"; status: EmbeddedEditorStatus; message?: string }
-  | { type: "embedded-editor-activity"; workspacePath: string; path: string };
+  | { type: "embedded-editor-activity"; workspacePath: string; path: string }
+  | {
+      type: "embedded-editor-selection";
+      workspacePath: string;
+      path: string;
+      startLine: number;
+      startColumn: number;
+      endLine: number;
+      endColumn: number;
+      selectedText: string;
+      contextBefore: string;
+      contextAfter: string;
+    };
 
 export interface DesktopClient {
   chooseProject(): Promise<string | undefined>;
@@ -214,9 +228,7 @@ export interface DesktopClient {
   cancelPluginCompletion(pluginId: string, requestId: string): Promise<void>;
   chooseAttachments(): Promise<Attachment[]>;
   suggestFiles(workspacePath: string, prefix: string): Promise<FileSuggestion[]>;
-  listWorkspaceFiles(workspacePath: string): Promise<string[]>;
   readWorkspaceFile(workspacePath: string, path: string): Promise<string>;
-  openFileInEditor(workspacePath: string, path: string): Promise<void>;
   compileInlineWidget(
     language: InlineWidgetLanguage,
     source: string,
@@ -234,7 +246,6 @@ export interface DesktopClient {
   loadWindowState(): Promise<WindowViewState>;
   saveWindowState(state: WindowViewState): Promise<void>;
   loadApplicationState(): Promise<ApplicationState>;
-  setEditorCommand(command: string): Promise<ApplicationState>;
   setVscodeServerPath(path: string | undefined): Promise<ApplicationState>;
   getEmbeddedEditorState(): Promise<EmbeddedEditorStateSnapshot>;
   installEmbeddedEditor(): Promise<void>;
@@ -246,7 +257,8 @@ export interface DesktopClient {
     width: number;
     height: number;
   }): Promise<void>;
-  revealInEmbeddedEditor(workspacePath: string, path: string, line?: number): Promise<void>;
+  revealInEmbeddedEditor(workspacePath: string, location: SourceLocation): Promise<void>;
+  updateEmbeddedEditorChanges(workspacePath: string, changes: AgentChange[]): Promise<void>;
   setUtilityModel(model: UtilityModel | undefined): Promise<ApplicationState>;
   setModelPresets(
     presets: readonly ModelPreset[],
@@ -566,7 +578,8 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
       status: event.status,
       message: event.message,
     };
-  if (event.type === "embedded-editor-activity") return event;
+  if (event.type === "embedded-editor-activity" || event.type === "embedded-editor-selection")
+    return event;
   return undefined;
 }
 
@@ -760,28 +773,11 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         throw new Error("Cake received invalid file suggestions");
       return response.suggestions;
     },
-    async listWorkspaceFiles(workspacePath) {
-      const response = await bridge.request({ type: "list-workspace-files", workspacePath });
-      if (response.type !== "workspace-files")
-        throw new Error("Cake received an invalid workspace file list");
-      return response.files;
-    },
     async readWorkspaceFile(workspacePath, path) {
       const response = await bridge.request({ type: "read-workspace-file", workspacePath, path });
       if (response.type !== "workspace-file")
         throw new Error("Cake received invalid workspace file content");
       return response.content;
-    },
-    async openFileInEditor(workspacePath, path) {
-      const requestId = crypto.randomUUID();
-      const response = await bridge.request({
-        type: "open-file-in-editor",
-        requestId,
-        workspacePath,
-        path,
-      });
-      if (response.type !== "accepted" || response.requestId !== requestId)
-        throw new Error("Cake received a mismatched editor response");
     },
     async compileInlineWidget(language, source, capability) {
       const response = await bridge.request({
@@ -817,12 +813,6 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         throw new Error("Cake received invalid application state");
       return response.state;
     },
-    async setEditorCommand(command) {
-      const response = await bridge.request({ type: "set-editor-command", command });
-      if (response.type !== "application-state-updated")
-        throw new Error("Cake could not update the editor command");
-      return response.state;
-    },
     async setVscodeServerPath(path) {
       const response = await bridge.request({ type: "set-vscode-server-path", path });
       if (response.type !== "application-state-updated")
@@ -851,14 +841,22 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       const requestId = crypto.randomUUID();
       await accept(bridge, { type: "update-embedded-editor-bounds", requestId, ...input });
     },
-    async revealInEmbeddedEditor(workspacePath, path, line) {
+    async revealInEmbeddedEditor(workspacePath, location) {
       const requestId = crypto.randomUUID();
       await accept(bridge, {
         type: "reveal-in-embedded-editor",
         requestId,
         workspacePath,
-        path,
-        line,
+        location,
+      });
+    },
+    async updateEmbeddedEditorChanges(workspacePath, changes) {
+      const requestId = crypto.randomUUID();
+      await accept(bridge, {
+        type: "update-embedded-editor-changes",
+        requestId,
+        workspacePath,
+        changes,
       });
     },
     async setUtilityModel(model) {

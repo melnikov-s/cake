@@ -1403,8 +1403,7 @@
   min-width: 0;
   flex: 1;
 }
-.change-explorer-file > header > .change-explorer-view-toggle,
-.workspace-browser-header-actions > .change-explorer-view-toggle {
+.change-explorer-file > header > .change-explorer-view-toggle {
   display: flex;
   flex: none;
   gap: 2px;
@@ -1412,13 +1411,6 @@
   border: 1px solid var(--border);
   border-radius: 7px;
   background: color-mix(in oklab, var(--muted) 65%, transparent);
-  -webkit-app-region: no-drag;
-}
-.change-explorer-file > header > .workspace-browser-header-actions {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 8px;
   -webkit-app-region: no-drag;
 }
 .change-explorer-view-toggle button {
@@ -1660,13 +1652,6 @@
 }
 .change-explorer-full-file .review-thread,
 .change-explorer-full-file .review-thread-collapsed {
-  grid-column: 1 / 3;
-}
-.workspace-source .change-explorer-line {
-  grid-template-columns: 4.25rem minmax(30rem, 1fr);
-}
-.workspace-source .review-thread,
-.workspace-source .review-thread-collapsed {
   grid-column: 1 / 3;
 }
 .change-explorer-file-state {
@@ -3469,34 +3454,11 @@ button.reasoning-summary {
   color: inherit;
   text-align: left;
 }
-.tool-editor-button,
-.diff-editor-button {
-  display: grid;
-  width: 25px;
-  height: 25px;
-  flex: none;
-  place-items: center;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted-foreground);
-}
-.tool-editor-button:hover,
-.diff-editor-button:hover {
-  border-color: var(--border);
-  background: var(--muted);
-  color: var(--foreground);
-}
 .tool-timer {
   flex: none;
   color: var(--muted-foreground);
   font: 11px var(--font-mono);
   font-variant-numeric: tabular-nums;
-}
-.tool-editor-button svg,
-.diff-editor-button svg {
-  width: 14px;
-  height: 14px;
 }
 .tool-summary:disabled {
   cursor: default;
@@ -3739,9 +3701,6 @@ button.reasoning-summary {
   color: oklch(0.58 0.18 28);
   font-style: normal;
   font-weight: 700;
-}
-.diff-view > header .diff-editor-button {
-  margin-left: 0;
 }
 .diff-scroll {
   width: 100%;

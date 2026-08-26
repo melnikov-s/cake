@@ -105,8 +105,12 @@ export const SourceReview = observer(function SourceReview({
   afterLines,
   onFocusThread,
 }: SourceReviewProps) {
-  const [composer, setComposer] = useState<{ anchor: ReviewAnchor }>();
+  const [, setComposer] = useState<{ anchor: ReviewAnchor }>();
   useEffect(() => () => reviews.cancelDraft(), [path, view, reviews]);
+  const draftAnchor =
+    reviews.draftAnchor?.path === path && reviews.draftAnchor.view === view
+      ? reviews.draftAnchor
+      : undefined;
   const makeAnchor = (
     startIndex: number,
     endIndex: number,
@@ -193,8 +197,8 @@ export const SourceReview = observer(function SourceReview({
                 : line || " "}
             </code>
           </div>
-          {composer && composer.anchor.end.diffLine === index && (
-            <ReviewDraftCard anchor={composer.anchor} store={reviews} onCancel={cancelComposer} />
+          {draftAnchor?.end.diffLine === index && (
+            <ReviewDraftCard anchor={draftAnchor} store={reviews} onCancel={cancelComposer} />
           )}
           {threads
             .filter((thread) => thread.anchor.end.diffLine === index)

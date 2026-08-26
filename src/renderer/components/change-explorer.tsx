@@ -4,7 +4,6 @@ import { Button } from "./ui/button";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { ChangesStore } from "../stores/ChangesStore";
 import type { ReviewsStore } from "../stores/ReviewsStore";
-import type { BrowseStore } from "../stores/BrowseStore";
 import { reviewThreadPreview } from "./source-review";
 import { SourceExplorerLayout, SourceTree, sourceTree } from "./source-explorer";
 import { PanelResizeHandle } from "./panel-resize-handle";
@@ -25,13 +24,11 @@ function threadLocation(thread: ReviewsStore["threads"][number]) {
 export const ChangeExplorer = observer(function ChangeExplorer({
   store,
   reviews,
-  browse,
   chat,
   onClose,
 }: {
   store: ChangesStore;
   reviews: ReviewsStore;
-  browse: BrowseStore;
   chat: ProjectWorkbenchStore;
   onClose?: () => void;
 }) {
@@ -104,13 +101,20 @@ export const ChangeExplorer = observer(function ChangeExplorer({
           <header>
             <div>
               <small title={context}>{context}</small>
-              <h1>
-                {change
-                  ? change.previousPath
-                    ? `${change.previousPath} → ${change.path}`
-                    : change.path
-                  : emptyTitle}
-              </h1>
+              {change ? (
+                <Button
+                  variant="ghost"
+                  className="h-auto min-w-0 justify-start px-0 py-0 font-mono text-base"
+                  title={change.path}
+                  onClick={() => void chat.openFileInIde({ path: change.path })}
+                >
+                  <span className="truncate">
+                    {change.previousPath ? `${change.previousPath} → ${change.path}` : change.path}
+                  </span>
+                </Button>
+              ) : (
+                <h1>{emptyTitle}</h1>
+              )}
             </div>
             <label className="change-explorer-source">
               <span>Show</span>
@@ -168,7 +172,7 @@ export const ChangeExplorer = observer(function ChangeExplorer({
                 scrollRequest={scrollRequest}
               />
             ) : (
-              <FullFile change={change} reviews={reviews} browse={browse} store={store} />
+              <FullFile change={change} reviews={reviews} store={store} />
             )
           ) : (
             <div className="change-explorer-file-state">

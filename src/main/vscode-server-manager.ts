@@ -6,6 +6,8 @@ import { copyFile, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { WebContentsView, BrowserWindow } from "electron";
 import { z } from "zod";
+import type { SourceLocation } from "../ipc/source-location";
+import type { AgentChange } from "../ipc/agent-change";
 import {
   downloadFile,
   extractArchive,
@@ -22,6 +24,7 @@ const IDLE_EVICT_MS = 3 * 60_000;
 /** Hard cap on concurrently running servers; beyond this the least recently used one dies. */
 const MAX_RUNNING_SERVERS = 3;
 const START_TIMEOUT = 45_000;
+const COMPANION_START_TIMEOUT = 5_000;
 
 export type EmbeddedEditorStatus = "missing" | "downloading" | "starting" | "ready" | "failed";
 
@@ -42,14 +45,24 @@ const bridgeMessageSchema = z.discriminatedUnion("type", [
     workspace: z.string().min(1).max(4_096),
     path: z.string().min(1).max(8_192),
   }),
+  z.object({
+    type: z.literal("selection"),
+    workspace: z.string().min(1).max(4_096),
+    path: z.string().min(1).max(8_192),
+    startLine: z.number().int().nonnegative(),
+    startColumn: z.number().int().nonnegative(),
+    endLine: z.number().int().nonnegative(),
+    endColumn: z.number().int().nonnegative(),
+    selectedText: z.string().min(1).max(48_000),
+    contextBefore: z.string().max(8_000),
+    contextAfter: z.string().max(8_000),
+  }),
 ]);
 
 /** Requests Cake posts to the companion extension's localhost server. */
-interface CompanionRevealRequest {
-  type: "reveal";
-  path: string;
-  line?: number;
-}
+type CompanionRequest =
+  | ({ type: "reveal" } & SourceLocation)
+  | { type: "agent-changes"; changes: AgentChange[] };
 
 interface BroadcastTarget {
   broadcast(
@@ -59,7 +72,19 @@ interface BroadcastTarget {
           status: EmbeddedEditorStatus;
           message?: string;
         }
-      | { type: "embedded-editor-activity"; workspacePath: string; path: string },
+      | { type: "embedded-editor-activity"; workspacePath: string; path: string }
+      | {
+          type: "embedded-editor-selection";
+          workspacePath: string;
+          path: string;
+          startLine: number;
+          startColumn: number;
+          endLine: number;
+          endColumn: number;
+          selectedText: string;
+          contextBefore: string;
+          contextAfter: string;
+        },
   ): void;
 }
 
@@ -110,6 +135,7 @@ export interface CompanionManifest {
   activationEvents: string[];
   contributes: {
     commands: Array<{ command: string; title: string }>;
+    menus?: Record<string, Array<{ command: string; when?: string; group?: string }>>;
   };
 }
 
@@ -132,6 +158,7 @@ export class VsCodeServerManager {
   private companionPorts = new Map<string, number>();
   private bridge: HttpServer | undefined;
   private bridgePort: number | undefined;
+  private readonly bridgeToken = randomBytes(32).toString("hex");
   private installPromise: Promise<void> | undefined;
 
   constructor(props: VsCodeServerManagerProps) {
@@ -290,15 +317,35 @@ export class VsCodeServerManager {
     });
   }
 
-  /** Asks the workspace's companion extension to reveal a file at a line. */
-  async reveal(workspacePath: string, path: string, line?: number) {
+  /** Asks the workspace's companion extension to reveal and highlight a source location. */
+  async reveal(workspacePath: string, location: SourceLocation) {
     const resolved = await realpath(workspacePath);
     const instance = this.servers.get(resolved);
-    const port = this.companionPorts.get(resolved);
-    if (!instance || !port)
-      throw new Error("The embedded editor is not running for this project yet");
+    if (!instance) throw new Error("The embedded editor is not running for this project yet");
+    const port = await this.waitForCompanionPort(resolved);
     this.touch(instance);
-    await postJson(port, "/", { type: "reveal", path, line });
+    await postJson(port, "/", { type: "reveal", ...location }, this.bridgeToken);
+  }
+
+  /** Updates the transcript-derived change projection shown by the companion extension. */
+  async updateAgentChanges(workspacePath: string, changes: AgentChange[]) {
+    const resolved = await realpath(workspacePath);
+    const instance = this.servers.get(resolved);
+    if (!instance) throw new Error("The embedded editor is not running for this project yet");
+    const port = await this.waitForCompanionPort(resolved);
+    this.touch(instance);
+    await postJson(port, "/", { type: "agent-changes", changes }, this.bridgeToken);
+  }
+
+  private async waitForCompanionPort(workspacePath: string) {
+    const deadline = Date.now() + COMPANION_START_TIMEOUT;
+    while (Date.now() < deadline) {
+      const port = this.companionPorts.get(workspacePath);
+      if (port) return port;
+      if (!this.servers.has(workspacePath)) break;
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+    }
+    throw new Error("The VS Code companion extension did not finish starting");
   }
 
   /** Detaches one window's view and lets its former server go idle. */
@@ -389,6 +436,7 @@ export class VsCodeServerManager {
           const env: NodeJS.ProcessEnv = {
             ...process.env,
             CAKE_BRIDGE_PORT: String(this.bridgePort),
+            CAKE_BRIDGE_TOKEN: this.bridgeToken,
             CAKE_WORKSPACE_PATH: workspacePath,
           };
           delete env.ELECTRON_RUN_AS_NODE;
@@ -494,6 +542,10 @@ export class VsCodeServerManager {
   private async startBridge() {
     if (this.bridge) return;
     const server = createServer((req, res) => {
+      if (req.headers["x-cake-token"] !== this.bridgeToken) {
+        res.writeHead(401).end();
+        return;
+      }
       if (req.method !== "POST") {
         res.writeHead(405).end();
         return;
@@ -502,7 +554,7 @@ export class VsCodeServerManager {
       let size = 0;
       req.on("data", (chunk: Buffer) => {
         size += chunk.length;
-        if (size > 65_536) {
+        if (size > 96_000) {
           res.writeHead(413).end();
           req.destroy();
           return;
@@ -540,10 +592,31 @@ export class VsCodeServerManager {
       this.companionPorts.set(message.data.workspace, message.data.port);
       return;
     }
+    if (message.data.type === "activity") {
+      this.props.broadcast({
+        type: "embedded-editor-activity",
+        workspacePath: message.data.workspace,
+        path: message.data.path,
+      });
+      return;
+    }
+    for (const [webContentsId, entry] of this.views) {
+      if (entry.workspacePath !== message.data.workspace) continue;
+      BrowserWindow.getAllWindows()
+        .find((candidate) => candidate.webContents.id === webContentsId)
+        ?.webContents.focus();
+    }
     this.props.broadcast({
-      type: "embedded-editor-activity",
+      type: "embedded-editor-selection",
       workspacePath: message.data.workspace,
       path: message.data.path,
+      startLine: message.data.startLine,
+      startColumn: message.data.startColumn,
+      endLine: message.data.endLine,
+      endColumn: message.data.endColumn,
+      selectedText: message.data.selectedText,
+      contextBefore: message.data.contextBefore,
+      contextAfter: message.data.contextAfter,
     });
   }
 
@@ -579,7 +652,8 @@ function detachView(window: BrowserWindow, view: WebContentsView) {
 async function postJson(
   port: number,
   requestPath: string,
-  body: CompanionRevealRequest,
+  body: CompanionRequest,
+  token: string,
 ): Promise<void> {
   const payload = Buffer.from(JSON.stringify(body));
   await new Promise<void>((resolvePromise, reject) => {
@@ -588,12 +662,28 @@ async function postJson(
       port,
       method: "POST",
       path: requestPath,
-      headers: { "content-type": "application/json", "content-length": payload.length },
+      headers: {
+        "content-type": "application/json",
+        "content-length": payload.length,
+        "x-cake-token": token,
+      },
       timeout: 5_000,
     });
     request.on("response", (response) => {
-      response.resume();
-      resolvePromise();
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer) => chunks.push(chunk));
+      response.on("end", () => {
+        if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
+          resolvePromise();
+          return;
+        }
+        reject(
+          new Error(
+            Buffer.concat(chunks).toString("utf8") ||
+              `Companion extension returned HTTP ${response.statusCode ?? "unknown"}`,
+          ),
+        );
+      });
     });
     request.on("timeout", () => {
       request.destroy(new Error("Companion extension did not respond"));

@@ -171,7 +171,7 @@ export const ActivityGroup = observer(function ActivityGroup({
               <WorkLogDiff
                 parts={parts}
                 streaming={activityIsRunning}
-                onOpenFile={behavior.openFileInEditor}
+                onOpenSourceLocation={behavior.openSourceLocation}
               />
             </div>
           ) : (

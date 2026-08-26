@@ -24,8 +24,6 @@ function createBridge() {
         type: "file-suggestions",
         suggestions: [{ value: "@src/app.ts", label: "app.ts", description: "src/app.ts" }],
       };
-    if (input.type === "list-workspace-files")
-      return { type: "workspace-files", files: ["PLAN.md", "src/app.ts"] };
     if (input.type === "load-window-state")
       return {
         type: "window-state-loaded",
@@ -83,7 +81,6 @@ describe("desktop client", () => {
     expect(await client.suggestFiles("/project", "app")).toEqual([
       { value: "@src/app.ts", label: "app.ts", description: "src/app.ts" },
     ]);
-    expect(await client.listWorkspaceFiles("/project")).toEqual(["PLAN.md", "src/app.ts"]);
     expect(await client.deletePlugin("example.calendar")).toEqual([]);
     await client.respondToWorkspaceTrust({ operationId, path: "/project", approved: true });
     await client.openWorkspace({ operationId, path: "/project" });
@@ -185,10 +182,6 @@ describe("desktop client", () => {
       type: "suggest-files",
       workspacePath: "/project",
       prefix: "app",
-    });
-    expect(desktop.request).toHaveBeenCalledWith({
-      type: "list-workspace-files",
-      workspacePath: "/project",
     });
     expect(desktop.request).toHaveBeenCalledWith({
       type: "delete-plugin",

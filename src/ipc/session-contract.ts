@@ -16,8 +16,6 @@ export const thinkingLevelSchema = z.enum([
   "max",
 ]);
 
-export const DEFAULT_EDITOR_COMMAND = "code";
-
 export const utilityModelSchema = z.object({
   provider: z.string().min(1).max(256),
   modelId: z.string().min(1).max(512),
@@ -464,7 +462,6 @@ export const applicationStateSchema = z.object({
   utilityModel: utilityModelSchema.optional(),
   modelPresets: z.array(modelPresetSchema).max(100).optional(),
   defaultModelPresetId: z.uuid().optional(),
-  editorCommand: z.string().max(512).optional(),
   vscodeServerPath: z.string().max(4_096).optional(),
 });
 
@@ -486,7 +483,6 @@ export const windowViewStateSchema = z.object({
   activeConversation: windowConversationSelectionSchema.optional(),
   recentProjectPaths: z.array(z.string().max(4_096)).max(50).default([]),
   draft: z.string().max(262_144).default(""),
-  projectBrowserMode: z.enum(["builtin", "vscode"]).optional(),
   theme: z.enum(["system", "light", "dark"]).default("system"),
   workLogViewMode: workLogViewModeSchema.default("auto"),
   workLogsExpansion: workLogsExpansionSchema.default("collapsed"),

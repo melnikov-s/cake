@@ -111,9 +111,6 @@ describe("process IPC", () => {
       }),
     ).toEqual({ type: "suggest-files", workspacePath: "/project", prefix: "src/app" });
     expect(
-      desktopRequestSchema.parse({ type: "list-workspace-files", workspacePath: "/project" }),
-    ).toEqual({ type: "list-workspace-files", workspacePath: "/project" });
-    expect(
       desktopRequestSchema.parse({
         type: "read-workspace-file",
         workspacePath: "/project",

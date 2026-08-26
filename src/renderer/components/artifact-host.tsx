@@ -4,6 +4,7 @@ import { FullscreenButton } from "@/components/fullscreen-surface";
 import { observer } from "r-state-tree/react";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { JsonValue } from "../../ipc/json-contract";
+import type { SourceLocation } from "../../ipc/source-location";
 
 import { cakeRequestV1Schema } from "../../ipc/request-contract";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
@@ -22,6 +23,7 @@ interface ArtifactHostProps {
   onSubmit?(value: JsonValue): void;
   onSkip?(): void;
   inlineWidgets?: InlineWidgetStore;
+  onOpenSourceLocation?(location: SourceLocation): void;
 }
 
 export const ArtifactHost = observer(function ArtifactHost({
@@ -31,6 +33,7 @@ export const ArtifactHost = observer(function ArtifactHost({
   onSubmit,
   onSkip,
   inlineWidgets,
+  onOpenSourceLocation,
 }: ArtifactHostProps) {
   const artifact = record.artifact;
   const [fullscreen, setFullscreen] = useState(false);
@@ -65,7 +68,11 @@ export const ArtifactHost = observer(function ArtifactHost({
         )}
       </header>
       <div className="artifact-body">
-        {artifact.kind === "markdown" ? <Markdown>{artifact.payload.markdown}</Markdown> : null}
+        {artifact.kind === "markdown" ? (
+          <Markdown onOpenSourceLocation={onOpenSourceLocation}>
+            {artifact.payload.markdown}
+          </Markdown>
+        ) : null}
         {artifact.kind === "table" ? <TableArtifact artifact={artifact} /> : null}
         {artifact.kind === "diagram" ? <DiagramArtifact artifact={artifact} /> : null}
         {artifact.kind === "form" ? (
@@ -105,7 +112,9 @@ export const ArtifactHost = observer(function ArtifactHost({
       </div>
       <details className="artifact-fallback">
         <summary>Readable fallback</summary>
-        <Markdown>{artifact.fallback.markdown}</Markdown>
+        <Markdown onOpenSourceLocation={onOpenSourceLocation}>
+          {artifact.fallback.markdown}
+        </Markdown>
       </details>
     </article>
   );

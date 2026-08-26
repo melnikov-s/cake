@@ -181,11 +181,11 @@ function explorerProps(store: ProjectWorkbenchStore) {
       selectSource: fixture.selectChangeSource ?? vi.fn(),
       selectTurn: fixture.selectChangeTurn ?? vi.fn(),
       focusPath: fixture.selectChangeExplorerFile,
+      readFile: fixture.readWorkspaceFile,
       close: fixture.closeChangeExplorer,
     } as any,
     reviews: reviews as any,
-    browse: { readFile: fixture.readWorkspaceFile } as any,
-    chat: { sessionTitle: fixture.sessionTitle } as any,
+    chat: { sessionTitle: fixture.sessionTitle, openFileInIde: vi.fn() } as any,
   };
 }
 

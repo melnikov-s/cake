@@ -19,6 +19,7 @@ import {
   type MessageCommentAnchorRect,
 } from "@/components/message-comment-popover";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
+import type { SourceLocation } from "../../ipc/source-location";
 import type { UiPart } from "../../ipc/session-contract";
 import type { ArtifactInteractionStore } from "../stores/ArtifactInteractionStore";
 import type { ChatStore } from "../stores/ChatStore";
@@ -50,9 +51,9 @@ export const ChatTextMessage = forwardRef<
     part: Extract<UiPart, { kind: "text" }>;
     contentRef?: RefObject<HTMLDivElement | null>;
     children?: ReactNode;
-    onOpenFilePath?(path: string): void;
+    onOpenSourceLocation?(location: SourceLocation): void;
   }
->(function ChatTextMessage({ part, contentRef, children, onOpenFilePath }, ref) {
+>(function ChatTextMessage({ part, contentRef, children, onOpenSourceLocation }, ref) {
   const assistant = part.role === "assistant";
   // A steered or queued prompt is not yet accepted into the conversation;
   // render it with a distinct pending treatment until Pi delivers it.
@@ -83,7 +84,10 @@ export const ChatTextMessage = forwardRef<
         ref={contentRef}
         className={assistant ? "assistant-message-content" : "user-message"}
       >
-        <Markdown highlightCode={part.status !== "streaming"} onOpenFilePath={onOpenFilePath}>
+        <Markdown
+          highlightCode={part.status !== "streaming"}
+          onOpenSourceLocation={onOpenSourceLocation}
+        >
           {part.text}
         </Markdown>
       </MessageContent>
@@ -233,9 +237,8 @@ export function captureTranscriptSelection(
 export interface ChatTranscriptBehavior {
   onFork?(entryId: string): void;
   onOpenReviewRun?(threadId?: string): void;
-  openFileInEditor?(path: string): void | Promise<void>;
-  /** Opens a workspace-relative file path mentioned in a message inside the project's Browse view. */
-  openFilePath?(path: string): void;
+  /** Opens a structured workspace source location in Cake's embedded VS Code IDE. */
+  openSourceLocation?(location: SourceLocation): void;
   waitingForUser?: boolean;
   inlineWidgets?: InlineWidgetStore;
   artifacts?: { records: ArtifactRecord[]; interaction: ArtifactInteractionStore };
@@ -276,7 +279,10 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
   }, [copied]);
 
   const content = () => (
-    <Markdown highlightCode={part.status !== "streaming"} onOpenFilePath={behavior.openFilePath}>
+    <Markdown
+      highlightCode={part.status !== "streaming"}
+      onOpenSourceLocation={behavior.openSourceLocation}
+    >
       {part.text}
     </Markdown>
   );
@@ -356,7 +362,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       ref={messageRef}
       part={part}
       contentRef={contentRef}
-      onOpenFilePath={behavior.openFilePath}
+      onOpenSourceLocation={behavior.openSourceLocation}
     >
       <FullscreenButton
         className="assistant-message-expand"

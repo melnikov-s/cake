@@ -1,8 +1,9 @@
 import { useMemo } from "react";
+import type { SourceLocation } from "../../../ipc/source-location";
 import { CopyFilePathButton } from "@/components/copy-file-path-button";
-import { IconButton } from "../ui/icon-button";
-import { EditorIcon } from "../ui/icons";
+import { Button } from "../ui/button";
 import { syntaxTokenStyle, useHighlightedSource } from "./code";
+import { changedRanges } from "../../../utils/agent-changes";
 
 export type DiffLine = {
   key: string;
@@ -71,13 +72,13 @@ export function DiffView({
   diff,
   filePath,
   label = "Changes",
-  onOpenFile,
+  onOpenSourceLocation,
   highlightCode = true,
 }: {
   diff: string;
   filePath?: string;
   label?: string;
-  onOpenFile?: (path: string) => void | Promise<void>;
+  onOpenSourceLocation?: (location: SourceLocation) => void | Promise<void>;
   highlightCode?: boolean;
 }) {
   const lines = useMemo(() => parseDiff(diff), [diff]);
@@ -87,27 +88,42 @@ export function DiffView({
   );
   const tokens = useHighlightedSource(filePath ?? "", source, highlightCode);
   const stats = diffStats(diff);
+  const changed = changedRanges(diff);
+  const location = filePath
+    ? {
+        path: filePath,
+        range:
+          changed.length > 0
+            ? {
+                start: changed[0]!.start,
+                end: changed.at(-1)!.end ?? changed.at(-1)!.start,
+              }
+            : undefined,
+      }
+    : undefined;
   return (
     <section className="diff-view" aria-label={`${label}${filePath ? ` to ${filePath}` : ""}`}>
       <header>
         <div className="group/path flex min-w-0 items-center gap-1">
-          <code title={filePath}>{filePath ?? label}</code>
+          {filePath && onOpenSourceLocation ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-auto min-w-0 px-1 py-0 font-mono text-xs"
+              title={filePath}
+              onClick={() => void onOpenSourceLocation(location!)}
+            >
+              <span className="truncate">{filePath}</span>
+            </Button>
+          ) : (
+            <code title={filePath}>{filePath ?? label}</code>
+          )}
           {filePath && <CopyFilePathButton path={filePath} />}
         </div>
         <span>
           <b>+{stats.additions}</b>
           <i>−{stats.deletions}</i>
         </span>
-        {filePath && onOpenFile && (
-          <IconButton
-            className="diff-editor-button"
-            tooltip="Open file in editor"
-            ariaLabel={`Open ${filePath} in editor`}
-            onClick={() => void onOpenFile?.(filePath)}
-          >
-            <EditorIcon />
-          </IconButton>
-        )}
       </header>
       <div className="diff-scroll" role="table" aria-label="Code changes">
         {lines.map((line, index) =>

@@ -3,7 +3,7 @@
   "displayName": "Cake Companion",
   "version": "1.0.0",
   "private": true,
-  "description": "Bridges the embedded VS Code editor with Cake: reveal requests in, editor activity out.",
+  "description": "Bridges embedded VS Code with Cake source reveals, selections, and agent-change review navigation.",
   "license": "UNLICENSED",
   "publisher": "cake",
   "main": "./extension.js",
@@ -12,8 +12,59 @@
       {
         "command": "cake.reveal",
         "title": "Cake: Reveal File"
+      },
+      {
+        "command": "cake.askAboutSelection",
+        "title": "Cake: Ask About Selection"
+      },
+      {
+        "command": "cake.previousChange",
+        "title": "Cake: Previous Change"
+      },
+      {
+        "command": "cake.nextChange",
+        "title": "Cake: Next Change"
+      },
+      {
+        "command": "cake.openCompleteChange",
+        "title": "Cake: Open Complete Change"
+      },
+      {
+        "command": "cake.clearReviewedChanges",
+        "title": "Cake: Mark Changes Reviewed"
       }
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "cake.askAboutSelection",
+          "when": "editorHasSelection && resourceScheme == file",
+          "group": "navigation@100"
+        },
+        {
+          "command": "cake.openCompleteChange",
+          "when": "resourceScheme == file",
+          "group": "navigation@101"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "cake.previousChange",
+          "when": "resourceScheme == file",
+          "group": "navigation@90"
+        },
+        {
+          "command": "cake.nextChange",
+          "when": "resourceScheme == file",
+          "group": "navigation@91"
+        },
+        {
+          "command": "cake.openCompleteChange",
+          "when": "resourceScheme == file",
+          "group": "navigation@92"
+        }
+      ]
+    }
   },
   "activationEvents": ["onStartupFinished"],
   "engines": {

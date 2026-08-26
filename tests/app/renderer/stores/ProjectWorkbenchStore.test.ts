@@ -115,9 +115,7 @@ function createDesktopClient(restoredPath?: string) {
     cancelPluginCompletion: vi.fn(async () => undefined),
     chooseAttachments: vi.fn(async () => []),
     suggestFiles: vi.fn(async () => []),
-    listWorkspaceFiles: vi.fn(async () => []),
     readWorkspaceFile: vi.fn(async () => ""),
-    openFileInEditor: vi.fn(async () => undefined),
     compileInlineWidget: vi.fn(async () => ({
       url: "cake-widget://document/00000000-0000-4000-8000-000000000001",
       token: "00000000-0000-4000-8000-000000000001",
@@ -138,13 +136,6 @@ function createDesktopClient(restoredPath?: string) {
     })),
     saveWindowState: vi.fn(async () => undefined),
     loadApplicationState: vi.fn(async () => ({
-      schemaVersion: 1 as const,
-      projects: [],
-      resolvedSessionIds: [],
-      resolvedCakeChatSessionIds: [],
-      trustedProjectPaths: [],
-    })),
-    setEditorCommand: vi.fn(async () => ({
       schemaVersion: 1 as const,
       projects: [],
       resolvedSessionIds: [],
@@ -259,6 +250,7 @@ function createDesktopClient(restoredPath?: string) {
     openEmbeddedEditor: vi.fn(async () => undefined),
     updateEmbeddedEditorBounds: vi.fn(async () => undefined),
     revealInEmbeddedEditor: vi.fn(async () => undefined),
+    updateEmbeddedEditorChanges: vi.fn(async () => undefined),
     steerSubagent: vi.fn(async () => undefined),
     abortSubagent: vi.fn(async () => undefined),
     submit: vi.fn(async () => undefined),
@@ -1252,26 +1244,38 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("loads the full project tree for the workspace browser and keeps selection window-local", async () => {
+  it("opens a Cake code-chat draft for a selection made in embedded VS Code", async () => {
     const desktop = createDesktopClient();
-    vi.mocked(desktop.client.listWorkspaceFiles).mockResolvedValue([
-      "PLAN.md",
-      "src/app.ts",
-      "src/main.ts",
-    ]);
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop);
+    await store.embeddedEditorStore.show();
 
-    await store.openWorkspaceBrowser();
+    desktop.emit({
+      type: "embedded-editor-selection",
+      workspacePath: "/project",
+      path: "src/main.ts",
+      startLine: 4,
+      startColumn: 2,
+      endLine: 5,
+      endColumn: 8,
+      selectedText: "const answer =\n  calculate();",
+      contextBefore: "function run() {",
+      contextAfter: "}",
+    });
+    await flush();
 
-    expect(desktop.client.listWorkspaceFiles).toHaveBeenCalledWith("/project");
-    expect(store.browseStore.files).toEqual(["PLAN.md", "src/app.ts", "src/main.ts"]);
-    expect(store.browseStore.path).toBeNull();
-    store.browseStore.select("src/main.ts");
-    expect(store.browseStore.path).toBe("src/main.ts");
-    store.browseStore.close();
-    expect(store.browseStore.path).toBeUndefined();
+    expect(store.embeddedEditorStore.visible).toBe(true);
+    expect(root.reviewsStore.draftAnchor).toEqual({
+      path: "src/main.ts",
+      view: "file",
+      start: { diffLine: 4, oldLine: 5, newLine: 5, column: 2 },
+      end: { diffLine: 5, oldLine: 6, newLine: 6, column: 8 },
+      selectedText: "const answer =\n  calculate();",
+      contextBefore: "function run() {",
+      contextAfter: "}",
+      diff: "",
+    });
     root[Symbol.dispose]();
   });
 

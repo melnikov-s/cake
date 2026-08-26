@@ -1,15 +1,16 @@
 import type { UiPart } from "../../../ipc/session-contract";
+import type { SourceLocation } from "../../../ipc/source-location";
 import { workLogChanges } from "../../../utils/turn-diff";
 import { DiffView } from "./diff-view";
 
 export function WorkLogDiff({
   parts,
   streaming,
-  onOpenFile,
+  onOpenSourceLocation,
 }: {
   parts: readonly UiPart[];
   streaming: boolean;
-  onOpenFile?: (path: string) => void | Promise<void>;
+  onOpenSourceLocation?: (location: SourceLocation) => void | Promise<void>;
 }) {
   const changes = workLogChanges(parts);
   if (changes.length === 0)
@@ -27,7 +28,7 @@ export function WorkLogDiff({
           diff={change.diff}
           filePath={change.path}
           label={streaming ? "Streaming changes" : "File changes"}
-          onOpenFile={onOpenFile}
+          onOpenSourceLocation={onOpenSourceLocation}
         />
       ))}
     </div>

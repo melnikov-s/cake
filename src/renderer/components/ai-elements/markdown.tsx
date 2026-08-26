@@ -10,25 +10,39 @@ import {
 } from "streamdown";
 import { syntaxHighlighter } from "@/lib/syntax-highlighter";
 import { cn } from "@/lib/utils";
+import type { SourceLocation } from "../../../ipc/source-location";
+import { formatSourceLocation, parseSourceLocation } from "../../../utils/source-location";
 
 /** Matches web-style hrefs that must never be treated as workspace file paths. */
 const nonPathHref = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i;
 const workspacePathPrefix = "/__cake_workspace__/";
+const protectedMarkdown = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|!?\[[^\]]*\]\([^)]+\))/g;
+const bareSourceReference =
+  /(^|[\s(])((?:[^\s/:#()[\],]+\/)*[^\s/:#()[\],]+\.[a-z][a-z0-9._+-]*(?::\d+(?::\d+)?|#L\d+(?:-L?\d+)?)?)(?=$|[\s),.;!?])/gi;
 
 type AnchorProps = ComponentProps<"a"> & { node?: unknown };
 
-/** Makes bare workspace paths parseable by Streamdown's hardened link policy. */
+function sourceHref(reference: string) {
+  return `${workspacePathPrefix}${reference}`;
+}
+
+/** Makes explicit and bare workspace source references parseable and clickable. */
 function prepareWorkspaceMarkdown(markdown: string) {
-  return markdown.replace(/\]\(([^)\s]+)\)/g, (match, target: string) => {
-    if (
-      nonPathHref.test(target) ||
-      target.startsWith("/") ||
-      target.startsWith("./") ||
-      target.startsWith("../")
-    )
-      return match;
-    return `](${workspacePathPrefix}${target})`;
-  });
+  return markdown
+    .split(protectedMarkdown)
+    .map((segment, index) => {
+      if (index % 2 === 1) {
+        return segment.replace(/\]\(([^)\s]+)\)$/, (match, target: string) =>
+          parseSourceLocation(target) ? `](${sourceHref(target)})` : match,
+        );
+      }
+      return segment.replace(bareSourceReference, (match, prefix: string, reference: string) =>
+        parseSourceLocation(reference)
+          ? `${prefix}[${reference}](${sourceHref(reference)})`
+          : match,
+      );
+    })
+    .join("");
 }
 
 function externalAnchor(allProps: AnchorProps) {
@@ -54,45 +68,49 @@ type MarkdownProps = Omit<
   children: string;
   /** Defers expensive highlighting while content is still changing. */
   highlightCode?: boolean;
-  /** Invoked when the reader clicks a link whose target is a file path instead of a web URL. */
-  onOpenFilePath?(path: string): void;
+  /** Invoked when the reader selects a workspace source reference. */
+  onOpenSourceLocation?(location: SourceLocation): void;
 };
 
 export function Markdown({
   children,
   className,
   highlightCode = true,
-  onOpenFilePath,
+  onOpenSourceLocation,
   ...props
 }: MarkdownProps) {
-  const source = onOpenFilePath ? prepareWorkspaceMarkdown(children) : children;
+  const source = onOpenSourceLocation ? prepareWorkspaceMarkdown(children) : children;
   const components = useMemo<Components>(() => {
-    if (!onOpenFilePath) return { a: externalAnchor };
-    const openFilePath = onOpenFilePath;
+    if (!onOpenSourceLocation) return { a: externalAnchor };
+    const openSourceLocation = onOpenSourceLocation;
     return {
       a(allProps: AnchorProps) {
         const href = allProps.href;
-        if (!href || nonPathHref.test(href)) return externalAnchor(allProps);
-        const workspaceHref = href.startsWith(workspacePathPrefix)
+        if (!href) return externalAnchor(allProps);
+        const reference = href.startsWith(workspacePathPrefix)
           ? href.slice(workspacePathPrefix.length)
           : href.startsWith("./")
             ? href.slice(2)
             : href;
-        const props = { ...allProps, href: workspaceHref };
+        const location = parseSourceLocation(reference);
+        if (!location || (nonPathHref.test(href) && !href.startsWith(workspacePathPrefix)))
+          return externalAnchor(allProps);
+        const label = formatSourceLocation(location);
+        const props = { ...allProps, href: reference };
         delete props.node;
         return (
           <a
             {...props}
-            title={`Open ${workspaceHref} in Browse`}
+            title={`Open ${label} in VS Code`}
             onClick={(event) => {
               event.preventDefault();
-              openFilePath(workspaceHref);
+              openSourceLocation(location);
             }}
           />
         );
       },
     };
-  }, [onOpenFilePath]);
+  }, [onOpenSourceLocation]);
   return (
     <Streamdown
       {...props}

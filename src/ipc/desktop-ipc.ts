@@ -2,6 +2,8 @@ import { z } from "zod";
 import { artifactRecordSchema } from "./artifact-contract";
 import { reviewAnchorSchema, reviewThreadSchema } from "./review-contract";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
+import { sourceLocationSchema } from "./source-location";
+import { agentChangeSchema } from "./agent-change";
 import {
   customizationStateSchema,
   pluginBackendEventSchema,
@@ -216,6 +218,18 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     workspacePath: z.string().max(4_096),
     path: ipcProjectionString(8_192),
   }),
+  z.object({
+    type: z.literal("embedded-editor-selection"),
+    workspacePath: z.string().max(4_096),
+    path: ipcProjectionString(8_192),
+    startLine: z.number().int().nonnegative(),
+    startColumn: z.number().int().nonnegative(),
+    endLine: z.number().int().nonnegative(),
+    endColumn: z.number().int().nonnegative(),
+    selectedText: ipcProjectionString(48_000),
+    contextBefore: ipcProjectionString(8_000),
+    contextAfter: ipcProjectionString(8_000),
+  }),
 ]);
 
 export const desktopRequestSchema = z.discriminatedUnion("type", [
@@ -227,7 +241,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     y: z.number().int().min(-1_000_000).max(1_000_000),
   }),
   z.object({ type: z.literal("get-home-directory") }),
-  z.object({ type: z.literal("set-editor-command"), command: z.string().max(512) }),
   z.object({ type: z.literal("set-vscode-server-path"), path: z.string().max(4_096).optional() }),
   z.object({ type: z.literal("get-embedded-editor-state") }),
   z.object({ type: z.literal("install-embedded-editor"), requestId: z.uuid() }),
@@ -249,8 +262,13 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     type: z.literal("reveal-in-embedded-editor"),
     requestId: z.uuid(),
     workspacePath: z.string().max(4_096),
-    path: z.string().min(1).max(8_192),
-    line: z.number().int().min(0).max(10_000_000).optional(),
+    location: sourceLocationSchema,
+  }),
+  z.object({
+    type: z.literal("update-embedded-editor-changes"),
+    requestId: z.uuid(),
+    workspacePath: z.string().max(4_096),
+    changes: z.array(agentChangeSchema).max(2_000),
   }),
   z.object({ type: z.literal("get-customization-state") }),
   z.object({ type: z.literal("get-plugin-authoring-reference") }),
@@ -382,15 +400,8 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     workspacePath: z.string().max(4_096),
     prefix: z.string().max(4_096),
   }),
-  z.object({ type: z.literal("list-workspace-files"), workspacePath: z.string().max(4_096) }),
   z.object({
     type: z.literal("read-workspace-file"),
-    workspacePath: z.string().max(4_096),
-    path: z.string().min(1).max(8_192),
-  }),
-  z.object({
-    type: z.literal("open-file-in-editor"),
-    requestId: z.uuid(),
     workspacePath: z.string().max(4_096),
     path: z.string().min(1).max(8_192),
   }),
@@ -808,10 +819,6 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("file-suggestions"),
     suggestions: z.array(fileSuggestionSchema).max(20),
-  }),
-  z.object({
-    type: z.literal("workspace-files"),
-    files: z.array(z.string().min(1).max(8_192)).max(50_000),
   }),
   z.object({ type: z.literal("workspace-file"), content: z.string().max(2_000_000) }),
   z.object({ type: z.literal("inline-widget-compiled"), widget: compiledInlineWidgetSchema }),

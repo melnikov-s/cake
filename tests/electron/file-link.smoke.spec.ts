@@ -6,7 +6,7 @@ import { cakeWorkspaceSessionDirectory } from "../../src/agent/session-discovery
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("a file-path link in an assistant message opens the file in Browse", async () => {
+test("a file-path link opens IDE mode with VS Code and the shared Cake chat drawer", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-file-link-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -94,13 +94,54 @@ test("a file-path link in an assistant message opens the file in Browse", async 
     const page = await application.firstWindow();
     const link = page.locator('a[href="src/modelMeta.ts"]');
     await expect(link).toHaveText("src/modelMeta.ts");
-    expect(await link.getAttribute("title")).toBe("Open src/modelMeta.ts in Browse");
+    expect(await link.getAttribute("title")).toBe("Open src/modelMeta.ts in VS Code");
+    const agentInput = page.getByRole("combobox", { name: "Message" });
+    await agentInput.fill("Keep this IDE draft");
 
     await link.click();
 
-    await expect(page.locator(".workspace-browser")).toBeVisible();
-    await expect(page.locator('[aria-label="Workspace file src/modelMeta.ts"]')).toContainText(
-      "export const meta = 1;",
+    await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
+    await expect(page.getByText("Cake Agent", { exact: true })).toBeVisible();
+    const drawerInput = page.getByRole("combobox", { name: "Message" });
+    await expect(drawerInput).toHaveValue("Keep this IDE draft");
+    await drawerInput.focus();
+    await expect(drawerInput).toBeFocused();
+    await drawerInput.fill("Chat from the IDE drawer");
+    await expect(drawerInput).toHaveValue("Chat from the IDE drawer");
+    await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
+
+    await application.evaluate(
+      ({ BrowserWindow }, event) => {
+        for (const window of BrowserWindow.getAllWindows())
+          window.webContents.send("cake:event", event);
+      },
+      {
+        type: "embedded-editor-selection",
+        workspacePath: project,
+        path: "src/modelMeta.ts",
+        startLine: 0,
+        startColumn: 13,
+        endLine: 0,
+        endColumn: 17,
+        selectedText: "meta",
+        contextBefore: "",
+        contextAfter: "",
+      },
+    );
+    await expect(page.getByText("Chat about selection", { exact: true })).toBeVisible();
+    await expect(page.getByText("src/modelMeta.ts · L1", { exact: true })).toBeVisible();
+    const selectionInput = page.getByRole("combobox", { name: "Message code chat" });
+    await expect(selectionInput).toBeFocused();
+    await selectionInput.fill("Why is this exported?");
+    await expect(selectionInput).toHaveValue("Why is this exported?");
+    await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
+    await page.getByRole("button", { name: "Project chat" }).click();
+    await expect(drawerInput).toHaveValue("Chat from the IDE drawer");
+
+    await page.getByRole("button", { name: "Back to Agent" }).click();
+    await expect(page.getByText("Phase 4 — Model references")).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Message" })).toHaveValue(
+      "Chat from the IDE drawer",
     );
   } finally {
     await application.close();

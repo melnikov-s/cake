@@ -36,7 +36,6 @@ export const SettingsPage = observer(function SettingsPage({
   );
   const providers = settings.providers;
   const utility = settings.utilityModel;
-  const editor = settings.editor;
   const appearance = settings.appearance;
   const error = settings.error ?? configuration?.error ?? store.error;
   const providerGroups = configuration?.modelsByProvider ?? [];
@@ -346,25 +345,6 @@ export const SettingsPage = observer(function SettingsPage({
         ) : (
           <p className="settings-empty">Open a chat to load Pi’s settings.</p>
         )}
-      </section>
-
-      <section className="settings-section" aria-labelledby="editor-title">
-        <header>
-          <div>
-            <h2 id="editor-title">Editor</h2>
-            <p>Open files from work logs in the editor you use for this project.</p>
-          </div>
-          <span className="settings-source">Cake</span>
-        </header>
-        <div className="settings-fields">
-          <SettingsTextField
-            label="Editor command"
-            description="Executable used to open files. VS Code is the default (code)."
-            value={editor.command}
-            placeholder="code"
-            onApply={(value) => void editor.setCommand(value)}
-          />
-        </div>
       </section>
 
       <section className="settings-section" aria-labelledby="resources-title">

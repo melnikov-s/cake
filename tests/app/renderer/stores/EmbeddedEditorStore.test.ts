@@ -1,8 +1,9 @@
 import { createStore, mount } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { UiPart } from "../../../../src/ipc/session-contract";
 import type { DesktopClientEvent } from "../../../../src/renderer/desktop-client";
 import { EmbeddedEditorStore } from "../../../../src/renderer/stores/EmbeddedEditorStore";
-function createHarness() {
+function createHarness(parts: UiPart[] = []) {
   const client = {
     getEmbeddedEditorState: vi.fn(async () => ({ status: "missing" as const })),
     installEmbeddedEditor: vi.fn(async () => undefined),
@@ -16,6 +17,7 @@ function createHarness() {
     openEmbeddedEditor: vi.fn(async () => undefined),
     updateEmbeddedEditorBounds: vi.fn(async () => undefined),
     revealInEmbeddedEditor: vi.fn(async () => undefined),
+    updateEmbeddedEditorChanges: vi.fn(async () => undefined),
   };
   const startCakeChat = vi.fn(async (prompt: string) => {
     void prompt;
@@ -24,7 +26,7 @@ function createHarness() {
     createStore(EmbeddedEditorStore, {
       client,
       projectPath: () => "/tmp/project",
-      schedulePersistence: vi.fn(),
+      parts: () => parts,
       startCakeChat,
     }),
   );
@@ -43,26 +45,15 @@ describe("EmbeddedEditorStore", () => {
     vi.clearAllMocks();
   });
 
-  it("defaults to the built-in reader and persists mode changes", () => {
-    const { store } = createHarness();
-    const persistence = vi.fn();
-    store.props.schedulePersistence = persistence;
-
-    expect(store.mode).toBe("builtin");
-    store.setMode("vscode");
-
-    expect(store.mode).toBe("vscode");
-    expect(persistence).toHaveBeenCalled();
-    store[Symbol.dispose]();
-  });
-
-  it("opens the editor when switching to VS Code mode and hides it on builtin", async () => {
+  it("shows and hides the IDE while retaining the running editor", async () => {
     const { client, store } = createHarness();
 
-    await store.setMode("vscode");
-    await vi.waitFor(() => expect(client.openEmbeddedEditor).toHaveBeenCalledWith("/tmp/project"));
+    await store.show();
+    expect(store.visible).toBe(true);
+    expect(client.openEmbeddedEditor).toHaveBeenCalledWith("/tmp/project");
 
-    await store.setMode("builtin");
+    store.hide();
+    expect(store.visible).toBe(false);
     await vi.waitFor(() =>
       expect(client.updateEmbeddedEditorBounds).toHaveBeenCalledWith({
         visible: false,
@@ -95,17 +86,44 @@ describe("EmbeddedEditorStore", () => {
     store[Symbol.dispose]();
   });
 
-  it("reveals through the client only in VS Code mode", async () => {
+  it("reveals through the client only while the IDE is visible", async () => {
     const { client, store } = createHarness();
 
-    await store.reveal("src/app.ts", 3);
+    await store.reveal({ path: "src/app.ts", range: { start: { line: 3 } } });
     expect(client.revealInEmbeddedEditor).not.toHaveBeenCalled();
 
-    store.setMode("vscode");
-    await vi.waitFor(() => expect(client.openEmbeddedEditor).toHaveBeenCalled());
-    await store.reveal("src/app.ts", 3);
+    const location = { path: "src/app.ts", range: { start: { line: 3 } } };
+    await store.show(location);
 
-    expect(client.revealInEmbeddedEditor).toHaveBeenCalledWith("/tmp/project", "src/app.ts", 3);
+    expect(client.revealInEmbeddedEditor).toHaveBeenCalledWith("/tmp/project", location);
+    store[Symbol.dispose]();
+  });
+
+  it("syncs transcript-derived current-turn changes after opening the IDE", async () => {
+    const parts = [
+      { id: "user", kind: "text", role: "user", text: "change it", status: "complete" },
+      {
+        id: "edit",
+        kind: "tool",
+        name: "edit",
+        input: "{}",
+        filePath: "src/app.ts",
+        diff: "@@ -4 +4 @@\n-old\n+new",
+        state: "success",
+      },
+    ] as const;
+    const { client, store } = createHarness([...parts]);
+
+    await store.show();
+
+    expect(client.updateEmbeddedEditorChanges).toHaveBeenCalledWith("/tmp/project", [
+      {
+        id: "edit:0",
+        path: "src/app.ts",
+        range: { start: { line: 3 }, end: { line: 3 } },
+        currentTurn: true,
+      },
+    ]);
     store[Symbol.dispose]();
   });
 

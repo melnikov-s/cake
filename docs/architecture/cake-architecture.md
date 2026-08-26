@@ -215,8 +215,10 @@ The window Store hierarchy mirrors the product surfaces:
   those owners without absorbing their state.
 - `ProjectWorkbenchStore` coordinates project activation and its focused
   workflow children: `CommandPaneStore`, `SessionManagementStore`,
-  `SessionForkStore`, `WorktreeCreationStore`, `BrowseStore`, `ChangesStore`,
-  `EmbeddedEditorStore`, and `WorktreeStore`. Each child owns its own operation
+  `SessionForkStore`, `WorktreeCreationStore`, `ChangesStore`, `EmbeddedEditorStore`,
+  and `WorktreeStore`. `EmbeddedEditorStore` owns IDE mode, where the native VS Code
+  view occupies the source pane and Cake's shared chat occupies the right drawer.
+  Each child owns its own operation
   state and lifetime; the workbench does not re-export one-for-one child APIs.
 - The root-scoped `SessionRegistryStore` preserves one keyed
   `ProjectSessionStore` for every loaded project-session ID so background
@@ -262,7 +264,7 @@ flowchart TD
   Root --> Settings["SettingsStore"]
   Root --> Persistence["WindowPersistenceCoordinatorStore"]
   Workbench -. selects from .-> Registry
-  Workbench --> Browse["BrowseStore"]
+  Workbench --> IDE["EmbeddedEditorStore"]
   Workbench --> Changes["ChangesStore"]
   Registry --> Session["ProjectSessionStore (one per loaded target)"]
   Session --> Model["Session"]

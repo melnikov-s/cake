@@ -1,4 +1,7 @@
 import { Store } from "r-state-tree";
+import type { SourceLocation } from "../../ipc/source-location";
+import type { UiPart } from "../../ipc/session-contract";
+import { agentChanges } from "../../utils/agent-changes";
 import type {
   DesktopClient,
   DesktopClientEvent,
@@ -16,19 +19,19 @@ export interface EmbeddedEditorStoreProps {
     | "openEmbeddedEditor"
     | "updateEmbeddedEditorBounds"
     | "revealInEmbeddedEditor"
+    | "updateEmbeddedEditorChanges"
   >;
   projectPath(): string | undefined;
-  schedulePersistence(): void;
+  parts(): readonly UiPart[];
   startCakeChat(prompt: string): Promise<void>;
 }
 
 /**
- * Owns the embedded VS Code editor workflow for the project browser: the
- * built-in-reader vs. VS Code mode choice, install/launch status, native view
- * bounds reporting, and reveal intents into the running editor.
+ * Owns the embedded VS Code workflow: IDE-mode visibility, install/launch
+ * status, native view bounds reporting, and source reveal intents.
  */
 export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
-  mode: "builtin" | "vscode" = "builtin";
+  visible = false;
   status: EmbeddedEditorStatus = "missing";
   statusMessage: string | undefined;
   customPath: string | undefined;
@@ -40,6 +43,9 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   private boundsRevision = 0;
   private refreshRevision = 0;
   private installation: Promise<void> | undefined;
+  private sentChangesFingerprint: string | undefined;
+  private syncingChanges = false;
+  private changeSyncPending = false;
 
   async refresh() {
     const revision = ++this.refreshRevision;
@@ -55,19 +61,6 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     }
   }
 
-  setMode(mode: "builtin" | "vscode") {
-    if (this.mode === mode) return;
-    this.mode = mode;
-    this.props.schedulePersistence();
-    if (mode === "vscode") void this.open();
-    else void this.reportBounds(null);
-  }
-
-  /** Restores persisted presentation without launching an editor during hydration. */
-  restoreMode(mode: "builtin" | "vscode") {
-    this.mode = mode;
-  }
-
   receive(
     event: Extract<
       DesktopClientEvent,
@@ -81,6 +74,12 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     if (event.workspacePath === this.props.projectPath()) this.lastActivePath = event.path;
   }
 
+  async show(location?: SourceLocation) {
+    this.visible = true;
+    await this.open();
+    if (location) await this.reveal(location);
+  }
+
   async open() {
     const projectPath = this.props.projectPath();
     if (!projectPath) throw new Error("No project is open");
@@ -90,6 +89,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
       await this.props.client.openEmbeddedEditor(projectPath);
       if (this.signal.aborted || this.props.projectPath() !== projectPath) return;
       this.openedWorkspace = projectPath;
+      await this.syncAgentChanges();
     } catch (error) {
       if (this.signal.aborted) return;
       const described = describeError(error);
@@ -177,14 +177,42 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     }
   }
 
-  async reveal(path: string, line?: number) {
+  /** Serializes transcript-derived edits to VS Code; a newer update wins after the active send. */
+  async syncAgentChanges() {
     const projectPath = this.props.projectPath();
-    if (!projectPath || this.mode !== "vscode") return;
-    if (this.openedWorkspace !== projectPath) await this.open();
-    if (this.signal.aborted || this.props.projectPath() !== projectPath || this.mode !== "vscode")
+    if (!projectPath || !this.visible || this.openedWorkspace !== projectPath) return;
+    if (this.syncingChanges) {
+      this.changeSyncPending = true;
       return;
+    }
+    this.syncingChanges = true;
     try {
-      await this.props.client.revealInEmbeddedEditor(projectPath, path, line);
+      do {
+        this.changeSyncPending = false;
+        const changes = agentChanges(this.props.parts());
+        const fingerprint = JSON.stringify(changes);
+        if (fingerprint === this.sentChangesFingerprint) continue;
+        await this.props.client.updateEmbeddedEditorChanges(projectPath, changes);
+        if (this.signal.aborted || this.props.projectPath() !== projectPath) return;
+        this.sentChangesFingerprint = fingerprint;
+      } while (this.changeSyncPending);
+    } catch (error) {
+      if (this.signal.aborted) return;
+      const described = describeError(error);
+      this.error = described.message;
+      this.errorDetails = described.details;
+    } finally {
+      this.syncingChanges = false;
+    }
+  }
+
+  async reveal(location: SourceLocation) {
+    const projectPath = this.props.projectPath();
+    if (!projectPath || !this.visible) return;
+    if (this.openedWorkspace !== projectPath) await this.open();
+    if (this.signal.aborted || this.props.projectPath() !== projectPath || !this.visible) return;
+    try {
+      await this.props.client.revealInEmbeddedEditor(projectPath, location);
     } catch (error) {
       if (this.signal.aborted) return;
       const described = describeError(error);
@@ -193,10 +221,17 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     }
   }
 
+  hide() {
+    this.visible = false;
+    void this.reportBounds(null);
+  }
+
   close() {
+    this.hide();
     this.openedWorkspace = undefined;
     this.lastActivePath = undefined;
-    void this.reportBounds(null);
+    this.sentChangesFingerprint = undefined;
+    this.changeSyncPending = false;
   }
 
   private applySnapshot(state: EmbeddedEditorStateSnapshot) {

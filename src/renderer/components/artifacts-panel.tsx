@@ -2,13 +2,16 @@ import { observer } from "r-state-tree/react";
 import { ArtifactHost } from "./artifact-host";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
+import type { SourceLocation } from "../../ipc/source-location";
 
 export const ArtifactsPanel = observer(function ArtifactsPanel({
   session,
   inlineWidgets,
+  onOpenSourceLocation,
 }: {
   session: ProjectSessionStore;
   inlineWidgets: InlineWidgetStore;
+  onOpenSourceLocation?(location: SourceLocation): void;
 }) {
   const artifacts = session.artifactInteractionStore;
   const records = session.model.artifacts.map((artifact) => artifact.value);
@@ -44,6 +47,7 @@ export const ArtifactsPanel = observer(function ArtifactsPanel({
             onSubmit={(value) => void artifacts.answer(record, value)}
             onSkip={() => void artifacts.respond(undefined, true)}
             inlineWidgets={inlineWidgets}
+            onOpenSourceLocation={onOpenSourceLocation}
           />
         );
       })}

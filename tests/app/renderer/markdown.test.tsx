@@ -68,13 +68,31 @@ describe("Markdown", () => {
     );
   });
 
-  it("opens path-like links through onOpenFilePath and leaves web links external", () => {
-    const onOpenFilePath = vi.fn();
+  it("recognizes bare source references without changing inline code", () => {
     act(() =>
-      root.render(<Markdown onOpenFilePath={onOpenFilePath}>[file](src/modelMeta.ts)</Markdown>),
+      root.render(
+        <Markdown onOpenSourceLocation={() => undefined}>
+          See src/main.ts:880:12 and `src/not-a-link.ts:3`.
+        </Markdown>,
+      ),
+    );
+
+    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
+      "See [src/main.ts:880:12](/__cake_workspace__/src/main.ts:880:12) and `src/not-a-link.ts:3`.",
+    );
+  });
+
+  it("opens structured source links and leaves web links external", () => {
+    const onOpenSourceLocation = vi.fn();
+    act(() =>
+      root.render(
+        <Markdown onOpenSourceLocation={onOpenSourceLocation}>
+          [file](src/modelMeta.ts#L8-L12)
+        </Markdown>,
+      ),
     );
     expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
-      "[file](/__cake_workspace__/src/modelMeta.ts)",
+      "[file](/__cake_workspace__/src/modelMeta.ts#L8-L12)",
     );
     const anchorComponent = () => vi.mocked(Streamdown).mock.calls.at(-1)![0].components!.a!;
 
@@ -85,19 +103,25 @@ describe("Markdown", () => {
       return container.querySelector("a")!;
     };
 
-    const fileLink = renderAnchor({ href: "src/modelMeta.ts", children: "src/modelMeta.ts" });
+    const fileLink = renderAnchor({
+      href: "/__cake_workspace__/src/modelMeta.ts#L8-L12",
+      children: "src/modelMeta.ts#L8-L12",
+    });
     act(() => {
       fileLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
-    expect(onOpenFilePath).toHaveBeenCalledWith("src/modelMeta.ts");
+    expect(onOpenSourceLocation).toHaveBeenCalledWith({
+      path: "src/modelMeta.ts",
+      range: { start: { line: 7 }, end: { line: 11 } },
+    });
 
     const webLink = renderAnchor({ href: "https://example.com", children: "example" });
     expect(webLink.target).toBe("_blank");
-    expect(onOpenFilePath).toHaveBeenCalledTimes(1);
+    expect(onOpenSourceLocation).toHaveBeenCalledTimes(1);
 
     act(() => root.render(<Markdown>text</Markdown>));
     const defaultLink = renderAnchor({ href: "docs/readme.md", children: "readme" });
     expect(defaultLink.target).toBe("_blank");
-    expect(onOpenFilePath).toHaveBeenCalledTimes(1);
+    expect(onOpenSourceLocation).toHaveBeenCalledTimes(1);
   });
 });

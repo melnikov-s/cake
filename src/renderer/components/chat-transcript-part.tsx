@@ -37,9 +37,10 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
     return part.role === "assistant" ? (
       <AssistantTextMessage part={part} behavior={behavior} />
     ) : (
-      <ChatTextMessage part={part} onOpenFilePath={behavior.openFilePath} />
+      <ChatTextMessage part={part} onOpenSourceLocation={behavior.openSourceLocation} />
     );
-  if (part.kind === "skill") return <SkillMessage part={part} />;
+  if (part.kind === "skill")
+    return <SkillMessage part={part} onOpenSourceLocation={behavior.openSourceLocation} />;
   if (part.kind === "reasoning")
     return (
       <Reasoning
@@ -52,7 +53,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
       >
         <Markdown
           highlightCode={part.status !== "streaming"}
-          onOpenFilePath={behavior.openFilePath}
+          onOpenSourceLocation={behavior.openSourceLocation}
         >
           {part.text}
         </Markdown>
@@ -75,13 +76,14 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
           onSubmit={(value) => void behavior.artifacts!.interaction.answer(record, value)}
           onSkip={() => void behavior.artifacts!.interaction.respond(undefined, true)}
           inlineWidgets={behavior.inlineWidgets}
+          onOpenSourceLocation={behavior.openSourceLocation}
         />
       );
     }
     return (
       <Tool
         part={part}
-        onOpenFile={behavior.openFileInEditor}
+        onOpenSourceLocation={behavior.openSourceLocation}
         timer={
           <ToolRunTimer
             store={behavior.store}
@@ -127,7 +129,8 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
     );
   if (part.kind === "review-run")
     return <ReviewRunMessage run={part} onOpen={behavior.onOpenReviewRun} />;
-  if (part.kind === "compaction") return <CompactionMessage part={part} />;
+  if (part.kind === "compaction")
+    return <CompactionMessage part={part} onOpenSourceLocation={behavior.openSourceLocation} />;
   return <RetryNotice part={part} />;
 });
 

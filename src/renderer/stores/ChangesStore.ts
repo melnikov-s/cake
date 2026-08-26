@@ -6,7 +6,7 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 import { errorMessage } from "../../utils/error-message";
 
 export interface ChangesStoreProps {
-  client: Pick<DesktopClient, "inspectChanges">;
+  client: Pick<DesktopClient, "inspectChanges" | "readWorkspaceFile">;
   projectPath(): string | undefined;
   sessionId(): string | undefined;
   parts(): readonly UiPart[];
@@ -41,6 +41,12 @@ export class ChangesStore extends Store<ChangesStoreProps> {
   get selected() {
     if (this.path == null) return this.visibleChanges[0];
     return this.changeForPath(this.path) ?? this.visibleChanges[0];
+  }
+
+  async readFile(path: string) {
+    const projectPath = this.props.projectPath();
+    if (!projectPath) throw new Error("No project is open");
+    return this.props.client.readWorkspaceFile(projectPath, path);
   }
 
   async open(path?: string) {
