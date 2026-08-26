@@ -1,4 +1,5 @@
 import { observable, Store, untracked } from "r-state-tree";
+import type { StateSnapshot } from "react-virtuoso";
 import type {
   Attachment,
   FileSuggestion,
@@ -61,7 +62,7 @@ export class ChatStore extends Store<ChatStoreProps> {
   submittingLocally = false;
   loadingStartedAt: number | undefined;
   readonly workLogTimers = observable(new Map<string, WorkLogTimerState>());
-  transcriptScrollTop: number | undefined;
+  transcriptScrollState: StateSnapshot | undefined;
   private workLogTickNow = 0;
   private workLogTickInterval: ReturnType<typeof setInterval> | undefined;
 
@@ -238,8 +239,8 @@ export class ChatStore extends Store<ChatStoreProps> {
     this.props.persist?.();
   }
 
-  setTranscriptScrollTop(scrollTop: number | undefined) {
-    this.transcriptScrollTop = scrollTop;
+  setTranscriptScrollState(state: StateSnapshot | undefined) {
+    this.transcriptScrollState = state;
   }
 
   get workLogViewMode(): WorkLogViewMode {

@@ -26,7 +26,14 @@ vi.mock("@/components/ai-elements/conversation", () => ({
   ) {
     const scrollerRef = useRef<HTMLDivElement>(null);
     virtualizedProps.current = props as unknown as Record<string, unknown>;
-    useImperativeHandle(ref, () => ({ scrollToIndex }));
+    useImperativeHandle(ref, () => ({
+      getState: (callback: (state: unknown) => void) =>
+        callback({
+          ranges: [{ startIndex: 0, endIndex: props.data.length - 1, size: 100 }],
+          scrollTop: scrollerRef.current?.scrollTop ?? 0,
+        }),
+      scrollToIndex,
+    }));
     useEffect(() => {
       props.scrollerRef?.(scrollerRef.current);
       virtualizedLifecycle("mounted");
@@ -122,7 +129,12 @@ function Transcript({
       groups: observable(new Map()),
     };
   const workLogState = workLogStateRef.current;
-  const transcriptScrollTopsRef = useRef(new Map<string, number>());
+  const transcriptScrollStatesRef = useRef(
+    new Map<
+      string,
+      { ranges: Array<{ startIndex: number; endIndex: number; size: number }>; scrollTop: number }
+    >(),
+  );
   const store = {
     id: sessionId,
     parts,
@@ -174,12 +186,19 @@ function Transcript({
     setWorkLogItemOpen(partId: string, open: boolean) {
       workLogState.items.set(partId, open);
     },
-    get transcriptScrollTop() {
-      return transcriptScrollTopsRef.current.get(sessionId);
+    get transcriptScrollState() {
+      return transcriptScrollStatesRef.current.get(sessionId);
     },
-    setTranscriptScrollTop(scrollTop: number | undefined) {
-      if (scrollTop !== undefined) transcriptScrollTopsRef.current.set(sessionId, scrollTop);
-      else transcriptScrollTopsRef.current.delete(sessionId);
+    setTranscriptScrollState(
+      state:
+        | {
+            ranges: Array<{ startIndex: number; endIndex: number; size: number }>;
+            scrollTop: number;
+          }
+        | undefined,
+    ) {
+      if (state !== undefined) transcriptScrollStatesRef.current.set(sessionId, state);
+      else transcriptScrollStatesRef.current.delete(sessionId);
     },
     error: undefined,
   } as unknown as ChatStore;
@@ -902,7 +921,10 @@ describe("Transcript scrolling", () => {
       ["unmounted"],
       ["mounted"],
     ]);
-    expect(virtualizedProps.current?.initialScrollTop).toBe(240);
+    expect(virtualizedProps.current?.restoreStateFrom).toEqual({
+      ranges: [{ startIndex: 0, endIndex: 0, size: 100 }],
+      scrollTop: 240,
+    });
     expect(virtualizedProps.current?.initialTopMostItemIndex).toBeUndefined();
   });
 

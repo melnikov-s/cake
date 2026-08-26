@@ -17,6 +17,7 @@ import {
   Virtuoso,
   type FollowOutput,
   type IndexLocationWithAlign,
+  type StateSnapshot,
   type VirtuosoHandle,
   type VirtuosoProps,
 } from "react-virtuoso";
@@ -58,8 +59,8 @@ export interface VirtualizedConversationProps<Item> {
   customScrollParent?: HTMLElement;
   atBottomStateChange?: (atBottom: boolean) => void;
   followOutput?: FollowOutput;
-  initialScrollTop?: number;
   initialTopMostItemIndex?: IndexLocationWithAlign | number;
+  restoreStateFrom?: StateSnapshot;
   rangeChanged?: VirtuosoProps<Item, unknown>["rangeChanged"];
   scrollerRef?: VirtuosoProps<Item, unknown>["scrollerRef"];
   role?: AriaRole;
@@ -76,8 +77,8 @@ function VirtualizedConversationInner<Item>(
     customScrollParent,
     atBottomStateChange,
     followOutput,
-    initialScrollTop,
     initialTopMostItemIndex,
+    restoreStateFrom,
     rangeChanged,
     scrollerRef,
     role,
@@ -97,8 +98,8 @@ function VirtualizedConversationInner<Item>(
       {...(customScrollParent === undefined ? {} : { customScrollParent })}
       {...(atBottomStateChange === undefined ? {} : { atBottomStateChange })}
       {...(followOutput === undefined ? {} : { followOutput })}
-      {...(initialScrollTop === undefined ? {} : { initialScrollTop })}
       {...(initialTopMostItemIndex === undefined ? {} : { initialTopMostItemIndex })}
+      {...(restoreStateFrom === undefined ? {} : { restoreStateFrom })}
       {...(rangeChanged === undefined ? {} : { rangeChanged })}
       {...(scrollerRef === undefined ? {} : { scrollerRef })}
       {...(role === undefined ? {} : { role })}

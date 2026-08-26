@@ -60,7 +60,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   const followTurnRef = useRef<string | undefined>(undefined);
   const followOutputRef = useRef(true);
   const latestUserRef = useRef<{ storeId: string; partId?: string } | undefined>(undefined);
-  const restoredScrollTop = useMemo(() => store.transcriptScrollTop, [store]);
+  const restoredScrollState = useMemo(() => store.transcriptScrollState, [store]);
   const [draftAnchor, setDraftAnchor] = useState<MessageCommentAnchorRect>();
   const visibleParts = store.hideThinking
     ? store.parts.filter((part) => part.kind !== "reasoning")
@@ -121,7 +121,7 @@ export const ChatTranscript = observer(function ChatTranscript({
       previous.partId === latestUserPartId
     )
       return;
-    store.setTranscriptScrollTop(undefined);
+    store.setTranscriptScrollState(undefined);
     scrollToLatest();
     const frame = requestAnimationFrame(scrollToLatest);
     return () => cancelAnimationFrame(frame);
@@ -132,18 +132,18 @@ export const ChatTranscript = observer(function ChatTranscript({
   useEffect(() => {
     const scroller = virtualScrollerRef.current;
     if (!scroller) return;
-    let pendingScrollTop: number | undefined;
+    let pendingScrollState = store.transcriptScrollState;
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
-    const flushScrollState = () => {
-      if (saveTimer !== undefined) clearTimeout(saveTimer);
+    const commitScrollState = () => {
       saveTimer = undefined;
-      if (pendingScrollTop !== undefined) store.setTranscriptScrollTop(pendingScrollTop);
-      pendingScrollTop = undefined;
+      if (pendingScrollState) store.setTranscriptScrollState(pendingScrollState);
     };
-    const saveScrollState = () => {
-      pendingScrollTop = scroller.scrollTop;
-      if (saveTimer !== undefined) clearTimeout(saveTimer);
-      saveTimer = setTimeout(flushScrollState, 100);
+    const captureScrollState = () => {
+      virtuosoRef.current?.getState((state) => {
+        pendingScrollState = state;
+        if (saveTimer !== undefined) clearTimeout(saveTimer);
+        saveTimer = setTimeout(commitScrollState, 100);
+      });
     };
     const stopFollowing = () => {
       followOutputRef.current = false;
@@ -151,16 +151,17 @@ export const ChatTranscript = observer(function ChatTranscript({
     const stopFollowingForScrollbar = (event: PointerEvent) => {
       if (event.clientX >= scroller.getBoundingClientRect().right - 16) stopFollowing();
     };
-    scroller.addEventListener("scroll", saveScrollState, { passive: true });
+    scroller.addEventListener("scroll", captureScrollState, { passive: true });
     scroller.addEventListener("wheel", stopFollowing, { passive: true });
     scroller.addEventListener("touchmove", stopFollowing, { passive: true });
     scroller.addEventListener("pointerdown", stopFollowingForScrollbar);
     return () => {
-      scroller.removeEventListener("scroll", saveScrollState);
+      scroller.removeEventListener("scroll", captureScrollState);
       scroller.removeEventListener("wheel", stopFollowing);
       scroller.removeEventListener("touchmove", stopFollowing);
       scroller.removeEventListener("pointerdown", stopFollowingForScrollbar);
-      flushScrollState();
+      if (saveTimer !== undefined) clearTimeout(saveTimer);
+      if (pendingScrollState) store.setTranscriptScrollState(pendingScrollState);
     };
   }, [store]);
   const followStreamingOutput = useCallback((isAtBottom: boolean) => {
@@ -317,10 +318,10 @@ export const ChatTranscript = observer(function ChatTranscript({
         className="transcript [overflow-anchor:none]"
         data={items}
         computeItemKey={(_index, item) => item.id}
-        initialScrollTop={restoredScrollTop}
         initialTopMostItemIndex={
-          restoredScrollTop === undefined ? { index: items.length - 1, align: "end" } : undefined
+          restoredScrollState === undefined ? { index: items.length - 1, align: "end" } : undefined
         }
+        restoreStateFrom={restoredScrollState}
         followOutput={followStreamingOutput}
         scrollerRef={setVirtualScroller}
         components={{

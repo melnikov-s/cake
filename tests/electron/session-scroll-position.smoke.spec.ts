@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { _electron as electron, expect, test, type Locator } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/agent/session-discovery";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -15,10 +15,13 @@ function sessionTranscript(sessionId: string, project: string, title: string) {
   for (let index = 0; index < 48; index += 1) {
     const role = index % 2 === 0 ? "user" : "assistant";
     const id = `${sessionId}-${index}`;
+    const body = `${title} transcript item ${index}. ${"This line gives the virtualized message a distinct height. ".repeat((index % 6) + 1)}`;
     const text =
       index === 0
         ? title
-        : `${title} transcript item ${index}. ${"This line makes the virtualized message tall enough to scroll. ".repeat(6)}`;
+        : index % 5 === 1
+          ? `${body}\n\n\`\`\`ts\n${Array.from({ length: (index % 4) + 2 }, (_, line) => `const marker${index}_${line} = ${line};`).join("\n")}\n\`\`\``
+          : body;
     entries.push({
       type: "message",
       id,
@@ -50,7 +53,46 @@ function sessionTranscript(sessionId: string, project: string, title: string) {
   return entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n";
 }
 
-test("restores a session's virtualized transcript position after switching sessions", async () => {
+async function transcriptAnchor(transcript: Locator) {
+  return transcript.evaluate((element) => {
+    const viewportTop = element.getBoundingClientRect().top;
+    const item = Array.from(element.querySelectorAll<HTMLElement>(".transcript-item")).find(
+      (candidate) => candidate.getBoundingClientRect().bottom > viewportTop + 1,
+    );
+    if (!item) throw new Error("No visible transcript item");
+    return {
+      text: item.textContent,
+      offset: item.getBoundingClientRect().top - viewportTop,
+      scrollTop: element.scrollTop,
+    };
+  });
+}
+
+async function expectRestoredAnchor(
+  transcript: Locator,
+  saved: Awaited<ReturnType<typeof transcriptAnchor>>,
+) {
+  await expect
+    .poll(async () => {
+      try {
+        const restored = await transcriptAnchor(transcript);
+        return {
+          textMatches: restored.text === saved.text,
+          offsetDifference: Math.abs(restored.offset - saved.offset),
+          scrollDifference: Math.abs(restored.scrollTop - saved.scrollTop),
+        };
+      } catch {
+        return {
+          textMatches: false,
+          offsetDifference: Number.POSITIVE_INFINITY,
+          scrollDifference: Number.POSITIVE_INFINITY,
+        };
+      }
+    })
+    .toEqual({ textMatches: true, offsetDifference: 0, scrollDifference: 0 });
+}
+
+test("restores a session's virtualized transcript position after leaving and switching sessions", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-session-scroll-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -129,19 +171,18 @@ test("restores a session's virtualized transcript position after switching sessi
       .poll(() => transcript.evaluate((element) => element.scrollTop))
       .toBeLessThan(bottomPosition - 500);
     await page.waitForTimeout(150);
-    const savedPosition = await transcript.evaluate((element) => element.scrollTop);
-    await page.waitForTimeout(150);
+    const savedAnchor = await transcriptAnchor(transcript);
+
+    await page.locator(".sidebar").getByLabel("Open settings").click();
+    await page.getByLabel("Back to chat").click();
+    await expectRestoredAnchor(transcript, savedAnchor);
 
     await secondSession.locator(".session-row").click();
     await expect(secondSession).toHaveClass(/active/);
     await firstSession.locator(".session-row").click();
     await expect(firstSession).toHaveClass(/active/);
 
-    await expect
-      .poll(async () =>
-        Math.abs((await transcript.evaluate((element) => element.scrollTop)) - savedPosition),
-      )
-      .toBeLessThan(2);
+    await expectRestoredAnchor(transcript, savedAnchor);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
