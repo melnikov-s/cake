@@ -13,6 +13,9 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
   const cakeHome = join(temporaryRoot, "cake-home");
   const sessionId = "file-link-session";
   const timestamp = new Date(0).toISOString();
+  const imageData = Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1200"><rect width="1600" height="1200" fill="red"/></svg>',
+  ).toString("base64");
   const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
 
   await Promise.all([
@@ -48,8 +51,19 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
       {
         type: "message",
-        id: "assistant-final",
+        id: "user-image",
         parentId: null,
+        timestamp,
+        message: {
+          role: "user",
+          content: [{ type: "image", data: imageData, mimeType: "image/svg+xml" }],
+          timestamp: 0,
+        },
+      },
+      {
+        type: "message",
+        id: "assistant-final",
+        parentId: "user-image",
         timestamp,
         message: {
           role: "assistant",
@@ -155,6 +169,39 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect(chatSidebarBackButton).toBeVisible();
 
     await expect(page.locator(".transcript").getByText(/Phase 4 — Model references/)).toBeVisible();
+
+    const imagePreview = page.getByRole("button", { name: "View Image 1 enlarged" });
+    await imagePreview.click();
+    const imageDialog = page.getByRole("dialog", { name: "Image 1" });
+    await expect(imageDialog).toBeVisible();
+    const previewBounds = await page.evaluate(() => {
+      const chat = document
+        .querySelector<HTMLElement>("aside .chat-layout")!
+        .getBoundingClientRect();
+      const dialog = document
+        .querySelector<HTMLElement>(".image-preview-overlay")!
+        .getBoundingClientRect();
+      const image = document
+        .querySelector<HTMLImageElement>(".image-preview-figure img")!
+        .getBoundingClientRect();
+      return {
+        chat: { top: chat.top, right: chat.right, bottom: chat.bottom, left: chat.left },
+        dialog: {
+          top: dialog.top,
+          right: dialog.right,
+          bottom: dialog.bottom,
+          left: dialog.left,
+        },
+        image: { top: image.top, right: image.right, bottom: image.bottom, left: image.left },
+      };
+    });
+    expect(previewBounds.dialog).toEqual(previewBounds.chat);
+    expect(previewBounds.image.left).toBeGreaterThanOrEqual(previewBounds.dialog.left);
+    expect(previewBounds.image.right).toBeLessThanOrEqual(previewBounds.dialog.right);
+    expect(previewBounds.image.top).toBeGreaterThanOrEqual(previewBounds.dialog.top);
+    expect(previewBounds.image.bottom).toBeLessThanOrEqual(previewBounds.dialog.bottom);
+    await page.getByRole("button", { name: "Close Image 1" }).click();
+
     const resizeHandle = page.getByRole("separator", { name: "Resize current session sidebar" });
     await expect(resizeHandle).toHaveAttribute("aria-valuenow", "420");
     await resizeHandle.focus();

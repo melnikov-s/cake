@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconButton } from "@/components/ui/icon-button";
 import { CloseIcon } from "@/components/ui/icons";
+import { cn } from "@/lib/utils";
 
 /**
  * Renders an image inside a button that opens the same image enlarged in a
@@ -18,6 +19,7 @@ export function ImagePreview({
   caption?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const triggerButton = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const closeRef = useRef(() => setOpen(false));
   closeRef.current = () => setOpen(false);
@@ -40,9 +42,13 @@ export function ImagePreview({
     };
   }, [open]);
 
+  const portalHost = triggerButton.current?.closest<HTMLElement>(".chat-layout") ?? document.body;
+  const contained = portalHost !== document.body;
+
   return (
     <>
       <button
+        ref={triggerButton}
         type="button"
         className="image-preview-trigger"
         aria-label={`View ${alt} enlarged`}
@@ -54,7 +60,7 @@ export function ImagePreview({
       {open &&
         createPortal(
           <div
-            className="image-preview-overlay"
+            className={cn("image-preview-overlay", contained && "image-preview-overlay-contained")}
             role="dialog"
             aria-modal="true"
             aria-label={alt}
@@ -76,7 +82,7 @@ export function ImagePreview({
               {caption && <figcaption>{caption}</figcaption>}
             </figure>
           </div>,
-          document.body,
+          portalHost,
         )}
     </>
   );

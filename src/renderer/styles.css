@@ -4098,23 +4098,32 @@ button.reasoning-summary {
   inset: 0;
   z-index: 1000;
   display: flex;
+  min-width: 0;
+  min-height: 0;
   align-items: center;
   justify-content: center;
-  padding: 3rem 4rem;
+  overflow: hidden;
+  padding: clamp(0.5rem, 4vmin, 3rem);
   background: hsl(var(--shadow) / 0.86);
+}
+.image-preview-overlay-contained {
+  position: absolute;
 }
 .image-preview-figure {
   display: inline-flex;
-  flex-direction: column;
   min-width: 0;
   max-width: 100%;
+  min-height: 0;
+  max-height: 100%;
+  flex-direction: column;
   margin: 0;
 }
 .image-preview-figure img {
   display: block;
   min-width: 0;
   max-width: 100%;
-  max-height: calc(100vh - 8rem);
+  min-height: 0;
+  max-height: 100%;
   object-fit: contain;
   user-select: none;
 }
