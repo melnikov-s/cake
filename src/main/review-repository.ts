@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { z } from "zod";
 import {
   projectReviewThread,
   reviewThreadRecordSchema,
@@ -11,6 +12,22 @@ import {
 } from "../ipc/review-contract";
 import { AtomicFileWriter } from "./atomic-file-writer";
 import { KeyedSerialExecutor } from "./keyed-serial-executor";
+
+const legacyReviewThreadRecordSchema = z
+  .object({
+    anchor: z
+      .object({
+        view: z.enum(["diff", "full"]),
+      })
+      .passthrough(),
+  })
+  .passthrough()
+  .transform((record) =>
+    reviewThreadRecordSchema.parse({
+      ...record,
+      anchor: { ...record.anchor, view: "file" },
+    }),
+  );
 
 export type ReviewSessionLoader = (record: ReviewThreadRecord) => Promise<ReviewSessionProjection>;
 export class ReviewRepository {
@@ -320,7 +337,14 @@ export class ReviewRepository {
   }
 
   private async readRecord(untrustedValue: unknown): Promise<ReviewThreadRecord> {
-    return reviewThreadRecordSchema.parse(untrustedValue);
+    const current = reviewThreadRecordSchema.safeParse(untrustedValue);
+    if (current.success) return current.data;
+
+    const migrated = legacyReviewThreadRecordSchema.safeParse(untrustedValue);
+    if (!migrated.success) throw current.error;
+
+    await this.write(migrated.data);
+    return migrated.data;
   }
 
   private async write(record: ReviewThreadRecord) {

@@ -1,4 +1,5 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -10,6 +11,44 @@ afterEach(async () =>
 );
 
 describe("ReviewRepository", () => {
+  it.each(["diff", "full"] as const)(
+    "migrates persisted %s review anchors to file anchors",
+    async (view) => {
+      const root = await mkdtemp(join(tmpdir(), "cake-review-migration-"));
+      directories.push(root);
+      const repository = new ReviewRepository(root, join(root, "pi-sessions"));
+      const created = await repository.create(
+        "/project",
+        "session",
+        {
+          path: "src/app.ts",
+          view: "file",
+          start: { diffLine: 2, newLine: 10 },
+          end: { diffLine: 3, newLine: 11 },
+          selectedText: "const value",
+          contextBefore: "before",
+          contextAfter: "after",
+          diff: "@@",
+        },
+        "Use a clearer name",
+      );
+      const recordPath = join(
+        root,
+        digestKey("/project"),
+        digestKey("session"),
+        `${digestKey(created.id)}.json`,
+      );
+      const persisted = JSON.parse(await readFile(recordPath, "utf8"));
+      persisted.anchor.view = view;
+      await writeFile(recordPath, `${JSON.stringify(persisted, null, 2)}\n`);
+
+      const [migrated] = await repository.listSession("/project", "session");
+
+      expect(migrated?.anchor.view).toBe("file");
+      expect(JSON.parse(await readFile(recordPath, "utf8")).anchor.view).toBe("file");
+    },
+  );
+
   it("exports all review threads as live parent-readable context", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-message-comments-"));
     directories.push(root);
@@ -249,3 +288,7 @@ describe("ReviewRepository", () => {
     expect(record).not.toHaveProperty("agentSessionFile");
   });
 });
+
+function digestKey(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
