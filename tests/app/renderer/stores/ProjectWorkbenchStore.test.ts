@@ -1319,22 +1319,26 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("toggles IDE mode from a VS Code title-bar control", async () => {
+  it("toggles only the chat sidebar from the VS Code title-bar control", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop);
-
-    desktop.emit({ type: "embedded-editor-toggle-chat", workspacePath: "/project" });
-    await vi.waitFor(() => expect(store.embeddedEditorStore.visible).toBe(true));
+    await store.openIde();
 
     desktop.emit({ type: "embedded-editor-toggle-chat", workspacePath: "/project" });
     await flush();
-    expect(store.embeddedEditorStore.visible).toBe(false);
+    expect(store.embeddedEditorStore.visible).toBe(true);
+    expect(store.embeddedEditorStore.chatSidebarVisible).toBe(false);
+
+    desktop.emit({ type: "embedded-editor-toggle-chat", workspacePath: "/project" });
+    await flush();
+    expect(store.embeddedEditorStore.visible).toBe(true);
+    expect(store.embeddedEditorStore.chatSidebarVisible).toBe(true);
 
     desktop.emit({ type: "embedded-editor-toggle-chat", workspacePath: "/other" });
     await flush();
-    expect(store.embeddedEditorStore.visible).toBe(false);
+    expect(store.embeddedEditorStore.chatSidebarVisible).toBe(true);
     root[Symbol.dispose]();
   });
 
@@ -1375,6 +1379,29 @@ describe("ProjectWorkbenchStore", () => {
         attachments: [context],
       }),
     );
+
+    desktop.emit({ type: "embedded-editor-context-cleared", workspacePath: "/project" });
+    await flush();
+    expect(store.embeddedEditorStore.activeContextAttachment).toBeUndefined();
+    expect(store.activeSession!.composerStore.visibleAttachments).toEqual([]);
+
+    store.dismissSecondarySurfaces();
+    desktop.emit({
+      type: "embedded-editor-activity",
+      workspacePath: "/project",
+      path: "src/late.ts",
+      documentVersion: 1,
+      startLine: 20,
+      startColumn: 0,
+      endLine: 20,
+      endColumn: 4,
+      selectedText: "late",
+      contextBefore: "",
+      contextAfter: "",
+    });
+    await flush();
+    expect(store.embeddedEditorStore.visible).toBe(false);
+    expect(store.activeSession!.composerStore.visibleAttachments).toEqual([]);
     root[Symbol.dispose]();
   });
 

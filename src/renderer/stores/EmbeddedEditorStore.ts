@@ -32,6 +32,7 @@ export interface EmbeddedEditorStoreProps {
  */
 export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   visible = false;
+  chatSidebarVisible = true;
   status: EmbeddedEditorStatus = "missing";
   statusMessage: string | undefined;
   customPath: string | undefined;
@@ -65,7 +66,12 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   receive(
     event: Extract<
       DesktopClientEvent,
-      { type: "embedded-editor-state-received" | "embedded-editor-activity" }
+      {
+        type:
+          | "embedded-editor-state-received"
+          | "embedded-editor-activity"
+          | "embedded-editor-context-cleared";
+      }
     >,
   ) {
     if (event.type === "embedded-editor-state-received") {
@@ -73,6 +79,11 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
       return;
     }
     if (event.workspacePath !== this.props.projectPath()) return;
+    if (event.type === "embedded-editor-context-cleared") {
+      this.lastActivePath = undefined;
+      this.activeContextAttachment = undefined;
+      return;
+    }
     this.lastActivePath = event.path;
     this.activeContextAttachment = {
       kind: "source",
@@ -92,18 +103,26 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   }
 
   async show(location?: SourceLocation) {
+    if (!this.visible) this.chatSidebarVisible = true;
     this.visible = true;
     await this.open();
     if (location) await this.reveal(location);
   }
 
-  /** Toggles IDE mode from inside VS Code; hiding reports null bounds immediately. */
-  async toggleChat() {
-    if (this.visible) {
-      this.hide();
-      return;
-    }
-    await this.show();
+  /** Adopts an editor instance that main opened for an agent-directed source reveal. */
+  showAgentLocation() {
+    const projectPath = this.props.projectPath();
+    if (!projectPath) return;
+    if (!this.visible) this.chatSidebarVisible = true;
+    this.visible = true;
+    this.openedWorkspace = projectPath;
+    void this.syncAgentChanges();
+  }
+
+  /** Toggles only Cake's chat drawer while leaving the VS Code surface mounted. */
+  toggleChatSidebar() {
+    if (!this.visible) return;
+    this.chatSidebarVisible = !this.chatSidebarVisible;
   }
 
   async open() {
@@ -254,6 +273,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
 
   close() {
     this.hide();
+    this.chatSidebarVisible = true;
     this.openedWorkspace = undefined;
     this.lastActivePath = undefined;
     this.activeContextAttachment = undefined;

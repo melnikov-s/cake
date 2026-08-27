@@ -244,6 +244,15 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     type: z.literal("embedded-editor-toggle-chat"),
     workspacePath: z.string().max(4_096),
   }),
+  z.object({
+    type: z.literal("embedded-editor-context-cleared"),
+    workspacePath: z.string().max(4_096),
+  }),
+  z.object({
+    type: z.literal("embedded-editor-location-opened"),
+    workspacePath: z.string().max(4_096),
+    location: sourceLocationSchema,
+  }),
 ]);
 
 export const desktopRequestSchema = z.discriminatedUnion("type", [

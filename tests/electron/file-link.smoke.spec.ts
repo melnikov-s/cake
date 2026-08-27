@@ -103,10 +103,57 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect(page.getByText("Phase 4 — Model references")).toBeVisible();
     await expect(agentInput).toHaveValue("Keep this IDE draft");
 
+    await application.evaluate(
+      ({ BrowserWindow }, event) => {
+        for (const window of BrowserWindow.getAllWindows())
+          window.webContents.send("cake:event", event);
+      },
+      {
+        type: "embedded-editor-location-opened",
+        workspacePath: project,
+        location: { path: "src/modelMeta.ts", range: { start: { line: 0 } } },
+      },
+    );
+    await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
+    await page.getByRole("button", { name: "Back to Agent" }).click();
+
     await link.click();
 
-    await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
-    await expect(page.getByText("Current session", { exact: true })).toBeVisible();
+    const vscodeWorkspace = page.getByRole("region", { name: "VS Code workspace" });
+    const chatSidebarBackButton = page.getByRole("button", { name: "Back to Agent" });
+    await expect(vscodeWorkspace).toBeVisible();
+    await expect(chatSidebarBackButton).toBeVisible();
+
+    const hasVsCodeChatToggle = () =>
+      application.evaluate(async ({ webContents }) => {
+        for (const contents of webContents.getAllWebContents()) {
+          if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
+          const visible = await contents.executeJavaScript(`Array.from(document.querySelectorAll(
+            '[aria-label*="Toggle Chat Sidebar"], [title*="Toggle Chat Sidebar"]',
+          )).some((candidate) => {
+            const bounds = candidate.getBoundingClientRect();
+            return bounds.width > 0 && bounds.height > 0;
+          })`);
+          if (visible) return true;
+        }
+        return false;
+      });
+    await expect.poll(hasVsCodeChatToggle, { timeout: 20_000 }).toBe(true);
+
+    const toggleChatSidebar = () =>
+      application.evaluate(
+        ({ BrowserWindow }, event) => {
+          for (const window of BrowserWindow.getAllWindows())
+            window.webContents.send("cake:event", event);
+        },
+        { type: "embedded-editor-toggle-chat", workspacePath: project },
+      );
+    await toggleChatSidebar();
+    await expect(vscodeWorkspace).toBeVisible();
+    await expect(chatSidebarBackButton).toBeHidden();
+    await toggleChatSidebar();
+    await expect(chatSidebarBackButton).toBeVisible();
+
     await expect(page.locator(".transcript").getByText(/Phase 4 — Model references/)).toBeVisible();
     const resizeHandle = page.getByRole("separator", { name: "Resize current session sidebar" });
     await expect(resizeHandle).toHaveAttribute("aria-valuenow", "420");

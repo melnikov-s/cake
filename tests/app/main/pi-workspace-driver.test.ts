@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { CakeRuntime, CakeRuntimeOptions } from "../../../src/agent/cake-runtime";
 import type { ReviewTurnOptions } from "../../../src/agent/sidecar-runtime";
 import type { DesktopEvent } from "../../../src/ipc/desktop-ipc";
+import type { SourceLocation } from "../../../src/ipc/source-location";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
 import { NotGitRepositoryError } from "../../../src/main/git-changes";
 import { PiWorkspaceDriver } from "../../../src/main/pi-workspace-driver";
@@ -48,12 +49,18 @@ describe("PiWorkspaceDriver", () => {
       navigate: vi.fn(async () => undefined),
       dispose: vi.fn(),
     };
-    const createRuntime = vi.fn(async () => runtime);
+    let runtimeOptions: CakeRuntimeOptions | undefined;
+    const createRuntime = vi.fn(async (options: CakeRuntimeOptions) => {
+      runtimeOptions = options;
+      return runtime;
+    });
+    const openInEditor = vi.fn(async (location: SourceLocation) => location);
     const driver = new PiWorkspaceDriver({
       ...piPaths,
       workspacePath: "/project",
       emit: (event) => events.push(event),
       createRuntime,
+      openInEditor,
     });
     const requestId = crypto.randomUUID();
 
@@ -77,8 +84,15 @@ describe("PiWorkspaceDriver", () => {
 
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId }));
     expect(createRuntime).toHaveBeenCalledWith(
-      expect.objectContaining({ newSession: true, sessionId: snapshot.sessionId }),
+      expect.objectContaining({
+        newSession: true,
+        sessionId: snapshot.sessionId,
+        vscodeControl: expect.objectContaining({ open: expect.any(Function) }),
+      }),
     );
+    const location = { path: "src/main.ts", range: { start: { line: 4 } } };
+    await runtimeOptions?.vscodeControl?.open(location, new AbortController().signal);
+    expect(openInEditor).toHaveBeenCalledWith(location, expect.any(AbortSignal));
     expect(runtime.applyConfiguration).toHaveBeenCalledWith({
       provider: "openai",
       modelId: "gpt-5.6",

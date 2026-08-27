@@ -62,11 +62,13 @@ Adding a selection to project chat should preserve the file and exact range as v
 
 This gives users a choice between a focused discussion tied to one code location and a broader request that may involve the whole project or multiple selected locations.
 
-## Phase four — Guided code and change tours
+## Phase four — Conversational guided navigation
 
-Allow Cake and the agent to guide the user through a sequence of source locations.
+Allow Cake and the agent to direct the user to a source location while explaining it in the ordinary project conversation.
 
-Tours should support requests such as:
+The Cake gateway should expose a progressively disclosed `vscode` topic with a focused `vscode.open` operation. The operation accepts a workspace-relative file and an optional exact line and column range. Calling it should enter IDE mode if necessary, open the file, center the range, select it, and briefly highlight it. Agent-facing line and column numbers are one-based even though Cake’s internal VS Code location contract is zero-based.
+
+This supports requests such as:
 
 - “Show me what changed.”
 - “Walk me through this implementation.”
@@ -74,9 +76,9 @@ Tours should support requests such as:
 - “Show me why this test fails.”
 - “Take me through the important parts of this review.”
 
-A tour should have a title and an ordered set of steps. Each step should contain a source location, a short heading, and an explanation. The Cake drawer should present the explanation and **Previous**/**Next** controls while VS Code opens and highlights the current location.
+The explanation remains in the authoritative Cake chat. For a multi-location walkthrough, the agent opens and explains one location, then invites the user to say **next** when ready. The next user turn advances the walkthrough through another `vscode.open` call. The conversation itself preserves the sequence and allows requests such as “back” or “show me that again.”
 
-Users should be able to leave a tour, return to ordinary project chat, and reopen the tour while it remains relevant. A change tour should be easy to start directly from completed agent work.
+Do not introduce a saved tour object, dedicated tour drawer, editor comment, CodeLens, or Previous/Next controls in this phase. Those richer projections should be added only if concrete use demonstrates that conversational navigation is insufficient. The VS Code operation coordinates visible editor navigation; ordinary filesystem tools remain authoritative for reading and editing source.
 
 ## Phase five — Cake annotations in VS Code
 

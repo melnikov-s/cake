@@ -1,6 +1,7 @@
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parse as parseJsonc } from "jsonc-parser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   VsCodeServerManager,
@@ -78,7 +79,7 @@ describe("VsCodeServerManager startup", () => {
     expect(manager.status).toBe("ready");
   });
 
-  it("relays the VS Code title-bar chat-sidebar toggle to the renderer", () => {
+  it("relays VS Code title-bar and active-context events to the renderer", () => {
     const broadcast = vi.fn();
     manager = new VsCodeServerManager({
       root: "/unused",
@@ -96,6 +97,15 @@ describe("VsCodeServerManager startup", () => {
     expect(broadcast).toHaveBeenCalledWith({
       type: "embedded-editor-toggle-chat",
       workspacePath: "/project",
+    });
+
+    manager["presentedWorkspacePaths"].set("/real/project", "/linked/project");
+    manager["handleBridgeMessage"](
+      Buffer.from(JSON.stringify({ type: "activity-cleared", workspace: "/real/project" })),
+    );
+    expect(broadcast).toHaveBeenCalledWith({
+      type: "embedded-editor-context-cleared",
+      workspacePath: "/linked/project",
     });
   });
 
@@ -125,13 +135,19 @@ describe("VsCodeServerManager startup", () => {
 
     await writeFile(
       settingsPath,
-      JSON.stringify({
-        "security.workspace.trust.enabled": true,
-        "workbench.colorTheme": "Solarized Light",
-      }),
+      `{
+  // Preserve the user's chosen theme and comments.
+  "security.workspace.trust.enabled": true,
+  "workbench.colorTheme": "Solarized Light",
+  "github.copilot.enable": { "*": true },
+  "extensions.autoUpdate": true,
+}
+`,
     );
     await manager["ensureEditorPreferences"](userDataDir);
-    expect(JSON.parse(await readFile(settingsPath, "utf8"))).toEqual({
+    const updatedRaw = await readFile(settingsPath, "utf8");
+    expect(updatedRaw).toContain("Preserve the user's chosen theme and comments.");
+    expect(parseJsonc(updatedRaw)).toEqual({
       "security.workspace.trust.enabled": false,
       "workbench.colorTheme": "Solarized Light",
       "workbench.startupEditor": "none",
@@ -142,7 +158,7 @@ describe("VsCodeServerManager startup", () => {
     });
   });
 
-  it("prunes foreign extensions from the managed extensions root and its registry", async () => {
+  it("prunes Copilot while preserving unrelated extensions and registry entries", async () => {
     root = await mkdtemp(join(tmpdir(), "cake-vscode-manager-"));
     const companionMain = join(root, "companion.js");
     await writeFile(companionMain, "module.exports = {};\n");
@@ -156,6 +172,7 @@ describe("VsCodeServerManager startup", () => {
     });
     const extensionsRoot = join(root, "extensions");
     await mkdir(join(extensionsRoot, "github.copilot"), { recursive: true });
+    await mkdir(join(extensionsRoot, "esbenp.prettier-vscode"), { recursive: true });
     await mkdir(join(extensionsRoot, "cake-companion"), { recursive: true });
     await writeFile(
       join(extensionsRoot, "extensions.json"),
@@ -165,6 +182,12 @@ describe("VsCodeServerManager startup", () => {
           version: "1.0.0",
           location: { scheme: "file", path: join(extensionsRoot, "github.copilot") },
           relativeLocation: "github.copilot",
+        },
+        {
+          identifier: { id: "esbenp.prettier-vscode" },
+          version: "10.0.0",
+          location: { scheme: "file", path: join(extensionsRoot, "esbenp.prettier-vscode") },
+          relativeLocation: "esbenp.prettier-vscode",
         },
         {
           identifier: { id: "cake.cake-companion" },
@@ -180,8 +203,11 @@ describe("VsCodeServerManager startup", () => {
     await expect(stat(join(extensionsRoot, "github.copilot"))).rejects.toMatchObject({
       code: "ENOENT",
     });
+    await expect(stat(join(extensionsRoot, "esbenp.prettier-vscode"))).resolves.toBeDefined();
     const registry = JSON.parse(await readFile(join(extensionsRoot, "extensions.json"), "utf8"));
-    expect(registry).toHaveLength(1);
-    expect(registry[0].identifier.id).toBe("cake.cake-companion");
+    expect(registry.map((entry: { identifier: { id: string } }) => entry.identifier.id)).toEqual([
+      "esbenp.prettier-vscode",
+      "cake.cake-companion",
+    ]);
   });
 });

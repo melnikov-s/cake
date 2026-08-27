@@ -48,6 +48,7 @@ import { applyFastModePayload, supportsFastMode, type FastModeModel } from "./fa
 import { listModelOptions } from "./model-catalog";
 import { createCakeArtifactExtension } from "./artifact-extension";
 import { createCakeArtifactOperations } from "./cake-artifact-operations";
+import { createCakeVscodeOperations, type VscodeControl } from "./cake-vscode-operations";
 import {
   CakeOperationRegistry,
   cakeToolDescription,
@@ -231,6 +232,7 @@ export interface CakeRuntimeOptions {
     resolved(): boolean;
     setResolved(resolved: boolean): Promise<void>;
   };
+  vscodeControl?: VscodeControl;
   globalControl?: {
     tools: readonly GlobalControlTool[];
     recoveryContext?: string;
@@ -770,6 +772,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
                   requestArtifact,
                   generateInlineWidget: options.generateInlineWidget,
                 }),
+                ...(options.vscodeControl ? createCakeVscodeOperations(options.vscodeControl) : []),
                 ...(options.agentControl
                   ? createAgentControlOperations(
                       options.agentControl,
@@ -819,6 +822,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
                   requestArtifact,
                   generateInlineWidget: options.generateInlineWidget,
                 }),
+                ...(options.vscodeControl ? createCakeVscodeOperations(options.vscodeControl) : []),
                 ...(options.agentControl
                   ? createAgentControlOperations(
                       options.agentControl,

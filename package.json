@@ -40,6 +40,7 @@
     "clsx": "2.1.1",
     "d3": "7.9.0",
     "esbuild": "0.28.1",
+    "jsonc-parser": "^3.3.1",
     "katex": "^0.18.3",
     "mermaid": "11.12.2",
     "r-state-tree": "0.10.2",

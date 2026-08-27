@@ -70,9 +70,15 @@ function workspaceRelative(filePath) {
 }
 
 function sendEditorActivity(vscode, editor = vscode.window.activeTextEditor) {
-  if (!editor || editor.document.uri.scheme !== "file") return;
+  if (!editor || editor.document.uri.scheme !== "file") {
+    postBridge({ type: "activity-cleared" });
+    return;
+  }
   const relativePath = workspaceRelative(editor.document.uri.fsPath);
-  if (!relativePath) return;
+  if (!relativePath) {
+    postBridge({ type: "activity-cleared" });
+    return;
+  }
   const selection = editor.selection;
   const selectedText = editor.document.getText(selection).slice(0, MAX_SELECTION_LENGTH);
   const lines = editor.document.getText().split(/\r?\n/);

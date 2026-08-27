@@ -70,7 +70,10 @@ export const IdeWorkspace = observer(function IdeWorkspace({
         <EmbeddedEditorPane store={editor} />
       </section>
       <PanelResizeHandle
-        className="right-[calc(var(--ide-chat-sidebar-width)-5px)]"
+        className={cn(
+          "right-[calc(var(--ide-chat-sidebar-width)-5px)]",
+          !editor.chatSidebarVisible && "hidden",
+        )}
         label="Resize current session sidebar"
         value={visibleChatSidebarWidth}
         min={320}
@@ -80,7 +83,12 @@ export const IdeWorkspace = observer(function IdeWorkspace({
         onResizeStart={() => setResizing(true)}
         onResizeEnd={() => setResizing(false)}
       />
-      <aside className="flex w-[var(--ide-chat-sidebar-width)] min-w-0 flex-col border-l border-border bg-background shadow-[-12px_0_32px_color-mix(in_oklab,var(--foreground)_8%,transparent)]">
+      <aside
+        className={cn(
+          "flex w-[var(--ide-chat-sidebar-width)] min-w-0 flex-col border-l border-border bg-background shadow-[-12px_0_32px_color-mix(in_oklab,var(--foreground)_8%,transparent)]",
+          !editor.chatSidebarVisible && "hidden",
+        )}
+      >
         <header className="flex min-h-14 items-center justify-between gap-3 border-b border-border px-3 py-2">
           <div className="min-w-0">
             <strong className="block truncate text-sm">

@@ -26,6 +26,7 @@ import {
   type SubagentTaskInput,
 } from "../agent/subagent-contract";
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
+import type { SourceLocation } from "../ipc/source-location";
 import type { SessionUsage, UiPart, UtilityModel } from "../ipc/session-contract";
 import { subagentActivitySchema } from "../ipc/subagent-activity-contract";
 import type { JsonValue } from "../ipc/json-contract";
@@ -148,6 +149,7 @@ export interface PiWorkspaceDriverOptions {
   reviewRepository?: ReviewRepositoryPort;
   collectWorkingChanges?: typeof collectWorkingTreeChanges;
   openExternal?: (url: string) => Promise<void>;
+  openInEditor?: (location: SourceLocation, signal: AbortSignal) => Promise<SourceLocation>;
   isTrusted?: () => boolean;
   utilityModel?: () => UtilityModel | undefined;
   fastMode?(sessionId: string): boolean;
@@ -178,6 +180,7 @@ export class PiWorkspaceDriver {
   private readonly reviewRepository: ReviewRepositoryPort;
   private readonly collectWorkingChanges: typeof collectWorkingTreeChanges;
   private readonly openExternal: NonNullable<PiWorkspaceDriverOptions["openExternal"]> | undefined;
+  private readonly openInEditor: PiWorkspaceDriverOptions["openInEditor"];
   private readonly isTrusted: () => boolean;
   private readonly utilityModel: () => UtilityModel | undefined;
   private readonly fastMode: (sessionId: string) => boolean;
@@ -224,6 +227,7 @@ export class PiWorkspaceDriver {
     this.runWidgetRepair = options.runWidgetRepair ?? runInlineWidgetRepair;
     this.compileWidget = options.compileWidget ?? compileInlineWidget;
     this.openExternal = options.openExternal;
+    this.openInEditor = options.openInEditor;
     this.collectWorkingChanges = options.collectWorkingChanges ?? collectWorkingTreeChanges;
     this.isTrusted = options.isTrusted ?? (() => false);
     this.utilityModel = options.utilityModel ?? (() => undefined);
@@ -892,6 +896,8 @@ export class PiWorkspaceDriver {
             this.reviewRepository.reviewContextPath!(this.workspacePath, activeSessionId)
         : undefined,
       utilityModel: this.utilityModel,
+      vscodeControl:
+        policy?.auxiliary || !this.openInEditor ? undefined : { open: this.openInEditor },
       currentSessionControl: {
         resolved: () => (openedSessionId ? this.sessionResolved(openedSessionId) : false),
         setResolved: async (resolved) => {

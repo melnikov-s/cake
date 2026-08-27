@@ -50,7 +50,14 @@ describe("EmbeddedEditorStore", () => {
 
     await store.show();
     expect(store.visible).toBe(true);
+    expect(store.chatSidebarVisible).toBe(true);
     expect(client.openEmbeddedEditor).toHaveBeenCalledWith("/tmp/project");
+
+    store.toggleChatSidebar();
+    expect(store.visible).toBe(true);
+    expect(store.chatSidebarVisible).toBe(false);
+    store.toggleChatSidebar();
+    expect(store.chatSidebarVisible).toBe(true);
 
     store.hide();
     expect(store.visible).toBe(false);
@@ -63,6 +70,17 @@ describe("EmbeddedEditorStore", () => {
         height: 0,
       }),
     );
+    store[Symbol.dispose]();
+  });
+
+  it("adopts an agent-opened editor without opening it again", async () => {
+    const { client, store } = createHarness();
+
+    store.showAgentLocation();
+
+    expect(store.visible).toBe(true);
+    expect(client.openEmbeddedEditor).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(client.updateEmbeddedEditorChanges).toHaveBeenCalled());
     store[Symbol.dispose]();
   });
 
@@ -103,6 +121,13 @@ describe("EmbeddedEditorStore", () => {
       selectedText: "test",
     });
     expect(store.status).toBe("ready");
+
+    store.receive({
+      type: "embedded-editor-context-cleared",
+      workspacePath: "/tmp/project",
+    });
+    expect(store.lastActivePath).toBeUndefined();
+    expect(store.activeContextAttachment).toBeUndefined();
     store[Symbol.dispose]();
   });
 

@@ -5,6 +5,7 @@ import net from "node:net";
 import { copyFile, mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { WebContentsView, BrowserWindow } from "electron";
+import { applyEdits, modify, parse as parseJsonc, type ParseError } from "jsonc-parser";
 import { z } from "zod";
 import type { SourceLocation } from "../ipc/source-location";
 import type { AgentChange } from "../ipc/agent-change";
@@ -29,7 +30,12 @@ const editorPreferencesSchema = z.looseObject({
   "security.workspace.trust.enabled": z.boolean().optional(),
   "workbench.colorTheme": z.string().optional(),
   "workbench.startupEditor": z.string().optional(),
+  "github.copilot.enable": z.union([z.boolean(), z.record(z.string(), z.boolean())]).optional(),
+  "extensions.autoUpdate": z.boolean().optional(),
+  "extensions.autoCheckUpdates": z.boolean().optional(),
+  "extensions.ignoreRecommendations": z.boolean().optional(),
 });
+const disabledCopilotSettingSchema = z.strictObject({ "*": z.literal(false) });
 
 export type EmbeddedEditorStatus = "missing" | "downloading" | "starting" | "ready" | "failed";
 
@@ -47,6 +53,10 @@ const bridgeMessageSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("toggle-chat-sidebar"),
+    workspace: z.string().min(1).max(4_096),
+  }),
+  z.object({
+    type: z.literal("activity-cleared"),
     workspace: z.string().min(1).max(4_096),
   }),
   z.object({
@@ -105,6 +115,7 @@ interface BroadcastTarget {
           contextAfter: string;
         }
       | { type: "embedded-editor-toggle-chat"; workspacePath: string }
+      | { type: "embedded-editor-context-cleared"; workspacePath: string }
       | {
           type: "embedded-editor-selection";
           action: "ask" | "add-to-project-chat";
@@ -191,6 +202,8 @@ export class VsCodeServerManager {
   /** Latest renderer-owned rect, retained when it arrives before the native view exists. */
   private requestedBounds = new Map<number, ViewBounds>();
   private companionPorts = new Map<string, number>();
+  /** Maps canonical server workspaces back to the project path Cake presents to the renderer. */
+  private presentedWorkspacePaths = new Map<string, string>();
   private bridge: HttpServer | undefined;
   private bridgePort: number | undefined;
   private readonly bridgeToken = randomBytes(32).toString("hex");
@@ -292,6 +305,7 @@ export class VsCodeServerManager {
       throw error;
     }
     const resolved = await realpath(workspacePath);
+    this.presentedWorkspacePaths.set(resolved, workspacePath);
     const instance = await this.serverFor(resolved, binary);
 
     const window = getWindow();
@@ -404,6 +418,7 @@ export class VsCodeServerManager {
     this.servers.clear();
     this.starting.clear();
     this.companionPorts.clear();
+    this.presentedWorkspacePaths.clear();
     this.bridge?.close();
     this.bridge = undefined;
     this.bridgePort = undefined;
@@ -557,6 +572,7 @@ export class VsCodeServerManager {
   private forgetServer(instance: ServerInstance) {
     this.cancelEviction(instance);
     this.companionPorts.delete(instance.workspacePath);
+    this.presentedWorkspacePaths.delete(instance.workspacePath);
     const affectedViewers = [...this.views.entries()].filter(
       ([, entry]) => entry.workspacePath === instance.workspacePath,
     );
@@ -572,6 +588,7 @@ export class VsCodeServerManager {
   private disposeServer(instance: ServerInstance) {
     this.cancelEviction(instance);
     this.companionPorts.delete(instance.workspacePath);
+    this.presentedWorkspacePaths.delete(instance.workspacePath);
     instance.child.removeAllListeners("exit");
     instance.child.kill();
   }
@@ -630,17 +647,26 @@ export class VsCodeServerManager {
       this.companionPorts.set(message.data.workspace, message.data.port);
       return;
     }
+    const presentedWorkspace =
+      this.presentedWorkspacePaths.get(message.data.workspace) ?? message.data.workspace;
     if (message.data.type === "toggle-chat-sidebar") {
       this.props.broadcast({
         type: "embedded-editor-toggle-chat",
-        workspacePath: message.data.workspace,
+        workspacePath: presentedWorkspace,
+      });
+      return;
+    }
+    if (message.data.type === "activity-cleared") {
+      this.props.broadcast({
+        type: "embedded-editor-context-cleared",
+        workspacePath: presentedWorkspace,
       });
       return;
     }
     if (message.data.type === "activity") {
       this.props.broadcast({
         type: "embedded-editor-activity",
-        workspacePath: message.data.workspace,
+        workspacePath: presentedWorkspace,
         path: message.data.path,
         documentVersion: message.data.documentVersion,
         startLine: message.data.startLine,
@@ -662,7 +688,7 @@ export class VsCodeServerManager {
     this.props.broadcast({
       type: "embedded-editor-selection",
       action: message.data.action,
-      workspacePath: message.data.workspace,
+      workspacePath: presentedWorkspace,
       path: message.data.path,
       documentVersion: message.data.documentVersion,
       startLine: message.data.startLine,
@@ -679,59 +705,58 @@ export class VsCodeServerManager {
     const userDir = join(userDataDir, "User");
     const settingsPath = join(userDir, "settings.json");
     await mkdir(userDir, { recursive: true });
-    let raw: string | undefined;
+    let raw = "{}";
     try {
       raw = await readFile(settingsPath, "utf8");
     } catch {
       // The per-workspace profile has not been initialized yet.
     }
-    let settings: z.infer<typeof editorPreferencesSchema> = {};
-    if (raw !== undefined) {
-      try {
-        const parsed = editorPreferencesSchema.safeParse(JSON.parse(raw));
-        if (!parsed.success) return;
-        settings = parsed.data;
-      } catch {
-        // Preserve user-authored JSONC or malformed settings instead of replacing them.
-        return;
-      }
+    const parseErrors: ParseError[] = [];
+    const parsed = editorPreferencesSchema.safeParse(
+      parseJsonc(raw, parseErrors, { allowTrailingComma: true }),
+    );
+    if (parseErrors.length > 0 || !parsed.success) {
+      // Do not replace malformed user-authored settings.
+      return;
     }
-    let changed = false;
+    const settings = parsed.data;
+    const updates: Array<{ key: string; value: unknown }> = [];
     if (settings["security.workspace.trust.enabled"] !== false) {
       // Cake already gates project resources through its own persisted trust decision.
-      settings["security.workspace.trust.enabled"] = false;
-      changed = true;
+      updates.push({ key: "security.workspace.trust.enabled", value: false });
     }
     if (settings["workbench.colorTheme"] === undefined) {
-      settings["workbench.colorTheme"] =
-        (await this.props.preferredTheme()) === "dark"
-          ? "Default Dark Modern"
-          : "Default Light Modern";
-      changed = true;
+      updates.push({
+        key: "workbench.colorTheme",
+        value:
+          (await this.props.preferredTheme()) === "dark"
+            ? "Default Dark Modern"
+            : "Default Light Modern",
+      });
     }
-    if (settings["workbench.startupEditor"] === undefined) {
-      settings["workbench.startupEditor"] = "none";
-      changed = true;
-    }
-    // Cake's agent is the only intended code producer here. Keep AI completion
-    // providers inert and stop the workbench from installing one into this profile.
-    if (settings["github.copilot.enable"] === undefined) {
-      settings["github.copilot.enable"] = { "*": false };
-      changed = true;
-    }
-    if (settings["extensions.autoUpdate"] === undefined) {
-      settings["extensions.autoUpdate"] = false;
-      changed = true;
-    }
-    if (settings["extensions.autoCheckUpdates"] === undefined) {
-      settings["extensions.autoCheckUpdates"] = false;
-      changed = true;
-    }
-    if (settings["extensions.ignoreRecommendations"] === undefined) {
-      settings["extensions.ignoreRecommendations"] = true;
-      changed = true;
-    }
-    if (changed) await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
+    if (settings["workbench.startupEditor"] === undefined)
+      updates.push({ key: "workbench.startupEditor", value: "none" });
+    // Cake's agent is the only intended code producer here. Force Copilot inert
+    // even when an existing profile explicitly enabled it.
+    if (!disabledCopilotSettingSchema.safeParse(settings["github.copilot.enable"]).success)
+      updates.push({ key: "github.copilot.enable", value: { "*": false } });
+    if (settings["extensions.autoUpdate"] !== false)
+      updates.push({ key: "extensions.autoUpdate", value: false });
+    if (settings["extensions.autoCheckUpdates"] !== false)
+      updates.push({ key: "extensions.autoCheckUpdates", value: false });
+    if (settings["extensions.ignoreRecommendations"] !== true)
+      updates.push({ key: "extensions.ignoreRecommendations", value: true });
+    if (updates.length === 0) return;
+
+    let updated = raw;
+    for (const update of updates)
+      updated = applyEdits(
+        updated,
+        modify(updated, [update.key], update.value, {
+          formattingOptions: { insertSpaces: true, tabSize: 2 },
+        }),
+      );
+    await writeFile(settingsPath, `${updated.trimEnd()}\n`);
   }
 
   private async syncCompanionExtension() {
@@ -743,12 +768,12 @@ export class VsCodeServerManager {
       `${JSON.stringify(this.props.companionManifest, null, 2)}\n`,
     );
     await copyFile(this.props.companionMain, join(extensionRoot, "extension.js"));
-    await this.pruneForeignExtensions(extensionsRoot);
+    await this.pruneCopilotExtensions(extensionsRoot);
     return extensionsRoot;
   }
 
-  /** Keeps the managed extensions root companion-only; foreign entries are deleted. */
-  private async pruneForeignExtensions(extensionsRoot: string) {
+  /** Removes Copilot without deleting unrelated extensions installed by the user. */
+  private async pruneCopilotExtensions(extensionsRoot: string) {
     let entries: string[] = [];
     try {
       entries = await readdir(extensionsRoot);
@@ -757,7 +782,7 @@ export class VsCodeServerManager {
     }
     let registryDirty = false;
     for (const entry of entries) {
-      if (entry === "cake-companion" || entry === "extensions.json") continue;
+      if (!isCopilotExtension(entry)) continue;
       await rm(join(extensionsRoot, entry), { recursive: true, force: true });
       registryDirty = true;
     }
@@ -773,20 +798,19 @@ export class VsCodeServerManager {
         .array(z.object({ identifier: z.object({ id: z.string() }).loose() }).loose())
         .safeParse(JSON.parse(registryRaw));
       if (!parsed.success) return;
-      const kept = parsed.data.filter(
-        (item) => item.identifier.id.toLowerCase() === "cake.cake-companion",
+      const canonicalCompanion = {
+        identifier: { id: "cake.cake-companion" },
+        version: this.props.companionManifest.version,
+        location: { scheme: "file", path: join(extensionsRoot, "cake-companion") },
+        relativeLocation: "cake-companion",
+      };
+      const retained = parsed.data.filter(
+        (item) =>
+          !isCopilotExtension(item.identifier.id) &&
+          item.identifier.id.toLowerCase() !== "cake.cake-companion",
       );
-      // The managed root contains exactly one extension, so the registry is
-      // rewritten to a single canonical entry whenever anything else appeared.
-      const canonical = [
-        {
-          identifier: { id: "cake.cake-companion" },
-          version: this.props.companionManifest.version,
-          location: { scheme: "file", path: join(extensionsRoot, "cake-companion") },
-          relativeLocation: "cake-companion",
-        },
-      ];
-      if (kept.length !== 1 || registryDirty)
+      const canonical = [...retained, canonicalCompanion];
+      if (registryDirty || JSON.stringify(parsed.data) !== JSON.stringify(canonical))
         await writeFile(join(extensionsRoot, "extensions.json"), `${JSON.stringify(canonical)}\n`);
     } catch {
       // A malformed registry is rebuilt on the next extension-host scan.
@@ -796,6 +820,10 @@ export class VsCodeServerManager {
   private touch(instance: ServerInstance) {
     instance.lastUsedAt = Date.now();
   }
+}
+
+function isCopilotExtension(value: string) {
+  return value.toLowerCase().includes("copilot");
 }
 
 function workspaceHash(workspacePath: string) {

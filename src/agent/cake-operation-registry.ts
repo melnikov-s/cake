@@ -8,7 +8,7 @@ import {
 
 export const CAKE_OPERATION_PROTOCOL = "cake.operation/v1" as const;
 export const cakeToolDescription =
-  "Access Cake-native capabilities unavailable through files or the shell: manage sessions and context, communicate with other sessions, delegate to subagents, request structured user input, create interactive visual widgets, manage customizations, and send notifications. Call without a command for help or with a topic for its protocol.";
+  "Access Cake-native capabilities unavailable through files or the shell: manage sessions and context, communicate with other sessions, guide the user in embedded VS Code, delegate to subagents, request structured user input, create interactive visual widgets, manage customizations, and send notifications. Call without a command for help or with a topic for its protocol.";
 
 export const cakeToolEnvelopeSchema = z
   .object({
@@ -55,6 +55,7 @@ export const cakeTopics = [
   { name: "context", summary: "Inspect context use or compact the current session." },
   { name: "requests", summary: "Collect structured user input through interactive forms." },
   { name: "widgets", summary: "Create interactive or highly visual presentations." },
+  { name: "vscode", summary: "Guide the user through source in embedded VS Code." },
   { name: "subagents", summary: "Delegate explicitly requested work." },
   { name: "notifications", summary: "Notify the user." },
   { name: "customizations", summary: "Inspect or modify Cake plugins and scenes." },

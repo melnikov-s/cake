@@ -145,6 +145,11 @@ export type DesktopClientEvent =
   | { type: "plugin-agent-event"; pluginId: string; snapshot: PluginAgentSnapshot }
   | { type: "embedded-editor-state-received"; status: EmbeddedEditorStatus; message?: string }
   | {
+      type: "embedded-editor-location-opened";
+      workspacePath: string;
+      location: SourceLocation;
+    }
+  | {
       type: "embedded-editor-activity";
       workspacePath: string;
       path: string;
@@ -171,7 +176,8 @@ export type DesktopClientEvent =
       contextBefore: string;
       contextAfter: string;
     }
-  | { type: "embedded-editor-toggle-chat"; workspacePath: string };
+  | { type: "embedded-editor-toggle-chat"; workspacePath: string }
+  | { type: "embedded-editor-context-cleared"; workspacePath: string };
 
 export interface DesktopClient {
   chooseProject(): Promise<string | undefined>;
@@ -593,7 +599,12 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
       status: event.status,
       message: event.message,
     };
-  if (event.type === "embedded-editor-activity" || event.type === "embedded-editor-toggle-chat")
+  if (
+    event.type === "embedded-editor-activity" ||
+    event.type === "embedded-editor-toggle-chat" ||
+    event.type === "embedded-editor-context-cleared" ||
+    event.type === "embedded-editor-location-opened"
+  )
     return event;
   if (event.type === "embedded-editor-selection") return event;
   return undefined;

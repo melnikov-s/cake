@@ -44,12 +44,6 @@
       }
     ],
     "menus": {
-      "web/navigation": [
-        {
-          "command": "cake.toggleChatSidebar",
-          "group": "navigation@100"
-        }
-      ],
       "editor/context": [
         {
           "command": "cake.askAboutSelection",
@@ -82,6 +76,11 @@
           "command": "cake.openCompleteChange",
           "when": "resourceScheme == file",
           "group": "navigation@92"
+        },
+        {
+          "command": "cake.toggleChatSidebar",
+          "when": "resourceScheme == file",
+          "group": "navigation@100"
         }
       ]
     }

@@ -24,6 +24,7 @@ import {
   type Attachment,
   type WindowViewState,
 } from "../ipc/session-contract";
+import type { SourceLocation } from "../ipc/source-location";
 import {
   cakeWorkspaceSessionDirectory,
   findSessionFile,
@@ -395,6 +396,37 @@ async function refreshPluginAgentResources() {
   piHosts.clear();
 }
 
+async function openProjectLocationInEditor(
+  workspacePath: string,
+  location: SourceLocation,
+  signal: AbortSignal,
+) {
+  signal.throwIfAborted();
+  const candidates = [...windows.entries()].filter(
+    ([webContentsId, window]) =>
+      windowWorkspaces.get(webContentsId) === workspacePath && !window.isDestroyed(),
+  );
+  const selected = candidates.find(([, window]) => window.isFocused()) ?? candidates.at(0);
+  if (!selected) throw new Error("No Cake window has this project open");
+  const [webContentsId, window] = selected;
+  const { workspace, target } = await resolveWorkspaceEditorTarget(workspacePath, location.path);
+  const normalizedLocation = {
+    ...location,
+    path: relative(workspace, target).split(sep).join("/"),
+  };
+  signal.throwIfAborted();
+  await vscodeEditor.open(webContentsId, () => window, workspace);
+  signal.throwIfAborted();
+  await vscodeEditor.reveal(workspace, normalizedLocation);
+  signal.throwIfAborted();
+  sendTo(window.webContents, {
+    type: "embedded-editor-location-opened",
+    workspacePath,
+    location: normalizedLocation,
+  });
+  return normalizedLocation;
+}
+
 function launchPi(path: string) {
   const existing = piHosts.get(path);
   if (existing && existing.state !== "failed" && existing.state !== "stopped") return existing;
@@ -425,6 +457,7 @@ function launchPi(path: string) {
       setProjectSessionResolution(sessionId, resolved, path),
     resolveAgentModel: (preference, snapshot) =>
       resolveAgentModel(preference, snapshot, applicationModel.utilityModel),
+    openInEditor: (location, signal) => openProjectLocationInEditor(path, location, signal),
     openExternal: async (url) => {
       const protocol = new URL(url).protocol;
       if (protocol !== "https:" && protocol !== "http:")

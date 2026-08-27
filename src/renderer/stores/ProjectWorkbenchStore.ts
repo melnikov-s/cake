@@ -747,17 +747,27 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   receive(event: DesktopClientEvent) {
     if (
       event.type === "embedded-editor-state-received" ||
-      event.type === "embedded-editor-activity"
+      event.type === "embedded-editor-activity" ||
+      event.type === "embedded-editor-context-cleared"
     ) {
       this.embeddedEditorStore.receive(event);
-      if (event.type === "embedded-editor-activity" && event.workspacePath === this.projectPath)
+      if (
+        event.type !== "embedded-editor-state-received" &&
+        event.workspacePath === this.projectPath
+      )
         this.activeSession?.composerStore.setEditorContextAttachment(
-          this.embeddedEditorStore.activeContextAttachment,
+          this.embeddedEditorStore.visible
+            ? this.embeddedEditorStore.activeContextAttachment
+            : undefined,
         );
       return;
     }
     if (event.type === "embedded-editor-toggle-chat") {
-      if (event.workspacePath === this.projectPath) void this.embeddedEditorStore.toggleChat();
+      if (event.workspacePath === this.projectPath) this.embeddedEditorStore.toggleChatSidebar();
+      return;
+    }
+    if (event.type === "embedded-editor-location-opened") {
+      if (event.workspacePath === this.projectPath) this.embeddedEditorStore.showAgentLocation();
       return;
     }
     if (event.type === "embedded-editor-selection") {
