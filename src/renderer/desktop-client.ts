@@ -176,6 +176,7 @@ export type DesktopClientEvent =
       contextBefore: string;
       contextAfter: string;
     }
+  | { type: "embedded-editor-back-to-agent"; workspacePath: string }
   | { type: "embedded-editor-toggle-chat"; workspacePath: string }
   | { type: "embedded-editor-context-cleared"; workspacePath: string };
 
@@ -601,6 +602,7 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
     };
   if (
     event.type === "embedded-editor-activity" ||
+    event.type === "embedded-editor-back-to-agent" ||
     event.type === "embedded-editor-toggle-chat" ||
     event.type === "embedded-editor-context-cleared" ||
     event.type === "embedded-editor-location-opened"

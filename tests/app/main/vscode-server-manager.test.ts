@@ -99,6 +99,14 @@ describe("VsCodeServerManager startup", () => {
       workspacePath: "/project",
     });
 
+    manager["handleBridgeMessage"](
+      Buffer.from(JSON.stringify({ type: "back-to-agent", workspace: "/project" })),
+    );
+    expect(broadcast).toHaveBeenCalledWith({
+      type: "embedded-editor-back-to-agent",
+      workspacePath: "/project",
+    });
+
     manager["presentedWorkspacePaths"].set("/real/project", "/linked/project");
     manager["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "activity-cleared", workspace: "/real/project" })),

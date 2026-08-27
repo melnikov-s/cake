@@ -1342,6 +1342,22 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("returns to Agent mode from VS Code even when the chat sidebar is hidden", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+    await store.openIde();
+    store.embeddedEditorStore.toggleChatSidebar();
+
+    desktop.emit({ type: "embedded-editor-back-to-agent", workspacePath: "/project" });
+    await flush();
+
+    expect(store.embeddedEditorStore.visible).toBe(false);
+    expect(store.embeddedEditorStore.chatSidebarVisible).toBe(true);
+    root[Symbol.dispose]();
+  });
+
   it("keeps the active VS Code file and selection as visible project-chat context", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);

@@ -762,6 +762,13 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         );
       return;
     }
+    if (event.type === "embedded-editor-back-to-agent") {
+      if (event.workspacePath === this.projectPath) {
+        this.closeEmbeddedEditor();
+        this.activeSession?.composerStore.requestFocus();
+      }
+      return;
+    }
     if (event.type === "embedded-editor-toggle-chat") {
       if (event.workspacePath === this.projectPath) this.embeddedEditorStore.toggleChatSidebar();
       return;

@@ -110,10 +110,50 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect(link).toHaveText("src/modelMeta.ts");
     expect(await link.getAttribute("title")).toBe("Open src/modelMeta.ts in VS Code");
     const agentInput = page.getByRole("combobox", { name: "Message" });
+    const hasVsCodeTitleAction = (label: string) =>
+      application.evaluate(async ({ webContents }, actionLabel) => {
+        for (const contents of webContents.getAllWebContents()) {
+          if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
+          const visible = await contents.executeJavaScript(`Array.from(document.querySelectorAll(
+            '[aria-label*="${actionLabel}"], [title*="${actionLabel}"]',
+          )).some((candidate) => {
+            const bounds = candidate.getBoundingClientRect();
+            return bounds.width > 0 && bounds.height > 0;
+          })`);
+          if (visible) return true;
+        }
+        return false;
+      }, label);
+    const clickVsCodeTitleAction = (label: string) =>
+      application.evaluate(async ({ webContents }, actionLabel) => {
+        for (const contents of webContents.getAllWebContents()) {
+          if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
+          const clicked = await contents.executeJavaScript(`(() => {
+            const candidate = document.querySelector(
+              '[aria-label*="${actionLabel}"], [title*="${actionLabel}"]',
+            );
+            if (!(candidate instanceof HTMLElement)) return false;
+            candidate.click();
+            return true;
+          })()`);
+          if (clicked) return true;
+        }
+        return false;
+      }, label);
+
     await agentInput.fill("Keep this IDE draft");
     await page.getByRole("button", { name: "Open VS Code" }).click();
-    await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
-    await page.getByRole("button", { name: "Back to Agent" }).click();
+    const vscodeWorkspace = page.getByRole("region", { name: "VS Code workspace" });
+    const chatSidebarBackButton = page.getByRole("button", { name: "Back to Agent" });
+    await expect(vscodeWorkspace).toBeVisible();
+    await expect
+      .poll(() => hasVsCodeTitleAction("Toggle Chat Sidebar"), { timeout: 20_000 })
+      .toBe(true);
+    await expect.poll(() => hasVsCodeTitleAction("Back to Agent"), { timeout: 20_000 }).toBe(true);
+    expect(await clickVsCodeTitleAction("Toggle Chat Sidebar")).toBe(true);
+    await expect(chatSidebarBackButton).toBeHidden();
+    expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
+    await expect(vscodeWorkspace).toBeHidden();
     await expect(page.getByText("Phase 4 — Model references")).toBeVisible();
     await expect(agentInput).toHaveValue("Keep this IDE draft");
 
@@ -133,26 +173,11 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
 
     await link.click();
 
-    const vscodeWorkspace = page.getByRole("region", { name: "VS Code workspace" });
-    const chatSidebarBackButton = page.getByRole("button", { name: "Back to Agent" });
     await expect(vscodeWorkspace).toBeVisible();
     await expect(chatSidebarBackButton).toBeVisible();
-
-    const hasVsCodeChatToggle = () =>
-      application.evaluate(async ({ webContents }) => {
-        for (const contents of webContents.getAllWebContents()) {
-          if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
-          const visible = await contents.executeJavaScript(`Array.from(document.querySelectorAll(
-            '[aria-label*="Toggle Chat Sidebar"], [title*="Toggle Chat Sidebar"]',
-          )).some((candidate) => {
-            const bounds = candidate.getBoundingClientRect();
-            return bounds.width > 0 && bounds.height > 0;
-          })`);
-          if (visible) return true;
-        }
-        return false;
-      });
-    await expect.poll(hasVsCodeChatToggle, { timeout: 20_000 }).toBe(true);
+    await expect
+      .poll(() => hasVsCodeTitleAction("Toggle Chat Sidebar"), { timeout: 20_000 })
+      .toBe(true);
 
     const toggleChatSidebar = () =>
       application.evaluate(

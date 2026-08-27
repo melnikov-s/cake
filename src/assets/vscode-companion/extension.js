@@ -465,6 +465,9 @@ function activate(context) {
       for (const change of agentChanges) reviewedChanges.add(change.id);
       applyChangeDecorations(vscode);
     }),
+    vscode.commands.registerCommand("cake.backToAgent", () =>
+      postBridge({ type: "back-to-agent" }),
+    ),
     vscode.commands.registerCommand("cake.toggleChatSidebar", () =>
       postBridge({ type: "toggle-chat-sidebar" }),
     ),

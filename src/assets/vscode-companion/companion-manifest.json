@@ -38,6 +38,11 @@
         "title": "Cake: Mark Changes Reviewed"
       },
       {
+        "command": "cake.backToAgent",
+        "title": "Cake: Back to Agent",
+        "icon": "$(arrow-left)"
+      },
+      {
         "command": "cake.toggleChatSidebar",
         "title": "Cake: Toggle Chat Sidebar",
         "icon": "$(layout-sidebar-right)"
@@ -76,11 +81,6 @@
           "command": "cake.openCompleteChange",
           "when": "resourceScheme == file",
           "group": "navigation@92"
-        },
-        {
-          "command": "cake.toggleChatSidebar",
-          "when": "resourceScheme == file",
-          "group": "navigation@100"
         }
       ]
     }

@@ -26,6 +26,49 @@ const IDLE_EVICT_MS = 3 * 60_000;
 const MAX_RUNNING_SERVERS = 3;
 const START_TIMEOUT = 45_000;
 const COMPANION_START_TIMEOUT = 5_000;
+// VS Code exposes editor-title actions to extensions, but those disappear when no
+// file is open and it has no public top-level title-bar contribution point. Cake
+// owns this managed web surface, so install its two shell controls alongside the
+// built-in layout actions and keep them present across title-bar rerenders.
+const VSCODE_SHELL_CONTROLS_SCRIPT = `(() => {
+  const controls = [
+    ["cake-back-to-agent", "Cake: Back to Agent", "arrow-left", "cake-control://back-to-agent"],
+    [
+      "cake-toggle-chat-sidebar",
+      "Cake: Toggle Chat Sidebar",
+      "layout-sidebar-right",
+      "cake-control://toggle-chat-sidebar",
+    ],
+  ];
+  const install = () => {
+    const actions = document.querySelector(
+      ".part.titlebar .titlebar-right .action-toolbar-container .actions-container",
+    );
+    if (!(actions instanceof HTMLElement)) return;
+    for (const [id, label, icon, href] of controls) {
+      if (document.getElementById(id)) continue;
+      const item = document.createElement("li");
+      item.id = id;
+      item.className = "action-item";
+      const action = document.createElement("a");
+      action.className = "action-label codicon codicon-" + icon;
+      action.href = href;
+      action.setAttribute("role", "button");
+      action.setAttribute("aria-label", label);
+      action.title = label;
+      item.append(action);
+      actions.append(item);
+    }
+  };
+  install();
+  if (!window.__cakeShellControlsObserver) {
+    window.__cakeShellControlsObserver = new MutationObserver(install);
+    window.__cakeShellControlsObserver.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+    });
+  }
+})()`;
 const editorPreferencesSchema = z.looseObject({
   "security.workspace.trust.enabled": z.boolean().optional(),
   "workbench.colorTheme": z.string().optional(),
@@ -50,6 +93,10 @@ const bridgeMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("hello"),
     workspace: z.string().min(1).max(4_096),
     port: z.number().int().min(1).max(65_535),
+  }),
+  z.object({
+    type: z.literal("back-to-agent"),
+    workspace: z.string().min(1).max(4_096),
   }),
   z.object({
     type: z.literal("toggle-chat-sidebar"),
@@ -114,6 +161,7 @@ interface BroadcastTarget {
           contextBefore: string;
           contextAfter: string;
         }
+      | { type: "embedded-editor-back-to-agent"; workspacePath: string }
       | { type: "embedded-editor-toggle-chat"; workspacePath: string }
       | { type: "embedded-editor-context-cleared"; workspacePath: string }
       | {
@@ -180,7 +228,7 @@ export interface CompanionManifest {
   main: string;
   activationEvents: string[];
   contributes: {
-    commands: Array<{ command: string; title: string }>;
+    commands: Array<{ command: string; title: string; icon?: string }>;
     menus?: Record<string, Array<{ command: string; when?: string; group?: string }>>;
   };
 }
@@ -324,6 +372,24 @@ export class VsCodeServerManager {
     const view = new WebContentsView({
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: false },
     });
+    view.webContents.on("will-navigate", (event, url) => {
+      let action: string | undefined;
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol === "cake-control:") action = parsed.hostname;
+      } catch {
+        return;
+      }
+      if (action !== "back-to-agent" && action !== "toggle-chat-sidebar") return;
+      event.preventDefault();
+      this.props.broadcast({
+        type:
+          action === "back-to-agent"
+            ? "embedded-editor-back-to-agent"
+            : "embedded-editor-toggle-chat",
+        workspacePath,
+      });
+    });
     this.views.set(webContentsId, { workspacePath: resolved, view });
     this.applyRequestedBounds(webContentsId, view);
     instance.viewers += 1;
@@ -332,6 +398,7 @@ export class VsCodeServerManager {
     try {
       const authSuffix = instance.flavor === "openvscode" ? `/?tkn=${instance.token}` : "/";
       await view.webContents.loadURL(`http://127.0.0.1:${instance.port}${authSuffix}`);
+      await view.webContents.executeJavaScript(VSCODE_SHELL_CONTROLS_SCRIPT);
     } catch (error) {
       this.views.delete(webContentsId);
       this.releaseViewer(resolved);
@@ -649,9 +716,12 @@ export class VsCodeServerManager {
     }
     const presentedWorkspace =
       this.presentedWorkspacePaths.get(message.data.workspace) ?? message.data.workspace;
-    if (message.data.type === "toggle-chat-sidebar") {
+    if (message.data.type === "back-to-agent" || message.data.type === "toggle-chat-sidebar") {
       this.props.broadcast({
-        type: "embedded-editor-toggle-chat",
+        type:
+          message.data.type === "back-to-agent"
+            ? "embedded-editor-back-to-agent"
+            : "embedded-editor-toggle-chat",
         workspacePath: presentedWorkspace,
       });
       return;

@@ -241,6 +241,10 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     contextAfter: ipcProjectionString(8_000),
   }),
   z.object({
+    type: z.literal("embedded-editor-back-to-agent"),
+    workspacePath: z.string().max(4_096),
+  }),
+  z.object({
     type: z.literal("embedded-editor-toggle-chat"),
     workspacePath: z.string().max(4_096),
   }),
