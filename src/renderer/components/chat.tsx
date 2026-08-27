@@ -161,32 +161,29 @@ export const Chat = observer(function Chat({
             {pluginActions}
             {(() => {
               const hasInput = store.draft.trim().length > 0 || store.attachments.length > 0;
-              // While foreground or delegated work is running, stop only applies to an
-              // empty composer; typing a new message turns the button back into submit.
-              if (store.canStop && !hasInput) {
-                return (
-                  <IconButton
-                    className="send-button"
-                    tooltip="Stop"
-                    onClick={() => void store.abort()}
-                  >
-                    <StopIcon />
-                  </IconButton>
-                );
-              }
-              if (!store.loading || hasInput) {
-                return (
-                  <IconButton
-                    className="send-button"
-                    tooltip="Send"
-                    type="submit"
-                    disabled={!store.canSubmitDraft(store.draft)}
-                  >
-                    <SendIcon />
-                  </IconButton>
-                );
-              }
-              return null;
+              return (
+                <>
+                  {(!store.loading || hasInput) && (
+                    <IconButton
+                      className="send-button"
+                      tooltip="Send"
+                      type="submit"
+                      disabled={!store.canSubmitDraft(store.draft)}
+                    >
+                      <SendIcon />
+                    </IconButton>
+                  )}
+                  {store.canStop && (
+                    <IconButton
+                      className="send-button"
+                      tooltip="Stop"
+                      onClick={() => void store.abort()}
+                    >
+                      <StopIcon />
+                    </IconButton>
+                  )}
+                </>
+              );
             })()}
           </>
         }
