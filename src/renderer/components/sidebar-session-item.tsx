@@ -1,35 +1,33 @@
 import { useState } from "react";
 import { observer } from "r-state-tree/react";
-import type { GlobalSessionSummary } from "../../ipc/session-contract";
 import { cn } from "../lib/utils";
 import { IconButton } from "./ui/icon-button";
 import { ResolveIcon, RestoreIcon } from "./ui/icons";
-import type { AppShellStore } from "../stores/AppShellStore";
-import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { SidebarStore } from "../stores/SidebarStore";
 
 export interface SidebarSessionItemProps {
   store: SidebarStore;
-  chat: ProjectWorkbenchStore;
-  shell: AppShellStore;
-  session: GlobalSessionSummary;
+  session: { id: string; title: string; modified: string };
+  selected: boolean;
   resolved: boolean;
+  activity?: "running" | "unread";
   onOpen(sessionId: string): void;
+  onRename(sessionId: string, name: string): void;
+  onResolve(sessionId: string, resolved: boolean): void;
 }
 
-/** One project session row in the sidebar; owns its own rename draft. */
+/** One session row in the sidebar; owns its own rename draft. */
 export const SidebarSessionItem = observer(function SidebarSessionItem({
   store,
-  chat,
-  shell,
   session,
+  selected,
   resolved,
+  activity,
   onOpen,
+  onRename,
+  onResolve,
 }: SidebarSessionItemProps) {
   const [renamingValue, setRenamingValue] = useState<string | null>(null);
-  const selected =
-    shell.selection.kind === "project-session" && shell.selection.sessionId === session.id;
-  const activity = store.sessionActivity(session.id);
   const running = activity === "running";
   const unread = activity === "unread";
   const canResolve = !running && !unread;
@@ -39,8 +37,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
     setRenamingValue(null);
     if (!value) return;
     const name = value.trim();
-    if (!name) return;
-    void chat.sessionManagementStore.renameSession(session.id, name);
+    if (name) onRename(session.id, name);
   };
   return (
     <div
@@ -126,7 +123,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                     ariaLabel={`${resolved ? "Restore" : "Resolve"} ${session.title}`}
                     onClick={(event) => {
                       event.stopPropagation();
-                      void store.setSessionResolved(session.id, !resolved);
+                      onResolve(session.id, !resolved);
                     }}
                   >
                     {resolved ? <RestoreIcon /> : <ResolveIcon />}

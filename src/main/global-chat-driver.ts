@@ -123,6 +123,13 @@ export class GlobalChatDriver {
     });
   }
 
+  rename(requestId: string, sessionId: string, name: string) {
+    void this.run(requestId, async () => {
+      const runtime = await this.ensureRuntime(false, sessionId);
+      await runtime.rename(name);
+    });
+  }
+
   respond(controlRequestId: string, result: JsonValue) {
     this.pendingControl.get(controlRequestId)?.settle(result);
   }
@@ -177,7 +184,7 @@ export class GlobalChatDriver {
       resolvedSessionDir: this.options.resolvedSessionDir,
       newSession,
       sessionId,
-      // Cake Chat sessions have no rename workflow, so /name is not offered there.
+      // Cake Chat names are managed from the sidebar, so /name is not duplicated here.
       slashCommands: ["compact", "model"],
       requestUi: async () => undefined,
       currentSessionControl: {

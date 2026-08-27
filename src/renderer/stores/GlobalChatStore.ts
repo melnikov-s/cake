@@ -60,6 +60,7 @@ export interface GlobalChatPort {
     level: ThinkingLevel;
   }): Promise<void>;
   setFastMode(input: { operationId: string; sessionId: string; enabled: boolean }): Promise<void>;
+  rename(input: { operationId: string; sessionId: string; name: string }): Promise<void>;
   resolveSession(sessionId: string, resolved: boolean): Promise<ApplicationState>;
 }
 
@@ -157,6 +158,20 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     return this.open(undefined, true, prompt);
   }
 
+  async renameSession(sessionId: string, name: string) {
+    name = name.trim();
+    if (!name) return false;
+    const operationId = this.operations.start("cake-chat-rename");
+    try {
+      await this.port.rename({ operationId, sessionId, name });
+      return true;
+    } catch (error) {
+      this.operations.finish(operationId);
+      if (!this.signal.aborted) this.reportError(error, "Cake Chat could not rename the session");
+      return false;
+    }
+  }
+
   applyApplicationState(state: ApplicationState) {
     this.resolvedSessionIds.splice(
       0,
@@ -249,6 +264,8 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
         session.receive(event);
         session.receiveOperationFailure(event.operationId, event.message, event.details);
       }
+      if (this.operations.includes(event.operationId, "cake-chat-rename"))
+        this.reportError(event.message, "Cake Chat could not rename the session");
       if (event.operationId === this.selectionOpenOperationId) {
         this.selectionOpenOperationId = undefined;
         this.error = event.message;

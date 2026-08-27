@@ -87,11 +87,20 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
             <SidebarSessionItem
               key={session.id}
               store={store}
-              chat={chat}
-              shell={shell}
               session={session}
+              selected={
+                shell.selection.kind === "project-session" &&
+                shell.selection.sessionId === session.id
+              }
               resolved={resolved}
+              activity={store.sessionActivity(session.id)}
               onOpen={onOpenSession}
+              onRename={(sessionId, name) =>
+                void chat.sessionManagementStore.renameSession(sessionId, name)
+              }
+              onResolve={(sessionId, nextResolved) =>
+                void store.setSessionResolved(sessionId, nextResolved)
+              }
             />
           ))}
           {sessions.length > visibleSessions.length && (

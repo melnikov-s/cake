@@ -293,6 +293,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         setModel: (input) => this.client.setGlobalChatModel(input),
         setThinkingLevel: (input) => this.client.setGlobalChatThinkingLevel(input),
         setFastMode: (input) => this.client.setGlobalChatFastMode(input),
+        rename: (input) => this.client.renameSession(input),
         resolveSession: (sessionId, resolved) =>
           this.client.resolveCakeChatSession(sessionId, resolved),
       },

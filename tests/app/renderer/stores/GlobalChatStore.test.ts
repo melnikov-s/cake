@@ -70,6 +70,9 @@ function createTestStore() {
     setFastMode: vi.fn(async (input: Parameters<GlobalChatPort["setFastMode"]>[0]) => {
       void input;
     }),
+    rename: vi.fn(async (input: Parameters<GlobalChatPort["rename"]>[0]) => {
+      void input;
+    }),
     resolveSession: vi.fn(async (): Promise<ApplicationState> => ({
       schemaVersion: 1 as const,
       projects: [],

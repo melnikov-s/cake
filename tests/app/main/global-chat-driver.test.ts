@@ -46,6 +46,23 @@ function runtime(nextSnapshot = snapshot): CakeRuntime {
 }
 
 describe("GlobalChatDriver", () => {
+  it("renames a Cake Chat through its existing runtime", async () => {
+    const events: DesktopEvent[] = [];
+    const cakeRuntime = runtime();
+    const driver = new GlobalChatDriver({
+      agentDir: "/cake/pi",
+      sessionDir: "/cake/pi/global-chat/sessions",
+      emit: (event) => events.push(event),
+      createRuntime: vi.fn(async () => cakeRuntime),
+    });
+    const requestId = crypto.randomUUID();
+
+    driver.rename(requestId, "global-1", "Renamed chat");
+
+    await vi.waitFor(() => expect(cakeRuntime.rename).toHaveBeenCalledWith("Renamed chat"));
+    expect(events).toContainEqual({ type: "global-chat-operation-completed", requestId });
+  });
+
   it("reopens one persistent Pi transcript and routes control tools to the renderer", async () => {
     const events: DesktopEvent[] = [];
     const cakeRuntime = runtime();

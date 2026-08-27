@@ -44,6 +44,7 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       summaries: fixture.cakeChatSummaries ?? [],
       sessionId: undefined,
       findSession: vi.fn(),
+      renameSession: fixture.renameCakeChatSession ?? vi.fn(),
     } as any,
     onOpenCakeChat: vi.fn(),
     onCreateCakeChat: vi.fn(),
@@ -775,6 +776,61 @@ describe("Sidebar projects", () => {
       "Original title",
     );
     expect(container.querySelector('[role="menu"]')).toBeNull();
+  });
+
+  it("opens the native session menu and renames a Cake Chat", async () => {
+    const showSessionContextMenu = vi.fn(async () => "rename" as const);
+    const renameCakeChatSession = vi.fn(async () => true);
+    const store = {
+      recentProjectPaths: [],
+      projects: [],
+      projectSessions: vi.fn(() => []),
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      sessionActivityTime: vi.fn(() => "Today"),
+      nameFromPath: () => "cake",
+      showMoreSessions: vi.fn(),
+      cakeChatSummaries: [
+        {
+          id: "cake-chat-1",
+          title: "Original Cake Chat",
+          modified: new Date(0).toISOString(),
+          resolved: false,
+        },
+      ],
+      showSessionContextMenu,
+      renameCakeChatSession,
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
+    await act(async () => {
+      container
+        .querySelector<HTMLButtonElement>('[data-session-id="cake-chat-1"] .session-row')!
+        .dispatchEvent(
+          new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            clientX: 21,
+            clientY: 43,
+          }),
+        );
+      await Promise.resolve();
+    });
+
+    expect(showSessionContextMenu).toHaveBeenCalledWith("cake-chat-1", 21, 43);
+    const input = container.querySelector<HTMLInputElement>('[aria-label="Session name"]')!;
+    expect(input.value).toBe("Original Cake Chat");
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+        input,
+        "Renamed Cake Chat",
+      );
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+    });
+    expect(renameCakeChatSession).toHaveBeenCalledWith("cake-chat-1", "Renamed Cake Chat");
   });
 
   it("does not offer resolve or time for unread completed sessions", () => {

@@ -1,5 +1,5 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/agent/session-discovery";
@@ -13,11 +13,14 @@ test("uses the native context menu for project sessions", async () => {
   const cakeHome = join(temporaryRoot, "cake-home");
   const sessionId = "sidebar-rename-session";
   const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
+  const cakeChatDirectory = join(cakeHome, "pi", "global-chat", "sessions");
+  const cakeChatSessionId = "sidebar-rename-cake-chat";
   const timestamp = new Date(0).toISOString();
   await Promise.all([
     mkdir(userData, { recursive: true }),
     mkdir(project, { recursive: true }),
     mkdir(sessionDirectory, { recursive: true }),
+    mkdir(cakeChatDirectory, { recursive: true }),
   ]);
   await writeFile(
     join(userData, "window-state.json"),
@@ -48,25 +51,46 @@ test("uses the native context menu for project sessions", async () => {
       trustedProjectPaths: [],
     }),
   );
-  await writeFile(
-    join(sessionDirectory, `${sessionId}.jsonl`),
-    [
-      { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
-      {
-        type: "message",
-        id: "user-1",
-        parentId: null,
-        timestamp,
-        message: {
-          role: "user",
-          content: [{ type: "text", text: "Original session title" }],
-          timestamp: 0,
+  await Promise.all([
+    writeFile(
+      join(sessionDirectory, `${sessionId}.jsonl`),
+      [
+        { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+        {
+          type: "message",
+          id: "user-1",
+          parentId: null,
+          timestamp,
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "Original session title" }],
+            timestamp: 0,
+          },
         },
-      },
-    ]
-      .map((entry) => JSON.stringify(entry))
-      .join("\n") + "\n",
-  );
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    ),
+    writeFile(
+      join(cakeChatDirectory, `${cakeChatSessionId}.jsonl`),
+      [
+        { type: "session", version: 3, id: cakeChatSessionId, timestamp, cwd: homedir() },
+        {
+          type: "message",
+          id: "cake-user-1",
+          parentId: null,
+          timestamp,
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "Original Cake Chat title" }],
+            timestamp: 0,
+          },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    ),
+  ]);
 
   const application = await electron.launch({
     args: [repositoryRoot],
@@ -89,6 +113,15 @@ test("uses the native context menu for project sessions", async () => {
 
     // Native Electron menus are outside the renderer accessibility tree. The
     // sidebar must no longer mount a second HTML menu over the native one.
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(page.getByLabel("Session name")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+
+    const cakeChatRow = page
+      .locator(".session-row")
+      .filter({ hasText: "Original Cake Chat title" });
+    await expect(cakeChatRow).toHaveCount(1);
+    await cakeChatRow.click({ button: "right" });
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(page.getByLabel("Session name")).toHaveCount(0);
   } finally {

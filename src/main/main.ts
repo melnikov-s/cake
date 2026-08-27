@@ -1534,6 +1534,20 @@ async function handleCakeRequest(
       models: await listAgentCatalogModels(cakePaths.piAgent),
     });
   }
+  if (
+    request.type === "rename-session" &&
+    ((await findSessionFile(homedir(), request.sessionId, cakePaths.piGlobalChatSessions, true)) ||
+      (await findSessionFile(
+        homedir(),
+        request.sessionId,
+        cakePaths.piGlobalChatResolvedSessions,
+        true,
+      )))
+  ) {
+    globalChatController = event.sender;
+    globalChatDriver.rename(request.requestId, request.sessionId, request.name);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
   const path =
     request.type === "open-workspace" || request.type === "inspect-workspace"
       ? request.path
