@@ -271,6 +271,12 @@ describe("ArtifactHost", () => {
     const customInput = container.querySelector<HTMLInputElement>(
       'input[aria-label="Choice other option"]',
     )!;
+    const otherRadio = container.querySelector<HTMLInputElement>(
+      'input[type="radio"][aria-label="Other"]',
+    )!;
+    act(() => otherRadio.click());
+    expect(otherRadio.checked).toBe(true);
+    expect(document.activeElement).toBe(customInput);
     act(() => {
       setInputValue(customInput, "my own answer");
       customInput.dispatchEvent(new Event("input", { bubbles: true }));
@@ -279,10 +285,7 @@ describe("ArtifactHost", () => {
       );
     });
     expect(submit).toHaveBeenCalledWith({ choice: "my own answer" });
-    expect(
-      (container.querySelector('input[type="radio"][aria-label="Other"]') as HTMLInputElement)
-        .checked,
-    ).toBe(true);
+    expect(otherRadio.checked).toBe(true);
     expect(customInput.value).toBe("my own answer");
   });
 

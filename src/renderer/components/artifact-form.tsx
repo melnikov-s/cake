@@ -60,6 +60,14 @@ export function ArtifactForm({
     const text = String(shown[field.id] ?? "");
     return text !== "" && !field.options?.some((option) => option.value === text);
   };
+  const selectCustomRow = (field: ArtifactFormField) => {
+    setCustomRows((rows) => (rows.has(field.id) ? rows : new Set(rows).add(field.id)));
+    setValues((current) =>
+      field.options?.some((option) => option.value === current[field.id])
+        ? { ...current, [field.id]: "" }
+        : current,
+    );
+  };
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (submitted) return;
@@ -147,7 +155,10 @@ export function ArtifactForm({
                     aria-label="Other"
                     disabled={submitted}
                     checked={isCustomRow(field)}
-                    onChange={() => otherInputs.current.get(field.id)?.focus()}
+                    onChange={() => {
+                      selectCustomRow(field);
+                      otherInputs.current.get(field.id)?.focus();
+                    }}
                   />
                   <input
                     type="text"
@@ -156,11 +167,14 @@ export function ArtifactForm({
                     className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
                     disabled={submitted}
                     value={isCustomRow(field) ? String(shown[field.id] ?? "") : ""}
+                    onFocus={() => selectCustomRow(field)}
                     onChange={(event) => {
-                      setCustomRows((rows) =>
-                        rows.has(field.id) ? rows : new Set(rows).add(field.id),
-                      );
-                      setValues({ ...values, [field.id]: event.target.value });
+                      selectCustomRow(field);
+                      setValues((current) => ({ ...current, [field.id]: event.target.value }));
+                    }}
+                    ref={(element) => {
+                      if (element) otherInputs.current.set(field.id, element);
+                      else otherInputs.current.delete(field.id);
                     }}
                   />
                 </div>

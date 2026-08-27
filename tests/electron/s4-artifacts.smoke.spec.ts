@@ -90,7 +90,12 @@ test("presents artifacts, sorts a table, resolves a form, and isolates HTML", as
 
     const form = page.locator('[data-artifact-id="cake-s4-form"]');
     await expect(page.getByRole("status", { name: "Churning in progress" })).toHaveCount(0);
-    await form.getByLabel("Answer").fill("structured answer");
+    const otherAnswer = form.getByLabel("Answer other option");
+    await form.getByRole("radio", { name: "Other" }).click();
+    await expect(otherAnswer).toBeFocused();
+    await otherAnswer.pressSequentially("structured answer");
+    await expect(otherAnswer).toHaveValue("structured answer");
+    await expect(form.getByRole("button", { name: "Submit" })).toBeEnabled();
     await form.getByRole("button", { name: "Submit" }).click();
     await expect(form).not.toBeAttached();
 

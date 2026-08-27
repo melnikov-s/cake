@@ -133,7 +133,14 @@ export function createCakeArtifactExtension(options: ArtifactExtensionOptions): 
           },
           view: {
             type: "form" as const,
-            fields: [{ id: "answer", label: "Answer", type: "text" as const }],
+            fields: [
+              {
+                id: "answer",
+                label: "Answer",
+                type: "select" as const,
+                options: [{ value: "standard", label: "Standard answer" }],
+              },
+            ],
           },
           fallback: { markdown: "S4 response form: **Answer**." },
         };
