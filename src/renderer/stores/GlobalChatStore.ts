@@ -15,7 +15,7 @@ import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { CakeChatSessionStore } from "./CakeChatSessionStore";
 import { describeError } from "../error-details";
 
-export interface CakeControlTool {
+interface CakeControlTool {
   command: string;
   topic: string;
   summary: string;

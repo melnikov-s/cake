@@ -33,7 +33,7 @@ export function serverFlavor(binaryPath: string): ServerFlavor {
 }
 
 /** Confirms a download URL is live before handing it to the downloader. */
-export async function verifyDownloadUrl(url: string): Promise<void> {
+async function verifyDownloadUrl(url: string): Promise<void> {
   let response: Response;
   try {
     response = await fetch(url, { method: "HEAD", redirect: "follow" });

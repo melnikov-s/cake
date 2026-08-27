@@ -56,7 +56,7 @@ export function sessionRef(sessionId: string): SessionRef {
   };
 }
 
-export function resolveWorkspaceRef(ref: WorkspaceRef) {
+function resolveWorkspaceRef(ref: WorkspaceRef) {
   return workspaceRefValueSchema.parse(JSON.parse(ref.id)).workspacePath;
 }
 

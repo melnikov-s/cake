@@ -14,7 +14,6 @@ import { DiagramArtifact } from "./diagram-artifact";
 import { HtmlArtifact } from "./html-artifact";
 import { MediaArtifact } from "./media-artifact";
 import { TableArtifact } from "./table-artifact";
-export { downloadArtifactMarkdown } from "./table-artifact";
 
 interface ArtifactHostProps {
   record: ArtifactRecord;

@@ -13,7 +13,7 @@ export type DiffLine = {
   content: string;
 };
 
-export function parseDiff(diff: string): DiffLine[] {
+function parseDiff(diff: string): DiffLine[] {
   let oldNumber: number | undefined;
   let newNumber: number | undefined;
   return diff.split("\n").map((line, index) => {

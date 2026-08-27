@@ -1,8 +1,8 @@
 import { protocol } from "electron";
 import type { CompiledInlineWidgetDocument } from "./inline-widget-service";
 
-export const inlineWidgetScheme = "cake-widget";
-export const inlineWidgetContentSecurityPolicy =
+const inlineWidgetScheme = "cake-widget";
+const inlineWidgetContentSecurityPolicy =
   "default-src 'none'; img-src data: https:; media-src data: https:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; form-action 'none'; base-uri 'none'";
 
 const documents = new Map<string, string>();

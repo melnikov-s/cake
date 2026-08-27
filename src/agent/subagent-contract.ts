@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { agentModelPreferenceSchema } from "../ipc/plugin-agent-contract";
 
-export const subagentProfileSchema = z.enum(["scout", "planner", "reviewer", "worker"]);
+const subagentProfileSchema = z.enum(["scout", "planner", "reviewer", "worker"]);
 export type SubagentProfile = z.infer<typeof subagentProfileSchema>;
 
 export const subagentTaskSchema = z.object({
@@ -19,10 +19,9 @@ export type SubagentTaskInput = z.input<typeof subagentTaskSchema>;
 export const parallelSubagentSchema = z.object({
   tasks: z.array(subagentTaskSchema).min(1).max(8),
 });
-export type ParallelSubagentTasks = z.infer<typeof parallelSubagentSchema>;
 export type ParallelSubagentTasksInput = z.input<typeof parallelSubagentSchema>;
 
-export const SUBAGENT_PROFILE_INSTRUCTIONS = {
+const SUBAGENT_PROFILE_INSTRUCTIONS = {
   scout: "Explore the codebase and report concise, evidence-backed findings. Do not modify files.",
   planner:
     "Analyze the requested work and return an implementation plan with relevant files, dependencies, risks, and verification. Do not modify files.",

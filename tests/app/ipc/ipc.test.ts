@@ -176,9 +176,6 @@ describe("process IPC", () => {
     expect(
       desktopRequestSchema.parse({ type: "get-changelog", requestId, sessionId: "session" }),
     ).toMatchObject({ type: "get-changelog", requestId });
-    expect(
-      desktopRequestSchema.parse({ type: "inspect-changes", requestId, sessionId: "session" }),
-    ).toMatchObject({ type: "inspect-changes", sessionId: "session" });
     const anchor = {
       path: "src/app.ts",
       start: { diffLine: 1, newLine: 4 },
@@ -213,15 +210,6 @@ describe("process IPC", () => {
         markdown: "# Changelog",
       }),
     ).toMatchObject({ markdown: "# Changelog" });
-    expect(
-      desktopEventSchema.parse({
-        type: "changes-snapshot",
-        requestId,
-        workspacePath: "/project",
-        sessionId: "session",
-        files: [],
-      }),
-    ).toMatchObject({ type: "changes-snapshot", sessionId: "session" });
     expect(
       desktopRequestSchema.safeParse({
         type: "set-pi-setting",

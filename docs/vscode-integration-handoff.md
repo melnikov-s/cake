@@ -9,7 +9,7 @@ Cake has two complementary modes:
 - **Agent mode** is the full project conversation and agent workflow.
 - **IDE mode** places embedded VS Code on the left and the authoritative Cake chat drawer on the right.
 
-VS Code owns source browsing and editing. Cake owns conversations, agent activity, changes, reviews, and contextual workflows. Users should be able to move between code and conversation without copying paths, line numbers, snippets, diagnostics, or change descriptions manually.
+VS Code owns source browsing, editing, Git changes, and native diffs. Cake owns conversations, agent activity, reviews, and contextual workflows. Users should be able to move between code and conversation without copying paths, line numbers, snippets, diagnostics, or change descriptions manually.
 
 The following phases extend that foundation.
 
@@ -46,10 +46,11 @@ After an agent changes files, IDE mode should help the user review those edits b
 - Cake markers beside changed lines
 - **Previous Change** and **Next Change** navigation
 - A way to open the complete change as a native VS Code diff
+- Direct access to VS Code's Source Control view for the complete working tree
 - Direct navigation from Cake’s edit and tool activity to the relevant changed range
 - A clear indication of which changes belong to the current agent turn
 
-The user should be able to move through the agent’s work without searching for files or comparing the transcript with the editor manually. Reviewed changes may be dimmed or cleared so that unreviewed work remains easy to identify.
+The user should be able to move through the agent’s work without searching for files or comparing the transcript with the editor manually. Reviewed changes may be dimmed or cleared so that unreviewed work remains easy to identify. Cake does not maintain a parallel working-tree browser: current Git state stays in VS Code Source Control, while historical per-turn diffs stay in conversation work logs.
 
 ## Phase three — Add a VS Code selection to project chat
 

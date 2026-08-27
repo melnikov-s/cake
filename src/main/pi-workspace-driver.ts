@@ -40,7 +40,6 @@ import {
 import { REVIEW_TEXT_MAX_LENGTH } from "../ipc/review-contract";
 import type { ArtifactRepository } from "./artifact-repository";
 import type { ReviewRepository } from "./review-repository";
-import { collectWorkingTreeChanges, NotGitRepositoryError } from "./git-changes";
 import { compileInlineWidget, extractRepairedWidget } from "./inline-widget-service";
 
 type ArtifactRepositoryPort = Pick<
@@ -53,17 +52,16 @@ type ReviewRepositoryPort = Pick<
 > &
   Partial<Pick<ReviewRepository, "reviewContextPath">>;
 
-export const MAX_LIVE_PRIVATE_AGENT_RUNTIMES = 32;
-export const MAX_SUBAGENT_HANDLES_PER_PARENT = 8;
-export const MAX_ACTIVE_SUBAGENTS = 4;
-export const SUBAGENT_RESULT_TTL_MS = 5 * 60_000;
+const MAX_LIVE_PRIVATE_AGENT_RUNTIMES = 32;
+const MAX_SUBAGENT_HANDLES_PER_PARENT = 8;
+const MAX_ACTIVE_SUBAGENTS = 4;
+const SUBAGENT_RESULT_TTL_MS = 5 * 60_000;
 
 type PiCommandType =
   | "open-workspace"
   | "rename-session"
   | "fork-session"
   | "navigate-session"
-  | "inspect-changes"
   | "get-changelog"
   | "prompt"
   | "submit-review-thread"
@@ -147,7 +145,6 @@ export interface PiWorkspaceDriverOptions {
   compileWidget?: typeof compileInlineWidget;
   artifactRepository?: ArtifactRepositoryPort;
   reviewRepository?: ReviewRepositoryPort;
-  collectWorkingChanges?: typeof collectWorkingTreeChanges;
   openExternal?: (url: string) => Promise<void>;
   openInEditor?: (location: SourceLocation, signal: AbortSignal) => Promise<SourceLocation>;
   isTrusted?: () => boolean;
@@ -178,7 +175,6 @@ export class PiWorkspaceDriver {
   private readonly compileWidget: typeof compileInlineWidget;
   private readonly artifactRepository: ArtifactRepositoryPort;
   private readonly reviewRepository: ReviewRepositoryPort;
-  private readonly collectWorkingChanges: typeof collectWorkingTreeChanges;
   private readonly openExternal: NonNullable<PiWorkspaceDriverOptions["openExternal"]> | undefined;
   private readonly openInEditor: PiWorkspaceDriverOptions["openInEditor"];
   private readonly isTrusted: () => boolean;
@@ -228,7 +224,6 @@ export class PiWorkspaceDriver {
     this.compileWidget = options.compileWidget ?? compileInlineWidget;
     this.openExternal = options.openExternal;
     this.openInEditor = options.openInEditor;
-    this.collectWorkingChanges = options.collectWorkingChanges ?? collectWorkingTreeChanges;
     this.isTrusted = options.isTrusted ?? (() => false);
     this.utilityModel = options.utilityModel ?? (() => undefined);
     this.fastMode = options.fastMode ?? (() => false);
@@ -331,10 +326,6 @@ export class PiWorkspaceDriver {
         this.emitSessionBackgroundWork(runtime.sessionId);
         this.replayPendingArtifacts(runtime.sessionId);
       });
-      return;
-    }
-    if (command.type === "inspect-changes") {
-      void this.run(command.requestId, () => this.inspectChanges(command), command.sessionId);
       return;
     }
     if (command.type === "get-changelog") {
@@ -1583,29 +1574,6 @@ export class PiWorkspaceDriver {
       this.removeSubagentHandle(handleId, handle);
     }, SUBAGENT_RESULT_TTL_MS);
     handle.cleanupTimer.unref?.();
-  }
-
-  private async inspectChanges(command: Extract<PiWorkspaceCommand, { type: "inspect-changes" }>) {
-    this.runtimeFor(command.sessionId);
-    try {
-      const files = await this.collectWorkingChanges(this.workspacePath);
-      this.emit({
-        type: "changes-snapshot",
-        requestId: command.requestId,
-        workspacePath: this.workspacePath,
-        sessionId: command.sessionId,
-        files,
-      });
-    } catch (error) {
-      if (!(error instanceof NotGitRepositoryError)) throw error;
-      this.emit({
-        type: "changes-snapshot",
-        requestId: command.requestId,
-        workspacePath: this.workspacePath,
-        sessionId: command.sessionId,
-        files: [],
-      });
-    }
   }
 
   private async runReviewThread(

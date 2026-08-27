@@ -9,7 +9,7 @@ import {
 export const REVIEW_TEXT_MAX_LENGTH = 262_144;
 const boundedReviewText = z.string().max(REVIEW_TEXT_MAX_LENGTH);
 
-export const reviewPointSchema = z.object({
+const reviewPointSchema = z.object({
   diffLine: z.number().int().nonnegative(),
   oldLine: z.number().int().positive().optional(),
   newLine: z.number().int().positive().optional(),
@@ -18,7 +18,7 @@ export const reviewPointSchema = z.object({
 
 export const reviewAnchorSchema = z.object({
   path: z.string().min(1).max(8_192),
-  view: z.enum(["diff", "full", "file", "message"]).optional(),
+  view: z.enum(["file", "message"]).optional(),
   start: reviewPointSchema,
   end: reviewPointSchema,
   selectedText: boundedReviewText,
@@ -31,13 +31,13 @@ export const reviewAnchorSchema = z.object({
   endOffset: z.number().int().nonnegative().optional(),
 });
 
-export const pendingReviewCommentSchema = z.object({
+const pendingReviewCommentSchema = z.object({
   id: z.string().min(1).max(256),
   body: boundedReviewText,
   createdAt: z.string().datetime(),
 });
 
-export const reviewSubmissionSchema = z.discriminatedUnion("status", [
+const reviewSubmissionSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("running"),
     runId: z.string().uuid(),
@@ -89,10 +89,7 @@ export const reviewThreadSchema = z.object({
   resolvedAt: z.string().datetime().optional(),
 });
 
-export type ReviewPoint = z.infer<typeof reviewPointSchema>;
 export type ReviewAnchor = z.infer<typeof reviewAnchorSchema>;
-export type PendingReviewComment = z.infer<typeof pendingReviewCommentSchema>;
-export type ReviewSubmission = z.infer<typeof reviewSubmissionSchema>;
 export type ReviewThreadRecord = z.infer<typeof reviewThreadRecordSchema>;
 export type ReviewThread = z.infer<typeof reviewThreadSchema>;
 

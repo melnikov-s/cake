@@ -3,7 +3,6 @@ import type {
   Attachment,
   ApplicationState,
   ChatConfiguration,
-  ChangedFile,
   FileSuggestion,
   GlobalSessionSummary,
   SessionSnapshot,
@@ -20,6 +19,7 @@ import type { ArtifactRecord } from "../ipc/artifact-contract";
 import type { ReviewAnchor, ReviewThread } from "../ipc/review-contract";
 import type { SourceLocation } from "../ipc/source-location";
 import type { AgentChange } from "../ipc/agent-change";
+import type { EditorAnnotationSnapshot } from "../ipc/editor-annotation";
 import type { WorktreeLandOutcome, WorktreeRecord, WorktreeStatus } from "../ipc/worktree-contract";
 import type { CustomizationState, PluginDiagnostic, PluginStatus } from "../plugin/plugin-contract";
 import type {
@@ -77,13 +77,6 @@ export type DesktopClientEvent =
       invocation: { name: string; arguments: JsonValue };
     }
   | { type: "extension-ui-received"; sessionId: string; event: ExtensionUiEvent }
-  | {
-      type: "changes-received";
-      operationId: string;
-      workspacePath: string;
-      sessionId: string;
-      files: ChangedFile[];
-    }
   | {
       type: "changelog-received";
       operationId: string;
@@ -177,6 +170,12 @@ export type DesktopClientEvent =
       contextAfter: string;
     }
   | { type: "embedded-editor-back-to-agent"; workspacePath: string }
+  | {
+      type: "embedded-editor-annotation-opened";
+      workspacePath: string;
+      sessionId: string;
+      threadId: string;
+    }
   | { type: "embedded-editor-toggle-chat"; workspacePath: string }
   | { type: "embedded-editor-context-cleared"; workspacePath: string };
 
@@ -280,7 +279,12 @@ export interface DesktopClient {
     height: number;
   }): Promise<void>;
   revealInEmbeddedEditor(workspacePath: string, location: SourceLocation): Promise<void>;
+  openEmbeddedEditorSourceControl(workspacePath: string): Promise<void>;
   updateEmbeddedEditorChanges(workspacePath: string, changes: AgentChange[]): Promise<void>;
+  updateEmbeddedEditorAnnotations(
+    workspacePath: string,
+    snapshot: EditorAnnotationSnapshot,
+  ): Promise<void>;
   setUtilityModel(model: UtilityModel | undefined): Promise<ApplicationState>;
   setModelPresets(
     presets: readonly ModelPreset[],
@@ -455,7 +459,6 @@ export interface DesktopClient {
     sessionId: string;
     entryId: string;
   }): Promise<void>;
-  inspectChanges(input: { operationId: string; sessionId: string }): Promise<void>;
   getChangelog(input: { operationId: string; sessionId: string }): Promise<void>;
   respondToUi(input: {
     operationId: string;
@@ -554,14 +557,6 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
     event.type === "review-thread-usage-updated"
   )
     return event;
-  if (event.type === "changes-snapshot")
-    return {
-      type: "changes-received",
-      operationId: event.requestId,
-      workspacePath: event.workspacePath,
-      sessionId: event.sessionId,
-      files: event.files,
-    };
   if (event.type === "changelog-snapshot")
     return {
       type: "changelog-received",
@@ -602,6 +597,7 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
     };
   if (
     event.type === "embedded-editor-activity" ||
+    event.type === "embedded-editor-annotation-opened" ||
     event.type === "embedded-editor-back-to-agent" ||
     event.type === "embedded-editor-toggle-chat" ||
     event.type === "embedded-editor-context-cleared" ||
@@ -879,6 +875,13 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         location,
       });
     },
+    async openEmbeddedEditorSourceControl(workspacePath) {
+      await accept(bridge, {
+        type: "open-embedded-editor-source-control",
+        requestId: crypto.randomUUID(),
+        workspacePath,
+      });
+    },
     async updateEmbeddedEditorChanges(workspacePath, changes) {
       const requestId = crypto.randomUUID();
       await accept(bridge, {
@@ -886,6 +889,15 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         requestId,
         workspacePath,
         changes,
+      });
+    },
+    async updateEmbeddedEditorAnnotations(workspacePath, snapshot) {
+      const requestId = crypto.randomUUID();
+      await accept(bridge, {
+        type: "update-embedded-editor-annotations",
+        requestId,
+        workspacePath,
+        snapshot,
       });
     },
     async setUtilityModel(model) {
@@ -1249,12 +1261,6 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         requestId: input.operationId,
         sessionId: input.sessionId,
         entryId: input.entryId,
-      }),
-    inspectChanges: (input) =>
-      accept(bridge, {
-        type: "inspect-changes",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
       }),
     getChangelog: (input) =>
       accept(bridge, {

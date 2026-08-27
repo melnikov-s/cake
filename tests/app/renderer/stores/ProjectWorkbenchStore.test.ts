@@ -3,11 +3,7 @@ import { StoreProvider } from "r-state-tree/react";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { jsonValueSchema } from "../../../../src/ipc/json-contract";
-import type {
-  ChangedFile,
-  SessionPreview,
-  SessionSnapshot,
-} from "../../../../src/ipc/session-contract";
+import type { SessionPreview, SessionSnapshot } from "../../../../src/ipc/session-contract";
 import { type CakePluginSession, usePluginSession } from "../../../../src/renderer/cake";
 import type { DesktopClient, DesktopClientEvent } from "../../../../src/renderer/desktop-client";
 import { mountRootStore } from "../../../../src/renderer/mount-root-store";
@@ -250,7 +246,9 @@ function createDesktopClient(restoredPath?: string) {
     openEmbeddedEditor: vi.fn(async () => undefined),
     updateEmbeddedEditorBounds: vi.fn(async () => undefined),
     revealInEmbeddedEditor: vi.fn(async () => undefined),
+    openEmbeddedEditorSourceControl: vi.fn(async () => undefined),
     updateEmbeddedEditorChanges: vi.fn(async () => undefined),
+    updateEmbeddedEditorAnnotations: vi.fn(async () => undefined),
     steerSubagent: vi.fn(async () => undefined),
     abortSubagent: vi.fn(async () => undefined),
     submit: vi.fn(async () => undefined),
@@ -268,7 +266,6 @@ function createDesktopClient(restoredPath?: string) {
     renameSession: vi.fn(async () => undefined),
     forkSession: vi.fn(async () => undefined),
     navigateSession: vi.fn(async () => undefined),
-    inspectChanges: vi.fn(async () => undefined),
     getChangelog: vi.fn(async () => undefined),
     respondToUi: vi.fn(async () => undefined),
     respondToArtifact: vi.fn(async () => undefined),
@@ -294,7 +291,6 @@ async function openSnapshot(
   store: ProjectWorkbenchStore,
   desktop: ReturnType<typeof createDesktopClient>,
   nextSnapshot = snapshot,
-  changes: ChangedFile[] = [],
 ) {
   await store.chooseProject();
   const inspectId = store.activeOperations.at(-1)!;
@@ -306,14 +302,6 @@ async function openSnapshot(
   });
   const openId = store.activeOperations.at(-1)!;
   desktop.emit({ type: "session-snapshot-received", operationId: openId, snapshot: nextSnapshot });
-  const changesRequest = vi.mocked(desktop.client.inspectChanges).mock.calls.at(-1)?.[0];
-  if (changesRequest)
-    desktop.emit({
-      type: "changes-received",
-      ...changesRequest,
-      workspacePath: nextSnapshot.workspacePath,
-      files: changes,
-    });
 }
 
 describe("ProjectWorkbenchStore", () => {
@@ -387,12 +375,11 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("gives project-session plugins the selected workspace and native Changes intent", async () => {
+  it("gives project-session plugins the selected workspace and opaque references", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop);
-    vi.mocked(desktop.client.inspectChanges).mockClear();
     let pluginSession: CakePluginSession | undefined;
     function Probe() {
       pluginSession = usePluginSession();
@@ -404,13 +391,12 @@ describe("ProjectWorkbenchStore", () => {
     );
 
     expect(markup).toContain("/project");
-    expect(pluginSession).toMatchObject({ workspacePath: "/project", sessionId: "session-1" });
-    await pluginSession!.openChanges();
-    expect(desktop.client.inspectChanges).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: "session-1" }),
-    );
-    root.showGlobalChat();
-    await expect(pluginSession!.openChanges()).rejects.toThrow("no longer selected");
+    expect(pluginSession).toMatchObject({
+      workspacePath: "/project",
+      sessionId: "session-1",
+      workspace: { kind: "cake.workspace-ref" },
+      ref: { kind: "cake.session-ref" },
+    });
     root[Symbol.dispose]();
   });
 
@@ -1197,90 +1183,19 @@ describe("ProjectWorkbenchStore", () => {
     }
   });
 
-  it("uses the Git workspace snapshot instead of accumulating edit tool patches", async () => {
+  it("opens workspace changes in VS Code Source Control", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
-    await openSnapshot(store, desktop, snapshot, [
-      { path: "src/one.ts", status: "modified", additions: 1, deletions: 1, diff: "-old\n+new" },
-    ]);
+    await openSnapshot(store, desktop);
+    store.commandPaneStore.toggle("tree");
 
-    desktop.emit({
-      type: "part-updated",
-      sessionId: "session-1",
-      part: {
-        id: "tool-edit-2",
-        kind: "tool",
-        name: "edit",
-        input: "",
-        filePath: "src/two.ts",
-        diff: "+2 added",
-        state: "success",
-      },
-    });
+    await store.openWorkspaceChanges();
 
-    expect(store.changesStore.changes).toEqual([
-      expect.objectContaining({ path: "src/one.ts", additions: 1, deletions: 1 }),
-    ]);
-    root[Symbol.dispose]();
-  });
-
-  it("keeps the Changes surface closed when its startup refresh completes", async () => {
-    const desktop = createDesktopClient();
-    const { root, store } = mountTestStore(desktop.client);
-    await flush();
-    await openSnapshot(store, desktop, snapshot, [
-      { path: "src/one.ts", status: "modified", additions: 1, deletions: 0, diff: "+new" },
-    ]);
-
-    expect(store.changesStore.changes).toHaveLength(1);
-    expect(store.changesStore.path).toBeUndefined();
-    root[Symbol.dispose]();
-  });
-
-  it("resolves a review anchored to the old side of a Git rename", async () => {
-    const desktop = createDesktopClient();
-    const { root, store } = mountTestStore(desktop.client);
-    await flush();
-    await openSnapshot(store, desktop, snapshot, [
-      {
-        path: "docs/plan.md",
-        previousPath: "PLAN.md",
-        status: "renamed",
-        additions: 0,
-        deletions: 0,
-        diff: "similarity index 100%",
-      },
-    ]);
-
-    await store.changesStore.open("PLAN.md");
-    expect(store.changesStore.selected).toMatchObject({
-      path: "docs/plan.md",
-      previousPath: "PLAN.md",
-    });
+    expect(store.embeddedEditorStore.visible).toBe(true);
     expect(store.commandPaneStore.pane).toBeUndefined();
-    store.changesStore.close();
-    expect(store.changesStore.path).toBeUndefined();
-    root[Symbol.dispose]();
-  });
-
-  it("opens the fullscreen change explorer and refreshes Git workspace changes", async () => {
-    const desktop = createDesktopClient();
-    const { root, store } = mountTestStore(desktop.client);
-    await flush();
-    await openSnapshot(store, desktop, snapshot, [
-      { path: "PLAN.md", status: "modified", additions: 1, deletions: 0, diff: "+plan" },
-    ]);
-    vi.mocked(desktop.client.inspectChanges).mockClear();
-
-    await store.openSessionChanges();
-    expect(store.changesStore.path).toBe("PLAN.md");
-    expect(desktop.client.inspectChanges).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: "session-1" }),
-    );
-
-    store.changesStore.close();
-    expect(store.changesStore.path).toBeUndefined();
+    expect(desktop.client.openEmbeddedEditor).toHaveBeenCalledWith("/project");
+    expect(desktop.client.openEmbeddedEditorSourceControl).toHaveBeenCalledWith("/project");
     root[Symbol.dispose]();
   });
 
@@ -1288,16 +1203,12 @@ describe("ProjectWorkbenchStore", () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
-    await openSnapshot(store, desktop, snapshot, [
-      { path: "PLAN.md", status: "modified", additions: 1, deletions: 0, diff: "+plan" },
-    ]);
-    await store.changesStore.open("PLAN.md");
+    await openSnapshot(store, desktop);
     store.commandPaneStore.toggle("tree");
 
     await store.openIde();
 
     expect(store.embeddedEditorStore.visible).toBe(true);
-    expect(store.changesStore.path).toBeUndefined();
     expect(store.commandPaneStore.pane).toBeUndefined();
     expect(desktop.client.openEmbeddedEditor).toHaveBeenCalledWith("/project");
     root[Symbol.dispose]();
@@ -1455,6 +1366,102 @@ describe("ProjectWorkbenchStore", () => {
       contextAfter: "}",
       diff: "",
     });
+    root[Symbol.dispose]();
+  });
+
+  it("projects active-session review annotations and opens their authoritative drawer chat", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+    const now = new Date(0).toISOString();
+    desktop.emit({
+      type: "review-thread-updated",
+      thread: {
+        id: "thread-a",
+        workspacePath: "/project",
+        sessionId: "session-1",
+        anchor: {
+          path: "src/main.ts",
+          view: "file",
+          start: { diffLine: 4, newLine: 5, column: 2 },
+          end: { diffLine: 5, newLine: 6, column: 8 },
+          selectedText: "calculate()",
+          contextBefore: "",
+          contextAfter: "",
+          diff: "",
+        },
+        parts: [
+          {
+            id: "question",
+            kind: "text",
+            role: "user",
+            text: "Why calculate here?",
+            status: "complete",
+          },
+          {
+            id: "answer",
+            kind: "text",
+            role: "assistant",
+            text: "It prepares the result.",
+            status: "complete",
+          },
+        ],
+        status: "open",
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+    await store.embeddedEditorStore.show();
+
+    expect(desktop.client.updateEmbeddedEditorAnnotations).toHaveBeenCalledWith("/project", {
+      sessionId: "session-1",
+      annotations: [
+        {
+          id: "thread-a",
+          location: {
+            path: "src/main.ts",
+            range: {
+              start: { line: 4, column: 2 },
+              end: { line: 5, column: 8 },
+            },
+          },
+          status: "answered",
+          replyCount: 1,
+          preview: "Why calculate here?",
+        },
+      ],
+    });
+
+    store.embeddedEditorStore.toggleChatSidebar();
+    desktop.emit({
+      type: "embedded-editor-annotation-opened",
+      workspacePath: "/project",
+      sessionId: "session-1",
+      threadId: "thread-a",
+    });
+    await flush();
+
+    expect(root.reviewsStore.activeThreadId).toBe("thread-a");
+    expect(store.embeddedEditorStore.chatSidebarVisible).toBe(true);
+
+    root.sessionRegistry.prepareNewSession("/project", "session-2");
+    store.applySessionSnapshot({ ...snapshot, sessionId: "session-2" }, "session-1");
+    await vi.waitFor(() =>
+      expect(desktop.client.updateEmbeddedEditorAnnotations).toHaveBeenLastCalledWith("/project", {
+        sessionId: "session-2",
+        annotations: [],
+      }),
+    );
+    store.embeddedEditorStore.toggleChatSidebar();
+    desktop.emit({
+      type: "embedded-editor-annotation-opened",
+      workspacePath: "/project",
+      sessionId: "session-1",
+      threadId: "thread-a",
+    });
+    await flush();
+    expect(store.embeddedEditorStore.chatSidebarVisible).toBe(false);
     root[Symbol.dispose]();
   });
 
@@ -1631,7 +1638,7 @@ describe("ProjectWorkbenchStore", () => {
       updatedAt: now,
       anchor: {
         path: "src/app.ts",
-        view: "diff",
+        view: "file",
         start: { diffLine: 1, newLine: 2 },
         end: { diffLine: 1, newLine: 2 },
         selectedText: "value",
@@ -1653,7 +1660,7 @@ describe("ProjectWorkbenchStore", () => {
 
     const anchor = {
       path: "src/app.ts",
-      view: "diff" as const,
+      view: "file" as const,
       start: { diffLine: 1, newLine: 2 },
       end: { diffLine: 1, newLine: 2 },
       selectedText: "value",
@@ -1692,7 +1699,7 @@ describe("ProjectWorkbenchStore", () => {
         updatedAt: now,
         anchor: {
           path: "src/app.ts",
-          view: "diff",
+          view: "file",
           start: { diffLine: 1, newLine: 2 },
           end: { diffLine: 1, newLine: 2 },
           selectedText: "value",
@@ -1728,7 +1735,7 @@ describe("ProjectWorkbenchStore", () => {
       updatedAt: now,
       anchor: {
         path: "src/app.ts",
-        view: "diff",
+        view: "file",
         start: { diffLine: 1, newLine: 2 },
         end: { diffLine: 1, newLine: 2 },
         selectedText: "value",

@@ -8,7 +8,7 @@ import {
   type InlineExtension,
 } from "@earendil-works/pi-coding-agent";
 
-export type FoundationRuntimeEvent =
+type FoundationRuntimeEvent =
   | { type: "text-delta"; text: string }
   | { type: "session-ready"; sessionId: string };
 

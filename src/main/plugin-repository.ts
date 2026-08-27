@@ -22,7 +22,7 @@ import type { CakePaths } from "./cake-paths";
 import { AtomicFileWriter } from "./atomic-file-writer";
 import type { PluginStatus } from "../plugin/plugin-contract";
 
-export interface DiscoveredPlugin {
+interface DiscoveredPlugin {
   manifest: CakePluginManifest;
   root: string;
   rendererEntry?: string;

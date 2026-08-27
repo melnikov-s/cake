@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -12,16 +13,20 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
   const project = join(temporaryRoot, "project");
   const cakeHome = join(temporaryRoot, "cake-home");
   const sessionId = "file-link-session";
+  const reviewThreadId = "vscode-annotation-thread";
   const timestamp = new Date(0).toISOString();
   const imageData = Buffer.from(
     '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1200"><rect width="1600" height="1200" fill="red"/></svg>',
   ).toString("base64");
   const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
+  const digest = (value: string) => createHash("sha256").update(value).digest("hex");
+  const reviewDirectory = join(userData, "reviews", digest(project), digest(sessionId));
 
   await Promise.all([
     mkdir(userData, { recursive: true }),
     mkdir(join(project, "src"), { recursive: true }),
     mkdir(sessionDirectory, { recursive: true }),
+    mkdir(reviewDirectory, { recursive: true }),
   ]);
   await writeFile(join(project, "src", "modelMeta.ts"), "export const meta = 1;\n");
   await writeFile(
@@ -44,6 +49,30 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       resolvedSessionIds: [],
       trustedProjectPaths: [],
     }),
+  );
+  await writeFile(
+    join(reviewDirectory, `${digest(reviewThreadId)}.json`),
+    `${JSON.stringify({
+      id: reviewThreadId,
+      workspacePath: project,
+      sessionId,
+      anchor: {
+        path: "src/modelMeta.ts",
+        view: "file",
+        start: { diffLine: 0, oldLine: 1, newLine: 1, column: 13 },
+        end: { diffLine: 0, oldLine: 1, newLine: 1, column: 17 },
+        selectedText: "meta",
+        contextBefore: "",
+        contextAfter: "",
+        diff: "",
+      },
+      pendingComments: [
+        { id: "annotation-question", body: "Why is this exported?", createdAt: timestamp },
+      ],
+      status: "open",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })}\n`,
   );
   await writeFile(
     join(sessionDirectory, `${sessionId}.jsonl`),
@@ -124,6 +153,39 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
         }
         return false;
       }, label);
+    const hasVsCodeText = (text: string) =>
+      application.evaluate(async ({ webContents }, expectedText) => {
+        for (const contents of webContents.getAllWebContents()) {
+          if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
+          if (
+            await contents.executeJavaScript(
+              `document.body.innerText.includes(${JSON.stringify(expectedText)})`,
+            )
+          )
+            return true;
+        }
+        return false;
+      }, text);
+    const clickVsCodeText = (text: string) =>
+      application.evaluate(async ({ webContents }, expectedText) => {
+        for (const contents of webContents.getAllWebContents()) {
+          if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
+          const point = await contents.executeJavaScript(`(() => {
+            const candidate = Array.from(document.querySelectorAll(
+              ".codelens-decoration a",
+            )).find((element) => element.textContent.includes(${JSON.stringify(expectedText)}));
+            if (!(candidate instanceof HTMLElement)) return undefined;
+            const bounds = candidate.getBoundingClientRect();
+            return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+          })()`);
+          if (!point) continue;
+          contents.focus();
+          contents.sendInputEvent({ type: "mouseDown", button: "left", clickCount: 1, ...point });
+          contents.sendInputEvent({ type: "mouseUp", button: "left", clickCount: 1, ...point });
+          return true;
+        }
+        return false;
+      }, text);
     const clickVsCodeTitleAction = (label: string) =>
       application.evaluate(async ({ webContents }, actionLabel) => {
         for (const contents of webContents.getAllWebContents()) {
@@ -142,7 +204,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       }, label);
 
     await agentInput.fill("Keep this IDE draft");
-    await page.getByRole("button", { name: "Open VS Code" }).click();
+    await link.click();
     const vscodeWorkspace = page.getByRole("region", { name: "VS Code workspace" });
     const chatSidebarBackButton = page.getByRole("button", { name: "Back to Agent" });
     await expect(vscodeWorkspace).toBeVisible();
@@ -150,6 +212,13 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       .poll(() => hasVsCodeTitleAction("Toggle Chat Sidebar"), { timeout: 20_000 })
       .toBe(true);
     await expect.poll(() => hasVsCodeTitleAction("Back to Agent"), { timeout: 20_000 }).toBe(true);
+    await expect
+      .poll(() => hasVsCodeText("Cake: Pending · 0 replies"), { timeout: 20_000 })
+      .toBe(true);
+    expect(await clickVsCodeText("Cake: Pending · 0 replies")).toBe(true);
+    await expect(page.getByText("Chat about selection", { exact: true })).toBeVisible();
+    await expect(page.getByText("Why is this exported?", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Project chat" }).click();
     expect(await clickVsCodeTitleAction("Toggle Chat Sidebar")).toBe(true);
     await expect(chatSidebarBackButton).toBeHidden();
     expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
@@ -178,7 +247,6 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect
       .poll(() => hasVsCodeTitleAction("Toggle Chat Sidebar"), { timeout: 20_000 })
       .toBe(true);
-
     const toggleChatSidebar = () =>
       application.evaluate(
         ({ BrowserWindow }, event) => {

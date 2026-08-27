@@ -96,7 +96,7 @@ function invocation<Name extends keyof typeof appControlArgumentSchemas>(name: N
   return z.object({ name: z.literal(name), arguments: appControlArgumentSchemas[name] }).strict();
 }
 
-export const appControlInvocationSchema = z.discriminatedUnion("name", [
+const appControlInvocationSchema = z.discriminatedUnion("name", [
   invocation("get_app_state"),
   invocation("get_customization_state"),
   invocation("get_plugin_authoring_reference"),
@@ -122,7 +122,7 @@ export const appControlInvocationSchema = z.discriminatedUnion("name", [
   invocation("set_session_model"),
 ]);
 
-export type AppControlInvocation = z.infer<typeof appControlInvocationSchema>;
+type AppControlInvocation = z.infer<typeof appControlInvocationSchema>;
 
 export interface AppControlHost {
   currentSession(): { workspacePath: string; sessionId: string } | undefined;

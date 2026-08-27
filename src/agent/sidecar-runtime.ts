@@ -27,7 +27,7 @@ export interface ReviewTurnOptions {
   onEvent?(event: ReviewTurnEvent): void;
 }
 
-export type ReviewTurnEvent =
+type ReviewTurnEvent =
   | { type: "part-updated"; part: UiPart }
   | { type: "usage-updated"; usage: NonNullable<SessionSnapshot["usage"]> };
 

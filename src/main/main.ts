@@ -840,6 +840,12 @@ async function handleCakeRequest(
     });
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
+  if (request.type === "open-embedded-editor-source-control") {
+    if (!allowedProjectPaths.has(request.workspacePath))
+      throw new Error("Project path was not selected by the user");
+    await vscodeEditor.openSourceControl(request.workspacePath);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
   if (request.type === "update-embedded-editor-changes") {
     if (!allowedProjectPaths.has(request.workspacePath))
       throw new Error("Project path was not selected by the user");
@@ -854,6 +860,28 @@ async function handleCakeRequest(
       workspace,
       normalized.flatMap((item) => (item.status === "fulfilled" ? [item.value] : [])),
     );
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  if (request.type === "update-embedded-editor-annotations") {
+    if (!allowedProjectPaths.has(request.workspacePath))
+      throw new Error("Project path was not selected by the user");
+    const workspace = await realpath(request.workspacePath);
+    const normalized = await Promise.allSettled(
+      request.snapshot.annotations.map(async (annotation) => {
+        const { target } = await resolveWorkspaceEditorTarget(workspace, annotation.location.path);
+        return {
+          ...annotation,
+          location: {
+            ...annotation.location,
+            path: relative(workspace, target).split(sep).join("/"),
+          },
+        };
+      }),
+    );
+    await vscodeEditor.updateAnnotations(workspace, {
+      sessionId: request.snapshot.sessionId,
+      annotations: normalized.flatMap((item) => (item.status === "fulfilled" ? [item.value] : [])),
+    });
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "get-customization-state")

@@ -13,35 +13,27 @@ async function git(cwd: string, ...args: string[]) {
   await execFileAsync("git", args, { cwd });
 }
 
-test("virtualizes the scrollable diff and synchronizes file navigation", async () => {
-  const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-changes-smoke-"));
+test("the Changes action opens VS Code Source Control", async () => {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-vscode-source-control-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
   const cakeHome = join(temporaryRoot, "cake-home");
-  const sessionId = "changes-session";
+  const sessionId = "source-control-session";
   const timestamp = new Date(0).toISOString();
   const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
-  const originalSource = "export const value = 0;\n";
-  const changedSource = [
-    "export const values = [",
-    ...Array.from({ length: 180 }, (_, index) => `  ${index},`),
-    "];",
-    "",
-  ].join("\n");
 
   await Promise.all([
     mkdir(userData, { recursive: true }),
     mkdir(join(project, "src"), { recursive: true }),
     mkdir(sessionDirectory, { recursive: true }),
   ]);
-  await writeFile(join(project, "src", "app.ts"), originalSource);
+  await writeFile(join(project, "src", "app.ts"), "export const value = 0;\n");
   await git(project, "-c", "init.defaultBranch=main", "init");
   await git(project, "config", "user.name", "Cake Test");
   await git(project, "config", "user.email", "cake@example.test");
   await git(project, "add", ".");
   await git(project, "commit", "-m", "Initial project");
-  await writeFile(join(project, "src", "app.ts"), changedSource);
-  await writeFile(join(project, "PLAN.md"), "# Plan\n");
+  await writeFile(join(project, "src", "app.ts"), "export const value = 1;\n");
 
   await writeFile(
     join(userData, "window-state.json"),
@@ -79,29 +71,6 @@ test("virtualizes the scrollable diff and synchronizes file navigation", async (
           timestamp: 0,
         },
       },
-      {
-        type: "message",
-        id: "assistant-1",
-        parentId: "user-1",
-        timestamp,
-        message: {
-          role: "assistant",
-          content: [{ type: "text", text: "The workspace is ready for review." }],
-          api: "anthropic-messages",
-          provider: "anthropic",
-          model: "fixture",
-          usage: {
-            input: 0,
-            output: 0,
-            cacheRead: 0,
-            cacheWrite: 0,
-            totalTokens: 0,
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-          },
-          stopReason: "stop",
-          timestamp: 1,
-        },
-      },
     ]
       .map((entry) => JSON.stringify(entry))
       .join("\n") + "\n",
@@ -120,35 +89,27 @@ test("virtualizes the scrollable diff and synchronizes file navigation", async (
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByRole("combobox", { name: "Message" })).toBeVisible({ timeout: 20_000 });
-    await page.getByRole("button", { name: "Open workspace changes" }).click();
+    const changes = page.getByRole("button", { name: "Open workspace changes in VS Code" });
+    await expect(changes).toBeVisible({ timeout: 20_000 });
+    await changes.click();
 
-    const diff = page.locator(".change-explorer-all-diff");
-    await expect(diff).toBeVisible({ timeout: 20_000 });
-    await expect(diff.locator(".change-explorer-file-section")).toHaveCount(1);
-    await expect(diff).toContainText("export const values");
-    await expect(diff).not.toContainText("# Plan");
-
-    const firstButton = page
-      .locator('nav[aria-label="Changed files"] button')
-      .filter({ hasText: "app.ts" });
-    const planButton = page
-      .locator('nav[aria-label="Changed files"] button')
-      .filter({ hasText: "PLAN.md" });
-    await diff.evaluate((element) => {
-      element.scrollTop = element.scrollHeight;
-      element.dispatchEvent(new Event("scroll"));
-    });
-    await expect(diff).toContainText("# Plan");
-    await expect(planButton).toHaveClass(/active/);
-
-    await firstButton.click();
-    await expect(firstButton).toHaveClass(/active/);
-    await expect.poll(() => diff.evaluate((element) => element.scrollTop)).toBe(0);
-
-    await planButton.click();
-    await expect(planButton).toHaveClass(/active/);
-    await expect.poll(() => diff.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    await expect
+      .poll(
+        () =>
+          application.evaluate(async ({ webContents }) => {
+            for (const contents of webContents.getAllWebContents()) {
+              if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
+              const visible = await contents.executeJavaScript(`(() => {
+                const text = document.body.innerText;
+                return text.includes("SOURCE CONTROL") && text.includes("app.ts");
+              })()`);
+              if (visible) return true;
+            }
+            return false;
+          }),
+        { timeout: 20_000 },
+      )
+      .toBe(true);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

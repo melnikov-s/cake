@@ -84,7 +84,7 @@ describe("desktop client", () => {
     expect(await client.deletePlugin("example.calendar")).toEqual([]);
     await client.respondToWorkspaceTrust({ operationId, path: "/project", approved: true });
     await client.openWorkspace({ operationId, path: "/project" });
-    await client.inspectChanges({ operationId, sessionId: "session" });
+    await client.openEmbeddedEditorSourceControl("/project");
     await client.getChangelog({ operationId, sessionId: "session" });
     await client.reloadPi({ operationId, sessionId: "session" });
     await client.refreshModels({ operationId, sessionId: "session" });
@@ -123,11 +123,12 @@ describe("desktop client", () => {
       newSession: false,
       sessionId: undefined,
     });
-    expect(desktop.request).toHaveBeenCalledWith({
-      type: "inspect-changes",
-      requestId: operationId,
-      sessionId: "session",
-    });
+    expect(desktop.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "open-embedded-editor-source-control",
+        workspacePath: "/project",
+      }),
+    );
     expect(desktop.request).toHaveBeenCalledWith({
       type: "get-changelog",
       requestId: operationId,
@@ -205,14 +206,6 @@ describe("desktop client", () => {
       sessionId: "session",
       markdown: "# Changelog",
     });
-    desktop.emit({
-      type: "changes-snapshot",
-      requestId,
-      workspacePath: "/project",
-      sessionId: "session",
-      files: [],
-    });
-
     expect(listener).toHaveBeenCalledWith({
       type: "context-menu-action",
       action: "chat-about-selection",
@@ -229,13 +222,6 @@ describe("desktop client", () => {
       workspacePath: "/project",
       sessionId: "session",
       markdown: "# Changelog",
-    });
-    expect(listener).toHaveBeenCalledWith({
-      type: "changes-received",
-      operationId: requestId,
-      workspacePath: "/project",
-      sessionId: "session",
-      files: [],
     });
   });
 });

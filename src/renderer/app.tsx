@@ -22,7 +22,6 @@ import {
   TreeIcon,
 } from "@/components/ui/icons";
 import { LoadingState } from "@/components/ui/loading-state";
-import { ChangeExplorer } from "@/components/change-explorer";
 import { IdeWorkspace } from "@/components/ide-workspace";
 import { SettingsPage } from "@/components/settings-page";
 import { PanelResizeHandle } from "@/components/panel-resize-handle";
@@ -55,7 +54,6 @@ export const App = observer(function App() {
   const sidebar = root.sidebarStore;
   const projects = root.projectCatalogStore;
   const persistence = root.windowPersistence;
-  const changes = store.changesStore;
   const reviews = root.reviewsStore;
   const settings = root.settingsStore;
   const session = store.activeSession;
@@ -145,12 +143,12 @@ export const App = observer(function App() {
   useEffect(() => {
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (store.embeddedEditorStore.visible || changes.path !== undefined) returnToWorkbench();
+      if (store.embeddedEditorStore.visible) returnToWorkbench();
       else if (store.commandPaneStore.pane) store.commandPaneStore.close();
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [store, changes, returnToWorkbench]);
+  }, [store, returnToWorkbench]);
 
   const openSourceLocation = useCallback(
     (location: SourceLocation) => {
@@ -172,7 +170,7 @@ export const App = observer(function App() {
         },
         openSourceLocation,
         onOpenReviewRun: (threadId?: string) => {
-          void store.openSessionChanges(threadId);
+          if (threadId) void store.openReviewThread(threadId);
         },
         waitingForUser: Boolean(extensionUi.request || artifactInteractions?.request),
         messageComments: session.messageCommentsStore,
@@ -206,11 +204,6 @@ export const App = observer(function App() {
         />
       </StoreProvider>
     );
-  if (changes.path !== undefined)
-    return (
-      <ChangeExplorer store={changes} reviews={reviews} chat={store} onClose={returnToWorkbench} />
-    );
-
   const shellStyle: CSSProperties & Record<"--sidebar-width" | "--right-pane-width", string> = {
     "--sidebar-width": `${Math.min(sidebarWidth, sidebarMax)}px`,
     "--right-pane-width": `${Math.min(commandPaneWidth, commandPaneMax)}px`,
@@ -408,12 +401,11 @@ export const App = observer(function App() {
                       <button
                         className="header-pane-toggle"
                         type="button"
-                        aria-label="Open workspace changes"
-                        onClick={() => void store.openSessionChanges()}
+                        aria-label="Open workspace changes in VS Code"
+                        onClick={() => void store.openWorkspaceChanges()}
                       >
                         <ChangesIcon />
                         <span>Changes</span>
-                        {changes.workingTreeCount > 0 && <b>{changes.workingTreeCount}</b>}
                       </button>
                     )}
                     <WorkLogControls store={session.chatStore} />
@@ -533,13 +525,6 @@ export const App = observer(function App() {
                 there. Landing merges your commits back into {store.projectName} and removes it. The
                 session stays part of this project.
               </ConfirmationDescription>
-              {changes.workingTreeCount > 0 && (
-                <ConfirmationDescription id="create-worktree-warning">
-                  {changes.workingTreeCount} uncommitted change
-                  {changes.workingTreeCount === 1 ? "" : "s"} in the current checkout will stay
-                  behind.
-                </ConfirmationDescription>
-              )}
               <ConfirmationActions>
                 <ConfirmationAction
                   variant="outline"

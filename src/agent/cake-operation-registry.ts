@@ -6,7 +6,7 @@ import {
   type JsonValue,
 } from "../ipc/json-contract";
 
-export const CAKE_OPERATION_PROTOCOL = "cake.operation/v1" as const;
+const CAKE_OPERATION_PROTOCOL = "cake.operation/v1" as const;
 export const cakeToolDescription =
   "Access Cake-native capabilities unavailable through files or the shell: manage sessions and context, communicate with other sessions, guide the user in embedded VS Code, delegate to subagents, request structured user input, create interactive visual widgets, manage customizations, and send notifications. Call without a command for help or with a topic for its protocol.";
 
@@ -24,7 +24,7 @@ export interface CakeOperationExecutionContext {
   runtime: unknown;
 }
 
-export interface CakeOperationExample {
+interface CakeOperationExample {
   input?: JsonObject;
   description?: string;
 }
@@ -43,13 +43,13 @@ export interface CakeOperationDefinition<Input = unknown, Output = JsonValue> {
   execute(input: Input, context: CakeOperationExecutionContext): Promise<Output>;
 }
 
-export interface CakeTopicDefinition {
+interface CakeTopicDefinition {
   name: string;
   summary: string;
   guidance?: readonly string[];
 }
 
-export const cakeTopics = [
+const cakeTopics = [
   { name: "app", summary: "Inspect Cake application state." },
   { name: "sessions", summary: "Inspect, manage, or communicate with sessions." },
   { name: "context", summary: "Inspect context use or compact the current session." },
@@ -208,7 +208,7 @@ export class CakeOperationRegistry {
   }
 }
 
-export function formatCakeResult(value: JsonValue, limit = 24_000) {
+function formatCakeResult(value: JsonValue, limit = 24_000) {
   const formatted = typeof value === "string" ? value : JSON.stringify(value, null, 2);
   return formatted.length > limit ? `${formatted.slice(0, limit)}\n… (truncated)` : formatted;
 }

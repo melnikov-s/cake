@@ -1,5 +1,4 @@
 export {
-  ChatTextMessage,
   captureMessageSelection,
   captureTranscriptSelection,
   chatWorkIsActive,

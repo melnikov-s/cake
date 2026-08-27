@@ -209,11 +209,9 @@ adapters, approved Stores and components, and styling utilities. Workflow
 Stores remain internal. Components reading Cake state must use `observer`.
 
 `usePluginSession()` exposes the selected project session's `workspacePath`,
-Pi `sessionId`, opaque `workspace` and `ref` values, and an `openChanges()` host intent. Use the workspace path as an
-explicit input to backend Git/filesystem methods; never guess a repository from
-the backend process working directory. `openChanges()` opens Cake's native
-Changes surface for that same selected session and rejects if the contribution
-became stale after a session switch. The hook is valid only in
+Pi `sessionId`, and opaque `workspace` and `ref` values. Use the workspace path as
+an explicit input to backend Git/filesystem methods; never guess a repository from
+the backend process working directory. The hook is valid only in
 `project-session.*` contributions or custom-scene branches that render while a
 project session is selected.
 

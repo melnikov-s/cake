@@ -8,8 +8,8 @@ import type {
   SessionSnapshot,
   WindowViewState,
 } from "../../ipc/session-contract";
+import { reviewThreadAnnotations } from "../../utils/review-thread-annotations";
 import type { DesktopClient, DesktopClientEvent, PiState } from "../desktop-client";
-import { ChangesStore, type ChangesStoreProps } from "./ChangesStore";
 import { EmbeddedEditorStore, type EmbeddedEditorStoreProps } from "./EmbeddedEditorStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { ExtensionUiStore } from "./ExtensionUiStore";
@@ -41,7 +41,6 @@ export interface ProjectWorkbenchStoreProps {
     | "respondToWorkspaceTrust"
     | "restartPi"
   >;
-  changesClient: ChangesStoreProps["client"];
   commandPaneClient: CommandPaneStoreProps["client"];
   embeddedEditorClient: EmbeddedEditorStoreProps["client"];
   sessionForkClient: SessionForkStoreProps["client"];
@@ -97,18 +96,16 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       client: this.props.embeddedEditorClient,
       projectPath: () => this.projectPath,
       parts: () => this.activeSession?.canonicalParts ?? [],
+      annotations: () => {
+        const sessionId = this.selectedSessionId;
+        if (!sessionId) return undefined;
+        return reviewThreadAnnotations(
+          sessionId,
+          this.reviews.codeThreadsForSession(sessionId),
+          (threadId) => this.reviews.threadStreaming(threadId),
+        );
+      },
       startCakeChat: (prompt) => this.props.startCakeChat(prompt),
-    });
-  }
-
-  @child
-  get changesStore(): ChangesStore {
-    return createStore(ChangesStore, {
-      client: this.props.changesClient,
-      projectPath: () => this.projectPath,
-      sessionId: () => this.session?.sessionId,
-      parts: () => this.activeSession?.canonicalParts ?? [],
-      operations: this.props.operations,
     });
   }
 
@@ -384,7 +381,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.markSessionRead(sessionId);
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
-    this.changesStore.reset();
     this.props.persistence().schedule();
     session.composerStore.requestFocus();
     void this.client
@@ -435,7 +431,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.markSessionRead(sessionId);
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
-    this.changesStore.reset();
     this.props.persistence().schedule();
     session.composerStore.requestFocus();
     return true;
@@ -490,7 +485,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.activeOpenExpectsEmpty = newSession;
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
-    this.changesStore.reset();
     this.closeEmbeddedEditor();
     try {
       await this.client.openWorkspace({
@@ -522,45 +516,42 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     }
   }
 
-  async openSessionChanges(threadId?: string) {
-    if (!this.activeSessionExists) return;
+  async openWorkspaceChanges() {
+    if (!this.activeSession || !this.projectPath) return;
     this.commandPaneStore.dismiss();
-    const thread = threadId
-      ? this.reviews.threads.find((item) => item.id === threadId)
-      : this.reviews.openThreads.find((item) => item.anchor.view !== "file");
-    if (thread?.anchor.view === "file") {
-      this.reviews.selectThread(thread.id);
-      await this.openFileInIde({
-        path: thread.anchor.path,
-        range: {
-          start: {
-            line:
-              (thread.anchor.start.newLine ??
-                thread.anchor.start.oldLine ??
-                thread.anchor.start.diffLine + 1) - 1,
-            column: thread.anchor.start.column,
-          },
-          end: {
-            line:
-              (thread.anchor.end.newLine ??
-                thread.anchor.end.oldLine ??
-                thread.anchor.end.diffLine + 1) - 1,
-            column: thread.anchor.end.column,
-          },
+    this.reviews.clearActiveThread();
+    await this.embeddedEditorStore.showSourceControl();
+  }
+
+  async openReviewThread(threadId: string) {
+    if (!this.activeSession || !this.projectPath) return;
+    const thread = this.reviews.threads.find((item) => item.id === threadId);
+    if (!thread || thread.anchor.view === "message") return;
+    this.reviews.selectThread(thread.id);
+    await this.openFileInIde({
+      path: thread.anchor.path,
+      range: {
+        start: {
+          line:
+            (thread.anchor.start.newLine ??
+              thread.anchor.start.oldLine ??
+              thread.anchor.start.diffLine + 1) - 1,
+          column: thread.anchor.start.column,
         },
-      });
-      return;
-    }
-    this.closeEmbeddedEditor();
-    if (thread) this.reviews.selectThread(thread.id);
-    else this.reviews.clearActiveThread();
-    await this.changesStore.open(thread?.anchor.path);
+        end: {
+          line:
+            (thread.anchor.end.newLine ??
+              thread.anchor.end.oldLine ??
+              thread.anchor.end.diffLine + 1) - 1,
+          column: thread.anchor.end.column,
+        },
+      },
+    });
   }
 
   async openIde() {
     if (!this.activeSession || !this.projectPath) return;
     this.commandPaneStore.dismiss();
-    this.changesStore.close();
     this.reviews.clearActiveThread();
     await this.embeddedEditorStore.show();
   }
@@ -568,7 +559,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   async openFileInIde(location: SourceLocation) {
     if (!this.activeSession || !this.projectPath) return;
     this.commandPaneStore.dismiss();
-    this.changesStore.close();
     await this.embeddedEditorStore.show(location);
   }
 
@@ -582,7 +572,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       event.endLine < event.startLine
     )
       return;
-    this.changesStore.close();
     this.reviews.clearActiveThread();
     if (!this.embeddedEditorStore.visible)
       await this.embeddedEditorStore.show({ path: event.path });
@@ -634,7 +623,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   dismissSecondarySurfaces() {
     this.commandPaneStore.dismiss();
     this.closeEmbeddedEditor();
-    this.changesStore.close();
   }
 
   sessionContext() {
@@ -769,6 +757,17 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       }
       return;
     }
+    if (event.type === "embedded-editor-annotation-opened") {
+      if (
+        event.workspacePath === this.projectPath &&
+        event.sessionId === this.selectedSessionId &&
+        this.reviews.trySelectThread(event.threadId)
+      ) {
+        this.reviews.cancelDraft();
+        this.embeddedEditorStore.showChatSidebar();
+      }
+      return;
+    }
     if (event.type === "embedded-editor-toggle-chat") {
       if (event.workspacePath === this.projectPath) this.embeddedEditorStore.toggleChatSidebar();
       return;
@@ -843,7 +842,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     }
     if (event.type === "review-thread-streaming") return;
     if (event.type === "artifact-requested" || event.type === "extension-ui-received") return;
-    if (event.type === "changes-received") return;
     if (event.type === "changelog-received") {
       this.commandPaneStore.receive(event);
       return;

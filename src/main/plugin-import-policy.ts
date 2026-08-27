@@ -1,7 +1,7 @@
 import { realpath } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
-export const pluginSharedModules = new Set([
+const pluginSharedModules = new Set([
   "cake",
   "react",
   "react/jsx-runtime",

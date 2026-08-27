@@ -8,7 +8,6 @@ export interface CakePluginSession {
   workspace: WorkspaceRef;
   workspacePath: string;
   sessionId: string;
-  openChanges(): Promise<void>;
 }
 
 export function usePluginSession(): CakePluginSession {
@@ -23,6 +22,5 @@ export function usePluginSession(): CakePluginSession {
     workspace: { kind: "cake.workspace-ref", id: JSON.stringify({ workspacePath }) },
     workspacePath,
     sessionId,
-    openChanges: () => root.openSessionChanges(sessionId),
   };
 }

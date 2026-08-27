@@ -64,11 +64,6 @@ export const BranchIcon = () => (
     <path d="M4 5.3v5.4M12 6.8c0 2.5-2.5 3.2-5.5 3.6" stroke="currentColor" strokeWidth="1.4" />
   </svg>
 );
-export const AddCommentIcon = () => (
-  <svg viewBox="0 0 16 16" aria-hidden="true">
-    <path d="M8 3.25v9.5M3.25 8h9.5" />
-  </svg>
-);
 export const ChatIcon = ({ size = 16 }: { size?: number }) => (
   <Icon size={size}>
     <path d="M20 15a3 3 0 0 1-3 3H8l-5 3 1.7-5.1A7 7 0 0 1 4 13V8a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3z" />

@@ -36,18 +36,6 @@ export function Conversation({ className, ...props }: ComponentProps<"section">)
   );
 }
 
-export function ConversationEmpty({ className, ...props }: ComponentProps<"div">) {
-  return (
-    <div
-      className={cn(
-        "grid min-h-64 place-items-center rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
 export type VirtualizedConversationHandle = VirtuosoHandle;
 
 export interface VirtualizedConversationProps<Item> {

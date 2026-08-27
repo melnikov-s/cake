@@ -59,19 +59,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     await opening;
   }
 
-  async openSessionChanges(sessionId: string) {
-    this.projectSession(sessionId);
-    const selection = this.appShellStore.selection;
-    if (
-      selection.kind !== "project-session" ||
-      selection.sessionId !== sessionId ||
-      !this.projectWorkbenchStore.isActiveSession(sessionId)
-    ) {
-      throw new Error("The project session is no longer selected");
-    }
-    await this.projectWorkbenchStore.openSessionChanges();
-  }
-
   async createSession(workspacePath: string) {
     this.showEmptyWorkbench();
     await this.projectWorkbenchStore.startNewSession(workspacePath);
@@ -235,7 +222,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   get projectWorkbenchStore(): ProjectWorkbenchStore {
     return createStore(ProjectWorkbenchStore, {
       client: this.client,
-      changesClient: this.client,
       commandPaneClient: this.client,
       embeddedEditorClient: this.client,
       sessionForkClient: this.client,
@@ -563,7 +549,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       for (const session of sessionReceivers) session.receive(event);
     }
     this.appControlOperationStore.receive(event);
-    this.projectWorkbenchStore.changesStore.receive(event);
     this.reviewsStore.receive(event);
     this.settingsStore.receive(event);
     this.extensionUiStore.receive(event);
@@ -594,7 +579,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         if (this.appShellStore.surface === "workbench") {
           this.appShellStore.selectProjectSession(event.snapshot.sessionId);
         }
-        void this.projectWorkbenchStore.changesStore.refresh();
         void this.projectWorkbenchStore.embeddedEditorStore.syncAgentChanges();
       }
       return;
@@ -612,11 +596,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     if (event.type === "review-thread-updated") {
       this.sessionRegistry.upsertReviewThread(event.thread);
       this.projectWorkbenchStore.receive(event);
-      if (
-        this.projectWorkbenchStore.changesStore.path !== undefined &&
-        event.thread.workspacePath === this.projectWorkbenchStore.projectPath
-      )
-        void this.projectWorkbenchStore.changesStore.refresh();
       return;
     }
     this.projectWorkbenchStore.receive(event);

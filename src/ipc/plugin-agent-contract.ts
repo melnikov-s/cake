@@ -2,11 +2,10 @@ import { z } from "zod";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { sessionUsageSchema, thinkingLevelSchema, uiPartSchema } from "./session-contract";
 
-export const PLUGIN_AGENT_PROMPT_MAX = 262_144;
 export const PLUGIN_COMPLETION_INPUT_MAX = 262_144;
-export const PLUGIN_COMPLETION_OUTPUT_MAX = 32_768;
+const PLUGIN_COMPLETION_OUTPUT_MAX = 32_768;
 
-export const workspaceRefSchema = z.object({
+const workspaceRefSchema = z.object({
   kind: z.literal("cake.workspace-ref"),
   id: z.string().min(1).max(8_192),
 });
@@ -16,7 +15,7 @@ export const sessionRefSchema = z.object({
   id: z.string().min(1).max(8_192),
 });
 
-export const agentSessionTargetSchema = z.discriminatedUnion("kind", [
+const agentSessionTargetSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("new"),
     workspace: workspaceRefSchema.optional(),
@@ -65,7 +64,7 @@ export const pluginAgentOpenOptionsSchema = z.object({
   instructions: ipcProjectionString(32_768).optional(),
 });
 
-export const sessionContextSelectionSchema = z.union([
+const sessionContextSelectionSchema = z.union([
   z.enum(["last-message", "last-user-message", "last-assistant-message"]),
   z.object({ kind: z.literal("recent-messages"), count: z.number().int().min(1).max(100) }),
   z.object({
@@ -85,7 +84,7 @@ export const pluginCompletionRequestSchema = z.object({
   maximumOutputCharacters: z.number().int().min(1).max(PLUGIN_COMPLETION_OUTPUT_MAX).default(8_192),
 });
 
-export const pluginSessionActivitySchema = z.object({
+const pluginSessionActivitySchema = z.object({
   streaming: z.boolean(),
   settledRevision: z.string().regex(/^[a-f0-9]{64}$/),
   leafId: z.string().min(1).max(256).optional(),

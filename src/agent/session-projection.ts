@@ -57,7 +57,7 @@ function parseToolOutputContent(content: unknown) {
   return parsed.success && parsed.data.length > 0 ? parsed.data : undefined;
 }
 
-export function projectToolOutputContent(content: unknown): ToolOutputContent[] | undefined {
+function projectToolOutputContent(content: unknown): ToolOutputContent[] | undefined {
   const parsed = parseToolOutputContent(content);
   return parsed?.some((item) => item.type !== "text") ? parsed : undefined;
 }

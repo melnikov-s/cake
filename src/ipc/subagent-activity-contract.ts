@@ -3,13 +3,7 @@ import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { resolvedAgentModelSchema } from "./plugin-agent-contract";
 import { sessionUsageSchema, uiPartSchema } from "./session-contract";
 
-export const subagentActivityStatusSchema = z.enum([
-  "queued",
-  "running",
-  "complete",
-  "error",
-  "aborted",
-]);
+const subagentActivityStatusSchema = z.enum(["queued", "running", "complete", "error", "aborted"]);
 
 /** A transient, parent-owned projection of one private subagent runtime. */
 export const subagentActivitySchema = z.object({

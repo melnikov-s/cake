@@ -7,10 +7,10 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 
 type StreamFunction = AgentSession["agent"]["streamFunction"];
 
-export const RESPONSE_RETRY_DELAYS_MS = [
+const RESPONSE_RETRY_DELAYS_MS = [
   1_000, 3_000, 10_000, 30_000, 60_000, 120_000, 300_000, 600_000, 1_800_000, 3_600_000,
 ] as const;
-export const RESPONSE_RETRY_MAX_ELAPSED_MS = 24 * 60 * 60 * 1_000;
+const RESPONSE_RETRY_MAX_ELAPSED_MS = 24 * 60 * 60 * 1_000;
 
 export interface ResponseRetryNotice {
   attempt: number;

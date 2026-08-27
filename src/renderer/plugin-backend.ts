@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import type { PluginBackendValue } from "../plugin/backend-api";
 
-export interface PluginBackendClient {
+interface PluginBackendClient {
   call(
     method: string,
     input?: PluginBackendValue,

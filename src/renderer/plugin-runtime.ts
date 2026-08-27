@@ -178,7 +178,7 @@ export function subscribePluginCommands(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
-export function subscribePluginRuntime(listener: () => void) {
+function subscribePluginRuntime(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }

@@ -25,7 +25,7 @@ export interface ReviewsStoreProps {
   operations: SessionOperationCoordinatorStore;
 }
 
-/** Shared review workflow used by chat, Changes, and Browse. */
+/** Shared review workflow projected into chat and embedded VS Code. */
 export class ReviewsStore extends Store<ReviewsStoreProps> {
   streamingThreadIds: string[] = observable([]);
   submissionsByOperation: Record<string, string[]> = observable({});

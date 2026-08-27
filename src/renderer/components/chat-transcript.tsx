@@ -28,9 +28,7 @@ import {
 } from "./chat-transcript-parts";
 
 export {
-  ChatTextMessage,
   captureMessageSelection,
-  captureTranscriptSelection,
   chatWorkIsActive,
   type ChatTranscriptBehavior,
   type TranscriptSelectionCapture,

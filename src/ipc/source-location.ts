@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /** A zero-based position in a workspace document. */
-export const sourcePositionSchema = z.object({
+const sourcePositionSchema = z.object({
   line: z.number().int().nonnegative().max(10_000_000),
   column: z.number().int().nonnegative().max(10_000_000).optional(),
 });

@@ -95,7 +95,6 @@ export const customizationProvenanceSchema = z.object({
   diagnostics: z.array(pluginDiagnosticSchema).max(1_000).default([]),
   recordedAt: z.string().datetime(),
 });
-export type CustomizationProvenance = z.infer<typeof customizationProvenanceSchema>;
 
 export const pluginPersistenceKeySchema = z
   .string()
@@ -134,16 +133,6 @@ export const pluginStatusSchema = z.object({
 });
 export type PluginStatus = z.infer<typeof pluginStatusSchema>;
 
-export const pluginBackendCallSchema = z.object({
-  pluginId: pluginIdSchema,
-  callId: z.uuid(),
-  method: z
-    .string()
-    .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/)
-    .max(256),
-  input: z.json(),
-});
-
 export const pluginBackendEventSchema = z.object({
   pluginId: pluginIdSchema,
   name: z
@@ -152,6 +141,3 @@ export const pluginBackendEventSchema = z.object({
     .max(256),
   value: z.json(),
 });
-
-export type PluginBackendCall = z.infer<typeof pluginBackendCallSchema>;
-export type PluginBackendEvent = z.infer<typeof pluginBackendEventSchema>;

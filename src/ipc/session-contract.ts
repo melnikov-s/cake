@@ -155,7 +155,7 @@ export const attachmentSchema = z.discriminatedUnion("kind", [
 
 const partBase = { id: z.string().min(1).max(256) };
 
-export const toolOutputContentSchema = z.discriminatedUnion("type", [
+const toolOutputContentSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: boundedText }),
   z.object({
     type: z.literal("image"),
@@ -284,7 +284,7 @@ export const sessionUsageSchema = z.object({
     .optional(),
 });
 
-export const sessionSummarySchema = z.object({
+const sessionSummarySchema = z.object({
   id: z.string().min(1).max(256),
   title: ipcProjectionString(SESSION_TITLE_MAX_LENGTH),
   created: z.string().datetime(),
@@ -301,7 +301,7 @@ export const globalSessionSummarySchema = sessionSummarySchema.extend({
   projectPath: z.string().min(1).max(4_096).optional(),
 });
 
-export const sessionTreeEntrySchema = z.object({
+const sessionTreeEntrySchema = z.object({
   id: z.string().min(1).max(256),
   parentId: z.string().max(256).optional(),
   type: z.string().max(128),
@@ -312,18 +312,9 @@ export const sessionTreeEntrySchema = z.object({
   active: z.boolean(),
 });
 
-export const changedFileSchema = z.object({
-  path: z.string().max(4_096),
-  previousPath: z.string().max(4_096).optional(),
-  status: z.enum(["added", "modified", "deleted", "renamed", "copied"]),
-  additions: z.number().int().nonnegative(),
-  deletions: z.number().int().nonnegative(),
-  diff: boundedText,
-});
+const resourceScopeSchema = z.enum(["user", "project", "temporary"]);
 
-export const resourceScopeSchema = z.enum(["user", "project", "temporary"]);
-
-export const compatibilityResourceSchema = z.object({
+const compatibilityResourceSchema = z.object({
   id: z.string().min(1).max(8_192),
   kind: z.enum(["skill", "prompt", "package", "extension"]),
   name: ipcProjectionString(1_024).pipe(z.string().min(1)),
@@ -337,7 +328,7 @@ export const compatibilityResourceSchema = z.object({
   enabled: z.boolean().default(true),
 });
 
-export const resourceDiagnosticSchema = z.object({
+const resourceDiagnosticSchema = z.object({
   id: z.string().min(1).max(8_192),
   severity: z.enum(["info", "warning", "error"]),
   source: z.enum(["extension", "skill", "prompt", "package", "compatibility", "runtime"]),
@@ -346,12 +337,12 @@ export const resourceDiagnosticSchema = z.object({
   method: ipcProjectionString(256).optional(),
 });
 
-export const compatibilityCatalogSchema = z.object({
+const compatibilityCatalogSchema = z.object({
   resources: ipcProjectionArray(compatibilityResourceSchema, 20_000).default([]),
   diagnostics: ipcProjectionArray(resourceDiagnosticSchema, 5_000).default([]),
 });
 
-export const extensionUiStateSchema = z.object({
+const extensionUiStateSchema = z.object({
   title: ipcProjectionString(512).optional(),
   statuses: ipcProjectionArray(
     z.object({ key: z.string().max(256), text: ipcProjectionString(2_048) }),
@@ -455,7 +446,7 @@ export const sessionPreviewSchema = z.object({
   parts: ipcProjectionArray(uiPartSchema, 50_000),
 });
 
-export const projectRecordSchema = z.object({
+const projectRecordSchema = z.object({
   path: z.string().min(1).max(4_096),
   name: z.string().min(1).max(512),
   addedAt: z.string().datetime(),
@@ -475,7 +466,7 @@ export const applicationStateSchema = z.object({
   vscodeServerPath: z.string().max(4_096).optional(),
 });
 
-export const windowConversationSelectionSchema = z.discriminatedUnion("kind", [
+const windowConversationSelectionSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("project-session"),
     workspacePath: z.string().min(1).max(4_096),
@@ -484,8 +475,8 @@ export const windowConversationSelectionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("cake-chat"), sessionId: z.string().min(1).max(256) }),
 ]);
 
-export const workLogViewModeSchema = z.enum(["auto", "diff", "log"]);
-export const workLogsExpansionSchema = z.enum(["collapsed", "expanded", "fully-expanded"]);
+const workLogViewModeSchema = z.enum(["auto", "diff", "log"]);
+const workLogsExpansionSchema = z.enum(["collapsed", "expanded", "fully-expanded"]);
 
 export const windowViewStateSchema = z.object({
   projectPath: z.string().max(4_096).optional(),
@@ -519,7 +510,6 @@ export type SessionPreview = z.infer<typeof sessionPreviewSchema>;
 export type SessionSummary = z.infer<typeof sessionSummarySchema>;
 export type GlobalSessionSummary = z.infer<typeof globalSessionSummarySchema>;
 export type SessionTreeEntry = z.infer<typeof sessionTreeEntrySchema>;
-export type ChangedFile = z.infer<typeof changedFileSchema>;
 export type CompatibilityResource = z.infer<typeof compatibilityResourceSchema>;
 export type ResourceDiagnostic = z.infer<typeof resourceDiagnosticSchema>;
 export type CompatibilityCatalog = z.infer<typeof compatibilityCatalogSchema>;

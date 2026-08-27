@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ChangedFile, UiPart } from "../ipc/session-contract";
+import type { UiPart } from "../ipc/session-contract";
 
 const editInputSchema = z.object({
   edits: z
@@ -14,14 +14,11 @@ const toolPathInputSchema = z.object({
   file_path: z.string().optional(),
 });
 
-export type ChangeSource = "working-tree" | "conversation-turn";
-
-export interface WorkLogTurn {
-  id: string;
-  label: string;
-  changes: ChangedFile[];
+export interface WorkLogChange {
+  path: string;
   additions: number;
   deletions: number;
+  diff: string;
 }
 
 export function toolDiff(part: Extract<UiPart, { kind: "tool" }>) {
@@ -70,13 +67,8 @@ function diffStats(diff: string) {
   };
 }
 
-function labelForTurn(text: string, index: number) {
-  const label = text.replace(/\s+/g, " ").trim();
-  return label ? label.slice(0, 160) : `Turn ${index}`;
-}
-
-export function workLogChanges(parts: readonly UiPart[]): ChangedFile[] {
-  const changes: ChangedFile[] = [];
+export function workLogChanges(parts: readonly UiPart[]): WorkLogChange[] {
+  const changes: WorkLogChange[] = [];
   for (const part of parts) {
     if (part.kind !== "tool" || part.state === "error" || part.state === "denied") continue;
     const diff = toolDiff(part);
@@ -91,7 +83,6 @@ export function workLogChanges(parts: readonly UiPart[]): ChangedFile[] {
     } else {
       changes.push({
         path,
-        status: "modified",
         additions: stats.additions,
         deletions: stats.deletions,
         diff,
@@ -99,60 +90,4 @@ export function workLogChanges(parts: readonly UiPart[]): ChangedFile[] {
     }
   }
   return changes;
-}
-
-export function workLogTurns(parts: readonly UiPart[]): WorkLogTurn[] {
-  const turns: WorkLogTurn[] = [];
-  let current: WorkLogTurn | undefined;
-  let turnIndex = 0;
-
-  const flush = () => {
-    if (current && current.changes.length > 0) turns.push(current);
-    current = undefined;
-  };
-
-  for (const part of parts) {
-    if (part.kind === "text" && part.role === "user") {
-      flush();
-      turnIndex += 1;
-      current = {
-        id: `turn-${part.id}`,
-        label: labelForTurn(part.text, turnIndex),
-        changes: [],
-        additions: 0,
-        deletions: 0,
-      };
-      continue;
-    }
-    if (part.kind !== "tool" || part.state === "error" || part.state === "denied") continue;
-    const diff = toolDiff(part);
-    const path = toolPath(part);
-    if (!diff || !path) continue;
-    current ??= {
-      id: `turn-${part.id}`,
-      label: labelForTurn("Agent changes", ++turnIndex),
-      changes: [],
-      additions: 0,
-      deletions: 0,
-    };
-    const stats = diffStats(diff);
-    const existing = current.changes.find((change) => change.path === path);
-    if (existing) {
-      existing.diff = `${existing.diff}\n${diff}`;
-      existing.additions += stats.additions;
-      existing.deletions += stats.deletions;
-    } else {
-      current.changes.push({
-        path,
-        status: "modified",
-        additions: stats.additions,
-        deletions: stats.deletions,
-        diff,
-      });
-    }
-    current.additions += stats.additions;
-    current.deletions += stats.deletions;
-  }
-  flush();
-  return turns;
 }

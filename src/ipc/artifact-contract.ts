@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { jsonValueSchema, type JsonValue } from "./json-contract";
 
-export const ARTIFACT_PROTOCOL = "cake.artifact/v1" as const;
+const ARTIFACT_PROTOCOL = "cake.artifact/v1" as const;
 export const MAX_ARTIFACT_INPUT_BYTES = 1_048_576;
 const artifactKindSchema = z.enum([
   "markdown",

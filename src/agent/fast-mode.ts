@@ -5,7 +5,7 @@ export const CODEX_FAST_MODE_SERVICE_TIER = "priority" as const;
  * list aligned with the catalog instead of exposing the control for every model
  * behind the OpenAI Codex provider.
  */
-export const CODEX_FAST_MODE_MODEL_IDS = [
+const CODEX_FAST_MODE_MODEL_IDS = [
   "gpt-5.4",
   "gpt-5.5",
   "gpt-5.6-luna",

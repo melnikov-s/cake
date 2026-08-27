@@ -25,6 +25,10 @@ const reviewedChanges = new Set();
 const temporaryChanges = new Set();
 const revealDecorations = new Set();
 let changeDecorations;
+let annotationSessionId;
+let annotations = [];
+let annotationEmitter;
+let annotationDecorations;
 
 function postBridge(payload) {
   if (!BRIDGE_PORT || !BRIDGE_TOKEN || !WORKSPACE) return;
@@ -189,6 +193,9 @@ function applyChangeDecorations(vscode) {
     changeStatus.tooltip = `${unreviewed.length} unreviewed changes in the current agent turn`;
     changeStatus.show();
   }
+  // Discussion markers win gutter collisions; change highlights and the overview
+  // ruler remain visible, and the discussion CodeLens remains independently clickable.
+  applyAnnotationDecorations(vscode);
 }
 
 function updateAgentChanges(vscode, payload) {
@@ -251,6 +258,69 @@ async function navigateChange(vscode, direction) {
   await showAgentChange(vscode, changes[next]);
 }
 
+function annotationStatusLabel(status) {
+  return (
+    {
+      open: "Open",
+      pending: "Pending",
+      answered: "Answered",
+      resolved: "Resolved",
+    }[status] || "Open"
+  );
+}
+
+function annotationReplyLabel(replyCount) {
+  return `${replyCount} ${replyCount === 1 ? "reply" : "replies"}`;
+}
+
+function matchingAnnotations(editor) {
+  const relativePath = workspaceRelative(editor.document.uri.fsPath);
+  return relativePath
+    ? annotations.filter((annotation) => annotation.location?.path === relativePath)
+    : [];
+}
+
+function annotationHover(vscode, annotation) {
+  const hover = new vscode.MarkdownString();
+  hover.appendMarkdown(`**Cake discussion · ${annotationStatusLabel(annotation.status)}**\n\n`);
+  if (annotation.preview) {
+    hover.appendText(annotation.preview);
+    hover.appendMarkdown("\n\n");
+  }
+  hover.appendText(annotationReplyLabel(annotation.replyCount || 0));
+  hover.appendMarkdown("\n\nSelect the Cake CodeLens to open the full conversation.");
+  return hover;
+}
+
+function applyAnnotationDecorations(vscode) {
+  if (!annotationDecorations) return;
+  for (const editor of vscode.window.visibleTextEditors) {
+    const matching = matchingAnnotations(editor);
+    for (const [status, decoration] of Object.entries(annotationDecorations)) {
+      editor.setDecorations(
+        decoration,
+        matching
+          .filter((annotation) => annotation.status === status)
+          .map((annotation) => ({
+            range: rangeFor(vscode, editor.document, annotation.location.range),
+            hoverMessage: annotationHover(vscode, annotation),
+          })),
+      );
+    }
+  }
+}
+
+function updateAnnotations(vscode, payload) {
+  annotationSessionId = payload.sessionId || undefined;
+  annotations = Array.isArray(payload.annotations) ? payload.annotations : [];
+  applyAnnotationDecorations(vscode);
+  annotationEmitter?.fire();
+}
+
+async function openSourceControl(vscode) {
+  await vscode.commands.executeCommand("workbench.view.scm");
+}
+
 async function openCompleteChange(vscode) {
   const editor = vscode.window.activeTextEditor;
   if (!editor) return;
@@ -289,6 +359,52 @@ function activate(context) {
   const dimMarker = vscode.Uri.parse(
     `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="8" height="16" viewBox="0 0 8 16"><rect x="2" y="3" width="4" height="10" rx="2" fill="#888" fill-opacity=".55"/></svg>')}`,
   );
+  const annotationMarker = (color) =>
+    vscode.Uri.parse(
+      `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14"><path d="M2 2h10v7H7l-3 3V9H2z" fill="${color}"/></svg>`)}`,
+    );
+  annotationDecorations = {
+    open: vscode.window.createTextEditorDecorationType({
+      isWholeLine: true,
+      gutterIconPath: annotationMarker("#7c5cff"),
+      gutterIconSize: "contain",
+    }),
+    pending: vscode.window.createTextEditorDecorationType({
+      isWholeLine: true,
+      gutterIconPath: annotationMarker("#d97706"),
+      gutterIconSize: "contain",
+    }),
+    answered: vscode.window.createTextEditorDecorationType({
+      isWholeLine: true,
+      gutterIconPath: annotationMarker("#16a34a"),
+      gutterIconSize: "contain",
+    }),
+    resolved: vscode.window.createTextEditorDecorationType({
+      isWholeLine: true,
+      gutterIconPath: annotationMarker("#888888"),
+      gutterIconSize: "contain",
+      opacity: "0.55",
+    }),
+  };
+  annotationEmitter = new vscode.EventEmitter();
+  const annotationCodeLensProvider = {
+    onDidChangeCodeLenses: annotationEmitter.event,
+    provideCodeLenses(document) {
+      const editor = vscode.window.visibleTextEditors.find(
+        (candidate) => candidate.document.uri.toString() === document.uri.toString(),
+      );
+      if (!editor || !annotationSessionId) return [];
+      return matchingAnnotations(editor).map((annotation) => {
+        const range = rangeFor(vscode, document, annotation.location.range);
+        return new vscode.CodeLens(range, {
+          command: "cake.openAnnotation",
+          title: `$(comment-discussion) Cake: ${annotationStatusLabel(annotation.status)} · ${annotationReplyLabel(annotation.replyCount || 0)}`,
+          arguments: [annotationSessionId, annotation.id],
+          tooltip: annotation.preview || "Open this Cake discussion",
+        });
+      });
+    },
+  };
   changeDecorations = {
     current: vscode.window.createTextEditorDecorationType({
       isWholeLine: true,
@@ -317,7 +433,13 @@ function activate(context) {
   };
   changeStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
   changeStatus.command = "cake.nextChange";
-  context.subscriptions.push(changeStatus, ...Object.values(changeDecorations));
+  context.subscriptions.push(
+    changeStatus,
+    annotationEmitter,
+    ...Object.values(annotationDecorations),
+    ...Object.values(changeDecorations),
+    vscode.languages.registerCodeLensProvider({ scheme: "file" }, annotationCodeLensProvider),
+  );
 
   const sendSelection = (action) => {
     const editor = vscode.window.activeTextEditor;
@@ -431,9 +553,12 @@ function activate(context) {
     }
     readBody(request)
       .then((raw) => JSON.parse(raw))
-      .then((payload) =>
-        payload.type === "agent-changes" ? updateAgentChanges(vscode, payload) : reveal(payload),
-      )
+      .then((payload) => {
+        if (payload.type === "agent-changes") return updateAgentChanges(vscode, payload);
+        if (payload.type === "annotations") return updateAnnotations(vscode, payload);
+        if (payload.type === "open-source-control") return openSourceControl(vscode);
+        return reveal(payload);
+      })
       .then(() => response.writeHead(204).end())
       .catch((error) => {
         response
@@ -465,13 +590,21 @@ function activate(context) {
       for (const change of agentChanges) reviewedChanges.add(change.id);
       applyChangeDecorations(vscode);
     }),
+    vscode.commands.registerCommand("cake.openAnnotation", (sessionId, threadId) => {
+      if (sessionId !== annotationSessionId || !annotations.some((item) => item.id === threadId))
+        return;
+      postBridge({ type: "open-annotation", sessionId, threadId });
+    }),
     vscode.commands.registerCommand("cake.backToAgent", () =>
       postBridge({ type: "back-to-agent" }),
     ),
     vscode.commands.registerCommand("cake.toggleChatSidebar", () =>
       postBridge({ type: "toggle-chat-sidebar" }),
     ),
-    vscode.window.onDidChangeVisibleTextEditors(() => applyChangeDecorations(vscode)),
+    vscode.window.onDidChangeVisibleTextEditors(() => {
+      applyChangeDecorations(vscode);
+      annotationEmitter.fire();
+    }),
     vscode.window.onDidChangeTextEditorSelection((event) =>
       scheduleEditorActivity(vscode, event.textEditor),
     ),

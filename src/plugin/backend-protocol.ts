@@ -32,5 +32,4 @@ export const pluginBackendHostMessageSchema = z.union([
   z.object({ type: z.literal("fatal"), error: z.string().max(32_768) }),
 ]);
 
-export type PluginBackendHostRequest = z.infer<typeof pluginBackendHostRequestSchema>;
 export type PluginBackendHostMessage = z.infer<typeof pluginBackendHostMessageSchema>;

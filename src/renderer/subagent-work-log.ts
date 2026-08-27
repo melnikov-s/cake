@@ -2,9 +2,9 @@ import { z } from "zod";
 import type { UiPart } from "../ipc/session-contract";
 import { toolOperationName } from "../utils/cake-tool";
 
-export type ToolPart = Extract<UiPart, { kind: "tool" }>;
+type ToolPart = Extract<UiPart, { kind: "tool" }>;
 
-export interface SubagentWorkLogItem {
+interface SubagentWorkLogItem {
   kind: "subagent-work-log";
   id: string;
   spawn: ToolPart;

@@ -93,7 +93,6 @@ describe("VsCodeServerManager startup", () => {
     manager["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "toggle-chat-sidebar", workspace: "/project" })),
     );
-
     expect(broadcast).toHaveBeenCalledWith({
       type: "embedded-editor-toggle-chat",
       workspacePath: "/project",
@@ -105,6 +104,23 @@ describe("VsCodeServerManager startup", () => {
     expect(broadcast).toHaveBeenCalledWith({
       type: "embedded-editor-back-to-agent",
       workspacePath: "/project",
+    });
+
+    manager["handleBridgeMessage"](
+      Buffer.from(
+        JSON.stringify({
+          type: "open-annotation",
+          workspace: "/project",
+          sessionId: "session-a",
+          threadId: "thread-a",
+        }),
+      ),
+    );
+    expect(broadcast).toHaveBeenCalledWith({
+      type: "embedded-editor-annotation-opened",
+      workspacePath: "/project",
+      sessionId: "session-a",
+      threadId: "thread-a",
     });
 
     manager["presentedWorkspacePaths"].set("/real/project", "/linked/project");

@@ -43,7 +43,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   const draftAnchor = reviews.draftAnchor;
   const activeThread = reviews.activeThreadId
     ? reviews.threads.find(
-        (thread) => thread.id === reviews.activeThreadId && thread.anchor.view === "file",
+        (thread) => thread.id === reviews.activeThreadId && thread.anchor.view !== "message",
       )
     : undefined;
   const contextualAnchor = draftAnchor ?? activeThread?.anchor;

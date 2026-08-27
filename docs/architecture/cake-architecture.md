@@ -31,9 +31,9 @@ and host application-level Cake Chat sessions. Cake Chat is Pi-backed, but its
 conversations are meta-sessions: they can reason about and navigate the application
 through curated Cake controls without absorbing the histories of project sessions.
 
-The conversation remains the center of the product. Files, changes, reviews,
-artifacts, and plugin scenes support the work rather than turning Cake into a
-general-purpose IDE.
+The conversation remains the center of the product. Files, reviews, artifacts,
+and plugin scenes support the work rather than turning Cake into a general-purpose
+IDE. Embedded VS Code owns source browsing, editing, Git changes, and native diffs.
 
 ## Sources of truth
 
@@ -47,7 +47,7 @@ Every durable concept has one authority.
 | Application-level Cake Chat transcripts                           | Their dedicated Pi sessions                                               | Present them as Cake-wide meta-sessions and route curated controls                        |
 | Projects, window selection and view state                         | Cake                                                                      | Persist application and window metadata without copying Pi history                        |
 | Resolved-session status                                           | Cake-managed active/archive transcript location                           | Keep resolved transcripts read-only and restore them before Pi opens them                 |
-| Changes, reviews, and inline discussions                          | Cake workflow services, with Pi sidecar-session references where relevant | Persist anchors and workflow metadata without copying Pi transcripts                      |
+| Reviews and inline discussions                                    | Cake workflow services, with Pi sidecar-session references where relevant | Persist anchors and workflow metadata without copying Pi transcripts                      |
 | Rich artifacts                                                    | Cake artifact repository plus Pi transcript pointers/fallbacks            | Persist and render bounded, versioned artifact data                                       |
 | Blocking structured requests                                      | `cake.request/v1` plus the active Pi tool call                            | Render trusted forms or sandboxed custom request widgets and return one validated value   |
 | Trusted plugin source, builds, diagnostics and plugin persistence | Cake plugin machinery                                                     | Compile, activate, recover, repair and roll back user-owned source                        |
@@ -164,10 +164,11 @@ parent also releases its private descendants. Cake projects live child tool
 activity, usage, cost, and the final answer through the parent tool call rather
 than exposing a second transcript.
 
-The Changes surface reads the current staged, unstaged, deleted, renamed, and
-untracked workspace state directly through Git. Cake does not create checkpoint
-refs, synthetic indexes, or turn-history snapshots; Pi session history remains
-the transcript authority rather than a source of persisted workspace trees.
+Embedded VS Code's Source Control view is the workspace-change authority and
+renders native Git diffs. Cake projects transcript-derived agent change markers
+and review annotations into VS Code without maintaining a second working-tree
+snapshot or diff browser. Historical per-turn diffs remain in Pi's authoritative
+conversation work logs.
 
 Automatic project-session naming is the first utility workflow. After the
 initial user message is accepted, an unnamed session may send that original
@@ -215,8 +216,9 @@ The window Store hierarchy mirrors the product surfaces:
   those owners without absorbing their state.
 - `ProjectWorkbenchStore` coordinates project activation and its focused
   workflow children: `CommandPaneStore`, `SessionManagementStore`,
-  `SessionForkStore`, `WorktreeCreationStore`, `ChangesStore`, `EmbeddedEditorStore`,
-  and `WorktreeStore`. `EmbeddedEditorStore` owns IDE mode, where the native VS Code
+  `SessionForkStore`, `WorktreeCreationStore`, `EmbeddedEditorStore`,
+  and `WorktreeStore`. `EmbeddedEditorStore` owns IDE mode and Source Control navigation,
+  where the native VS Code
   view occupies the source pane and Cake's shared chat occupies the right drawer.
   Each child owns its own operation
   state and lifetime; the workbench does not re-export one-for-one child APIs.
@@ -265,7 +267,6 @@ flowchart TD
   Root --> Persistence["WindowPersistenceCoordinatorStore"]
   Workbench -. selects from .-> Registry
   Workbench --> IDE["EmbeddedEditorStore"]
-  Workbench --> Changes["ChangesStore"]
   Registry --> Session["ProjectSessionStore (one per loaded target)"]
   Session --> Model["Session"]
   Session --> Composer["MessageComposerStore"]

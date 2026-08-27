@@ -9,6 +9,7 @@ import { applyEdits, modify, parse as parseJsonc, type ParseError } from "jsonc-
 import { z } from "zod";
 import type { SourceLocation } from "../ipc/source-location";
 import type { AgentChange } from "../ipc/agent-change";
+import type { EditorAnnotationSnapshot } from "../ipc/editor-annotation";
 import {
   downloadFile,
   extractArchive,
@@ -103,6 +104,12 @@ const bridgeMessageSchema = z.discriminatedUnion("type", [
     workspace: z.string().min(1).max(4_096),
   }),
   z.object({
+    type: z.literal("open-annotation"),
+    workspace: z.string().min(1).max(4_096),
+    sessionId: z.string().min(1).max(256),
+    threadId: z.string().min(1).max(256),
+  }),
+  z.object({
     type: z.literal("activity-cleared"),
     workspace: z.string().min(1).max(4_096),
   }),
@@ -138,7 +145,9 @@ const bridgeMessageSchema = z.discriminatedUnion("type", [
 /** Requests Cake posts to the companion extension's localhost server. */
 type CompanionRequest =
   | ({ type: "reveal" } & SourceLocation)
-  | { type: "agent-changes"; changes: AgentChange[] };
+  | { type: "open-source-control" }
+  | { type: "agent-changes"; changes: AgentChange[] }
+  | ({ type: "annotations" } & EditorAnnotationSnapshot);
 
 interface BroadcastTarget {
   broadcast(
@@ -162,6 +171,12 @@ interface BroadcastTarget {
           contextAfter: string;
         }
       | { type: "embedded-editor-back-to-agent"; workspacePath: string }
+      | {
+          type: "embedded-editor-annotation-opened";
+          workspacePath: string;
+          sessionId: string;
+          threadId: string;
+        }
       | { type: "embedded-editor-toggle-chat"; workspacePath: string }
       | { type: "embedded-editor-context-cleared"; workspacePath: string }
       | {
@@ -443,6 +458,16 @@ export class VsCodeServerManager {
     await postJson(port, "/", { type: "reveal", ...location }, this.bridgeToken);
   }
 
+  /** Opens VS Code's native Source Control view for the workspace. */
+  async openSourceControl(workspacePath: string) {
+    const resolved = await realpath(workspacePath);
+    const instance = this.servers.get(resolved);
+    if (!instance) throw new Error("The embedded editor is not running for this project yet");
+    const port = await this.waitForCompanionPort(resolved);
+    this.touch(instance);
+    await postJson(port, "/", { type: "open-source-control" }, this.bridgeToken);
+  }
+
   /** Updates the transcript-derived change projection shown by the companion extension. */
   async updateAgentChanges(workspacePath: string, changes: AgentChange[]) {
     const resolved = await realpath(workspacePath);
@@ -451,6 +476,16 @@ export class VsCodeServerManager {
     const port = await this.waitForCompanionPort(resolved);
     this.touch(instance);
     await postJson(port, "/", { type: "agent-changes", changes }, this.bridgeToken);
+  }
+
+  /** Replaces the active session's Cake discussion annotations in VS Code. */
+  async updateAnnotations(workspacePath: string, snapshot: EditorAnnotationSnapshot) {
+    const resolved = await realpath(workspacePath);
+    const instance = this.servers.get(resolved);
+    if (!instance) throw new Error("The embedded editor is not running for this project yet");
+    const port = await this.waitForCompanionPort(resolved);
+    this.touch(instance);
+    await postJson(port, "/", { type: "annotations", ...snapshot }, this.bridgeToken);
   }
 
   private async waitForCompanionPort(workspacePath: string) {
@@ -726,6 +761,16 @@ export class VsCodeServerManager {
       });
       return;
     }
+    if (message.data.type === "open-annotation") {
+      this.focusCakeWindow(message.data.workspace);
+      this.props.broadcast({
+        type: "embedded-editor-annotation-opened",
+        workspacePath: presentedWorkspace,
+        sessionId: message.data.sessionId,
+        threadId: message.data.threadId,
+      });
+      return;
+    }
     if (message.data.type === "activity-cleared") {
       this.props.broadcast({
         type: "embedded-editor-context-cleared",
@@ -749,12 +794,7 @@ export class VsCodeServerManager {
       });
       return;
     }
-    for (const [webContentsId, entry] of this.views) {
-      if (entry.workspacePath !== message.data.workspace) continue;
-      BrowserWindow.getAllWindows()
-        .find((candidate) => candidate.webContents.id === webContentsId)
-        ?.webContents.focus();
-    }
+    this.focusCakeWindow(message.data.workspace);
     this.props.broadcast({
       type: "embedded-editor-selection",
       action: message.data.action,
@@ -769,6 +809,15 @@ export class VsCodeServerManager {
       contextBefore: message.data.contextBefore,
       contextAfter: message.data.contextAfter,
     });
+  }
+
+  private focusCakeWindow(workspacePath: string) {
+    for (const [webContentsId, entry] of this.views) {
+      if (entry.workspacePath !== workspacePath) continue;
+      BrowserWindow.getAllWindows()
+        .find((candidate) => candidate.webContents.id === webContentsId)
+        ?.webContents.focus();
+    }
   }
 
   private async ensureEditorPreferences(userDataDir: string) {

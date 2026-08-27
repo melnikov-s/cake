@@ -1,9 +1,10 @@
 import { createStore, mount } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { EditorAnnotationSnapshot } from "../../../../src/ipc/editor-annotation";
 import type { UiPart } from "../../../../src/ipc/session-contract";
 import type { DesktopClientEvent } from "../../../../src/renderer/desktop-client";
 import { EmbeddedEditorStore } from "../../../../src/renderer/stores/EmbeddedEditorStore";
-function createHarness(parts: UiPart[] = []) {
+function createHarness(parts: UiPart[] = [], annotations?: EditorAnnotationSnapshot) {
   const client = {
     getEmbeddedEditorState: vi.fn(async () => ({ status: "missing" as const })),
     installEmbeddedEditor: vi.fn(async () => undefined),
@@ -17,7 +18,9 @@ function createHarness(parts: UiPart[] = []) {
     openEmbeddedEditor: vi.fn(async () => undefined),
     updateEmbeddedEditorBounds: vi.fn(async () => undefined),
     revealInEmbeddedEditor: vi.fn(async () => undefined),
+    openEmbeddedEditorSourceControl: vi.fn(async () => undefined),
     updateEmbeddedEditorChanges: vi.fn(async () => undefined),
+    updateEmbeddedEditorAnnotations: vi.fn(async () => undefined),
   };
   const startCakeChat = vi.fn(async (prompt: string) => {
     void prompt;
@@ -27,6 +30,7 @@ function createHarness(parts: UiPart[] = []) {
       client,
       projectPath: () => "/tmp/project",
       parts: () => parts,
+      annotations: () => annotations,
       startCakeChat,
     }),
   );
@@ -169,6 +173,30 @@ describe("EmbeddedEditorStore", () => {
         currentTurn: true,
       },
     ]);
+    store[Symbol.dispose]();
+  });
+
+  it("syncs active-session discussion annotations after opening the IDE", async () => {
+    const snapshot: EditorAnnotationSnapshot = {
+      sessionId: "session-a",
+      annotations: [
+        {
+          id: "thread-a",
+          location: {
+            path: "src/app.ts",
+            range: { start: { line: 3 }, end: { line: 5 } },
+          },
+          status: "answered",
+          replyCount: 1,
+          preview: "Why is this needed?",
+        },
+      ],
+    };
+    const { client, store } = createHarness([], snapshot);
+
+    await store.show();
+
+    expect(client.updateEmbeddedEditorAnnotations).toHaveBeenCalledWith("/tmp/project", snapshot);
     store[Symbol.dispose]();
   });
 

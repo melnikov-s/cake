@@ -3,7 +3,7 @@ import { useEffect, useState, type CSSProperties, type ComponentProps } from "re
 import { syntaxHighlighter } from "@/lib/syntax-highlighter";
 import { cn } from "@/lib/utils";
 
-export type HighlightResult = ReturnType<typeof syntaxHighlighter.highlight>;
+type HighlightResult = ReturnType<typeof syntaxHighlighter.highlight>;
 export type HighlightTokens = NonNullable<HighlightResult>["tokens"];
 type HighlightLanguage = Parameters<typeof syntaxHighlighter.highlight>[0]["language"];
 
@@ -61,11 +61,7 @@ export function languageForSource(path: string): HighlightLanguage {
   return languages.get(path.split(".").pop()?.toLowerCase() ?? "") ?? "markdown";
 }
 
-export function highlightSource(
-  path: string,
-  source: string,
-  apply: (tokens: HighlightTokens) => void,
-) {
+function highlightSource(path: string, source: string, apply: (tokens: HighlightTokens) => void) {
   const accept = (result: NonNullable<HighlightResult>) => apply(result.tokens);
   const immediate = syntaxHighlighter.highlight(
     // Use a high-contrast light theme for source diffs; github-light renders

@@ -126,6 +126,3 @@ function download(name: string, content: string, type: string) {
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
-export function downloadArtifactMarkdown(markdown: string) {
-  download("cake-artifacts.md", markdown, "text/markdown");
-}

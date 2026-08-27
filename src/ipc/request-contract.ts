@@ -2,7 +2,7 @@ import { z } from "zod";
 import { jsonSchemaSchema } from "./artifact-contract";
 import { inlineWidgetLanguageSchema, inlineWidgetSourceSchema } from "./inline-widget-contract";
 
-export const REQUEST_PROTOCOL = "cake.request/v1" as const;
+const REQUEST_PROTOCOL = "cake.request/v1" as const;
 const requestIdSchema = z
   .string()
   .min(1)
@@ -19,7 +19,7 @@ const formFieldSchema = z.object({
     .optional(),
 });
 
-export const requestViewSchema = z.discriminatedUnion("type", [
+const requestViewSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("form"),
     fields: z.array(formFieldSchema).min(1).max(200),

@@ -4,6 +4,7 @@ import { reviewAnchorSchema, reviewThreadSchema } from "./review-contract";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { sourceLocationSchema } from "./source-location";
 import { agentChangeSchema } from "./agent-change";
+import { editorAnnotationSnapshotSchema } from "./editor-annotation";
 import {
   customizationStateSchema,
   pluginBackendEventSchema,
@@ -32,7 +33,6 @@ import {
 import {
   applicationStateSchema,
   attachmentSchema,
-  changedFileSchema,
   extensionUiEventSchema,
   fileSuggestionSchema,
   globalSessionSummarySchema,
@@ -127,13 +127,6 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     type: z.literal("extension-ui"),
     sessionId: z.string().max(256),
     event: extensionUiEventSchema,
-  }),
-  z.object({
-    type: z.literal("changes-snapshot"),
-    requestId: z.uuid(),
-    workspacePath: z.string().max(4_096),
-    sessionId: z.string().max(256),
-    files: ipcProjectionArray(changedFileSchema, 10_000),
   }),
   z.object({
     type: z.literal("changelog-snapshot"),
@@ -245,6 +238,12 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     workspacePath: z.string().max(4_096),
   }),
   z.object({
+    type: z.literal("embedded-editor-annotation-opened"),
+    workspacePath: z.string().max(4_096),
+    sessionId: z.string().min(1).max(256),
+    threadId: z.string().min(1).max(256),
+  }),
+  z.object({
     type: z.literal("embedded-editor-toggle-chat"),
     workspacePath: z.string().max(4_096),
   }),
@@ -292,10 +291,21 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     location: sourceLocationSchema,
   }),
   z.object({
+    type: z.literal("open-embedded-editor-source-control"),
+    requestId: z.uuid(),
+    workspacePath: z.string().max(4_096),
+  }),
+  z.object({
     type: z.literal("update-embedded-editor-changes"),
     requestId: z.uuid(),
     workspacePath: z.string().max(4_096),
     changes: z.array(agentChangeSchema).max(2_000),
+  }),
+  z.object({
+    type: z.literal("update-embedded-editor-annotations"),
+    requestId: z.uuid(),
+    workspacePath: z.string().max(4_096),
+    snapshot: editorAnnotationSnapshotSchema,
   }),
   z.object({ type: z.literal("get-customization-state") }),
   z.object({ type: z.literal("get-plugin-authoring-reference") }),
@@ -751,11 +761,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     entryId: z.string().max(256),
   }),
   z.object({
-    type: z.literal("inspect-changes"),
-    requestId: z.uuid(),
-    sessionId: z.string().max(256),
-  }),
-  z.object({
     type: z.literal("get-changelog"),
     requestId: z.uuid(),
     sessionId: z.string().max(256),
@@ -894,7 +899,6 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
 export type DesktopEvent = z.infer<typeof desktopEventSchema>;
 export type DesktopRequest = z.infer<typeof desktopRequestSchema>;
 export type DesktopResponse = z.infer<typeof desktopResponseSchema>;
-export type PiState = Extract<DesktopEvent, { type: "pi-state" }>["state"];
 
 export interface CakeDesktopBridge {
   request(input: DesktopRequest): Promise<DesktopResponse>;

@@ -87,12 +87,12 @@ export const EmbeddedEditorPane = observer(function EmbeddedEditorPane({
         store.status === "missing" && !store.error ? (
           <StatusCard store={store} />
         ) : store.status === "downloading" ? (
-          <div className="change-explorer-file-state">
+          <div className="grid h-full content-center justify-items-center gap-1 text-xs text-muted-foreground">
             <LoadingState label="Installing VS Code" />
-            <span>{store.statusMessage}</span>
+            <span className="max-w-lg text-center">{store.statusMessage}</span>
           </div>
         ) : store.status === "starting" && !store.error ? (
-          <div className="change-explorer-file-state">
+          <div className="grid h-full content-center justify-items-center gap-1 text-xs text-muted-foreground">
             <LoadingState label="Starting VS Code" />
           </div>
         ) : (

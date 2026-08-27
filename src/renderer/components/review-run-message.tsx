@@ -27,7 +27,7 @@ export function ReviewRunMessage({
       >
         {run.status === "running" && <LoadingState label={label} variant="Dots" />}
         {run.status !== "running" && <strong>{label}</strong>}
-        <span>View in Changes</span>
+        <span>View in VS Code</span>
       </button>
     </Message>
   );
