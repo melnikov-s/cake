@@ -167,17 +167,26 @@ export const ChatTranscript = observer(function ChatTranscript({
       followOutputRef.current = false;
     };
     const stopFollowingForScrollbar = (event: PointerEvent) => {
-      if (event.clientX >= scroller.getBoundingClientRect().right - 16) stopFollowing();
+      // Native scrollbar pointer events target the scrolling element itself. Do
+      // not depend on a fixed scrollbar width: overlay scrollbars and stable
+      // gutters place the thumb differently across platforms.
+      if (event.target === scroller) stopFollowing();
+    };
+    const stopFollowingForKeyboard = (event: KeyboardEvent) => {
+      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key))
+        stopFollowing();
     };
     scroller.addEventListener("scroll", captureScrollState, { passive: true });
     scroller.addEventListener("wheel", stopFollowing, { passive: true });
     scroller.addEventListener("touchmove", stopFollowing, { passive: true });
     scroller.addEventListener("pointerdown", stopFollowingForScrollbar);
+    scroller.addEventListener("keydown", stopFollowingForKeyboard);
     return () => {
       scroller.removeEventListener("scroll", captureScrollState);
       scroller.removeEventListener("wheel", stopFollowing);
       scroller.removeEventListener("touchmove", stopFollowing);
       scroller.removeEventListener("pointerdown", stopFollowingForScrollbar);
+      scroller.removeEventListener("keydown", stopFollowingForKeyboard);
       if (saveTimer !== undefined) clearTimeout(saveTimer);
       if (pendingScrollState) store.setTranscriptScrollState(pendingScrollState);
     };

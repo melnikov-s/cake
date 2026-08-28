@@ -163,6 +163,23 @@ test("restores a session's virtualized transcript position after leaving and swi
     await expect
       .poll(() => transcript.evaluate((element) => element.scrollTop))
       .toBeGreaterThan(3_000);
+
+    const composer = page.getByRole("combobox", { name: "Message" });
+    await composer.fill(Array.from({ length: 30 }, (_, index) => `Line ${index + 1}`).join("\n"));
+    await expect
+      .poll(async () => {
+        const lastMessageBottom = await page
+          .locator(".transcript-item")
+          .last()
+          .evaluate((element) => element.getBoundingClientRect().bottom);
+        const composerTop = await page
+          .locator(".workbench-composer")
+          .evaluate((element) => element.getBoundingClientRect().top);
+        return Math.abs(lastMessageBottom - composerTop);
+      })
+      .toBeLessThanOrEqual(2);
+    await composer.fill("");
+
     await page.waitForTimeout(500);
     const bottomPosition = await transcript.evaluate((element) => element.scrollTop);
     await transcript.hover();

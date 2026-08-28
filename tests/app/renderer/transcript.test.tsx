@@ -366,7 +366,11 @@ describe("Transcript scrolling", () => {
     expect(followOutput(true)).toBe(false);
   });
 
-  it("does not resume following after the user wheels the transcript", () => {
+  it.each([
+    ["wheel", () => new WheelEvent("wheel", { bubbles: true })],
+    ["scrollbar", () => new MouseEvent("pointerdown", { bubbles: true })],
+    ["keyboard", () => new KeyboardEvent("keydown", { bubbles: true, key: "PageUp" })],
+  ])("does not resume following after the user takes control with the %s", (_name, event) => {
     const parts: UiPart[] = [
       { id: "user-1", kind: "text", role: "user", text: "Explain", status: "complete" },
       {
@@ -380,7 +384,7 @@ describe("Transcript scrolling", () => {
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts, true)} />));
     const transcript = container.querySelector<HTMLElement>(".transcript")!;
-    act(() => transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true })));
+    act(() => transcript.dispatchEvent(event()));
     const followOutput = virtualizedProps.current?.followOutput as (
       isAtBottom: boolean,
     ) => "auto" | false;

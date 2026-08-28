@@ -1486,11 +1486,10 @@
 }
 .transcript-footer {
   width: min(100%, 51rem);
-  min-height: 210px;
   margin-inline: auto;
-  /* Keeps the tail of the last card (for example an artifact form's action row)
-     scrollable above the fixed composer dock instead of trapped beneath it. */
-  padding: 0 24px 200px;
+  /* Match the live dock height so the transcript tail rests immediately above
+     the composer at the bottom while earlier content may scroll beneath it. */
+  padding: 0 24px var(--composer-dock-height, 210px);
 }
 .compaction-message details {
   overflow: hidden;
@@ -2997,10 +2996,6 @@ button.reasoning-summary {
 .chat-embedded-workbench-composer {
   margin-inline: auto;
 }
-.chat-embedded-workbench-composer textarea {
-  min-height: 74px;
-  max-height: 180px;
-}
 .chat-layout-compact .transcript {
   overflow-y: auto;
 }
@@ -3016,10 +3011,6 @@ button.reasoning-summary {
 }
 .chat-layout-compact .chat-embedded-composer {
   padding: 8px 2px 2px;
-}
-.chat-layout-compact .chat-embedded-workbench-composer textarea {
-  min-height: 64px;
-  max-height: 132px;
 }
 .message-comment-popover > .chat-layout {
   min-height: 0;
@@ -3083,11 +3074,6 @@ button.reasoning-summary {
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.workbench-composer textarea {
-  min-height: 90px;
-  max-height: 240px;
-  font-size: 14px;
 }
 .queued-prompts {
   display: grid;

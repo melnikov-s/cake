@@ -1,4 +1,4 @@
-import { useReducer, type ReactNode } from "react";
+import { useLayoutEffect, useReducer, useRef, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { ChatComposer } from "@/components/chat-composer";
 import { ImagePreview } from "@/components/image-preview";
@@ -101,12 +101,81 @@ export const Chat = observer(function Chat({
   // The input keeps its DOM draft locally, while ChatStore remains canonical.
   // Force the surrounding toolbar to re-read semantic submit state in the same event.
   const [, draftChanged] = useReducer((revision: number) => revision + 1, 0);
+  const layoutRef = useRef<HTMLDivElement>(null);
+  const composerDockRef = useRef<HTMLDivElement>(null);
+  const composerVisible = store.composerVisible;
+  useLayoutEffect(() => {
+    const layout = layoutRef.current;
+    const dock = composerDockRef.current;
+    if (!layout) return;
+    if (embedded || !dock) {
+      layout.style.setProperty("--composer-dock-height", "0px");
+      return;
+    }
+
+    const transcript = layout.querySelector<HTMLElement>(".transcript");
+    const isAtBottom = () =>
+      transcript !== null &&
+      transcript.scrollHeight - transcript.clientHeight - transcript.scrollTop <= 2;
+    let followingBottom = true;
+    let scrollFrame: number | undefined;
+    let bottomUpdatePending = false;
+    const captureBottomState = () => {
+      if (!bottomUpdatePending && isAtBottom()) followingBottom = true;
+    };
+    const stopFollowing = () => {
+      followingBottom = false;
+      bottomUpdatePending = false;
+      if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);
+      scrollFrame = undefined;
+    };
+    const stopFollowingForScrollbar = (event: PointerEvent) => {
+      if (event.target === transcript) stopFollowing();
+    };
+    transcript?.addEventListener("scroll", captureBottomState, { passive: true });
+    transcript?.addEventListener("wheel", stopFollowing, { passive: true });
+    transcript?.addEventListener("touchmove", stopFollowing, { passive: true });
+    transcript?.addEventListener("pointerdown", stopFollowingForScrollbar);
+    transcript?.addEventListener("keydown", stopFollowing);
+    const updateInset = () => {
+      const composerTop = dock
+        .querySelector<HTMLElement>(".workbench-composer")
+        ?.getBoundingClientRect().top;
+      const inset =
+        composerTop === undefined
+          ? dock.offsetHeight
+          : layout.getBoundingClientRect().bottom - composerTop;
+      layout.style.setProperty("--composer-dock-height", `${inset}px`);
+      if (followingBottom && transcript) {
+        bottomUpdatePending = true;
+        if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);
+        scrollFrame = requestAnimationFrame(() => {
+          transcript.scrollTop = transcript.scrollHeight;
+          bottomUpdatePending = false;
+          followingBottom = isAtBottom();
+        });
+      }
+    };
+    updateInset();
+    const resizeObserver =
+      "ResizeObserver" in globalThis ? new globalThis.ResizeObserver(updateInset) : undefined;
+    resizeObserver?.observe(dock);
+    return () => {
+      resizeObserver?.disconnect();
+      transcript?.removeEventListener("scroll", captureBottomState);
+      transcript?.removeEventListener("wheel", stopFollowing);
+      transcript?.removeEventListener("touchmove", stopFollowing);
+      transcript?.removeEventListener("pointerdown", stopFollowingForScrollbar);
+      transcript?.removeEventListener("keydown", stopFollowing);
+      if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);
+    };
+  }, [composerVisible, embedded]);
   const submit = async (value?: string) => {
     await store.submit(value ?? store.draft);
     draftChanged();
   };
-  const composer = store.composerVisible && (
-    <div className={embedded ? "chat-embedded-composer" : "composer-dock"}>
+  const composer = composerVisible && (
+    <div ref={composerDockRef} className={embedded ? "chat-embedded-composer" : "composer-dock"}>
       <ChatComposer
         className={embedded ? "chat-embedded-workbench-composer" : undefined}
         configuration={store.configuration}
@@ -236,6 +305,7 @@ export const Chat = observer(function Chat({
   );
   return (
     <div
+      ref={layoutRef}
       className={`chat-layout${embedded ? " chat-layout-embedded" : ""}${compact ? " chat-layout-compact" : ""} ${className}`.trim()}
     >
       <ChatTranscript

@@ -60,6 +60,24 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
     const composer = page.getByLabel("Message");
     await expect(composer).toBeVisible({ timeout: 20_000 });
 
+    const initialHeight = await composer.evaluate((input) => input.getBoundingClientRect().height);
+    expect(initialHeight).toBeLessThanOrEqual(48);
+
+    await composer.click();
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially("hello");
+    await expect(composer).toHaveValue("hello");
+    await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
+
+    await composer.fill(Array.from({ length: 30 }, (_, index) => `Line ${index + 1}`).join("\n"));
+    const expandedSize = await composer.evaluate((input) => ({
+      height: input.getBoundingClientRect().height,
+      scrollHeight: input.scrollHeight,
+    }));
+    expect(expandedSize.height).toBeGreaterThan(initialHeight);
+    expect(expandedSize.height).toBeLessThanOrEqual(321);
+    expect(expandedSize.scrollHeight).toBeGreaterThan(expandedSize.height);
+
     await composer.fill("/");
     await expect(page.getByRole("listbox", { name: "Slash commands" })).toBeVisible();
     await composer.press("ArrowDown");
