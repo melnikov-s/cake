@@ -310,6 +310,7 @@ export function SlashCommandCombobox({
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
         aria-activedescendant={open ? `${listboxId}-option-${selectedIndex}` : undefined}
+        spellCheck={!draft.startsWith("/")}
         value={inputValue}
         onChange={(event) => {
           const nextValue = event.currentTarget.value;

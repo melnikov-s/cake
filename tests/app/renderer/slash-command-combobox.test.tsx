@@ -109,6 +109,24 @@ describe("SlashCommandCombobox", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it("disables spellcheck while entering a slash command", () => {
+    const renderCombobox = (value: string) => (
+      <SlashCommandCombobox
+        aria-label="Message"
+        commands={[command("help")]}
+        value={value}
+        onValueChange={vi.fn()}
+        onSubmit={vi.fn()}
+      />
+    );
+    act(() => root.render(renderCombobox("hello")));
+    const input = container.querySelector<HTMLTextAreaElement>('[role="combobox"]')!;
+
+    expect(input.getAttribute("spellcheck")).toBe("true");
+    act(() => root.render(renderCombobox("  /help argument")));
+    expect(input.getAttribute("spellcheck")).toBe("false");
+  });
+
   it("submits with Enter when the command menu is closed", () => {
     const onSubmit = vi.fn();
     act(() =>
