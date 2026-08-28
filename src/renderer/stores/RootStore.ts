@@ -107,6 +107,14 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     this.showWorkbench();
     this.projectWorkbenchStore.activeSession?.composerStore.requestFocus();
   }
+  dismissTopSecondarySurface() {
+    if (this.projectWorkbenchStore.embeddedEditorStore.visible) {
+      this.returnToWorkbench();
+      return;
+    }
+    if (this.projectWorkbenchStore.commandPaneStore.pane)
+      this.projectWorkbenchStore.commandPaneStore.close();
+  }
   showGlobalChat(sessionId = this.globalChatStore.sessionId) {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.appShellStore.selectCakeChat(sessionId);

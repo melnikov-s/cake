@@ -94,6 +94,7 @@ describe("ChatConfigurationSelector", () => {
     act(() =>
       container.querySelector<HTMLButtonElement>('[aria-label="Model configuration"]')!.click(),
     );
+    expect(store.ensureCatalog).toHaveBeenCalledOnce();
     const high = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
       (button) => button.textContent === "High",
     )!;

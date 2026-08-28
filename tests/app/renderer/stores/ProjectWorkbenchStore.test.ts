@@ -305,6 +305,21 @@ async function openSnapshot(
 }
 
 describe("ProjectWorkbenchStore", () => {
+  it("dismisses the top secondary surface", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+
+    void store.commandPaneStore.open("tree");
+    root.dismissTopSecondarySurface();
+    expect(store.commandPaneStore.pane).toBeUndefined();
+
+    store.embeddedEditorStore.visible = true;
+    root.dismissTopSecondarySurface();
+    expect(store.embeddedEditorStore.visible).toBe(false);
+    root[Symbol.dispose]();
+  });
+
   it("keeps a non-serializable control result scoped to the failed tool", async () => {
     const desktop = createDesktopClient();
     const { root } = mountTestStore(desktop.client);

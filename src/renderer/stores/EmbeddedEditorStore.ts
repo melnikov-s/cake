@@ -112,8 +112,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   }
 
   async show(location?: SourceLocation) {
-    if (!this.visible) this.chatSidebarVisible = true;
-    this.visible = true;
+    this.activate();
     await this.open();
     if (location) await this.reveal(location);
   }
@@ -121,8 +120,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   async showSourceControl() {
     const projectPath = this.props.projectPath();
     if (!projectPath) throw new Error("No project is open");
-    if (!this.visible) this.chatSidebarVisible = true;
-    this.visible = true;
+    this.activate();
     await this.open();
     if (
       this.signal.aborted ||
@@ -144,10 +142,16 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   showAgentLocation() {
     const projectPath = this.props.projectPath();
     if (!projectPath) return;
-    if (!this.visible) this.chatSidebarVisible = true;
-    this.visible = true;
+    this.activate();
     this.openedWorkspace = projectPath;
     void this.syncAnnotations();
+  }
+
+  private activate() {
+    if (this.visible) return;
+    this.chatSidebarVisible = true;
+    this.visible = true;
+    void this.refresh();
   }
 
   /** Toggles only Cake's chat drawer while leaving the VS Code surface mounted. */

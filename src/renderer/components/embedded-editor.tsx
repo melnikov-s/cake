@@ -52,10 +52,6 @@ export const EmbeddedEditorPane = observer(function EmbeddedEditorPane({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    void store.refresh();
-  }, [store]);
-
   useLayoutEffect(() => {
     const element = containerRef.current;
     if (!element) return;

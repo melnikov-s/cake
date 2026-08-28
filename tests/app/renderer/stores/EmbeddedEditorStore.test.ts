@@ -52,6 +52,7 @@ describe("EmbeddedEditorStore", () => {
     await store.show();
     expect(store.visible).toBe(true);
     expect(store.chatSidebarVisible).toBe(true);
+    expect(client.getEmbeddedEditorState).toHaveBeenCalledOnce();
     expect(client.openEmbeddedEditor).toHaveBeenCalledWith("/tmp/project");
 
     store.toggleChatSidebar();
@@ -80,6 +81,7 @@ describe("EmbeddedEditorStore", () => {
     store.showAgentLocation();
 
     expect(store.visible).toBe(true);
+    expect(client.getEmbeddedEditorState).toHaveBeenCalledOnce();
     expect(client.openEmbeddedEditor).not.toHaveBeenCalled();
     store[Symbol.dispose]();
   });

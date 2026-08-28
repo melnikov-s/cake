@@ -144,13 +144,11 @@ export const App = observer(function App() {
   }, [extensionUi.title]);
   useEffect(() => {
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      if (store.embeddedEditorStore.visible) returnToWorkbench();
-      else if (store.commandPaneStore.pane) store.commandPaneStore.close();
+      if (event.key === "Escape") root.dismissTopSecondarySurface();
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [store, returnToWorkbench]);
+  }, [root]);
 
   useEffect(() => {
     const navigateSessionHistory = (event: globalThis.KeyboardEvent) => {
