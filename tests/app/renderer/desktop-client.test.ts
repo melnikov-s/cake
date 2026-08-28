@@ -44,6 +44,8 @@ function createBridge() {
       };
     if (input.type === "list-sessions")
       return { type: "sessions-listed", sessions: [], reviewThreads: [] };
+    if (input.type === "list-cake-chat-sessions")
+      return { type: "cake-chat-sessions-listed", sessions: [] };
     if (input.type === "load-session") return { type: "session-loaded", session: undefined };
     if (
       input.type === "list-plugins" ||
@@ -90,6 +92,7 @@ describe("desktop client", () => {
       y: 34,
     });
     expect(await client.listSessions()).toEqual({ sessions: [], reviewThreads: [] });
+    expect(await client.listCakeChatSessions()).toEqual([]);
     expect(await client.loadSession("session")).toBeUndefined();
     expect(await client.suggestFiles("/project", "app")).toEqual([
       { value: "@src/app.ts", label: "app.ts", description: "src/app.ts" },
@@ -108,6 +111,31 @@ describe("desktop client", () => {
       attachments: [
         { kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" },
       ],
+      newSession: {
+        tools: [
+          {
+            command: "app.state",
+            topic: "app",
+            summary: "Read application state",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+        configuration: {
+          provider: "openai",
+          modelId: "gpt-test",
+          thinkingLevel: "high",
+          fastMode: false,
+        },
+        name: "Pending title",
+      },
+    });
+    await client.renameGlobalChat({ operationId, sessionId: "cake-chat", name: "Renamed" });
+    await client.handoffGlobalChat({
+      operationId,
+      sessionId: "cake-chat",
+      entryId: "assistant-entry",
+      prompt: "Continue here",
+      resolveSource: true,
     });
     const handleId = crypto.randomUUID();
     await client.steerSubagent({
@@ -165,6 +193,37 @@ describe("desktop client", () => {
       attachments: [
         { kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" },
       ],
+      newSession: {
+        tools: [
+          {
+            command: "app.state",
+            topic: "app",
+            summary: "Read application state",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+        configuration: {
+          provider: "openai",
+          modelId: "gpt-test",
+          thinkingLevel: "high",
+          fastMode: false,
+        },
+        name: "Pending title",
+      },
+    });
+    expect(desktop.request).toHaveBeenCalledWith({
+      type: "rename-global-chat",
+      requestId: operationId,
+      sessionId: "cake-chat",
+      name: "Renamed",
+    });
+    expect(desktop.request).toHaveBeenCalledWith({
+      type: "handoff-global-chat",
+      requestId: operationId,
+      sessionId: "cake-chat",
+      entryId: "assistant-entry",
+      prompt: "Continue here",
+      resolveSource: true,
     });
     expect(desktop.request).toHaveBeenCalledWith({ type: "load-session", sessionId: "session" });
     expect(desktop.request).toHaveBeenCalledWith({

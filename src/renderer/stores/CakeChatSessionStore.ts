@@ -124,23 +124,14 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         this.reportError(new Error("Usage: /model <provider/model>"));
         return false;
       }
-      const operationId = this.props.operations.start(this.promptOwner);
-      try {
-        await this.props.collection.port.setModel({
-          operationId,
-          sessionId: this.sessionId,
-          provider: builtin.args.slice(0, separator),
-          modelId: builtin.args.slice(separator + 1),
-        });
-        return true;
-      } catch (error) {
-        if (this.signal.aborted) return false;
-        this.props.operations.finish(operationId);
-        this.reportError(error);
-        return false;
-      }
+      await this.configurationStore.selectModel(builtin.args);
+      return !this.configurationStore.error;
     }
     if (builtin?.name === "compact") {
+      if (this.props.collection.isPendingSession(this.sessionId)) {
+        this.reportError(new Error("Compaction requires an existing conversation"));
+        return false;
+      }
       // Compaction is a session operation, not a prompt: nothing enters the transcript.
       const operationId = this.props.operations.start(this.promptOwner);
       try {
@@ -167,6 +158,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         sessionId: this.sessionId,
         text,
         attachments,
+        newSession: this.props.collection.newSessionRequest(this.sessionId),
       });
       return true;
     } catch (error) {
@@ -201,6 +193,12 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       operationOwner: this.configurationOwner,
       presets: this.props.modelPresets,
       openPresetSettings: this.props.openModelPresetSettings,
+      deferredNewSession: () => this.props.collection.isPendingSession(this.sessionId),
+      effectiveConfiguration: () =>
+        this.props.collection.pendingSessionConfiguration(this.sessionId),
+      setPendingConfiguration: (configuration) =>
+        this.props.collection.setPendingSessionConfiguration(this.sessionId, configuration),
+      listModels: () => this.props.collection.port.listModels(),
       setConfiguration: (operationId, configuration) =>
         this.props.collection.port.setConfiguration({
           operationId,

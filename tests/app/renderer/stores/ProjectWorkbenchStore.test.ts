@@ -157,6 +157,7 @@ function createDesktopClient(restoredPath?: string) {
       defaultModelPresetId,
     })),
     listSessions: vi.fn(async () => ({ sessions: [], reviewThreads: [] })),
+    listCakeChatSessions: vi.fn(async () => []),
     loadSession: vi.fn(async () => undefined),
     openGlobalChat: vi.fn(async () => undefined),
     promptGlobalChat: vi.fn(async () => undefined),
@@ -263,6 +264,8 @@ function createDesktopClient(restoredPath?: string) {
     refreshModels: vi.fn(async () => undefined),
     login: vi.fn(async () => undefined),
     logout: vi.fn(async () => undefined),
+    renameGlobalChat: vi.fn(async () => undefined),
+    handoffGlobalChat: vi.fn(async () => undefined),
     renameSession: vi.fn(async () => undefined),
     forkSession: vi.fn(async () => undefined),
     handoffSession: vi.fn(async () => undefined),
@@ -425,23 +428,47 @@ describe("ProjectWorkbenchStore", () => {
     await root.startCakeChat("Repair the current Cake customization.");
 
     expect(root.appShellStore.surface).toBe("global-chat");
-    expect(root.appShellStore.selection).toEqual({ kind: "cake-chat", sessionId: undefined });
-    expect(desktop.client.openGlobalChat).toHaveBeenCalledWith(
-      expect.objectContaining({ newSession: true }),
-    );
-    expect(desktop.client.openGlobalChat).toHaveBeenCalledWith(
-      expect.objectContaining({ initialPrompt: "Repair the current Cake customization." }),
+    expect(root.appShellStore.selection).toEqual({
+      kind: "cake-chat",
+      sessionId: expect.any(String),
+    });
+    expect(desktop.client.openGlobalChat).not.toHaveBeenCalled();
+    expect(desktop.client.promptGlobalChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "Repair the current Cake customization.",
+        newSession: expect.objectContaining({ tools: expect.any(Array) }),
+      }),
     );
 
-    const operationId = vi.mocked(desktop.client.openGlobalChat).mock.calls.at(-1)![0].operationId;
+    const prompt = vi.mocked(desktop.client.promptGlobalChat).mock.calls.at(-1)![0];
     desktop.emit({
       type: "global-chat-snapshot-received",
-      operationId,
-      snapshot: { ...snapshot, workspacePath: "/home/user", sessionId: "cake-chat-1" },
+      operationId: prompt.operationId,
+      snapshot: { ...snapshot, workspacePath: "/home/user", sessionId: prompt.sessionId },
     });
 
-    expect(root.appShellStore.selection).toEqual({ kind: "cake-chat", sessionId: "cake-chat-1" });
-    expect(root.sessionRegistry.findSession("cake-chat-1")).toBeUndefined();
+    expect(root.appShellStore.selection).toEqual({
+      kind: "cake-chat",
+      sessionId: prompt.sessionId,
+    });
+    expect(root.sessionRegistry.findSession(prompt.sessionId)).toBeUndefined();
+    root[Symbol.dispose]();
+  });
+
+  it("keeps shell selection aligned when an empty pending Cake Chat is resolved", async () => {
+    const desktop = createDesktopClient();
+    const { root } = mountTestStore(desktop.client);
+    await flush();
+
+    await root.startCakeChat();
+    const discardedSessionId = root.globalChatStore.sessionId!;
+    await root.sidebarStore.setCakeChatSessionResolved(discardedSessionId, true);
+
+    expect(root.globalChatStore.sessionId).not.toBe(discardedSessionId);
+    expect(root.appShellStore.selection).toEqual({
+      kind: "cake-chat",
+      sessionId: root.globalChatStore.sessionId,
+    });
     root[Symbol.dispose]();
   });
 

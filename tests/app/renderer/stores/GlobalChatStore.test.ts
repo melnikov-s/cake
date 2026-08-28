@@ -46,6 +46,17 @@ const snapshot: SessionSnapshot = {
 
 function createTestStore() {
   const port = {
+    listSessions: vi.fn(async () => [
+      {
+        id: "global-1",
+        title: "Existing chat",
+        created: "2026-08-16T12:00:00.000Z",
+        modified: "2026-08-16T12:00:00.000Z",
+        messageCount: 1,
+        resolved: false,
+      },
+    ]),
+    listModels: vi.fn(async () => []),
     open: vi.fn(async (input: Parameters<GlobalChatPort["open"]>[0]) => {
       void input;
     }),
@@ -181,25 +192,88 @@ describe("GlobalChatStore", () => {
     store[Symbol.dispose]();
   });
 
-  it("starts a new Cake Chat session without clearing prior history", async () => {
+  it("prepares a new Cake Chat without creating a runtime", async () => {
     const { store, port } = createTestStore();
     await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
 
     await store.startNewSession();
 
-    expect(port.open).toHaveBeenLastCalledWith(
+    expect(port.open).toHaveBeenCalledOnce();
+    expect(store.activeSession?.sessionId).not.toBe("global-1");
+    expect(store.activeSession?.parts).toEqual([]);
+    store[Symbol.dispose]();
+  });
+
+  it("does not let a late startup snapshot steal selection from a new chat", async () => {
+    const { store, port } = createTestStore();
+    await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
+    const startupOperationId = port.open.mock.calls[0]![0].operationId;
+
+    await store.startNewSession();
+    const pendingSessionId = store.selectedSessionId;
+    store.receive({
+      type: "global-chat-snapshot-received",
+      operationId: startupOperationId,
+      snapshot,
+    });
+
+    expect(store.selectedSessionId).toBe(pendingSessionId);
+    store[Symbol.dispose]();
+  });
+
+  it("activates a pending Cake Chat on the first prompt and renames it without IPC", async () => {
+    const { store, port } = createTestStore();
+    await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
+    await store.startNewSession();
+    const pending = store.activeSession!;
+
+    await store.renameSession(pending.sessionId, "Deferred title");
+    pending.chatStore.setDraft("First message");
+    await pending.chatStore.submit();
+
+    expect(port.rename).not.toHaveBeenCalled();
+    expect(port.prompt).toHaveBeenCalledWith(
       expect.objectContaining({
-        newSession: true,
-        tools: [
-          {
-            command: "app.state",
-            topic: "app",
-            summary: "Read app state",
-            parameters: { type: "object", properties: {} },
-          },
-        ],
+        sessionId: pending.sessionId,
+        text: "First message",
+        newSession: expect.objectContaining({
+          name: "Deferred title",
+          tools: expect.any(Array),
+        }),
       }),
     );
+    store[Symbol.dispose]();
+  });
+
+  it("restores a pending Cake Chat without opening a runtime", async () => {
+    const { store, port } = createTestStore();
+    store.restorePendingSession({
+      sessionId: "restored-pending",
+      draft: "Unsent work",
+      name: "Pending title",
+    });
+    await store.initialize();
+
+    expect(store.selectedSessionId).toBe("restored-pending");
+    expect(store.activeSession?.chatStore.draft).toBe("Unsent work");
+    expect(store.pendingSessionState()).toEqual(
+      expect.objectContaining({ sessionId: "restored-pending", name: "Pending title" }),
+    );
+    expect(port.open).not.toHaveBeenCalled();
+    store[Symbol.dispose]();
+  });
+
+  it("reconciles a restored pending chat that already has a transcript", async () => {
+    const { store, port } = createTestStore();
+    store.restorePendingSession({
+      sessionId: "global-1",
+      draft: "Recovered after a crash",
+      name: "Recovered title",
+    });
+    await store.initialize();
+
+    expect(store.pendingSessionState()).toBeUndefined();
+    expect(port.open).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "global-1" }));
     store[Symbol.dispose]();
   });
 
@@ -332,11 +406,10 @@ describe("GlobalChatStore", () => {
       },
     });
 
-    // "global-1" stays an open but unsubmitted target, so it is also pinned.
     expect(store.summaries.map((summary) => summary.id)).toEqual([
-      "global-1",
       "brand-new",
       "submitted",
+      "global-1",
     ]);
     store[Symbol.dispose]();
   });
@@ -348,12 +421,12 @@ describe("GlobalChatStore", () => {
     store.activeSession!.chatStore.setDraft("draft one");
 
     await store.startNewSession();
-    const operationId = port.open.mock.calls.at(-1)![0].operationId;
+    const pendingSessionId = store.activeSession!.sessionId;
     const now = new Date().toISOString();
     const second = {
       ...snapshot,
-      sessionId: "global-2",
-      sessionFile: "/global-2.jsonl",
+      sessionId: pendingSessionId,
+      sessionFile: `/${pendingSessionId}.jsonl`,
       parts: [],
       sessions: [
         {
@@ -365,7 +438,7 @@ describe("GlobalChatStore", () => {
           resolved: false,
         },
         {
-          id: "global-2",
+          id: pendingSessionId,
           title: "Second chat",
           created: now,
           modified: now,
@@ -374,7 +447,7 @@ describe("GlobalChatStore", () => {
         },
       ],
     };
-    store.receive({ type: "global-chat-snapshot-received", operationId, snapshot: second });
+    store.receive({ type: "global-chat-snapshot-received", snapshot: second });
     store.activeSession!.chatStore.setDraft("draft two");
     store.receive({
       type: "global-chat-streaming-changed",
@@ -382,10 +455,10 @@ describe("GlobalChatStore", () => {
       streaming: true,
     });
 
-    expect(store.selectedSessionId).toBe("global-2");
+    expect(store.selectedSessionId).toBe(pendingSessionId);
     expect(store.loadedSessions).toHaveLength(2);
     expect(store.findSession("global-1")!.chatStore.draft).toBe("draft one");
-    expect(store.findSession("global-2")!.chatStore.draft).toBe("draft two");
+    expect(store.findSession(pendingSessionId)!.chatStore.draft).toBe("draft two");
     expect(store.findSession("global-1")!.streaming).toBe(true);
     store[Symbol.dispose]();
   });

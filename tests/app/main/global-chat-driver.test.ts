@@ -270,33 +270,46 @@ describe("GlobalChatDriver", () => {
     driver[Symbol.dispose]();
   });
 
-  it("creates a new persistent Cake Chat session on request", async () => {
+  it("creates a new persistent Cake Chat runtime on its first prompt", async () => {
     const events: DesktopEvent[] = [];
-    const createRuntime = vi.fn(async () => runtime());
+    const cakeRuntime = runtime();
+    const createRuntime = vi.fn(async () => cakeRuntime);
     const driver = new GlobalChatDriver({
       agentDir: "/cake/pi",
       sessionDir: "/cake/pi/global-chat/sessions",
       emit: (event) => events.push(event),
       createRuntime,
     });
-    const openId = crypto.randomUUID();
+    const requestId = crypto.randomUUID();
+    const tools = [
+      {
+        command: "app.state",
+        topic: "app",
+        summary: "Read state",
+        parameters: { type: "object", properties: {} },
+      },
+    ];
 
-    driver.open(
-      openId,
-      [
-        {
-          command: "app.state",
-          topic: "app",
-          summary: "Read state",
-          parameters: { type: "object", properties: {} },
-        },
-      ],
-      { newSession: true },
-    );
+    driver.prompt(requestId, "global-1", "hello", [], {
+      tools,
+      configuration: {
+        provider: "openai",
+        modelId: "gpt-test",
+        thinkingLevel: "high",
+        fastMode: false,
+      },
+      name: "Pending title",
+    });
+
     await vi.waitFor(() =>
-      expect(events).toContainEqual({ type: "global-chat-operation-completed", requestId: openId }),
+      expect(events).toContainEqual({ type: "global-chat-operation-completed", requestId }),
     );
-    expect(createRuntime).toHaveBeenCalledWith(expect.objectContaining({ newSession: true }));
+    expect(createRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({ newSession: true, sessionId: "global-1" }),
+    );
+    expect(cakeRuntime.applyConfiguration).toHaveBeenCalledOnce();
+    expect(cakeRuntime.rename).toHaveBeenCalledWith("Pending title");
+    expect(cakeRuntime.prompt).toHaveBeenCalledWith("hello", "prompt", []);
     driver[Symbol.dispose]();
   });
 

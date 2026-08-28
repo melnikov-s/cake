@@ -244,10 +244,16 @@ The window Store hierarchy mirrors the product surfaces:
   session surface.
 - The Cake Chat collection owns one keyed `CakeChatSessionStore` per loaded
   meta-session. Each session retains its own draft, attachments, configuration,
-  transcript projection, streaming state, and live Pi runtime while another
-  Cake Chat session is selected. A `CakeChatSessionStore` directly owns its Pi
-  `Session`; its snapshots and deltas route through the Cake Chat collection,
-  independently of project-session registry and workbench lifetimes.
+  transcript projection, and streaming state while another Cake Chat session is
+  selected. Like a new project chat, a new Cake Chat begins as one renderer-owned
+  pending session and creates its Pi runtime on the first prompt; its identity and
+  draft may be restored from window state without implying that a transcript file
+  exists. Persisted Cake Chat sessions keep live runtimes as they are opened. A
+  `CakeChatSessionStore` directly owns its Pi `Session`; its snapshots and deltas
+  route through the Cake Chat collection, independently of project-session
+  registry and workbench lifetimes. Cross-process operations use explicit project
+  or Cake Chat intents and never infer session ownership from transcript-file
+  existence.
 
 UI and application controls invoke semantic `RootStore` intents such as
 `openSession`, `createSession`, or `showGlobalChat`. The root performs any

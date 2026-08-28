@@ -1279,22 +1279,18 @@ async function handleCakeRequest(
   if (request.type === "open-global-chat") {
     globalChatController = event.sender;
     if (request.sessionId) await restoreCakeChatSessionForUse(request.sessionId);
-    globalChatDriver.open(request.requestId, request.tools, {
-      newSession: request.newSession,
-      sessionId: request.sessionId,
-      initialPrompt: request.initialPrompt,
-      configuration: request.configuration,
-    });
+    globalChatDriver.open(request.requestId, request.tools, { sessionId: request.sessionId });
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "prompt-global-chat") {
     globalChatController = event.sender;
-    await restoreCakeChatSessionForUse(request.sessionId);
+    if (!request.newSession) await restoreCakeChatSessionForUse(request.sessionId);
     globalChatDriver.prompt(
       request.requestId,
       request.sessionId,
       request.text,
       request.attachments,
+      request.newSession,
     );
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
@@ -1331,6 +1327,24 @@ async function handleCakeRequest(
   if (request.type === "set-global-chat-fast-mode") {
     globalChatController = event.sender;
     globalChatDriver.setFastMode(request.requestId, request.sessionId, request.enabled);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  if (request.type === "rename-global-chat") {
+    globalChatController = event.sender;
+    await restoreCakeChatSessionForUse(request.sessionId);
+    globalChatDriver.rename(request.requestId, request.sessionId, request.name);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  if (request.type === "handoff-global-chat") {
+    globalChatController = event.sender;
+    await restoreCakeChatSessionForUse(request.sessionId);
+    globalChatDriver.handoff(
+      request.requestId,
+      request.sessionId,
+      request.entryId,
+      request.prompt,
+      request.resolveSource,
+    );
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "respond-global-chat-control") {
@@ -1420,6 +1434,18 @@ async function handleCakeRequest(
       type: "application-state-updated",
       state: applicationModel.snapshot(),
     });
+  }
+  if (request.type === "list-cake-chat-sessions") {
+    const resolvedSessionIds = new Set(applicationModel.resolvedCakeChatSessionIds);
+    const sessions = (
+      await listWorkspaceSessions(homedir(), cakePaths.piGlobalChatSessions, {
+        resolvedSessionDir: cakePaths.piGlobalChatResolvedSessions,
+        direct: true,
+      })
+    )
+      .map((session) => ({ ...session, resolved: resolvedSessionIds.has(session.id) }))
+      .sort((left, right) => right.modified.localeCompare(left.modified));
+    return desktopResponseSchema.parse({ type: "cake-chat-sessions-listed", sessions });
   }
   if (request.type === "list-sessions") {
     const resolvedSessionIds = new Set(applicationModel.resolvedSessionIds);
@@ -1677,30 +1703,6 @@ async function handleCakeRequest(
       requestId: request.requestId,
       models: await listAgentCatalogModels(cakePaths.piAgent),
     });
-  }
-  if (
-    (request.type === "rename-session" || request.type === "handoff-session") &&
-    ((await findSessionFile(homedir(), request.sessionId, cakePaths.piGlobalChatSessions, true)) ||
-      (await findSessionFile(
-        homedir(),
-        request.sessionId,
-        cakePaths.piGlobalChatResolvedSessions,
-        true,
-      )))
-  ) {
-    globalChatController = event.sender;
-    await restoreCakeChatSessionForUse(request.sessionId);
-    if (request.type === "rename-session")
-      globalChatDriver.rename(request.requestId, request.sessionId, request.name);
-    else
-      globalChatDriver.handoff(
-        request.requestId,
-        request.sessionId,
-        request.entryId,
-        request.prompt,
-        request.resolveSource,
-      );
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   const path =
     request.type === "open-workspace" || request.type === "inspect-workspace"

@@ -107,6 +107,8 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
       this.props.settings().modelPresets.restoreLastUsed(state.lastChatConfiguration);
       this.restoredDraft = state.draft;
       this.restoredNewSessionDraftsByProject = { ...state.newSessionDraftsByProject };
+      if (state.pendingCakeChat)
+        this.props.globalChat().restorePendingSession(state.pendingCakeChat);
 
       const reviewsBySession = new Map<string, typeof sessionIndex.reviewThreads>();
       for (const thread of sessionIndex.reviewThreads) {
@@ -171,6 +173,7 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
         ...this.restoredNewSessionDraftsByProject,
         ...this.props.registry.pendingNewSessionDrafts(),
       },
+      pendingCakeChat: this.props.globalChat().pendingSessionState(),
       lastChatConfiguration: this.props.settings().modelPresets.lastUsedConfiguration,
     };
   }

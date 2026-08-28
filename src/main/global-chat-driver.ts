@@ -50,26 +50,31 @@ export class GlobalChatDriver {
   open(
     requestId: string,
     tools: readonly GlobalControlTool[],
-    target: {
-      newSession?: boolean;
-      sessionId?: string;
-      initialPrompt?: string;
-      configuration?: ChatConfiguration;
-    } = {},
+    target: { sessionId?: string } = {},
   ) {
     this.tools = tools;
     void this.run(requestId, async () => {
-      const runtime = await this.ensureRuntime(Boolean(target.newSession), target.sessionId);
-      if (target.newSession && target.configuration)
-        await runtime.applyConfiguration(target.configuration);
-      if (target.initialPrompt) await runtime.prompt(target.initialPrompt, "prompt", []);
+      const runtime = await this.ensureRuntime(false, target.sessionId);
       this.emitSnapshot(await runtime.snapshot(requestId), requestId);
     });
   }
 
-  prompt(requestId: string, sessionId: string, text: string, attachments: Attachment[]) {
+  prompt(
+    requestId: string,
+    sessionId: string,
+    text: string,
+    attachments: Attachment[],
+    newSession?: {
+      tools: readonly GlobalControlTool[];
+      configuration?: ChatConfiguration;
+      name?: string;
+    },
+  ) {
+    if (newSession) this.tools = newSession.tools;
     void this.run(requestId, async () => {
-      const runtime = await this.ensureRuntime(false, sessionId);
+      const runtime = await this.ensureRuntime(Boolean(newSession), sessionId);
+      if (newSession?.configuration) await runtime.applyConfiguration(newSession.configuration);
+      if (newSession?.name) await runtime.rename(newSession.name);
       await runtime.prompt(
         text,
         this.streamingSessionIds.has(sessionId) ? "follow-up" : "prompt",

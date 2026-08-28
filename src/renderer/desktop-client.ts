@@ -7,6 +7,7 @@ import type {
   GlobalSessionSummary,
   SessionSnapshot,
   SessionPreview,
+  SessionSummary,
   PiSettingUpdate,
   ThinkingLevel,
   ModelPreset,
@@ -278,6 +279,7 @@ export interface DesktopClient {
     defaultPresetId?: string,
   ): Promise<ApplicationState>;
   listSessions(): Promise<{ sessions: GlobalSessionSummary[]; reviewThreads: ReviewThread[] }>;
+  listCakeChatSessions(): Promise<SessionSummary[]>;
   loadSession(sessionId: string): Promise<SessionPreview | undefined>;
   openGlobalChat(input: {
     operationId: string;
@@ -291,16 +293,27 @@ export interface DesktopClient {
       result?: string;
       limitations?: readonly string[];
     }>;
-    newSession?: boolean;
     sessionId?: string;
-    initialPrompt?: string;
-    configuration?: ChatConfiguration;
   }): Promise<void>;
   promptGlobalChat(input: {
     operationId: string;
     sessionId: string;
     text: string;
     attachments: Attachment[];
+    newSession?: {
+      tools: ReadonlyArray<{
+        command: string;
+        topic: string;
+        summary: string;
+        guidance?: readonly string[];
+        parameters: JsonObject;
+        examples?: readonly { input?: JsonObject; description?: string }[];
+        result?: string;
+        limitations?: readonly string[];
+      }>;
+      configuration?: ChatConfiguration;
+      name?: string;
+    };
   }): Promise<void>;
   abortGlobalChat(input: { operationId: string; sessionId: string }): Promise<void>;
   compactGlobalChat(input: {
@@ -328,6 +341,14 @@ export interface DesktopClient {
     operationId: string;
     sessionId: string;
     enabled: boolean;
+  }): Promise<void>;
+  renameGlobalChat(input: { operationId: string; sessionId: string; name: string }): Promise<void>;
+  handoffGlobalChat(input: {
+    operationId: string;
+    sessionId: string;
+    entryId: string;
+    prompt?: string;
+    resolveSource?: boolean;
   }): Promise<void>;
   respondToGlobalChatControl(controlRequestId: string, result: JsonValue): Promise<void>;
   listReviewThreads(sessionId: string): Promise<ReviewThread[]>;
@@ -914,6 +935,12 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         throw new Error("Cake received an invalid session index");
       return { sessions: response.sessions, reviewThreads: response.reviewThreads };
     },
+    async listCakeChatSessions() {
+      const response = await bridge.request({ type: "list-cake-chat-sessions" });
+      if (response.type !== "cake-chat-sessions-listed")
+        throw new Error("Cake received an invalid Cake Chat session index");
+      return response.sessions;
+    },
     async loadSession(sessionId) {
       const response = await bridge.request({ type: "load-session", sessionId });
       if (response.type !== "session-loaded")
@@ -930,10 +957,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
           examples: tool.examples?.map((example) => ({ ...example })),
           limitations: tool.limitations ? [...tool.limitations] : undefined,
         })),
-        newSession: input.newSession ?? false,
         sessionId: input.sessionId,
-        initialPrompt: input.initialPrompt,
-        configuration: input.configuration,
       }),
     promptGlobalChat: (input) =>
       accept(bridge, {
@@ -942,6 +966,17 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         sessionId: input.sessionId,
         text: input.text,
         attachments: input.attachments,
+        newSession: input.newSession
+          ? {
+              ...input.newSession,
+              tools: input.newSession.tools.map((tool) => ({
+                ...tool,
+                guidance: tool.guidance ? [...tool.guidance] : undefined,
+                examples: tool.examples?.map((example) => ({ ...example })),
+                limitations: tool.limitations ? [...tool.limitations] : undefined,
+              })),
+            }
+          : undefined,
       }),
     abortGlobalChat: (input) =>
       accept(bridge, {
@@ -984,6 +1019,22 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         requestId: input.operationId,
         sessionId: input.sessionId,
         enabled: input.enabled,
+      }),
+    renameGlobalChat: (input) =>
+      accept(bridge, {
+        type: "rename-global-chat",
+        requestId: input.operationId,
+        sessionId: input.sessionId,
+        name: input.name,
+      }),
+    handoffGlobalChat: (input) =>
+      accept(bridge, {
+        type: "handoff-global-chat",
+        requestId: input.operationId,
+        sessionId: input.sessionId,
+        entryId: input.entryId,
+        prompt: input.prompt,
+        resolveSource: input.resolveSource ?? false,
       }),
     async respondToGlobalChatControl(controlRequestId, result) {
       const response = await bridge.request({

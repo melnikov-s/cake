@@ -128,6 +128,8 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.appShellStore.selectCakeChat();
     await this.globalChatStore.startNewSession(prompt);
+    this.appShellStore.selectCakeChat(this.globalChatStore.sessionId);
+    this.windowPersistence.schedule();
   }
   showSettings() {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
@@ -151,8 +153,18 @@ export class RootStore extends Store<{ client: DesktopClient }> {
 
   private async resolveCakeChatSession(sessionId: string, resolved: boolean) {
     await this.globalChatStore.resolveSession(sessionId, resolved);
-    if (resolved && this.globalChatStore.isSessionResolved(sessionId))
+    if (!resolved) return;
+    if (this.globalChatStore.isSessionResolved(sessionId)) {
       this.forgetResolvedSessions([sessionId]);
+      return;
+    }
+    if (
+      this.appShellStore.activeConversation?.kind === "cake-chat" &&
+      this.appShellStore.activeConversation.sessionId === sessionId
+    ) {
+      this.appShellStore.selectCakeChat(this.globalChatStore.sessionId);
+      this.windowPersistence.schedule();
+    }
   }
 
   /** Drops resolved sessions from navigation history and returns to the previous session. */
@@ -230,8 +242,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       catalog: this.sessionCatalogStore,
       sessions: this.sessionRegistry,
       cakeChat: () => this.globalChatStore,
-      setSessionResolved: (sessionId, resolved) =>
-        this.resolveProjectSession(sessionId, resolved),
+      setSessionResolved: (sessionId, resolved) => this.resolveProjectSession(sessionId, resolved),
       setCakeChatSessionResolved: (sessionId, resolved) =>
         this.resolveCakeChatSession(sessionId, resolved),
     });
@@ -328,16 +339,18 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   get globalChatStore(): GlobalChatStore {
     return createStore(GlobalChatStore, {
       port: {
+        listSessions: () => this.client.listCakeChatSessions(),
+        listModels: () => this.client.listModels(),
         open: (input) => this.client.openGlobalChat(input),
         prompt: (input) => this.client.promptGlobalChat(input),
         abort: (input) => this.client.abortGlobalChat(input),
         compact: (input) => this.client.compactGlobalChat(input),
-        handoff: (input) => this.client.handoffSession(input),
+        handoff: (input) => this.client.handoffGlobalChat(input),
         setConfiguration: (input) => this.client.setGlobalChatConfiguration(input),
         setModel: (input) => this.client.setGlobalChatModel(input),
         setThinkingLevel: (input) => this.client.setGlobalChatThinkingLevel(input),
         setFastMode: (input) => this.client.setGlobalChatFastMode(input),
-        rename: (input) => this.client.renameSession(input),
+        rename: (input) => this.client.renameGlobalChat(input),
         resolveSession: (sessionId, resolved) =>
           this.client.resolveCakeChatSession(sessionId, resolved),
       },
@@ -387,8 +400,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         ),
       renameSession: (sessionId, title) =>
         this.projectWorkbenchStore.sessionManagementStore.renameSession(sessionId, title),
-      setSessionResolved: (sessionId, resolved) =>
-        this.resolveProjectSession(sessionId, resolved),
+      setSessionResolved: (sessionId, resolved) => this.resolveProjectSession(sessionId, resolved),
       setSessionsResolved: async (sessionIds, resolved) => {
         const count = await this.projectWorkbenchStore.sessionManagementStore.resolveSessionsById(
           sessionIds,

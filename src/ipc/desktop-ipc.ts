@@ -41,6 +41,7 @@ import {
   piSettingUpdateSchema,
   sessionPreviewSchema,
   sessionSnapshotSchema,
+  sessionSummarySchema,
   sessionUsageSchema,
   thinkingLevelSchema,
   utilityModelSchema,
@@ -242,6 +243,27 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     location: sourceLocationSchema,
   }),
 ]);
+
+const cakeControlToolSchema = z.object({
+  command: z.string().min(1).max(256),
+  topic: z.string().min(1).max(256),
+  summary: z.string().min(1).max(2_048),
+  guidance: z.array(z.string().max(4_096)).max(50).optional(),
+  parameters: jsonObjectSchema,
+  examples: z
+    .array(
+      z.object({
+        input: jsonObjectSchema.optional(),
+        description: z.string().max(2_048).optional(),
+      }),
+    )
+    .max(20)
+    .optional(),
+  result: z.string().max(4_096).optional(),
+  limitations: z.array(z.string().max(4_096)).max(50).optional(),
+});
+
+const cakeControlToolsSchema = z.array(cakeControlToolSchema).min(1).max(50);
 
 export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("choose-project") }),
@@ -460,37 +482,13 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     defaultPresetId: z.uuid().optional(),
   }),
   z.object({ type: z.literal("list-sessions") }),
+  z.object({ type: z.literal("list-cake-chat-sessions") }),
   z.object({ type: z.literal("load-session"), sessionId: z.string().min(1).max(256) }),
   z.object({
     type: z.literal("open-global-chat"),
     requestId: z.uuid(),
-    tools: z
-      .array(
-        z.object({
-          command: z.string().min(1).max(256),
-          topic: z.string().min(1).max(256),
-          summary: z.string().min(1).max(2_048),
-          guidance: z.array(z.string().max(4_096)).max(50).optional(),
-          parameters: jsonObjectSchema,
-          examples: z
-            .array(
-              z.object({
-                input: jsonObjectSchema.optional(),
-                description: z.string().max(2_048).optional(),
-              }),
-            )
-            .max(20)
-            .optional(),
-          result: z.string().max(4_096).optional(),
-          limitations: z.array(z.string().max(4_096)).max(50).optional(),
-        }),
-      )
-      .min(1)
-      .max(50),
-    newSession: z.boolean().default(false),
+    tools: cakeControlToolsSchema,
     sessionId: z.string().min(1).max(256).optional(),
-    initialPrompt: z.string().min(1).max(262_144).optional(),
-    configuration: chatConfigurationSchema.optional(),
   }),
   z
     .object({
@@ -499,6 +497,13 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
       sessionId: z.string().min(1).max(256),
       text: z.string().max(262_144),
       attachments: z.array(attachmentSchema).max(20),
+      newSession: z
+        .object({
+          tools: cakeControlToolsSchema,
+          configuration: chatConfigurationSchema.optional(),
+          name: z.string().min(1).max(512).optional(),
+        })
+        .optional(),
     })
     .refine((request) => Boolean(request.text.trim() || request.attachments.length), {
       message: "A global-chat prompt requires text or an attachment",
@@ -538,6 +543,20 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     requestId: z.uuid(),
     sessionId: z.string().min(1).max(256),
     enabled: z.boolean(),
+  }),
+  z.object({
+    type: z.literal("rename-global-chat"),
+    requestId: z.uuid(),
+    sessionId: z.string().min(1).max(256),
+    name: z.string().min(1).max(512),
+  }),
+  z.object({
+    type: z.literal("handoff-global-chat"),
+    requestId: z.uuid(),
+    sessionId: z.string().min(1).max(256),
+    entryId: z.string().max(256),
+    prompt: z.string().max(262_144).optional(),
+    resolveSource: z.boolean().default(false),
   }),
   z.object({
     type: z.literal("respond-global-chat-control"),
@@ -864,6 +883,10 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
     type: z.literal("sessions-listed"),
     sessions: ipcProjectionArray(globalSessionSummarySchema, 50_000),
     reviewThreads: ipcProjectionArray(reviewThreadSchema, 100_000),
+  }),
+  z.object({
+    type: z.literal("cake-chat-sessions-listed"),
+    sessions: ipcProjectionArray(sessionSummarySchema, 10_000),
   }),
   z.object({ type: z.literal("session-loaded"), session: sessionPreviewSchema.optional() }),
   z.object({

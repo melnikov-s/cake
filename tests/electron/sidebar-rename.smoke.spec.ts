@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
@@ -124,6 +124,12 @@ test("uses the native context menu for project sessions", async () => {
     await cakeChatRow.click({ button: "right" });
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(page.getByLabel("Session name")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+
+    await page.getByRole("button", { name: "New Cake Chat" }).first().click();
+    await expect(page.getByLabel("Message Cake Chat")).toBeVisible();
+    await expect(page.locator(".session-row").filter({ hasText: "New chat" })).toHaveCount(1);
+    expect(await readdir(cakeChatDirectory)).toEqual([`${cakeChatSessionId}.jsonl`]);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

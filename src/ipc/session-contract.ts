@@ -310,7 +310,7 @@ export const sessionUsageSchema = z.object({
     .optional(),
 });
 
-const sessionSummarySchema = z.object({
+export const sessionSummarySchema = z.object({
   id: z.string().min(1).max(256),
   title: ipcProjectionString(SESSION_TITLE_MAX_LENGTH),
   created: z.string().datetime(),
@@ -525,6 +525,14 @@ export const windowViewStateSchema = z.object({
   workLogsExpansion: workLogsExpansionSchema.default("collapsed"),
   draftsBySession: z.record(z.string(), z.string().max(262_144)).default({}),
   newSessionDraftsByProject: z.record(z.string(), z.string().max(262_144)).default({}),
+  pendingCakeChat: z
+    .object({
+      sessionId: z.string().min(1).max(256),
+      draft: z.string().max(262_144),
+      configuration: chatConfigurationSchema.optional(),
+      name: z.string().min(1).max(512).optional(),
+    })
+    .optional(),
   lastChatConfiguration: chatConfigurationSchema.optional(),
 });
 
