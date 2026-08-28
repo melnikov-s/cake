@@ -3,8 +3,8 @@ import { IconButton } from "./ui/icon-button";
 import {
   BackIcon,
   ChevronIcon,
+  FolderPlusIcon,
   ForwardIcon,
-  PlusIcon,
   SettingsIcon,
   SidebarIcon,
 } from "./ui/icons";
@@ -74,7 +74,7 @@ export const Sidebar = observer(function Sidebar({
           <span>Projects</span>
           <div>
             <IconButton tooltip="Add project" onClick={onChooseProject}>
-              <PlusIcon />
+              <FolderPlusIcon />
             </IconButton>
           </div>
         </div>
