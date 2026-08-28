@@ -68,6 +68,7 @@ describe("EmbeddedEditorStore", () => {
     await vi.waitFor(() =>
       expect(client.updateEmbeddedEditorBounds).toHaveBeenCalledWith({
         visible: false,
+        chatSidebarVisible: true,
         x: 0,
         y: 0,
         width: 0,
@@ -231,6 +232,7 @@ describe("EmbeddedEditorStore", () => {
 
     expect(client.updateEmbeddedEditorBounds).toHaveBeenCalledWith({
       visible: false,
+      chatSidebarVisible: true,
       x: 0,
       y: 0,
       width: 0,

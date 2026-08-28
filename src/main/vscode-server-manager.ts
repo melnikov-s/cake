@@ -10,6 +10,7 @@ import { z } from "zod";
 import type { SourceLocation } from "../ipc/source-location";
 import type { AgentChange } from "../ipc/agent-change";
 import type { EditorAnnotationSnapshot } from "../ipc/editor-annotation";
+import cakeIconMarkup from "../assets/cake-icon.svg?raw";
 import {
   downloadFile,
   extractArchive,
@@ -31,49 +32,79 @@ const COMPANION_START_TIMEOUT = 5_000;
 // file is open and it has no public top-level title-bar contribution point. Cake
 // owns this managed web surface, so install its two shell controls alongside the
 // built-in layout actions and keep them present across title-bar rerenders.
-const VSCODE_SHELL_CONTROLS_SCRIPT = `(() => {
-  const controls = [
-    ["cake-back-to-agent", "Cake: Back to Agent", "arrow-left", "cake-control://back-to-agent"],
-    [
-      "cake-toggle-chat-sidebar",
-      "Cake: Toggle Chat Sidebar",
-      "layout-sidebar-right",
-      "cake-control://toggle-chat-sidebar",
-    ],
-  ];
-  const install = () => {
-    const actions = document.querySelector(
-      ".part.titlebar .titlebar-right .action-toolbar-container .actions-container",
-    );
-    if (!(actions instanceof HTMLElement)) return;
-    for (const [id, label, icon, href] of controls) {
-      if (document.getElementById(id)) continue;
-      const item = document.createElement("li");
-      item.id = id;
-      item.className = "action-item";
-      const action = document.createElement("a");
-      action.className = "action-label codicon codicon-" + icon;
-      action.href = href;
-      action.setAttribute("role", "button");
-      action.setAttribute("aria-label", label);
-      action.title = label;
-      item.append(action);
-      actions.append(item);
+const VSCODE_SHELL_CONTROL_PREFIX = "__CAKE_SHELL_CONTROL__";
+
+function vscodeShellControlsScript(workspacePath: string) {
+  return `(() => {
+    const cakeIconMarkup = ${JSON.stringify(cakeIconMarkup)};
+    const controlPrefix = ${JSON.stringify(VSCODE_SHELL_CONTROL_PREFIX)};
+    const workspace = ${JSON.stringify(workspacePath)};
+    const controls = [
+      ["cake-back-to-agent", "Cake: Back to Agent", "cake", "back-to-agent"],
+      [
+        "cake-toggle-chat-sidebar",
+        "Cake: Toggle Chat Sidebar",
+        "layout-sidebar-right",
+        "toggle-chat-sidebar",
+      ],
+    ];
+    const install = () => {
+      const actions = document.querySelector(
+        ".part.titlebar .titlebar-right .action-toolbar-container .actions-container",
+      );
+      if (!(actions instanceof HTMLElement)) return;
+      const secondarySidebarAction = actions.querySelector(
+        '[aria-label*="Toggle Secondary Side Bar"], [title*="Toggle Secondary Side Bar"]',
+      );
+      secondarySidebarAction?.closest(".action-item")?.remove();
+      for (const [id, label, icon, type] of controls) {
+        if (document.getElementById(id)) continue;
+        const item = document.createElement("li");
+        item.id = id;
+        item.className = "action-item";
+        const action = document.createElement("a");
+        action.className = icon === "cake" ? "action-label" : "action-label codicon codicon-" + icon;
+        if (icon === "cake") {
+          action.innerHTML = cakeIconMarkup + "<span>Back to Agent</span>";
+          action.style.alignItems = "center";
+          action.style.color = "var(--vscode-titleBar-activeForeground)";
+          action.style.gap = "6px";
+          action.style.padding = "0 8px";
+          item.style.display = "none";
+        }
+        action.href = "#";
+        action.addEventListener("click", (event) => {
+          event.preventDefault();
+          console.debug(controlPrefix + JSON.stringify({ type, workspace }));
+        });
+        action.setAttribute("role", "button");
+        action.setAttribute("aria-label", label);
+        action.title = label;
+        item.append(action);
+        if (id === "cake-back-to-agent") actions.prepend(item);
+        else actions.append(item);
+      }
+    };
+    window.__cakeSetChatSidebarVisible = (visible) => {
+      const backToAgent = document.getElementById("cake-back-to-agent");
+      if (backToAgent) backToAgent.style.display = visible ? "none" : "";
+    };
+    install();
+    if (!window.__cakeShellControlsObserver) {
+      window.__cakeShellControlsObserver = new MutationObserver(install);
+      window.__cakeShellControlsObserver.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+      });
     }
-  };
-  install();
-  if (!window.__cakeShellControlsObserver) {
-    window.__cakeShellControlsObserver = new MutationObserver(install);
-    window.__cakeShellControlsObserver.observe(document.documentElement, {
-      childList: true,
-      subtree: true,
-    });
-  }
-})()`;
+  })()`;
+}
 const editorPreferencesSchema = z.looseObject({
   "security.workspace.trust.enabled": z.boolean().optional(),
   "workbench.colorTheme": z.string().optional(),
   "workbench.startupEditor": z.string().optional(),
+  "workbench.secondarySideBar.defaultVisibility": z.string().optional(),
+  "chat.disableAIFeatures": z.boolean().optional(),
   "github.copilot.enable": z.union([z.boolean(), z.record(z.string(), z.boolean())]).optional(),
   "extensions.autoUpdate": z.boolean().optional(),
   "extensions.autoCheckUpdates": z.boolean().optional(),
@@ -228,7 +259,14 @@ interface ViewEntry {
   view: WebContentsView;
 }
 
-type ViewBounds = { visible: boolean; x: number; y: number; width: number; height: number };
+type ViewBounds = {
+  visible: boolean;
+  chatSidebarVisible: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
 
 /** The sideloaded companion extension's package.json contract. */
 export interface CompanionManifest {
@@ -387,23 +425,12 @@ export class VsCodeServerManager {
     const view = new WebContentsView({
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: false },
     });
-    view.webContents.on("will-navigate", (event, url) => {
-      let action: string | undefined;
-      try {
-        const parsed = new URL(url);
-        if (parsed.protocol === "cake-control:") action = parsed.hostname;
-      } catch {
-        return;
-      }
-      if (action !== "back-to-agent" && action !== "toggle-chat-sidebar") return;
+    view.webContents.on("console-message", (event) => {
+      if (!event.message.startsWith(VSCODE_SHELL_CONTROL_PREFIX)) return;
       event.preventDefault();
-      this.props.broadcast({
-        type:
-          action === "back-to-agent"
-            ? "embedded-editor-back-to-agent"
-            : "embedded-editor-toggle-chat",
-        workspacePath,
-      });
+      this.handleBridgeMessage(
+        Buffer.from(event.message.slice(VSCODE_SHELL_CONTROL_PREFIX.length), "utf8"),
+      );
     });
     this.views.set(webContentsId, { workspacePath: resolved, view });
     this.applyRequestedBounds(webContentsId, view);
@@ -413,7 +440,7 @@ export class VsCodeServerManager {
     try {
       const authSuffix = instance.flavor === "openvscode" ? `/?tkn=${instance.token}` : "/";
       await view.webContents.loadURL(`http://127.0.0.1:${instance.port}${authSuffix}`);
-      await view.webContents.executeJavaScript(VSCODE_SHELL_CONTROLS_SCRIPT);
+      await view.webContents.executeJavaScript(vscodeShellControlsScript(workspacePath));
     } catch (error) {
       this.views.delete(webContentsId);
       this.releaseViewer(resolved);
@@ -446,6 +473,12 @@ export class VsCodeServerManager {
       width: Math.round(bounds.width),
       height: Math.round(bounds.height),
     });
+    if (!view.webContents.isDestroyed() && !view.webContents.isLoadingMainFrame())
+      void view.webContents
+        .executeJavaScript(
+          `window.__cakeSetChatSidebarVisible?.(${JSON.stringify(bounds.chatSidebarVisible)})`,
+        )
+        .catch(() => undefined);
   }
 
   /** Asks the workspace's companion extension to reveal and highlight a source location. */
@@ -855,8 +888,12 @@ export class VsCodeServerManager {
     }
     if (settings["workbench.startupEditor"] === undefined)
       updates.push({ key: "workbench.startupEditor", value: "none" });
-    // Cake's agent is the only intended code producer here. Force Copilot inert
-    // even when an existing profile explicitly enabled it.
+    if (settings["workbench.secondarySideBar.defaultVisibility"] !== "hidden")
+      updates.push({ key: "workbench.secondarySideBar.defaultVisibility", value: "hidden" });
+    if (settings["chat.disableAIFeatures"] !== true)
+      updates.push({ key: "chat.disableAIFeatures", value: true });
+    // Cake's agent is the only intended code producer here. Force Copilot and
+    // VS Code's built-in AI surfaces inert even when a profile enabled them.
     if (!disabledCopilotSettingSchema.safeParse(settings["github.copilot.enable"]).success)
       updates.push({ key: "github.copilot.enable", value: { "*": false } });
     if (settings["extensions.autoUpdate"] !== false)

@@ -254,8 +254,15 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   async reportBounds(bounds: { x: number; y: number; width: number; height: number } | null) {
     const revision = ++this.boundsRevision;
     const payload = bounds
-      ? { visible: true, ...bounds }
-      : { visible: false, x: 0, y: 0, width: 0, height: 0 };
+      ? { visible: true, chatSidebarVisible: this.chatSidebarVisible, ...bounds }
+      : {
+          visible: false,
+          chatSidebarVisible: this.chatSidebarVisible,
+          x: 0,
+          y: 0,
+          width: 0,
+          height: 0,
+        };
     try {
       await this.props.client.updateEmbeddedEditorBounds(payload);
     } catch {

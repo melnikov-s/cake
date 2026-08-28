@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import cakeIconMarkup from "../../../assets/cake-icon.svg?raw";
 
 function Icon({
   children,
@@ -35,11 +36,7 @@ export const FolderIcon = () => (
   </Icon>
 );
 export const CakeIcon = () => (
-  <Icon>
-    <path d="M4 12.5h16v6A1.5 1.5 0 0 1 18.5 20h-13A1.5 1.5 0 0 1 4 18.5z" />
-    <path d="M4 12.5c0-1.7 1.6-3 3.5-3s3.5 1.3 3.5 3c0-1.7 1.6-3 3.5-3s3.5 1.3 3.5 3c0-1.7 1.6-3 3.5-3" />
-    <path d="M8 6v2M12 4v2M16 6v2M4 16h16" />
-  </Icon>
+  <span className="contents" dangerouslySetInnerHTML={{ __html: cakeIconMarkup }} />
 );
 export const PlusIcon = () => (
   <Icon>

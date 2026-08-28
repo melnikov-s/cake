@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { observer } from "r-state-tree/react";
 import type { EmbeddedEditorStore } from "../stores/EmbeddedEditorStore";
 import { Button } from "./ui/button";
@@ -56,10 +56,35 @@ export const EmbeddedEditorPane = observer(function EmbeddedEditorPane({
     void store.refresh();
   }, [store]);
 
+  useLayoutEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+    if (!store.chatSidebarVisible) {
+      void store.reportBounds({ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight });
+      return;
+    }
+    const bounds = element.getBoundingClientRect();
+    void store.reportBounds({
+      x: bounds.left,
+      y: bounds.top,
+      width: bounds.width,
+      height: bounds.height,
+    });
+  }, [store, store.chatSidebarVisible]);
+
   useEffect(() => {
     const element = containerRef.current;
     if (!element) return;
     const report = () => {
+      if (!store.chatSidebarVisible) {
+        void store.reportBounds({
+          x: 0,
+          y: 0,
+          width: window.innerWidth,
+          height: window.innerHeight,
+        });
+        return;
+      }
       const bounds = element.getBoundingClientRect();
       void store.reportBounds({
         x: bounds.left,
@@ -68,7 +93,6 @@ export const EmbeddedEditorPane = observer(function EmbeddedEditorPane({
         height: bounds.height,
       });
     };
-    report();
     const observer = new ResizeObserver(report);
     observer.observe(element);
     window.addEventListener("resize", report);

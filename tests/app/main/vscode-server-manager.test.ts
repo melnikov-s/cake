@@ -40,10 +40,18 @@ describe("VsCodeServerManager startup", () => {
       preferredTheme: async () => "dark",
       broadcast: () => undefined,
     });
-    const view = { setVisible: vi.fn(), setBounds: vi.fn() };
+    const view = {
+      setVisible: vi.fn(),
+      setBounds: vi.fn(),
+      webContents: {
+        isDestroyed: vi.fn(() => false),
+        isLoadingMainFrame: vi.fn(() => true),
+      },
+    };
 
     manager.updateBounds(17, {
       visible: true,
+      chatSidebarVisible: true,
       x: 10.4,
       y: 62.2,
       width: 901.8,
@@ -151,6 +159,8 @@ describe("VsCodeServerManager startup", () => {
       "security.workspace.trust.enabled": false,
       "workbench.colorTheme": "Default Dark Modern",
       "workbench.startupEditor": "none",
+      "workbench.secondarySideBar.defaultVisibility": "hidden",
+      "chat.disableAIFeatures": true,
       "github.copilot.enable": { "*": false },
       "extensions.autoUpdate": false,
       "extensions.autoCheckUpdates": false,
@@ -163,6 +173,8 @@ describe("VsCodeServerManager startup", () => {
   // Preserve the user's chosen theme and comments.
   "security.workspace.trust.enabled": true,
   "workbench.colorTheme": "Solarized Light",
+  "workbench.secondarySideBar.defaultVisibility": "visible",
+  "chat.disableAIFeatures": false,
   "github.copilot.enable": { "*": true },
   "extensions.autoUpdate": true,
 }
@@ -175,6 +187,8 @@ describe("VsCodeServerManager startup", () => {
       "security.workspace.trust.enabled": false,
       "workbench.colorTheme": "Solarized Light",
       "workbench.startupEditor": "none",
+      "workbench.secondarySideBar.defaultVisibility": "hidden",
+      "chat.disableAIFeatures": true,
       "github.copilot.enable": { "*": false },
       "extensions.autoUpdate": false,
       "extensions.autoCheckUpdates": false,

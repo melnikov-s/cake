@@ -69,55 +69,51 @@ export const IdeWorkspace = observer(function IdeWorkspace({
       <section className="min-w-0 flex-1" aria-label="VS Code workspace">
         <EmbeddedEditorPane store={editor} />
       </section>
-      <PanelResizeHandle
-        className={cn(
-          "right-[calc(var(--ide-chat-sidebar-width)-5px)]",
-          !editor.chatSidebarVisible && "hidden",
-        )}
-        label="Resize current session sidebar"
-        value={visibleChatSidebarWidth}
-        min={320}
-        max={chatSidebarMax}
-        edge="right"
-        onChange={setChatSidebarWidth}
-        onResizeStart={() => setResizing(true)}
-        onResizeEnd={() => setResizing(false)}
-      />
-      <aside
-        className={cn(
-          "flex w-[var(--ide-chat-sidebar-width)] min-w-0 flex-col border-l border-border bg-background shadow-[-12px_0_32px_color-mix(in_oklab,var(--foreground)_8%,transparent)]",
-          !editor.chatSidebarVisible && "hidden",
-        )}
-      >
-        <header className="flex min-h-14 items-center justify-between gap-3 border-b border-border px-3 py-2">
-          <div className="min-w-0">
-            <strong className="block truncate text-sm">
-              {contextualAnchor ? "Chat about selection" : sessionTitle}
-            </strong>
-            <span className="block truncate font-mono text-[11px] text-muted-foreground">
-              {contextualAnchor
-                ? anchorTitle(contextualAnchor)
-                : editor.lastActivePath
-                  ? `${editor.lastActivePath} · Current session`
-                  : "Current session"}
-            </span>
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            {contextualAnchor ? (
-              <Button variant="ghost" size="sm" onClick={closeContext}>
-                Project chat
-              </Button>
-            ) : null}
-            <Button variant="outline" size="sm" onClick={onBack}>
-              <BackIcon aria-hidden />
-              Back to Agent
-            </Button>
-          </div>
-        </header>
-        <div className="min-h-0 flex-1">
-          <Chat className="h-full" store={chat} transcriptBehavior={transcriptBehavior} />
-        </div>
-      </aside>
+      {editor.chatSidebarVisible ? (
+        <>
+          <PanelResizeHandle
+            className="right-[calc(var(--ide-chat-sidebar-width)-5px)]"
+            label="Resize current session sidebar"
+            value={visibleChatSidebarWidth}
+            min={320}
+            max={chatSidebarMax}
+            edge="right"
+            onChange={setChatSidebarWidth}
+            onResizeStart={() => setResizing(true)}
+            onResizeEnd={() => setResizing(false)}
+          />
+          <aside className="flex w-[var(--ide-chat-sidebar-width)] min-w-0 flex-col border-l border-border bg-background shadow-[-12px_0_32px_color-mix(in_oklab,var(--foreground)_8%,transparent)]">
+            <header className="flex min-h-14 items-center justify-between gap-3 border-b border-border px-3 py-2">
+              <div className="min-w-0">
+                <strong className="block truncate text-sm">
+                  {contextualAnchor ? "Chat about selection" : sessionTitle}
+                </strong>
+                <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                  {contextualAnchor
+                    ? anchorTitle(contextualAnchor)
+                    : editor.lastActivePath
+                      ? `${editor.lastActivePath} · Current session`
+                      : "Current session"}
+                </span>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                {contextualAnchor ? (
+                  <Button variant="ghost" size="sm" onClick={closeContext}>
+                    Project chat
+                  </Button>
+                ) : null}
+                <Button variant="outline" size="sm" onClick={onBack}>
+                  <BackIcon aria-hidden />
+                  Back to Agent
+                </Button>
+              </div>
+            </header>
+            <div className="min-h-0 flex-1">
+              <Chat className="h-full" store={chat} transcriptBehavior={transcriptBehavior} />
+            </div>
+          </aside>
+        </>
+      ) : null}
     </main>
   );
 });

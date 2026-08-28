@@ -273,6 +273,7 @@ export interface DesktopClient {
   openEmbeddedEditor(workspacePath: string): Promise<void>;
   updateEmbeddedEditorBounds(input: {
     visible: boolean;
+    chatSidebarVisible: boolean;
     x: number;
     y: number;
     width: number;

@@ -211,16 +211,32 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect
       .poll(() => hasVsCodeTitleAction("Toggle Chat Sidebar"), { timeout: 20_000 })
       .toBe(true);
-    await expect.poll(() => hasVsCodeTitleAction("Back to Agent"), { timeout: 20_000 }).toBe(true);
+    await expect.poll(() => hasVsCodeTitleAction("Back to Agent"), { timeout: 20_000 }).toBe(false);
     await expect
-      .poll(() => hasVsCodeText("Cake: Pending · 0 replies"), { timeout: 20_000 })
+      .poll(() =>
+        application.evaluate(async ({ webContents }) => {
+          for (const contents of webContents.getAllWebContents()) {
+            if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
+            const hasCakeIcon = await contents.executeJavaScript(
+              'Boolean(document.querySelector("#cake-back-to-agent svg")) && !document.querySelector("#cake-back-to-agent .codicon-arrow-left")',
+            );
+            if (hasCakeIcon) return true;
+          }
+          return false;
+        }),
+      )
       .toBe(true);
-    expect(await clickVsCodeText("Cake: Pending · 0 replies")).toBe(true);
+    await expect.poll(() => hasVsCodeTitleAction("Toggle Secondary Side Bar")).toBe(false);
+    await expect.poll(() => hasVsCodeText("Build with Agent")).toBe(false);
+    await expect
+      .poll(() => clickVsCodeText("Cake: Pending · 0 replies"), { timeout: 20_000 })
+      .toBe(true);
     await expect(page.getByText("Chat about selection", { exact: true })).toBeVisible();
     await expect(page.getByText("Why is this exported?", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Project chat" }).click();
     expect(await clickVsCodeTitleAction("Toggle Chat Sidebar")).toBe(true);
     await expect(chatSidebarBackButton).toBeHidden();
+    await expect.poll(() => hasVsCodeTitleAction("Back to Agent")).toBe(true);
     expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
     await expect(vscodeWorkspace).toBeHidden();
     await expect(page.getByText("Phase 4 — Model references")).toBeVisible();
@@ -255,9 +271,41 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
         },
         { type: "embedded-editor-toggle-chat", workspacePath: project },
       );
+    const vscodeFillsWindow = () =>
+      application.evaluate(async ({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        const view = window?.contentView.children.find((child) =>
+          child.webContents.getURL().startsWith("http://127.0.0.1:"),
+        );
+        if (!window || !view) return false;
+        const bounds = view.getBounds();
+        const contentBounds = window.getContentBounds();
+        const workbenchWidth = await view.webContents.executeJavaScript(
+          'document.querySelector(".monaco-workbench")?.getBoundingClientRect().width',
+        );
+        return (
+          bounds.x === 0 &&
+          bounds.y === 0 &&
+          bounds.width === contentBounds.width &&
+          bounds.height === contentBounds.height &&
+          workbenchWidth === bounds.width
+        );
+      });
     await toggleChatSidebar();
     await expect(vscodeWorkspace).toBeVisible();
     await expect(chatSidebarBackButton).toBeHidden();
+    await expect.poll(vscodeFillsWindow).toBe(true);
+    const originalContentSize = await application.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]!.getContentSize(),
+    );
+    await application.evaluate(({ BrowserWindow }, [width, height]) => {
+      BrowserWindow.getAllWindows()[0]!.setContentSize(width - 160, height - 80);
+    }, originalContentSize);
+    await expect.poll(vscodeFillsWindow).toBe(true);
+    await application.evaluate(({ BrowserWindow }, [width, height]) => {
+      BrowserWindow.getAllWindows()[0]!.setContentSize(width, height);
+    }, originalContentSize);
+    await expect.poll(vscodeFillsWindow).toBe(true);
     await toggleChatSidebar();
     await expect(chatSidebarBackButton).toBeVisible();
 
