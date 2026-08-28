@@ -49,7 +49,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     throw new Error("Cake could not find that session");
   }
 
-  async openSession(sessionId: string) {
+  async openSession(sessionId: string, messageId?: string) {
     this.projectSession(sessionId);
     this.showEmptyWorkbench();
     const opening = this.projectWorkbenchStore.openSession(sessionId);
@@ -57,6 +57,17 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       this.appShellStore.selectProjectSession(sessionId);
     }
     await opening;
+    if (!messageId) return true;
+    const session = this.sessionRegistry.findSession(sessionId);
+    if (!session) return false;
+    const message = session.chatStore.parts.find(
+      (part) =>
+        part.id === messageId ||
+        (part.kind === "text" && part.entryId !== undefined && part.entryId === messageId),
+    );
+    if (!message) return false;
+    session.chatStore.navigateToMessage(message.id);
+    return true;
   }
 
   async createSession(workspacePath: string) {
@@ -315,9 +326,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       sessions: () => this.sessionCatalogStore.sessions,
       cakeChatSessions: () => this.globalChatStore.summaries,
       sessionActivity: (sessionId) => this.sidebarStore.sessionActivity(sessionId),
-      openSession: async (sessionId) => {
-        await this.openSession(sessionId);
-      },
+      openSession: (sessionId, messageId) => this.openSession(sessionId, messageId),
       createSession: async (workspacePath) => {
         await this.createSession(workspacePath);
       },

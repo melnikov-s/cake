@@ -11,6 +11,14 @@ import {
 } from "../plugin/plugin-contract";
 
 const sessionIdTargetSchema = z.object({ sessionId: z.string().min(1).max(256) }).strict();
+const sessionNavigationTargetSchema = sessionIdTargetSchema.extend({
+  messageId: z
+    .string()
+    .min(1)
+    .max(256)
+    .optional()
+    .describe("Optional transcript message ID to reveal after opening the session."),
+});
 
 const emptyArgumentsSchema = z.object({}).strict();
 const pluginStatusesSchema = z.array(pluginStatusSchema).max(1_000);
@@ -65,7 +73,7 @@ const appControlArgumentSchemas = {
   set_plugin_enabled: z.object({ pluginId: pluginIdSchema, enabled: z.boolean() }).strict(),
   set_active_scene: z.object({ pluginId: pluginIdSchema.optional() }).strict(),
   get_session_status: sessionIdTargetSchema,
-  open_session: sessionIdTargetSchema,
+  open_session: sessionNavigationTargetSchema,
   create_session: z.object({ workspacePath: z.string().min(1).max(4_096) }).strict(),
   send_session_message: sessionIdTargetSchema.extend({
     text: z.string().trim().min(1).max(100_000),
@@ -130,7 +138,7 @@ export interface AppControlHost {
   sessions(): readonly GlobalSessionSummary[];
   cakeChatSessions(): readonly SessionSummary[];
   sessionActivity(sessionId: string): "running" | "unread" | undefined;
-  openSession(sessionId: string): Promise<void>;
+  openSession(sessionId: string, messageId?: string): Promise<boolean | void>;
   createSession(workspacePath: string): Promise<void>;
   sendSessionMessage(
     sessionId: string,
@@ -242,7 +250,7 @@ export type AppControlResult =
       selected: boolean;
       status: "running" | "unread" | "idle";
     }
-  | { ok: true; name: "open_session"; opened: SessionTarget }
+  | { ok: true; name: "open_session"; opened: SessionTarget & { messageId?: string } }
   | { ok: true; name: "create_session"; workspacePath: string; status: "creating" }
   | {
       ok: true;
@@ -337,7 +345,7 @@ const modelControlOperations = [
   operation(
     "sessions.open",
     "sessions",
-    "Open one explicitly targeted project session.",
+    "Open one explicitly targeted project session, optionally at a specific transcript message.",
     appControlArgumentSchemas.open_session,
   ),
   operation(
@@ -701,8 +709,21 @@ export class AppControlBridge {
       };
     }
     if (invocation.name === "open_session") {
-      await this.host.openSession(sessionId);
-      return { ok: true, name: invocation.name, opened: target };
+      const { messageId } = invocation.arguments;
+      const messageFound = messageId
+        ? await this.host.openSession(sessionId, messageId)
+        : await this.host.openSession(sessionId);
+      if (messageId && messageFound === false)
+        return {
+          ok: false,
+          name: invocation.name,
+          error: `Cake could not find message ${messageId} in that session.`,
+        };
+      return {
+        ok: true,
+        name: invocation.name,
+        opened: messageId ? { ...target, messageId } : target,
+      };
     }
     if (invocation.name === "send_session_message") {
       const delivery =

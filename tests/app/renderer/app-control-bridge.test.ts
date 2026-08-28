@@ -79,7 +79,9 @@ function createBridge(
     >
   > = {},
 ) {
-  const openSession = vi.fn(async () => undefined);
+  const openSession = vi.fn(
+    async (_sessionId: string, _messageId?: string): Promise<boolean | void> => undefined,
+  );
   const createSession = vi.fn(async () => undefined);
   const sendSessionMessage = vi.fn(async () => undefined);
   const abortSession = vi.fn(async () => undefined);
@@ -339,13 +341,41 @@ describe("AppControlBridge", () => {
     expect(openSession).toHaveBeenCalledWith("current");
 
     await expect(
+      bridge.invoke({
+        name: "open_session",
+        arguments: { sessionId: "current", messageId: "assistant-7" },
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      name: "open_session",
+      opened: {
+        workspacePath: "/cake",
+        sessionId: "current",
+        messageId: "assistant-7",
+      },
+    });
+    expect(openSession).toHaveBeenLastCalledWith("current", "assistant-7");
+
+    openSession.mockResolvedValueOnce(false);
+    await expect(
+      bridge.invoke({
+        name: "open_session",
+        arguments: { sessionId: "current", messageId: "missing-message" },
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      name: "open_session",
+      error: "Cake could not find message missing-message in that session.",
+    });
+
+    await expect(
       bridge.invoke({ name: "open_session", arguments: { sessionId: "missing" } }),
     ).resolves.toEqual({
       ok: false,
       name: "open_session",
       error: "Cake could not find that session.",
     });
-    expect(openSession).toHaveBeenCalledTimes(1);
+    expect(openSession).toHaveBeenCalledTimes(3);
   });
 
   it("reports live session status", async () => {

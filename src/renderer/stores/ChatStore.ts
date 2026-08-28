@@ -50,6 +50,11 @@ export interface WorkLogTimerState {
   endedAt?: number;
 }
 
+export interface MessageNavigationRequest {
+  messageId: string;
+  revision: number;
+}
+
 export type { WorkLogViewMode, WorkLogsExpansion };
 
 /** Common state and behavior contract for every Cake conversation surface. */
@@ -63,6 +68,8 @@ export class ChatStore extends Store<ChatStoreProps> {
   loadingStartedAt: number | undefined;
   readonly workLogTimers = observable(new Map<string, WorkLogTimerState>());
   transcriptScrollState: StateSnapshot | undefined;
+  messageNavigationRequest: MessageNavigationRequest | undefined;
+  private messageNavigationRevision = 0;
   private workLogTickNow = 0;
   private workLogTickInterval: ReturnType<typeof setInterval> | undefined;
 
@@ -241,6 +248,14 @@ export class ChatStore extends Store<ChatStoreProps> {
 
   setTranscriptScrollState(state: StateSnapshot | undefined) {
     this.transcriptScrollState = state;
+  }
+
+  navigateToMessage(messageId: string) {
+    this.transcriptScrollState = undefined;
+    this.messageNavigationRequest = {
+      messageId,
+      revision: ++this.messageNavigationRevision,
+    };
   }
 
   get workLogViewMode(): WorkLogViewMode {

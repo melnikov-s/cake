@@ -92,6 +92,7 @@ function Transcript({
   error,
   errorDetails,
   errorTitle,
+  messageNavigationRequest,
 }: {
   parts: UiPart[];
   sessionId: string;
@@ -107,6 +108,7 @@ function Transcript({
   error?: string;
   errorDetails?: string;
   errorTitle?: string;
+  messageNavigationRequest?: { messageId: string; revision: number };
 }) {
   const {
     workLogViewMode = "auto",
@@ -189,6 +191,7 @@ function Transcript({
     get transcriptScrollState() {
       return transcriptScrollStatesRef.current.get(sessionId);
     },
+    messageNavigationRequest,
     setTranscriptScrollState(
       state:
         | {
@@ -457,6 +460,38 @@ describe("Transcript scrolling", () => {
 
     expect(writeText).toHaveBeenCalledWith(details);
     expect(copy?.textContent).toBe("Copied full error details");
+  });
+
+  it("scrolls to a specifically requested transcript message", () => {
+    const parts: UiPart[] = [
+      { id: "user-1", kind: "text", role: "user", text: "First", status: "complete" },
+      {
+        id: "assistant-1",
+        kind: "text",
+        role: "assistant",
+        text: "Second",
+        status: "complete",
+      },
+      { id: "user-2", kind: "text", role: "user", text: "Third", status: "complete" },
+    ];
+
+    act(() =>
+      root.render(
+        <Transcript
+          parts={parts}
+          sessionId="session-1"
+          isStreaming={false}
+          behavior={{}}
+          messageNavigationRequest={{ messageId: "assistant-1", revision: 1 }}
+        />,
+      ),
+    );
+
+    expect(scrollToIndex).toHaveBeenCalledWith({
+      index: 1,
+      align: "center",
+      behavior: "auto",
+    });
   });
 
   it("scrolls to a newly rendered user message even when it was not following output", () => {

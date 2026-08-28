@@ -109,6 +109,26 @@ export const ChatTranscript = observer(function ChatTranscript({
     if (staticTranscriptRef.current)
       staticTranscriptRef.current.scrollTop = staticTranscriptRef.current.scrollHeight;
   }, []);
+  const messageNavigationRequest = store.messageNavigationRequest;
+  const messageNavigationItemIndex = messageNavigationRequest
+    ? items.findIndex((item) =>
+        item.kind === "activity-group"
+          ? item.parts.some((part) => part.id === messageNavigationRequest.messageId)
+          : item.id === messageNavigationRequest.messageId,
+      )
+    : -1;
+  useEffect(() => {
+    if (!messageNavigationRequest || messageNavigationItemIndex < 0) return;
+    followOutputRef.current = false;
+    virtuosoRef.current?.scrollToIndex({
+      index: messageNavigationItemIndex,
+      align: "center",
+      behavior: "auto",
+    });
+    staticTranscriptRef.current
+      ?.querySelector<HTMLElement>(`[data-transcript-item-index="${messageNavigationItemIndex}"]`)
+      ?.scrollIntoView({ block: "center" });
+  }, [messageNavigationItemIndex, messageNavigationRequest]);
   useEffect(() => {
     const previous = latestUserRef.current;
     latestUserRef.current = { storeId: store.id, partId: latestUserPartId };
@@ -248,6 +268,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   const renderItem = (item: TranscriptItem, index: number) => (
     <div
       key={item.id}
+      data-transcript-item-index={index}
       data-response-start={item.id === responseStartItemId ? "" : undefined}
       className={`transcript-item${errorNoticeFollowsUser(items, index) ? " transcript-item-error-after-user" : ""}`}
     >
