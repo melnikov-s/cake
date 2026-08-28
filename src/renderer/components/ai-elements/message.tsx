@@ -22,7 +22,7 @@ export function MessageContent({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       className={cn(
-        "min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card px-5 py-4 text-[0.94rem] leading-7 shadow-[0_12px_35px_-30px_rgba(18,22,27,0.45)]",
+        "min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-card px-5 py-4 text-[0.94rem] leading-7 shadow-[0_12px_35px_-30px_rgba(18,22,27,0.45)] [contain:paint]",
         className,
       )}
       {...props}
