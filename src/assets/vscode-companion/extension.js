@@ -203,6 +203,13 @@ async function openSourceControl(vscode) {
   await vscode.commands.executeCommand("workbench.view.scm");
 }
 
+async function setTheme(vscode, payload) {
+  const themeLabel = payload.theme === "dark" ? "Cake Dark" : "Cake Light";
+  await vscode.workspace
+    .getConfiguration("workbench")
+    .update("colorTheme", themeLabel, vscode.ConfigurationTarget.Global);
+}
+
 function activate(context) {
   const vscode = require("vscode");
   const annotationMarker = (color) =>
@@ -325,6 +332,7 @@ function activate(context) {
       .then((payload) => {
         if (payload.type === "annotations") return updateAnnotations(vscode, payload);
         if (payload.type === "open-source-control") return openSourceControl(vscode);
+        if (payload.type === "set-theme") return setTheme(vscode, payload);
         return reveal(payload);
       })
       .then(() => response.writeHead(204).end())

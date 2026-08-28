@@ -1,13 +1,25 @@
 {
   "name": "cake-companion",
   "displayName": "Cake Companion",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Bridges embedded VS Code with Cake source reveals, editor context, and discussions.",
   "license": "UNLICENSED",
   "publisher": "cake",
   "main": "./extension.js",
   "contributes": {
+    "themes": [
+      {
+        "label": "Cake Light",
+        "uiTheme": "vs",
+        "path": "./themes/cake-light-color-theme.json"
+      },
+      {
+        "label": "Cake Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/cake-dark-color-theme.json"
+      }
+    ],
     "commands": [
       {
         "command": "cake.reveal",

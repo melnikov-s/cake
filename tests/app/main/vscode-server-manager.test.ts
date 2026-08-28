@@ -1,5 +1,7 @@
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { parse as parseJsonc } from "jsonc-parser";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -22,6 +24,34 @@ const companionManifest: CompanionManifest = {
   contributes: { commands: [] },
 };
 
+type ManagerProps = ConstructorParameters<typeof VsCodeServerManager>[0];
+
+interface ManagerOverrides {
+  root: string;
+  companionMain?: string;
+  companionThemes?: ManagerProps["companionThemes"];
+  preferredTheme?: ManagerProps["preferredTheme"];
+  broadcast?: ManagerProps["broadcast"];
+}
+
+function createManager({
+  root,
+  companionMain = "/unused/companion.js",
+  companionThemes = [],
+  preferredTheme = async () => "dark" as const,
+  broadcast = () => undefined,
+}: ManagerOverrides) {
+  return new VsCodeServerManager({
+    root,
+    companionManifest,
+    companionMain,
+    companionThemes,
+    customPath: () => undefined,
+    preferredTheme,
+    broadcast,
+  });
+}
+
 describe("VsCodeServerManager startup", () => {
   let root: string | undefined;
   let manager: VsCodeServerManager | undefined;
@@ -32,14 +62,7 @@ describe("VsCodeServerManager startup", () => {
   });
 
   it("retains bounds reported before the native view exists", () => {
-    manager = new VsCodeServerManager({
-      root: "/unused",
-      companionManifest,
-      companionMain: "/unused/companion.js",
-      customPath: () => undefined,
-      preferredTheme: async () => "dark",
-      broadcast: () => undefined,
-    });
+    manager = createManager({ root: "/unused" });
     const view = {
       setVisible: vi.fn(),
       setBounds: vi.fn(),
@@ -64,14 +87,7 @@ describe("VsCodeServerManager startup", () => {
 
   it("routes a native close back to the agent while the editor view is visible", () => {
     const broadcast = vi.fn();
-    manager = new VsCodeServerManager({
-      root: "/unused",
-      companionManifest,
-      companionMain: "/unused/companion.js",
-      customPath: () => undefined,
-      preferredTheme: async () => "dark",
-      broadcast,
-    });
+    manager = createManager({ root: "/unused", broadcast });
     const view = { setVisible: vi.fn(), setBounds: vi.fn() };
     manager["views"].set(17, { workspacePath: "/real/project", view: view as never });
     manager["presentedWorkspacePaths"].set("/real/project", "/linked/project");
@@ -97,14 +113,7 @@ describe("VsCodeServerManager startup", () => {
     );
     await chmod(binary, 0o755);
 
-    manager = new VsCodeServerManager({
-      root,
-      companionManifest,
-      companionMain,
-      customPath: () => undefined,
-      preferredTheme: async () => "dark",
-      broadcast: () => undefined,
-    });
+    manager = createManager({ root, companionMain });
     await expect(manager["serverFor"](root, binary)).resolves.toBeDefined();
     expect(manager["starting"].size).toBe(0);
     expect(manager.status).toBe("ready");
@@ -112,14 +121,7 @@ describe("VsCodeServerManager startup", () => {
 
   it("relays VS Code title-bar and active-context events to the renderer", () => {
     const broadcast = vi.fn();
-    manager = new VsCodeServerManager({
-      root: "/unused",
-      companionManifest,
-      companionMain: "/unused/companion.js",
-      customPath: () => undefined,
-      preferredTheme: async () => "dark",
-      broadcast,
-    });
+    manager = createManager({ root: "/unused", broadcast });
 
     manager["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "toggle-chat-sidebar", workspace: "/project" })),
@@ -164,23 +166,15 @@ describe("VsCodeServerManager startup", () => {
     });
   });
 
-  it("disables duplicate workspace trust and seeds a theme without replacing theme choices", async () => {
+  it("applies Cake's theme on every start while preserving other user settings", async () => {
     root = await mkdtemp(join(tmpdir(), "cake-vscode-manager-"));
-    manager = new VsCodeServerManager({
-      root,
-      companionManifest,
-      companionMain: "/unused/companion.js",
-      customPath: () => undefined,
-      preferredTheme: async () => "dark",
-      broadcast: () => undefined,
-    });
-    const userDataDir = join(root, "profile");
+    manager = createManager({ root });
+    const settingsPath = join(root, "profile", "User", "settings.json");
 
-    await manager["ensureEditorPreferences"](userDataDir);
-    const settingsPath = join(userDataDir, "User", "settings.json");
+    await manager["ensureEditorPreferences"](join(root, "profile"));
     expect(JSON.parse(await readFile(settingsPath, "utf8"))).toEqual({
       "security.workspace.trust.enabled": false,
-      "workbench.colorTheme": "Default Dark Modern",
+      "workbench.colorTheme": "Cake Dark",
       "workbench.startupEditor": "none",
       "workbench.secondarySideBar.defaultVisibility": "hidden",
       "chat.disableAIFeatures": true,
@@ -190,7 +184,7 @@ describe("VsCodeServerManager startup", () => {
     await writeFile(
       settingsPath,
       `{
-  // Preserve the user's chosen theme and comments.
+  // Keep this comment; Cake still canonicalizes the keys around it.
   "security.workspace.trust.enabled": true,
   "workbench.colorTheme": "Solarized Light",
   "workbench.secondarySideBar.defaultVisibility": "visible",
@@ -200,12 +194,12 @@ describe("VsCodeServerManager startup", () => {
 }
 `,
     );
-    await manager["ensureEditorPreferences"](userDataDir);
+    await manager["ensureEditorPreferences"](join(root, "profile"));
     const updatedRaw = await readFile(settingsPath, "utf8");
-    expect(updatedRaw).toContain("Preserve the user's chosen theme and comments.");
+    expect(updatedRaw).toContain("Keep this comment; Cake still canonicalizes the keys around it.");
     expect(parseJsonc(updatedRaw)).toEqual({
       "security.workspace.trust.enabled": false,
-      "workbench.colorTheme": "Solarized Light",
+      "workbench.colorTheme": "Cake Dark",
       "workbench.startupEditor": "none",
       "workbench.secondarySideBar.defaultVisibility": "hidden",
       "chat.disableAIFeatures": true,
@@ -213,20 +207,55 @@ describe("VsCodeServerManager startup", () => {
       "extensions.autoUpdate": true,
       "extensions.ignoreRecommendations": true,
     });
+
+    const lightManager = createManager({ root, preferredTheme: async () => "light" });
+    manager = lightManager;
+    await lightManager["ensureEditorPreferences"](join(root, "profile-light"));
+    expect(
+      JSON.parse(await readFile(join(root, "profile-light", "User", "settings.json"), "utf8"))[
+        "workbench.colorTheme"
+      ],
+    ).toBe("Cake Light");
+  });
+
+  it("writes the companion's contributed theme files into the extension directory", async () => {
+    root = await mkdtemp(join(tmpdir(), "cake-vscode-manager-"));
+    const companionMain = join(root, "companion.js");
+    await writeFile(companionMain, "module.exports = {};\n");
+    manager = createManager({
+      root,
+      companionMain,
+      companionThemes: [
+        { path: "./themes/cake-light-color-theme.json", content: "{}\n" },
+        { path: "./themes/cake-dark-color-theme.json", content: "{\n}\n" },
+      ],
+    });
+
+    const extensionsRoot = await manager["syncCompanionExtension"]();
+
+    await expect(
+      readFile(join(extensionsRoot, "cake-companion", "extension.js"), "utf8"),
+    ).resolves.toBe("module.exports = {};\n");
+    await expect(
+      readFile(
+        join(extensionsRoot, "cake-companion", "themes", "cake-light-color-theme.json"),
+        "utf8",
+      ),
+    ).resolves.toBe("{}\n");
+    await expect(
+      readFile(
+        join(extensionsRoot, "cake-companion", "themes", "cake-dark-color-theme.json"),
+        "utf8",
+      ),
+    ).resolves.toBe("{\n}\n");
+    expect(stat(join(extensionsRoot, "cake-companion", "package.json"))).toBeDefined();
   });
 
   it("preserves user extensions while canonicalizing the Cake companion registry entry", async () => {
     root = await mkdtemp(join(tmpdir(), "cake-vscode-manager-"));
     const companionMain = join(root, "companion.js");
     await writeFile(companionMain, "module.exports = {};\n");
-    manager = new VsCodeServerManager({
-      root,
-      companionManifest,
-      companionMain,
-      customPath: () => undefined,
-      preferredTheme: async () => "dark",
-      broadcast: () => undefined,
-    });
+    manager = createManager({ root, companionMain });
     const extensionsRoot = join(root, "extensions");
     await mkdir(join(extensionsRoot, "github.copilot"), { recursive: true });
     await mkdir(join(extensionsRoot, "esbenp.prettier-vscode"), { recursive: true });
@@ -265,5 +294,48 @@ describe("VsCodeServerManager startup", () => {
       "esbenp.prettier-vscode",
       "cake.cake-companion",
     ]);
+  });
+
+  it("pushes the current theme to running companions and skips unchanged preferences", async () => {
+    root = await mkdtemp(join(tmpdir(), "cake-vscode-manager-"));
+    const received: unknown[] = [];
+    const server = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk: Buffer) => chunks.push(chunk));
+      request.on("end", () => {
+        received.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        response.writeHead(204).end();
+      });
+    });
+    await new Promise<void>((resolvePromise) => server.listen(0, "127.0.0.1", resolvePromise));
+    const companionPort = (server.address() as AddressInfo).port;
+
+    try {
+      let preference: "light" | "dark" = "dark";
+      manager = createManager({ root, preferredTheme: async () => preference });
+      manager["servers"].set("/project", {
+        workspacePath: "/project",
+        child: { kill: () => undefined, removeAllListeners: () => undefined } as never,
+        port: 1,
+        token: "token",
+        flavor: "codeserver",
+        lastUsedAt: 0,
+        viewers: 1,
+      });
+      manager["companionPorts"].set("/project", companionPort);
+
+      await manager.updateTheme();
+      await manager.updateTheme();
+      expect(received).toEqual([{ type: "set-theme", theme: "dark" }]);
+
+      preference = "light";
+      await manager.updateTheme();
+      expect(received).toEqual([
+        { type: "set-theme", theme: "dark" },
+        { type: "set-theme", theme: "light" },
+      ]);
+    } finally {
+      await new Promise<void>((resolvePromise) => server.close(() => resolvePromise()));
+    }
   });
 });

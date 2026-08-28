@@ -70,6 +70,8 @@ import cakeIconPath from "../assets/cake.png?asset";
 // corrupt the bundle).
 import companionManifest from "../assets/vscode-companion/companion-manifest.json";
 import companionExtensionMain from "../assets/vscode-companion/extension.js?asset";
+import cakeLightThemeSource from "../assets/vscode-companion/themes/cake-light-color-theme.json?raw";
+import cakeDarkThemeSource from "../assets/vscode-companion/themes/cake-dark-color-theme.json?raw";
 
 app.setName("Cake");
 registerInlineWidgetScheme();
@@ -155,6 +157,10 @@ const vscodeEditor = new VsCodeServerManager({
   root: join(app.getPath("userData"), "vscode-editor"),
   companionManifest,
   companionMain: companionExtensionMain,
+  companionThemes: [
+    { path: "./themes/cake-light-color-theme.json", content: cakeLightThemeSource },
+    { path: "./themes/cake-dark-color-theme.json", content: cakeDarkThemeSource },
+  ],
   customPath: () => applicationModel.vscodeServerPath,
   preferredTheme: async () => {
     const preference = (await loadWindowState()).theme;
@@ -162,6 +168,11 @@ const vscodeEditor = new VsCodeServerManager({
     return nativeTheme.shouldUseDarkColors ? "dark" : "light";
   },
   broadcast,
+});
+// The embedded editor follows Cake's appearance: push theme changes whenever the
+// OS scheme flips (system preference) or the renderer persists a new preference.
+nativeTheme.on("updated", () => {
+  void vscodeEditor.updateTheme();
 });
 let globalChatController: WebContents | undefined;
 const globalChatDriver = new GlobalChatDriver({
@@ -1345,6 +1356,7 @@ async function handleCakeRequest(
     });
   if (request.type === "save-window-state") {
     await saveWindowState(request.state);
+    void vscodeEditor.updateTheme();
     return desktopResponseSchema.parse({ type: "window-state-saved" });
   }
   if (request.type === "load-application-state")

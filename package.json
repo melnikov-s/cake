@@ -16,6 +16,7 @@
     "lint:oxlint": "oxlint src",
     "lint:anti-slop:audit": "oxlint .",
     "postinstall": "install-electron",
+    "theme:build": "node scripts/generate-vscode-theme.mjs && oxfmt src/assets/vscode-companion/themes",
     "start": "node scripts/start-snapshot.mjs",
     "start:direct": "electron-vite preview",
     "build:start": "pnpm build && pnpm start",

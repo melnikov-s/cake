@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { createServer, request as httpRequest, type Server as HttpServer } from "node:http";
 import net from "node:net";
 import { copyFile, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { WebContentsView, BrowserWindow } from "electron";
 import { applyEdits, modify, parse as parseJsonc, type ParseError } from "jsonc-parser";
 import { z } from "zod";
@@ -153,7 +153,8 @@ const bridgeMessageSchema = z.discriminatedUnion("type", [
 type CompanionRequest =
   | ({ type: "reveal" } & SourceLocation)
   | { type: "open-source-control" }
-  | ({ type: "annotations" } & EditorAnnotationSnapshot);
+  | ({ type: "annotations" } & EditorAnnotationSnapshot)
+  | { type: "set-theme"; theme: "light" | "dark" };
 
 interface BroadcastTarget {
   broadcast(
@@ -195,6 +196,8 @@ export interface VsCodeServerManagerProps extends BroadcastTarget {
   companionManifest: CompanionManifest;
   /** Path to the companion extension main script (copied verbatim). */
   companionMain: string;
+  /** Raw theme files contributed by the companion, written under its extension root. */
+  companionThemes: Array<{ path: string; content: string }>;
   customPath(): string | undefined;
   preferredTheme(): Promise<"light" | "dark">;
 }
@@ -237,6 +240,7 @@ export interface CompanionManifest {
   contributes: {
     commands: Array<{ command: string; title: string; icon?: string }>;
     menus?: Record<string, Array<{ command: string; when?: string; group?: string }>>;
+    themes?: Array<{ label: string; uiTheme: string; path: string }>;
   };
 }
 
@@ -263,6 +267,8 @@ export class VsCodeServerManager {
   private bridgePort: number | undefined;
   private readonly bridgeToken = randomBytes(32).toString("hex");
   private installPromise: Promise<void> | undefined;
+  /** Theme last pushed to running companions; duplicated pushes are skipped. */
+  private pushedTheme: "light" | "dark" | undefined;
 
   constructor(props: VsCodeServerManagerProps) {
     this.props = props;
@@ -457,6 +463,29 @@ export class VsCodeServerManager {
     const port = await this.waitForCompanionPort(resolved);
     this.touch(instance);
     await postJson(port, "/", { type: "annotations", ...snapshot }, this.bridgeToken);
+  }
+
+  /**
+   * Pushes Cake's current theme to every running embedded editor. Skipped when
+   * the preference is unchanged; servers started later pick the theme up from
+   * their seeded preferences.
+   */
+  async updateTheme() {
+    const theme = await this.props.preferredTheme();
+    if (theme === this.pushedTheme) return;
+    this.pushedTheme = theme;
+    const pushes: Array<Promise<void>> = [];
+    for (const [workspacePath, port] of this.companionPorts) {
+      const instance = this.servers.get(workspacePath);
+      if (!instance) continue;
+      this.touch(instance);
+      pushes.push(
+        postJson(port, "/", { type: "set-theme", theme }, this.bridgeToken).catch(() => {
+          // A stopping companion misses this push; the theme is applied on next start.
+        }),
+      );
+    }
+    await Promise.all(pushes);
   }
 
   private async waitForCompanionPort(workspacePath: string) {
@@ -813,14 +842,12 @@ export class VsCodeServerManager {
       // Cake already gates project resources through its own persisted trust decision.
       updates.push({ key: "security.workspace.trust.enabled", value: false });
     }
-    if (settings["workbench.colorTheme"] === undefined) {
-      updates.push({
-        key: "workbench.colorTheme",
-        value:
-          (await this.props.preferredTheme()) === "dark"
-            ? "Default Dark Modern"
-            : "Default Light Modern",
-      });
+    // The embedded editor is a Cake-managed surface: it always follows the app's
+    // appearance, so an earlier pick (or a stale value from a previous mode) is
+    // replaced with the current preference on every start.
+    const themeLabel = (await this.props.preferredTheme()) === "dark" ? "Cake Dark" : "Cake Light";
+    if (settings["workbench.colorTheme"] !== themeLabel) {
+      updates.push({ key: "workbench.colorTheme", value: themeLabel });
     }
     if (settings["workbench.startupEditor"] === undefined)
       updates.push({ key: "workbench.startupEditor", value: "none" });
@@ -852,6 +879,12 @@ export class VsCodeServerManager {
       `${JSON.stringify(this.props.companionManifest, null, 2)}\n`,
     );
     await copyFile(this.props.companionMain, join(extensionRoot, "extension.js"));
+    for (const theme of this.props.companionThemes) {
+      const relative = theme.path.replace(/^\.?\//, "");
+      const target = join(extensionRoot, ...relative.split("/"));
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, theme.content);
+    }
     await this.syncExtensionRegistry(extensionsRoot);
     return extensionsRoot;
   }
