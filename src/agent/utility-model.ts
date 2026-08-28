@@ -4,7 +4,7 @@ import type { ResolvedAgentModel } from "../ipc/plugin-agent-contract";
 import { textFromContent } from "./session-projection";
 
 const USER_CONTEXT_LIMIT = 8_000;
-const TITLE_CHARACTER_LIMIT = 40;
+const TITLE_CHARACTER_LIMIT = 80;
 
 export function createUtilityModelRuntime(agentDir: string, signal: AbortSignal) {
   return ModelRuntime.create({
@@ -114,5 +114,10 @@ export function normalizeSessionTitle(value: string) {
     .replace(/[.!?。！？]+$/u, "")
     .replace(/\s+/g, " ")
     .trim();
-  return Array.from(unwrapped).slice(0, TITLE_CHARACTER_LIMIT).join("").trim();
+  const characters = Array.from(unwrapped);
+  if (characters.length <= TITLE_CHARACTER_LIMIT) return unwrapped;
+  return `${characters
+    .slice(0, TITLE_CHARACTER_LIMIT - 1)
+    .join("")
+    .trimEnd()}…`;
 }

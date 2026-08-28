@@ -34,10 +34,11 @@ describe("utility model", () => {
     );
   });
 
-  it("normalizes provider output to the session display limit", () => {
-    expect(
-      normalizeSessionTitle(`## “${"Long generated title ".repeat(4)}”\nExplanation`),
-    ).toHaveLength(40);
+  it("keeps useful title detail and marks titles that exceed the display limit", () => {
+    const title = normalizeSessionTitle(`## “${"Long generated title ".repeat(8)}”\nExplanation`);
+
+    expect(title).toHaveLength(80);
+    expect(title).toMatch(/…$/u);
     expect(normalizeSessionTitle("\n\n")).toBe("");
   });
 });
