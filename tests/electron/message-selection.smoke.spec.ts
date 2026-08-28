@@ -117,6 +117,14 @@ test("selects rendered TypeScript and opens a continuous, resizable selection ch
         ),
       ).some((token) => token.style.getPropertyValue("--sdm-c") !== "inherit"),
     );
+
+    await page.getByRole("button", { name: "View response fullscreen" }).click({ force: true });
+    await expect(page.getByRole("dialog", { name: "Cake" })).toBeVisible();
+    await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close());
+    await expect(page.getByRole("dialog", { name: "Cake" })).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
+    expect(page.isClosed()).toBe(false);
+
     await code.scrollIntoViewIfNeeded();
     const selectionTarget = await code.evaluate((element, selectedText) => {
       const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);

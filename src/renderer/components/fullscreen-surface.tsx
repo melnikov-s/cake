@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { IconButton } from "@/components/ui/icon-button";
 import { CloseIcon, ExpandIcon } from "@/components/ui/icons";
@@ -43,10 +43,50 @@ export function FullscreenSurface({
 }) {
   const closeButton = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
+  const surfaceId = useRef(crypto.randomUUID()).current;
+  const [registered, setRegistered] = useState(() => !window.cake);
   const titleId = useId();
   onCloseRef.current = onClose;
 
   useEffect(() => {
+    let active = true;
+    const bridge = window.cake;
+    const unsubscribe = bridge?.subscribe((event) => {
+      if (event.type === "fullscreen-surface-close-requested" && event.surfaceId === surfaceId)
+        onCloseRef.current();
+    });
+    if (bridge)
+      void bridge
+        .request({
+          type: "set-fullscreen-surface-open",
+          requestId: crypto.randomUUID(),
+          surfaceId,
+          open: true,
+        })
+        .then(() => {
+          if (active) setRegistered(true);
+        })
+        .catch(() => {
+          if (active) setRegistered(true);
+        });
+
+    return () => {
+      active = false;
+      unsubscribe?.();
+      if (bridge)
+        void bridge
+          .request({
+            type: "set-fullscreen-surface-open",
+            requestId: crypto.randomUUID(),
+            surfaceId,
+            open: false,
+          })
+          .catch(() => undefined);
+    };
+  }, [surfaceId]);
+
+  useEffect(() => {
+    if (!registered) return;
     const previouslyFocused =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previousOverflow = document.body.style.overflow;
@@ -61,7 +101,9 @@ export function FullscreenSurface({
       document.body.style.overflow = previousOverflow;
       if (previouslyFocused?.isConnected) previouslyFocused.focus();
     };
-  }, []);
+  }, [registered]);
+
+  if (!registered) return null;
 
   return createPortal(
     <div

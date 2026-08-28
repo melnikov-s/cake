@@ -246,6 +246,12 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
 export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("choose-project") }),
   z.object({
+    type: z.literal("set-fullscreen-surface-open"),
+    requestId: z.uuid(),
+    surfaceId: z.uuid(),
+    open: z.boolean(),
+  }),
+  z.object({
     type: z.literal("show-session-context-menu"),
     sessionId: z.string().min(1).max(256),
     x: z.number().int().min(-1_000_000).max(1_000_000),

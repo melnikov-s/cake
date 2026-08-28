@@ -90,6 +90,7 @@ const allowedProjectPaths = new Set<string>();
 const pendingTrustRequests = new Map<string, string>();
 const windowCustomizationRevisions = new Map<number, string>();
 const customizationHealthTimers = new Map<number, ReturnType<typeof setTimeout>>();
+const fullscreenSurfaces = new Map<number, Set<string>>();
 let applicationModel = Application.from({});
 const stateFileWriter = new AtomicFileWriter();
 
@@ -228,6 +229,14 @@ function broadcast(event: DesktopEvent) {
   if (event.type === "session-snapshot")
     rememberSessionLocation(event.snapshot.workspacePath, event.snapshot.sessionId);
   for (const window of windows.values()) sendTo(window.webContents, event);
+}
+
+function closeFullscreenSurfaceForWindow(window: BrowserWindow) {
+  const surfaceIds = fullscreenSurfaces.get(window.webContents.id);
+  const surfaceId = surfaceIds ? Array.from(surfaceIds).at(-1) : undefined;
+  if (!surfaceId) return false;
+  sendTo(window.webContents, { type: "fullscreen-surface-close-requested", surfaceId });
+  return true;
 }
 
 async function setCakeChatSessionResolution(sessionId: string, resolved: boolean) {
@@ -644,6 +653,7 @@ function createWindow() {
     sendTo(window.webContents, { type: "pi-state", state: "ready" }),
   );
   window.webContents.on("render-process-gone", (_event, details) => {
+    fullscreenSurfaces.delete(webContentsId);
     const revision = windowCustomizationRevisions.get(webContentsId);
     if (!revision) return;
     const timer = customizationHealthTimers.get(webContentsId);
@@ -661,7 +671,8 @@ function createWindow() {
       });
   });
   window.on("close", (event) => {
-    if (!applicationQuitting && vscodeEditor.backToAgentForWindow(webContentsId))
+    if (applicationQuitting) return;
+    if (closeFullscreenSurfaceForWindow(window) || vscodeEditor.backToAgentForWindow(webContentsId))
       event.preventDefault();
   });
   window.on("closed", () => {
@@ -675,6 +686,7 @@ function createWindow() {
     const healthTimer = customizationHealthTimers.get(webContentsId);
     if (healthTimer) clearTimeout(healthTimer);
     customizationHealthTimers.delete(webContentsId);
+    fullscreenSurfaces.delete(webContentsId);
     if (path) piHosts.get(path)?.driver.cancelPendingRequests();
   });
   void loadSelectedRenderer(window, pluginActivation.startupRenderer());
@@ -821,6 +833,20 @@ async function handleCakeRequest(
 ): Promise<DesktopResponse> {
   const request = desktopRequestSchema.parse(untrustedInput);
   const owner = BrowserWindow.fromWebContents(event.sender);
+  if (request.type === "set-fullscreen-surface-open") {
+    let surfaceIds = fullscreenSurfaces.get(event.sender.id);
+    if (request.open) {
+      if (!surfaceIds) {
+        surfaceIds = new Set();
+        fullscreenSurfaces.set(event.sender.id, surfaceIds);
+      }
+      surfaceIds.add(request.surfaceId);
+    } else if (surfaceIds) {
+      surfaceIds.delete(request.surfaceId);
+      if (surfaceIds.size === 0) fullscreenSurfaces.delete(event.sender.id);
+    }
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
   if (request.type === "show-session-context-menu") {
     if (!owner) return desktopResponseSchema.parse({ type: "session-context-menu-closed" });
     const action = await new Promise<"rename" | undefined>((resolve) => {
