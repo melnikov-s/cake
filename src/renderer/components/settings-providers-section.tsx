@@ -37,9 +37,6 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
             const authenticated = provider.models.some((model) => model.authenticated);
             const authenticatedModel = provider.models.find((model) => model.authenticated);
             const authSource = authenticatedModel?.authSource;
-            const externallyManaged = Boolean(
-              authenticated && authSource && authSource !== "stored" && authSource !== "runtime",
-            );
             const connectionLabel =
               authenticatedModel?.authLabel ??
               (authSource === "environment" ? "environment" : undefined);
@@ -70,14 +67,7 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
                 </span>
                 <div className="provider-actions">
                   {authenticated ? (
-                    externallyManaged ? (
-                      <small
-                        className="provider-managed"
-                        title="Remove this credential from its environment or configuration source, then restart Cake."
-                      >
-                        Remove externally, then restart
-                      </small>
-                    ) : (
+                    authSource === "stored" || authSource === "runtime" ? (
                       <Button
                         variant="outline"
                         size="sm"
@@ -87,6 +77,13 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
                       >
                         {operation === "logout" ? "Disconnecting…" : "Disconnect"}
                       </Button>
+                    ) : (
+                      <small
+                        className="max-w-48 text-right font-mono text-[10px] text-muted-foreground"
+                        title="Remove this credential from its environment or configuration source, then restart Cake."
+                      >
+                        Remove externally, then restart
+                      </small>
                     )
                   ) : (
                     authTypes.map((authType) => (

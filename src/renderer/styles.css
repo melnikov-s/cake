@@ -4284,13 +4284,6 @@ button.reasoning-summary {
   justify-content: flex-end;
   gap: 6px;
 }
-.provider-managed {
-  max-width: 12rem;
-  color: var(--muted-foreground);
-  font: 10px var(--font-mono);
-  text-align: right;
-}
-
 .status-dot {
   width: 7px;
   height: 7px;
