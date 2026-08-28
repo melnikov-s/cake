@@ -28,9 +28,11 @@ export function SourceAttachment({
           {label}
         </span>
       </summary>
-      <CodeBlock className="mb-2 mt-3 max-h-56 whitespace-pre overflow-auto rounded-md p-3">
-        {attachment.selectedText}
-      </CodeBlock>
+      {attachment.selectedText ? (
+        <CodeBlock className="mb-2 mt-3 max-h-56 whitespace-pre overflow-auto rounded-md p-3">
+          {attachment.selectedText}
+        </CodeBlock>
+      ) : null}
       {onOpen ? (
         <Button variant="outline" size="sm" onClick={() => onOpen(attachment.location)}>
           Open in VS Code

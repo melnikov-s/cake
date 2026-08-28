@@ -80,9 +80,14 @@ export const IdeWorkspace = observer(function IdeWorkspace({
             onResizeEnd={() => setResizing(false)}
           />
           <aside className="flex w-[var(--ide-chat-sidebar-width)] min-w-0 flex-col border-l border-border bg-background shadow-[-12px_0_32px_color-mix(in_oklab,var(--foreground)_8%,transparent)]">
-            <header className="flex h-14 items-center justify-between gap-3 border-b border-border px-4">
+            <header
+              className={cn(
+                "flex select-none items-center justify-between gap-3 border-b border-border px-3 [-webkit-app-region:drag]",
+                contextualAnchor ? "h-14" : "h-[35px]",
+              )}
+            >
               <div className="min-w-0">
-                <strong className="block truncate text-sm">
+                <strong className="block truncate text-xs">
                   {contextualAnchor ? "Chat about selection" : sessionTitle}
                 </strong>
                 {contextualAnchor ? (
@@ -92,7 +97,12 @@ export const IdeWorkspace = observer(function IdeWorkspace({
                 ) : null}
               </div>
               {contextualAnchor ? (
-                <Button variant="ghost" size="sm" onClick={closeContext}>
+                <Button
+                  className="[-webkit-app-region:no-drag]"
+                  variant="ghost"
+                  size="sm"
+                  onClick={closeContext}
+                >
                   Project chat
                 </Button>
               ) : null}

@@ -22,14 +22,6 @@
         "title": "Cake: Add Selection to Project Chat"
       },
       {
-        "command": "cake.previousChange",
-        "title": "Cake: Previous Change"
-      },
-      {
-        "command": "cake.nextChange",
-        "title": "Cake: Next Change"
-      },
-      {
         "command": "cake.openCompleteChange",
         "title": "Cake: Open Complete Change"
       },
@@ -49,34 +41,7 @@
       }
     ],
     "menus": {
-      "editor/context": [
-        {
-          "command": "cake.askAboutSelection",
-          "when": "editorHasSelection && resourceScheme == file",
-          "group": "navigation@100"
-        },
-        {
-          "command": "cake.addSelectionToProjectChat",
-          "when": "editorHasSelection && resourceScheme == file",
-          "group": "navigation@101"
-        },
-        {
-          "command": "cake.openCompleteChange",
-          "when": "resourceScheme == file",
-          "group": "navigation@102"
-        }
-      ],
       "editor/title": [
-        {
-          "command": "cake.previousChange",
-          "when": "resourceScheme == file",
-          "group": "navigation@90"
-        },
-        {
-          "command": "cake.nextChange",
-          "when": "resourceScheme == file",
-          "group": "navigation@91"
-        },
         {
           "command": "cake.openCompleteChange",
           "when": "resourceScheme == file",

@@ -146,6 +146,7 @@ const reviewRepository = new ReviewRepository(
   cakePaths.piReviewSessions,
   (record) => loadReviewSessionProjection(record, cakePaths.piReviewSessions),
 );
+let applicationQuitting = false;
 const vscodeEditor = new VsCodeServerManager({
   root: join(app.getPath("userData"), "vscode-editor"),
   companionManifest,
@@ -613,6 +614,10 @@ function createWindow() {
         broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
         if (!window.isDestroyed()) void loadSelectedRenderer(window, { kind: "factory" });
       });
+  });
+  window.on("close", (event) => {
+    if (!applicationQuitting && vscodeEditor.backToAgentForWindow(webContentsId))
+      event.preventDefault();
   });
   window.on("closed", () => {
     const path = windowWorkspaces.get(webContentsId);
@@ -1758,6 +1763,7 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 app.on("before-quit", () => {
+  applicationQuitting = true;
   applicationModel[Symbol.dispose]();
   globalChatDriver[Symbol.dispose]();
   pluginBackends[Symbol.dispose]();

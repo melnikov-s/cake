@@ -215,49 +215,6 @@ function updateAgentChanges(vscode, payload) {
   applyChangeDecorations(vscode);
 }
 
-function navigationChanges() {
-  const current = agentChanges.filter((change) => change.currentTurn);
-  const currentUnreviewed = current.filter((change) => !reviewedChanges.has(change.id));
-  return currentUnreviewed.length > 0
-    ? currentUnreviewed
-    : current.length > 0
-      ? current
-      : agentChanges;
-}
-
-async function showAgentChange(vscode, change) {
-  if (!change) {
-    void vscode.window.showInformationMessage("Cake has no agent changes to show.");
-    return;
-  }
-  const target = path.resolve(WORKSPACE, change.path);
-  if (!workspaceRelative(target)) throw new Error("The change is outside the workspace");
-  const document = await vscode.workspace.openTextDocument(vscode.Uri.file(target));
-  const range = rangeFor(vscode, document, change.range);
-  const editor = await vscode.window.showTextDocument(document, {
-    selection: range,
-    preview: false,
-  });
-  editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
-  reviewedChanges.add(change.id);
-  applyChangeDecorations(vscode);
-}
-
-async function navigateChange(vscode, direction) {
-  const changes = navigationChanges();
-  if (changes.length === 0) return showAgentChange(vscode, undefined);
-  const editor = vscode.window.activeTextEditor;
-  const activePath = editor && workspaceRelative(editor.document.uri.fsPath);
-  let index = changes.findIndex((change) => {
-    if (change.path !== activePath) return false;
-    if (!editor || !change.range) return true;
-    return changeRange(vscode, editor, change).contains(editor.selection.active);
-  });
-  if (index < 0) index = direction > 0 ? -1 : 0;
-  const next = (index + direction + changes.length) % changes.length;
-  await showAgentChange(vscode, changes[next]);
-}
-
 function annotationStatusLabel(status) {
   return (
     {
@@ -432,7 +389,6 @@ function activate(context) {
     }),
   };
   changeStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
-  changeStatus.command = "cake.nextChange";
   context.subscriptions.push(
     changeStatus,
     annotationEmitter,
@@ -583,8 +539,6 @@ function activate(context) {
     vscode.commands.registerCommand("cake.reveal", (payload) => reveal(payload || {})),
     vscode.commands.registerCommand("cake.askAboutSelection", askAboutSelection),
     vscode.commands.registerCommand("cake.addSelectionToProjectChat", addSelectionToProjectChat),
-    vscode.commands.registerCommand("cake.previousChange", () => navigateChange(vscode, -1)),
-    vscode.commands.registerCommand("cake.nextChange", () => navigateChange(vscode, 1)),
     vscode.commands.registerCommand("cake.openCompleteChange", () => openCompleteChange(vscode)),
     vscode.commands.registerCommand("cake.clearReviewedChanges", () => {
       for (const change of agentChanges) reviewedChanges.add(change.id);

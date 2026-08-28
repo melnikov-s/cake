@@ -62,6 +62,30 @@ describe("VsCodeServerManager startup", () => {
     expect(view.setBounds).toHaveBeenCalledWith({ x: 10, y: 62, width: 902, height: 701 });
   });
 
+  it("routes a native close back to the agent while the editor view is visible", () => {
+    const broadcast = vi.fn();
+    manager = new VsCodeServerManager({
+      root: "/unused",
+      companionManifest,
+      companionMain: "/unused/companion.js",
+      customPath: () => undefined,
+      preferredTheme: async () => "dark",
+      broadcast,
+    });
+    const view = { setVisible: vi.fn(), setBounds: vi.fn() };
+    manager["views"].set(17, { workspacePath: "/real/project", view: view as never });
+    manager["presentedWorkspacePaths"].set("/real/project", "/linked/project");
+    manager.updateBounds(17, { visible: true, x: 0, y: 0, width: 900, height: 700 });
+
+    expect(manager.backToAgentForWindow(17)).toBe(true);
+    expect(view.setVisible).toHaveBeenLastCalledWith(false);
+    expect(broadcast).toHaveBeenCalledWith({
+      type: "embedded-editor-back-to-agent",
+      workspacePath: "/linked/project",
+    });
+    expect(manager.backToAgentForWindow(17)).toBe(false);
+  });
+
   it("observes the listening message before pausing output and clears startup bookkeeping", async () => {
     root = await mkdtemp(join(tmpdir(), "cake-vscode-manager-"));
     const companionMain = join(root, "companion.js");

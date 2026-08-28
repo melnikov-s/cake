@@ -514,6 +514,19 @@ export class VsCodeServerManager {
     throw new Error("The VS Code companion extension did not finish starting");
   }
 
+  /** Converts a native window-close request into Back to Agent while the editor is visible. */
+  backToAgentForWindow(webContentsId: number) {
+    const entry = this.views.get(webContentsId);
+    const bounds = this.requestedBounds.get(webContentsId);
+    if (!entry || !bounds?.visible) return false;
+    this.updateBounds(webContentsId, { ...bounds, visible: false });
+    this.props.broadcast({
+      type: "embedded-editor-back-to-agent",
+      workspacePath: this.presentedWorkspacePaths.get(entry.workspacePath) ?? entry.workspacePath,
+    });
+    return true;
+  }
+
   /** Detaches one window's view and lets its former server go idle. */
   closeForWindow(webContentsId: number) {
     this.requestedBounds.delete(webContentsId);

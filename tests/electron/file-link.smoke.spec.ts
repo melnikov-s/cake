@@ -227,6 +227,8 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       )
       .toBe(true);
     await expect.poll(() => hasVsCodeTitleAction("Toggle Secondary Side Bar")).toBe(false);
+    await expect.poll(() => hasVsCodeTitleAction("Cake: Previous Change")).toBe(false);
+    await expect.poll(() => hasVsCodeTitleAction("Cake: Next Change")).toBe(false);
     await expect.poll(() => hasVsCodeText("Build with Agent")).toBe(false);
     await expect
       .poll(() => clickVsCodeText("Cake: Pending · 0 replies"), { timeout: 20_000 })
@@ -444,7 +446,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
     await drawerInput.fill("Chat from the IDE drawer");
 
-    expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
+    await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close());
     await expect(page.getByText("Phase 4 — Model references")).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Message" })).toHaveValue(
       "Chat from the IDE drawer",
