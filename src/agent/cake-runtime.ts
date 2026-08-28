@@ -619,10 +619,12 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         summary: "Idempotently resolve or restore the calling session.",
         guidance: [
           "Singular session.* operations always target the calling session and never accept a sessionId.",
+          "Resolving during an active response is scheduled for the moment that response settles.",
         ],
         inputSchema: z.object({ resolved: z.boolean() }).strict(),
         examples: [{ input: { resolved: true } }],
-        result: "The calling session ID and committed resolved value.",
+        result:
+          "The calling session ID and either the committed resolved value or a resolveOnSettle marker.",
         execute: (input) => {
           // SAFETY: CakeOperationRegistry parsed input with this operation's schema.
           return api().setResolved((input as { resolved: boolean }).resolved);
@@ -1289,6 +1291,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   // turns and for empty turns when automatic retry is disabled.
   let userAbortRequested = false;
   let turnRecoveryContinuations = 0;
+  let resolveOnSettle = false;
 
   function removeRecoveryNotice() {
     turnRecoveryFailureDetail = undefined;
@@ -1405,6 +1408,39 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         partId: INTERRUPTED_TURN_NOTICE_PART_ID,
       });
   }
+  async function finishSettledTurn() {
+    if (resolveOnSettle) {
+      await emitSnapshot().catch(() => undefined);
+      if (disposed) return;
+      // A new prompt may have started while the snapshot was assembled. Keep
+      // the request queued for that turn's settled boundary instead.
+      if (session.isStreaming) return;
+      resolveOnSettle = false;
+      try {
+        await options.currentSessionControl?.setResolved(true);
+      } catch (error) {
+        if (disposed) return;
+        options.onEvent({
+          type: "part-updated",
+          sessionId: cakeSessionId,
+          part: {
+            id: "session-resolution-failed",
+            kind: "notice",
+            tone: "error",
+            title: "Could not resolve session",
+            detail: error instanceof Error ? error.message : String(error),
+          },
+        });
+      }
+      return;
+    }
+    await drainReloads().catch(() => undefined);
+    // Apply recovery only after the settled snapshot so its transient failure
+    // notice cannot be overwritten by that snapshot.
+    await emitSnapshot().catch(() => undefined);
+    await handleSettledTurnRecovery();
+  }
+
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     if (disposed) return;
     if (event.type === "agent_start") {
@@ -1551,15 +1587,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     }
     if (event.type === "agent_settled") {
       options.onEvent({ type: "streaming", sessionId: cakeSessionId, streaming: false });
-      void drainReloads()
-        .catch(() => undefined)
-        .finally(() => {
-          // Apply recovery only after the settled snapshot so its transient
-          // failure notice cannot be overwritten by that snapshot.
-          void emitSnapshot()
-            .catch(() => undefined)
-            .finally(handleSettledTurnRecovery);
-        });
+      void finishSettledTurn();
     }
   });
   void resumeInterruptedTurn();
@@ -1663,8 +1691,17 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     async setResolved(resolved) {
       if (!options.currentSessionControl)
         throw new Error("This Cake runtime cannot change session resolution");
+      if (resolved && session.isStreaming) {
+        resolveOnSettle = true;
+        return {
+          sessionId: cakeSessionId,
+          resolved: options.currentSessionControl.resolved(),
+          resolveOnSettle: true,
+        };
+      }
+      resolveOnSettle = false;
       await options.currentSessionControl.setResolved(resolved);
-      return { sessionId: cakeSessionId, resolved };
+      return { sessionId: cakeSessionId, resolved, resolveOnSettle: false };
     },
     async setModel(provider, modelId, reasoning) {
       const model = modelRuntime.getModel(provider, modelId);

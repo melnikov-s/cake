@@ -53,7 +53,10 @@ Every durable concept has one authority.
 | Trusted plugin source, builds, diagnostics and plugin persistence | Cake plugin machinery                                                     | Compile, activate, recover, repair and roll back user-owned source                        |
 
 Do not introduce a second transcript database, reconstruct Pi state into a
-competing domain model, or mutate Pi JSONL with ad hoc file operations.
+competing domain model, or mutate Pi JSONL with ad hoc file operations. A session
+cannot be archived while its Pi turn is active. When the calling agent requests
+its own resolution during that turn, the runtime records the intent and applies
+it at the settled-turn boundary, after the final transcript snapshot is emitted.
 
 Cake's visible transcript projects the complete active branch returned by Pi's
 `SessionManager.getBranch()`. The compacted entries returned by
