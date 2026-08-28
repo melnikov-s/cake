@@ -206,12 +206,12 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await agentInput.fill("Keep this IDE draft");
     await link.click();
     const vscodeWorkspace = page.getByRole("region", { name: "VS Code workspace" });
-    const chatSidebarBackButton = page.getByRole("button", { name: "Back to Agent" });
     await expect(vscodeWorkspace).toBeVisible();
+    await expect(page.getByRole("button", { name: "Back to Agent" })).toHaveCount(0);
     await expect
       .poll(() => hasVsCodeTitleAction("Toggle Chat Sidebar"), { timeout: 20_000 })
       .toBe(true);
-    await expect.poll(() => hasVsCodeTitleAction("Back to Agent"), { timeout: 20_000 }).toBe(false);
+    await expect.poll(() => hasVsCodeTitleAction("Back to Agent"), { timeout: 20_000 }).toBe(true);
     await expect
       .poll(() =>
         application.evaluate(async ({ webContents }) => {
@@ -235,7 +235,6 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect(page.getByText("Why is this exported?", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Project chat" }).click();
     expect(await clickVsCodeTitleAction("Toggle Chat Sidebar")).toBe(true);
-    await expect(chatSidebarBackButton).toBeHidden();
     await expect.poll(() => hasVsCodeTitleAction("Back to Agent")).toBe(true);
     expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
     await expect(vscodeWorkspace).toBeHidden();
@@ -254,12 +253,11 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       },
     );
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
-    await page.getByRole("button", { name: "Back to Agent" }).click();
+    expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
 
     await link.click();
 
     await expect(vscodeWorkspace).toBeVisible();
-    await expect(chatSidebarBackButton).toBeVisible();
     await expect
       .poll(() => hasVsCodeTitleAction("Toggle Chat Sidebar"), { timeout: 20_000 })
       .toBe(true);
@@ -293,7 +291,6 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       });
     await toggleChatSidebar();
     await expect(vscodeWorkspace).toBeVisible();
-    await expect(chatSidebarBackButton).toBeHidden();
     await expect.poll(vscodeFillsWindow).toBe(true);
     const originalContentSize = await application.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0]!.getContentSize(),
@@ -307,7 +304,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     }, originalContentSize);
     await expect.poll(vscodeFillsWindow).toBe(true);
     await toggleChatSidebar();
-    await expect(chatSidebarBackButton).toBeVisible();
+    await expect.poll(() => hasVsCodeTitleAction("Back to Agent")).toBe(true);
 
     await expect(page.locator(".transcript").getByText(/Phase 4 — Model references/)).toBeVisible();
 
@@ -376,7 +373,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       },
     );
     await expect(page.getByText("src/modelMeta.ts:1:14-1:18", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Back to Agent" }).click();
+    expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
     await link.click();
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
 
@@ -447,7 +444,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
     await drawerInput.fill("Chat from the IDE drawer");
 
-    await page.getByRole("button", { name: "Back to Agent" }).click();
+    expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
     await expect(page.getByText("Phase 4 — Model references")).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Message" })).toHaveValue(
       "Chat from the IDE drawer",

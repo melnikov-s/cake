@@ -200,7 +200,6 @@ export const App = observer(function App() {
           projectChat={session.chatStore}
           sessionTitle={store.sessionTitle}
           transcriptBehavior={projectTranscriptBehavior}
-          onBack={returnToWorkbench}
         />
       </StoreProvider>
     );

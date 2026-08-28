@@ -279,7 +279,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     type: z.literal("update-embedded-editor-bounds"),
     requestId: z.uuid(),
     visible: z.boolean(),
-    chatSidebarVisible: z.boolean(),
     x: z.number().min(-1_000_000).max(1_000_000),
     y: z.number().min(-1_000_000).max(1_000_000),
     width: z.number().min(0).max(100_000),

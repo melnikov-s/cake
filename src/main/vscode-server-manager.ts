@@ -70,7 +70,6 @@ function vscodeShellControlsScript(workspacePath: string) {
           action.style.color = "var(--vscode-titleBar-activeForeground)";
           action.style.gap = "6px";
           action.style.padding = "0 8px";
-          item.style.display = "none";
         }
         action.href = "#";
         action.addEventListener("click", (event) => {
@@ -84,10 +83,6 @@ function vscodeShellControlsScript(workspacePath: string) {
         if (id === "cake-back-to-agent") actions.prepend(item);
         else actions.append(item);
       }
-    };
-    window.__cakeSetChatSidebarVisible = (visible) => {
-      const backToAgent = document.getElementById("cake-back-to-agent");
-      if (backToAgent) backToAgent.style.display = visible ? "none" : "";
     };
     install();
     if (!window.__cakeShellControlsObserver) {
@@ -259,14 +254,7 @@ interface ViewEntry {
   view: WebContentsView;
 }
 
-type ViewBounds = {
-  visible: boolean;
-  chatSidebarVisible: boolean;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
+type ViewBounds = { visible: boolean; x: number; y: number; width: number; height: number };
 
 /** The sideloaded companion extension's package.json contract. */
 export interface CompanionManifest {
@@ -473,12 +461,6 @@ export class VsCodeServerManager {
       width: Math.round(bounds.width),
       height: Math.round(bounds.height),
     });
-    if (!view.webContents.isDestroyed() && !view.webContents.isLoadingMainFrame())
-      void view.webContents
-        .executeJavaScript(
-          `window.__cakeSetChatSidebarVisible?.(${JSON.stringify(bounds.chatSidebarVisible)})`,
-        )
-        .catch(() => undefined);
   }
 
   /** Asks the workspace's companion extension to reveal and highlight a source location. */

@@ -5,7 +5,6 @@ import type { ChatTranscriptBehavior } from "./chat-message";
 import type { ChatStore } from "../stores/ChatStore";
 import type { EmbeddedEditorStore } from "../stores/EmbeddedEditorStore";
 import type { ReviewsStore } from "../stores/ReviewsStore";
-import { BackIcon } from "./ui/icons";
 import { Button } from "./ui/button";
 import { Chat } from "./chat";
 import { EmbeddedEditorPane } from "./embedded-editor";
@@ -24,14 +23,12 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   projectChat,
   sessionTitle,
   transcriptBehavior,
-  onBack,
 }: {
   editor: EmbeddedEditorStore;
   reviews: ReviewsStore;
   projectChat: ChatStore;
   sessionTitle: string;
   transcriptBehavior: ChatTranscriptBehavior;
-  onBack(): void;
 }) {
   const [chatSidebarWidth, setChatSidebarWidth] = useState(420);
   const [resizing, setResizing] = useState(false);
@@ -83,30 +80,22 @@ export const IdeWorkspace = observer(function IdeWorkspace({
             onResizeEnd={() => setResizing(false)}
           />
           <aside className="flex w-[var(--ide-chat-sidebar-width)] min-w-0 flex-col border-l border-border bg-background shadow-[-12px_0_32px_color-mix(in_oklab,var(--foreground)_8%,transparent)]">
-            <header className="flex min-h-14 items-center justify-between gap-3 border-b border-border px-3 py-2">
+            <header className="flex h-14 items-center justify-between gap-3 border-b border-border px-4">
               <div className="min-w-0">
                 <strong className="block truncate text-sm">
                   {contextualAnchor ? "Chat about selection" : sessionTitle}
                 </strong>
-                <span className="block truncate font-mono text-[11px] text-muted-foreground">
-                  {contextualAnchor
-                    ? anchorTitle(contextualAnchor)
-                    : editor.lastActivePath
-                      ? `${editor.lastActivePath} · Current session`
-                      : "Current session"}
-                </span>
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
                 {contextualAnchor ? (
-                  <Button variant="ghost" size="sm" onClick={closeContext}>
-                    Project chat
-                  </Button>
+                  <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                    {anchorTitle(contextualAnchor)}
+                  </span>
                 ) : null}
-                <Button variant="outline" size="sm" onClick={onBack}>
-                  <BackIcon aria-hidden />
-                  Back to Agent
-                </Button>
               </div>
+              {contextualAnchor ? (
+                <Button variant="ghost" size="sm" onClick={closeContext}>
+                  Project chat
+                </Button>
+              ) : null}
             </header>
             <div className="min-h-0 flex-1">
               <Chat className="h-full" store={chat} transcriptBehavior={transcriptBehavior} />

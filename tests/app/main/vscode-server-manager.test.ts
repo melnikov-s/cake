@@ -51,7 +51,6 @@ describe("VsCodeServerManager startup", () => {
 
     manager.updateBounds(17, {
       visible: true,
-      chatSidebarVisible: true,
       x: 10.4,
       y: 62.2,
       width: 901.8,
