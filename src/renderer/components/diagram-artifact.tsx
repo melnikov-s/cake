@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import mermaid from "mermaid";
 import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
+import { useResolvedColorTheme } from "../lib/resolved-color-theme";
 
 export function DiagramArtifact({
   artifact,
@@ -9,9 +10,16 @@ export function DiagramArtifact({
 }) {
   const [svg, setSvg] = useState<string>();
   const [error, setError] = useState<string>();
+  const colorTheme = useResolvedColorTheme();
   useEffect(() => {
     let active = true;
-    mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "neutral" });
+    setSvg(undefined);
+    setError(undefined);
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "strict",
+      theme: colorTheme === "dark" ? "dark" : "neutral",
+    });
     void mermaid
       .render(
         `cake-diagram-${artifact.id.replace(/[^A-Za-z0-9]/g, "-")}-${artifact.revision}`,
@@ -26,7 +34,7 @@ export function DiagramArtifact({
     return () => {
       active = false;
     };
-  }, [artifact.id, artifact.payload.source, artifact.revision]);
+  }, [artifact.id, artifact.payload.source, artifact.revision, colorTheme]);
   if (error)
     return (
       <div className="notice notice-error">
@@ -39,13 +47,13 @@ export function DiagramArtifact({
       className="artifact-diagram"
       title={artifact.title ?? artifact.id}
       sandbox=""
-      srcDoc={isolatedDocument(svg, "img-src data:; style-src 'unsafe-inline'")}
+      srcDoc={isolatedDocument(svg, "img-src data:; style-src 'unsafe-inline'", colorTheme)}
     />
   ) : (
     <p>Rendering diagram…</p>
   );
 }
 
-function isolatedDocument(body: string, policy: string) {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; ${policy}; form-action 'none'; base-uri 'none'"><style>html{color-scheme:light dark;font:14px system-ui}body{margin:12px;overflow:auto}svg,img,video{max-width:100%;height:auto}</style></head><body>${body}</body></html>`;
+function isolatedDocument(body: string, policy: string, colorTheme: "light" | "dark") {
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; ${policy}; form-action 'none'; base-uri 'none'"><style>html{color-scheme:${colorTheme};font:14px system-ui}body{margin:12px;overflow:auto}svg,img,video{max-width:100%;height:auto}</style></head><body>${body}</body></html>`;
 }

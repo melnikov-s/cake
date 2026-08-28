@@ -8,6 +8,7 @@ import {
   type Components,
   type StreamdownProps,
 } from "streamdown";
+import { useResolvedColorTheme } from "@/lib/resolved-color-theme";
 import { syntaxHighlighter } from "@/lib/syntax-highlighter";
 import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../../../ipc/source-location";
@@ -52,8 +53,14 @@ function externalAnchor(allProps: AnchorProps) {
 }
 
 const mermaid = createMermaidPlugin({ config: { securityLevel: "strict" } });
-const plugins = { code: syntaxHighlighter, math, mermaid };
-const pluginsWithoutCode = { math, mermaid };
+const plugins = {
+  light: { code: syntaxHighlighter, math, mermaid },
+  dark: { code: syntaxHighlighter, math, mermaid },
+};
+const pluginsWithoutCode = {
+  light: { math, mermaid },
+  dark: { math, mermaid },
+};
 
 type MarkdownProps = Omit<
   StreamdownProps,
@@ -79,6 +86,7 @@ export function Markdown({
   onOpenSourceLocation,
   ...props
 }: MarkdownProps) {
+  const colorTheme = useResolvedColorTheme();
   const source = onOpenSourceLocation ? prepareWorkspaceMarkdown(children) : children;
   const components = useMemo<Components>(() => {
     if (!onOpenSourceLocation) return { a: externalAnchor };
@@ -126,9 +134,12 @@ export function Markdown({
         },
       }}
       isAnimating={false}
+      mermaid={{
+        config: { securityLevel: "strict", theme: colorTheme === "dark" ? "dark" : "neutral" },
+      }}
       mode="static"
       parseMarkdownIntoBlocksFn={parseMarkdownIntoBlocks}
-      plugins={highlightCode ? plugins : pluginsWithoutCode}
+      plugins={highlightCode ? plugins[colorTheme] : pluginsWithoutCode[colorTheme]}
       skipHtml
     >
       {source}

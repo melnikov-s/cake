@@ -27,6 +27,7 @@ describe("Markdown", () => {
 
   afterEach(() => {
     act(() => root.unmount());
+    delete document.documentElement.dataset.theme;
     container.remove();
   });
 
@@ -60,6 +61,19 @@ describe("Markdown", () => {
     act(() => root.render(<Markdown highlightCode={false}>```ts\nconst value = 1\n```</Markdown>));
 
     expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].plugins?.code).toBeUndefined();
+  });
+
+  it("uses Mermaid's high-contrast theme in dark mode", async () => {
+    document.documentElement.dataset.theme = "light";
+    act(() => root.render(<Markdown>```mermaid\ngraph LR\nA --&gt; B\n```</Markdown>));
+    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].mermaid?.config?.theme).toBe("neutral");
+
+    await act(async () => {
+      document.documentElement.dataset.theme = "dark";
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].mermaid?.config?.theme).toBe("dark");
   });
 
   it("creates a safe highlighted fence even when source contains backticks", () => {
