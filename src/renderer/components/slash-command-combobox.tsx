@@ -23,7 +23,7 @@ interface SlashCommandComboboxProps extends Omit<
   value: string;
   suggestFiles?(prefix: string): Promise<FileSuggestion[]>;
   onValueChange(value: string): void;
-  onSubmit(value?: string): void;
+  onSubmit(value?: string): void | Promise<void>;
 }
 
 interface FileMention {
@@ -174,10 +174,18 @@ export function SlashCommandCombobox({
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
+  const restoreFocusAfterSubmit = async (submittedValue?: string) => {
+    try {
+      await onSubmit(submittedValue);
+    } finally {
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  };
+
   const executeCommand = (command: SlashCommand) => {
     const commandValue = `/${command.name}`;
     commitValue(commandValue);
-    onSubmit(commandValue);
+    void onSubmit(commandValue);
   };
 
   const chooseFile = (item: FileSuggestion) => {
@@ -233,7 +241,7 @@ export function SlashCommandCombobox({
       else setDismissedValue(inputValue);
     } else if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
-      onSubmit(inputValue);
+      void restoreFocusAfterSubmit(inputValue);
     }
   };
 

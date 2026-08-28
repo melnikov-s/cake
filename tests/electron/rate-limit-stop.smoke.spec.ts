@@ -110,6 +110,8 @@ test("429 polling keeps the stop control available", async () => {
     const composer = page.getByLabel("Message");
     await composer.fill("Do the thing");
     await composer.press("Enter");
+    await expect(composer).toHaveValue("");
+    await expect(composer).toBeFocused();
 
     // Wait for the retry notice.
     await expect(page.getByText(/Next retry in/)).toBeVisible({ timeout: 30_000 });
@@ -118,8 +120,10 @@ test("429 polling keeps the stop control available", async () => {
     await expect(stop).toBeVisible();
     await expect(stop).toBeEnabled();
 
-    // A follow-up replaces Stop with Send until the draft has been submitted.
-    await composer.fill("follow-up");
+    // The restored focus accepts typing, retains the draft, and enables submission.
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially("follow-up");
+    await expect(composer).toHaveValue("follow-up");
     const send = page.getByRole("button", { name: "Send" });
     await expect(send).toBeVisible();
     await expect(send).toBeEnabled();

@@ -145,7 +145,7 @@ export const Chat = observer(function Chat({
               event.preventDefault();
               void store.addPastedImages(images);
             }}
-            onSubmit={(value) => void submit(value)}
+            onSubmit={(value) => submit(value)}
           />
         }
         toolbarLeading={

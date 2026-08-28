@@ -128,6 +128,39 @@ describe("SlashCommandCombobox", () => {
     expect(onSubmit).toHaveBeenCalledOnce();
   });
 
+  it("restores focus after an Enter submission finishes", async () => {
+    let finishSubmission!: () => void;
+    const onSubmit = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishSubmission = resolve;
+        }),
+    );
+    act(() =>
+      root.render(
+        <SlashCommandCombobox
+          aria-label="Message"
+          commands={[]}
+          value="hello"
+          onValueChange={vi.fn()}
+          onSubmit={onSubmit}
+        />,
+      ),
+    );
+    const input = container.querySelector<HTMLTextAreaElement>('[role="combobox"]')!;
+    const elsewhere = document.createElement("button");
+    container.appendChild(elsewhere);
+    input.focus();
+
+    act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(onSubmit).toHaveBeenCalledWith("hello");
+    elsewhere.focus();
+
+    await act(async () => finishSubmission());
+
+    expect(document.activeElement).toBe(input);
+  });
+
   it("focuses again when the composer workflow requests it", () => {
     act(() =>
       root.render(
