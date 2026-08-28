@@ -217,6 +217,10 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     return this.enqueueResolution([sessionId], resolved, false).then(() => undefined);
   }
 
+  isSessionResolved(sessionId: string) {
+    return this.resolvedSessionIds.includes(sessionId);
+  }
+
   resolveSessions(sessionIds: readonly string[], resolved: boolean) {
     const ids = [...sessionIds];
     return this.enqueueResolution(ids, resolved, true).then(() => ids.length);

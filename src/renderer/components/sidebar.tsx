@@ -29,6 +29,8 @@ export const Sidebar = observer(function Sidebar({
   onOpenSession,
   onCreateSession,
   onChooseProject,
+  onGoBack,
+  onGoForward,
   onToggle,
 }: {
   store: SidebarStore;
@@ -42,6 +44,8 @@ export const Sidebar = observer(function Sidebar({
   onOpenSession(sessionId: string): void;
   onCreateSession(workspacePath: string): void;
   onChooseProject(): void;
+  onGoBack(): void;
+  onGoForward(): void;
   onToggle: () => void;
 }) {
   const projectPaths = projects.orderedProjectPaths;
@@ -51,10 +55,20 @@ export const Sidebar = observer(function Sidebar({
         <IconButton tooltip="Toggle sidebar" onClick={onToggle}>
           <SidebarIcon />
         </IconButton>
-        <IconButton tooltip="Back" disabled>
+        <IconButton
+          tooltip="Back"
+          disabled={!shell.canGoBack}
+          onClick={onGoBack}
+          ariaLabel="Go back in session history"
+        >
           <BackIcon />
         </IconButton>
-        <IconButton tooltip="Forward" disabled>
+        <IconButton
+          tooltip="Forward"
+          disabled={!shell.canGoForward}
+          onClick={onGoForward}
+          ariaLabel="Go forward in session history"
+        >
           <ForwardIcon />
         </IconButton>
       </div>

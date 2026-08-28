@@ -51,6 +51,8 @@ function sidebarProps(store: ProjectWorkbenchStore) {
     onOpenSession: fixture.openSession ?? vi.fn(),
     onCreateSession: fixture.startNewSession ?? vi.fn(),
     onChooseProject: fixture.chooseProject ?? vi.fn(),
+    onGoBack: fixture.goBack ?? vi.fn(),
+    onGoForward: fixture.goForward ?? vi.fn(),
     shell: { selection: { kind: "workbench" } } as any,
   };
 }
@@ -454,6 +456,69 @@ describe("Sidebar projects", () => {
     );
     expect(emptyProject?.classList).toContain("project-group-empty");
     expect(emptyProject?.querySelector(".project-disclosure")?.classList).toContain("no-sessions");
+  });
+
+  it("navigates session history from the window tools when steps are available", () => {
+    const goBack = vi.fn();
+    const goForward = vi.fn();
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [{ id: "session-1", title: "History work" }],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      sessionDisplayTitle,
+      nameFromPath: () => "cake",
+      showMoreSessions: vi.fn(),
+      goBack,
+      goForward,
+    } as unknown as ProjectWorkbenchStore;
+    const props = () =>
+      sidebarProps({
+        ...store,
+        goBack,
+        goForward,
+      } as unknown as ProjectWorkbenchStore);
+
+    const render = (canGoBack: boolean, canGoForward: boolean) =>
+      act(() =>
+        root.render(
+          <Sidebar
+            {...props()}
+            shell={
+              {
+                selection: {
+                  kind: "project-session",
+                  workspacePath: "/work/cake",
+                  sessionId: "session-1",
+                },
+                canGoBack,
+                canGoForward,
+              } as any
+            }
+            onOpenSettings={vi.fn()}
+            onToggle={vi.fn()}
+          />,
+        ),
+      );
+
+    render(false, false);
+    const back = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Go back in session history"]',
+    )!;
+    const forward = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Go forward in session history"]',
+    )!;
+    expect(back.disabled).toBe(true);
+    expect(forward.disabled).toBe(true);
+
+    render(true, true);
+    expect(back.disabled).toBe(false);
+    expect(forward.disabled).toBe(false);
+    act(() => back.click());
+    expect(goBack).toHaveBeenCalledOnce();
+    act(() => forward.click());
+    expect(goForward).toHaveBeenCalledOnce();
   });
 
   it("derives exactly one active chat from the application selection", () => {

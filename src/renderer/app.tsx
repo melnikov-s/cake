@@ -131,6 +131,8 @@ export const App = observer(function App() {
   const chooseProject = useCallback(() => {
     void root.chooseProject();
   }, [root]);
+  const goBack = useCallback(() => root.navigateBack(), [root]);
+  const goForward = useCallback(() => root.navigateForward(), [root]);
   useEffect(() => {
     document.documentElement.dataset.theme = settings.appearance.theme;
     return () => {
@@ -149,6 +151,25 @@ export const App = observer(function App() {
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [store, returnToWorkbench]);
+
+  useEffect(() => {
+    const navigateSessionHistory = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const mac = /Mac/.test(navigator.userAgent);
+      const back = mac
+        ? event.metaKey && event.key === "["
+        : event.altKey && event.key === "ArrowLeft";
+      const forward = mac
+        ? event.metaKey && event.key === "]"
+        : event.altKey && event.key === "ArrowRight";
+      if (!back && !forward) return;
+      event.preventDefault();
+      if (back) root.navigateBack();
+      else root.navigateForward();
+    };
+    window.addEventListener("keydown", navigateSessionHistory);
+    return () => window.removeEventListener("keydown", navigateSessionHistory);
+  }, [root]);
 
   const openSourceLocation = useCallback(
     (location: SourceLocation) => {
@@ -236,6 +257,8 @@ export const App = observer(function App() {
         onOpenSession={openSession}
         onCreateSession={createSession}
         onChooseProject={chooseProject}
+        onGoBack={goBack}
+        onGoForward={goForward}
       />
       {!sidebarCollapsed && (
         <PanelResizeHandle

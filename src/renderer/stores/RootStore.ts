@@ -2,6 +2,7 @@ import { Store, child, createStore, untracked } from "r-state-tree";
 import { jsonValueSchema } from "../../ipc/json-contract";
 import type { SessionSnapshot, UiPart } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
+import type { SessionHistoryEntry } from "./AppShellStore";
 import { SessionRegistryStore } from "./SessionRegistryStore";
 import { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
 import { SidebarStore } from "./SidebarStore";
@@ -85,6 +86,17 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     await this.projectWorkbenchStore.chooseProject();
   }
 
+  navigateBack() {
+    this.navigateToHistoryEntry(this.appShellStore.goBack());
+  }
+  navigateForward() {
+    this.navigateToHistoryEntry(this.appShellStore.goForward());
+  }
+  private navigateToHistoryEntry(entry: SessionHistoryEntry | undefined) {
+    if (!entry) return;
+    if (entry.kind === "cake-chat") void this.openCakeChat(entry.sessionId);
+    else void this.openSession(entry.sessionId);
+  }
   showWorkbench() {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     const context = this.projectWorkbenchStore.sessionContext();
@@ -121,6 +133,26 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   private showEmptyWorkbench() {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.appShellStore.showWorkbench();
+  }
+
+  private async resolveProjectSession(sessionId: string, resolved: boolean) {
+    await this.projectWorkbenchStore.sessionManagementStore.resolveSession(sessionId, resolved);
+    if (resolved && this.sessionCatalogStore.find(sessionId)?.resolved)
+      this.forgetResolvedSessions([sessionId]);
+  }
+
+  private async resolveCakeChatSession(sessionId: string, resolved: boolean) {
+    await this.globalChatStore.resolveSession(sessionId, resolved);
+    if (resolved && this.globalChatStore.isSessionResolved(sessionId))
+      this.forgetResolvedSessions([sessionId]);
+  }
+
+  /** Drops resolved sessions from navigation history and returns to the previous session. */
+  private forgetResolvedSessions(sessionIds: readonly string[]) {
+    let target: SessionHistoryEntry | undefined;
+    for (const sessionId of sessionIds)
+      target ??= this.appShellStore.removeSessionFromHistory(sessionId);
+    if (target) this.navigateToHistoryEntry(target);
   }
 
   @child
@@ -191,9 +223,9 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       sessions: this.sessionRegistry,
       cakeChat: () => this.globalChatStore,
       setSessionResolved: (sessionId, resolved) =>
-        this.projectWorkbenchStore.sessionManagementStore.resolveSession(sessionId, resolved),
+        this.resolveProjectSession(sessionId, resolved),
       setCakeChatSessionResolved: (sessionId, resolved) =>
-        this.globalChatStore.resolveSession(sessionId, resolved),
+        this.resolveCakeChatSession(sessionId, resolved),
     });
   }
 
@@ -348,11 +380,20 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       renameSession: (sessionId, title) =>
         this.projectWorkbenchStore.sessionManagementStore.renameSession(sessionId, title),
       setSessionResolved: (sessionId, resolved) =>
-        this.projectWorkbenchStore.sessionManagementStore.resolveSession(sessionId, resolved),
-      setSessionsResolved: (sessionIds, resolved) =>
-        this.projectWorkbenchStore.sessionManagementStore.resolveSessionsById(sessionIds, resolved),
-      setCakeChatSessionsResolved: (sessionIds, resolved) =>
-        this.globalChatStore.resolveSessions(sessionIds, resolved),
+        this.resolveProjectSession(sessionId, resolved),
+      setSessionsResolved: async (sessionIds, resolved) => {
+        const count = await this.projectWorkbenchStore.sessionManagementStore.resolveSessionsById(
+          sessionIds,
+          resolved,
+        );
+        if (resolved) this.forgetResolvedSessions(sessionIds);
+        return count;
+      },
+      setCakeChatSessionsResolved: async (sessionIds, resolved) => {
+        const count = await this.globalChatStore.resolveSessions(sessionIds, resolved);
+        if (resolved) this.forgetResolvedSessions(sessionIds);
+        return count;
+      },
       setSessionModel: (sessionId, provider, modelId) =>
         this.appControlOperationStore.run((operationId) =>
           this.client.setModel({ operationId, sessionId, provider, modelId }),
