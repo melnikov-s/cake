@@ -47,6 +47,7 @@ export interface MessageComposerStoreProps {
   matchesPluginCommand(input: string): boolean;
   runPluginCommand(input: string): Promise<boolean>;
   renameSession(name: string): Promise<void>;
+  handoffSession(entryId: string, prompt?: string, resolveSource?: boolean): Promise<boolean>;
   operations: SessionOperationCoordinatorStore;
   operationOwner: string;
   newSessionRequest?(): { path: string; configuration?: ChatConfiguration } | undefined;
@@ -226,6 +227,35 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       return;
     }
     const builtin = parsePiBuiltinCommand(text);
+    if (builtin?.name === "handoff" || builtin?.name === "handoffandresolve") {
+      if (this.attachments.length > 0 || this.editorContextAttachment) {
+        this.reportError(new Error("Remove attachments before using /handoff"));
+        return;
+      }
+      const assistantPart = this.props
+        .canonicalParts()
+        .findLast(
+          (part) =>
+            part.kind === "text" &&
+            part.role === "assistant" &&
+            part.status !== "streaming" &&
+            Boolean(part.entryId),
+        );
+      const entryId = assistantPart?.kind === "text" ? assistantPart.entryId : undefined;
+      if (!entryId) {
+        this.reportError(new Error("Handoff requires a completed assistant response"));
+        return;
+      }
+      if (
+        await this.props.handoffSession(
+          entryId,
+          builtin.args || undefined,
+          builtin.name === "handoffandresolve",
+        )
+      )
+        this.props.setDraft("");
+      return;
+    }
     if (builtin?.name === "model") {
       this.props.setDraft("");
       await this.switchModel(builtin.args);

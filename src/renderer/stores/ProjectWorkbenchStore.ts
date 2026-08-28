@@ -22,7 +22,10 @@ import { WorktreeStore, type WorktreeStoreProps } from "./WorktreeStore";
 import { describeError } from "../error-details";
 import { CommandPaneStore, type CommandPaneStoreProps } from "./CommandPaneStore";
 import { SessionManagementStore, type SessionManagementStoreProps } from "./SessionManagementStore";
-import { SessionForkStore, type SessionForkStoreProps } from "./SessionForkStore";
+import {
+  SessionContinuationStore,
+  type SessionContinuationStoreProps,
+} from "./SessionContinuationStore";
 import { WorktreeCreationStore, type WorktreeCreationStoreProps } from "./WorktreeCreationStore";
 
 export interface ProjectWorkbenchStoreProps {
@@ -42,7 +45,7 @@ export interface ProjectWorkbenchStoreProps {
   >;
   commandPaneClient: CommandPaneStoreProps["client"];
   embeddedEditorClient: EmbeddedEditorStoreProps["client"];
-  sessionForkClient: SessionForkStoreProps["client"];
+  sessionContinuationClient: SessionContinuationStoreProps["client"];
   sessionManagementClient: SessionManagementStoreProps["client"];
   worktreeClient: WorktreeStoreProps["client"];
   worktreeCreationClient: WorktreeCreationStoreProps["client"];
@@ -146,9 +149,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   @child
-  get sessionForkStore(): SessionForkStore {
-    return createStore(SessionForkStore, {
-      client: this.props.sessionForkClient,
+  get sessionContinuationStore(): SessionContinuationStore {
+    return createStore(SessionContinuationStore, {
+      client: this.props.sessionContinuationClient,
       operations: this.props.operations,
       registry: this.sessionRegistry,
       sessionContext: () => this.sessionContext(),
@@ -639,7 +642,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   acceptSessionSnapshot(event: Extract<DesktopClientEvent, { type: "session-snapshot-received" }>) {
     if (event.operationId) {
-      if (this.sessionForkStore.acceptSnapshotOperation(event.operationId)) return true;
+      if (this.sessionContinuationStore.acceptSnapshotOperation(event.operationId)) return true;
       if (event.operationId !== this.activeOpenOperationId) {
         this.finishOperation(event.operationId);
         return false;
@@ -735,7 +738,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
           this.draftAfterAgentRestart = this.activeSession?.chatStore.draft;
         this.props.operations.reset();
         this.sessionManagementStore.receive(event);
-        this.sessionForkStore.reset();
+        this.sessionContinuationStore.reset();
         this.activeOpenOperationId = undefined;
         this.activeOpenTarget = undefined;
         this.activeOpenExpectsEmpty = false;
@@ -785,6 +788,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (event.type === "ui-requested") return;
     if (event.type === "operation-completed") {
       if (this.commandPaneStore.receive(event)) return;
+      if (this.sessionContinuationStore.receive(event)) return;
       this.sessionManagementStore.receive(event);
       if (this.activeOperations.includes(event.operationId)) {
         this.finishOperation(event.operationId);
@@ -794,7 +798,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (event.type === "operation-failed") {
       if (this.commandPaneStore.receive(event)) return;
       this.sessionManagementStore.receive(event);
-      this.sessionForkStore.receive(event);
+      if (this.sessionContinuationStore.receive(event)) return;
       if (!event.operationId || !this.activeOperations.includes(event.operationId)) return;
       this.finishOperation(event.operationId);
       if (event.operationId === this.activeOpenOperationId) {

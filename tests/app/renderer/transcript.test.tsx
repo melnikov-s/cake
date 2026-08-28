@@ -69,6 +69,7 @@ interface TranscriptHarness {
   error?: string;
   errorDetails?: string;
   forkAt(entryId: string): void | Promise<void>;
+  handoffAt(entryId: string): void | Promise<void>;
 }
 
 function storeWith(
@@ -77,7 +78,14 @@ function storeWith(
   error?: string,
   errorDetails?: string,
 ): TranscriptHarness {
-  return { visibleParts: parts, error, errorDetails, isStreaming, forkAt: vi.fn() };
+  return {
+    visibleParts: parts,
+    error,
+    errorDetails,
+    isStreaming,
+    forkAt: vi.fn(),
+    handoffAt: vi.fn(),
+  };
 }
 
 function Transcript({
@@ -243,6 +251,9 @@ function TestTranscript({ store, sessionId }: { store: TranscriptHarness; sessio
       behavior={{
         onFork: (entryId) => {
           void store.forkAt(entryId);
+        },
+        onHandoff: (entryId) => {
+          void store.handoffAt(entryId);
         },
       }}
       empty={<div />}
@@ -1063,10 +1074,21 @@ describe("Transcript scrolling", () => {
 
     act(() =>
       container
-        .querySelector<HTMLButtonElement>('[aria-label="Fork response into new chat"]')!
+        .querySelector<HTMLButtonElement>(
+          '[aria-label="Fork response with full context into new chat"]',
+        )!
         .click(),
     );
     expect(store.forkAt).toHaveBeenCalledWith("assistant-entry");
+
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>(
+          '[aria-label="Hand off response without tool history into new chat"]',
+        )!
+        .click(),
+    );
+    expect(store.handoffAt).toHaveBeenCalledWith("assistant-entry");
   });
 
   it("captures a rendered Markdown selection as a stable message anchor", () => {

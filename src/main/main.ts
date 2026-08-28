@@ -1585,7 +1585,7 @@ async function handleCakeRequest(
     });
   }
   if (
-    request.type === "rename-session" &&
+    (request.type === "rename-session" || request.type === "handoff-session") &&
     ((await findSessionFile(homedir(), request.sessionId, cakePaths.piGlobalChatSessions, true)) ||
       (await findSessionFile(
         homedir(),
@@ -1595,7 +1595,17 @@ async function handleCakeRequest(
       )))
   ) {
     globalChatController = event.sender;
-    globalChatDriver.rename(request.requestId, request.sessionId, request.name);
+    await restoreCakeChatSessionForUse(request.sessionId);
+    if (request.type === "rename-session")
+      globalChatDriver.rename(request.requestId, request.sessionId, request.name);
+    else
+      globalChatDriver.handoff(
+        request.requestId,
+        request.sessionId,
+        request.entryId,
+        request.prompt,
+        request.resolveSource,
+      );
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   const path =

@@ -61,6 +61,7 @@ type PiCommandType =
   | "open-workspace"
   | "rename-session"
   | "fork-session"
+  | "handoff-session"
   | "navigate-session"
   | "get-changelog"
   | "prompt"
@@ -406,6 +407,24 @@ export class PiWorkspaceDriver {
             requestId: command.requestId,
             snapshot: await next.snapshot(command.requestId),
           });
+        } else if (command.type === "handoff-session") {
+          const source = await runtime.snapshot();
+          const handedOff = await runtime.handoff(command.entryId);
+          const next = await this.createRuntime(false, handedOff.sessionId, handedOff.sessionFile);
+          if (source.model)
+            await next.applyConfiguration({
+              provider: source.model.provider,
+              modelId: source.model.id,
+              thinkingLevel: source.thinkingLevel,
+              fastMode: Boolean(source.fastMode),
+            });
+          this.emit({
+            type: "session-snapshot",
+            requestId: command.requestId,
+            snapshot: await next.snapshot(command.requestId),
+          });
+          if (command.resolveSource) await this.setSessionResolved(command.sessionId, true);
+          if (command.prompt?.trim()) await next.prompt(command.prompt.trim(), "prompt", []);
         }
       },
       command.sessionId,

@@ -43,6 +43,13 @@ export interface GlobalChatPort {
   }): Promise<void>;
   abort(input: { operationId: string; sessionId: string }): Promise<void>;
   compact(input: { operationId: string; sessionId: string; instructions?: string }): Promise<void>;
+  handoff(input: {
+    operationId: string;
+    sessionId: string;
+    entryId: string;
+    prompt?: string;
+    resolveSource?: boolean;
+  }): Promise<void>;
   setConfiguration(input: {
     operationId: string;
     sessionId: string;
@@ -85,6 +92,7 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   readonly resolvedSessionIds: string[] = observable([]);
   private initialization: Promise<void> | undefined;
   private selectionOpenOperationId: string | undefined;
+  private handoffOperationId: string | undefined;
   private resolutionQueue: Promise<void> = Promise.resolve();
   private readonly pendingPartsBySession = new Map<
     string,
@@ -156,6 +164,29 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
 
   startNewSession(prompt?: string) {
     return this.open(undefined, true, prompt);
+  }
+
+  async handoff(sessionId: string, entryId: string, prompt?: string, resolveSource = false) {
+    if (this.selectionOpenOperationId) return false;
+    const operationId = this.operations.start("cake-chat-open");
+    this.selectionOpenOperationId = operationId;
+    this.handoffOperationId = operationId;
+    try {
+      await this.port.handoff({
+        operationId,
+        sessionId,
+        entryId,
+        prompt: prompt?.trim() || undefined,
+        resolveSource,
+      });
+      return true;
+    } catch (error) {
+      this.operations.finish(operationId);
+      if (this.selectionOpenOperationId === operationId) this.selectionOpenOperationId = undefined;
+      if (this.handoffOperationId === operationId) this.handoffOperationId = undefined;
+      if (!this.signal.aborted) this.reportError(error);
+      return false;
+    }
   }
 
   async renameSession(sessionId: string, name: string) {
@@ -266,6 +297,10 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       }
       if (this.operations.includes(event.operationId, "cake-chat-rename"))
         this.reportError(event.message, "Cake Chat could not rename the session");
+      if (event.operationId === this.handoffOperationId) {
+        this.handoffOperationId = undefined;
+        this.reportError(event.message, "Cake Chat could not continue the handed-off session");
+      }
       if (event.operationId === this.selectionOpenOperationId) {
         this.selectionOpenOperationId = undefined;
         this.error = event.message;
@@ -278,6 +313,7 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       for (const session of this.loadedSessions) {
         if (this.sessionOwnsOperation(session, event.operationId)) session.receive(event);
       }
+      if (event.operationId === this.handoffOperationId) this.handoffOperationId = undefined;
       this.operations.finish(event.operationId);
     }
   }

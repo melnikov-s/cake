@@ -13,7 +13,7 @@ import { Markdown } from "@/components/ai-elements/markdown";
 import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
 import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
 import { IconButton } from "@/components/ui/icon-button";
-import { ChatIcon, CheckIcon, CopyIcon, ForkIcon } from "@/components/ui/icons";
+import { ChatIcon, CheckIcon, CopyIcon, ForkIcon, HandoffIcon } from "@/components/ui/icons";
 import {
   MessageCommentThreadPopover,
   type MessageCommentAnchorRect,
@@ -240,6 +240,7 @@ export function captureTranscriptSelection(
 
 export interface ChatTranscriptBehavior {
   onFork?(entryId: string): void;
+  onHandoff?(entryId: string): void;
   onOpenReviewRun?(threadId?: string): void;
   /** Opens a structured workspace source location in Cake's embedded VS Code IDE. */
   openSourceLocation?(location: SourceLocation): void;
@@ -411,11 +412,20 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
           </IconButton>
           {part.entryId && behavior.onFork && (
             <IconButton
-              tooltip="Fork into new chat"
-              ariaLabel="Fork response into new chat"
+              tooltip="Fork with full context"
+              ariaLabel="Fork response with full context into new chat"
               onClick={() => behavior.onFork!(part.entryId!)}
             >
               <ForkIcon />
+            </IconButton>
+          )}
+          {part.entryId && behavior.onHandoff && (
+            <IconButton
+              tooltip="Hand off without tool history"
+              ariaLabel="Hand off response without tool history into new chat"
+              onClick={() => behavior.onHandoff!(part.entryId!)}
+            >
+              <HandoffIcon />
             </IconButton>
           )}
         </div>

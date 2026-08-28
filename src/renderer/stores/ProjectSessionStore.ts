@@ -32,6 +32,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   projectName(): string;
   abort(): Promise<void>;
   renameSession(name: string): Promise<void>;
+  handoffSession(entryId: string, prompt?: string, resolveSource?: boolean): Promise<boolean>;
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
   newSessionRequest(): { path: string; configuration?: ChatConfiguration } | undefined;
@@ -174,6 +175,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       matchesPluginCommand: (input) => this.props.pluginCommands().matches(input),
       runPluginCommand: (input) => this.props.pluginCommands().run(input),
       renameSession: (name) => this.props.renameSession(name),
+      handoffSession: (entryId, prompt, resolveSource) =>
+        this.props.handoffSession(entryId, prompt, resolveSource),
       operations: this.props.operations,
       operationOwner: this.composerOwner,
       newSessionRequest: this.props.newSessionRequest,

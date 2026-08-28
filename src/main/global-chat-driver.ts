@@ -89,6 +89,31 @@ export class GlobalChatDriver {
     });
   }
 
+  handoff(
+    requestId: string,
+    sessionId: string,
+    entryId: string,
+    prompt?: string,
+    resolveSource = false,
+  ) {
+    void this.run(requestId, async () => {
+      const runtime = await this.ensureRuntime(false, sessionId);
+      const source = await runtime.snapshot();
+      const handedOff = await runtime.handoff(entryId);
+      const next = await this.ensureRuntime(false, handedOff.sessionId);
+      if (source.model)
+        await next.applyConfiguration({
+          provider: source.model.provider,
+          modelId: source.model.id,
+          thinkingLevel: source.thinkingLevel,
+          fastMode: Boolean(source.fastMode),
+        });
+      this.emitSnapshot(await next.snapshot(requestId), requestId);
+      if (resolveSource) await this.options.setSessionResolved?.(sessionId, true);
+      if (prompt?.trim()) await next.prompt(prompt.trim(), "prompt", []);
+    });
+  }
+
   setConfiguration(requestId: string, sessionId: string, configuration: ChatConfiguration) {
     void this.run(requestId, async () => {
       const runtime = await this.ensureRuntime(false, sessionId);
@@ -185,7 +210,7 @@ export class GlobalChatDriver {
       newSession,
       sessionId,
       // Cake Chat names are managed from the sidebar, so /name is not duplicated here.
-      slashCommands: ["compact", "model"],
+      slashCommands: ["compact", "model", "handoff", "handoffandresolve"],
       requestUi: async () => undefined,
       currentSessionControl: {
         resolved: () => {

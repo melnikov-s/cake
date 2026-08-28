@@ -79,6 +79,7 @@ import {
   listWorkspaceSessions,
 } from "./session-discovery";
 import { generateSessionTitle } from "./utility-model";
+import { createConversationHandoff } from "./session-handoff";
 import {
   parallelSubagentSchema,
   subagentTaskSchema,
@@ -540,6 +541,7 @@ export interface CakeRuntime {
   logout(provider: string): Promise<void>;
   rename(name: string): Promise<void>;
   fork(entryId: string): Promise<{ sessionId: string; sessionFile: string }>;
+  handoff(entryId: string): Promise<{ sessionId: string; sessionFile: string }>;
   navigate(entryId: string): Promise<void>;
   dispose(): void;
 }
@@ -1972,6 +1974,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       if (!sessionFile) throw new Error("The current session is not persisted");
       const forked = SessionManager.open(sessionFile, options.sessionDir, options.cwd);
       return { sessionId: forked.getSessionId(), sessionFile };
+    },
+    async handoff(entryId) {
+      return createConversationHandoff(session.sessionManager, entryId);
     },
     async navigate(entryId) {
       const result = await session.navigateTree(entryId, { summarize: false });

@@ -438,6 +438,13 @@ export interface DesktopClient {
   logout(input: { operationId: string; sessionId: string; provider: string }): Promise<void>;
   renameSession(input: { operationId: string; sessionId: string; name: string }): Promise<void>;
   forkSession(input: { operationId: string; sessionId: string; entryId: string }): Promise<void>;
+  handoffSession(input: {
+    operationId: string;
+    sessionId: string;
+    entryId: string;
+    prompt?: string;
+    resolveSource?: boolean;
+  }): Promise<void>;
   navigateSession(input: {
     operationId: string;
     sessionId: string;
@@ -1228,6 +1235,15 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         requestId: input.operationId,
         sessionId: input.sessionId,
         entryId: input.entryId,
+      }),
+    handoffSession: (input) =>
+      accept(bridge, {
+        type: "handoff-session",
+        requestId: input.operationId,
+        sessionId: input.sessionId,
+        entryId: input.entryId,
+        prompt: input.prompt,
+        resolveSource: input.resolveSource ?? false,
       }),
     navigateSession: (input) =>
       accept(bridge, {

@@ -26,6 +26,7 @@ describe("MessageCommentsStore", () => {
           void sessionId;
           void name;
         },
+        handoffSession: async () => false,
       }),
     );
     const store = mount(
@@ -73,6 +74,7 @@ describe("MessageCommentsStore", () => {
           void sessionId;
           void name;
         },
+        handoffSession: async () => false,
       }),
     );
     const createThread = vi.fn(async (anchor: ReviewThread["anchor"]) => {

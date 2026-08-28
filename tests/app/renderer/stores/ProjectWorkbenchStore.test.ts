@@ -264,6 +264,7 @@ function createDesktopClient(restoredPath?: string) {
     logout: vi.fn(async () => undefined),
     renameSession: vi.fn(async () => undefined),
     forkSession: vi.fn(async () => undefined),
+    handoffSession: vi.fn(async () => undefined),
     navigateSession: vi.fn(async () => undefined),
     getChangelog: vi.fn(async () => undefined),
     respondToUi: vi.fn(async () => undefined),

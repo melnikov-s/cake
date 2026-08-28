@@ -58,6 +58,9 @@ function createTestStore() {
     compact: vi.fn(async (input: Parameters<GlobalChatPort["compact"]>[0]) => {
       void input;
     }),
+    handoff: vi.fn(async (input: Parameters<GlobalChatPort["handoff"]>[0]) => {
+      void input;
+    }),
     setConfiguration: vi.fn(async (input: Parameters<GlobalChatPort["setConfiguration"]>[0]) => {
       void input;
     }),

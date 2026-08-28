@@ -94,6 +94,30 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     const attachments = this.attachments.slice();
     if (!text && attachments.length === 0) return false;
     const builtin = parsePiBuiltinCommand(text);
+    if (builtin?.name === "handoff" || builtin?.name === "handoffandresolve") {
+      if (this.attachments.length > 0) {
+        this.reportError(new Error("Remove attachments before using /handoff"));
+        return false;
+      }
+      const assistantPart = this.parts.findLast(
+        (part) =>
+          part.kind === "text" &&
+          part.role === "assistant" &&
+          part.status !== "streaming" &&
+          Boolean(part.entryId),
+      );
+      const entryId = assistantPart?.kind === "text" ? assistantPart.entryId : undefined;
+      if (!entryId) {
+        this.reportError(new Error("Handoff requires a completed assistant response"));
+        return false;
+      }
+      return this.props.collection.handoff(
+        this.sessionId,
+        entryId,
+        builtin.args || undefined,
+        builtin.name === "handoffandresolve",
+      );
+    }
     if (builtin?.name === "model") {
       const separator = builtin.args.indexOf("/");
       if (!builtin.args || separator < 1) {

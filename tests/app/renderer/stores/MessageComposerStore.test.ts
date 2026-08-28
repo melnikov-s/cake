@@ -1,5 +1,6 @@
 import { createStore, mount, observable } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
+import type { UiPart } from "../../../../src/ipc/session-contract";
 import type { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
 import { MessageComposerStore } from "../../../../src/renderer/stores/MessageComposerStore";
@@ -15,6 +16,8 @@ function createComposerStore(options: {
   clientCompactSession?: (input: unknown) => Promise<void>;
   clientSetModel?: (input: unknown) => Promise<void>;
   renameSession?: (name: string) => Promise<void>;
+  handoffSession?: (entryId: string, prompt?: string) => Promise<boolean>;
+  canonicalParts?: () => UiPart[];
   streaming: () => boolean;
 }) {
   let draft = "";
@@ -35,7 +38,7 @@ function createComposerStore(options: {
       },
       projectPath: () => undefined,
       sessionId: () => "session-1",
-      canonicalParts: () => [],
+      canonicalParts: options.canonicalParts ?? (() => []),
       draft: () => draft,
       setDraft: (value: string) => {
         draft = value;
@@ -46,6 +49,7 @@ function createComposerStore(options: {
       matchesPluginCommand: () => false,
       runPluginCommand: vi.fn(async () => true),
       renameSession: options.renameSession ?? (async () => undefined),
+      handoffSession: options.handoffSession ?? (async () => false),
       operations: mount(createStore(SessionOperationCoordinatorStore)),
       operationOwner: "message-composer:test",
     }),
@@ -261,6 +265,57 @@ describe("MessageComposerStore builtin slash commands", () => {
     await store.submit();
 
     expect(renameSession).toHaveBeenCalledWith("Migration cleanup");
+    expect(harness.getDraft()).toBe("");
+    harness.dispose();
+  });
+
+  it("hands off from the latest completed assistant response", async () => {
+    const handoffSession = vi.fn(async () => true);
+    const harness = createComposerStore({
+      handoffSession,
+      canonicalParts: () => [
+        {
+          id: "assistant-part",
+          entryId: "assistant-entry",
+          kind: "text",
+          role: "assistant",
+          text: "Investigation complete",
+          status: "complete",
+        },
+      ],
+      streaming: () => false,
+    });
+    const { store } = harness;
+
+    harness.setDraft("/handoff Implement the fix");
+    await store.submit();
+
+    expect(handoffSession).toHaveBeenCalledWith("assistant-entry", "Implement the fix", false);
+    expect(harness.getDraft()).toBe("");
+    harness.dispose();
+  });
+
+  it("hands off and resolves the source session", async () => {
+    const handoffSession = vi.fn(async () => true);
+    const harness = createComposerStore({
+      handoffSession,
+      canonicalParts: () => [
+        {
+          id: "assistant-part",
+          entryId: "assistant-entry",
+          kind: "text",
+          role: "assistant",
+          text: "Investigation complete",
+          status: "complete",
+        },
+      ],
+      streaming: () => false,
+    });
+
+    harness.setDraft("/handoffandresolve Implement the fix");
+    await harness.store.submit();
+
+    expect(handoffSession).toHaveBeenCalledWith("assistant-entry", "Implement the fix", true);
     expect(harness.getDraft()).toBe("");
     harness.dispose();
   });

@@ -144,6 +144,12 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       abort: () => this.projectWorkbenchStore.abort(),
       renameSession: (sessionId, name) =>
         this.projectWorkbenchStore.sessionManagementStore.renameSession(sessionId, name),
+      handoffSession: (entryId, prompt, resolveSource) =>
+        this.projectWorkbenchStore.sessionContinuationStore.handoffAt(
+          entryId,
+          prompt,
+          resolveSource,
+        ),
       modelPresets: () => this.settingsStore.modelPresets.presets,
       openModelPresetSettings: () => this.showModelPresetSettings(),
       newSessionRequest: (sessionId) => this.projectWorkbenchStore.newSessionRequest(sessionId),
@@ -235,7 +241,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       client: this.client,
       commandPaneClient: this.client,
       embeddedEditorClient: this.client,
-      sessionForkClient: this.client,
+      sessionContinuationClient: this.client,
       sessionManagementClient: this.client,
       worktreeClient: this.client,
       worktreeCreationClient: this.client,
@@ -286,6 +292,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         prompt: (input) => this.client.promptGlobalChat(input),
         abort: (input) => this.client.abortGlobalChat(input),
         compact: (input) => this.client.compactGlobalChat(input),
+        handoff: (input) => this.client.handoffSession(input),
         setConfiguration: (input) => this.client.setGlobalChatConfiguration(input),
         setModel: (input) => this.client.setGlobalChatModel(input),
         setThinkingLevel: (input) => this.client.setGlobalChatThinkingLevel(input),

@@ -45,6 +45,10 @@ describe("PiWorkspaceDriver", () => {
       logout: vi.fn(async () => undefined),
       rename: vi.fn(async () => undefined),
       fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      handoff: vi.fn(async () => ({
+        sessionId: "handoff",
+        sessionFile: "/sessions/handoff.jsonl",
+      })),
       navigate: vi.fn(async () => undefined),
       dispose: vi.fn(),
     };
@@ -123,6 +127,10 @@ describe("PiWorkspaceDriver", () => {
       logout: vi.fn(async () => undefined),
       rename: vi.fn(async () => undefined),
       fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      handoff: vi.fn(async () => ({
+        sessionId: "handoff",
+        sessionFile: "/sessions/handoff.jsonl",
+      })),
       navigate: vi.fn(async () => undefined),
       dispose: vi.fn(),
     };
@@ -161,6 +169,10 @@ describe("PiWorkspaceDriver", () => {
       logout: vi.fn(async () => undefined),
       rename: vi.fn(async () => undefined),
       fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      handoff: vi.fn(async () => ({
+        sessionId: "handoff",
+        sessionFile: "/sessions/handoff.jsonl",
+      })),
       navigate: vi.fn(async () => undefined),
       dispose: vi.fn(),
     };
@@ -214,6 +226,10 @@ describe("PiWorkspaceDriver", () => {
       logout: vi.fn(async () => undefined),
       rename: vi.fn(async () => undefined),
       fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      handoff: vi.fn(async () => ({
+        sessionId: "handoff",
+        sessionFile: "/sessions/handoff.jsonl",
+      })),
       navigate: vi.fn(async () => undefined),
       dispose: vi.fn(),
     });
@@ -387,6 +403,10 @@ describe("PiWorkspaceDriver", () => {
       logout: vi.fn(async () => undefined),
       rename: vi.fn(async () => undefined),
       fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      handoff: vi.fn(async () => ({
+        sessionId: "handoff",
+        sessionFile: "/sessions/handoff.jsonl",
+      })),
       navigate: vi.fn(async () => undefined),
       dispose: vi.fn(),
     };
@@ -462,6 +482,10 @@ describe("PiWorkspaceDriver", () => {
       logout: vi.fn(async () => undefined),
       rename: vi.fn(async () => undefined),
       fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      handoff: vi.fn(async () => ({
+        sessionId: "handoff",
+        sessionFile: "/sessions/handoff.jsonl",
+      })),
       navigate: vi.fn(async () => undefined),
       dispose: vi.fn(),
     });
@@ -539,6 +563,10 @@ describe("PiWorkspaceDriver", () => {
       logout: vi.fn(async () => undefined),
       rename: vi.fn(async () => undefined),
       fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      handoff: vi.fn(async () => ({
+        sessionId: "handoff",
+        sessionFile: "/sessions/handoff.jsonl",
+      })),
       navigate: vi.fn(async () => undefined),
       dispose: vi.fn(),
     };
@@ -718,6 +746,10 @@ describe("PiWorkspaceDriver", () => {
       logout: vi.fn(async () => undefined),
       rename: vi.fn(async () => undefined),
       fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      handoff: vi.fn(async () => ({
+        sessionId: "handoff",
+        sessionFile: "/sessions/handoff.jsonl",
+      })),
       navigate: vi.fn(async () => undefined),
       dispose: vi.fn(),
     };
@@ -826,6 +858,10 @@ describe("PiWorkspaceDriver", () => {
       logout: vi.fn(async () => undefined),
       rename: vi.fn(async () => undefined),
       fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      handoff: vi.fn(async () => ({
+        sessionId: "handoff",
+        sessionFile: "/sessions/handoff.jsonl",
+      })),
       navigate: vi.fn(async () => undefined),
       dispose: vi.fn(),
     };
@@ -877,6 +913,10 @@ describe("PiWorkspaceDriver", () => {
       logout: vi.fn(async () => undefined),
       rename: vi.fn(async () => undefined),
       fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      handoff: vi.fn(async () => ({
+        sessionId: "handoff",
+        sessionFile: "/sessions/handoff.jsonl",
+      })),
       navigate: vi.fn(async () => undefined),
       dispose: vi.fn(),
     };
@@ -930,6 +970,10 @@ describe("PiWorkspaceDriver", () => {
       logout: vi.fn(async () => undefined),
       rename: vi.fn(async () => undefined),
       fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      handoff: vi.fn(async () => ({
+        sessionId: "handoff",
+        sessionFile: "/sessions/handoff.jsonl",
+      })),
       navigate: vi.fn(async () => undefined),
       dispose: vi.fn(),
     });
@@ -961,6 +1005,99 @@ describe("PiWorkspaceDriver", () => {
 
     expect(parent.fork).toHaveBeenCalledWith("entry");
     expect(child.snapshot).toHaveBeenCalled();
+    driver[Symbol.dispose]();
+  });
+
+  it("opens a clean handoff and optionally starts its first instruction", async () => {
+    const events: DesktopEvent[] = [];
+    const source: CakeRuntime = {
+      sessionId: "source",
+      sessionFile: "/sessions/source.jsonl",
+      snapshot: vi.fn(async () => ({
+        ...snapshot,
+        sessionId: "source",
+        sessionFile: "/sessions/source.jsonl",
+        model: { provider: "openai", id: "gpt-test", name: "Test" },
+        thinkingLevel: "high" as const,
+        fastMode: true,
+      })),
+      prompt: vi.fn(async () => undefined),
+      compact: vi.fn(async () => undefined),
+      abort: vi.fn(async () => undefined),
+      setModel: vi.fn(async () => undefined),
+      setThinkingLevel: vi.fn(async () => undefined),
+      applyConfiguration: vi.fn(async () => undefined),
+      setPiSetting: vi.fn(async () => undefined),
+      recordReviewRun: vi.fn(),
+      login: vi.fn(async () => undefined),
+      logout: vi.fn(async () => undefined),
+      rename: vi.fn(async () => undefined),
+      fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      handoff: vi.fn(async () => ({
+        sessionId: "handoff",
+        sessionFile: "/sessions/handoff.jsonl",
+      })),
+      navigate: vi.fn(async () => undefined),
+      dispose: vi.fn(),
+    };
+    const target: CakeRuntime = {
+      ...source,
+      sessionId: "handoff",
+      sessionFile: "/sessions/handoff.jsonl",
+      snapshot: vi.fn(async () => ({
+        ...snapshot,
+        sessionId: "handoff",
+        sessionFile: "/sessions/handoff.jsonl",
+      })),
+      prompt: vi.fn(async () => undefined),
+      applyConfiguration: vi.fn(async () => undefined),
+    };
+    const setSessionResolved = vi.fn(async () => undefined);
+    const driver = new PiWorkspaceDriver({
+      ...piPaths,
+      workspacePath: "/project",
+      emit: (event) => events.push(event),
+      createRuntime: vi.fn(async ({ sessionId }) => (sessionId === "handoff" ? target : source)),
+      setSessionResolved,
+    });
+    const openId = crypto.randomUUID();
+    driver.dispatch({
+      type: "open-workspace",
+      requestId: openId,
+      path: "/project",
+      newSession: true,
+    });
+    await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
+
+    const handoffId = crypto.randomUUID();
+    driver.dispatch({
+      type: "handoff-session",
+      requestId: handoffId,
+      sessionId: "source",
+      entryId: "assistant-entry",
+      prompt: "Implement it",
+      resolveSource: true,
+    });
+    await vi.waitFor(() =>
+      expect(events).toContainEqual({ type: "complete", requestId: handoffId }),
+    );
+
+    expect(source.handoff).toHaveBeenCalledWith("assistant-entry");
+    expect(target.applyConfiguration).toHaveBeenCalledWith({
+      provider: "openai",
+      modelId: "gpt-test",
+      thinkingLevel: "high",
+      fastMode: true,
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "session-snapshot",
+        requestId: handoffId,
+        snapshot: expect.objectContaining({ sessionId: "handoff" }),
+      }),
+    );
+    expect(setSessionResolved).toHaveBeenCalledWith("source", true);
+    expect(target.prompt).toHaveBeenCalledWith("Implement it", "prompt", []);
     driver[Symbol.dispose]();
   });
 
@@ -997,6 +1134,10 @@ describe("PiWorkspaceDriver", () => {
       logout: vi.fn(async () => undefined),
       rename: vi.fn(async () => undefined),
       fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      handoff: vi.fn(async () => ({
+        sessionId: "handoff",
+        sessionFile: "/sessions/handoff.jsonl",
+      })),
       navigate: vi.fn(async () => undefined),
       dispose: vi.fn(),
     };
@@ -1152,6 +1293,10 @@ describe("PiWorkspaceDriver", () => {
       logout: vi.fn(async () => undefined),
       rename: vi.fn(async () => undefined),
       fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      handoff: vi.fn(async () => ({
+        sessionId: "handoff",
+        sessionFile: "/sessions/handoff.jsonl",
+      })),
       navigate: vi.fn(async () => undefined),
       dispose: vi.fn(),
     };
@@ -1277,6 +1422,10 @@ describe("PiWorkspaceDriver", () => {
       logout: vi.fn(async () => undefined),
       rename: vi.fn(async () => undefined),
       fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      handoff: vi.fn(async () => ({
+        sessionId: "handoff",
+        sessionFile: "/sessions/handoff.jsonl",
+      })),
       navigate: vi.fn(async () => undefined),
       dispose: vi.fn(),
     };
@@ -1386,6 +1535,10 @@ describe("PiWorkspaceDriver", () => {
       logout: vi.fn(async () => undefined),
       rename: vi.fn(async () => undefined),
       fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      handoff: vi.fn(async () => ({
+        sessionId: "handoff",
+        sessionFile: "/sessions/handoff.jsonl",
+      })),
       navigate: vi.fn(async () => undefined),
       dispose: vi.fn(),
     };

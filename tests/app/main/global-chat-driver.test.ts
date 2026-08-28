@@ -40,6 +40,7 @@ function runtime(nextSnapshot = snapshot): CakeRuntime {
     logout: vi.fn(async () => undefined),
     rename: vi.fn(async () => undefined),
     fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/fork.jsonl" })),
+    handoff: vi.fn(async () => ({ sessionId: "handoff", sessionFile: "/handoff.jsonl" })),
     navigate: vi.fn(async () => undefined),
     dispose: vi.fn(),
   };
@@ -61,6 +62,55 @@ describe("GlobalChatDriver", () => {
 
     await vi.waitFor(() => expect(cakeRuntime.rename).toHaveBeenCalledWith("Renamed chat"));
     expect(events).toContainEqual({ type: "global-chat-operation-completed", requestId });
+  });
+
+  it("creates a clean Cake Chat handoff and starts its optional instruction", async () => {
+    const events: DesktopEvent[] = [];
+    const source = runtime({
+      ...snapshot,
+      model: { provider: "openai", id: "gpt-test", name: "Test" },
+      thinkingLevel: "high",
+      fastMode: true,
+    });
+    const target = runtime({
+      ...snapshot,
+      sessionId: "handoff",
+      sessionFile: "/data/global-chat/handoff.jsonl",
+    });
+    const createRuntime = vi.fn(async (options: CakeRuntimeOptions) =>
+      options.sessionId === "handoff" ? target : source,
+    );
+    const setSessionResolved = vi.fn(async () => undefined);
+    const driver = new GlobalChatDriver({
+      agentDir: "/cake/pi",
+      sessionDir: "/cake/pi/global-chat/sessions",
+      emit: (event) => events.push(event),
+      createRuntime,
+      setSessionResolved,
+    });
+    const requestId = crypto.randomUUID();
+
+    driver.handoff(requestId, "global-1", "assistant-entry", "Implement it", true);
+
+    await vi.waitFor(() =>
+      expect(events).toContainEqual({ type: "global-chat-operation-completed", requestId }),
+    );
+    expect(source.handoff).toHaveBeenCalledWith("assistant-entry");
+    expect(target.applyConfiguration).toHaveBeenCalledWith({
+      provider: "openai",
+      modelId: "gpt-test",
+      thinkingLevel: "high",
+      fastMode: true,
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "global-chat-snapshot",
+        requestId,
+        snapshot: expect.objectContaining({ sessionId: "handoff" }),
+      }),
+    );
+    expect(setSessionResolved).toHaveBeenCalledWith("global-1", true);
+    expect(target.prompt).toHaveBeenCalledWith("Implement it", "prompt", []);
   });
 
   it("reopens one persistent Pi transcript and routes control tools to the renderer", async () => {

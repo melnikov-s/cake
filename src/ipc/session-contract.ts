@@ -380,6 +380,16 @@ export const piBuiltinSlashCommands = [
     argumentHint: "<provider/model>",
   },
   { name: "name", description: "Rename the current session" },
+  {
+    name: "handoff",
+    description: "Continue in a new session without tool history",
+    argumentHint: "[first instruction]",
+  },
+  {
+    name: "handoffandresolve",
+    description: "Hand off, then resolve the source session",
+    argumentHint: "[first instruction]",
+  },
 ].map((command) =>
   slashCommandSchema.parse({ ...command, source: "builtin", sourceInfo: builtinSourceInfo }),
 );

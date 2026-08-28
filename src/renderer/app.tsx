@@ -166,7 +166,10 @@ export const App = observer(function App() {
   const projectTranscriptBehavior = session
     ? {
         onFork: (entryId: string) => {
-          void store.sessionForkStore.forkAt(entryId);
+          void store.sessionContinuationStore.forkAt(entryId);
+        },
+        onHandoff: (entryId: string) => {
+          void store.sessionContinuationStore.handoffAt(entryId);
         },
         openSourceLocation,
         onOpenReviewRun: (threadId?: string) => {
@@ -183,6 +186,14 @@ export const App = observer(function App() {
         },
       }
     : undefined;
+  const cakeChatTranscriptBehavior =
+    globalChat && cakeChatSession
+      ? {
+          onHandoff: (entryId: string) => {
+            void globalChat.handoff(cakeChatSession.sessionId, entryId);
+          },
+        }
+      : undefined;
 
   if (!persistence.hydrated)
     return (
@@ -308,6 +319,7 @@ export const App = observer(function App() {
                 )}
               <Chat
                 store={cakeChatSession.chatStore}
+                transcriptBehavior={cakeChatTranscriptBehavior}
                 empty={
                   <div className="chat-empty">
                     <span className="cake-orbit">
@@ -539,7 +551,7 @@ export const App = observer(function App() {
           </Confirmation>
         </div>
       )}
-      {store.sessionForkStore.prompt && (
+      {store.sessionContinuationStore.prompt && (
         <div className="dialog-backdrop">
           <Confirmation
             state="requested"
@@ -558,18 +570,18 @@ export const App = observer(function App() {
               <ConfirmationActions>
                 <ConfirmationAction
                   variant="ghost"
-                  onClick={() => void store.sessionForkStore.resolvePrompt("cancel")}
+                  onClick={() => void store.sessionContinuationStore.resolvePrompt("cancel")}
                 >
                   Cancel
                 </ConfirmationAction>
                 <ConfirmationAction
                   variant="outline"
-                  onClick={() => void store.sessionForkStore.resolvePrompt("existing")}
+                  onClick={() => void store.sessionContinuationStore.resolvePrompt("existing")}
                 >
                   Use the existing worktree
                 </ConfirmationAction>
                 <ConfirmationAction
-                  onClick={() => void store.sessionForkStore.resolvePrompt("new-worktree")}
+                  onClick={() => void store.sessionContinuationStore.resolvePrompt("new-worktree")}
                 >
                   Branch off a new worktree
                 </ConfirmationAction>

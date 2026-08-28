@@ -9,6 +9,14 @@ describe("parsePiBuiltinCommand", () => {
       args: "Keep the API details",
     });
     expect(parsePiBuiltinCommand(" /MODEL")).toEqual({ name: "model", args: "" });
+    expect(parsePiBuiltinCommand("/handoff Implement the plan")).toEqual({
+      name: "handoff",
+      args: "Implement the plan",
+    });
+    expect(parsePiBuiltinCommand("/handoffandresolve Implement the plan")).toEqual({
+      name: "handoffandresolve",
+      args: "Implement the plan",
+    });
   });
 
   it("ignores non-commands and unknown commands", () => {

@@ -73,7 +73,7 @@ export const CommandPane = observer(function CommandPane({
           <SessionTree
             nodes={store.session.tree}
             onNavigate={(id) => void commandPane.navigateTo(id)}
-            onFork={(id) => void store.sessionForkStore.forkAt(id)}
+            onFork={(id) => void store.sessionContinuationStore.forkAt(id)}
           />
         ) : (
           <p>This session has no branches yet.</p>

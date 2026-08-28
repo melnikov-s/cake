@@ -80,6 +80,11 @@ export const ForkIcon = () => (
     <path d="M6 7v2a4 4 0 0 0 4 4h2M18 7v2a4 4 0 0 1-4 4h-2v4" />
   </Icon>
 );
+export const HandoffIcon = () => (
+  <Icon size={15}>
+    <path d="M4 7h10M11 4l3 3-3 3M20 17H10M13 14l-3 3 3 3" />
+  </Icon>
+);
 export const CheckIcon = () => (
   <Icon size={15}>
     <path d="m5 12 4 4L19 6" />

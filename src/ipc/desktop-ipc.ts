@@ -734,6 +734,14 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     entryId: z.string().max(256),
   }),
   z.object({
+    type: z.literal("handoff-session"),
+    requestId: z.uuid(),
+    sessionId: z.string().max(256),
+    entryId: z.string().max(256),
+    prompt: z.string().max(262_144).optional(),
+    resolveSource: z.boolean().default(false),
+  }),
+  z.object({
     type: z.literal("navigate-session"),
     requestId: z.uuid(),
     sessionId: z.string().max(256),

@@ -3,10 +3,10 @@ import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
-export interface SessionForkStoreProps {
+export interface SessionContinuationStoreProps {
   client: Pick<
     DesktopClient,
-    "getWorktreeStatus" | "forkSession" | "forkWorktreeSession" | "loadSession"
+    "getWorktreeStatus" | "forkSession" | "forkWorktreeSession" | "handoffSession" | "loadSession"
   >;
   operations: SessionOperationCoordinatorStore;
   registry: SessionRegistryStore;
@@ -16,13 +16,13 @@ export interface SessionForkStoreProps {
   reportError(error: unknown): void;
 }
 
-/** Owns session-fork prompting, dispatch, correlation, and worktree fork creation. */
-export class SessionForkStore extends Store<SessionForkStoreProps> {
+/** Owns full-context forks and clean-context handoffs into replacement sessions. */
+export class SessionContinuationStore extends Store<SessionContinuationStoreProps> {
   prompt: { sessionId: string; entryId: string; workspacePath: string } | undefined;
   private checkingWorktree = false;
   private activeOperationId: string | undefined;
 
-  constructor(props: SessionForkStore["props"]) {
+  constructor(props: SessionContinuationStore["props"]) {
     super(props);
     this.effect(() => () => {
       if (this.activeOperationId) this.props.operations.finish(this.activeOperationId);
@@ -62,6 +62,37 @@ export class SessionForkStore extends Store<SessionForkStoreProps> {
     }
   }
 
+  async handoffAt(entryId: string, prompt?: string, resolveSource = false) {
+    const context = this.props.sessionContext();
+    if (
+      !context ||
+      this.signal.aborted ||
+      this.checkingWorktree ||
+      this.prompt ||
+      this.activeOperationId
+    )
+      return false;
+    this.props.closeCommandPane();
+    const operationId = this.props.operations.start("project-workbench");
+    this.activeOperationId = operationId;
+    try {
+      await this.props.client.handoffSession({
+        operationId,
+        sessionId: context.sessionId,
+        entryId,
+        prompt: prompt?.trim() || undefined,
+        resolveSource,
+      });
+      return true;
+    } catch (error) {
+      if (this.signal.aborted) return false;
+      this.activeOperationId = undefined;
+      this.props.operations.finish(operationId);
+      this.props.reportError(error);
+      return false;
+    }
+  }
+
   async resolvePrompt(choice: "existing" | "new-worktree" | "cancel") {
     const prompt = this.prompt;
     if (!prompt) return;
@@ -92,10 +123,7 @@ export class SessionForkStore extends Store<SessionForkStoreProps> {
   }
 
   acceptSnapshotOperation(operationId: string) {
-    if (operationId !== this.activeOperationId) return false;
-    this.activeOperationId = undefined;
-    this.props.operations.finish(operationId);
-    return true;
+    return operationId === this.activeOperationId;
   }
 
   reset() {
@@ -107,14 +135,15 @@ export class SessionForkStore extends Store<SessionForkStoreProps> {
 
   receive(event: DesktopClientEvent) {
     if (
-      event.type !== "operation-failed" ||
+      (event.type !== "operation-completed" && event.type !== "operation-failed") ||
       !event.operationId ||
       event.operationId !== this.activeOperationId
     )
-      return;
+      return false;
     this.activeOperationId = undefined;
     this.props.operations.finish(event.operationId);
-    this.props.reportError(event.message);
+    if (event.type === "operation-failed") this.props.reportError(event.message);
+    return true;
   }
 
   private async dispatchFork(sessionId: string, entryId: string) {
