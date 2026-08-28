@@ -165,10 +165,9 @@ activity, usage, cost, and the final answer through the parent tool call rather
 than exposing a second transcript.
 
 Embedded VS Code's Source Control view is the workspace-change authority and
-renders native Git diffs. Cake projects transcript-derived agent change markers
-and review annotations into VS Code without maintaining a second working-tree
-snapshot or diff browser. Historical per-turn diffs remain in Pi's authoritative
-conversation work logs.
+renders native Git diffs. Cake projects review annotations into VS Code without
+maintaining a second working-tree snapshot or diff browser. Historical per-turn
+diffs remain in Pi's authoritative conversation work logs.
 
 Automatic project-session naming is the first utility workflow. After the
 initial user message is accepted, an unnamed session may send that original

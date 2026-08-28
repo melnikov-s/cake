@@ -1,10 +1,9 @@
 import { createStore, mount } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EditorAnnotationSnapshot } from "../../../../src/ipc/editor-annotation";
-import type { UiPart } from "../../../../src/ipc/session-contract";
 import type { DesktopClientEvent } from "../../../../src/renderer/desktop-client";
 import { EmbeddedEditorStore } from "../../../../src/renderer/stores/EmbeddedEditorStore";
-function createHarness(parts: UiPart[] = [], annotations?: EditorAnnotationSnapshot) {
+function createHarness(annotations?: EditorAnnotationSnapshot) {
   const client = {
     getEmbeddedEditorState: vi.fn(async () => ({ status: "missing" as const })),
     installEmbeddedEditor: vi.fn(async () => undefined),
@@ -19,7 +18,6 @@ function createHarness(parts: UiPart[] = [], annotations?: EditorAnnotationSnaps
     updateEmbeddedEditorBounds: vi.fn(async () => undefined),
     revealInEmbeddedEditor: vi.fn(async () => undefined),
     openEmbeddedEditorSourceControl: vi.fn(async () => undefined),
-    updateEmbeddedEditorChanges: vi.fn(async () => undefined),
     updateEmbeddedEditorAnnotations: vi.fn(async () => undefined),
   };
   const startCakeChat = vi.fn(async (prompt: string) => {
@@ -29,7 +27,6 @@ function createHarness(parts: UiPart[] = [], annotations?: EditorAnnotationSnaps
     createStore(EmbeddedEditorStore, {
       client,
       projectPath: () => "/tmp/project",
-      parts: () => parts,
       annotations: () => annotations,
       startCakeChat,
     }),
@@ -84,7 +81,6 @@ describe("EmbeddedEditorStore", () => {
 
     expect(store.visible).toBe(true);
     expect(client.openEmbeddedEditor).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(client.updateEmbeddedEditorChanges).toHaveBeenCalled());
     store[Symbol.dispose]();
   });
 
@@ -148,34 +144,6 @@ describe("EmbeddedEditorStore", () => {
     store[Symbol.dispose]();
   });
 
-  it("syncs transcript-derived current-turn changes after opening the IDE", async () => {
-    const parts = [
-      { id: "user", kind: "text", role: "user", text: "change it", status: "complete" },
-      {
-        id: "edit",
-        kind: "tool",
-        name: "edit",
-        input: "{}",
-        filePath: "src/app.ts",
-        diff: "@@ -4 +4 @@\n-old\n+new",
-        state: "success",
-      },
-    ] as const;
-    const { client, store } = createHarness([...parts]);
-
-    await store.show();
-
-    expect(client.updateEmbeddedEditorChanges).toHaveBeenCalledWith("/tmp/project", [
-      {
-        id: "edit:0",
-        path: "src/app.ts",
-        range: { start: { line: 3 }, end: { line: 3 } },
-        currentTurn: true,
-      },
-    ]);
-    store[Symbol.dispose]();
-  });
-
   it("syncs active-session discussion annotations after opening the IDE", async () => {
     const snapshot: EditorAnnotationSnapshot = {
       sessionId: "session-a",
@@ -192,7 +160,7 @@ describe("EmbeddedEditorStore", () => {
         },
       ],
     };
-    const { client, store } = createHarness([], snapshot);
+    const { client, store } = createHarness(snapshot);
 
     await store.show();
 

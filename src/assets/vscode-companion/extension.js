@@ -1,6 +1,6 @@
 // Cake companion extension. Runs inside the openvscode-server extension host and
 // relays editor activity to Cake while projecting Cake source locations and
-// transcript-derived agent changes into native VS Code surfaces.
+// discussion annotations into native VS Code surfaces.
 "use strict";
 
 const http = require("node:http");
@@ -13,18 +13,11 @@ const HELLO_RETRIES = 5;
 const HELLO_RETRY_DELAY_MS = 2_000;
 const MAX_SELECTION_LENGTH = 48_000;
 const MAX_CONTEXT_LENGTH = 8_000;
-const CHANGE_FLASH_MS = 1_800;
 
 let revealServer;
 let activitySubscription;
 let activityTimer;
-let changeStatus;
-let temporaryTimer;
-let agentChanges = [];
-const reviewedChanges = new Set();
-const temporaryChanges = new Set();
 const revealDecorations = new Set();
-let changeDecorations;
 let annotationSessionId;
 let annotations = [];
 let annotationEmitter;
@@ -147,74 +140,6 @@ function rangeFor(vscode, document, requestedRange) {
   return new vscode.Range(start, end.isBefore(start) ? start : end);
 }
 
-function changeRange(vscode, editor, change) {
-  return rangeFor(vscode, editor.document, change.range);
-}
-
-function editorMatches(editor, change) {
-  return workspaceRelative(editor.document.uri.fsPath) === change.path;
-}
-
-function applyChangeDecorations(vscode) {
-  if (!changeDecorations) return;
-  for (const editor of vscode.window.visibleTextEditors) {
-    const matching = agentChanges.filter((change) => editorMatches(editor, change));
-    editor.setDecorations(
-      changeDecorations.current,
-      matching
-        .filter((change) => change.currentTurn && !reviewedChanges.has(change.id))
-        .map((change) => changeRange(vscode, editor, change)),
-    );
-    editor.setDecorations(
-      changeDecorations.previous,
-      matching
-        .filter((change) => !change.currentTurn && !reviewedChanges.has(change.id))
-        .map((change) => changeRange(vscode, editor, change)),
-    );
-    editor.setDecorations(
-      changeDecorations.reviewed,
-      matching
-        .filter((change) => reviewedChanges.has(change.id))
-        .map((change) => changeRange(vscode, editor, change)),
-    );
-    editor.setDecorations(
-      changeDecorations.temporary,
-      matching
-        .filter((change) => temporaryChanges.has(change.id))
-        .map((change) => changeRange(vscode, editor, change)),
-    );
-  }
-  const current = agentChanges.filter((change) => change.currentTurn);
-  const unreviewed = current.filter((change) => !reviewedChanges.has(change.id));
-  if (current.length === 0) {
-    changeStatus.hide();
-  } else {
-    changeStatus.text = `$(diff) ${unreviewed.length}/${current.length} Cake changes`;
-    changeStatus.tooltip = `${unreviewed.length} unreviewed changes in the current agent turn`;
-    changeStatus.show();
-  }
-  // Discussion markers win gutter collisions; change highlights and the overview
-  // ruler remain visible, and the discussion CodeLens remains independently clickable.
-  applyAnnotationDecorations(vscode);
-}
-
-function updateAgentChanges(vscode, payload) {
-  const previousIds = new Set(agentChanges.map((change) => change.id));
-  agentChanges = Array.isArray(payload.changes) ? payload.changes : [];
-  const activeIds = new Set(agentChanges.map((change) => change.id));
-  for (const id of reviewedChanges) if (!activeIds.has(id)) reviewedChanges.delete(id);
-  for (const change of agentChanges) {
-    if (change.currentTurn && !previousIds.has(change.id)) temporaryChanges.add(change.id);
-  }
-  if (temporaryTimer) clearTimeout(temporaryTimer);
-  temporaryTimer = setTimeout(() => {
-    temporaryChanges.clear();
-    applyChangeDecorations(vscode);
-  }, CHANGE_FLASH_MS);
-  temporaryTimer.unref?.();
-  applyChangeDecorations(vscode);
-}
-
 function annotationStatusLabel(status) {
   return (
     {
@@ -278,44 +203,8 @@ async function openSourceControl(vscode) {
   await vscode.commands.executeCommand("workbench.view.scm");
 }
 
-async function openCompleteChange(vscode) {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor) return;
-  const uri = editor.document.uri;
-  try {
-    const extension = vscode.extensions.getExtension("vscode.git");
-    const exports = extension ? await extension.activate() : undefined;
-    const repository = exports?.getAPI?.(1)?.getRepository?.(uri);
-    const state = repository?.state;
-    const resources = [
-      ...(state?.workingTreeChanges || []),
-      ...(state?.indexChanges || []),
-      ...(state?.untrackedChanges || []),
-    ];
-    const resource = resources.find((candidate) => candidate.uri?.fsPath === uri.fsPath);
-    if (resource?.originalUri) {
-      await vscode.commands.executeCommand(
-        "vscode.diff",
-        resource.originalUri,
-        resource.uri,
-        `${path.basename(uri.fsPath)} — Complete Cake change`,
-      );
-      return;
-    }
-  } catch {
-    // Fall through to the Git extension's native open-change command.
-  }
-  await vscode.commands.executeCommand("git.openChange", uri);
-}
-
 function activate(context) {
   const vscode = require("vscode");
-  const marker = vscode.Uri.parse(
-    `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="8" height="16" viewBox="0 0 8 16"><rect x="2" y="2" width="4" height="12" rx="2" fill="#7c5cff"/></svg>')}`,
-  );
-  const dimMarker = vscode.Uri.parse(
-    `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="8" height="16" viewBox="0 0 8 16"><rect x="2" y="3" width="4" height="10" rx="2" fill="#888" fill-opacity=".55"/></svg>')}`,
-  );
   const annotationMarker = (color) =>
     vscode.Uri.parse(
       `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14"><path d="M2 2h10v7H7l-3 3V9H2z" fill="${color}"/></svg>`)}`,
@@ -362,87 +251,11 @@ function activate(context) {
       });
     },
   };
-  changeDecorations = {
-    current: vscode.window.createTextEditorDecorationType({
-      isWholeLine: true,
-      gutterIconPath: marker,
-      gutterIconSize: "contain",
-      overviewRulerColor: new vscode.ThemeColor("editorInfo.foreground"),
-      overviewRulerLane: vscode.OverviewRulerLane.Left,
-    }),
-    previous: vscode.window.createTextEditorDecorationType({
-      isWholeLine: true,
-      gutterIconPath: dimMarker,
-      gutterIconSize: "contain",
-      overviewRulerColor: new vscode.ThemeColor("editorOverviewRuler.border"),
-      overviewRulerLane: vscode.OverviewRulerLane.Left,
-    }),
-    reviewed: vscode.window.createTextEditorDecorationType({
-      isWholeLine: true,
-      gutterIconPath: dimMarker,
-      gutterIconSize: "contain",
-      opacity: "0.45",
-    }),
-    temporary: vscode.window.createTextEditorDecorationType({
-      isWholeLine: true,
-      backgroundColor: new vscode.ThemeColor("editor.wordHighlightStrongBackground"),
-    }),
-  };
-  changeStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
   context.subscriptions.push(
-    changeStatus,
     annotationEmitter,
     ...Object.values(annotationDecorations),
-    ...Object.values(changeDecorations),
     vscode.languages.registerCodeLensProvider({ scheme: "file" }, annotationCodeLensProvider),
   );
-
-  const sendSelection = (action) => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.uri.scheme !== "file") {
-      void vscode.window.showInformationMessage("Open a workspace file before using Cake.");
-      return;
-    }
-    const relativePath = workspaceRelative(editor.document.uri.fsPath);
-    if (!relativePath) {
-      void vscode.window.showInformationMessage("Cake can only use files in this project.");
-      return;
-    }
-    const selection = editor.selection;
-    const selectedText = editor.document.getText(selection);
-    if (!selectedText) {
-      void vscode.window.showInformationMessage("Select some code before using Cake.");
-      return;
-    }
-    if (selectedText.length > MAX_SELECTION_LENGTH) {
-      void vscode.window.showWarningMessage(
-        "That selection is too large. Select a smaller region before using Cake.",
-      );
-      return;
-    }
-    const lines = editor.document.getText().split(/\r?\n/);
-    postBridge({
-      type: "selection",
-      action,
-      path: relativePath,
-      documentVersion: editor.document.version,
-      startLine: selection.start.line,
-      startColumn: selection.start.character,
-      endLine: selection.end.line,
-      endColumn: selection.end.character,
-      selectedText,
-      contextBefore: lines
-        .slice(Math.max(0, selection.start.line - 3), selection.start.line)
-        .join("\n")
-        .slice(-MAX_CONTEXT_LENGTH),
-      contextAfter: lines
-        .slice(selection.end.line + 1, selection.end.line + 4)
-        .join("\n")
-        .slice(0, MAX_CONTEXT_LENGTH),
-    });
-  };
-  const askAboutSelection = () => sendSelection("ask");
-  const addSelectionToProjectChat = () => sendSelection("add-to-project-chat");
 
   const reveal = async (payload) => {
     const relativePath = String(payload.path || "");
@@ -510,7 +323,6 @@ function activate(context) {
     readBody(request)
       .then((raw) => JSON.parse(raw))
       .then((payload) => {
-        if (payload.type === "agent-changes") return updateAgentChanges(vscode, payload);
         if (payload.type === "annotations") return updateAnnotations(vscode, payload);
         if (payload.type === "open-source-control") return openSourceControl(vscode);
         return reveal(payload);
@@ -529,7 +341,6 @@ function activate(context) {
       dispose: () => {
         activitySubscription?.dispose();
         if (activityTimer) clearTimeout(activityTimer);
-        if (temporaryTimer) clearTimeout(temporaryTimer);
         for (const decoration of revealDecorations) decoration.dispose();
         revealDecorations.clear();
         revealServer?.close();
@@ -537,13 +348,6 @@ function activate(context) {
       },
     },
     vscode.commands.registerCommand("cake.reveal", (payload) => reveal(payload || {})),
-    vscode.commands.registerCommand("cake.askAboutSelection", askAboutSelection),
-    vscode.commands.registerCommand("cake.addSelectionToProjectChat", addSelectionToProjectChat),
-    vscode.commands.registerCommand("cake.openCompleteChange", () => openCompleteChange(vscode)),
-    vscode.commands.registerCommand("cake.clearReviewedChanges", () => {
-      for (const change of agentChanges) reviewedChanges.add(change.id);
-      applyChangeDecorations(vscode);
-    }),
     vscode.commands.registerCommand("cake.openAnnotation", (sessionId, threadId) => {
       if (sessionId !== annotationSessionId || !annotations.some((item) => item.id === threadId))
         return;
@@ -556,7 +360,7 @@ function activate(context) {
       postBridge({ type: "toggle-chat-sidebar" }),
     ),
     vscode.window.onDidChangeVisibleTextEditors(() => {
-      applyChangeDecorations(vscode);
+      applyAnnotationDecorations(vscode);
       annotationEmitter.fire();
     }),
     vscode.window.onDidChangeTextEditorSelection((event) =>
@@ -580,7 +384,6 @@ function activate(context) {
 function deactivate() {
   activitySubscription?.dispose();
   if (activityTimer) clearTimeout(activityTimer);
-  if (temporaryTimer) clearTimeout(temporaryTimer);
   for (const decoration of revealDecorations) decoration.dispose();
   revealDecorations.clear();
   revealServer?.close();

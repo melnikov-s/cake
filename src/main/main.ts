@@ -851,22 +851,6 @@ async function handleCakeRequest(
     await vscodeEditor.openSourceControl(request.workspacePath);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
-  if (request.type === "update-embedded-editor-changes") {
-    if (!allowedProjectPaths.has(request.workspacePath))
-      throw new Error("Project path was not selected by the user");
-    const workspace = await realpath(request.workspacePath);
-    const normalized = await Promise.allSettled(
-      request.changes.map(async (change) => {
-        const { target } = await resolveWorkspaceEditorTarget(workspace, change.path);
-        return { ...change, path: relative(workspace, target).split(sep).join("/") };
-      }),
-    );
-    await vscodeEditor.updateAgentChanges(
-      workspace,
-      normalized.flatMap((item) => (item.status === "fulfilled" ? [item.value] : [])),
-    );
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
-  }
   if (request.type === "update-embedded-editor-annotations") {
     if (!allowedProjectPaths.has(request.workspacePath))
       throw new Error("Project path was not selected by the user");

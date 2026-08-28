@@ -18,7 +18,6 @@ import type {
 import type { ArtifactRecord } from "../ipc/artifact-contract";
 import type { ReviewAnchor, ReviewThread } from "../ipc/review-contract";
 import type { SourceLocation } from "../ipc/source-location";
-import type { AgentChange } from "../ipc/agent-change";
 import type { EditorAnnotationSnapshot } from "../ipc/editor-annotation";
 import type { WorktreeLandOutcome, WorktreeRecord, WorktreeStatus } from "../ipc/worktree-contract";
 import type { CustomizationState, PluginDiagnostic, PluginStatus } from "../plugin/plugin-contract";
@@ -155,20 +154,6 @@ export type DesktopClientEvent =
       contextBefore: string;
       contextAfter: string;
     }
-  | {
-      type: "embedded-editor-selection";
-      action: "ask" | "add-to-project-chat";
-      workspacePath: string;
-      path: string;
-      documentVersion: number;
-      startLine: number;
-      startColumn: number;
-      endLine: number;
-      endColumn: number;
-      selectedText: string;
-      contextBefore: string;
-      contextAfter: string;
-    }
   | { type: "embedded-editor-back-to-agent"; workspacePath: string }
   | {
       type: "embedded-editor-annotation-opened";
@@ -280,7 +265,6 @@ export interface DesktopClient {
   }): Promise<void>;
   revealInEmbeddedEditor(workspacePath: string, location: SourceLocation): Promise<void>;
   openEmbeddedEditorSourceControl(workspacePath: string): Promise<void>;
-  updateEmbeddedEditorChanges(workspacePath: string, changes: AgentChange[]): Promise<void>;
   updateEmbeddedEditorAnnotations(
     workspacePath: string,
     snapshot: EditorAnnotationSnapshot,
@@ -604,7 +588,6 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
     event.type === "embedded-editor-location-opened"
   )
     return event;
-  if (event.type === "embedded-editor-selection") return event;
   return undefined;
 }
 
@@ -880,15 +863,6 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         type: "open-embedded-editor-source-control",
         requestId: crypto.randomUUID(),
         workspacePath,
-      });
-    },
-    async updateEmbeddedEditorChanges(workspacePath, changes) {
-      const requestId = crypto.randomUUID();
-      await accept(bridge, {
-        type: "update-embedded-editor-changes",
-        requestId,
-        workspacePath,
-        changes,
       });
     },
     async updateEmbeddedEditorAnnotations(workspacePath, snapshot) {

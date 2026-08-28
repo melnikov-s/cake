@@ -3,7 +3,7 @@ import type { SourceLocation } from "../../../ipc/source-location";
 import { CopyFilePathButton } from "@/components/copy-file-path-button";
 import { Button } from "../ui/button";
 import { syntaxTokenStyle, useHighlightedSource } from "./code";
-import { changedRanges } from "../../../utils/agent-changes";
+import { changedRanges } from "../../../utils/source-ranges";
 
 export type DiffLine = {
   key: string;

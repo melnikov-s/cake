@@ -184,9 +184,6 @@ describe("VsCodeServerManager startup", () => {
       "workbench.startupEditor": "none",
       "workbench.secondarySideBar.defaultVisibility": "hidden",
       "chat.disableAIFeatures": true,
-      "github.copilot.enable": { "*": false },
-      "extensions.autoUpdate": false,
-      "extensions.autoCheckUpdates": false,
       "extensions.ignoreRecommendations": true,
     });
 
@@ -212,14 +209,13 @@ describe("VsCodeServerManager startup", () => {
       "workbench.startupEditor": "none",
       "workbench.secondarySideBar.defaultVisibility": "hidden",
       "chat.disableAIFeatures": true,
-      "github.copilot.enable": { "*": false },
-      "extensions.autoUpdate": false,
-      "extensions.autoCheckUpdates": false,
+      "github.copilot.enable": { "*": true },
+      "extensions.autoUpdate": true,
       "extensions.ignoreRecommendations": true,
     });
   });
 
-  it("prunes Copilot while preserving unrelated extensions and registry entries", async () => {
+  it("preserves user extensions while canonicalizing the Cake companion registry entry", async () => {
     root = await mkdtemp(join(tmpdir(), "cake-vscode-manager-"));
     const companionMain = join(root, "companion.js");
     await writeFile(companionMain, "module.exports = {};\n");
@@ -261,12 +257,11 @@ describe("VsCodeServerManager startup", () => {
 
     await manager["syncCompanionExtension"]();
 
-    await expect(stat(join(extensionsRoot, "github.copilot"))).rejects.toMatchObject({
-      code: "ENOENT",
-    });
+    await expect(stat(join(extensionsRoot, "github.copilot"))).resolves.toBeDefined();
     await expect(stat(join(extensionsRoot, "esbenp.prettier-vscode"))).resolves.toBeDefined();
     const registry = JSON.parse(await readFile(join(extensionsRoot, "extensions.json"), "utf8"));
     expect(registry.map((entry: { identifier: { id: string } }) => entry.identifier.id)).toEqual([
+      "GitHub.copilot",
       "esbenp.prettier-vscode",
       "cake.cake-companion",
     ]);

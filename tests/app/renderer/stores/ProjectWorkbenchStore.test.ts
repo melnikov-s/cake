@@ -247,7 +247,6 @@ function createDesktopClient(restoredPath?: string) {
     updateEmbeddedEditorBounds: vi.fn(async () => undefined),
     revealInEmbeddedEditor: vi.fn(async () => undefined),
     openEmbeddedEditorSourceControl: vi.fn(async () => undefined),
-    updateEmbeddedEditorChanges: vi.fn(async () => undefined),
     updateEmbeddedEditorAnnotations: vi.fn(async () => undefined),
     steerSubagent: vi.fn(async () => undefined),
     abortSubagent: vi.fn(async () => undefined),
@@ -1332,43 +1331,6 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("opens a Cake code-chat draft for a selection made in embedded VS Code", async () => {
-    const desktop = createDesktopClient();
-    const { root, store } = mountTestStore(desktop.client);
-    await flush();
-    await openSnapshot(store, desktop);
-    await store.embeddedEditorStore.show();
-
-    desktop.emit({
-      type: "embedded-editor-selection",
-      action: "ask",
-      workspacePath: "/project",
-      path: "src/main.ts",
-      documentVersion: 7,
-      startLine: 4,
-      startColumn: 2,
-      endLine: 5,
-      endColumn: 8,
-      selectedText: "const answer =\n  calculate();",
-      contextBefore: "function run() {",
-      contextAfter: "}",
-    });
-    await flush();
-
-    expect(store.embeddedEditorStore.visible).toBe(true);
-    expect(root.reviewsStore.draftAnchor).toEqual({
-      path: "src/main.ts",
-      view: "file",
-      start: { diffLine: 4, oldLine: 5, newLine: 5, column: 2 },
-      end: { diffLine: 5, oldLine: 6, newLine: 6, column: 8 },
-      selectedText: "const answer =\n  calculate();",
-      contextBefore: "function run() {",
-      contextAfter: "}",
-      diff: "",
-    });
-    root[Symbol.dispose]();
-  });
-
   it("projects active-session review annotations and opens their authoritative drawer chat", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
@@ -1462,63 +1424,6 @@ describe("ProjectWorkbenchStore", () => {
     });
     await flush();
     expect(store.embeddedEditorStore.chatSidebarVisible).toBe(false);
-    root[Symbol.dispose]();
-  });
-
-  it("adds an exact VS Code selection to the project-chat composer", async () => {
-    const desktop = createDesktopClient();
-    const { root, store } = mountTestStore(desktop.client);
-    await flush();
-    await openSnapshot(store, desktop);
-    await store.embeddedEditorStore.show();
-    const focusRevision = store.activeSession!.composerStore.focusRequestRevision;
-    root.reviewsStore.prepareDraft({
-      path: "old.ts",
-      view: "file",
-      start: { diffLine: 0, newLine: 1, column: 0 },
-      end: { diffLine: 0, newLine: 1, column: 1 },
-      selectedText: "x",
-      contextBefore: "",
-      contextAfter: "",
-      diff: "",
-    });
-
-    desktop.emit({
-      type: "embedded-editor-selection",
-      action: "add-to-project-chat",
-      workspacePath: "/project",
-      path: "src/main.ts",
-      documentVersion: 12,
-      startLine: 4,
-      startColumn: 2,
-      endLine: 5,
-      endColumn: 8,
-      selectedText: "const answer =\n  calculate();",
-      contextBefore: "function run() {",
-      contextAfter: "}",
-    });
-    await flush();
-
-    expect(root.reviewsStore.draftAnchor).toBeUndefined();
-    expect(store.activeSession!.composerStore.attachments).toEqual([
-      {
-        kind: "source",
-        name: "src/main.ts",
-        location: {
-          path: "src/main.ts",
-          documentVersion: 12,
-          range: {
-            start: { line: 4, column: 2 },
-            end: { line: 5, column: 8 },
-          },
-        },
-        selectedText: "const answer =\n  calculate();",
-        contextBefore: "function run() {",
-        contextAfter: "}",
-      },
-    ]);
-    expect(store.activeSession!.composerStore.focusRequestRevision).toBe(focusRevision + 1);
-    expect(store.embeddedEditorStore.visible).toBe(true);
     root[Symbol.dispose]();
   });
 

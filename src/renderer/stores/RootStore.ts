@@ -405,7 +405,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     const updates = [...this.pendingProjectPartUpdates];
     this.pendingProjectPartUpdates.clear();
 
-    let syncAgentChanges = false;
     for (const [sessionId, parts] of updates) {
       for (const part of parts.values()) {
         const session = this.sessionRegistry.upsertPart(sessionId, part);
@@ -413,14 +412,8 @@ export class RootStore extends Store<{ client: DesktopClient }> {
           (part.kind === "text" && part.role === "user" && part.status === "complete") ||
           (part.kind === "attachment" && part.attachmentKind === "image");
         if (canReconcileOptimisticMessage) session?.composerStore.reconcile(sessionId);
-        if (
-          this.projectWorkbenchStore.isActiveSession(sessionId) &&
-          (part.kind === "tool" || (part.kind === "text" && part.role === "user"))
-        )
-          syncAgentChanges = true;
       }
     }
-    if (syncAgentChanges) void this.projectWorkbenchStore.embeddedEditorStore.syncAgentChanges();
   }
 
   private cancelProjectPartFlush() {
@@ -579,7 +572,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         if (this.appShellStore.surface === "workbench") {
           this.appShellStore.selectProjectSession(event.snapshot.sessionId);
         }
-        void this.projectWorkbenchStore.embeddedEditorStore.syncAgentChanges();
       }
       return;
     }

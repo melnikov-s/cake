@@ -2,13 +2,12 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, request as httpRequest, type Server as HttpServer } from "node:http";
 import net from "node:net";
-import { copyFile, mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { WebContentsView, BrowserWindow } from "electron";
 import { applyEdits, modify, parse as parseJsonc, type ParseError } from "jsonc-parser";
 import { z } from "zod";
 import type { SourceLocation } from "../ipc/source-location";
-import type { AgentChange } from "../ipc/agent-change";
 import type { EditorAnnotationSnapshot } from "../ipc/editor-annotation";
 import cakeIconMarkup from "../assets/cake-icon.svg?raw";
 import {
@@ -100,12 +99,8 @@ const editorPreferencesSchema = z.looseObject({
   "workbench.startupEditor": z.string().optional(),
   "workbench.secondarySideBar.defaultVisibility": z.string().optional(),
   "chat.disableAIFeatures": z.boolean().optional(),
-  "github.copilot.enable": z.union([z.boolean(), z.record(z.string(), z.boolean())]).optional(),
-  "extensions.autoUpdate": z.boolean().optional(),
-  "extensions.autoCheckUpdates": z.boolean().optional(),
   "extensions.ignoreRecommendations": z.boolean().optional(),
 });
-const disabledCopilotSettingSchema = z.strictObject({ "*": z.literal(false) });
 
 export type EmbeddedEditorStatus = "missing" | "downloading" | "starting" | "ready" | "failed";
 
@@ -152,27 +147,12 @@ const bridgeMessageSchema = z.discriminatedUnion("type", [
     contextBefore: z.string().max(8_000),
     contextAfter: z.string().max(8_000),
   }),
-  z.object({
-    type: z.literal("selection"),
-    action: z.enum(["ask", "add-to-project-chat"]),
-    workspace: z.string().min(1).max(4_096),
-    path: z.string().min(1).max(8_192),
-    documentVersion: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-    startLine: z.number().int().nonnegative(),
-    startColumn: z.number().int().nonnegative(),
-    endLine: z.number().int().nonnegative(),
-    endColumn: z.number().int().nonnegative(),
-    selectedText: z.string().min(1).max(48_000),
-    contextBefore: z.string().max(8_000),
-    contextAfter: z.string().max(8_000),
-  }),
 ]);
 
 /** Requests Cake posts to the companion extension's localhost server. */
 type CompanionRequest =
   | ({ type: "reveal" } & SourceLocation)
   | { type: "open-source-control" }
-  | { type: "agent-changes"; changes: AgentChange[] }
   | ({ type: "annotations" } & EditorAnnotationSnapshot);
 
 interface BroadcastTarget {
@@ -204,21 +184,7 @@ interface BroadcastTarget {
           threadId: string;
         }
       | { type: "embedded-editor-toggle-chat"; workspacePath: string }
-      | { type: "embedded-editor-context-cleared"; workspacePath: string }
-      | {
-          type: "embedded-editor-selection";
-          action: "ask" | "add-to-project-chat";
-          workspacePath: string;
-          path: string;
-          documentVersion: number;
-          startLine: number;
-          startColumn: number;
-          endLine: number;
-          endColumn: number;
-          selectedText: string;
-          contextBefore: string;
-          contextAfter: string;
-        },
+      | { type: "embedded-editor-context-cleared"; workspacePath: string },
   ): void;
 }
 
@@ -481,16 +447,6 @@ export class VsCodeServerManager {
     const port = await this.waitForCompanionPort(resolved);
     this.touch(instance);
     await postJson(port, "/", { type: "open-source-control" }, this.bridgeToken);
-  }
-
-  /** Updates the transcript-derived change projection shown by the companion extension. */
-  async updateAgentChanges(workspacePath: string, changes: AgentChange[]) {
-    const resolved = await realpath(workspacePath);
-    const instance = this.servers.get(resolved);
-    if (!instance) throw new Error("The embedded editor is not running for this project yet");
-    const port = await this.waitForCompanionPort(resolved);
-    this.touch(instance);
-    await postJson(port, "/", { type: "agent-changes", changes }, this.bridgeToken);
   }
 
   /** Replaces the active session's Cake discussion annotations in VS Code. */
@@ -822,21 +778,6 @@ export class VsCodeServerManager {
       });
       return;
     }
-    this.focusCakeWindow(message.data.workspace);
-    this.props.broadcast({
-      type: "embedded-editor-selection",
-      action: message.data.action,
-      workspacePath: presentedWorkspace,
-      path: message.data.path,
-      documentVersion: message.data.documentVersion,
-      startLine: message.data.startLine,
-      startColumn: message.data.startColumn,
-      endLine: message.data.endLine,
-      endColumn: message.data.endColumn,
-      selectedText: message.data.selectedText,
-      contextBefore: message.data.contextBefore,
-      contextAfter: message.data.contextAfter,
-    });
   }
 
   private focusCakeWindow(workspacePath: string) {
@@ -887,14 +828,6 @@ export class VsCodeServerManager {
       updates.push({ key: "workbench.secondarySideBar.defaultVisibility", value: "hidden" });
     if (settings["chat.disableAIFeatures"] !== true)
       updates.push({ key: "chat.disableAIFeatures", value: true });
-    // Cake's agent is the only intended code producer here. Force Copilot and
-    // VS Code's built-in AI surfaces inert even when a profile enabled them.
-    if (!disabledCopilotSettingSchema.safeParse(settings["github.copilot.enable"]).success)
-      updates.push({ key: "github.copilot.enable", value: { "*": false } });
-    if (settings["extensions.autoUpdate"] !== false)
-      updates.push({ key: "extensions.autoUpdate", value: false });
-    if (settings["extensions.autoCheckUpdates"] !== false)
-      updates.push({ key: "extensions.autoCheckUpdates", value: false });
     if (settings["extensions.ignoreRecommendations"] !== true)
       updates.push({ key: "extensions.ignoreRecommendations", value: true });
     if (updates.length === 0) return;
@@ -919,24 +852,12 @@ export class VsCodeServerManager {
       `${JSON.stringify(this.props.companionManifest, null, 2)}\n`,
     );
     await copyFile(this.props.companionMain, join(extensionRoot, "extension.js"));
-    await this.pruneCopilotExtensions(extensionsRoot);
+    await this.syncExtensionRegistry(extensionsRoot);
     return extensionsRoot;
   }
 
-  /** Removes Copilot without deleting unrelated extensions installed by the user. */
-  private async pruneCopilotExtensions(extensionsRoot: string) {
-    let entries: string[] = [];
-    try {
-      entries = await readdir(extensionsRoot);
-    } catch {
-      // The extensions root is created above before this scan.
-    }
-    let registryDirty = false;
-    for (const entry of entries) {
-      if (!isCopilotExtension(entry)) continue;
-      await rm(join(extensionsRoot, entry), { recursive: true, force: true });
-      registryDirty = true;
-    }
+  /** Keeps Cake's sideloaded extension canonical without altering user extensions. */
+  private async syncExtensionRegistry(extensionsRoot: string) {
     let registryRaw: string | undefined;
     try {
       registryRaw = await readFile(join(extensionsRoot, "extensions.json"), "utf8");
@@ -956,12 +877,10 @@ export class VsCodeServerManager {
         relativeLocation: "cake-companion",
       };
       const retained = parsed.data.filter(
-        (item) =>
-          !isCopilotExtension(item.identifier.id) &&
-          item.identifier.id.toLowerCase() !== "cake.cake-companion",
+        (item) => item.identifier.id.toLowerCase() !== "cake.cake-companion",
       );
       const canonical = [...retained, canonicalCompanion];
-      if (registryDirty || JSON.stringify(parsed.data) !== JSON.stringify(canonical))
+      if (JSON.stringify(parsed.data) !== JSON.stringify(canonical))
         await writeFile(join(extensionsRoot, "extensions.json"), `${JSON.stringify(canonical)}\n`);
     } catch {
       // A malformed registry is rebuilt on the next extension-host scan.
@@ -971,10 +890,6 @@ export class VsCodeServerManager {
   private touch(instance: ServerInstance) {
     instance.lastUsedAt = Date.now();
   }
-}
-
-function isCopilotExtension(value: string) {
-  return value.toLowerCase().includes("copilot");
 }
 
 function workspaceHash(workspacePath: string) {

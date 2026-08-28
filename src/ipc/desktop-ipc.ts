@@ -3,7 +3,6 @@ import { artifactRecordSchema } from "./artifact-contract";
 import { reviewAnchorSchema, reviewThreadSchema } from "./review-contract";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { sourceLocationSchema } from "./source-location";
-import { agentChangeSchema } from "./agent-change";
 import { editorAnnotationSnapshotSchema } from "./editor-annotation";
 import {
   customizationStateSchema,
@@ -220,20 +219,6 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     contextAfter: ipcProjectionString(8_000),
   }),
   z.object({
-    type: z.literal("embedded-editor-selection"),
-    action: z.enum(["ask", "add-to-project-chat"]),
-    workspacePath: z.string().max(4_096),
-    path: ipcProjectionString(8_192),
-    documentVersion: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-    startLine: z.number().int().nonnegative(),
-    startColumn: z.number().int().nonnegative(),
-    endLine: z.number().int().nonnegative(),
-    endColumn: z.number().int().nonnegative(),
-    selectedText: ipcProjectionString(48_000),
-    contextBefore: ipcProjectionString(8_000),
-    contextAfter: ipcProjectionString(8_000),
-  }),
-  z.object({
     type: z.literal("embedded-editor-back-to-agent"),
     workspacePath: z.string().max(4_096),
   }),
@@ -294,12 +279,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     type: z.literal("open-embedded-editor-source-control"),
     requestId: z.uuid(),
     workspacePath: z.string().max(4_096),
-  }),
-  z.object({
-    type: z.literal("update-embedded-editor-changes"),
-    requestId: z.uuid(),
-    workspacePath: z.string().max(4_096),
-    changes: z.array(agentChangeSchema).max(2_000),
   }),
   z.object({
     type: z.literal("update-embedded-editor-annotations"),

@@ -1,5 +1,4 @@
 import { Store, child, createStore } from "r-state-tree";
-import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { SourceLocation } from "../../ipc/source-location";
 import type {
   ApplicationState,
@@ -95,7 +94,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return createStore(EmbeddedEditorStore, {
       client: this.props.embeddedEditorClient,
       projectPath: () => this.projectPath,
-      parts: () => this.activeSession?.canonicalParts ?? [],
       annotations: () => {
         const sessionId = this.selectedSessionId;
         if (!sessionId) return undefined;
@@ -562,64 +560,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     await this.embeddedEditorStore.show(location);
   }
 
-  /** Routes a VS Code selection to either contextual code chat or the project composer. */
-  private async handleEmbeddedEditorSelection(
-    event: Extract<DesktopClientEvent, { type: "embedded-editor-selection" }>,
-  ) {
-    if (
-      event.workspacePath !== this.projectPath ||
-      !this.activeSessionExists ||
-      event.endLine < event.startLine
-    )
-      return;
-    this.reviews.clearActiveThread();
-    if (!this.embeddedEditorStore.visible)
-      await this.embeddedEditorStore.show({ path: event.path });
-    if (this.signal.aborted || event.workspacePath !== this.projectPath) return;
-    const location: SourceLocation = {
-      path: event.path,
-      documentVersion: event.documentVersion,
-      range: {
-        start: { line: event.startLine, column: event.startColumn },
-        end: { line: event.endLine, column: event.endColumn },
-      },
-    };
-    if (event.action === "add-to-project-chat") {
-      this.reviews.cancelDraft();
-      this.reviews.clearActiveThread();
-      this.activeSession?.composerStore.addSourceAttachment({
-        kind: "source",
-        name: event.path.slice(-512),
-        location,
-        selectedText: event.selectedText,
-        contextBefore: event.contextBefore,
-        contextAfter: event.contextAfter,
-      });
-      return;
-    }
-    const anchor: ReviewAnchor = {
-      path: event.path,
-      view: "file",
-      start: {
-        diffLine: event.startLine,
-        oldLine: event.startLine + 1,
-        newLine: event.startLine + 1,
-        column: event.startColumn,
-      },
-      end: {
-        diffLine: event.endLine,
-        oldLine: event.endLine + 1,
-        newLine: event.endLine + 1,
-        column: event.endColumn,
-      },
-      selectedText: event.selectedText,
-      contextBefore: event.contextBefore,
-      contextAfter: event.contextAfter,
-      diff: "",
-    };
-    this.reviews.prepareDraft(anchor);
-  }
-
   dismissSecondarySurfaces() {
     this.commandPaneStore.dismiss();
     this.closeEmbeddedEditor();
@@ -774,10 +714,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     }
     if (event.type === "embedded-editor-location-opened") {
       if (event.workspacePath === this.projectPath) this.embeddedEditorStore.showAgentLocation();
-      return;
-    }
-    if (event.type === "embedded-editor-selection") {
-      void this.handleEmbeddedEditorSelection(event);
       return;
     }
     if (event.type === "pi-state-changed") {

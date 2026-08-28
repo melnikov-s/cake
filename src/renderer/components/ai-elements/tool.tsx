@@ -8,7 +8,7 @@ import type { SourceLocation } from "../../../ipc/source-location";
 import type { ChatStore } from "../../stores/ChatStore";
 import { toolOperationName } from "../../../utils/cake-tool";
 import { toolDiff } from "../../../utils/turn-diff";
-import { toolSourceRange } from "../../../utils/agent-changes";
+import { toolSourceRange } from "../../../utils/source-ranges";
 import { Button } from "../ui/button";
 import { formatElapsed } from "../ui/loading-state";
 import { DiffView } from "./diff-view";

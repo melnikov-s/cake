@@ -3,7 +3,7 @@
   "displayName": "Cake Companion",
   "version": "1.0.0",
   "private": true,
-  "description": "Bridges embedded VS Code with Cake source reveals, selections, and agent-change review navigation.",
+  "description": "Bridges embedded VS Code with Cake source reveals, editor context, and discussions.",
   "license": "UNLICENSED",
   "publisher": "cake",
   "main": "./extension.js",
@@ -12,22 +12,6 @@
       {
         "command": "cake.reveal",
         "title": "Cake: Reveal File"
-      },
-      {
-        "command": "cake.askAboutSelection",
-        "title": "Cake: Ask Cake About Selection"
-      },
-      {
-        "command": "cake.addSelectionToProjectChat",
-        "title": "Cake: Add Selection to Project Chat"
-      },
-      {
-        "command": "cake.openCompleteChange",
-        "title": "Cake: Open Complete Change"
-      },
-      {
-        "command": "cake.clearReviewedChanges",
-        "title": "Cake: Mark Changes Reviewed"
       },
       {
         "command": "cake.backToAgent",
@@ -39,16 +23,7 @@
         "title": "Cake: Toggle Chat Sidebar",
         "icon": "$(layout-sidebar-right)"
       }
-    ],
-    "menus": {
-      "editor/title": [
-        {
-          "command": "cake.openCompleteChange",
-          "when": "resourceScheme == file",
-          "group": "navigation@92"
-        }
-      ]
-    }
+    ]
   },
   "activationEvents": ["onStartupFinished"],
   "engines": {

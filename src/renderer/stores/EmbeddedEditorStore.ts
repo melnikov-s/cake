@@ -1,8 +1,7 @@
 import { Store } from "r-state-tree";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
 import type { SourceLocation } from "../../ipc/source-location";
-import type { Attachment, UiPart } from "../../ipc/session-contract";
-import { agentChanges } from "../../utils/agent-changes";
+import type { Attachment } from "../../ipc/session-contract";
 import type {
   DesktopClient,
   DesktopClientEvent,
@@ -21,11 +20,9 @@ export interface EmbeddedEditorStoreProps {
     | "updateEmbeddedEditorBounds"
     | "revealInEmbeddedEditor"
     | "openEmbeddedEditorSourceControl"
-    | "updateEmbeddedEditorChanges"
     | "updateEmbeddedEditorAnnotations"
   >;
   projectPath(): string | undefined;
-  parts(): readonly UiPart[];
   annotations(): EditorAnnotationSnapshot | undefined;
   startCakeChat(prompt: string): Promise<void>;
 }
@@ -49,9 +46,6 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   private boundsRevision = 0;
   private refreshRevision = 0;
   private installation: Promise<void> | undefined;
-  private sentChangesFingerprint: string | undefined;
-  private syncingChanges = false;
-  private changeSyncPending = false;
   private sentAnnotationsFingerprint: string | undefined;
   private syncingAnnotations = false;
   private annotationSyncPending = false;
@@ -153,7 +147,6 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     if (!this.visible) this.chatSidebarVisible = true;
     this.visible = true;
     this.openedWorkspace = projectPath;
-    void this.syncAgentChanges();
     void this.syncAnnotations();
   }
 
@@ -176,7 +169,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
       await this.props.client.openEmbeddedEditor(projectPath);
       if (this.signal.aborted || this.props.projectPath() !== projectPath) return;
       this.openedWorkspace = projectPath;
-      await Promise.all([this.syncAgentChanges(), this.syncAnnotations()]);
+      await this.syncAnnotations();
     } catch (error) {
       if (this.signal.aborted) return;
       const described = describeError(error);
@@ -264,35 +257,6 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     }
   }
 
-  /** Serializes transcript-derived edits to VS Code; a newer update wins after the active send. */
-  async syncAgentChanges() {
-    const projectPath = this.props.projectPath();
-    if (!projectPath || !this.visible || this.openedWorkspace !== projectPath) return;
-    if (this.syncingChanges) {
-      this.changeSyncPending = true;
-      return;
-    }
-    this.syncingChanges = true;
-    try {
-      do {
-        this.changeSyncPending = false;
-        const changes = agentChanges(this.props.parts());
-        const fingerprint = JSON.stringify(changes);
-        if (fingerprint === this.sentChangesFingerprint) continue;
-        await this.props.client.updateEmbeddedEditorChanges(projectPath, changes);
-        if (this.signal.aborted || this.props.projectPath() !== projectPath) return;
-        this.sentChangesFingerprint = fingerprint;
-      } while (this.changeSyncPending);
-    } catch (error) {
-      if (this.signal.aborted) return;
-      const described = describeError(error);
-      this.error = described.message;
-      this.errorDetails = described.details;
-    } finally {
-      this.syncingChanges = false;
-    }
-  }
-
   /** Serializes active-session Cake discussion annotations to VS Code. */
   async syncAnnotations() {
     const projectPath = this.props.projectPath();
@@ -349,8 +313,6 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     this.openedWorkspace = undefined;
     this.lastActivePath = undefined;
     this.activeContextAttachment = undefined;
-    this.sentChangesFingerprint = undefined;
-    this.changeSyncPending = false;
     this.sentAnnotationsFingerprint = undefined;
     this.annotationSyncPending = false;
   }
