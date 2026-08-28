@@ -38,7 +38,7 @@ export const FolderIcon = () => (
 export const FolderPlusIcon = () => (
   <Icon>
     <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z" />
-    <path d="M14.5 10.5v5M12 13h5" />
+    <path strokeWidth={2.2} d="M12 10v6M9 13h6" />
   </Icon>
 );
 export const CakeIcon = () => (
@@ -70,6 +70,12 @@ export const BranchIcon = () => (
 export const ChatIcon = ({ size = 16 }: { size?: number }) => (
   <Icon size={size}>
     <path d="M20 15a3 3 0 0 1-3 3H8l-5 3 1.7-5.1A7 7 0 0 1 4 13V8a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3z" />
+  </Icon>
+);
+export const AnnotationIcon = ({ size = 16 }: { size?: number }) => (
+  <Icon size={size}>
+    <path d="M19 15a3 3 0 0 1-3 3H8l-4 2 1.2-4A5 5 0 0 1 5 14V8a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3z" />
+    <path d="M9 9h6M9 13h4" />
   </Icon>
 );
 export const CopyIcon = () => (
