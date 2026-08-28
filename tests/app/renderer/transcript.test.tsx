@@ -309,6 +309,25 @@ describe("Transcript scrolling", () => {
     expect(followOutput(false)).toBe(false);
   });
 
+  it("renders user input as plain text with its original line breaks", () => {
+    const parts: UiPart[] = [
+      {
+        id: "user-1",
+        kind: "text",
+        role: "user",
+        text: "# Not a heading\n**Not bold**",
+        status: "complete",
+      },
+    ];
+
+    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts)} />));
+
+    const message = container.querySelector<HTMLElement>(".user-message")!;
+    expect(message.textContent).toBe("# Not a heading\n**Not bold**");
+    expect(message.classList.contains("whitespace-pre-wrap")).toBe(true);
+    expect(message.querySelector(".markdown-content, h1, strong")).toBeNull();
+  });
+
   it("stops following once the response beginning reaches the viewport top", () => {
     const parts: UiPart[] = [
       { id: "user-1", kind: "text", role: "user", text: "Explain", status: "complete" },

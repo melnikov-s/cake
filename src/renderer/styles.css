@@ -2334,13 +2334,6 @@
   padding-left: 0.25em;
   list-style: none;
 }
-.user-message .markdown-content a {
-  color: inherit;
-}
-.user-message .markdown-content :not(pre) > code {
-  border-color: color-mix(in oklab, var(--background) 25%, transparent);
-  background: color-mix(in oklab, var(--background) 12%, transparent);
-}
 .activity-group {
   width: 100%;
   max-width: 100%;

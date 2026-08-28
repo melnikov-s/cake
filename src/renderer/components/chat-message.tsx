@@ -82,14 +82,18 @@ export const ChatTextMessage = forwardRef<
       </MessageLabel>
       <MessageContent
         ref={contentRef}
-        className={assistant ? "assistant-message-content" : "user-message"}
+        className={assistant ? "assistant-message-content" : "user-message whitespace-pre-wrap"}
       >
-        <Markdown
-          highlightCode={part.status !== "streaming"}
-          onOpenSourceLocation={onOpenSourceLocation}
-        >
-          {part.text}
-        </Markdown>
+        {assistant ? (
+          <Markdown
+            highlightCode={part.status !== "streaming"}
+            onOpenSourceLocation={onOpenSourceLocation}
+          >
+            {part.text}
+          </Markdown>
+        ) : (
+          part.text
+        )}
       </MessageContent>
       {children}
     </Message>
