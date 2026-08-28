@@ -40,6 +40,7 @@ export function chatWorkIsActive(
     (part) =>
       (part.kind === "text" && part.role === "user") ||
       part.kind === "skill" ||
+      part.kind === "annotation" ||
       (part.kind === "attachment" && part.attachmentKind === "image"),
   );
   return latestUserIndex < 0 || latestUserIndex === parts.length - 1;
@@ -249,7 +250,10 @@ export interface ChatTranscriptBehavior {
   artifacts?: { records: ArtifactRecord[]; interaction: ArtifactInteractionStore };
   messageComments?: MessageCommentsStore;
   subagents?: SubagentActivityStore;
-  subscribeToChatAboutSelection?(listener: () => void): () => void;
+  showSelectionContextMenu?(input: {
+    canChat: boolean;
+    canAnnotate: boolean;
+  }): Promise<"chat-about-selection" | "add-annotation" | undefined>;
 }
 
 export interface CanonicalTranscriptBehavior extends ChatTranscriptBehavior {

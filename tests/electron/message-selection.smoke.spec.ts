@@ -145,6 +145,18 @@ test("selects rendered TypeScript and opens a continuous, resizable selection ch
     await expect
       .poll(() => page.evaluate(() => window.getSelection()?.toString().trim()))
       .toBe("UtilityModePreferences");
+    await application.evaluate(({ Menu }) => {
+      const buildFromTemplate = Menu.buildFromTemplate.bind(Menu);
+      Menu.buildFromTemplate = (template) => {
+        const menu = buildFromTemplate(template);
+        menu.popup = (options) => {
+          const item = menu.items.find((candidate) => candidate.label === "Chat about this");
+          if (!item?.click) throw new Error("Expected Chat about this menu item");
+          item.click(item, options.window!, { triggeredByAccelerator: false });
+        };
+        return menu;
+      };
+    });
     await page.evaluate(({ x, y }) => {
       const target = document.elementFromPoint(x, y);
       if (!target) throw new Error("Could not resolve selection target");
@@ -152,12 +164,6 @@ test("selects rendered TypeScript and opens a continuous, resizable selection ch
         new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: x, clientY: y }),
       );
     }, selectionTarget);
-    await application.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.webContents.send("cake:event", {
-        type: "context-menu-action",
-        action: "chat-about-selection",
-      });
-    });
 
     const dialog = page.getByRole("dialog", { name: "Chat about this" });
     const input = page.getByLabel("Message about selected text");

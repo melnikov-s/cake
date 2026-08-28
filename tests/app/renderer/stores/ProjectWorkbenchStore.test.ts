@@ -30,6 +30,7 @@ function createDesktopClient(restoredPath?: string) {
   let listener: ((event: DesktopClientEvent) => void) | undefined;
   const client: DesktopClient = {
     chooseProject: vi.fn(async () => "/project"),
+    showTranscriptSelectionContextMenu: vi.fn(async () => undefined),
     showSessionContextMenu: vi.fn(async () => undefined),
     listModels: vi.fn(async () => [
       {

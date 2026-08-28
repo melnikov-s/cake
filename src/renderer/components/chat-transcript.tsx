@@ -5,6 +5,7 @@ import {
   VirtualizedConversation,
   type VirtualizedConversationHandle,
 } from "@/components/ai-elements/conversation";
+import { AnnotationDraftPopover } from "@/components/annotation-draft-popover";
 import { LoadingState } from "@/components/ui/loading-state";
 import {
   MessageCommentDraftPopover,
@@ -60,6 +61,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   const latestUserRef = useRef<{ storeId: string; partId?: string } | undefined>(undefined);
   const restoredScrollState = useMemo(() => store.transcriptScrollState, [store]);
   const [draftAnchor, setDraftAnchor] = useState<MessageCommentAnchorRect>();
+  const [annotationDraft, setAnnotationDraft] = useState<TranscriptSelectionCapture>();
   const visibleParts = store.hideThinking
     ? store.parts.filter((part) => part.kind !== "reasoning")
     : store.parts;
@@ -77,6 +79,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     (part) =>
       (part.kind === "text" && part.role === "user") ||
       part.kind === "skill" ||
+      part.kind === "annotation" ||
       (part.kind === "attachment" && part.attachmentKind === "image"),
   );
   const latestUserPartId = visibleParts[latestUserPartIndex]?.id;
@@ -234,14 +237,15 @@ export const ChatTranscript = observer(function ChatTranscript({
     [messageComments],
   );
   useEffect(() => {
-    if (!messageComments) return;
+    const showContextMenu = behavior.showSelectionContextMenu;
+    if ((!messageComments && !store.canAnnotate) || !showContextMenu) return;
     const handler = (event: MouseEvent) => {
       const target = event.target;
       pendingSelectionRef.current = undefined;
       if (!(target instanceof Node)) return;
       const targetElement = target instanceof Element ? target : target.parentElement;
-      // Editing surfaces are handled by the same native menu, but their text
-      // is not a message selection and therefore cannot start a selection chat.
+      // Editing surfaces retain the ordinary native edit menu and cannot start
+      // a transcript-selection workflow.
       if (
         targetElement?.closest(
           'input, textarea, select, [contenteditable="true"], [contenteditable=""]',
@@ -249,19 +253,26 @@ export const ChatTranscript = observer(function ChatTranscript({
       )
         return;
       const capture = captureTranscriptSelection(store.parts);
-      if (capture) pendingSelectionRef.current = capture;
+      if (!capture) return;
+      event.preventDefault();
+      pendingSelectionRef.current = capture;
+      void showContextMenu({
+        canChat: Boolean(messageComments),
+        canAnnotate: Boolean(store.canAnnotate),
+      })
+        .then((action) => {
+          if (pendingSelectionRef.current !== capture) return;
+          pendingSelectionRef.current = undefined;
+          if (action === "chat-about-selection") openSelectionDraft(capture);
+          else if (action === "add-annotation") setAnnotationDraft(capture);
+        })
+        .catch(() => {
+          if (pendingSelectionRef.current === capture) pendingSelectionRef.current = undefined;
+        });
     };
     document.addEventListener("contextmenu", handler);
     return () => document.removeEventListener("contextmenu", handler);
-  }, [messageComments, store.parts]);
-  useEffect(() => {
-    const subscribe = behavior.subscribeToChatAboutSelection;
-    if (!messageComments || !subscribe) return;
-    return subscribe(() => {
-      const capture = pendingSelectionRef.current;
-      if (capture) openSelectionDraft(capture);
-    });
-  }, [behavior.subscribeToChatAboutSelection, messageComments, openSelectionDraft]);
+  }, [behavior.showSelectionContextMenu, messageComments, openSelectionDraft, store]);
   const selectionOverlays = (
     <>
       {draftAnchor && messageComments && (
@@ -270,6 +281,14 @@ export const ChatTranscript = observer(function ChatTranscript({
           chatStore={messageComments.draftChatStore}
           renderChat={renderChat}
           onClose={() => setDraftAnchor(undefined)}
+        />
+      )}
+      {annotationDraft && (
+        <AnnotationDraftPopover
+          anchor={annotationDraft.rect}
+          selection={annotationDraft.selection}
+          onAdd={(annotation) => store.addAnnotation(annotation)}
+          onClose={() => setAnnotationDraft(undefined)}
         />
       )}
     </>

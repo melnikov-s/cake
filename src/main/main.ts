@@ -626,18 +626,6 @@ function createWindow() {
         },
         { role: "paste", enabled: params.isEditable && params.editFlags.canPaste },
       );
-      if (params.selectionText && !params.isEditable)
-        template.push(
-          { type: "separator" },
-          {
-            label: "Chat about this",
-            click: () =>
-              sendTo(window.webContents, {
-                type: "context-menu-action",
-                action: "chat-about-selection",
-              }),
-          },
-        );
       template.push({ role: "selectAll" });
     }
     Menu.buildFromTemplate(template).popup({ window });
@@ -833,6 +821,33 @@ async function handleCakeRequest(
 ): Promise<DesktopResponse> {
   const request = desktopRequestSchema.parse(untrustedInput);
   const owner = BrowserWindow.fromWebContents(event.sender);
+  if (request.type === "show-transcript-selection-context-menu") {
+    if (!owner)
+      return desktopResponseSchema.parse({
+        type: "transcript-selection-context-menu-closed",
+      });
+    const action = await new Promise<"chat-about-selection" | "add-annotation" | undefined>(
+      (resolve) => {
+        let completed = false;
+        const finish = (selected?: "chat-about-selection" | "add-annotation") => {
+          if (completed) return;
+          completed = true;
+          resolve(selected);
+        };
+        const template: Electron.MenuItemConstructorOptions[] = [{ role: "copy" }];
+        if (request.canAnnotate)
+          template.push({ label: "Add annotation", click: () => finish("add-annotation") });
+        if (request.canChat)
+          template.push({ label: "Chat about this", click: () => finish("chat-about-selection") });
+        template.push({ role: "selectAll" });
+        Menu.buildFromTemplate(template).popup({ window: owner, callback: () => finish() });
+      },
+    );
+    return desktopResponseSchema.parse({
+      type: "transcript-selection-context-menu-closed",
+      action,
+    });
+  }
   if (request.type === "set-fullscreen-surface-open") {
     let surfaceIds = fullscreenSurfaces.get(event.sender.id);
     if (request.open) {

@@ -101,6 +101,7 @@ function Transcript({
   errorDetails,
   errorTitle,
   messageNavigationRequest,
+  addAnnotation,
 }: {
   parts: UiPart[];
   sessionId: string;
@@ -117,6 +118,7 @@ function Transcript({
   errorDetails?: string;
   errorTitle?: string;
   messageNavigationRequest?: { messageId: string; revision: number };
+  addAnnotation?(annotation: Parameters<ChatStore["addAnnotation"]>[0]): void;
 }) {
   const {
     workLogViewMode = "auto",
@@ -200,6 +202,8 @@ function Transcript({
       return transcriptScrollStatesRef.current.get(sessionId);
     },
     messageNavigationRequest,
+    canAnnotate: Boolean(addAnnotation),
+    addAnnotation,
     setTranscriptScrollState(
       state:
         | {
@@ -1151,16 +1155,17 @@ describe("Transcript scrolling", () => {
   }
 
   function mountedContextMenuAction() {
-    let listener: (() => void) | undefined;
+    type SelectionAction = "chat-about-selection" | "add-annotation";
+    let resolve: ((action: SelectionAction) => void) | undefined;
     return {
-      subscribeToChatAboutSelection(next: () => void) {
-        listener = next;
-        return () => {
-          if (listener === next) listener = undefined;
-        };
-      },
-      trigger() {
-        act(() => listener?.());
+      showSelectionContextMenu: vi.fn(
+        () =>
+          new Promise<SelectionAction>((next) => {
+            resolve = next;
+          }),
+      ),
+      async trigger(action: SelectionAction = "chat-about-selection") {
+        await act(async () => resolve?.(action));
       },
     };
   }
@@ -1173,7 +1178,7 @@ describe("Transcript scrolling", () => {
     } as unknown as MessageCommentsStore;
   }
 
-  it("offers Chat about this when right-clicking a message selection", () => {
+  it("offers Chat about this when right-clicking a message selection", async () => {
     const comments: MessageCommentsStore = mount(
       createStore(MessageCommentsStore, {
         client: { createReviewThread: vi.fn() } as never,
@@ -1200,7 +1205,7 @@ describe("Transcript scrolling", () => {
           isStreaming={false}
           behavior={{
             messageComments: comments,
-            subscribeToChatAboutSelection: contextMenu.subscribeToChatAboutSelection,
+            showSelectionContextMenu: contextMenu.showSelectionContextMenu,
           }}
           empty={<div />}
         />,
@@ -1210,7 +1215,11 @@ describe("Transcript scrolling", () => {
     const content = container.querySelector<HTMLElement>(".assistant-message-content")!;
     selectWithin(content, "important");
     rightClick(content);
-    contextMenu.trigger();
+    expect(contextMenu.showSelectionContextMenu).toHaveBeenCalledWith({
+      canChat: true,
+      canAnnotate: false,
+    });
+    await contextMenu.trigger();
 
     const dialog = document.body.querySelector<HTMLElement>(
       '[role="dialog"][aria-label="Chat about this"]',
@@ -1235,6 +1244,64 @@ describe("Transcript scrolling", () => {
     expect(input).toBe(document.activeElement);
     window.getSelection()?.removeAllRanges();
     comments[Symbol.dispose]();
+  });
+
+  it("adds an annotated transcript selection to the composer", async () => {
+    const addAnnotation = vi.fn();
+    const contextMenu = mountedContextMenuAction();
+    act(() =>
+      root.render(
+        <Transcript
+          parts={[
+            {
+              id: "assistant-annotation",
+              kind: "text",
+              role: "assistant",
+              entryId: "entry-annotation",
+              text: "Alpha important detail.",
+              status: "complete",
+            },
+          ]}
+          sessionId="session-1"
+          isStreaming={false}
+          behavior={{ showSelectionContextMenu: contextMenu.showSelectionContextMenu }}
+          addAnnotation={addAnnotation}
+          empty={<div />}
+        />,
+      ),
+    );
+
+    const content = container.querySelector<HTMLElement>(".assistant-message-content")!;
+    selectWithin(content, "important");
+    rightClick(content);
+    expect(contextMenu.showSelectionContextMenu).toHaveBeenCalledWith({
+      canChat: false,
+      canAnnotate: true,
+    });
+    await contextMenu.trigger("add-annotation");
+
+    const dialog = document.body.querySelector<HTMLElement>(
+      '[role="dialog"][aria-label="Add annotation"]',
+    )!;
+    const comment = dialog.querySelector<HTMLTextAreaElement>('[aria-label="Annotation comment"]')!;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
+        comment,
+        "Remember this constraint",
+      );
+      comment.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    act(() => dialog.querySelector<HTMLButtonElement>('button[type="submit"]')!.click());
+
+    expect(addAnnotation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: "assistant-annotation",
+        entryId: "entry-annotation",
+        selectedText: "important",
+        comment: "Remember this constraint",
+      }),
+    );
+    expect(document.body.querySelector('[role="dialog"][aria-label="Add annotation"]')).toBeNull();
   });
 
   it("keeps the native menu over editing surfaces and collapsed selections", () => {
@@ -1287,7 +1354,7 @@ describe("Transcript scrolling", () => {
     draftChat[Symbol.dispose]();
   });
 
-  it("offers Chat about this for selections in the user's own message", () => {
+  it("offers Chat about this for selections in the user's own message", async () => {
     const draftChat = mount(
       createStore(ChatStore, {
         id: () => "user-message-comment-draft",
@@ -1320,7 +1387,7 @@ describe("Transcript scrolling", () => {
           isStreaming={false}
           behavior={{
             messageComments: comments,
-            subscribeToChatAboutSelection: contextMenu.subscribeToChatAboutSelection,
+            showSelectionContextMenu: contextMenu.showSelectionContextMenu,
           }}
           empty={<div />}
         />,
@@ -1330,7 +1397,7 @@ describe("Transcript scrolling", () => {
     const message = container.querySelector<HTMLElement>(".user-message")!;
     selectWithin(message, "settings shape");
     rightClick(message);
-    contextMenu.trigger();
+    await contextMenu.trigger();
     expect(comments.prepareDraft).toHaveBeenCalledWith(
       expect.objectContaining({ messageId: "user-1", selectedText: "settings shape" }),
     );
@@ -1340,7 +1407,7 @@ describe("Transcript scrolling", () => {
     draftChat[Symbol.dispose]();
   });
 
-  it("offers Chat about this for selections inside fenced code", () => {
+  it("offers Chat about this for selections inside fenced code", async () => {
     const draftChat = mount(
       createStore(ChatStore, {
         id: () => "code-message-comment-draft",
@@ -1374,7 +1441,7 @@ describe("Transcript scrolling", () => {
           isStreaming={false}
           behavior={{
             messageComments: comments,
-            subscribeToChatAboutSelection: contextMenu.subscribeToChatAboutSelection,
+            showSelectionContextMenu: contextMenu.showSelectionContextMenu,
           }}
           empty={<div />}
         />,
@@ -1385,7 +1452,7 @@ describe("Transcript scrolling", () => {
     selectWithin(content, "value");
     const codeBlock = content.querySelector("[data-streamdown='code-block'], pre, code")!;
     rightClick(codeBlock);
-    contextMenu.trigger();
+    await contextMenu.trigger();
     expect(comments.prepareDraft).toHaveBeenCalledWith(
       expect.objectContaining({ messageId: "assistant-code", selectedText: "value" }),
     );
@@ -1434,7 +1501,7 @@ describe("Transcript scrolling", () => {
     draftChat[Symbol.dispose]();
   });
 
-  it("offers the same selection chat above a fullscreen assistant response", () => {
+  it("offers the same selection chat above a fullscreen assistant response", async () => {
     const draftChat = mount(
       createStore(ChatStore, {
         id: () => "fullscreen-message-comment-draft",
@@ -1468,7 +1535,7 @@ describe("Transcript scrolling", () => {
           isStreaming={false}
           behavior={{
             messageComments: comments,
-            subscribeToChatAboutSelection: contextMenu.subscribeToChatAboutSelection,
+            showSelectionContextMenu: contextMenu.showSelectionContextMenu,
           }}
           empty={<div />}
         />,
@@ -1484,7 +1551,7 @@ describe("Transcript scrolling", () => {
     const content = fullscreen.querySelector<HTMLElement>(".fullscreen-surface-content")!;
     selectWithin(content, "important");
     rightClick(content);
-    contextMenu.trigger();
+    await contextMenu.trigger();
     expect(document.body.querySelector(".fullscreen-surface")).toBe(fullscreen);
     expect(
       document.body.querySelector('[role="dialog"][aria-label="Chat about this"]'),

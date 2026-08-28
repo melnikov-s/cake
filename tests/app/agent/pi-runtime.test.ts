@@ -906,6 +906,39 @@ describe("Pi 0.84.0 foundation contract", () => {
     ]);
   });
 
+  it("round-trips transcript annotations through the Pi transcript", () => {
+    const annotation = {
+      id: "00000000-0000-4000-8000-000000000001",
+      messageId: "assistant-1",
+      entryId: "entry-1",
+      selectedText: "important detail",
+      startOffset: 6,
+      endOffset: 22,
+      contextBefore: "Alpha ",
+      contextAfter: ".",
+      comment: "Preserve this constraint",
+    };
+    const text = promptText("Apply this feedback", [
+      { kind: "annotation", annotations: [annotation] },
+    ]);
+    expect(text).toContain("<cake-annotations>");
+
+    expect(
+      projectSessionEntries([
+        {
+          type: "message",
+          id: "user-annotation",
+          parentId: null,
+          timestamp: new Date(0).toISOString(),
+          message: { role: "user", content: [{ type: "text", text }], timestamp: 0 },
+        },
+      ] as never),
+    ).toEqual([
+      expect.objectContaining({ kind: "text", role: "user", text: "Apply this feedback" }),
+      expect.objectContaining({ kind: "annotation", annotations: [annotation] }),
+    ]);
+  });
+
   it("projects a persisted handoff preamble as an info notice before the dialogue", () => {
     const parts = projectSessionEntries([
       {

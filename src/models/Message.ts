@@ -1,5 +1,10 @@
 import { Model, id } from "r-state-tree";
-import { uiPartSchema, type ToolOutputContent, type UiPart } from "../ipc/session-contract";
+import {
+  uiPartSchema,
+  type Annotation,
+  type ToolOutputContent,
+  type UiPart,
+} from "../ipc/session-contract";
 
 type TextRole = Extract<UiPart, { kind: "text" }>["role"];
 type TextStatus = Extract<UiPart, { kind: "text" }>["status"];
@@ -32,6 +37,7 @@ export class Message extends Model {
   mediaType: string | undefined;
   attachmentKind: AttachmentKind | undefined;
   data: string | undefined;
+  annotations: Annotation[] | undefined;
   tone: NoticeTone | undefined;
   detail: string | undefined;
   retryAt: number | undefined;
@@ -81,6 +87,9 @@ export class Message extends Model {
         this.mediaType = part.mediaType;
         this.attachmentKind = part.attachmentKind;
         this.data = part.data;
+        return true;
+      case "annotation":
+        this.annotations = part.annotations;
         return true;
       case "notice":
         this.tone = part.tone;
@@ -149,6 +158,8 @@ export class Message extends Model {
           attachmentKind: this.attachmentKind!,
           data: this.data,
         };
+      case "annotation":
+        return { id: this.id, kind: this.kind, annotations: this.annotations! };
       case "notice":
         return {
           id: this.id,

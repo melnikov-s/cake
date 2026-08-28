@@ -128,7 +128,11 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   get canSubmit() {
     return (
       this.props.canSubmit() &&
-      Boolean(this.chatStore.draft.trim() || this.composerStore.attachments.length > 0)
+      Boolean(
+        this.chatStore.draft.trim() ||
+        this.composerStore.attachments.length > 0 ||
+        this.composerStore.annotations.length > 0,
+      )
     );
   }
 
@@ -233,6 +237,9 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       addAttachments: () => this.composerStore.addAttachments(),
       addPastedImages: (files) => this.composerStore.addPastedImages(files),
       removeAttachment: (index) => this.composerStore.removeAttachment(index),
+      annotations: () => this.composerStore.annotations,
+      addAnnotation: (annotation) => this.composerStore.addAnnotation(annotation),
+      removeAnnotation: (id) => this.composerStore.removeAnnotation(id),
       suggestFiles: (prefix) => this.composerStore.suggestFiles(prefix),
       focusRequestRevision: () => this.composerStore.focusRequestRevision,
       usage: () => this.model.usage,

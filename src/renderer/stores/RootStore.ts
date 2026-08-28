@@ -475,6 +475,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         const session = this.sessionRegistry.upsertPart(sessionId, part);
         const canReconcileOptimisticMessage =
           (part.kind === "text" && part.role === "user" && part.status === "complete") ||
+          part.kind === "annotation" ||
           (part.kind === "attachment" && part.attachmentKind === "image");
         if (canReconcileOptimisticMessage) session?.composerStore.reconcile(sessionId);
       }
@@ -511,7 +512,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       this.settingsStore.applyApplicationState(event.state);
       return;
     }
-    if (event.type === "context-menu-action") return;
     if (event.type === "global-chat-control-requested") {
       void this.appControl
         .invoke(event.invocation)

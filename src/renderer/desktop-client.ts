@@ -50,7 +50,6 @@ export interface EmbeddedEditorStateSnapshot {
 
 export type DesktopClientEvent =
   | { type: "pi-state-changed"; state: PiState; workspacePath?: string }
-  | { type: "context-menu-action"; action: "chat-about-selection" }
   | { type: "workspace-inspected"; operationId: string; path: string; trustRequired: boolean }
   | { type: "session-snapshot-received"; operationId?: string; snapshot: SessionSnapshot }
   | { type: "part-updated"; sessionId: string; part: UiPart }
@@ -166,6 +165,10 @@ export type DesktopClientEvent =
 
 export interface DesktopClient {
   chooseProject(): Promise<string | undefined>;
+  showTranscriptSelectionContextMenu(input: {
+    canChat: boolean;
+    canAnnotate: boolean;
+  }): Promise<"chat-about-selection" | "add-annotation" | undefined>;
   showSessionContextMenu(input: {
     sessionId: string;
     x: number;
@@ -472,7 +475,6 @@ export interface DesktopClient {
 function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
   if (event.type === "pi-state")
     return { type: "pi-state-changed", state: event.state, workspacePath: event.workspacePath };
-  if (event.type === "context-menu-action") return event;
   if (event.type === "workspace-inspected")
     return {
       type: "workspace-inspected",
@@ -614,6 +616,15 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       if (response.type !== "project-chosen")
         throw new Error("Cake received an invalid project response");
       return response.path;
+    },
+    async showTranscriptSelectionContextMenu(input) {
+      const response = await bridge.request({
+        type: "show-transcript-selection-context-menu",
+        ...input,
+      });
+      if (response.type !== "transcript-selection-context-menu-closed")
+        throw new Error("Cake received an invalid transcript selection context menu response");
+      return response.action;
     },
     async showSessionContextMenu(input) {
       const response = await bridge.request({ type: "show-session-context-menu", ...input });

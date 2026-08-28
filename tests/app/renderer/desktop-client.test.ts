@@ -15,6 +15,11 @@ function createBridge() {
     if (input.type === "respond-ui")
       return { type: "ui-response-accepted", uiRequestId: input.uiRequestId };
     if (input.type === "choose-project") return { type: "project-chosen", path: "/project" };
+    if (input.type === "show-transcript-selection-context-menu")
+      return {
+        type: "transcript-selection-context-menu-closed",
+        action: "chat-about-selection",
+      };
     if (input.type === "show-session-context-menu")
       return { type: "session-context-menu-closed", action: "rename" };
     if (input.type === "get-home-directory") return { type: "home-directory", path: "/home/user" };
@@ -67,6 +72,14 @@ describe("desktop client", () => {
     const operationId = crypto.randomUUID();
 
     expect(await client.chooseProject()).toBe("/project");
+    expect(
+      await client.showTranscriptSelectionContextMenu({ canChat: true, canAnnotate: false }),
+    ).toBe("chat-about-selection");
+    expect(desktop.request).toHaveBeenCalledWith({
+      type: "show-transcript-selection-context-menu",
+      canChat: true,
+      canAnnotate: false,
+    });
     expect(await client.showSessionContextMenu({ sessionId: "session", x: 12, y: 34 })).toBe(
       "rename",
     );
@@ -197,7 +210,6 @@ describe("desktop client", () => {
     client.subscribe(listener);
     const requestId = crypto.randomUUID();
 
-    desktop.emit({ type: "context-menu-action", action: "chat-about-selection" });
     desktop.emit({ type: "workspace-inspected", requestId, path: "/project", trustRequired: true });
     desktop.emit({
       type: "changelog-snapshot",
@@ -205,10 +217,6 @@ describe("desktop client", () => {
       workspacePath: "/project",
       sessionId: "session",
       markdown: "# Changelog",
-    });
-    expect(listener).toHaveBeenCalledWith({
-      type: "context-menu-action",
-      action: "chat-about-selection",
     });
     expect(listener).toHaveBeenCalledWith({
       type: "workspace-inspected",

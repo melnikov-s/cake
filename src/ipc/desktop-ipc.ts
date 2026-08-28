@@ -61,8 +61,8 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     workspacePath: z.string().max(4_096).optional(),
   }),
   z.object({
-    type: z.literal("context-menu-action"),
-    action: z.literal("chat-about-selection"),
+    type: z.literal("fullscreen-surface-close-requested"),
+    surfaceId: z.uuid(),
   }),
   z.object({
     type: z.literal("workspace-inspected"),
@@ -245,6 +245,11 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
 
 export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("choose-project") }),
+  z.object({
+    type: z.literal("show-transcript-selection-context-menu"),
+    canChat: z.boolean(),
+    canAnnotate: z.boolean(),
+  }),
   z.object({
     type: z.literal("set-fullscreen-surface-open"),
     requestId: z.uuid(),
@@ -779,6 +784,10 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
 
 export const desktopResponseSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("project-chosen"), path: z.string().max(4_096).optional() }),
+  z.object({
+    type: z.literal("transcript-selection-context-menu-closed"),
+    action: z.enum(["chat-about-selection", "add-annotation"]).optional(),
+  }),
   z.object({
     type: z.literal("session-context-menu-closed"),
     action: z.literal("rename").optional(),

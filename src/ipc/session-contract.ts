@@ -131,6 +131,23 @@ export const fileSuggestionSchema = z.object({
   description: ipcProjectionString(4_096).optional(),
 });
 
+const annotationSchema = z
+  .object({
+    id: z.uuid(),
+    messageId: z.string().min(1).max(256),
+    entryId: z.string().min(1).max(256).optional(),
+    selectedText: ipcProjectionString(48_000).pipe(z.string().min(1)),
+    startOffset: z.number().int().nonnegative(),
+    endOffset: z.number().int().nonnegative(),
+    contextBefore: ipcProjectionString(8_000),
+    contextAfter: ipcProjectionString(8_000),
+    comment: ipcProjectionString(16_000).optional(),
+  })
+  .refine((annotation) => annotation.endOffset > annotation.startOffset, {
+    message: "Annotation end offset must follow its start offset",
+    path: ["endOffset"],
+  });
+
 export const attachmentSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("file"),
@@ -150,6 +167,10 @@ export const attachmentSchema = z.discriminatedUnion("kind", [
     selectedText: ipcProjectionString(48_000),
     contextBefore: ipcProjectionString(8_000),
     contextAfter: ipcProjectionString(8_000),
+  }),
+  z.object({
+    kind: z.literal("annotation"),
+    annotations: z.array(annotationSchema).min(1).max(100),
   }),
 ]);
 
@@ -216,6 +237,11 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
     attachmentKind: z.enum(["file", "image", "source"]),
     data: z.string().max(20_000_000).optional(),
     location: sourceLocationSchema.optional(),
+  }),
+  z.object({
+    ...partBase,
+    kind: z.literal("annotation"),
+    annotations: z.array(annotationSchema).min(1).max(100),
   }),
   z.object({
     ...partBase,
@@ -505,6 +531,7 @@ export const windowViewStateSchema = z.object({
 export type WorkLogViewMode = z.infer<typeof workLogViewModeSchema>;
 export type WorkLogsExpansion = z.infer<typeof workLogsExpansionSchema>;
 export type FileSuggestion = z.infer<typeof fileSuggestionSchema>;
+export type Annotation = z.infer<typeof annotationSchema>;
 export type Attachment = z.infer<typeof attachmentSchema>;
 export type UiPart = z.infer<typeof uiPartSchema>;
 export type ModelOption = z.infer<typeof modelOptionSchema>;

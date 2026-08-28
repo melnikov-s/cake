@@ -147,10 +147,11 @@ export function textFromContent(content: unknown): string {
 
 const sourceAttachmentPattern =
   /(?:^|\n)<cake-source-attachment>(.*?)<\/cake-source-attachment>(?:\n|$)/gs;
+const annotationAttachmentPattern = /(?:^|\n)<cake-annotations>(.*?)<\/cake-annotations>(?:\n|$)/gs;
 
-function parseSourceAttachmentBlocks(text: string) {
-  const attachments: Extract<Attachment, { kind: "source" }>[] = [];
-  const visibleText = text.replace(sourceAttachmentPattern, (_match, encoded: string) => {
+function parseContextAttachmentBlocks(text: string) {
+  const attachments: Extract<Attachment, { kind: "source" | "annotation" }>[] = [];
+  const withoutSources = text.replace(sourceAttachmentPattern, (_match, encoded: string) => {
     try {
       const parsed = attachmentSchema.safeParse(JSON.parse(encoded));
       if (!parsed.success || parsed.data.kind !== "source") return _match;
@@ -160,6 +161,19 @@ function parseSourceAttachmentBlocks(text: string) {
       return _match;
     }
   });
+  const visibleText = withoutSources.replace(
+    annotationAttachmentPattern,
+    (_match, encoded: string) => {
+      try {
+        const parsed = attachmentSchema.safeParse(JSON.parse(encoded));
+        if (!parsed.success || parsed.data.kind !== "annotation") return _match;
+        attachments.push(parsed.data);
+        return "\n";
+      } catch {
+        return _match;
+      }
+    },
+  );
   return { text: visibleText.trim(), attachments };
 }
 
@@ -175,8 +189,8 @@ function partsFromMessage(
 
   if (role === "user") {
     const parts: UiPart[] = [];
-    const parsedSource = parseSourceAttachmentBlocks(textFromContent(content));
-    const text = parsedSource.text;
+    const parsedContext = parseContextAttachmentBlocks(textFromContent(content));
+    const text = parsedContext.text;
     const skill = parseSkillBlock(text);
     if (skill) {
       parts.push({
@@ -203,7 +217,15 @@ function partsFromMessage(
         text,
         status: "complete",
       });
-    parsedSource.attachments.forEach((attachment, index) => {
+    parsedContext.attachments.forEach((attachment, index) => {
+      if (attachment.kind === "annotation") {
+        parts.push({
+          id: `${baseId}-annotation-${index}`,
+          kind: "annotation",
+          annotations: attachment.annotations,
+        });
+        return;
+      }
       parts.push({
         id: `${baseId}-source-attachment-${index}`,
         kind: "attachment",
@@ -565,9 +587,11 @@ export function imageContent(attachments: Attachment[]) {
 export function promptText(text: string, attachments: Attachment[]) {
   const additions = attachments.flatMap((item) => {
     if (item.kind === "file") return [`@${item.path}`];
-    if (item.kind !== "source") return [];
     const encoded = JSON.stringify(item).replaceAll("<", "\\u003c");
-    return [`<cake-source-attachment>${encoded}</cake-source-attachment>`];
+    if (item.kind === "source")
+      return [`<cake-source-attachment>${encoded}</cake-source-attachment>`];
+    if (item.kind === "annotation") return [`<cake-annotations>${encoded}</cake-annotations>`];
+    return [];
   });
   return additions.length ? `${text}${text ? "\n\n" : ""}${additions.join("\n")}` : text;
 }

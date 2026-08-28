@@ -1,5 +1,6 @@
 import { Store, observable } from "r-state-tree";
 import type {
+  Annotation,
   Attachment,
   ChatConfiguration,
   FileSuggestion,
@@ -56,6 +57,7 @@ export interface MessageComposerStoreProps {
 /** Owns attachments, the local prompt queue, optimistic immediate prompts, and prompt delivery. */
 export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   attachments: Attachment[] = observable([]);
+  annotations: Annotation[] = observable([]);
   editorContextAttachment: Extract<Attachment, { kind: "source" }> | undefined;
   pendingUserMessages: PendingUserMessage[] = observable([]);
   queuedPrompts: QueuedPrompt[] = observable([]);
@@ -149,17 +151,32 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   }
 
   get visibleAttachments() {
+    const explicit = this.attachments.filter((attachment) => attachment.kind !== "annotation");
     const context = this.editorContextAttachment;
-    if (!context) return this.attachments;
+    if (!context) return explicit;
     return [
       context,
-      ...this.attachments.filter(
+      ...explicit.filter(
         (attachment) =>
           attachment.kind !== "source" ||
           attachment.location.path !== context.location.path ||
           JSON.stringify(attachment.location.range) !== JSON.stringify(context.location.range),
       ),
     ];
+  }
+
+  addAnnotation(annotation: Omit<Annotation, "id">) {
+    if (this.annotations.length >= 100) {
+      this.reportError(new Error("A message can include at most 100 annotations"));
+      return;
+    }
+    this.annotations.push({ id: crypto.randomUUID(), ...annotation });
+    this.requestFocus();
+  }
+
+  removeAnnotation(id: string) {
+    const index = this.annotations.findIndex((annotation) => annotation.id === id);
+    if (index >= 0) this.annotations.splice(index, 1);
   }
 
   setEditorContextAttachment(attachment: Extract<Attachment, { kind: "source" }> | undefined) {
@@ -268,8 +285,10 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     }
     const sessionId = this.props.sessionId();
     if (!sessionId) return;
-    const explicitAttachments = this.attachments.slice();
-    const attachments = this.editorContextAttachment
+    const explicitAttachments = this.attachments.filter(
+      (attachment) => attachment.kind !== "annotation",
+    );
+    const contextAttachments = this.editorContextAttachment
       ? [
           this.editorContextAttachment,
           ...explicitAttachments.filter(
@@ -281,18 +300,25 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
           ),
         ]
       : explicitAttachments;
+    const annotations = this.annotations.slice();
+    const attachments: Attachment[] = [
+      ...contextAttachments,
+      ...(annotations.length > 0 ? [{ kind: "annotation" as const, annotations }] : []),
+    ];
     if (deliveryOverride === undefined && this.props.isStreaming()) {
       // While streaming, submissions queue locally and stay editable above the composer.
-      if (text || explicitAttachments.length > 0) {
+      if (text || explicitAttachments.length > 0 || annotations.length > 0) {
         this.props.setDraft("");
         this.attachments.splice(0);
+        this.annotations.splice(0);
         this.queuedPrompts.push({ id: crypto.randomUUID(), text, attachments });
       }
       return;
     }
-    if (text || explicitAttachments.length > 0) {
+    if (text || explicitAttachments.length > 0 || annotations.length > 0) {
       this.props.setDraft("");
       this.attachments.splice(0);
+      this.annotations.splice(0);
       await this.deliver(text, attachments, deliveryOverride ?? "prompt", sessionId, true);
     }
   }
@@ -350,7 +376,10 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     const entry = this.takeQueuedPrompt(id);
     if (!entry) return;
     this.props.setDraft(entry.text);
-    this.attachments.push(...entry.attachments);
+    for (const attachment of entry.attachments) {
+      if (attachment.kind === "annotation") this.annotations.push(...attachment.annotations);
+      else this.attachments.push(attachment);
+    }
     this.requestFocus();
   }
 
@@ -448,7 +477,10 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       this.finishOperation(operationId);
       if (restoreOnError) {
         if (!this.props.draft().trim()) this.props.setDraft(text);
-        this.attachments.push(...attachments);
+        for (const attachment of attachments) {
+          if (attachment.kind === "annotation") this.annotations.push(...attachment.annotations);
+          else this.attachments.push(attachment);
+        }
       }
       return false;
     }
@@ -524,6 +556,14 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
             location: attachment.location,
           },
         ];
+      if (attachment.kind === "annotation")
+        return [
+          {
+            id: `optimistic-user-${operationId}-annotation-${index}`,
+            kind: "annotation" as const,
+            annotations: attachment.annotations,
+          },
+        ];
       return [];
     });
     const deliveryState =
@@ -590,6 +630,17 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
           part.status === "complete" &&
           part.text === text,
       ).length;
+    const annotation = parts.find(
+      (part): part is Extract<UiPart, { kind: "annotation" }> => part.kind === "annotation",
+    );
+    if (annotation) {
+      const ids = annotation.annotations.map((item) => item.id).join("\u0000");
+      return canonical.filter(
+        (part) =>
+          part.kind === "annotation" &&
+          part.annotations.map((item) => item.id).join("\u0000") === ids,
+      ).length;
+    }
     const attachment = parts.find(
       (part): part is Extract<UiPart, { kind: "attachment" }> => part.kind === "attachment",
     );

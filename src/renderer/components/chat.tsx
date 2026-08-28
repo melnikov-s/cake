@@ -1,5 +1,6 @@
 import { useLayoutEffect, useReducer, useRef, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
+import { AnnotationSummary } from "@/components/annotation-summary";
 import { ChatComposer } from "@/components/chat-composer";
 import { ImagePreview } from "@/components/image-preview";
 import { ChatTranscript, type ChatTranscriptBehavior } from "@/components/chat-transcript";
@@ -229,7 +230,10 @@ export const Chat = observer(function Chat({
             <Usage store={store} />
             {pluginActions}
             {(() => {
-              const hasInput = store.draft.trim().length > 0 || store.attachments.length > 0;
+              const hasInput =
+                store.draft.trim().length > 0 ||
+                store.attachments.length > 0 ||
+                store.annotations.length > 0;
               return (
                 <>
                   {(!store.loading || hasInput) && (
@@ -259,10 +263,14 @@ export const Chat = observer(function Chat({
       >
         <QueuedPrompts store={store} />
         {composerContent}
+        <AnnotationSummary
+          annotations={store.annotations}
+          onRemove={(id) => store.removeAnnotation(id)}
+        />
         {store.attachments.length > 0 && (
           <div className="attachment-list">
             {store.attachments.map((attachment, index) =>
-              attachment.kind === "source" ? (
+              attachment.kind === "annotation" ? null : attachment.kind === "source" ? (
                 <SourceAttachment
                   key={`${attachment.kind}-${attachment.name}-${index}`}
                   attachment={attachment}

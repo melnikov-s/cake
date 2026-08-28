@@ -1,6 +1,7 @@
 import { observable, Store, untracked } from "r-state-tree";
 import type { StateSnapshot } from "react-virtuoso";
 import type {
+  Annotation,
   Attachment,
   FileSuggestion,
   SessionSnapshot,
@@ -28,6 +29,9 @@ export interface ChatStoreProps {
   addAttachments?(): Promise<void>;
   addPastedImages?(files: readonly File[]): Promise<void>;
   removeAttachment?(index: number): void;
+  annotations?(): readonly Annotation[];
+  addAnnotation?(annotation: Omit<Annotation, "id">): void;
+  removeAnnotation?(id: string): void;
   suggestFiles?(prefix: string): Promise<FileSuggestion[]>;
   focusRequestRevision?(): number;
   usage?(): SessionSnapshot["usage"];
@@ -228,6 +232,12 @@ export class ChatStore extends Store<ChatStoreProps> {
   get attachments() {
     return this.props.attachments?.() ?? [];
   }
+  get annotations(): readonly Annotation[] {
+    return this.props.annotations?.() ?? [];
+  }
+  get canAnnotate() {
+    return Boolean(this.props.addAnnotation);
+  }
   get focusRequestRevision() {
     return this.props.focusRequestRevision?.();
   }
@@ -330,7 +340,12 @@ export class ChatStore extends Store<ChatStoreProps> {
     // Submitting an empty composer while prompts are queued steers the head of
     // the queue immediately, so "type + Enter, Enter" is a keyboard-only way to
     // steer while streaming.
-    if (!value.trim() && this.attachments.length === 0 && this.queuedPrompts.length > 0) {
+    if (
+      !value.trim() &&
+      this.attachments.length === 0 &&
+      this.annotations.length === 0 &&
+      this.queuedPrompts.length > 0
+    ) {
       this.steerQueuedPrompt(this.queuedPrompts[0]!.id);
       return true;
     }
@@ -366,6 +381,12 @@ export class ChatStore extends Store<ChatStoreProps> {
   }
   removeAttachment(index: number) {
     this.props.removeAttachment?.(index);
+  }
+  addAnnotation(annotation: Omit<Annotation, "id">) {
+    this.props.addAnnotation?.(annotation);
+  }
+  removeAnnotation(id: string) {
+    this.props.removeAnnotation?.(id);
   }
   suggestFiles(prefix: string) {
     return this.props.suggestFiles?.(prefix) ?? Promise.resolve([]);

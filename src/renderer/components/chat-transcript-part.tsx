@@ -3,6 +3,7 @@ import { Markdown } from "@/components/ai-elements/markdown";
 import { Reasoning } from "@/components/ai-elements/reasoning";
 import { Source } from "@/components/ai-elements/source";
 import { Tool, ToolRunTimer } from "@/components/ai-elements/tool";
+import { AnnotationSummary } from "@/components/annotation-summary";
 import { ArtifactHost } from "@/components/artifact-host";
 import { CompactionMessage } from "@/components/compaction-message";
 import { ImagePreview } from "@/components/image-preview";
@@ -133,6 +134,8 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         {part.attachmentKind} · {part.name}
       </div>
     );
+  if (part.kind === "annotation")
+    return <AnnotationSummary annotations={part.annotations} className="ml-auto" />;
   if (part.kind === "review-run")
     return <ReviewRunMessage run={part} onOpen={behavior.onOpenReviewRun} />;
   if (part.kind === "compaction")
