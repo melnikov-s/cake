@@ -35,10 +35,14 @@ import {
   suggestProjectFiles,
 } from "../agent/session-discovery";
 import { loadReviewSessionProjection, runInlineWidgetRepair } from "../agent/sidecar-runtime";
-import { listAgentCatalogModels } from "../agent/model-catalog";
+import { listAgentCatalogModels, refreshAgentCatalogModels } from "../agent/model-catalog";
 import { Application } from "../models/Application";
 import { shouldAllowNavigation } from "./navigation-policy";
-import { PiWorkspaceDriver, type PiWorkspaceCommand } from "./pi-workspace-driver";
+import {
+  PiWorkspaceDriver,
+  describeOperationError,
+  type PiWorkspaceCommand,
+} from "./pi-workspace-driver";
 import { VsCodeServerManager } from "./vscode-server-manager";
 import { ArtifactRepository } from "./artifact-repository";
 import { ReviewRepository } from "./review-repository";
@@ -475,6 +479,36 @@ function launchPi(path: string) {
 
 function dispatchToPi(path: string, command: PiWorkspaceCommand) {
   launchPi(path).driver.dispatch(command);
+}
+
+/**
+ * Refreshes the model catalog everywhere without a restart. The shared
+ * agent-directory catalog performs the single network pass and writes the
+ * refreshed catalogs to the shared models store on disk; every live runtime —
+ * project sessions in any open workspace and Cake Chat — then syncs its
+ * in-memory catalog from that store so all sources agree immediately. Completion
+ * is reported with the same complete/fatal events a driver operation emits.
+ */
+function refreshModelsEverywhere(requestId: string) {
+  void (async () => {
+    try {
+      await refreshAgentCatalogModels(cakePaths.piAgent);
+      await Promise.all([
+        ...[...piHosts.values()].map((host) => host.driver.refreshModels()),
+        globalChatDriver.refreshModels(),
+      ]);
+      broadcast({ type: "complete", requestId });
+    } catch (error) {
+      const described = describeOperationError(error);
+      console.error("[cake] Model refresh failed:", described.details ?? described.message);
+      broadcast({
+        type: "fatal",
+        requestId,
+        message: described.message,
+        details: described.details,
+      });
+    }
+  })();
 }
 
 function configureApplicationBranding() {
@@ -1573,6 +1607,13 @@ async function handleCakeRequest(
     if (request.type === "steer-subagent")
       driver.steerSubagent(request.handleId, request.parentSessionId, request.text);
     else await driver.abortSubagent(request.handleId, request.parentSessionId);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  // Model refresh is an app-global operation: it reaches every live runtime —
+  // project sessions in any open workspace and Cake Chat — plus the shared
+  // session-less catalog, not just the session whose settings page triggered it.
+  if (request.type === "refresh-models") {
+    void refreshModelsEverywhere(request.requestId);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   // The model catalog lives in the shared agent directory, not in any session,

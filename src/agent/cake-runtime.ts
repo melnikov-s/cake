@@ -1851,44 +1851,12 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     },
     reload: requestReload,
     async refreshModels() {
-      options.onEvent({
-        type: "part-updated",
-        sessionId: cakeSessionId,
-        part: {
-          id: "pi-models-status",
-          kind: "notice",
-          tone: "info",
-          title: "Refreshing models",
-          detail: "Fetching the latest model catalog from providers.",
-        },
-      });
-      try {
-        await modelRuntime.refresh({ allowNetwork: true, force: true });
-        if (!disposed) {
-          options.onEvent({
-            type: "part-removed",
-            sessionId: cakeSessionId,
-            partId: "pi-models-status",
-          });
-        }
-      } catch (error) {
-        if (!disposed) {
-          options.onEvent({
-            type: "part-updated",
-            sessionId: cakeSessionId,
-            part: {
-              id: "pi-models-status",
-              kind: "notice",
-              tone: "error",
-              title: "Model refresh failed",
-              detail: error instanceof Error ? error.message : String(error),
-            },
-          });
-        }
-        throw error;
-      } finally {
-        await emitSnapshot();
-      }
+      // Runtime catalogs sync from the shared models store on disk. The single
+      // network pass is performed on the shared agent catalog by the main
+      // process, which then calls this on every live runtime so already-open
+      // sessions accept models surfaced by the refresh without a restart.
+      await modelRuntime.refresh({ allowNetwork: false });
+      await emitSnapshot();
     },
     async login(provider, authType) {
       await modelRuntime.login(provider, authType, {

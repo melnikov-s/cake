@@ -1515,10 +1515,10 @@ describe("PiWorkspaceDriver", () => {
     driver[Symbol.dispose]();
   });
 
-  it("dispatches refresh-models to the active runtime and emits completion", async () => {
-    const events: DesktopEvent[] = [];
-    const refreshModels = vi.fn(async () => undefined);
-    const runtime: CakeRuntime = {
+  it("syncs every live runtime's model catalog when models are refreshed", async () => {
+    const refreshPrimary = vi.fn(async () => undefined);
+    const refreshSecondary = vi.fn(async () => undefined);
+    const primary: CakeRuntime = {
       sessionId: snapshot.sessionId,
       sessionFile: snapshot.sessionFile,
       snapshot: vi.fn(async () => snapshot),
@@ -1529,7 +1529,7 @@ describe("PiWorkspaceDriver", () => {
       setThinkingLevel: vi.fn(async () => undefined),
       applyConfiguration: vi.fn(async () => undefined),
       setPiSetting: vi.fn(async () => undefined),
-      refreshModels,
+      refreshModels: refreshPrimary,
       recordReviewRun: vi.fn(),
       login: vi.fn(async () => undefined),
       logout: vi.fn(async () => undefined),
@@ -1542,23 +1542,25 @@ describe("PiWorkspaceDriver", () => {
       navigate: vi.fn(async () => undefined),
       dispose: vi.fn(),
     };
+    const secondary: CakeRuntime = {
+      ...primary,
+      sessionId: "session-2",
+      sessionFile: "/sessions/two.jsonl",
+      refreshModels: refreshSecondary,
+    };
     const driver = new PiWorkspaceDriver({
       ...piPaths,
       workspacePath: "/project",
-      emit: (event) => events.push(event),
-      createRuntime: vi.fn(async () => runtime),
+      emit: () => undefined,
+      createRuntime: vi.fn(async (options: CakeRuntimeOptions) =>
+        options.sessionId === "session-2" ? secondary : primary,
+      ),
     });
     await driver.openAgent({ target: { kind: "attach", sessionId: snapshot.sessionId } });
-    const operationId = crypto.randomUUID();
-    driver.dispatch({
-      type: "refresh-models",
-      requestId: operationId,
-      sessionId: snapshot.sessionId,
-    });
-    await vi.waitFor(() => expect(refreshModels).toHaveBeenCalled());
-    await vi.waitFor(() =>
-      expect(events).toContainEqual({ type: "complete", requestId: operationId }),
-    );
+    await driver.openAgent({ target: { kind: "attach", sessionId: "session-2" } });
+    await driver.refreshModels();
+    expect(refreshPrimary).toHaveBeenCalledTimes(1);
+    expect(refreshSecondary).toHaveBeenCalledTimes(1);
     driver[Symbol.dispose]();
   });
 });

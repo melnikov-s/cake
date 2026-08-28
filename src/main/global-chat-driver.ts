@@ -155,6 +155,21 @@ export class GlobalChatDriver {
     });
   }
 
+  /**
+   * Syncs every live Cake Chat runtime's in-memory model catalog from the shared
+   * models store on disk, so open Cake Chat sessions accept models surfaced by a
+   * model refresh without a restart.
+   */
+  async refreshModels(): Promise<void> {
+    await Promise.all(
+      [...this.runtimes.values()].map(async (runtime) => {
+        if (!runtime.refreshModels)
+          throw new Error("This Cake Chat runtime does not support refreshing models");
+        await runtime.refreshModels();
+      }),
+    );
+  }
+
   respond(controlRequestId: string, result: JsonValue) {
     this.pendingControl.get(controlRequestId)?.settle(result);
   }

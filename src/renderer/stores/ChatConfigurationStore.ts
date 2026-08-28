@@ -90,9 +90,14 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
     return [...groups.entries()].map(([id, group]) => ({ id, ...group }));
   }
 
-  /** Loads the session-less catalog once for deferred chats with no runtime. */
+  /**
+   * Loads the session-less catalog for deferred chats with no runtime. Refetches
+   * on every picker open so a model refresh surfaces immediately; the shared
+   * agent-directory catalog is held in memory by the main process and costs no
+   * network round trip.
+   */
   ensureCatalog() {
-    if (!this.deferred || this.catalogModels.length > 0) return;
+    if (!this.deferred) return;
     if (!this.props.listModels) return;
     const revision = ++this.catalogLoadRevision;
     void this.props

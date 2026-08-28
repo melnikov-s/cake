@@ -55,3 +55,18 @@ export async function listAgentCatalogModels(agentDir: string): Promise<ModelOpt
   });
   return listModelOptions(catalogModelRuntime);
 }
+
+/**
+ * Refreshes the shared session-less catalog in memory and writes the refreshed
+ * catalogs to the shared models store on disk. This is the single network pass
+ * for a user-initiated model refresh; the main process then syncs every live
+ * runtime from the store so no surface shows a different catalog.
+ */
+export async function refreshAgentCatalogModels(agentDir: string): Promise<void> {
+  catalogModelRuntime ??= await ModelRuntime.create({
+    authPath: `${agentDir}/auth.json`,
+    modelsPath: `${agentDir}/models.json`,
+    modelsStorePath: `${agentDir}/models-cache.json`,
+  });
+  await catalogModelRuntime.refresh({ allowNetwork: true, force: true });
+}
