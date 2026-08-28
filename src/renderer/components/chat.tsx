@@ -173,7 +173,7 @@ export const Chat = observer(function Chat({
                       <SendIcon />
                     </IconButton>
                   )}
-                  {store.canStop && (
+                  {store.canStop && !hasInput && (
                     <IconButton
                       className="send-button"
                       tooltip="Stop"

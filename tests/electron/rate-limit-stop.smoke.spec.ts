@@ -118,14 +118,17 @@ test("429 polling keeps the stop control available", async () => {
     await expect(stop).toBeVisible();
     await expect(stop).toBeEnabled();
 
-    // A follow-up can still be submitted without removing or disabling Stop.
+    // A follow-up replaces Stop with Send until the draft has been submitted.
     await composer.fill("follow-up");
     const send = page.getByRole("button", { name: "Send" });
     await expect(send).toBeVisible();
     await expect(send).toBeEnabled();
+    await expect(stop).toBeHidden();
+
+    await send.click();
+    await expect(composer).toHaveValue("");
     await expect(stop).toBeVisible();
     await expect(stop).toBeEnabled();
-
     await stop.click();
     await expect(page.getByText(/Next retry in/)).toBeHidden({ timeout: 15_000 });
   } finally {

@@ -241,7 +241,7 @@ describe("Chat", () => {
     expect(abort).toHaveBeenCalledOnce();
   });
 
-  it("keeps stop available alongside submit while streaming when the composer has content", async () => {
+  it("replaces stop with submit while streaming when the composer has content", async () => {
     const submit = vi.fn(async () => true);
     const abort = vi.fn(async () => undefined);
     store = mount(
@@ -268,17 +268,18 @@ describe("Chat", () => {
 
     act(() => store!.setDraft("One more thing"));
 
-    // Typing a queued message exposes submit without removing the active Stop control.
+    // Typing a queued message replaces Stop with Send so both actions never appear together.
     const send = container.querySelector<HTMLButtonElement>('[aria-label="Send"]')!;
-    const stop = container.querySelector<HTMLButtonElement>('[aria-label="Stop"]')!;
     expect(send).not.toBeNull();
-    expect(stop).not.toBeNull();
-    expect(stop.disabled).toBe(false);
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Stop"]')).toBeNull();
 
     await act(async () => send.click());
     expect(submit).toHaveBeenCalledWith("One more thing");
     expect(abort).not.toHaveBeenCalled();
 
+    // Once the submitted draft clears, Stop is available again for the active turn.
+    const stop = container.querySelector<HTMLButtonElement>('[aria-label="Stop"]')!;
+    expect(stop).not.toBeNull();
     await act(async () => stop.click());
     expect(abort).toHaveBeenCalledOnce();
   });
