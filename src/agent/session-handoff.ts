@@ -1,5 +1,6 @@
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { Message, Usage } from "@earendil-works/pi-ai";
+import { handoffEntryType } from "./session-projection";
 
 const transferredUsage: Usage = {
   input: 0,
@@ -11,8 +12,46 @@ const transferredUsage: Usage = {
 };
 
 /**
+ * Counts the tool activity a handoff elides: tool results, tool calls, and
+ * bash executions. A handoff that elides nothing stays faithful to its source
+ * and needs no orientation preamble.
+ */
+function countStrippedToolActivity(source: SessionManager, assistantEntryId: string) {
+  let stripped = 0;
+  for (const entry of source.getBranch(assistantEntryId)) {
+    if (entry.type !== "message") continue;
+    const message = entry.message;
+    if (message.role === "toolResult" || message.role === "bashExecution") {
+      stripped += 1;
+      continue;
+    }
+    if (message.role === "assistant")
+      stripped += message.content.filter((block) => block.type === "toolCall").length;
+  }
+  return stripped;
+}
+
+function handoffPreamble(
+  parentSessionFile: string,
+  parentSessionName: string | undefined,
+  strippedToolActivity: number,
+) {
+  const origin = parentSessionName
+    ? `named "${parentSessionName}", stored at ${parentSessionFile}`
+    : `stored at ${parentSessionFile}`;
+  return [
+    `This session is a handoff from a previous Cake session ${origin}.`,
+    `The conversation below contains the user's messages and the final text of each assistant reply; ${strippedToolActivity} tool calls and results were omitted to save context.`,
+    "References to files edited, commands run, or output observed describe tool work whose results are not shown, so verify the current state on disk rather than assuming it from this transcript.",
+    `The full original transcript is at ${parentSessionFile} if you need it.`,
+  ].join(" ");
+}
+
+/**
  * Creates a parent-linked session containing only visible user and assistant
- * conversation through one completed assistant entry.
+ * conversation through one completed assistant entry. When tool activity was
+ * elided, the session opens with a handoff orientation preamble so the model
+ * knows the transcript is abridged and where the full original lives.
  */
 export function createConversationHandoff(source: SessionManager, assistantEntryId: string) {
   const selected = source.getEntry(assistantEntryId);
@@ -27,6 +66,13 @@ export function createConversationHandoff(source: SessionManager, assistantEntry
   if (!parentSession) throw new Error("The current session is not persisted");
 
   const target = SessionManager.create(source.getCwd(), source.getSessionDir(), { parentSession });
+  const strippedToolActivity = countStrippedToolActivity(source, assistantEntryId);
+  if (strippedToolActivity > 0)
+    target.appendCustomMessageEntry(
+      handoffEntryType,
+      handoffPreamble(parentSession, source.getSessionName(), strippedToolActivity),
+      true,
+    );
   for (const entry of source.getBranch(assistantEntryId)) {
     if (entry.type !== "message") continue;
     const message = entry.message;

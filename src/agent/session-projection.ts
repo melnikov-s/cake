@@ -17,6 +17,8 @@ import {
 } from "../ipc/session-contract";
 
 export const reviewRunEntryType = "cake.review-run/v1";
+/** Marks the orientation preamble appended as the first entry of a handoff session. */
+export const handoffEntryType = "cake.handoff/v1";
 export const reviewRunEntrySchema = z.object({
   operationId: z.uuid(),
   threadIds: z.array(z.string().min(1).max(256)).min(1).max(100),
@@ -504,6 +506,17 @@ export function projectSessionEntries(
       });
       continue;
     }
+    if (entry.type === "custom_message") {
+      if (entry.display)
+        append({
+          id: `entry-${entry.id}-custom`,
+          kind: "notice",
+          tone: "info",
+          title: entry.customType === handoffEntryType ? "Handoff" : entry.customType,
+          detail: textFromContent(entry.content),
+        });
+      continue;
+    }
     if (entry.type !== "custom") continue;
     if (entry.customType === "cake.artifact/v1") {
       const pointer = artifactPointerSchema.safeParse(entry.data);
@@ -591,6 +604,11 @@ function entryPreview(entry: SessionEntry) {
   }
   if (entry.type === "compaction" || entry.type === "branch_summary")
     return entry.summary.slice(0, 2_048);
+  if (entry.type === "custom_message")
+    return textFromContent(entry.content)
+      .replace(/[\n\t]+/g, " ")
+      .trim()
+      .slice(0, 2_048);
   if (entry.type === "session_info") return (entry.name ?? "Session renamed").slice(0, 2_048);
   if (entry.type === "model_change") return `${entry.provider}/${entry.modelId}`;
   return entry.type.replaceAll("_", " ");

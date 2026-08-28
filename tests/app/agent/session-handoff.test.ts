@@ -62,14 +62,28 @@ describe("createConversationHandoff", () => {
 
     const result = createConversationHandoff(source, selectedId);
     const handedOff = SessionManager.open(result.sessionFile, sessionDir, "/project");
-    const messages = handedOff
-      .getBranch()
-      .flatMap((entry) => (entry.type === "message" ? [entry.message] : []));
+    const entries = handedOff.getBranch();
+    const messages = entries.flatMap((entry) => (entry.type === "message" ? [entry.message] : []));
 
     const serializedContent = messages
       .flatMap((message) => ("content" in message ? [JSON.stringify(message.content)] : []))
       .join("\n");
     expect(handedOff.getHeader()?.parentSession).toBe(source.getSessionFile());
+    // The orientation preamble is the first entry, before any copied dialogue.
+    expect(entries[0]).toMatchObject({
+      type: "custom_message",
+      customType: "cake.handoff/v1",
+      display: true,
+    });
+    const preamble =
+      entries[0]?.type === "custom_message" && typeof entries[0].content === "string"
+        ? entries[0].content
+        : "";
+    expect(preamble).toContain(source.getSessionFile());
+    expect(preamble).toContain("2 tool calls and results were omitted");
+    expect(preamble).toContain("verify the current state on disk");
+    const context = handedOff.buildSessionContext();
+    expect(JSON.stringify(context.messages[0])).toContain("handoff from a previous Cake session");
     expect(messages.map((message) => message.role)).toEqual(["user", "assistant", "assistant"]);
     expect(messages).not.toContainEqual(expect.objectContaining({ role: "toolResult" }));
     expect(serializedContent).not.toContain("toolCall");
@@ -80,6 +94,23 @@ describe("createConversationHandoff", () => {
       content: [{ type: "text", text: "The investigation report." }],
       usage: { input: 0, output: 0, totalTokens: 0 },
     });
+  });
+
+  it("omits the orientation preamble when no tool activity was elided", async () => {
+    const sessionDir = await mkdtemp(join(tmpdir(), "cake-handoff-"));
+    temporaryDirectories.push(sessionDir);
+    const source = SessionManager.create("/project", sessionDir);
+    source.appendMessage({ role: "user", content: "Hello", timestamp: 1 });
+    const selectedId = source.appendMessage(assistant([{ type: "text", text: "Plain answer" }]));
+
+    const result = createConversationHandoff(source, selectedId);
+    const handedOff = SessionManager.open(result.sessionFile, sessionDir, "/project");
+    expect(handedOff.getBranch()).toHaveLength(2);
+    expect(
+      handedOff
+        .getBranch()
+        .some((entry) => entry.type === "custom_message" && entry.customType === "cake.handoff/v1"),
+    ).toBe(false);
   });
 
   it("rejects non-assistant handoff targets", async () => {

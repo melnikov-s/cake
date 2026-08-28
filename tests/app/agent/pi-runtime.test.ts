@@ -26,6 +26,7 @@ import {
   createLiveMessageProjector,
   formatToolResult,
   formatUnknown,
+  handoffEntryType,
   promptText,
   projectQueuedMessages,
   projectSessionEntries,
@@ -902,6 +903,39 @@ describe("Pi 0.84.0 foundation contract", () => {
         data: "const answer =\n  calculate();",
         location: attachment.location,
       }),
+    ]);
+  });
+
+  it("projects a persisted handoff preamble as an info notice before the dialogue", () => {
+    const parts = projectSessionEntries([
+      {
+        type: "custom_message",
+        id: "handoff-entry",
+        parentId: null,
+        timestamp: new Date(0).toISOString(),
+        customType: handoffEntryType,
+        content:
+          "This session is a handoff from a previous Cake session stored at /tmp/source.jsonl. 2 tool calls and results were omitted to save context.",
+        display: true,
+      },
+      {
+        type: "message",
+        id: "user-after-handoff",
+        parentId: "handoff-entry",
+        timestamp: new Date(0).toISOString(),
+        message: { role: "user", content: "Pick up from here", timestamp: 0 },
+      },
+    ] as never);
+    expect(parts).toEqual([
+      {
+        id: "entry-handoff-entry-custom",
+        kind: "notice",
+        tone: "info",
+        title: "Handoff",
+        detail:
+          "This session is a handoff from a previous Cake session stored at /tmp/source.jsonl. 2 tool calls and results were omitted to save context.",
+      },
+      expect.objectContaining({ kind: "text", role: "user", text: "Pick up from here" }),
     ]);
   });
 
