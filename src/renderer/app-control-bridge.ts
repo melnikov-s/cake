@@ -171,7 +171,7 @@ export interface AppControlHost {
   projects(): readonly ProjectRecord[];
   sessions(): readonly GlobalSessionSummary[];
   cakeChatSessions(): readonly SessionSummary[];
-  sessionActivity(sessionId: string): "running" | "unread" | undefined;
+  sessionActivity(sessionId: string): "running" | "unread" | "error" | undefined;
   openSession(sessionId: string, messageId?: string): Promise<boolean | void>;
   createSession(input: {
     workspacePath: string;
@@ -239,7 +239,7 @@ export interface AppControlSession {
   modified: string;
   messageCount: number;
   resolved: boolean;
-  activity?: "running" | "unread";
+  activity?: "running" | "unread" | "error";
 }
 
 export interface AppControlState {
@@ -288,7 +288,7 @@ export type AppControlResult =
       name: "get_session_status";
       session: AppControlSession;
       selected: boolean;
-      status: "running" | "unread" | "idle";
+      status: "running" | "unread" | "error" | "idle";
     }
   | { ok: true; name: "open_session"; opened: SessionTarget & { messageId?: string } }
   | {

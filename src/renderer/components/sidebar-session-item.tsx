@@ -21,7 +21,7 @@ export interface SidebarSessionItemProps {
   };
   selected: boolean;
   resolved: boolean;
-  activity?: "running" | "unread";
+  activity?: "running" | "unread" | "error";
   defaultBranch?: string;
   onOpen(sessionId: string): void;
   onRename(sessionId: string, name: string): void;
@@ -46,10 +46,10 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   onMarkUnread,
 }: SidebarSessionItemProps) {
   const [renamingValue, setRenamingValue] = useState<string | null>(null);
-  const running = activity === "running";
   const unread = activity === "unread";
-  const canResolve = !running && !unread;
-  const activityLabel = running ? "Running" : "Ready, unread";
+  const canResolve = !activity;
+  const activityLabel =
+    activity === "running" ? "Running" : activity === "error" ? "Error" : "Ready, unread";
   const branch = session.managedWorktree?.branch.replace(/^agent\//, "") ?? defaultBranch;
   const baseBranch = session.managedWorktree?.baseBranch.replace(/^agent\//, "");
   const showBaseBranch = baseBranch !== undefined && baseBranch !== "main";
@@ -175,6 +175,8 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                     ),
                   activity === "unread" &&
                     "session-status-unread bg-emerald-500 ring-2 ring-emerald-500/20",
+                  activity === "error" &&
+                    "session-status-error bg-destructive ring-2 ring-destructive/20",
                 )}
                 role="img"
                 aria-label={activityLabel}

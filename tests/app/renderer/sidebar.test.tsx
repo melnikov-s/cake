@@ -138,7 +138,7 @@ describe("Sidebar projects", () => {
     expect(container.textContent).toContain("Add project collapsing");
   });
 
-  it("shows running and ready-unread indicators for sessions", () => {
+  it("shows running, ready-unread, and error indicators for sessions", () => {
     const store = {
       recentProjectPaths: ["/work/cake"],
       projectPath: "/work/cake",
@@ -147,9 +147,11 @@ describe("Sidebar projects", () => {
       projectSessions: () => [
         { id: "running", title: "Still working" },
         { id: "ready", title: "Finished in background" },
+        { id: "error", title: "Failed in background" },
       ],
       sessionLimit: () => 8,
-      sessionActivity: (id: string) => (id === "running" ? "running" : "unread"),
+      sessionActivity: (id: string) =>
+        id === "running" ? "running" : id === "error" ? "error" : "unread",
       sessionDisplayTitle,
       chatReviewCommentCountForSession: vi.fn(() => 0),
       nameFromPath: () => "cake",
@@ -171,6 +173,9 @@ describe("Sidebar projects", () => {
     ).not.toBeNull();
     expect(
       container.querySelector('[data-session-id="ready"] [aria-label="Ready, unread"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-session-id="error"] [aria-label="Error"]'),
     ).not.toBeNull();
   });
 

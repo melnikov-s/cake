@@ -2842,6 +2842,30 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("marks a session errored when its model turn fails", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+
+    desktop.emit({ type: "streaming-changed", sessionId: "session-1", streaming: true });
+    desktop.emit({
+      type: "part-updated",
+      sessionId: "session-1",
+      part: {
+        id: "failed-response",
+        kind: "text",
+        role: "assistant",
+        text: "The model request failed.",
+        status: "error",
+      },
+    });
+    desktop.emit({ type: "streaming-changed", sessionId: "session-1", streaming: false });
+
+    expect(root.sidebarStore.sessionActivity("session-1")).toBe("error");
+    root[Symbol.dispose]();
+  });
+
   it("clears a user-marked unread reminder when the session is opened", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);

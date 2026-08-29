@@ -52,7 +52,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
 /** Owns the view and interaction workflow for one project Pi session. */
 export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   readonly model: Session;
-  activity: "running" | "unread" | undefined;
+  activity: "running" | "unread" | "error" | undefined;
   backgroundWorkActive = false;
   private artifactRequestActive = false;
   // Drafts and review threads can create this Store before its transcript is loaded.
@@ -156,7 +156,22 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       return;
     }
     if (this.activity !== "running" && !wasStreaming) return;
+    if (this.latestTurnErrored) {
+      this.activity = "error";
+      return;
+    }
     this.activity = this.props.isActive() ? undefined : "unread";
+  }
+
+  private get latestTurnErrored() {
+    for (let index = this.model.parts.length - 1; index >= 0; index -= 1) {
+      const part = this.model.parts[index]!;
+      if ((part.kind === "text" && part.role === "user") || part.kind === "skill") return false;
+      if (part.kind === "text" && part.role === "assistant" && part.status === "error") return true;
+      if (part.kind === "notice" && part.tone === "error" && part.title === "Model request failed")
+        return true;
+    }
+    return false;
   }
 
   setBackgroundWorkActive(active: boolean) {
