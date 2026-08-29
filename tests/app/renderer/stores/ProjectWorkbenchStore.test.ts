@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { jsonValueSchema } from "../../../../src/ipc/json-contract";
 import type { SessionPreview, SessionSnapshot } from "../../../../src/ipc/session-contract";
+import type { WorktreeStatus } from "../../../../src/ipc/worktree-contract";
 import { type CakePluginSession, usePluginSession } from "../../../../src/renderer/cake";
 import type { DesktopClient, DesktopClientEvent } from "../../../../src/renderer/desktop-client";
 import { mountRootStore } from "../../../../src/renderer/mount-root-store";
@@ -336,6 +337,41 @@ async function openSnapshot(
 }
 
 describe("ProjectWorkbenchStore", () => {
+  it("switches away from a session's worktree state synchronously", () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    root.sessionRegistry.upsert({ ...snapshot, workspacePath: "/project-worktree" });
+    root.sessionRegistry.upsert({ ...snapshot, sessionId: "session-2" });
+    const first = root.sessionRegistry.findSession("session-1")!;
+    const second = root.sessionRegistry.findSession("session-2")!;
+    const worktreeStatus: WorktreeStatus = {
+      record: {
+        projectPath: "/project",
+        worktreePath: "/project-worktree",
+        branch: "agent/session",
+        baseBranch: "main",
+        createdAt: new Date(0).toISOString(),
+      },
+      targetBranch: "main",
+      dirtyCount: 0,
+      aheadCount: 1,
+      merged: false,
+      targetDirty: false,
+      targetOnBranch: true,
+      merging: false,
+      rebasing: false,
+      squashMessageReady: false,
+    };
+
+    store.selectedSessionId = first.sessionId;
+    first.worktreeStore.status = worktreeStatus;
+    expect(store.activeSession?.worktreeStore.status).toBe(worktreeStatus);
+
+    store.selectedSessionId = second.sessionId;
+    expect(store.activeSession?.worktreeStore.status).toBeUndefined();
+    root[Symbol.dispose]();
+  });
+
   it("opens a resolved session from its read-only preview without restoring a Pi runtime", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);

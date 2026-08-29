@@ -223,8 +223,8 @@ The window Store hierarchy mirrors the product surfaces:
   those owners without absorbing their state.
 - `ProjectWorkbenchStore` coordinates project activation and its focused
   workflow children: `CommandPaneStore`, `SessionManagementStore`,
-  `SessionContinuationStore`, `WorktreeCreationStore`, `EmbeddedEditorStore`,
-  and `WorktreeStore`. `WorktreeCreationStore` owns both draft-composer worktree
+  `SessionContinuationStore`, `WorktreeCreationStore`, and `EmbeddedEditorStore`.
+  `WorktreeCreationStore` owns both draft-composer worktree
   selection and Cake Chat's coordinated create-worktree-then-create-named-session workflow.
   `EmbeddedEditorStore` owns IDE mode and Source Control navigation,
   where the native VS Code
@@ -244,7 +244,8 @@ The window Store hierarchy mirrors the product surfaces:
   for the Pi runtime, not part of session identity. Cake Chat never enters this
   registry.
 - Each `ProjectSessionStore` owns that session's activity, `Session`,
-  message composer, chat configuration, artifacts, and message comments. Its
+  message composer, chat configuration, managed-worktree status and actions,
+  artifacts, and message comments. Its
   `ChatStore` is the common conversation-facing state boundary: it presents the
   draft, transcript parts, streaming state, configuration, and composer actions
   consumed by the authoritative `Chat` component.
@@ -293,6 +294,7 @@ flowchart TD
   Session --> Model["Session"]
   Session --> Composer["MessageComposerStore"]
   Session --> Config["ChatConfigurationStore"]
+  Session --> Worktree["WorktreeStore"]
   Session --> Chat["ChatStore"]
   Session --> Comments["MessageCommentsStore"]
   Session --> Artifacts["ArtifactInteractionStore"]

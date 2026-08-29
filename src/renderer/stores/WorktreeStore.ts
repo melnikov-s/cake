@@ -14,6 +14,7 @@ export interface WorktreeStoreProps {
   client: Pick<DesktopClient, "getWorktreeStatus" | "landWorktree" | "discardWorktree" | "submit">;
   workspacePath(): string | undefined;
   sessionId(): string | undefined;
+  enabled(): boolean;
   isStreaming(): boolean;
   onLanded(record: WorktreeRecord): Promise<void> | void;
   onDiscarded(record: WorktreeRecord): Promise<void> | void;
@@ -49,6 +50,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   constructor(props: WorktreeStore["props"]) {
     super(props);
     this.effect(() => {
+      if (!this.props.enabled()) return;
       let active = true;
       let timer: ReturnType<typeof setTimeout> | undefined;
       const poll = async () => {
@@ -69,7 +71,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   }
 
   async refresh() {
-    if (this.refreshing || this.signal.aborted) return;
+    if (!this.props.enabled() || this.refreshing || this.signal.aborted) return;
     const workspacePath = this.props.workspacePath();
     if (!workspacePath) return;
     if (workspacePath !== this.observedWorkspacePath) {

@@ -466,7 +466,7 @@ export const App = observer(function App() {
                 composerHeader={
                   <WorktreePill
                     creation={store.worktreeCreationStore}
-                    actions={store.worktreeStore}
+                    actions={session.worktreeStore}
                     sessionId={session.sessionId}
                     projectPath={
                       root.sessionCatalogStore.projectOfManagedWorktree(session.workspacePath) ??

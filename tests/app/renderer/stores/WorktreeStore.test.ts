@@ -55,6 +55,7 @@ function createTestStore(
       client,
       workspacePath: () => "/project-worktree",
       sessionId: () => "session-1",
+      enabled: () => true,
       isStreaming: () => false,
       onLanded,
       onDiscarded,

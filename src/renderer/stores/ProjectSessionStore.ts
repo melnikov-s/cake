@@ -13,6 +13,7 @@ import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ArtifactInteractionStore } from "./ArtifactInteractionStore";
 import { MessageCommentsStore } from "./MessageCommentsStore";
 import { SubagentActivityStore } from "./SubagentActivityStore";
+import { WorktreeStore, type WorktreeStoreProps } from "./WorktreeStore";
 
 export interface SessionTarget {
   workspacePath: string;
@@ -39,6 +40,12 @@ export interface ProjectSessionStoreProps extends SessionTarget {
     | { path: string; configuration?: ChatConfiguration; name?: string }
     | undefined;
   prepareNewSession(): Promise<boolean>;
+  worktreeClient: WorktreeStoreProps["client"];
+  onWorktreeLanded(record: Parameters<WorktreeStoreProps["onLanded"]>[0]): Promise<void> | void;
+  onWorktreeDiscarded(
+    record: Parameters<WorktreeStoreProps["onDiscarded"]>[0],
+  ): Promise<void> | void;
+  onResolveWorktree(workspacePath: string): Promise<void> | void;
   settings?(): AppearanceSettingsStore | undefined;
 }
 
@@ -154,6 +161,20 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
 
   setBackgroundWorkActive(active: boolean) {
     this.backgroundWorkActive = active;
+  }
+
+  @child
+  get worktreeStore(): WorktreeStore {
+    return createStore(WorktreeStore, {
+      client: this.props.worktreeClient,
+      workspacePath: () => this.workspacePath,
+      sessionId: () => this.sessionId,
+      enabled: () => this.props.isActive(),
+      isStreaming: () => this.isStreaming,
+      onLanded: this.props.onWorktreeLanded,
+      onDiscarded: this.props.onWorktreeDiscarded,
+      onResolveWorkspace: this.props.onResolveWorktree,
+    });
   }
 
   @child

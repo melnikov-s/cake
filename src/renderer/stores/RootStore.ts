@@ -272,6 +272,18 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       openModelPresetSettings: () => this.showModelPresetSettings(),
       newSessionRequest: (sessionId) => this.projectWorkbenchStore.newSessionRequest(sessionId),
       prepareNewSession: (sessionId) => this.projectWorkbenchStore.prepareNewSession(sessionId),
+      worktreeClient: this.client,
+      onWorktreeLanded: (record) => {
+        this.sessionCatalogStore.noteManagedWorktree(record);
+        this.toastStore.show({
+          tone: "info",
+          title: "Worktree merged",
+          message: "Your work was merged back into the project.",
+        });
+      },
+      onWorktreeDiscarded: (record) => this.sessionCatalogStore.noteManagedWorktree(record),
+      onResolveWorktree: (workspacePath) =>
+        this.projectWorkbenchStore.resolveWorktreeWorkspace(workspacePath),
       settings: () => this.settingsStore.appearance,
     });
   }
@@ -363,7 +375,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       embeddedEditorClient: this.client,
       sessionContinuationClient: this.client,
       sessionManagementClient: this.client,
-      worktreeClient: this.client,
       worktreeCreationClient: this.client,
       sessionRegistry: this.sessionRegistry,
       operations: this.sessionOperationCoordinator,
@@ -375,13 +386,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       persistence: () => this.windowPersistence,
       catalog: this.sessionCatalogStore,
       startCakeChat: (prompt) => this.startCakeChat(prompt),
-      onWorktreeLanded: () => {
-        this.toastStore.show({
-          tone: "info",
-          title: "Worktree merged",
-          message: "Your work was merged back into the project.",
-        });
-      },
       onWorktreeSessionsResolved: (sessionIds, projectPath) =>
         this.forgetResolvedSessions(sessionIds, projectPath),
       openSessionById: async (sessionId) => {

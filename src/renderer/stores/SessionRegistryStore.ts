@@ -17,6 +17,7 @@ import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ProjectSessionStore, type SessionTarget } from "./ProjectSessionStore";
 import { toSessionPreviewSnapshot, toSessionSnapshot } from "../../utils/session-snapshot";
+import type { WorktreeStoreProps } from "./WorktreeStore";
 
 export interface SessionRegistryStoreProps {
   client: DesktopClient;
@@ -38,6 +39,10 @@ export interface SessionRegistryStoreProps {
     sessionId: string,
   ): { path: string; configuration?: ChatConfiguration; name?: string } | undefined;
   prepareNewSession?(sessionId: string): Promise<boolean>;
+  worktreeClient: WorktreeStoreProps["client"];
+  onWorktreeLanded: WorktreeStoreProps["onLanded"];
+  onWorktreeDiscarded: WorktreeStoreProps["onDiscarded"];
+  onResolveWorktree: WorktreeStoreProps["onResolveWorkspace"];
   settings?(): AppearanceSettingsStore | undefined;
 }
 
@@ -89,6 +94,10 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         newSessionRequest: () => this.props.newSessionRequest?.(target.sessionId),
         prepareNewSession: () =>
           this.props.prepareNewSession?.(target.sessionId) ?? Promise.resolve(true),
+        worktreeClient: this.props.worktreeClient,
+        onWorktreeLanded: this.props.onWorktreeLanded,
+        onWorktreeDiscarded: this.props.onWorktreeDiscarded,
+        onResolveWorktree: this.props.onResolveWorktree,
         settings: () => this.props.settings?.(),
       }),
     );
