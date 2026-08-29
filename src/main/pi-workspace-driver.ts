@@ -409,6 +409,7 @@ export class PiWorkspaceDriver {
             requestId: command.requestId,
             snapshot: await next.snapshot(command.requestId),
           });
+          if (command.resolveSource) await this.setSessionResolved(command.sessionId, true);
         } else if (command.type === "handoff-session") {
           const source = await runtime.snapshot();
           const handedOff = await runtime.handoff(command.entryId);

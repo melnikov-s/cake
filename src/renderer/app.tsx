@@ -31,6 +31,7 @@ import { WorkLogControls } from "@/components/work-log-controls";
 import { Sidebar } from "@/components/sidebar";
 import { ProjectSessionPluginRail } from "@/components/project-session-plugin-rail";
 import { ErrorNotice } from "@/components/error-notice";
+import { ForkSessionDialog } from "@/components/fork-session-dialog";
 import { ArtifactsPanel } from "@/components/artifacts-panel";
 import { UiDialog } from "@/components/ui-dialog";
 import { CommandPane } from "@/components/command-pane";
@@ -537,45 +538,7 @@ export const App = observer(function App() {
           </Confirmation>
         </div>
       )}
-      {store.sessionContinuationStore.prompt && (
-        <div className="dialog-backdrop">
-          <Confirmation
-            state="requested"
-            role="dialog"
-            aria-labelledby="fork-worktree-title"
-            aria-describedby="fork-worktree-description"
-          >
-            <ConfirmationRequest>
-              <ConfirmationTitle id="fork-worktree-title">
-                Fork into which worktree?
-              </ConfirmationTitle>
-              <ConfirmationDescription id="fork-worktree-description">
-                This session works inside a Cake-managed worktree. Choose where the forked
-                conversation should make its changes.
-              </ConfirmationDescription>
-              <ConfirmationActions>
-                <ConfirmationAction
-                  variant="ghost"
-                  onClick={() => void store.sessionContinuationStore.resolvePrompt("cancel")}
-                >
-                  Cancel
-                </ConfirmationAction>
-                <ConfirmationAction
-                  variant="outline"
-                  onClick={() => void store.sessionContinuationStore.resolvePrompt("existing")}
-                >
-                  Use the existing worktree
-                </ConfirmationAction>
-                <ConfirmationAction
-                  onClick={() => void store.sessionContinuationStore.resolvePrompt("new-worktree")}
-                >
-                  Branch off a new worktree
-                </ConfirmationAction>
-              </ConfirmationActions>
-            </ConfirmationRequest>
-          </Confirmation>
-        </div>
-      )}
+      <ForkSessionDialog store={store.sessionContinuationStore} />
       {extensionUi.request && (
         <div className="dialog-backdrop">
           <UiDialog

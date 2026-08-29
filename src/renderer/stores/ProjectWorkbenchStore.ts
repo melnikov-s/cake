@@ -162,6 +162,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       operations: this.props.operations,
       registry: this.sessionRegistry,
       sessionContext: () => this.sessionContext(),
+      sessionTitle: () => this.sessionTitle,
       closeCommandPane: () => this.commandPaneStore.close(),
       openSession: (sessionId) => this.props.openSessionById(sessionId),
       reportError: (error) => this.setError(error),
@@ -586,6 +587,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   dismissSecondarySurfaces() {
+    this.sessionContinuationStore.cancelPrompt();
     this.commandPaneStore.dismiss();
     this.closeEmbeddedEditor();
   }

@@ -67,6 +67,15 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     expect(existsSync(join(record.worktreePath, "README.md"))).toBe(true);
   });
 
+  it("uses an explicit worktree name for its branch and checkout", async () => {
+    const repo = await repository();
+    const record = await service().create(repo, undefined, "focused-fix");
+
+    expect(record.branch).toBe("agent/focused-fix");
+    expect(record.worktreePath).toMatch(/\/focused-fix$/);
+    expect(existsSync(record.worktreePath)).toBe(true);
+  });
+
   it("persists records across service instances", async () => {
     const repo = await repository();
     const storage = join(

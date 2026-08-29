@@ -609,6 +609,10 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     requestId: z.uuid(),
     path: z.string().max(4_096),
     baseWorktreePath: z.string().min(1).max(4_096).optional(),
+    worktreeName: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9-]{0,62}$/)
+      .optional(),
   }),
   z.object({ type: z.literal("get-worktree-status"), workspacePath: z.string().max(4_096) }),
   z.object({
@@ -624,11 +628,13 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     keepBranch: z.boolean().default(false),
   }),
   z.object({
-    type: z.literal("fork-worktree-session"),
+    type: z.literal("fork-session-to-worktree"),
     requestId: z.uuid(),
     sessionId: z.string().min(1).max(256),
     entryId: z.string().max(256),
     workspacePath: z.string().min(1).max(4_096),
+    worktreeName: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/),
+    resolveSource: z.boolean().default(false),
   }),
   z.object({
     type: z.literal("inspect-workspace"),
@@ -757,6 +763,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     requestId: z.uuid(),
     sessionId: z.string().max(256),
     entryId: z.string().max(256),
+    resolveSource: z.boolean().optional(),
   }),
   z.object({
     type: z.literal("handoff-session"),
@@ -905,7 +912,7 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
     result: worktreeLandOutcomeSchema,
   }),
   z.object({
-    type: z.literal("worktree-session-forked"),
+    type: z.literal("session-forked-to-worktree"),
     requestId: z.uuid(),
     sessionId: z.string().min(1).max(256),
     workspacePath: z.string().min(1).max(4_096),

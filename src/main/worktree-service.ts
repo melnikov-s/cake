@@ -68,13 +68,23 @@ export class WorktreeService implements WorktreeLandingCoordinator {
    * Creates another managed worktree for the repository. Projects may have any
    * number of concurrent worktrees; each is an isolated checkout and branch.
    */
-  async create(projectPath: string, baseWorktreePath?: string): Promise<WorktreeRecord> {
+  async create(
+    projectPath: string,
+    baseWorktreePath?: string,
+    worktreeName?: string,
+  ): Promise<WorktreeRecord> {
     await this.load();
     const root = await realpath(await repositoryRoot(projectPath));
-    return this.withRepositoryLock(root, () => this.createRecord(root, baseWorktreePath));
+    return this.withRepositoryLock(root, () =>
+      this.createRecord(root, baseWorktreePath, worktreeName),
+    );
   }
 
-  private async createRecord(root: string, baseWorktreePath?: string): Promise<WorktreeRecord> {
+  private async createRecord(
+    root: string,
+    baseWorktreePath?: string,
+    worktreeName?: string,
+  ): Promise<WorktreeRecord> {
     const parent = baseWorktreePath
       ? this.allRecords.find(
           (entry) =>
@@ -94,9 +104,12 @@ export class WorktreeService implements WorktreeLandingCoordinator {
     const baseCommit = (await git(root, "rev-parse", startPoint)).trim();
     const slug = slugify(basename(root));
     const id = `${Date.now().toString(36)}${Math.random().toString(16).slice(2, 6)}`;
-    const branch = `agent/${slug}-${id}`;
+    const name = worktreeName ?? `${slug}-${id}`;
+    if (worktreeName && !/^[a-z0-9][a-z0-9-]{0,62}$/.test(name))
+      throw new Error("Invalid worktree name");
+    const branch = `agent/${name}`;
     const worktreesDir = join(dirname(root), `.${slug}-worktrees`);
-    const worktreePath = join(worktreesDir, `${slug}-${id}`);
+    const worktreePath = join(worktreesDir, name);
     await mkdir(worktreesDir, { recursive: true });
     await git(root, "worktree", "add", "-b", branch, worktreePath, baseCommit);
     const record: WorktreeRecord = {
@@ -364,7 +377,7 @@ export class WorktreeService implements WorktreeLandingCoordinator {
    * Creates a worktree branching off the current tip of another managed
    * worktree's branch — used when forking a session into isolated work.
    */
-  async createBranchOff(worktreePath: string): Promise<WorktreeRecord> {
+  async createBranchOff(worktreePath: string, worktreeName?: string): Promise<WorktreeRecord> {
     await this.load();
     const source = this.allRecords.find(
       (entry) =>
@@ -372,7 +385,7 @@ export class WorktreeService implements WorktreeLandingCoordinator {
         resolveNormalized(entry.worktreePath) === resolveNormalized(worktreePath),
     );
     if (!source) throw new Error("Cake could not find that worktree");
-    return this.create(source.projectPath, source.worktreePath);
+    return this.create(source.projectPath, source.worktreePath, worktreeName);
   }
 
   async discard(worktreePath: string, keepBranch: boolean): Promise<void> {

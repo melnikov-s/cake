@@ -1514,17 +1514,23 @@ async function handleCakeRequest(
     ).flat();
     return desktopResponseSchema.parse({ type: "sessions-listed", sessions, reviewThreads });
   }
-  if (request.type === "fork-worktree-session") {
-    const record = await requireWorktreeRecord(request.workspacePath);
+  if (request.type === "fork-session-to-worktree") {
     const sourceFile = await findSessionFile(
-      record.worktreePath,
+      request.workspacePath,
       request.sessionId,
       cakePaths.piSessions,
     );
-    if (!sourceFile) throw new Error("Cake could not find the session to fork in that worktree");
-    const branchOff = await worktrees.createBranchOff(request.workspacePath);
+    if (!sourceFile) throw new Error("Cake could not find the session to fork");
+    const record = (await worktrees.records()).find(
+      (entry) =>
+        (entry.state ?? "active") === "active" &&
+        resolve(entry.worktreePath) === resolve(request.workspacePath),
+    );
+    const branchOff = record
+      ? await worktrees.createBranchOff(request.workspacePath, request.worktreeName)
+      : await worktrees.create(request.workspacePath, undefined, request.worktreeName);
     allowedProjectPaths.add(branchOff.worktreePath);
-    if (applicationModel.isProjectTrusted(record.projectPath))
+    if (applicationModel.isProjectTrusted(branchOff.projectPath))
       applicationModel.trustProject(branchOff.worktreePath);
     const forked = forkWorkspaceSession(
       sourceFile,
@@ -1532,8 +1538,10 @@ async function handleCakeRequest(
       cakeWorkspaceSessionDirectory(branchOff.worktreePath, cakePaths.piSessions),
     );
     rememberSessionLocation(branchOff.worktreePath, forked.sessionId);
+    if (request.resolveSource)
+      await setProjectSessionResolution(request.sessionId, true, request.workspacePath);
     return desktopResponseSchema.parse({
-      type: "worktree-session-forked",
+      type: "session-forked-to-worktree",
       requestId: request.requestId,
       sessionId: forked.sessionId,
       workspacePath: branchOff.worktreePath,
@@ -1649,7 +1657,11 @@ async function handleCakeRequest(
   if (request.type === "create-worktree") {
     if (!allowedProjectPaths.has(request.path))
       throw new Error("Project path was not selected by the user");
-    const record = await worktrees.create(request.path, request.baseWorktreePath);
+    const record = await worktrees.create(
+      request.path,
+      request.baseWorktreePath,
+      request.worktreeName,
+    );
     allowedProjectPaths.add(record.worktreePath);
     if (applicationModel.isProjectTrusted(record.projectPath))
       applicationModel.trustProject(record.worktreePath);

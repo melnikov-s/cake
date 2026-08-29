@@ -397,6 +397,7 @@ export interface DesktopClient {
     operationId: string;
     path: string;
     baseWorktreePath?: string;
+    worktreeName?: string;
   }): Promise<WorktreeRecord>;
   getWorktreeStatus(input: { workspacePath: string }): Promise<WorktreeStatus | undefined>;
   landWorktree(input: {
@@ -409,11 +410,13 @@ export interface DesktopClient {
     workspacePath: string;
     keepBranch: boolean;
   }): Promise<void>;
-  forkWorktreeSession(input: {
+  forkSessionToWorktree(input: {
     operationId: string;
     sessionId: string;
     entryId: string;
     workspacePath: string;
+    worktreeName: string;
+    resolveSource: boolean;
   }): Promise<{ sessionId: string; workspacePath: string }>;
   steerSubagent(input: { parentSessionId: string; handleId: string; text: string }): Promise<void>;
   abortSubagent(input: { parentSessionId: string; handleId: string }): Promise<void>;
@@ -463,7 +466,12 @@ export interface DesktopClient {
   }): Promise<void>;
   logout(input: { operationId: string; sessionId: string; provider: string }): Promise<void>;
   renameSession(input: { operationId: string; sessionId: string; name: string }): Promise<void>;
-  forkSession(input: { operationId: string; sessionId: string; entryId: string }): Promise<void>;
+  forkSession(input: {
+    operationId: string;
+    sessionId: string;
+    entryId: string;
+    resolveSource?: boolean;
+  }): Promise<void>;
   handoffSession(input: {
     operationId: string;
     sessionId: string;
@@ -1142,6 +1150,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         requestId: input.operationId,
         path: input.path,
         baseWorktreePath: input.baseWorktreePath,
+        worktreeName: input.worktreeName,
       });
       if (response.type !== "worktree-created")
         throw new Error("Cake could not create the worktree");
@@ -1171,15 +1180,17 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         workspacePath: input.workspacePath,
         keepBranch: input.keepBranch,
       }),
-    async forkWorktreeSession(input) {
+    async forkSessionToWorktree(input) {
       const response = await bridge.request({
-        type: "fork-worktree-session",
+        type: "fork-session-to-worktree",
         requestId: input.operationId,
         sessionId: input.sessionId,
         entryId: input.entryId,
         workspacePath: input.workspacePath,
+        worktreeName: input.worktreeName,
+        resolveSource: input.resolveSource,
       });
-      if (response.type !== "worktree-session-forked")
+      if (response.type !== "session-forked-to-worktree")
         throw new Error("Cake could not fork the session into a new worktree");
       return { sessionId: response.sessionId, workspacePath: response.workspacePath };
     },
@@ -1299,6 +1310,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         requestId: input.operationId,
         sessionId: input.sessionId,
         entryId: input.entryId,
+        resolveSource: input.resolveSource ?? false,
       }),
     handoffSession: (input) =>
       accept(bridge, {

@@ -108,6 +108,10 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     this.projectWorkbenchStore.activeSession?.composerStore.requestFocus();
   }
   dismissTopSecondarySurface() {
+    if (this.projectWorkbenchStore.sessionContinuationStore.prompt) {
+      this.projectWorkbenchStore.sessionContinuationStore.cancelPrompt();
+      return;
+    }
     if (this.projectWorkbenchStore.embeddedEditorStore.visible) {
       this.returnToWorkbench();
       return;

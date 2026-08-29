@@ -235,7 +235,10 @@ function createDesktopClient(restoredPath?: string) {
     getWorktreeStatus: vi.fn(async () => undefined),
     landWorktree: vi.fn(async () => ({ outcome: "landed" as const })),
     discardWorktree: vi.fn(async () => undefined),
-    forkWorktreeSession: vi.fn(async () => ({ sessionId: "forked", workspacePath: "/tmp/forked" })),
+    forkSessionToWorktree: vi.fn(async () => ({
+      sessionId: "forked",
+      workspacePath: "/tmp/forked",
+    })),
     getEmbeddedEditorState: vi.fn(async () => ({ status: "missing" as const })),
     installEmbeddedEditor: vi.fn(async () => undefined),
     setVscodeServerPath: vi.fn(async () => ({
@@ -321,6 +324,48 @@ describe("ProjectWorkbenchStore", () => {
     store.embeddedEditorStore.visible = true;
     root.dismissTopSecondarySurface();
     expect(store.embeddedEditorStore.visible).toBe(false);
+    root[Symbol.dispose]();
+  });
+
+  it("prompts every fork and lets Escape cancel it", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+
+    store.sessionContinuationStore.forkAt("assistant-entry");
+
+    expect(store.sessionContinuationStore.prompt).toMatchObject({
+      destination: "existing",
+      resolveParent: false,
+      worktreeName: expect.stringMatching(/^new-chat-[a-f0-9]{6}$/),
+    });
+    expect(desktop.client.getWorktreeStatus).not.toHaveBeenCalled();
+    root.dismissTopSecondarySurface();
+    expect(store.sessionContinuationStore.prompt).toBeUndefined();
+    root[Symbol.dispose]();
+  });
+
+  it("forks into a named worktree and optionally resolves the parent", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+
+    store.sessionContinuationStore.forkAt("assistant-entry");
+    store.sessionContinuationStore.selectDestination("new-worktree");
+    store.sessionContinuationStore.setWorktreeName("focused-fix");
+    store.sessionContinuationStore.setResolveParent(true);
+    await store.sessionContinuationStore.confirmPrompt();
+
+    expect(desktop.client.forkSessionToWorktree).toHaveBeenCalledWith({
+      operationId: expect.any(String),
+      sessionId: "session-1",
+      entryId: "assistant-entry",
+      workspacePath: "/project",
+      worktreeName: "focused-fix",
+      resolveSource: true,
+    });
     root[Symbol.dispose]();
   });
 

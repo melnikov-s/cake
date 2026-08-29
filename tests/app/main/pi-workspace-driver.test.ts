@@ -979,11 +979,13 @@ describe("PiWorkspaceDriver", () => {
     });
     const parent = runtime("session-1");
     const child = runtime("fork");
+    const setSessionResolved = vi.fn(async () => undefined);
     const driver = new PiWorkspaceDriver({
       ...piPaths,
       workspacePath: "/project",
       emit: (event) => events.push(event),
       createRuntime: vi.fn(async ({ sessionId }) => (sessionId === "fork" ? child : parent)),
+      setSessionResolved,
     });
     const openId = crypto.randomUUID();
     driver.dispatch({
@@ -1000,11 +1002,13 @@ describe("PiWorkspaceDriver", () => {
       requestId: forkId,
       sessionId: "session-1",
       entryId: "entry",
+      resolveSource: true,
     });
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: forkId }));
 
     expect(parent.fork).toHaveBeenCalledWith("entry");
     expect(child.snapshot).toHaveBeenCalled();
+    expect(setSessionResolved).toHaveBeenCalledWith("session-1", true);
     driver[Symbol.dispose]();
   });
 
