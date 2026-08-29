@@ -19,6 +19,7 @@ import {
   createCakeRuntime,
   piRuntimeVersion,
   type CakeRuntime,
+  type CakeRuntimeEvent,
 } from "../../../src/agent/cake-runtime";
 import {
   createFoundationRuntime,
@@ -237,6 +238,7 @@ describe("Pi 0.84.0 foundation contract", () => {
       })}); }\n`,
     );
     let prompt: Promise<void> | undefined;
+    const events: CakeRuntimeEvent[] = [];
     const generateTitle = vi.fn(async ({ firstUserMessage }: { firstUserMessage: string }) => {
       return firstUserMessage === "Investigate session naming" ? "Generated title" : "Unexpected";
     });
@@ -253,12 +255,27 @@ describe("Pi 0.84.0 foundation contract", () => {
         }),
         generateSessionTitle: generateTitle as never,
         requestUi: async () => undefined,
-        onEvent: () => undefined,
+        onEvent: (event) => events.push(event),
       });
       runtimes.push(runtime);
       await runtime.setModel("fixture-provider", "fixture-model");
       prompt = runtime.prompt("Investigate session naming", "prompt", [], true);
 
+      await vi.waitFor(
+        () =>
+          expect(events).toContainEqual(
+            expect.objectContaining({
+              type: "part-updated",
+              part: expect.objectContaining({
+                kind: "text",
+                role: "user",
+                text: "Investigate session naming",
+                renderAs: "markdown",
+              }),
+            }),
+          ),
+        { timeout: 1_000 },
+      );
       await vi.waitFor(() => expect(generateTitle).toHaveBeenCalledOnce(), { timeout: 1_000 });
       await vi.waitFor(
         async () =>
@@ -861,6 +878,28 @@ describe("Pi 0.84.0 foundation contract", () => {
         role: "user",
         text: "Queued work",
         status: "complete",
+      }),
+    ]);
+  });
+
+  it("preserves requested Markdown rendering when Pi consumes a user message", () => {
+    const message = {
+      role: "user" as const,
+      content: [{ type: "text" as const, text: "# Queued work" }],
+      timestamp: 0,
+    };
+    const project = createLiveMessageProjector({
+      renderUserMessageAsMarkdown: (candidate) => candidate === message,
+    });
+
+    const parts = project({ type: "message_start", message } as AgentSessionEvent);
+
+    expect(parts).toEqual([
+      expect.objectContaining({
+        kind: "text",
+        role: "user",
+        text: "# Queued work",
+        renderAs: "markdown",
       }),
     ]);
   });

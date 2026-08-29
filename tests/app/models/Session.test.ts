@@ -171,6 +171,33 @@ describe("Session", () => {
     model[Symbol.dispose]();
   });
 
+  it("preserves Markdown presentation while creating and updating user messages", () => {
+    const model = Session.create();
+    model.upsertPart({
+      id: "user-markdown",
+      kind: "text",
+      role: "user",
+      text: "# Heading",
+      status: "complete",
+      renderAs: "markdown",
+    });
+
+    expect(model.uiParts[0]).toMatchObject({
+      id: "user-markdown",
+      renderAs: "markdown",
+    });
+
+    model.upsertPart({
+      id: "user-markdown",
+      kind: "text",
+      role: "user",
+      text: "Plain text",
+      status: "complete",
+    });
+    expect(model.uiParts[0]).not.toHaveProperty("renderAs", "markdown");
+    model[Symbol.dispose]();
+  });
+
   it("replaces a pointer-projected artifact with its live tool call", () => {
     const model = Session.create();
     model.upsertPart({

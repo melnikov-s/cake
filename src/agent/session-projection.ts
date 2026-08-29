@@ -384,7 +384,12 @@ function partsFromMessage(
   return [];
 }
 
-export function createLiveMessageProjector(options: { deferProviderErrors?: boolean } = {}) {
+export function createLiveMessageProjector(
+  options: {
+    deferProviderErrors?: boolean;
+    renderUserMessageAsMarkdown?(message: unknown): boolean;
+  } = {},
+) {
   let activeStreamId: string | undefined;
   let streamIndex = 0;
   let userIndex = 0;
@@ -394,7 +399,13 @@ export function createLiveMessageProjector(options: { deferProviderErrors?: bool
   const nextStreamId = () => `stream-${++streamIndex}`;
   const project = (event: AgentSessionEvent): UiPart[] => {
     if (event.type === "message_start" && event.message.role === "user") {
-      return partsFromMessage(event.message, `live-user-${++userIndex}`);
+      return partsFromMessage(
+        event.message,
+        `live-user-${++userIndex}`,
+        false,
+        undefined,
+        options.renderUserMessageAsMarkdown?.(event.message) ?? false,
+      );
     }
     if (event.type === "message_start" && event.message.role === "assistant") {
       activeStreamId = nextStreamId();

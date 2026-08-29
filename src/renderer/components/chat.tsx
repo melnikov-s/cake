@@ -307,7 +307,7 @@ export const Chat = observer(function Chat({
               <IconButton
                 className={cn(
                   store.renderUserMessageAsMarkdown &&
-                    "bg-accent text-accent-foreground hover:bg-accent",
+                    "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90",
                 )}
                 tooltip={
                   store.renderUserMessageAsMarkdown

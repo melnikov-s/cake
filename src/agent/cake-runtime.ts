@@ -972,7 +972,6 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   let sessionNamingInFlight = false;
   const sessionNamingController = new AbortController();
   const generateTitle = options.generateSessionTitle ?? generateSessionTitle;
-  const projectLiveMessage = createLiveMessageProjector({ deferProviderErrors: true });
   const catalog = compatibilityCatalog(resourceLoader, settingsManager, options.cwd, agentDir);
   const extensionUiState: ExtensionUiState = { statuses: [] };
   const compatibilityDiagnosticKeys = new Set(
@@ -1325,6 +1324,18 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     renderUserMessageAsMarkdown: boolean;
     consumed: boolean;
   }[] = [];
+  const projectLiveMessage = createLiveMessageProjector({
+    deferProviderErrors: true,
+    renderUserMessageAsMarkdown: (message) => {
+      if (typeof message !== "object" || message === null) return false;
+      const content = textFromContent(Reflect.get(message, "content"));
+      return Boolean(
+        pendingUserPresentations.find(
+          (candidate) => !candidate.consumed && candidate.content === content,
+        )?.renderUserMessageAsMarkdown,
+      );
+    },
+  });
   async function deliverTrackedUserMessage(
     content: string,
     renderUserMessageAsMarkdown: boolean,

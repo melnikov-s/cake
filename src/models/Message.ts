@@ -13,6 +13,7 @@ type ToolState = Extract<UiPart, { kind: "tool" }>["state"];
 type AttachmentKind = Extract<UiPart, { kind: "attachment" }>["attachmentKind"];
 type NoticeTone = Extract<UiPart, { kind: "notice" }>["tone"];
 type DeliveryState = Extract<UiPart, { kind: "text" }>["deliveryState"];
+type TextRenderAs = Extract<UiPart, { kind: "text" }>["renderAs"];
 
 export class Message extends Model {
   @id id = "";
@@ -23,6 +24,7 @@ export class Message extends Model {
   content: string | undefined;
   status: PartStatus | undefined;
   deliveryState: DeliveryState | undefined;
+  renderAs: TextRenderAs | undefined;
   name: string | undefined;
   command: string | undefined;
   input: string | undefined;
@@ -58,6 +60,7 @@ export class Message extends Model {
         this.text = part.text;
         this.status = part.status;
         this.deliveryState = part.deliveryState;
+        this.renderAs = part.renderAs;
         return true;
       case "skill":
         this.name = part.name;
@@ -123,6 +126,7 @@ export class Message extends Model {
           text: this.text!,
           status: this.status as TextStatus,
           deliveryState: this.deliveryState,
+          renderAs: this.renderAs,
         };
       case "skill":
         return { id: this.id, kind: this.kind, name: this.name!, content: this.content! };
