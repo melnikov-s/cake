@@ -115,7 +115,9 @@ import {
 } from "./session-projection";
 
 export const piRuntimeVersion = "0.84.0" as const;
-const cakeMediumSystemPrompt = `You are Cake’s agent in a browser-based desktop app, not a terminal. Use \`cake subagents\` only for user-requested delegation or parallel work.`;
+const cakeMediumSystemPrompt = `You are Cake’s agent in a browser-based desktop app, not a terminal. Use \`cake subagents\` only for user-requested delegation or parallel work.
+
+Link another Cake session as \`[<title, truncated to 80 characters>](cake://session/<session-id>)\`; never show a bare session ID as the label.`;
 
 const cakeProjectInteractionPrompt = `Use Cake's Markdown, media, and interactive HTML/React widgets to communicate richly. Call \`cake widgets\` when interactivity or visuals help, especially when requested. Call \`cake requests\` to conduct interviews or present interactive forms, questionnaires, choices, and confirmations; prefer them to tedious text-only back-and-forth.`;
 

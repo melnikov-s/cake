@@ -95,6 +95,8 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(systemPrompt).toContain("Use `cake subagents` only for user-requested delegation");
     expect(systemPrompt).toContain("PowerPoint presentations, PDFs, spreadsheets");
     expect(systemPrompt).toContain("use Markdown links with absolute paths so Cake can open them");
+    expect(systemPrompt).toContain("cake://session/<session-id>");
+    expect(systemPrompt).toContain("never show a bare session ID as the label");
     expect(activeTools).toContain("cake");
   });
 

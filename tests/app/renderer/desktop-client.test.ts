@@ -15,6 +15,7 @@ function createBridge() {
     if (input.type === "respond-ui")
       return { type: "ui-response-accepted", uiRequestId: input.uiRequestId };
     if (input.type === "choose-project") return { type: "project-chosen", path: "/project" };
+    if (input.type === "open-external-url") return { type: "external-url-opened" };
     if (input.type === "show-transcript-selection-context-menu")
       return {
         type: "transcript-selection-context-menu-closed",
@@ -74,6 +75,11 @@ describe("desktop client", () => {
     const operationId = crypto.randomUUID();
 
     expect(await client.chooseProject()).toBe("/project");
+    await client.openExternalUrl("https://example.com/docs");
+    expect(desktop.request).toHaveBeenCalledWith({
+      type: "open-external-url",
+      url: "https://example.com/docs",
+    });
     expect(
       await client.showTranscriptSelectionContextMenu({ canChat: true, canAnnotate: false }),
     ).toBe("chat-about-selection");

@@ -71,6 +71,23 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     return true;
   }
 
+  /** Opens the project or Cake Chat session addressed by a Markdown session link. */
+  async openSessionLink(sessionId: string) {
+    if (this.sessionCatalogStore.find(sessionId) || this.sessionRegistry.findSession(sessionId)) {
+      await this.openSession(sessionId);
+      return;
+    }
+    if (this.globalChatStore.summaries.some((session) => session.id === sessionId)) {
+      await this.openCakeChat(sessionId);
+      return;
+    }
+    throw new Error("Cake could not find the linked session");
+  }
+
+  openExternalUrl(url: string) {
+    return this.client.openExternalUrl(url);
+  }
+
   async createSession(workspacePath: string) {
     this.showEmptyWorkbench();
     await this.projectWorkbenchStore.startNewSession(workspacePath);

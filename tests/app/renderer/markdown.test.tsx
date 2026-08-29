@@ -5,7 +5,11 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Streamdown } from "streamdown";
-import { fencedCode, Markdown } from "../../../src/renderer/components/ai-elements/markdown";
+import {
+  fencedCode,
+  Markdown,
+  MarkdownLinkProvider,
+} from "../../../src/renderer/components/ai-elements/markdown";
 
 vi.mock("streamdown", () => ({
   defaultRehypePlugins: {},
@@ -96,13 +100,27 @@ describe("Markdown", () => {
     );
   });
 
-  it("opens structured source links and leaves web links external", () => {
+  it("rewrites session links to a sanitizer-safe internal target", () => {
+    act(() =>
+      root.render(<Markdown>[Authentication refactor](cake://session/session-123)</Markdown>),
+    );
+
+    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
+      "[Authentication refactor](/__cake_session__/session-123)",
+    );
+  });
+
+  it("opens source, website, and session links with their owning application actions", () => {
     const onOpenSourceLocation = vi.fn();
+    const openExternalUrl = vi.fn();
+    const openSession = vi.fn();
     act(() =>
       root.render(
-        <Markdown onOpenSourceLocation={onOpenSourceLocation}>
-          [file](src/modelMeta.ts#L8-L12)
-        </Markdown>,
+        <MarkdownLinkProvider actions={{ openExternalUrl, openSession }}>
+          <Markdown onOpenSourceLocation={onOpenSourceLocation}>
+            [file](src/modelMeta.ts#L8-L12)
+          </Markdown>
+        </MarkdownLinkProvider>,
       ),
     );
     expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
@@ -131,7 +149,22 @@ describe("Markdown", () => {
 
     const webLink = renderAnchor({ href: "https://example.com", children: "example" });
     expect(webLink.target).toBe("_blank");
+    act(() => {
+      webLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(openExternalUrl).toHaveBeenCalledWith("https://example.com");
     expect(onOpenSourceLocation).toHaveBeenCalledTimes(1);
+
+    const sessionLink = renderAnchor({
+      href: "cake://session/session-123",
+      children: "Authentication refactor",
+    });
+    expect(sessionLink.textContent).toBe("Authentication refactor");
+    expect(sessionLink.className).toContain("max-w-[80ch]");
+    act(() => {
+      sessionLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(openSession).toHaveBeenCalledWith("session-123");
 
     act(() => root.render(<Markdown>text</Markdown>));
     const defaultLink = renderAnchor({ href: "docs/readme.md", children: "readme" });

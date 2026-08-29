@@ -262,6 +262,7 @@ const cakeControlToolsSchema = z.array(cakeControlToolSchema).min(1).max(50);
 
 export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("choose-project") }),
+  z.object({ type: z.literal("open-external-url"), url: z.string().url().max(8_192) }),
   z.object({
     type: z.literal("show-transcript-selection-context-menu"),
     canChat: z.boolean(),
@@ -806,6 +807,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
 
 export const desktopResponseSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("project-chosen"), path: z.string().max(4_096).optional() }),
+  z.object({ type: z.literal("external-url-opened") }),
   z.object({
     type: z.literal("transcript-selection-context-menu-closed"),
     action: z.enum(["chat-about-selection", "add-annotation"]).optional(),

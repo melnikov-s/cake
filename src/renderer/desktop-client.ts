@@ -165,6 +165,7 @@ export type DesktopClientEvent =
 
 export interface DesktopClient {
   chooseProject(): Promise<string | undefined>;
+  openExternalUrl(url: string): Promise<void>;
   showTranscriptSelectionContextMenu(input: {
     canChat: boolean;
     canAnnotate: boolean;
@@ -647,6 +648,11 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       if (response.type !== "project-chosen")
         throw new Error("Cake received an invalid project response");
       return response.path;
+    },
+    async openExternalUrl(url) {
+      const response = await bridge.request({ type: "open-external-url", url });
+      if (response.type !== "external-url-opened")
+        throw new Error("Cake received an invalid external-link response");
     },
     async showTranscriptSelectionContextMenu(input) {
       const response = await bridge.request({

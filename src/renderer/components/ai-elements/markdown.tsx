@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import type { ComponentProps } from "react";
+import { createContext, useContext, useMemo } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { math } from "@streamdown/math";
 import { createMermaidPlugin } from "@streamdown/mermaid";
 import {
@@ -17,26 +17,63 @@ import { formatSourceLocation, parseSourceLocation } from "../../../utils/source
 /** Matches web-style hrefs that must never be treated as workspace file paths. */
 const nonPathHref = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i;
 const workspacePathPrefix = "/__cake_workspace__/";
+const sessionPathPrefix = "/__cake_session__/";
 const protectedMarkdown = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|!?\[[^\]]*\]\([^)]+\))/g;
 const bareSourceReference =
   /(^|[\s(])((?:[^\s/:#()[\],]+\/)*[^\s/:#()[\],]+\.[a-z][a-z0-9._+-]*(?::\d+(?::\d+)?|#L\d+(?:-L?\d+)?)?)(?=$|[\s),.;!?])/gi;
 
 type AnchorProps = ComponentProps<"a"> & { node?: unknown };
 
+type MarkdownLinkActions = {
+  openExternalUrl(url: string): void;
+  openSession(sessionId: string): void;
+};
+
+const MarkdownLinkContext = createContext<MarkdownLinkActions | undefined>(undefined);
+
+export function MarkdownLinkProvider({
+  actions,
+  children,
+}: {
+  actions: MarkdownLinkActions;
+  children: ReactNode;
+}) {
+  return <MarkdownLinkContext value={actions}>{children}</MarkdownLinkContext>;
+}
+
+function sessionIdFromHref(href: string) {
+  try {
+    const encodedId = href.startsWith(sessionPathPrefix)
+      ? href.slice(sessionPathPrefix.length)
+      : (() => {
+          const url = new URL(href);
+          return url.protocol === "cake:" && url.hostname === "session"
+            ? url.pathname.slice(1)
+            : undefined;
+        })();
+    return encodedId && !encodedId.includes("/") ? decodeURIComponent(encodedId) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function sourceHref(reference: string) {
   return `${workspacePathPrefix}${reference}`;
 }
 
-/** Makes explicit and bare workspace source references parseable and clickable. */
-function prepareWorkspaceMarkdown(markdown: string) {
+/** Makes Cake session links and workspace source references parseable and clickable. */
+function prepareMarkdownLinks(markdown: string, sourceLinks: boolean) {
   return markdown
     .split(protectedMarkdown)
     .map((segment, index) => {
       if (index % 2 === 1) {
-        return segment.replace(/\]\(([^)\s]+)\)$/, (match, target: string) =>
-          parseSourceLocation(target) ? `](${sourceHref(target)})` : match,
-        );
+        return segment.replace(/\]\(([^)\s]+)\)$/, (match, target: string) => {
+          const sessionId = sessionIdFromHref(target);
+          if (sessionId) return `](${sessionPathPrefix}${encodeURIComponent(sessionId)})`;
+          return sourceLinks && parseSourceLocation(target) ? `](${sourceHref(target)})` : match;
+        });
       }
+      if (!sourceLinks) return segment;
       return segment.replace(bareSourceReference, (match, prefix: string, reference: string) =>
         parseSourceLocation(reference)
           ? `${prefix}[${reference}](${sourceHref(reference)})`
@@ -46,10 +83,39 @@ function prepareWorkspaceMarkdown(markdown: string) {
     .join("");
 }
 
-function externalAnchor(allProps: AnchorProps) {
+function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
   const props = { ...allProps };
   delete props.node;
-  return <a {...props} target="_blank" rel="noreferrer" />;
+  const href = props.href;
+  const sessionId = href ? sessionIdFromHref(href) : undefined;
+  if (sessionId) {
+    return (
+      <a
+        {...props}
+        className={cn("inline-block max-w-[80ch] truncate align-bottom", props.className)}
+        onClick={(event) => {
+          event.preventDefault();
+          actions?.openSession(sessionId);
+        }}
+      />
+    );
+  }
+  const external = href ? /^https?:\/\//i.test(href) : false;
+  return (
+    <a
+      {...props}
+      target="_blank"
+      rel="noreferrer"
+      onClick={
+        external && actions
+          ? (event) => {
+              event.preventDefault();
+              actions.openExternalUrl(href!);
+            }
+          : props.onClick
+      }
+    />
+  );
 }
 
 const mermaid = createMermaidPlugin({ config: { securityLevel: "strict" } });
@@ -87,14 +153,15 @@ export function Markdown({
   ...props
 }: MarkdownProps) {
   const colorTheme = useResolvedColorTheme();
-  const source = onOpenSourceLocation ? prepareWorkspaceMarkdown(children) : children;
+  const linkActions = useContext(MarkdownLinkContext);
+  const source = prepareMarkdownLinks(children, Boolean(onOpenSourceLocation));
   const components = useMemo<Components>(() => {
-    if (!onOpenSourceLocation) return { a: externalAnchor };
+    if (!onOpenSourceLocation) return { a: (anchorProps) => linkAnchor(anchorProps, linkActions) };
     const openSourceLocation = onOpenSourceLocation;
     return {
       a(allProps: AnchorProps) {
         const href = allProps.href;
-        if (!href) return externalAnchor(allProps);
+        if (!href) return linkAnchor(allProps, linkActions);
         const reference = href.startsWith(workspacePathPrefix)
           ? href.slice(workspacePathPrefix.length)
           : href.startsWith("./")
@@ -102,7 +169,7 @@ export function Markdown({
             : href;
         const location = parseSourceLocation(reference);
         if (!location || (nonPathHref.test(href) && !href.startsWith(workspacePathPrefix)))
-          return externalAnchor(allProps);
+          return linkAnchor(allProps, linkActions);
         const label = formatSourceLocation(location);
         const props = { ...allProps, href: reference };
         delete props.node;
@@ -118,7 +185,7 @@ export function Markdown({
         );
       },
     };
-  }, [onOpenSourceLocation]);
+  }, [linkActions, onOpenSourceLocation]);
   return (
     <Streamdown
       {...props}

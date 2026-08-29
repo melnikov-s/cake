@@ -850,6 +850,13 @@ async function handleCakeRequest(
 ): Promise<DesktopResponse> {
   const request = desktopRequestSchema.parse(untrustedInput);
   const owner = BrowserWindow.fromWebContents(event.sender);
+  if (request.type === "open-external-url") {
+    const url = new URL(request.url);
+    if (url.protocol !== "https:" && url.protocol !== "http:")
+      throw new Error("External links must use HTTP or HTTPS");
+    await shell.openExternal(url.href);
+    return desktopResponseSchema.parse({ type: "external-url-opened" });
+  }
   if (request.type === "show-transcript-selection-context-menu") {
     if (!owner)
       return desktopResponseSchema.parse({

@@ -6,6 +6,7 @@ import "virtual:cake-plugins";
 import { RendererErrorBoundary } from "./components/renderer-error-boundary";
 import { CustomizationRecovery } from "./components/customization-recovery";
 import { LoadingState } from "./components/ui/loading-state";
+import { MarkdownLinkProvider } from "./components/ai-elements/markdown";
 import { createDesktopClient } from "./desktop-client";
 import { installStaleAssetRecovery } from "./stale-asset-recovery";
 import { mountRootStore } from "./mount-root-store";
@@ -45,22 +46,38 @@ if (!window.cake) {
   );
 } else {
   const rootStore = mountRootStore(createDesktopClient(window.cake));
+  const reportLinkError = (error: unknown) =>
+    rootStore.toastStore.show({
+      tone: "error",
+      title: "Could not open link",
+      message: error instanceof Error ? error.message : String(error),
+    });
+  const markdownLinkActions = {
+    openExternalUrl: (url: string) => {
+      void rootStore.openExternalUrl(url).catch(reportLinkError);
+    },
+    openSession: (sessionId: string) => {
+      void rootStore.openSessionLink(sessionId).catch(reportLinkError);
+    },
+  };
   root.render(
     <RendererErrorBoundary>
       <StrictMode>
         <StoreProvider store={rootStore}>
-          <Suspense
-            fallback={
-              <main className="loading-screen">
-                <span className="cake-mark">C</span>
-                <LoadingState label="Hydrating customization" />
-              </main>
-            }
-          >
-            <Scene />
-            <CustomizationHealth />
-          </Suspense>
-          <CustomizationRecovery />
+          <MarkdownLinkProvider actions={markdownLinkActions}>
+            <Suspense
+              fallback={
+                <main className="loading-screen">
+                  <span className="cake-mark">C</span>
+                  <LoadingState label="Hydrating customization" />
+                </main>
+              }
+            >
+              <Scene />
+              <CustomizationHealth />
+            </Suspense>
+            <CustomizationRecovery />
+          </MarkdownLinkProvider>
         </StoreProvider>
       </StrictMode>
     </RendererErrorBoundary>,
