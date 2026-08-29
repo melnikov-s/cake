@@ -371,7 +371,20 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       path: session.workspacePath,
       configuration:
         this.sessionRegistry.pendingConfiguration(sessionId) ?? this.props.defaultConfiguration?.(),
+      name: this.sessionRegistry.pendingName(sessionId),
     };
+  }
+
+  /** Creates, names, and starts a session in a workspace Cake has already authorized. */
+  async createSession(path: string, name: string, initialPrompt: string) {
+    if (this.sessionRegistry.pendingNewSession(path))
+      throw new Error("That workspace already has an unsent draft session.");
+    const sessionId = crypto.randomUUID();
+    this.showTemporarySession(path, sessionId);
+    this.sessionRegistry.setPendingName(sessionId, name);
+    const submitted = await this.sessionRegistry.ensure(sessionId).chatStore.submit(initialPrompt);
+    if (!submitted) throw new Error("Cake could not submit the new session's initial prompt.");
+    return sessionId;
   }
 
   async prepareNewSession(sessionId: string) {

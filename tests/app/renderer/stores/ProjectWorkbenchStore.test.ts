@@ -312,6 +312,94 @@ async function openSnapshot(
 }
 
 describe("ProjectWorkbenchStore", () => {
+  it("creates a named session and submits its initial prompt", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+
+    const sessionId = await store.createSession(
+      "/project",
+      "Named session",
+      "Implement the requested feature",
+    );
+
+    expect(sessionId).toEqual(expect.any(String));
+    expect(desktop.client.submit).toHaveBeenCalledWith({
+      operationId: expect.any(String),
+      sessionId,
+      text: "Implement the requested feature",
+      delivery: "prompt",
+      attachments: [],
+      newSession: {
+        path: "/project",
+        configuration: undefined,
+        name: "Named session",
+      },
+    });
+    root[Symbol.dispose]();
+  });
+
+  it("creates the Cake Chat session in a newly named worktree", async () => {
+    const desktop = createDesktopClient();
+    const { root } = mountTestStore(desktop.client);
+    await flush();
+    root.projectCatalogStore.applyApplicationState({
+      schemaVersion: 1,
+      projects: [
+        {
+          path: "/project",
+          name: "Project",
+          addedAt: "2026-08-01T00:00:00.000Z",
+          lastOpenedAt: "2026-08-01T00:00:00.000Z",
+        },
+      ],
+      resolvedSessionIds: [],
+      resolvedCakeChatSessionIds: [],
+      trustedProjectPaths: ["/project"],
+    });
+    vi.mocked(desktop.client.createWorktree).mockResolvedValueOnce({
+      projectPath: "/project",
+      worktreePath: "/project-worktrees/isolated-task",
+      branch: "agent/isolated-task",
+      baseBranch: "main",
+      createdAt: "2026-08-01T00:00:00.000Z",
+    });
+
+    await expect(
+      root.appControl.invoke({
+        name: "sessions.create",
+        arguments: {
+          workspacePath: "/project",
+          name: "Isolated task",
+          initialPrompt: "Implement it in isolation",
+          worktreeName: "isolated-task",
+        },
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      sessionId: expect.any(String),
+      workspacePath: "/project-worktrees/isolated-task",
+      status: "started",
+      managedWorktree: { branch: "agent/isolated-task" },
+    });
+    expect(desktop.client.createWorktree).toHaveBeenCalledWith({
+      operationId: expect.any(String),
+      path: "/project",
+      baseWorktreePath: undefined,
+      worktreeName: "isolated-task",
+    });
+    expect(desktop.client.submit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "Implement it in isolation",
+        newSession: expect.objectContaining({
+          path: "/project-worktrees/isolated-task",
+          name: "Isolated task",
+        }),
+      }),
+    );
+    root[Symbol.dispose]();
+  });
+
   it("dismisses the top secondary surface", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);

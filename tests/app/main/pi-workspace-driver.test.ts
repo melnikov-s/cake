@@ -76,6 +76,7 @@ describe("PiWorkspaceDriver", () => {
       attachments: [],
       newSession: {
         path: "/project",
+        name: "Named initial session",
         configuration: {
           provider: "openai",
           modelId: "gpt-5.6",
@@ -96,6 +97,7 @@ describe("PiWorkspaceDriver", () => {
     const location = { path: "src/main.ts", range: { start: { line: 4 } } };
     await runtimeOptions?.vscodeControl?.open(location, new AbortController().signal);
     expect(openInEditor).toHaveBeenCalledWith(location, expect.any(AbortSignal));
+    expect(runtime.rename).toHaveBeenCalledWith("Named initial session");
     expect(runtime.applyConfiguration).toHaveBeenCalledWith({
       provider: "openai",
       modelId: "gpt-5.6",

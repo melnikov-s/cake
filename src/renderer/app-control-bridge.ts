@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { jsonObjectSchema, jsonValueSchema } from "../ipc/json-contract";
 import type { GlobalSessionSummary, ProjectRecord, SessionSummary } from "../ipc/session-contract";
+import type { WorktreeRecord } from "../ipc/worktree-contract";
 import {
   customizationStateSchema,
   pluginIdSchema,
@@ -74,7 +75,20 @@ const appControlArgumentSchemas = {
   set_active_scene: z.object({ pluginId: pluginIdSchema.optional() }).strict(),
   get_session_status: sessionIdTargetSchema,
   open_session: sessionNavigationTargetSchema,
-  create_session: z.object({ workspacePath: z.string().min(1).max(4_096) }).strict(),
+  create_session: z
+    .object({
+      workspacePath: z.string().min(1).max(4_096),
+      name: z.string().trim().min(1).max(500),
+      initialPrompt: z.string().trim().min(1).max(100_000),
+      worktreeName: z
+        .string()
+        .regex(/^[a-z0-9][a-z0-9-]{0,62}$/)
+        .optional()
+        .describe(
+          "When present, create the session in a new Cake-managed worktree with this name.",
+        ),
+    })
+    .strict(),
   send_session_message: sessionIdTargetSchema.extend({
     text: z.string().trim().min(1).max(100_000),
     delivery: z.enum(["prompt", "follow-up", "steer"]).optional(),
@@ -139,7 +153,12 @@ export interface AppControlHost {
   cakeChatSessions(): readonly SessionSummary[];
   sessionActivity(sessionId: string): "running" | "unread" | undefined;
   openSession(sessionId: string, messageId?: string): Promise<boolean | void>;
-  createSession(workspacePath: string): Promise<void>;
+  createSession(input: {
+    workspacePath: string;
+    name: string;
+    initialPrompt: string;
+    worktreeName?: string;
+  }): Promise<{ workspacePath: string; sessionId: string; managedWorktree?: WorktreeRecord }>;
   sendSessionMessage(
     sessionId: string,
     text: string,
@@ -251,7 +270,14 @@ export type AppControlResult =
       status: "running" | "unread" | "idle";
     }
   | { ok: true; name: "open_session"; opened: SessionTarget & { messageId?: string } }
-  | { ok: true; name: "create_session"; workspacePath: string; status: "creating" }
+  | {
+      ok: true;
+      name: "create_session";
+      workspacePath: string;
+      sessionId: string;
+      status: "started";
+      managedWorktree?: WorktreeRecord;
+    }
   | {
       ok: true;
       name: "send_session_message";
@@ -351,7 +377,7 @@ const modelControlOperations = [
   operation(
     "sessions.create",
     "sessions",
-    "Create and open a session in a known project.",
+    "Create, name, open, and send the initial prompt to a project session, optionally in a new managed worktree.",
     appControlArgumentSchemas.create_session,
   ),
   operation(
@@ -683,8 +709,7 @@ export class AppControlBridge {
           pluginStatusesSchema.parse(await this.host.setActiveScene(invocation.arguments.pluginId)),
         ),
       };
-    if (invocation.name === "create_session")
-      return this.createSession(invocation.arguments.workspacePath);
+    if (invocation.name === "create_session") return this.createSession(invocation.arguments);
     if (invocation.name === "set_sessions_resolved")
       return this.setSessionsResolved(invocation.arguments);
     if (invocation.name === "set_cake_chat_sessions_resolved")
@@ -776,12 +801,22 @@ export class AppControlBridge {
     return this.host.sessions().find((session) => session.id === sessionId);
   }
 
-  private async createSession(workspacePath: string): Promise<AppControlResult> {
-    if (!this.host.projects().some((project) => project.path === workspacePath)) {
+  private async createSession(
+    input: z.infer<typeof appControlArgumentSchemas.create_session>,
+  ): Promise<AppControlResult> {
+    if (!this.host.projects().some((project) => project.path === input.workspacePath)) {
       return { ok: false, name: "create_session", error: "Cake could not find that project." };
     }
-    await this.host.createSession(workspacePath);
-    return { ok: true, name: "create_session", workspacePath, status: "creating" };
+    const created = await this.host.createSession(input);
+    const result: Extract<AppControlResult, { ok: true; name: "create_session" }> = {
+      ok: true,
+      name: "create_session",
+      workspacePath: created.workspacePath,
+      sessionId: created.sessionId,
+      status: "started",
+    };
+    if (created.managedWorktree) result.managedWorktree = created.managedWorktree;
+    return result;
   }
 
   private async setSessionsResolved({

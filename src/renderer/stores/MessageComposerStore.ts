@@ -51,7 +51,9 @@ export interface MessageComposerStoreProps {
   handoffSession(entryId: string, prompt?: string, resolveSource?: boolean): Promise<boolean>;
   operations: SessionOperationCoordinatorStore;
   operationOwner: string;
-  newSessionRequest?(): { path: string; configuration?: ChatConfiguration } | undefined;
+  newSessionRequest?():
+    | { path: string; configuration?: ChatConfiguration; name?: string }
+    | undefined;
   prepareNewSession?(): Promise<boolean>;
 }
 

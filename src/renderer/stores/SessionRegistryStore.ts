@@ -35,7 +35,7 @@ export interface SessionRegistryStoreProps {
   openModelPresetSettings?(): void;
   newSessionRequest?(
     sessionId: string,
-  ): { path: string; configuration?: ChatConfiguration } | undefined;
+  ): { path: string; configuration?: ChatConfiguration; name?: string } | undefined;
   prepareNewSession?(sessionId: string): Promise<boolean>;
   settings?(): AppearanceSettingsStore | undefined;
 }
@@ -54,6 +54,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   private readonly pendingConfigurationsBySession: Record<string, ChatConfiguration> = observable(
     {},
   );
+  private readonly pendingNamesBySession: Record<string, string> = observable({});
   private readonly temporarySessionIds: Set<string> = observable(new Set<string>());
   private readonly sessionsById = new Map<string, ProjectSessionStore>();
   private readonly sessionWorkspacePaths = new Map<string, string>();
@@ -139,6 +140,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     if (!wasDeferred) return;
     this.temporarySessionIds.delete(sessionId);
     delete this.pendingConfigurationsBySession[sessionId];
+    delete this.pendingNamesBySession[sessionId];
     if (this.pendingNewSessionIdsByWorkspace[workspacePath] === sessionId)
       delete this.pendingNewSessionIdsByWorkspace[workspacePath];
     this.unlistedNewSessionIds.add(sessionId);
@@ -205,6 +207,16 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     return this.pendingConfigurationsBySession[sessionId];
   }
 
+  pendingName(sessionId: string) {
+    return this.pendingNamesBySession[sessionId];
+  }
+
+  setPendingName(sessionId: string, name: string) {
+    if (!this.temporarySessionIds.has(sessionId))
+      throw new Error("Only an unsent session can receive an initial name.");
+    this.pendingNamesBySession[sessionId] = name;
+  }
+
   setPendingConfiguration(sessionId: string, configuration: ChatConfiguration) {
     this.pendingConfigurationsBySession[sessionId] = configuration;
   }
@@ -218,6 +230,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     this.temporarySessionIds.delete(sessionId);
     this.unlistedNewSessionIds.delete(sessionId);
     delete this.pendingConfigurationsBySession[sessionId];
+    delete this.pendingNamesBySession[sessionId];
     this.sessionWorkspacePaths.delete(sessionId);
     this.pendingPartsBySession.delete(sessionId);
     this.pendingStreamingBySession.delete(sessionId);
@@ -240,6 +253,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     else {
       this.temporarySessionIds.delete(snapshot.sessionId);
       delete this.pendingConfigurationsBySession[snapshot.sessionId];
+      delete this.pendingNamesBySession[snapshot.sessionId];
     }
     const session = this.ensure(snapshot.sessionId);
     applySnapshot(session.model, toSessionSnapshot(snapshot));

@@ -76,6 +76,29 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     await this.projectWorkbenchStore.startNewSession(workspacePath);
   }
 
+  async createPromptedSession(input: {
+    workspacePath: string;
+    name: string;
+    initialPrompt: string;
+    worktreeName?: string;
+  }) {
+    this.showEmptyWorkbench();
+    const managedWorktree = input.worktreeName
+      ? await this.projectWorkbenchStore.worktreeCreationStore.create(input.workspacePath, {
+          name: input.worktreeName,
+        })
+      : undefined;
+    const workspacePath = managedWorktree?.worktreePath ?? input.workspacePath;
+    const sessionId = await this.projectWorkbenchStore.createSession(
+      workspacePath,
+      input.name,
+      input.initialPrompt,
+    );
+    return managedWorktree
+      ? { workspacePath, sessionId, managedWorktree }
+      : { workspacePath, sessionId };
+  }
+
   async startOneOffChat() {
     this.showEmptyWorkbench();
     await this.projectWorkbenchStore.startOneOffChat();
@@ -392,9 +415,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       cakeChatSessions: () => this.globalChatStore.summaries,
       sessionActivity: (sessionId) => this.sidebarStore.sessionActivity(sessionId),
       openSession: (sessionId, messageId) => this.openSession(sessionId, messageId),
-      createSession: async (workspacePath) => {
-        await this.createSession(workspacePath);
-      },
+      createSession: (input) => this.createPromptedSession(input),
       sendSessionMessage: (sessionId, text, delivery) =>
         this.appControlOperationStore.run((operationId) =>
           this.client.submit({ operationId, sessionId, text, delivery, attachments: [] }),

@@ -35,7 +35,9 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   handoffSession(entryId: string, prompt?: string, resolveSource?: boolean): Promise<boolean>;
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
-  newSessionRequest(): { path: string; configuration?: ChatConfiguration } | undefined;
+  newSessionRequest():
+    | { path: string; configuration?: ChatConfiguration; name?: string }
+    | undefined;
   prepareNewSession(): Promise<boolean>;
   settings?(): AppearanceSettingsStore | undefined;
 }

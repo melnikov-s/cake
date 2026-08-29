@@ -363,6 +363,7 @@ export class PiWorkspaceDriver {
           runtime = await this.createRuntime(true, command.sessionId);
           if (command.newSession.configuration)
             await runtime.applyConfiguration(command.newSession.configuration);
+          if (command.newSession.name) await runtime.rename(command.newSession.name);
         } else {
           runtime =
             command.type === "rename-session" ||

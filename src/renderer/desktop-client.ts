@@ -426,7 +426,7 @@ export interface DesktopClient {
     text: string;
     delivery: "prompt" | "steer" | "follow-up";
     attachments: Attachment[];
-    newSession?: { path: string; configuration?: ChatConfiguration };
+    newSession?: { path: string; configuration?: ChatConfiguration; name?: string };
   }): Promise<void>;
   abort(input: { operationId: string; sessionId: string }): Promise<void>;
   compactSession(input: {

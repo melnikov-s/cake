@@ -50,6 +50,27 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
     );
   }
 
+  /** Creates a managed checkout for a session-creation workflow outside the draft UI. */
+  async create(
+    projectPath: string,
+    options?: { name?: string; baseWorktreePath?: string },
+  ): Promise<WorktreeRecord> {
+    const operationId = this.props.operations.start("project-workbench");
+    try {
+      const record = await this.props.client.createWorktree({
+        operationId,
+        path: projectPath,
+        baseWorktreePath: options?.baseWorktreePath,
+        worktreeName: options?.name,
+      });
+      if (this.signal.aborted) throw new Error("Worktree creation was cancelled.");
+      this.props.catalog.noteManagedWorktree(record);
+      return record;
+    } finally {
+      this.props.operations.finish(operationId);
+    }
+  }
+
   /**
    * Repeated calls are ignored while checkout preparation is active. A failure
    * leaves the draft and its selection intact so the user can retry or choose again.

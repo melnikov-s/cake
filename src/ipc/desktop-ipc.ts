@@ -680,6 +680,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
         .object({
           path: z.string().max(4_096),
           configuration: chatConfigurationSchema.optional(),
+          name: z.string().trim().min(1).max(500).optional(),
         })
         .optional(),
     })

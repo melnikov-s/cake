@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { observable } from "r-state-tree";
 import { jsonValueSchema } from "../../../src/ipc/json-contract";
 import type { GlobalSessionSummary, ProjectRecord } from "../../../src/ipc/session-contract";
+import type { WorktreeRecord } from "../../../src/ipc/worktree-contract";
 import type { CustomizationState, PluginStatus } from "../../../src/plugin/plugin-contract";
 import { AppControlBridge, type AppControlHost } from "../../../src/renderer/app-control-bridge";
 
@@ -79,10 +80,22 @@ function createBridge(
     >
   > = {},
 ) {
-  const openSession = vi.fn(
-    async (_sessionId: string, _messageId?: string): Promise<boolean | void> => undefined,
+  const openSession = vi.fn(async (): Promise<boolean | void> => undefined);
+  const createSession = vi.fn(
+    async (input: {
+      workspacePath: string;
+      name: string;
+      initialPrompt: string;
+      worktreeName?: string;
+    }): Promise<{
+      workspacePath: string;
+      sessionId: string;
+      managedWorktree?: WorktreeRecord;
+    }> => ({
+      workspacePath: input.workspacePath,
+      sessionId: "new-session",
+    }),
   );
-  const createSession = vi.fn(async () => undefined);
   const sendSessionMessage = vi.fn(async () => undefined);
   const abortSession = vi.fn(async () => undefined);
   const renameSession = vi.fn(async () => undefined);
@@ -440,16 +453,59 @@ describe("AppControlBridge", () => {
       setSessionModel,
     } = createBridge();
 
+    const directInput = {
+      workspacePath: "/cake",
+      name: "Direct session",
+      initialPrompt: "Implement the direct version",
+    };
     await expect(
-      bridge.invoke({ name: "create_session", arguments: { workspacePath: "/cake" } }),
+      bridge.invoke({ name: "create_session", arguments: directInput }),
     ).resolves.toEqual({
       ok: true,
       name: "create_session",
       workspacePath: "/cake",
-      status: "creating",
+      sessionId: "new-session",
+      status: "started",
+    });
+    const managedWorktree = {
+      projectPath: "/cake",
+      worktreePath: "/cake-worktrees/native-worktree",
+      branch: "agent/native-worktree",
+      baseBranch: "main",
+      baseCommit: "abc123",
+      state: "active" as const,
+      createdAt: "2026-08-15T00:00:00.000Z",
+    };
+    createSession.mockResolvedValueOnce({
+      workspacePath: managedWorktree.worktreePath,
+      sessionId: "worktree-session",
+      managedWorktree,
+    });
+    const worktreeInput = {
+      workspacePath: "/cake",
+      name: "Native worktree session",
+      initialPrompt: "Implement the isolated version",
+      worktreeName: "native-worktree",
+    };
+    await expect(
+      bridge.invoke({ name: "sessions.create", arguments: worktreeInput }),
+    ).resolves.toEqual({
+      ok: true,
+      name: "create_session",
+      workspacePath: managedWorktree.worktreePath,
+      sessionId: "worktree-session",
+      managedWorktree,
+      status: "started",
     });
     await expect(
-      bridge.invoke({ name: "create_session", arguments: { workspacePath: "/missing" } }),
+      bridge.invoke({
+        name: "create_session",
+        arguments: {
+          workspacePath: "/missing",
+          name: "Missing",
+          initialPrompt: "This should not start",
+        },
+      }),
     ).resolves.toEqual({
       ok: false,
       name: "create_session",
@@ -490,7 +546,8 @@ describe("AppControlBridge", () => {
       arguments: { sessionId: "current", provider: "openai", modelId: "gpt-5" },
     });
 
-    expect(createSession).toHaveBeenCalledOnce();
+    expect(createSession).toHaveBeenNthCalledWith(1, directInput);
+    expect(createSession).toHaveBeenNthCalledWith(2, worktreeInput);
     expect(renameSession).toHaveBeenCalledWith("current", "Global controls");
     expect(setSessionResolved).toHaveBeenCalledWith("current", true);
     expect(setSessionsResolved).toHaveBeenCalledWith(["current", "running"], false);

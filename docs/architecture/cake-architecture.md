@@ -219,7 +219,9 @@ The window Store hierarchy mirrors the product surfaces:
 - `ProjectWorkbenchStore` coordinates project activation and its focused
   workflow children: `CommandPaneStore`, `SessionManagementStore`,
   `SessionContinuationStore`, `WorktreeCreationStore`, `EmbeddedEditorStore`,
-  and `WorktreeStore`. `EmbeddedEditorStore` owns IDE mode and Source Control navigation,
+  and `WorktreeStore`. `WorktreeCreationStore` owns both draft-composer worktree
+  selection and Cake Chat's coordinated create-worktree-then-create-named-session workflow.
+  `EmbeddedEditorStore` owns IDE mode and Source Control navigation,
   where the native VS Code
   view occupies the source pane and Cake's shared chat occupies the right drawer.
   Each child owns its own operation

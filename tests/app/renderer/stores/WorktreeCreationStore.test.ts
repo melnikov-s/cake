@@ -13,6 +13,37 @@ const worktree = {
 };
 
 describe("WorktreeCreationStore", () => {
+  it("creates and catalogs a managed worktree for an external session workflow", async () => {
+    const catalog = mount(createStore(SessionCatalogStore));
+    const operations = mount(createStore(SessionOperationCoordinatorStore));
+    const createWorktree = vi.fn(async () => worktree);
+    const store = mount(
+      createStore(WorktreeCreationStore, {
+        client: { createWorktree },
+        operations,
+        catalog,
+        relocateTemporarySession: vi.fn(),
+        reportError: vi.fn(),
+      }),
+    );
+
+    await expect(
+      store.create("/project", { name: "feature", baseWorktreePath: "/parent-worktree" }),
+    ).resolves.toEqual(worktree);
+    expect(createWorktree).toHaveBeenCalledWith({
+      operationId: expect.any(String),
+      path: "/project",
+      baseWorktreePath: "/parent-worktree",
+      worktreeName: "feature",
+    });
+    expect(catalog.managedWorktree(worktree.worktreePath)).toEqual(worktree);
+    expect(operations.active("project-workbench")).toEqual([]);
+
+    store[Symbol.dispose]();
+    operations[Symbol.dispose]();
+    catalog[Symbol.dispose]();
+  });
+
   it("includes the most recently active session title with an existing worktree", () => {
     const catalog = mount(createStore(SessionCatalogStore));
     const operations = mount(createStore(SessionOperationCoordinatorStore));
