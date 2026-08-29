@@ -2367,6 +2367,54 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("discards an unsent session when it is resolved and returns to chat history", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+    await root.createSession("/project");
+    const pendingSessionId = store.activeSession!.sessionId;
+    await root.openSession(pendingSessionId);
+
+    await root.sidebarStore.setSessionResolved(pendingSessionId, true);
+
+    expect(store.sessionRegistry.findSession(pendingSessionId)).toBeUndefined();
+    expect(root.sessionCatalogStore.find(pendingSessionId)).toBeUndefined();
+    expect(store.activeSession?.sessionId).toBe(snapshot.sessionId);
+    expect(desktop.client.resolveSession).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(
+      vi.mocked(desktop.client.saveWindowState).mock.calls.at(-1)?.[0].pendingProjectSessions,
+    ).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ sessionId: pendingSessionId })]),
+    );
+    root[Symbol.dispose]();
+  });
+
+  it("discards unsent sessions during bulk resolution without calling Pi", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+    await store.startNewSession("/project");
+    const firstSessionId = store.activeSession!.sessionId;
+    await store.startNewSession("/project");
+    const secondSessionId = store.activeSession!.sessionId;
+
+    await expect(
+      store.sessionManagementStore.resolveSessionsById(
+        [firstSessionId, secondSessionId],
+        true,
+        "/project",
+      ),
+    ).resolves.toBe(2);
+
+    expect(store.sessionRegistry.findSession(firstSessionId)).toBeUndefined();
+    expect(store.sessionRegistry.findSession(secondSessionId)).toBeUndefined();
+    expect(desktop.client.resolveSessions).not.toHaveBeenCalled();
+    root[Symbol.dispose]();
+  });
+
   it("stages, names, persists, edits, and activates a draft session", async () => {
     const desktop = createDesktopClient();
     desktop.client.generateSessionTitle = vi.fn(async () => "Investigate flaky tests");

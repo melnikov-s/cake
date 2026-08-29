@@ -205,8 +205,10 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   }
 
   private async resolveProjectSession(sessionId: string, resolved: boolean) {
+    const wasTemporary = this.sessionRegistry.isTemporarySession(sessionId);
     await this.projectWorkbenchStore.sessionManagementStore.resolveSession(sessionId, resolved);
-    if (resolved && this.sessionCatalogStore.find(sessionId)?.resolved)
+    const wasDiscarded = wasTemporary && !this.sessionRegistry.findSession(sessionId);
+    if (resolved && (wasDiscarded || this.sessionCatalogStore.find(sessionId)?.resolved))
       await this.forgetResolvedSessions([sessionId]);
   }
 

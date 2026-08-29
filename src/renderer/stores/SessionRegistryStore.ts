@@ -274,6 +274,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     this.pendingStreamingBySession.delete(sessionId);
     this.pendingArtifactsBySession.delete(sessionId);
     this.props.catalog?.remove(sessionId);
+    this.props.persist();
   }
 
   pendingNewSessions() {

@@ -60,6 +60,10 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   async resolveSession(sessionId: string, resolved: boolean) {
     if (!this.props.catalog.find(sessionId) || this.signal.aborted) return;
     if (this.props.registry.setDraftSessionResolved(sessionId, resolved)) return;
+    if (resolved && this.props.registry.isTemporarySession(sessionId)) {
+      this.props.registry.discardNewSession(sessionId);
+      return;
+    }
     try {
       const state = await this.props.client.resolveSession(sessionId, resolved);
       if (!this.signal.aborted) this.props.applyApplicationState(state);
@@ -87,8 +91,12 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     for (const sessionId of sessionIds) {
       if (!this.props.catalog.find(sessionId))
         throw new Error(`Cake could not find session ${sessionId}`);
-      if (!this.props.registry.setDraftSessionResolved(sessionId, resolved))
-        persistedIds.push(sessionId);
+      if (this.props.registry.setDraftSessionResolved(sessionId, resolved)) continue;
+      if (resolved && this.props.registry.isTemporarySession(sessionId)) {
+        this.props.registry.discardNewSession(sessionId);
+        continue;
+      }
+      persistedIds.push(sessionId);
     }
     if (persistedIds.length === 0) return sessionIds.length;
     try {
