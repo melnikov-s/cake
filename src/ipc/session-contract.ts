@@ -148,6 +148,14 @@ const annotationSchema = z
     path: ["endOffset"],
   });
 
+const sourceAttachmentLocationSchema = z.object({
+  path: z.string().trim().min(1).max(8_192),
+  range: z.object({
+    start: z.object({ line: z.number().int().nonnegative().max(10_000_000) }),
+    end: z.object({ line: z.number().int().nonnegative().max(10_000_000) }),
+  }),
+});
+
 export const attachmentSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("file"),
@@ -163,10 +171,7 @@ export const attachmentSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("source"),
     name: z.string().max(512),
-    location: sourceLocationSchema,
-    selectedText: ipcProjectionString(48_000),
-    contextBefore: ipcProjectionString(8_000),
-    contextAfter: ipcProjectionString(8_000),
+    location: sourceAttachmentLocationSchema,
   }),
   z.object({
     kind: z.literal("annotation"),

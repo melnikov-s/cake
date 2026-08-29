@@ -142,17 +142,11 @@ export type DesktopClientEvent =
       location: SourceLocation;
     }
   | {
-      type: "embedded-editor-activity";
+      type: "embedded-editor-selection";
       workspacePath: string;
       path: string;
-      documentVersion: number;
       startLine: number;
-      startColumn: number;
       endLine: number;
-      endColumn: number;
-      selectedText: string;
-      contextBefore: string;
-      contextAfter: string;
     }
   | { type: "embedded-editor-back-to-agent"; workspacePath: string }
   | {
@@ -162,7 +156,7 @@ export type DesktopClientEvent =
       threadId: string;
     }
   | { type: "embedded-editor-toggle-chat"; workspacePath: string }
-  | { type: "embedded-editor-context-cleared"; workspacePath: string };
+  | { type: "embedded-editor-selection-cleared"; workspacePath: string };
 
 export interface DesktopClient {
   chooseProject(): Promise<string | undefined>;
@@ -610,11 +604,11 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
       message: event.message,
     };
   if (
-    event.type === "embedded-editor-activity" ||
+    event.type === "embedded-editor-selection" ||
     event.type === "embedded-editor-annotation-opened" ||
     event.type === "embedded-editor-back-to-agent" ||
     event.type === "embedded-editor-toggle-chat" ||
-    event.type === "embedded-editor-context-cleared" ||
+    event.type === "embedded-editor-selection-cleared" ||
     event.type === "embedded-editor-location-opened"
   )
     return event;

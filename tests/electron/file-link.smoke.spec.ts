@@ -212,6 +212,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
       .poll(() => hasVsCodeTitleAction("Toggle Chat Sidebar"), { timeout: 20_000 })
       .toBe(true);
     await expect.poll(() => hasVsCodeTitleAction("Back to Agent"), { timeout: 20_000 }).toBe(true);
+    await expect(page.getByRole("button", { name: /Remove src\/modelMeta\.ts/ })).toHaveCount(0);
     await expect
       .poll(() =>
         application.evaluate(async ({ webContents }) => {
@@ -359,20 +360,14 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
           window.webContents.send("cake:event", event);
       },
       {
-        type: "embedded-editor-activity",
+        type: "embedded-editor-selection",
         workspacePath: project,
         path: "src/modelMeta.ts",
-        documentVersion: 1,
         startLine: 0,
-        startColumn: 13,
         endLine: 0,
-        endColumn: 17,
-        selectedText: "meta",
-        contextBefore: "",
-        contextAfter: "",
       },
     );
-    await expect(page.getByText("src/modelMeta.ts:1:14-1:18", { exact: true })).toBeVisible();
+    await expect(page.getByText("src/modelMeta.ts:1", { exact: true })).toBeVisible();
     expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
     await link.click();
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();

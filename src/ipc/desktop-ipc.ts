@@ -207,17 +207,11 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     message: ipcProjectionString(4_096).optional(),
   }),
   z.object({
-    type: z.literal("embedded-editor-activity"),
+    type: z.literal("embedded-editor-selection"),
     workspacePath: z.string().max(4_096),
     path: ipcProjectionString(8_192),
-    documentVersion: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     startLine: z.number().int().nonnegative(),
-    startColumn: z.number().int().nonnegative(),
     endLine: z.number().int().nonnegative(),
-    endColumn: z.number().int().nonnegative(),
-    selectedText: ipcProjectionString(48_000),
-    contextBefore: ipcProjectionString(8_000),
-    contextAfter: ipcProjectionString(8_000),
   }),
   z.object({
     type: z.literal("embedded-editor-back-to-agent"),
@@ -234,7 +228,7 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     workspacePath: z.string().max(4_096),
   }),
   z.object({
-    type: z.literal("embedded-editor-context-cleared"),
+    type: z.literal("embedded-editor-selection-cleared"),
     workspacePath: z.string().max(4_096),
   }),
   z.object({

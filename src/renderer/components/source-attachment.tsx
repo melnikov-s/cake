@@ -1,17 +1,16 @@
 import type { SourceLocation } from "../../ipc/source-location";
 import { formatSourceLocation } from "../../utils/source-location";
-import { CodeBlock } from "./ai-elements/code";
 import { Button } from "./ui/button";
 import { IconButton } from "./ui/icon-button";
 import { CloseIcon } from "./ui/icons";
 
-/** Inspectable composer context created from an exact embedded-VS-Code selection. */
+/** Composer context created from an explicit embedded-VS-Code user selection. */
 export function SourceAttachment({
   attachment,
   onOpen,
   onRemove,
 }: {
-  attachment: { name: string; location: SourceLocation; selectedText: string };
+  attachment: { name: string; location: SourceLocation };
   onOpen?(location: SourceLocation): void;
   onRemove?(): void;
 }) {
@@ -22,19 +21,17 @@ export function SourceAttachment({
       ? `${attachment.location.path}:${start.line + 1}:${start.column + 1}-${end.line + 1}:${end.column + 1}`
       : formatSourceLocation(attachment.location);
   return (
-    <details className="group relative w-full rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
-      <summary className="cursor-pointer list-none pr-8 font-mono text-xs font-medium marker:hidden">
-        <span className="block truncate" title={label}>
-          {label}
-        </span>
-      </summary>
-      {attachment.selectedText ? (
-        <CodeBlock className="mb-2 mt-3 max-h-56 whitespace-pre overflow-auto rounded-md p-3">
-          {attachment.selectedText}
-        </CodeBlock>
-      ) : null}
+    <div className="group relative w-full rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
+      <span className="block truncate pr-8 font-mono text-xs font-medium" title={label}>
+        {label}
+      </span>
       {onOpen ? (
-        <Button variant="outline" size="sm" onClick={() => onOpen(attachment.location)}>
+        <Button
+          className="mt-2"
+          variant="outline"
+          size="sm"
+          onClick={() => onOpen(attachment.location)}
+        >
           Open in VS Code
         </Button>
       ) : null}
@@ -47,6 +44,6 @@ export function SourceAttachment({
           <CloseIcon size={14} />
         </IconButton>
       ) : null}
-    </details>
+    </div>
   );
 }

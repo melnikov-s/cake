@@ -158,11 +158,30 @@ describe("VsCodeServerManager startup", () => {
 
     manager["presentedWorkspacePaths"].set("/real/project", "/linked/project");
     manager["handleBridgeMessage"](
-      Buffer.from(JSON.stringify({ type: "activity-cleared", workspace: "/real/project" })),
+      Buffer.from(JSON.stringify({ type: "selection-cleared", workspace: "/real/project" })),
     );
     expect(broadcast).toHaveBeenCalledWith({
-      type: "embedded-editor-context-cleared",
+      type: "embedded-editor-selection-cleared",
       workspacePath: "/linked/project",
+    });
+
+    manager["handleBridgeMessage"](
+      Buffer.from(
+        JSON.stringify({
+          type: "selection",
+          workspace: "/real/project",
+          path: "src/main.ts",
+          startLine: 4,
+          endLine: 8,
+        }),
+      ),
+    );
+    expect(broadcast).toHaveBeenCalledWith({
+      type: "embedded-editor-selection",
+      workspacePath: "/linked/project",
+      path: "src/main.ts",
+      startLine: 4,
+      endLine: 8,
     });
   });
 

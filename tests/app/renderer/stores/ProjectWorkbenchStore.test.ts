@@ -1321,24 +1321,20 @@ describe("ProjectWorkbenchStore", () => {
     await store.embeddedEditorStore.show();
 
     desktop.emit({
-      type: "embedded-editor-activity",
+      type: "embedded-editor-selection",
       workspacePath: "/project",
       path: "src/main.ts",
-      documentVersion: 8,
       startLine: 10,
-      startColumn: 2,
       endLine: 10,
-      endColumn: 8,
-      selectedText: "answer",
-      contextBefore: "const ",
-      contextAfter: " = 42;",
     });
     await flush();
 
     const context = expect.objectContaining({
       kind: "source",
-      location: expect.objectContaining({ path: "src/main.ts", documentVersion: 8 }),
-      selectedText: "answer",
+      location: {
+        path: "src/main.ts",
+        range: { start: { line: 10 }, end: { line: 10 } },
+      },
     });
     expect(store.activeSession!.composerStore.visibleAttachments).toEqual([context]);
     store.activeSession!.chatStore.setDraft("What do I have selected?");
@@ -1350,24 +1346,18 @@ describe("ProjectWorkbenchStore", () => {
       }),
     );
 
-    desktop.emit({ type: "embedded-editor-context-cleared", workspacePath: "/project" });
+    desktop.emit({ type: "embedded-editor-selection-cleared", workspacePath: "/project" });
     await flush();
     expect(store.embeddedEditorStore.activeContextAttachment).toBeUndefined();
     expect(store.activeSession!.composerStore.visibleAttachments).toEqual([]);
 
     store.dismissSecondarySurfaces();
     desktop.emit({
-      type: "embedded-editor-activity",
+      type: "embedded-editor-selection",
       workspacePath: "/project",
       path: "src/late.ts",
-      documentVersion: 1,
       startLine: 20,
-      startColumn: 0,
       endLine: 20,
-      endColumn: 4,
-      selectedText: "late",
-      contextBefore: "",
-      contextAfter: "",
     });
     await flush();
     expect(store.embeddedEditorStore.visible).toBe(false);

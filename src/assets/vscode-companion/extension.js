@@ -1,5 +1,5 @@
 // Cake companion extension. Runs inside the openvscode-server extension host and
-// relays editor activity to Cake while projecting Cake source locations and
+// relays explicit user selections to Cake while projecting Cake source locations and
 // discussion annotations into native VS Code surfaces.
 "use strict";
 
@@ -11,12 +11,10 @@ const BRIDGE_TOKEN = process.env.CAKE_BRIDGE_TOKEN || "";
 const WORKSPACE = process.env.CAKE_WORKSPACE_PATH || "";
 const HELLO_RETRIES = 5;
 const HELLO_RETRY_DELAY_MS = 2_000;
-const MAX_SELECTION_LENGTH = 48_000;
-const MAX_CONTEXT_LENGTH = 8_000;
 
 let revealServer;
-let activitySubscription;
-let activityTimer;
+let selectionSubscription;
+let selectionTimer;
 const revealDecorations = new Set();
 let annotationSessionId;
 let annotations = [];
@@ -66,43 +64,30 @@ function workspaceRelative(filePath) {
   return relativePath.split(path.sep).join("/");
 }
 
-function sendEditorActivity(vscode, editor = vscode.window.activeTextEditor) {
-  if (!editor || editor.document.uri.scheme !== "file") {
-    postBridge({ type: "activity-cleared" });
-    return;
-  }
+function sendUserSelection(event) {
+  const editor = event.textEditor;
+  if (event.kind === undefined || editor.document.uri.scheme !== "file") return;
   const relativePath = workspaceRelative(editor.document.uri.fsPath);
-  if (!relativePath) {
-    postBridge({ type: "activity-cleared" });
+  if (!relativePath || editor.selection.isEmpty) {
+    postBridge({ type: "selection-cleared" });
     return;
   }
-  const selection = editor.selection;
-  const selectedText = editor.document.getText(selection).slice(0, MAX_SELECTION_LENGTH);
-  const lines = editor.document.getText().split(/\r?\n/);
+  const endLine =
+    editor.selection.end.character === 0 && editor.selection.end.line > editor.selection.start.line
+      ? editor.selection.end.line - 1
+      : editor.selection.end.line;
   postBridge({
-    type: "activity",
+    type: "selection",
     path: relativePath,
-    documentVersion: editor.document.version,
-    startLine: selection.start.line,
-    startColumn: selection.start.character,
-    endLine: selection.end.line,
-    endColumn: selection.end.character,
-    selectedText,
-    contextBefore: lines
-      .slice(Math.max(0, selection.start.line - 3), selection.start.line)
-      .join("\n")
-      .slice(-MAX_CONTEXT_LENGTH),
-    contextAfter: lines
-      .slice(selection.end.line + 1, selection.end.line + 4)
-      .join("\n")
-      .slice(0, MAX_CONTEXT_LENGTH),
+    startLine: editor.selection.start.line,
+    endLine,
   });
 }
 
-function scheduleEditorActivity(vscode, editor = vscode.window.activeTextEditor) {
-  if (activityTimer) clearTimeout(activityTimer);
-  activityTimer = setTimeout(() => sendEditorActivity(vscode, editor), 75);
-  activityTimer.unref?.();
+function scheduleUserSelection(event) {
+  if (selectionTimer) clearTimeout(selectionTimer);
+  selectionTimer = setTimeout(() => sendUserSelection(event), 75);
+  selectionTimer.unref?.();
 }
 
 function readBody(request) {
@@ -299,23 +284,19 @@ function activate(context) {
           end: { line: symbolRange.end.line, column: symbolRange.end.character },
         };
     }
-    const range = rangeFor(vscode, document, requestedRange);
-    const editor = await vscode.window.showTextDocument(document, {
-      selection: range,
-      preview: false,
-    });
+    const range = requestedRange ? rangeFor(vscode, document, requestedRange) : undefined;
+    const editor = await vscode.window.showTextDocument(document, { preview: false });
+    for (const decoration of revealDecorations) decoration.dispose();
+    revealDecorations.clear();
+    if (!range) return;
     editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
     const decoration = vscode.window.createTextEditorDecorationType({
-      backgroundColor: new vscode.ThemeColor("editor.rangeHighlightBackground"),
+      border: "1px solid",
+      borderColor: new vscode.ThemeColor("editorInfo.foreground"),
       isWholeLine: requestedRange?.start?.column === undefined,
     });
     revealDecorations.add(decoration);
     editor.setDecorations(decoration, [range]);
-    const timer = setTimeout(() => {
-      revealDecorations.delete(decoration);
-      decoration.dispose();
-    }, 1_500);
-    timer.unref?.();
   };
 
   revealServer = http.createServer((request, response) => {
@@ -347,8 +328,8 @@ function activate(context) {
   context.subscriptions.push(
     {
       dispose: () => {
-        activitySubscription?.dispose();
-        if (activityTimer) clearTimeout(activityTimer);
+        selectionSubscription?.dispose();
+        if (selectionTimer) clearTimeout(selectionTimer);
         for (const decoration of revealDecorations) decoration.dispose();
         revealDecorations.clear();
         revealServer?.close();
@@ -371,21 +352,16 @@ function activate(context) {
       applyAnnotationDecorations(vscode);
       annotationEmitter.fire();
     }),
-    vscode.window.onDidChangeTextEditorSelection((event) =>
-      scheduleEditorActivity(vscode, event.textEditor),
-    ),
-    vscode.workspace.onDidChangeTextDocument((event) => {
-      if (event.document === vscode.window.activeTextEditor?.document)
-        scheduleEditorActivity(vscode);
-    }),
+    vscode.window.onDidChangeTextEditorSelection((event) => scheduleUserSelection(event)),
   );
 
-  activitySubscription = vscode.window.onDidChangeActiveTextEditor((editor) =>
-    scheduleEditorActivity(vscode, editor),
-  );
+  selectionSubscription = vscode.window.onDidChangeActiveTextEditor(() => {
+    if (selectionTimer) clearTimeout(selectionTimer);
+    postBridge({ type: "selection-cleared" });
+  });
   revealServer.listen(0, "127.0.0.1", () => {
     postHello(HELLO_RETRIES);
-    sendEditorActivity(vscode);
+    postBridge({ type: "selection-cleared" });
   });
 }
 

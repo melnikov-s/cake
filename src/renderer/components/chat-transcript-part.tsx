@@ -115,9 +115,9 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   }
   if (part.kind === "source") return <Source title={part.title} url={part.url} />;
   if (part.kind === "attachment")
-    return part.attachmentKind === "source" && part.data && part.location ? (
+    return part.attachmentKind === "source" && part.location ? (
       <SourceAttachment
-        attachment={{ name: part.name, location: part.location, selectedText: part.data }}
+        attachment={{ name: part.name, location: part.location }}
         onOpen={behavior.openSourceLocation}
       />
     ) : part.attachmentKind === "image" && part.data ? (

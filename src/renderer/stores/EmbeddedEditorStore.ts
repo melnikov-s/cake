@@ -39,7 +39,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   customPath: string | undefined;
   error: string | undefined;
   errorDetails: string | undefined;
-  /** Most recent workspace-relative path and visible selection inside VS Code. */
+  /** Most recent workspace-relative path and explicit user selection inside VS Code. */
   lastActivePath: string | undefined;
   activeContextAttachment: Extract<Attachment, { kind: "source" }> | undefined;
   private openedWorkspace: string | undefined;
@@ -78,8 +78,8 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
       {
         type:
           | "embedded-editor-state-received"
-          | "embedded-editor-activity"
-          | "embedded-editor-context-cleared";
+          | "embedded-editor-selection"
+          | "embedded-editor-selection-cleared";
       }
     >,
   ) {
@@ -88,7 +88,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
       return;
     }
     if (event.workspacePath !== this.props.projectPath()) return;
-    if (event.type === "embedded-editor-context-cleared") {
+    if (event.type === "embedded-editor-selection-cleared") {
       this.lastActivePath = undefined;
       this.activeContextAttachment = undefined;
       return;
@@ -99,15 +99,11 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
       name: event.path.slice(-512),
       location: {
         path: event.path,
-        documentVersion: event.documentVersion,
         range: {
-          start: { line: event.startLine, column: event.startColumn },
-          end: { line: event.endLine, column: event.endColumn },
+          start: { line: event.startLine },
+          end: { line: event.endLine },
         },
       },
-      selectedText: event.selectedText,
-      contextBefore: event.contextBefore,
-      contextAfter: event.contextAfter,
     };
   }
 

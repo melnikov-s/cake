@@ -96,7 +96,7 @@ The Cake composer should be able to offer context such as:
 
 These items should appear as understandable attachments or context chips. Users should be able to inspect and remove them before sending a message.
 
-Cake may use editor awareness to offer relevant context, but it should not silently send everything visible or open in VS Code to the model. Inclusion should remain explicit and legible to the user.
+Cake may use editor awareness to offer relevant context, but it should not silently send everything visible or open in VS Code to the model. Inclusion should remain explicit and legible to the user. The current selection attachment is created only by a non-empty, user-originated VS Code selection and sends only its workspace-relative path and line range. It does not send selected or nearby source text. Cake-directed source reveals are presentation-only decorations and must never become conversation context.
 
 The IDE drawer should update appropriately as the active editor changes without unexpectedly replacing a draft or changing the active conversation.
 

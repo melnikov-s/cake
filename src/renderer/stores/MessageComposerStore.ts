@@ -188,7 +188,6 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       (current) =>
         current.kind === "source" &&
         current.location.path === attachment.location.path &&
-        current.location.documentVersion === attachment.location.documentVersion &&
         JSON.stringify(current.location.range) === JSON.stringify(attachment.location.range),
     );
     if (!duplicate) this.attachments.push(attachment);
@@ -552,7 +551,6 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
             name: attachment.name,
             mediaType: "text/plain",
             attachmentKind: "source" as const,
-            data: attachment.selectedText,
             location: attachment.location,
           },
         ];

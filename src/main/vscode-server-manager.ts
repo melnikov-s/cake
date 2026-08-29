@@ -131,21 +131,15 @@ const bridgeMessageSchema = z.discriminatedUnion("type", [
     threadId: z.string().min(1).max(256),
   }),
   z.object({
-    type: z.literal("activity-cleared"),
+    type: z.literal("selection-cleared"),
     workspace: z.string().min(1).max(4_096),
   }),
   z.object({
-    type: z.literal("activity"),
+    type: z.literal("selection"),
     workspace: z.string().min(1).max(4_096),
     path: z.string().min(1).max(8_192),
-    documentVersion: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     startLine: z.number().int().nonnegative(),
-    startColumn: z.number().int().nonnegative(),
     endLine: z.number().int().nonnegative(),
-    endColumn: z.number().int().nonnegative(),
-    selectedText: z.string().max(48_000),
-    contextBefore: z.string().max(8_000),
-    contextAfter: z.string().max(8_000),
   }),
 ]);
 
@@ -165,17 +159,11 @@ interface BroadcastTarget {
           message?: string;
         }
       | {
-          type: "embedded-editor-activity";
+          type: "embedded-editor-selection";
           workspacePath: string;
           path: string;
-          documentVersion: number;
           startLine: number;
-          startColumn: number;
           endLine: number;
-          endColumn: number;
-          selectedText: string;
-          contextBefore: string;
-          contextAfter: string;
         }
       | { type: "embedded-editor-back-to-agent"; workspacePath: string }
       | {
@@ -185,7 +173,7 @@ interface BroadcastTarget {
           threadId: string;
         }
       | { type: "embedded-editor-toggle-chat"; workspacePath: string }
-      | { type: "embedded-editor-context-cleared"; workspacePath: string },
+      | { type: "embedded-editor-selection-cleared"; workspacePath: string },
   ): void;
 }
 
@@ -784,26 +772,20 @@ export class VsCodeServerManager {
       });
       return;
     }
-    if (message.data.type === "activity-cleared") {
+    if (message.data.type === "selection-cleared") {
       this.props.broadcast({
-        type: "embedded-editor-context-cleared",
+        type: "embedded-editor-selection-cleared",
         workspacePath: presentedWorkspace,
       });
       return;
     }
-    if (message.data.type === "activity") {
+    if (message.data.type === "selection") {
       this.props.broadcast({
-        type: "embedded-editor-activity",
+        type: "embedded-editor-selection",
         workspacePath: presentedWorkspace,
         path: message.data.path,
-        documentVersion: message.data.documentVersion,
         startLine: message.data.startLine,
-        startColumn: message.data.startColumn,
         endLine: message.data.endLine,
-        endColumn: message.data.endColumn,
-        selectedText: message.data.selectedText,
-        contextBefore: message.data.contextBefore,
-        contextAfter: message.data.contextAfter,
       });
       return;
     }

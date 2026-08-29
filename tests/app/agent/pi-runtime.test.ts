@@ -871,18 +871,18 @@ describe("Pi 0.84.0 foundation contract", () => {
       name: "src/main.ts",
       location: {
         path: "src/main.ts",
-        documentVersion: 9,
         range: {
-          start: { line: 4, column: 2 },
-          end: { line: 5, column: 8 },
+          start: { line: 4 },
+          end: { line: 5 },
         },
       },
-      selectedText: "const answer =\n  calculate();",
-      contextBefore: "function run() {",
-      contextAfter: "}",
     };
     const text = promptText("Explain this", [attachment]);
     expect(text).toContain("<cake-source-attachment>");
+    expect(text).not.toContain("selectedText");
+    expect(text).not.toContain("contextBefore");
+    expect(text).not.toContain("documentVersion");
+    expect(text).not.toContain("column");
 
     expect(
       projectSessionEntries([
@@ -900,7 +900,6 @@ describe("Pi 0.84.0 foundation contract", () => {
         kind: "attachment",
         attachmentKind: "source",
         name: "src/main.ts",
-        data: "const answer =\n  calculate();",
         location: attachment.location,
       }),
     ]);

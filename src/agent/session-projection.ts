@@ -232,7 +232,6 @@ function partsFromMessage(
         name: attachment.name,
         mediaType: "text/plain",
         attachmentKind: "source",
-        data: attachment.selectedText,
         location: attachment.location,
       });
     });

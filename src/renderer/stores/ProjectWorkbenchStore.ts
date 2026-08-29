@@ -678,8 +678,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   receive(event: DesktopClientEvent) {
     if (
       event.type === "embedded-editor-state-received" ||
-      event.type === "embedded-editor-activity" ||
-      event.type === "embedded-editor-context-cleared"
+      event.type === "embedded-editor-selection" ||
+      event.type === "embedded-editor-selection-cleared"
     ) {
       this.embeddedEditorStore.receive(event);
       if (

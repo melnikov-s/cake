@@ -90,42 +90,34 @@ describe("EmbeddedEditorStore", () => {
     const { store } = createHarness();
 
     store.receive({
-      type: "embedded-editor-activity",
+      type: "embedded-editor-selection",
       workspacePath: "/tmp/project",
       path: "src/app.ts",
-      documentVersion: 4,
       startLine: 2,
-      startColumn: 1,
       endLine: 2,
-      endColumn: 5,
-      selectedText: "test",
-      contextBefore: "before",
-      contextAfter: "after",
     });
     store.receive({
-      type: "embedded-editor-activity",
+      type: "embedded-editor-selection",
       workspacePath: "/tmp/other",
       path: "elsewhere.ts",
-      documentVersion: 1,
       startLine: 0,
-      startColumn: 0,
       endLine: 0,
-      endColumn: 0,
-      selectedText: "",
-      contextBefore: "",
-      contextAfter: "",
     });
     store.receive(stateEvent("ready"));
 
     expect(store.lastActivePath).toBe("src/app.ts");
-    expect(store.activeContextAttachment).toMatchObject({
-      location: { path: "src/app.ts", documentVersion: 4 },
-      selectedText: "test",
+    expect(store.activeContextAttachment).toEqual({
+      kind: "source",
+      name: "src/app.ts",
+      location: {
+        path: "src/app.ts",
+        range: { start: { line: 2 }, end: { line: 2 } },
+      },
     });
     expect(store.status).toBe("ready");
 
     store.receive({
-      type: "embedded-editor-context-cleared",
+      type: "embedded-editor-selection-cleared",
       workspacePath: "/tmp/project",
     });
     expect(store.lastActivePath).toBeUndefined();
