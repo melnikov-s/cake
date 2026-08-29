@@ -25,6 +25,7 @@ interface SlashCommandComboboxProps extends Omit<
   onValueChange(value: string): void;
   onSubmit(value?: string): void | Promise<void>;
   onEscape?(): void;
+  inputRef?(input: HTMLTextAreaElement | null): void;
 }
 
 interface FileMention {
@@ -86,6 +87,7 @@ export function SlashCommandCombobox({
   onValueChange,
   onSubmit,
   onEscape,
+  inputRef: forwardedInputRef,
   ...inputProps
 }: SlashCommandComboboxProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -310,7 +312,10 @@ export function SlashCommandCombobox({
       )}
       <ComposerInput
         {...inputProps}
-        ref={inputRef}
+        ref={(node) => {
+          inputRef.current = node;
+          forwardedInputRef?.(node);
+        }}
         role="combobox"
         aria-autocomplete="list"
         aria-expanded={open}

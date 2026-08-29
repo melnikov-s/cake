@@ -275,6 +275,17 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     open: z.boolean(),
   }),
   z.object({
+    type: z.literal("show-composer-context-menu"),
+    selection: z.string().min(1).max(32_000),
+    x: z.number().int().min(-1_000_000).max(1_000_000),
+    y: z.number().int().min(-1_000_000).max(1_000_000),
+  }),
+  z.object({
+    type: z.literal("reword-composer-selection"),
+    selection: z.string().min(1).max(32_000),
+    prompt: z.string().max(4_096).optional(),
+  }),
+  z.object({
     type: z.literal("show-session-context-menu"),
     sessionId: z.string().min(1).max(256),
     x: z.number().int().min(-1_000_000).max(1_000_000),
@@ -811,6 +822,14 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("transcript-selection-context-menu-closed"),
     action: z.enum(["chat-about-selection", "add-annotation"]).optional(),
+  }),
+  z.object({
+    type: z.literal("composer-context-menu-closed"),
+    action: z.enum(["reword", "reword-with-prompt"]).optional(),
+  }),
+  z.object({
+    type: z.literal("composer-selection-reworded"),
+    text: z.string().min(1).max(32_000),
   }),
   z.object({
     type: z.literal("session-context-menu-closed"),

@@ -57,6 +57,8 @@ function createTestStore() {
       },
     ]),
     listModels: vi.fn(async () => []),
+    showComposerContextMenu: vi.fn(async () => undefined),
+    rewordComposerSelection: vi.fn(async () => "rewritten"),
     open: vi.fn(async (input: Parameters<GlobalChatPort["open"]>[0]) => {
       void input;
     }),

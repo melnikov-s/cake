@@ -386,6 +386,8 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       port: {
         listSessions: () => this.client.listCakeChatSessions(),
         listModels: () => this.client.listModels(),
+        showComposerContextMenu: (input) => this.client.showComposerContextMenu(input),
+        rewordComposerSelection: (input) => this.client.rewordComposerSelection(input),
         open: (input) => this.client.openGlobalChat(input),
         prompt: (input) => this.client.promptGlobalChat(input),
         abort: (input) => this.client.abortGlobalChat(input),

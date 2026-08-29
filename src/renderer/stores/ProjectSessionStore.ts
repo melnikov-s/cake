@@ -246,6 +246,10 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       removeAnnotation: (id) => this.composerStore.removeAnnotation(id),
       suggestFiles: (prefix) => this.composerStore.suggestFiles(prefix),
       focusRequestRevision: () => this.composerStore.focusRequestRevision,
+      showComposerContextMenu: (selection, x, y) =>
+        this.props.client.showComposerContextMenu({ selection, x, y }),
+      rewordComposerSelection: (selection, prompt) =>
+        this.props.client.rewordComposerSelection({ selection, prompt }),
       usage: () => this.model.usage,
       queuedPrompts: () => this.composerStore.queuedPrompts,
       steerQueuedPrompt: (id) => this.composerStore.steerQueuedPrompt(id),

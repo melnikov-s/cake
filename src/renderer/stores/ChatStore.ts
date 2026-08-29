@@ -40,6 +40,12 @@ export interface ChatStoreProps {
   editQueuedPrompt?(id: string): void;
   removeQueuedPrompt?(id: string): void;
   composerVisible?(): boolean;
+  showComposerContextMenu?(
+    selection: string,
+    x: number,
+    y: number,
+  ): Promise<"reword" | "reword-with-prompt" | undefined>;
+  rewordComposerSelection?(selection: string, prompt?: string): Promise<string>;
   hideThinking?(): boolean;
   error?(): { message?: string; details?: string; title?: string };
   persist?(): void;
@@ -69,6 +75,8 @@ export class ChatStore extends Store<ChatStoreProps> {
   readonly workLogItemOverrides = observable(new Map<string, boolean>());
   readonly workLogGroupOverrides = observable(new Map<string, boolean>());
   submittingLocally = false;
+  rewording = false;
+  rewordError: string | undefined;
   loadingStartedAt: number | undefined;
   readonly workLogTimers = observable(new Map<string, WorkLogTimerState>());
   transcriptScrollState: StateSnapshot | undefined;
@@ -245,7 +253,11 @@ export class ChatStore extends Store<ChatStoreProps> {
     return this.props.usage?.();
   }
   get error() {
+    if (this.rewordError) return { message: this.rewordError, title: "Reword failed" };
     return this.props.error?.();
+  }
+  get canRewordComposerSelection() {
+    return Boolean(this.props.showComposerContextMenu && this.props.rewordComposerSelection);
   }
   canSubmitDraft(value: string) {
     return !this.submittingLocally && this.props.canSubmit(value);
@@ -253,7 +265,27 @@ export class ChatStore extends Store<ChatStoreProps> {
 
   setDraft(value: string) {
     this.draft = value;
+    this.rewordError = undefined;
     this.props.persist?.();
+  }
+
+  showComposerContextMenu(selection: string, x: number, y: number) {
+    if (!selection) return Promise.resolve(undefined);
+    return this.props.showComposerContextMenu?.(selection, x, y) ?? Promise.resolve(undefined);
+  }
+
+  async rewordComposerSelection(selection: string, prompt?: string) {
+    if (!this.props.rewordComposerSelection || this.rewording) return undefined;
+    this.rewording = true;
+    this.rewordError = undefined;
+    try {
+      return await this.props.rewordComposerSelection(selection, prompt);
+    } catch (error) {
+      this.rewordError = error instanceof Error ? error.message : String(error);
+      return undefined;
+    } finally {
+      this.rewording = false;
+    }
   }
 
   setTranscriptScrollState(state: StateSnapshot | undefined) {

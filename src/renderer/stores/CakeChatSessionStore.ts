@@ -244,6 +244,10 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       attachments: () => this.attachments,
       addPastedImages: (files) => this.addPastedImages(files),
       removeAttachment: (index) => this.removeAttachment(index),
+      showComposerContextMenu: (selection, x, y) =>
+        this.props.collection.port.showComposerContextMenu({ selection, x, y }),
+      rewordComposerSelection: (selection, prompt) =>
+        this.props.collection.port.rewordComposerSelection({ selection, prompt }),
       usage: () => this.model.usage,
       hideThinking: () => Boolean(this.model.piSettings?.hideThinkingBlock),
       error: () => ({

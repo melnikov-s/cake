@@ -36,6 +36,7 @@ import {
 } from "../agent/session-discovery";
 import { loadReviewSessionProjection, runInlineWidgetRepair } from "../agent/sidecar-runtime";
 import { listAgentCatalogModels, refreshAgentCatalogModels } from "../agent/model-catalog";
+import { createUtilityModelRuntime, rewordSelection } from "../agent/utility-model";
 import { Application } from "../models/Application";
 import { shouldAllowNavigation } from "./navigation-policy";
 import {
@@ -91,6 +92,7 @@ const pendingTrustRequests = new Map<string, string>();
 const windowCustomizationRevisions = new Map<number, string>();
 const customizationHealthTimers = new Map<number, ReturnType<typeof setTimeout>>();
 const fullscreenSurfaces = new Map<number, Set<string>>();
+const composerRewordControllers = new Map<number, Set<AbortController>>();
 let applicationModel = Application.from({});
 const stateFileWriter = new AtomicFileWriter();
 
@@ -704,6 +706,8 @@ function createWindow() {
     if (healthTimer) clearTimeout(healthTimer);
     customizationHealthTimers.delete(webContentsId);
     fullscreenSurfaces.delete(webContentsId);
+    for (const controller of composerRewordControllers.get(webContentsId) ?? []) controller.abort();
+    composerRewordControllers.delete(webContentsId);
     if (path) piHosts.get(path)?.driver.cancelPendingRequests();
   });
   void loadSelectedRenderer(window, pluginActivation.startupRenderer());
@@ -883,6 +887,66 @@ async function handleCakeRequest(
       type: "transcript-selection-context-menu-closed",
       action,
     });
+  }
+  if (request.type === "show-composer-context-menu") {
+    if (!owner) return desktopResponseSchema.parse({ type: "composer-context-menu-closed" });
+    const action = await new Promise<"reword" | "reword-with-prompt" | undefined>((resolve) => {
+      let completed = false;
+      const finish = (selected?: "reword" | "reword-with-prompt") => {
+        if (completed) return;
+        completed = true;
+        resolve(selected);
+      };
+      const canReword = Boolean(applicationModel.utilityModel);
+      Menu.buildFromTemplate([
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { type: "separator" },
+        {
+          label: "Reword",
+          enabled: canReword,
+          click: () => finish("reword"),
+        },
+        {
+          label: "Reword with Prompt…",
+          enabled: canReword,
+          click: () => finish("reword-with-prompt"),
+        },
+        { type: "separator" },
+        { role: "selectAll" },
+      ]).popup({
+        window: owner,
+        x: request.x,
+        y: request.y,
+        callback: () => finish(),
+      });
+    });
+    return desktopResponseSchema.parse({ type: "composer-context-menu-closed", action });
+  }
+  if (request.type === "reword-composer-selection") {
+    const utilityModel = applicationModel.utilityModel;
+    if (!utilityModel)
+      throw new Error("Configure a utility model in Settings before rewording text");
+    const controller = new AbortController();
+    const controllers = composerRewordControllers.get(event.sender.id) ?? new Set();
+    controllers.add(controller);
+    composerRewordControllers.set(event.sender.id, controllers);
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]);
+    try {
+      const modelRuntime = await createUtilityModelRuntime(cakePaths.piAgent, signal);
+      const text = await rewordSelection({
+        modelRuntime,
+        utilityModel,
+        selection: request.selection,
+        prompt: request.prompt,
+        signal,
+      });
+      return desktopResponseSchema.parse({ type: "composer-selection-reworded", text });
+    } finally {
+      controllers.delete(controller);
+      if (controllers.size === 0) composerRewordControllers.delete(event.sender.id);
+    }
   }
   if (request.type === "set-fullscreen-surface-open") {
     let surfaceIds = fullscreenSurfaces.get(event.sender.id);

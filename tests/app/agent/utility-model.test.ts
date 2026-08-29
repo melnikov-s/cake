@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { generateSessionTitle, normalizeSessionTitle } from "../../../src/agent/utility-model";
+import {
+  generateSessionTitle,
+  normalizeSessionTitle,
+  rewordSelection,
+} from "../../../src/agent/utility-model";
 
 describe("utility model", () => {
   it("runs the exact configured model and reasoning level for a bounded title request", async () => {
@@ -31,6 +35,40 @@ describe("utility model", () => {
         ],
       }),
       expect.objectContaining({ reasoning: "low", maxTokens: 40 }),
+    );
+  });
+
+  it("rewrites selected text with optional user guidance", async () => {
+    const model = { provider: "openai", id: "gpt-5-mini" };
+    const completeSimple = vi.fn(async () => ({
+      content: [{ type: "text", text: "A concise, clear request." }],
+    }));
+
+    const text = await rewordSelection({
+      modelRuntime: {
+        getModel: vi.fn(() => model),
+        completeSimple,
+      } as never,
+      utilityModel: { provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "off" },
+      selection: "This is the thing I was rambling about.",
+      prompt: "Make it concise.",
+    });
+
+    expect(text).toBe("A concise, clear request.");
+    expect(completeSimple).toHaveBeenCalledWith(
+      model,
+      expect.objectContaining({
+        systemPrompt: expect.stringContaining("Return only the rewritten text"),
+        messages: [
+          expect.objectContaining({
+            content: JSON.stringify({
+              selection: "This is the thing I was rambling about.",
+              guidance: "Make it concise.",
+            }),
+          }),
+        ],
+      }),
+      expect.objectContaining({ reasoning: undefined, maxTokens: 8_192 }),
     );
   });
 

@@ -170,6 +170,12 @@ export interface DesktopClient {
     canChat: boolean;
     canAnnotate: boolean;
   }): Promise<"chat-about-selection" | "add-annotation" | undefined>;
+  showComposerContextMenu(input: {
+    selection: string;
+    x: number;
+    y: number;
+  }): Promise<"reword" | "reword-with-prompt" | undefined>;
+  rewordComposerSelection(input: { selection: string; prompt?: string }): Promise<string>;
   showSessionContextMenu(input: {
     sessionId: string;
     x: number;
@@ -662,6 +668,18 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       if (response.type !== "transcript-selection-context-menu-closed")
         throw new Error("Cake received an invalid transcript selection context menu response");
       return response.action;
+    },
+    async showComposerContextMenu(input) {
+      const response = await bridge.request({ type: "show-composer-context-menu", ...input });
+      if (response.type !== "composer-context-menu-closed")
+        throw new Error("Cake received an invalid composer context menu response");
+      return response.action;
+    },
+    async rewordComposerSelection(input) {
+      const response = await bridge.request({ type: "reword-composer-selection", ...input });
+      if (response.type !== "composer-selection-reworded")
+        throw new Error("Cake received an invalid composer rewrite response");
+      return response.text;
     },
     async showSessionContextMenu(input) {
       const response = await bridge.request({ type: "show-session-context-menu", ...input });

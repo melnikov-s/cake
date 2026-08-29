@@ -21,6 +21,10 @@ function createBridge() {
         type: "transcript-selection-context-menu-closed",
         action: "chat-about-selection",
       };
+    if (input.type === "show-composer-context-menu")
+      return { type: "composer-context-menu-closed", action: "reword" };
+    if (input.type === "reword-composer-selection")
+      return { type: "composer-selection-reworded", text: "Clear text" };
     if (input.type === "show-session-context-menu")
       return { type: "session-context-menu-closed", action: "rename" };
     if (input.type === "get-home-directory") return { type: "home-directory", path: "/home/user" };
@@ -87,6 +91,23 @@ describe("desktop client", () => {
       type: "show-transcript-selection-context-menu",
       canChat: true,
       canAnnotate: false,
+    });
+    expect(await client.showComposerContextMenu({ selection: "rough words", x: 12, y: 34 })).toBe(
+      "reword",
+    );
+    expect(desktop.request).toHaveBeenCalledWith({
+      type: "show-composer-context-menu",
+      selection: "rough words",
+      x: 12,
+      y: 34,
+    });
+    expect(
+      await client.rewordComposerSelection({ selection: "rough words", prompt: "Be concise" }),
+    ).toBe("Clear text");
+    expect(desktop.request).toHaveBeenCalledWith({
+      type: "reword-composer-selection",
+      selection: "rough words",
+      prompt: "Be concise",
     });
     expect(await client.showSessionContextMenu({ sessionId: "session", x: 12, y: 34 })).toBe(
       "rename",

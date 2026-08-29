@@ -1,10 +1,11 @@
-import { useLayoutEffect, useReducer, useRef, type ReactNode } from "react";
+import { useLayoutEffect, useReducer, useRef, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { AnnotationSummary } from "@/components/annotation-summary";
 import { ChatComposer } from "@/components/chat-composer";
 import { ImagePreview } from "@/components/image-preview";
 import { ChatTranscript, type ChatTranscriptBehavior } from "@/components/chat-transcript";
 import { QueuedPrompts } from "@/components/queued-prompts";
+import { RewordPromptDialog } from "@/components/reword-prompt-dialog";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
 import { SourceAttachment } from "@/components/source-attachment";
 import { IconButton } from "@/components/ui/icon-button";
@@ -106,6 +107,13 @@ export const Chat = observer(function Chat({
   const [, draftChanged] = useReducer((revision: number) => revision + 1, 0);
   const layoutRef = useRef<HTMLDivElement>(null);
   const composerDockRef = useRef<HTMLDivElement>(null);
+  const composerInputRef = useRef<HTMLTextAreaElement>(null);
+  const [promptedSelection, setPromptedSelection] = useState<{
+    draft: string;
+    start: number;
+    end: number;
+    text: string;
+  }>();
   const composerVisible = store.composerVisible;
   useLayoutEffect(() => {
     const layout = layoutRef.current;
@@ -177,6 +185,45 @@ export const Chat = observer(function Chat({
     await store.submit(value ?? store.draft);
     draftChanged();
   };
+  const restoreSelection = (selection: { start: number; end: number }) => {
+    requestAnimationFrame(() => {
+      const input = composerInputRef.current;
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(selection.start, selection.end);
+    });
+  };
+  const reword = async (
+    selection: { draft: string; start: number; end: number; text: string },
+    prompt?: string,
+  ) => {
+    const rewritten = await store.rewordComposerSelection(selection.text, prompt);
+    if (!rewritten || store.draft !== selection.draft) {
+      setPromptedSelection(undefined);
+      if (store.draft === selection.draft) restoreSelection(selection);
+      return;
+    }
+    const input = composerInputRef.current;
+    if (!input) {
+      setPromptedSelection(undefined);
+      return;
+    }
+    input.focus();
+    input.setSelectionRange(selection.start, selection.end);
+    // Chromium's editing command records the replacement as one native undo step.
+    const recordedUndo = document.execCommand("insertText", false, rewritten);
+    if (!recordedUndo) {
+      store.setDraft(
+        `${selection.draft.slice(0, selection.start)}${rewritten}${selection.draft.slice(selection.end)}`,
+      );
+      draftChanged();
+    }
+    setPromptedSelection(undefined);
+    restoreSelection({
+      start: selection.start + rewritten.length,
+      end: selection.start + rewritten.length,
+    });
+  };
   const composer = composerVisible && (
     <div ref={composerDockRef} className={embedded ? "chat-embedded-composer" : "composer-dock"}>
       <ChatComposer
@@ -191,6 +238,10 @@ export const Chat = observer(function Chat({
           <SlashCommandCombobox
             autoFocus
             aria-label={store.inputLabel}
+            aria-busy={store.rewording}
+            inputRef={(input) => {
+              composerInputRef.current = input;
+            }}
             commands={store.commands}
             focusRequestRevision={store.focusRequestRevision}
             suggestFiles={
@@ -202,6 +253,26 @@ export const Chat = observer(function Chat({
             onValueChange={(value) => {
               store.setDraft(value);
               draftChanged();
+            }}
+            onContextMenu={(event) => {
+              if (!store.canRewordComposerSelection || store.rewording) return;
+              const input = event.currentTarget;
+              const start = input.selectionStart;
+              const end = input.selectionEnd;
+              if (start === end) return;
+              event.preventDefault();
+              const selection = {
+                draft: input.value,
+                start,
+                end,
+                text: input.value.slice(start, end),
+              };
+              void store
+                .showComposerContextMenu(selection.text, event.clientX, event.clientY)
+                .then((action) => {
+                  if (action === "reword") void reword(selection);
+                  else if (action === "reword-with-prompt") setPromptedSelection(selection);
+                });
             }}
             onPaste={(event) => {
               if (!store.canPasteImages) return;
@@ -266,6 +337,11 @@ export const Chat = observer(function Chat({
         }
       >
         <QueuedPrompts store={store} />
+        {store.rewording && (
+          <div className="px-2 pb-2 text-xs text-muted-foreground" role="status">
+            Rewording selection…
+          </div>
+        )}
         {composerContent}
         <AnnotationSummary
           annotations={store.annotations}
@@ -313,6 +389,17 @@ export const Chat = observer(function Chat({
         )}
       </ChatComposer>
       {status}
+      {promptedSelection && (
+        <RewordPromptDialog
+          busy={store.rewording}
+          onCancel={() => {
+            const selection = promptedSelection;
+            setPromptedSelection(undefined);
+            restoreSelection(selection);
+          }}
+          onSubmit={(prompt) => void reword(promptedSelection, prompt)}
+        />
+      )}
     </div>
   );
   return (

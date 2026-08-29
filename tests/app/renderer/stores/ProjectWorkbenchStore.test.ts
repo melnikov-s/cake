@@ -32,6 +32,8 @@ function createDesktopClient(restoredPath?: string) {
     chooseProject: vi.fn(async () => "/project"),
     openExternalUrl: vi.fn(async () => undefined),
     showTranscriptSelectionContextMenu: vi.fn(async () => undefined),
+    showComposerContextMenu: vi.fn(async () => undefined),
+    rewordComposerSelection: vi.fn(async ({ selection }) => selection),
     showSessionContextMenu: vi.fn(async () => undefined),
     listModels: vi.fn(async () => [
       {

@@ -31,6 +31,12 @@ interface CakeControlTool {
 export interface GlobalChatPort {
   listSessions(): Promise<SessionSummary[]>;
   listModels(): Promise<ModelOption[]>;
+  showComposerContextMenu(input: {
+    selection: string;
+    x: number;
+    y: number;
+  }): Promise<"reword" | "reword-with-prompt" | undefined>;
+  rewordComposerSelection(input: { selection: string; prompt?: string }): Promise<string>;
   open(input: {
     operationId: string;
     tools: ReadonlyArray<CakeControlTool>;

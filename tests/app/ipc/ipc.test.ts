@@ -7,6 +7,30 @@ import {
 import { windowViewStateSchema } from "../../../src/ipc/session-contract";
 
 describe("process IPC", () => {
+  it("requires an actual selection before opening the composer reword menu", () => {
+    expect(
+      desktopRequestSchema.parse({
+        type: "show-composer-context-menu",
+        selection: "selected words",
+        x: 12,
+        y: 34,
+      }),
+    ).toEqual({
+      type: "show-composer-context-menu",
+      selection: "selected words",
+      x: 12,
+      y: 34,
+    });
+    expect(() =>
+      desktopRequestSchema.parse({
+        type: "show-composer-context-menu",
+        selection: "",
+        x: 12,
+        y: 34,
+      }),
+    ).toThrow();
+  });
+
   it("accepts session lifecycle and prompt requests", () => {
     const requestId = crypto.randomUUID();
     expect(

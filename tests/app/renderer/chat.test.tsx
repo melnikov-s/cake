@@ -46,6 +46,7 @@ describe("Chat", () => {
 
   beforeEach(() => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+    document.execCommand = vi.fn(() => false);
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -410,6 +411,125 @@ describe("Chat", () => {
     );
     expect(container.querySelector('[role="dialog"]')).toBeNull();
     expect(abort).not.toHaveBeenCalled();
+  });
+
+  it("rewords only the selected composer text from its context menu", async () => {
+    const showComposerContextMenu = vi.fn(async () => "reword" as const);
+    const rewordComposerSelection = vi.fn(async () => "clear request");
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "reword-chat",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Message Cake",
+        inputLabel: () => "Message",
+        canSubmit: () => true,
+        submit: async () => true,
+        showComposerContextMenu,
+        rewordComposerSelection,
+      }),
+    );
+    store.setDraft("Before rough ramble after");
+    act(() => root.render(<Chat store={store!} />));
+
+    const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
+    input.setSelectionRange(7, 19);
+    await act(async () => {
+      input.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 12,
+          clientY: 34,
+        }),
+      );
+    });
+
+    expect(showComposerContextMenu).toHaveBeenCalledWith("rough ramble", 12, 34);
+    expect(rewordComposerSelection).toHaveBeenCalledWith("rough ramble", undefined);
+    expect(store.draft).toBe("Before clear request after");
+  });
+
+  it("uses the ordinary editing menu when no composer text is selected", async () => {
+    const showComposerContextMenu = vi.fn(async () => "reword" as const);
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "unselected-reword-chat",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Message Cake",
+        inputLabel: () => "Message",
+        canSubmit: () => true,
+        submit: async () => true,
+        showComposerContextMenu,
+        rewordComposerSelection: async (selection) => selection,
+      }),
+    );
+    store.setDraft("Nothing selected");
+    act(() => root.render(<Chat store={store!} />));
+
+    const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
+    input.setSelectionRange(7, 7);
+    const contextMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    act(() => input.dispatchEvent(contextMenu));
+
+    expect(contextMenu.defaultPrevented).toBe(false);
+    expect(showComposerContextMenu).not.toHaveBeenCalled();
+  });
+
+  it("asks for guidance before rewording with a prompt", async () => {
+    const showComposerContextMenu = vi.fn(async () => "reword-with-prompt" as const);
+    const rewordComposerSelection = vi.fn(async () => "concise text");
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "prompted-reword-chat",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Message Cake",
+        inputLabel: () => "Message",
+        canSubmit: () => true,
+        submit: async () => true,
+        showComposerContextMenu,
+        rewordComposerSelection,
+      }),
+    );
+    store.setDraft("rambling text");
+    act(() => root.render(<Chat store={store!} />));
+
+    const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
+    input.setSelectionRange(0, input.value.length);
+    await act(async () => {
+      input.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    });
+    const prompt = document.body.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Reword prompt"]',
+    )!;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
+        prompt,
+        "Make concise",
+      );
+      prompt.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      prompt
+        .closest<HTMLElement>('[role="dialog"]')!
+        .querySelector<HTMLButtonElement>('button[type="submit"]')!
+        .click();
+    });
+
+    expect(rewordComposerSelection).toHaveBeenCalledWith("rambling text", "Make concise");
+    expect(store.draft).toBe("concise text");
+    expect(document.body.querySelector('[aria-label="Reword prompt"]')).toBeNull();
   });
 
   it("attaches clipboard images pasted into the composer", async () => {
