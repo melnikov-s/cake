@@ -515,8 +515,7 @@
   flex: 0 0 auto;
   color: color-mix(in oklab, var(--foreground) 80%, var(--muted-foreground));
 }
-/* Outranks the late ".icon-button { width: 30px }" base rule so the chevron
-   stays a compact 20px hit target tight against the folder label. */
+/* Keeps the disclosure a compact 20px hit target tight against the folder label. */
 .icon-button.project-disclosure {
   display: flex;
   width: 20px;
@@ -544,7 +543,7 @@
   width: 12px;
   height: 12px;
 }
-/* Same override as the disclosure: keeps the add button at its intended size. */
+/* Keeps the add button at its intended compact size. */
 .icon-button.project-add {
   display: flex;
   width: 24px;
@@ -988,9 +987,7 @@
   font: 9px var(--font-mono);
   text-align: center;
 }
-/* Compound selectors outrank the late ".icon-button { display: grid }" and
-   ".header-back, .header-sidebar-toggle { display: grid }" rules, so these stay
-   hidden until the sidebar collapses. */
+/* Keep these controls hidden until the sidebar collapses. */
 .icon-button.header-sidebar-toggle {
   display: none;
 }
@@ -3735,20 +3732,6 @@ button.reasoning-summary {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-}
-.icon-button {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted-foreground);
-}
-.icon-button:hover {
-  background: var(--muted);
-  color: var(--foreground);
 }
 .cake-tooltip {
   position: fixed;

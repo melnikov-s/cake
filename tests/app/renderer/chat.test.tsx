@@ -121,6 +121,7 @@ describe("Chat", () => {
       '[aria-label="Markdown formatting"]',
     )!;
     expect(markdown.getAttribute("aria-pressed")).toBe("false");
+    expect(markdown.className).toContain("aria-pressed:bg-primary");
     await act(async () => markdown.click());
     expect(markdown.getAttribute("aria-pressed")).toBe("true");
 

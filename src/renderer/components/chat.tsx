@@ -13,7 +13,6 @@ import { IconButton } from "@/components/ui/icon-button";
 import { MarkdownIcon, PaperclipIcon, SendIcon, StopIcon } from "@/components/ui/icons";
 import { Popover, PopoverContent } from "@/components/ui/popover";
 import { TooltipBubble, useTooltip } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 import type { ChatStore } from "../stores/ChatStore";
 
 function formatCompactTokenCount(tokens: number | null | undefined) {
@@ -315,10 +314,6 @@ export const Chat = observer(function Chat({
             )}
             {store.supportsUserMessageMarkdown && (
               <IconButton
-                className={cn(
-                  store.renderUserMessageAsMarkdown &&
-                    "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90",
-                )}
                 tooltip={
                   store.renderUserMessageAsMarkdown
                     ? "Stop rendering sent messages as Markdown"
