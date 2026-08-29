@@ -564,6 +564,23 @@ function configureApplicationBranding() {
   }
 }
 
+const TRAFFIC_LIGHT_X = 18;
+const TRAFFIC_LIGHT_DIAMETER = 14;
+const CAKE_TITLE_BAR_HEIGHT = 46;
+const VSCODE_TITLE_BAR_HEIGHT = 35;
+
+function trafficLightPosition(titleBarHeight: number) {
+  return {
+    x: TRAFFIC_LIGHT_X,
+    y: Math.round((titleBarHeight - TRAFFIC_LIGHT_DIAMETER) / 2),
+  };
+}
+
+function centerTrafficLights(window: BrowserWindow, titleBarHeight: number) {
+  if (process.platform === "darwin")
+    window.setWindowButtonPosition(trafficLightPosition(titleBarHeight));
+}
+
 function createWindow() {
   const browserWindowOptions = {
     width: 1180,
@@ -585,7 +602,10 @@ function createWindow() {
   } as const;
   const window = new BrowserWindow({
     ...(process.platform === "darwin"
-      ? { ...browserWindowOptions, trafficLightPosition: { x: 18, y: 18 } }
+      ? {
+          ...browserWindowOptions,
+          trafficLightPosition: trafficLightPosition(CAKE_TITLE_BAR_HEIGHT),
+        }
       : browserWindowOptions),
     // Smoke tests drive the renderer over CDP, so the OS window never needs to
     // be on screen. Keeping it hidden stops test runs from stealing focus and
@@ -663,8 +683,14 @@ function createWindow() {
   });
   window.on("close", (event) => {
     if (applicationQuitting) return;
-    if (closeFullscreenSurfaceForWindow(window) || vscodeEditor.backToAgentForWindow(webContentsId))
+    if (closeFullscreenSurfaceForWindow(window)) {
       event.preventDefault();
+      return;
+    }
+    if (vscodeEditor.backToAgentForWindow(webContentsId)) {
+      centerTrafficLights(window, CAKE_TITLE_BAR_HEIGHT);
+      event.preventDefault();
+    }
   });
   window.on("closed", () => {
     const path = windowWorkspaces.get(webContentsId);
@@ -918,6 +944,12 @@ async function handleCakeRequest(
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "update-embedded-editor-bounds") {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (window)
+      centerTrafficLights(
+        window,
+        request.visible ? VSCODE_TITLE_BAR_HEIGHT : CAKE_TITLE_BAR_HEIGHT,
+      );
     vscodeEditor.updateBounds(event.sender.id, request);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
