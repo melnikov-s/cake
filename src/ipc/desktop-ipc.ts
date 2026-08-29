@@ -289,6 +289,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     type: z.literal("reword-composer-selection"),
     selection: z.string().min(1).max(32_000),
     prompt: z.string().max(4_096).optional(),
+    workspacePath: z.string().min(1).max(4_096).optional(),
   }),
   z.object({
     type: z.literal("generate-session-title"),

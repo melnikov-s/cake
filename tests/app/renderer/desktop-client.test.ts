@@ -114,12 +114,17 @@ describe("desktop client", () => {
       y: 34,
     });
     expect(
-      await client.rewordComposerSelection({ selection: "rough words", prompt: "Be concise" }),
+      await client.rewordComposerSelection({
+        selection: "rough words",
+        prompt: "Be concise",
+        workspacePath: "/project",
+      }),
     ).toBe("Clear text");
     expect(desktop.request).toHaveBeenCalledWith({
       type: "reword-composer-selection",
       selection: "rough words",
       prompt: "Be concise",
+      workspacePath: "/project",
     });
     expect(await client.showSessionContextMenu({ sessionId: "session", x: 12, y: 34 })).toBe(
       "rename",

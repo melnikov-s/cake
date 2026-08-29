@@ -264,7 +264,11 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       showComposerContextMenu: (selection, x, y) =>
         this.props.client.showComposerContextMenu({ selection, x, y }),
       rewordComposerSelection: (selection, prompt) =>
-        this.props.client.rewordComposerSelection({ selection, prompt }),
+        this.props.client.rewordComposerSelection({
+          selection,
+          prompt,
+          workspacePath: this.props.workspacePath,
+        }),
       usage: () => this.model.usage,
       queuedPrompts: () => this.composerStore.queuedPrompts,
       steerQueuedPrompt: (id) => this.composerStore.steerQueuedPrompt(id),

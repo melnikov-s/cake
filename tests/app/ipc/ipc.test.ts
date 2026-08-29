@@ -31,6 +31,26 @@ describe("process IPC", () => {
     ).toThrow();
   });
 
+  it("accepts an optional project workspace for composer rewording", () => {
+    expect(
+      desktopRequestSchema.parse({
+        type: "reword-composer-selection",
+        selection: "selected words",
+        workspacePath: "/project",
+      }),
+    ).toEqual({
+      type: "reword-composer-selection",
+      selection: "selected words",
+      workspacePath: "/project",
+    });
+    expect(
+      desktopRequestSchema.parse({
+        type: "reword-composer-selection",
+        selection: "selected words",
+      }),
+    ).toEqual({ type: "reword-composer-selection", selection: "selected words" });
+  });
+
   it("accepts session lifecycle and prompt requests", () => {
     const requestId = crypto.randomUUID();
     expect(

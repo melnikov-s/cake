@@ -37,6 +37,12 @@ export interface IsolatedSessionOptions {
   cancellationMessage: string;
   tools?: string[];
   noTools?: "all";
+  /** Loads the project skill catalog into the session context. */
+  includeSkills?: boolean;
+  /** Loads project instruction files such as AGENTS.md into the session context. */
+  includeContextFiles?: boolean;
+  /** Runs against an in-memory session and does not require a persisted session file. */
+  ephemeral?: boolean;
   bindExtensions?: boolean;
   capturePromptError?: boolean;
   onEvent?(
@@ -48,7 +54,8 @@ export interface IsolatedSessionOptions {
 
 export interface IsolatedSessionResult {
   sessionId: string;
-  sessionFile: string;
+  /** Undefined for ephemeral sessions, which are never persisted. */
+  sessionFile: string | undefined;
   response: string;
   error?: string;
   usage?: SessionSnapshot["usage"];
@@ -103,10 +110,10 @@ export async function runIsolatedSession(
     agentDir: options.agentDir,
     settingsManager,
     noExtensions: true,
-    noSkills: true,
+    noSkills: !options.includeSkills,
     noPromptTemplates: true,
     noThemes: true,
-    noContextFiles: true,
+    noContextFiles: !options.includeContextFiles,
     systemPrompt: options.systemPrompt,
   });
   await resourceLoader.reload({ resolveProjectTrust: async () => options.projectTrusted });
@@ -235,7 +242,7 @@ export async function runIsolatedSession(
       } finally {
         unsubscribe();
       }
-      if (!session.sessionFile)
+      if (!options.ephemeral && !session.sessionFile)
         throw new Error(`The ${options.modelPurpose} session was not persisted`);
       return {
         sessionId: session.sessionManager.getSessionId(),

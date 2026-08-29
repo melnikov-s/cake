@@ -176,7 +176,11 @@ export interface DesktopClient {
     y: number;
   }): Promise<"reword" | "reword-with-prompt" | undefined>;
   showSendContextMenu?(input: { x: number; y: number }): Promise<"create-draft" | undefined>;
-  rewordComposerSelection(input: { selection: string; prompt?: string }): Promise<string>;
+  rewordComposerSelection(input: {
+    selection: string;
+    prompt?: string;
+    workspacePath?: string;
+  }): Promise<string>;
   generateSessionTitle?(firstUserMessage: string): Promise<string | undefined>;
   showSessionContextMenu(input: {
     sessionId: string;

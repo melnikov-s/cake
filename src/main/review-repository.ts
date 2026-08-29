@@ -197,7 +197,7 @@ export class ReviewRepository {
     sessionId: string,
     threadId: string,
     runId: string,
-    agent: { sessionId: string; sessionFile: string; usage?: ReviewThreadRecord["usage"] },
+    agent: { sessionId: string; sessionFile?: string; usage?: ReviewThreadRecord["usage"] },
   ): Promise<ReviewThread | undefined> {
     let completed = false;
     const record = await this.update(workspacePath, sessionId, threadId, (thread) => {

@@ -42,7 +42,7 @@ export interface ReviewParentContext {
 
 export interface ReviewTurnResult {
   sessionId: string;
-  sessionFile: string;
+  sessionFile?: string;
   error?: string;
   usage?: SessionSnapshot["usage"];
 }
@@ -62,7 +62,7 @@ export interface InlineWidgetRepairOptions {
 
 export interface InlineWidgetRepairResult {
   sessionId: string;
-  sessionFile: string;
+  sessionFile?: string;
   response: string;
 }
 

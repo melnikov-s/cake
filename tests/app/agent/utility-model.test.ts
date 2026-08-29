@@ -58,7 +58,9 @@ describe("utility model", () => {
     expect(completeSimple).toHaveBeenCalledWith(
       model,
       expect.objectContaining({
-        systemPrompt: expect.stringContaining("Return only the rewritten text"),
+        systemPrompt: expect.stringMatching(
+          /Return only the rewritten text[\s\S]*speech-to-text[\s\S]*coding assistant[\s\S]*phonetic similarity[\s\S]*"Git"[\s\S]*"skills"[\s\S]*"agents"/,
+        ),
         messages: [
           expect.objectContaining({
             content: JSON.stringify({

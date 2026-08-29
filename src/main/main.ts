@@ -1,4 +1,4 @@
-import { readFile, realpath } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import {
@@ -40,6 +40,7 @@ import {
   generateSessionTitle,
   rewordSelection,
 } from "../agent/utility-model";
+import { rewordSelectionWithProjectContext } from "../agent/rewording-agent";
 import { Application } from "../models/Application";
 import { shouldAllowNavigation } from "./navigation-policy";
 import {
@@ -829,6 +830,17 @@ async function resolveWorkspaceEditorTarget(workspacePath: string, requestedPath
   return { workspace, target: ensureInsideWorkspace(target) };
 }
 
+/** Resolves a renderer-supplied rewording workspace to a real directory, or undefined. */
+async function rewordProjectDirectory(workspacePath: string | undefined) {
+  if (!workspacePath || !isAbsolute(workspacePath)) return undefined;
+  try {
+    const resolved = await realpath(workspacePath);
+    return (await stat(resolved)).isDirectory() ? resolved : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function chooseAttachments(window: BrowserWindow): Promise<Attachment[]> {
   const result = await dialog.showOpenDialog(window, {
     properties: ["openFile", "multiSelections"],
@@ -962,16 +974,28 @@ async function handleCakeRequest(
     const controllers = composerRewordControllers.get(event.sender.id) ?? new Set();
     controllers.add(controller);
     composerRewordControllers.set(event.sender.id, controllers);
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]);
+    const workspacePath = await rewordProjectDirectory(request.workspacePath);
+    const signal = AbortSignal.any([
+      controller.signal,
+      AbortSignal.timeout(workspacePath ? 60_000 : 30_000),
+    ]);
     try {
-      const modelRuntime = await createUtilityModelRuntime(cakePaths.piAgent, signal);
-      const text = await rewordSelection({
-        modelRuntime,
-        utilityModel,
-        selection: request.selection,
-        prompt: request.prompt,
-        signal,
-      });
+      const text = workspacePath
+        ? await rewordSelectionWithProjectContext({
+            workspacePath,
+            agentDir: cakePaths.piAgent,
+            utilityModel,
+            selection: request.selection,
+            guidance: request.prompt,
+            signal,
+          })
+        : await rewordSelection({
+            modelRuntime: await createUtilityModelRuntime(cakePaths.piAgent, signal),
+            utilityModel,
+            selection: request.selection,
+            prompt: request.prompt,
+            signal,
+          });
       return desktopResponseSchema.parse({ type: "composer-selection-reworded", text });
     } finally {
       controllers.delete(controller);
