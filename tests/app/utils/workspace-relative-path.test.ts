@@ -15,8 +15,8 @@ describe("toWorkspaceRelativePath", () => {
     );
   });
 
-  it("strips a leading slash from filesystem-rooted guesses", () => {
-    expect(toWorkspaceRelativePath("/src/modelMeta.ts", workspace)).toBe("src/modelMeta.ts");
+  it("keeps absolute paths outside the workspace absolute", () => {
+    expect(toWorkspaceRelativePath("/src/modelMeta.ts", workspace)).toBe("/src/modelMeta.ts");
   });
 
   it("normalizes windows separators", () => {
@@ -25,6 +25,6 @@ describe("toWorkspaceRelativePath", () => {
 
   it("trims whitespace and leaves foreign absolute paths untouched apart from trimming", () => {
     expect(toWorkspaceRelativePath("  src/a.md  ", workspace)).toBe("src/a.md");
-    expect(toWorkspaceRelativePath("/etc/hosts", workspace)).toBe("etc/hosts");
+    expect(toWorkspaceRelativePath("/etc/hosts", workspace)).toBe("/etc/hosts");
   });
 });

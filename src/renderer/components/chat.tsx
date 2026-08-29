@@ -333,8 +333,11 @@ export const Chat = observer(function Chat({
             embedded
             compact
             transcriptBehavior={
-              transcriptBehavior?.openSourceLocation
-                ? { openSourceLocation: transcriptBehavior.openSourceLocation }
+              transcriptBehavior?.openSourceLocation || transcriptBehavior?.workspacePath
+                ? {
+                    openSourceLocation: transcriptBehavior.openSourceLocation,
+                    workspacePath: transcriptBehavior.workspacePath,
+                  }
                 : undefined
             }
           />

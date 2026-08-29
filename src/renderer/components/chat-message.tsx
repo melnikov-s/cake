@@ -240,6 +240,8 @@ export function captureTranscriptSelection(
 }
 
 export interface ChatTranscriptBehavior {
+  /** Project root used to present workspace files without machine-specific prefixes. */
+  workspacePath?: string;
   onFork?(entryId: string): void;
   onHandoff?(entryId: string): void;
   onOpenReviewRun?(threadId?: string): void;

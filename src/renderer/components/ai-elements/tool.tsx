@@ -9,6 +9,7 @@ import type { ChatStore } from "../../stores/ChatStore";
 import { toolOperationName } from "../../../utils/cake-tool";
 import { toolDiff } from "../../../utils/turn-diff";
 import { toolSourceRange } from "../../../utils/source-ranges";
+import { toWorkspaceRelativePath } from "../../../utils/workspace-relative-path";
 import { Button } from "../ui/button";
 import { formatElapsed } from "../ui/loading-state";
 import { DiffView } from "./diff-view";
@@ -41,10 +42,16 @@ function toolPath(part: Extract<UiPart, { kind: "tool" }>) {
     .find((result) => result.success)?.data;
 }
 
-function toolTitle(part: Extract<UiPart, { kind: "tool" }>, concise = false) {
+function toolTitle(
+  part: Extract<UiPart, { kind: "tool" }>,
+  concise = false,
+  workspacePath?: string,
+) {
   const operationName = toolOperationName(part);
-  if (concise && toolPath(part)) return operationName;
-  if (operationName === "edit" && part.filePath) return `edit ${part.filePath}`;
+  const filePath = toolPath(part);
+  const displayPath = filePath ? toWorkspaceRelativePath(filePath, workspacePath) : undefined;
+  if (concise && filePath) return operationName;
+  if (operationName === "edit" && displayPath) return `edit ${displayPath}`;
 
   const parsed = parseJson(part.input);
   const structuredResult = jsonObjectSchema.safeParse(parsed);
@@ -53,7 +60,7 @@ function toolTitle(part: Extract<UiPart, { kind: "tool" }>, concise = false) {
   const detail =
     operationName === "bash"
       ? part.input
-      : (toolPath(part) ??
+      : (displayPath ??
         (part.name === "cake"
           ? undefined
           : ["command", "query", "pattern", "url"]
@@ -166,6 +173,7 @@ export function Tool({
   renderChat,
   live = false,
   omitDiff,
+  workspacePath,
 }: {
   part: Extract<UiPart, { kind: "tool" }>;
   onOpenSourceLocation?: (location: SourceLocation) => void | Promise<void>;
@@ -179,6 +187,8 @@ export function Tool({
   /** True while this conversation's runtime may still be producing subagent work. */
   live?: boolean;
   omitDiff?: boolean;
+  /** Project root used only to shorten displayed in-project paths. */
+  workspacePath?: string;
 }) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = expansion ? expansion.open : uncontrolledOpen;
@@ -206,8 +216,9 @@ export function Tool({
   const diff = omitDiff ? undefined : toolDiff(part);
   const location = editorLocation(part);
   const filePath = location?.path;
-  const path = onOpenSourceLocation ? filePath : undefined;
-  const title = toolTitle(part, Boolean(path));
+  const displayPath = filePath ? toWorkspaceRelativePath(filePath, workspacePath) : undefined;
+  const path = onOpenSourceLocation ? displayPath : undefined;
+  const title = toolTitle(part, Boolean(path), workspacePath);
   const read = part.name === "read";
   const bash = part.name === "bash" && part.input ? part.input : undefined;
   const hasDetails = Boolean(
@@ -242,7 +253,7 @@ export function Tool({
               <span className="truncate">{path}</span>
             </Button>
           ) : null}
-          {filePath && <CopyFilePathButton path={filePath} />}
+          {displayPath && <CopyFilePathButton path={displayPath} />}
         </div>
         {timer}
       </div>
@@ -254,7 +265,11 @@ export function Tool({
           ) : diff ? (
             <DiffView
               diff={diff}
-              filePath={part.filePath}
+              filePath={
+                part.filePath
+                  ? toWorkspaceRelativePath(part.filePath, workspacePath)
+                  : part.filePath
+              }
               label={part.state === "running" ? "Proposed edit" : "Applied edit"}
               highlightCode={part.state !== "running"}
               onOpenSourceLocation={onOpenSourceLocation}

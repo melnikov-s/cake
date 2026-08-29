@@ -172,6 +172,7 @@ export const ActivityGroup = observer(function ActivityGroup({
                 parts={parts}
                 streaming={activityIsRunning}
                 onOpenSourceLocation={behavior.openSourceLocation}
+                workspacePath={behavior.workspacePath}
               />
             </div>
           ) : (

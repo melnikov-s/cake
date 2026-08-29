@@ -98,6 +98,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         renderChat={behavior.renderChat}
         live={live}
         omitDiff={omitToolDiff}
+        workspacePath={behavior.workspacePath}
         expansion={
           workLogItem
             ? {

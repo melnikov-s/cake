@@ -8,6 +8,7 @@ import {
 import { Markdown } from "../../../../../src/renderer/components/ai-elements/markdown";
 import { Reasoning } from "../../../../../src/renderer/components/ai-elements/reasoning";
 import { Tool } from "../../../../../src/renderer/components/ai-elements/tool";
+import { WorkLogDiff } from "../../../../../src/renderer/components/ai-elements/work-log-diff";
 import type { DesktopClient } from "../../../../../src/renderer/desktop-client";
 import { SubagentActivityStore } from "../../../../../src/renderer/stores/SubagentActivityStore";
 
@@ -100,6 +101,64 @@ describe("Cake-owned conversation components", () => {
     );
     expect(completed).toContain('class="tool-state tool-success" aria-label="success"');
     expect(active).toContain('class="tool-state tool-running" aria-label="running"');
+  });
+
+  it("shows work-log paths relative to the project root and keeps outside paths absolute", () => {
+    const workspacePath = "/Users/user/dev/cake";
+    const inside = renderToStaticMarkup(
+      <Tool
+        part={{
+          id: "tool-inside",
+          kind: "tool",
+          name: "read",
+          input: JSON.stringify({ path: `${workspacePath}/src/app.ts` }),
+          filePath: `${workspacePath}/src/app.ts`,
+          state: "success",
+        }}
+        workspacePath={workspacePath}
+      />,
+    );
+    const outside = renderToStaticMarkup(
+      <Tool
+        part={{
+          id: "tool-outside",
+          kind: "tool",
+          name: "read",
+          input: JSON.stringify({ path: "/etc/hosts" }),
+          filePath: "/etc/hosts",
+          state: "success",
+        }}
+        workspacePath={workspacePath}
+      />,
+    );
+
+    expect(inside).toContain('title="read src/app.ts"');
+    expect(inside).not.toContain(workspacePath);
+    expect(outside).toContain('title="read /etc/hosts"');
+  });
+
+  it("shows aggregate work-log diff paths relative to the project root", () => {
+    const workspacePath = "/Users/user/dev/cake";
+    const html = renderToStaticMarkup(
+      <WorkLogDiff
+        parts={[
+          {
+            id: "tool-edit",
+            kind: "tool",
+            name: "edit",
+            input: "",
+            filePath: `${workspacePath}/src/app.ts`,
+            diff: "+const value = true;",
+            state: "success",
+          },
+        ]}
+        streaming={false}
+        workspacePath={workspacePath}
+      />,
+    );
+
+    expect(html).toContain("src/app.ts");
+    expect(html).not.toContain(workspacePath);
   });
 
   it("renders edit calls as a readable code diff", () => {

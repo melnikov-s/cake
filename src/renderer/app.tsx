@@ -177,6 +177,7 @@ export const App = observer(function App() {
 
   const projectTranscriptBehavior = session
     ? {
+        workspacePath: session.workspacePath,
         onFork: (entryId: string) => {
           void store.sessionContinuationStore.forkAt(entryId);
         },
