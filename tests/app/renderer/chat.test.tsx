@@ -84,6 +84,7 @@ describe("Chat", () => {
     store = mount(
       createStore(ChatStore, {
         id: () => "shared-chat",
+        supportsUserMessageMarkdown: () => true,
         parts: () => [
           {
             id: "question",
@@ -116,6 +117,12 @@ describe("Chat", () => {
       "GPT",
     );
     expect(container.textContent).toContain("Medium reasoning");
+    const markdown = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Markdown formatting"]',
+    )!;
+    expect(markdown.getAttribute("aria-pressed")).toBe("false");
+    await act(async () => markdown.click());
+    expect(markdown.getAttribute("aria-pressed")).toBe("true");
 
     // While streaming, the send icon becomes a stop icon and submits are hidden.
     expect(container.querySelector<HTMLButtonElement>('[aria-label="Send"]')).toBeNull();
@@ -266,7 +273,9 @@ describe("Chat", () => {
     expect(container.querySelector<HTMLButtonElement>('[aria-label="Stop"]')).toBeNull();
 
     await act(async () => send.click());
-    expect(submit).toHaveBeenCalledWith("One more thing");
+    expect(submit).toHaveBeenCalledWith("One more thing", {
+      renderUserMessageAsMarkdown: false,
+    });
     expect(abort).not.toHaveBeenCalled();
 
     // Once the submitted draft clears, Stop is available again for the active turn.
@@ -307,7 +316,9 @@ describe("Chat", () => {
       container.querySelector<HTMLButtonElement>('[aria-label="Send"]')!.click(),
     );
 
-    expect(submit).toHaveBeenCalledWith("Please continue");
+    expect(submit).toHaveBeenCalledWith("Please continue", {
+      renderUserMessageAsMarkdown: false,
+    });
     expect(store.draft).toBe("");
   });
 

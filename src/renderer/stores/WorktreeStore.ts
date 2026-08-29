@@ -296,6 +296,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       operationId: crypto.randomUUID(),
       sessionId,
       delivery: "prompt",
+      renderUserMessageAsMarkdown: false,
       attachments: [],
       text: [
         `Cake is preparing to merge this worktree into ${target}, but it has uncommitted changes.`,
@@ -347,6 +348,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       operationId: crypto.randomUUID(),
       sessionId,
       delivery: "prompt",
+      renderUserMessageAsMarkdown: false,
       attachments: [],
       text,
     });
@@ -361,6 +363,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       operationId: crypto.randomUUID(),
       sessionId,
       delivery: "prompt",
+      renderUserMessageAsMarkdown: false,
       attachments: [],
       text: [
         `Cake is preparing to squash this worktree into ${target} as one commit.`,

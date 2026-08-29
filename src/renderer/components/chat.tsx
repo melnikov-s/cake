@@ -9,7 +9,8 @@ import { RewordPromptDialog } from "@/components/reword-prompt-dialog";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
 import { SourceAttachment } from "@/components/source-attachment";
 import { IconButton } from "@/components/ui/icon-button";
-import { PaperclipIcon, SendIcon, StopIcon } from "@/components/ui/icons";
+import { MarkdownIcon, PaperclipIcon, SendIcon, StopIcon } from "@/components/ui/icons";
+import { cn } from "@/lib/utils";
 import { TooltipBubble, useTooltip } from "@/components/ui/tooltip";
 import type { ChatStore } from "../stores/ChatStore";
 
@@ -296,11 +297,31 @@ export const Chat = observer(function Chat({
           />
         }
         toolbarLeading={
-          store.canAttach && (
-            <IconButton tooltip="Attach files" onClick={() => void store.addAttachments()}>
-              <PaperclipIcon />
-            </IconButton>
-          )
+          <>
+            {store.canAttach && (
+              <IconButton tooltip="Attach files" onClick={() => void store.addAttachments()}>
+                <PaperclipIcon />
+              </IconButton>
+            )}
+            {store.supportsUserMessageMarkdown && (
+              <IconButton
+                className={cn(
+                  store.renderUserMessageAsMarkdown &&
+                    "bg-accent text-accent-foreground hover:bg-accent",
+                )}
+                tooltip={
+                  store.renderUserMessageAsMarkdown
+                    ? "Stop rendering sent messages as Markdown"
+                    : "Render sent messages as Markdown"
+                }
+                ariaLabel="Markdown formatting"
+                aria-pressed={store.renderUserMessageAsMarkdown}
+                onClick={() => store.toggleUserMessageMarkdown()}
+              >
+                <MarkdownIcon />
+              </IconButton>
+            )}
+          </>
         }
         toolbarActions={
           <>

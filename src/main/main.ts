@@ -1476,6 +1476,7 @@ async function handleCakeRequest(
       request.sessionId,
       request.text,
       request.attachments,
+      request.renderUserMessageAsMarkdown,
       request.newSession,
     );
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });

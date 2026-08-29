@@ -235,7 +235,9 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
           : `Ask Cake to work in ${this.props.projectName()}…`,
       inputLabel: () => "Message",
       canSubmit: () => this.canSubmit,
-      submit: () => this.composerStore.submit(),
+      submit: (_draft, options) =>
+        this.composerStore.submit(undefined, options?.renderUserMessageAsMarkdown ?? false),
+      supportsUserMessageMarkdown: () => true,
       createDraft: () => this.composerStore.createDraftSession(),
       showDraftMenu: (x, y) =>
         this.props.client.showSendContextMenu?.({ x, y }) ?? Promise.resolve(undefined),

@@ -257,7 +257,7 @@ describe("Pi 0.84.0 foundation contract", () => {
       });
       runtimes.push(runtime);
       await runtime.setModel("fixture-provider", "fixture-model");
-      prompt = runtime.prompt("Investigate session naming", "prompt", []);
+      prompt = runtime.prompt("Investigate session naming", "prompt", [], true);
 
       await vi.waitFor(() => expect(generateTitle).toHaveBeenCalledOnce(), { timeout: 1_000 });
       await vi.waitFor(
@@ -273,6 +273,22 @@ describe("Pi 0.84.0 foundation contract", () => {
       );
       releaseResponse();
       await prompt;
+      const entries = (await readFile(runtime.sessionFile, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      const userEntry = entries.find(
+        (entry) =>
+          entry.type === "message" &&
+          (entry.message as { role?: string } | undefined)?.role === "user",
+      );
+      expect(entries).toContainEqual(
+        expect.objectContaining({
+          type: "custom",
+          customType: "cake.user-message-presentation/v1",
+          data: { targetId: userEntry?.id, renderAs: "markdown" },
+        }),
+      );
       prompt = undefined;
     } finally {
       releaseResponse();
@@ -954,6 +970,35 @@ describe("Pi 0.84.0 foundation contract", () => {
         attachmentKind: "source",
         name: "src/main.ts",
         location: attachment.location,
+      }),
+    ]);
+  });
+
+  it("projects Cake's persisted Markdown presentation metadata onto its user message", () => {
+    const parts = projectSessionEntries([
+      {
+        type: "message",
+        id: "user-markdown",
+        parentId: null,
+        timestamp: new Date(0).toISOString(),
+        message: { role: "user", content: "# Heading", timestamp: 0 },
+      },
+      {
+        type: "custom",
+        id: "presentation",
+        parentId: "user-markdown",
+        timestamp: new Date(0).toISOString(),
+        customType: "cake.user-message-presentation/v1",
+        data: { targetId: "user-markdown", renderAs: "markdown" },
+      },
+    ] as never);
+
+    expect(parts).toEqual([
+      expect.objectContaining({
+        kind: "text",
+        role: "user",
+        text: "# Heading",
+        renderAs: "markdown",
       }),
     ]);
   });

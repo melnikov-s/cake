@@ -64,6 +64,7 @@ export class GlobalChatDriver {
     sessionId: string,
     text: string,
     attachments: Attachment[],
+    renderUserMessageAsMarkdown: boolean,
     newSession?: {
       tools: readonly GlobalControlTool[];
       configuration?: ChatConfiguration;
@@ -79,6 +80,7 @@ export class GlobalChatDriver {
         text,
         this.streamingSessionIds.has(sessionId) ? "follow-up" : "prompt",
         attachments,
+        renderUserMessageAsMarkdown,
       );
     });
   }

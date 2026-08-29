@@ -103,6 +103,10 @@ const appControlArgumentSchemas = {
         .describe(
           "When present, create the session in a new Cake-managed worktree with this name.",
         ),
+      markdown: z
+        .boolean()
+        .optional()
+        .describe("Render the initial prompt as Markdown in the transcript. Defaults to true."),
     })
     .strict(),
   send_session_message: sessionIdTargetSchema.extend({

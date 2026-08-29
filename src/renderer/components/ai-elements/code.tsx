@@ -1,7 +1,6 @@
 /* Inspired by Vercel AI Elements code-block.tsx at 0c1f5e8c75273f0e95c8faa031544a8aa2bb1a5b (Apache-2.0). */
-import { useEffect, useState, type CSSProperties, type ComponentProps } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { syntaxHighlighter } from "@/lib/syntax-highlighter";
-import { cn } from "@/lib/utils";
 
 type HighlightResult = ReturnType<typeof syntaxHighlighter.highlight>;
 export type HighlightTokens = NonNullable<HighlightResult>["tokens"];
@@ -90,16 +89,4 @@ export function useHighlightedSource(path: string, source: string, enabled = tru
     };
   }, [enabled, path, source]);
   return tokens;
-}
-
-export function CodeBlock({ className, ...props }: ComponentProps<"pre">) {
-  return (
-    <pre
-      className={cn(
-        "my-3 max-w-full overflow-x-auto rounded-xl bg-foreground p-4 font-mono text-xs leading-6 text-background",
-        className,
-      )}
-      {...props}
-    />
-  );
 }

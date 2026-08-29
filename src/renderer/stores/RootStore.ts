@@ -106,6 +106,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     initialPrompt: string;
     model?: ChatConfiguration;
     worktreeName?: string;
+    markdown?: boolean;
   }) {
     this.showEmptyWorkbench();
     const managedWorktree = input.worktreeName
@@ -119,6 +120,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       input.name,
       input.initialPrompt,
       input.model,
+      input.markdown !== false,
     );
     return managedWorktree
       ? { workspacePath, sessionId, managedWorktree }
@@ -468,7 +470,14 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       createSession: (input) => this.createPromptedSession(input),
       sendSessionMessage: (sessionId, text, delivery) =>
         this.appControlOperationStore.run((operationId) =>
-          this.client.submit({ operationId, sessionId, text, delivery, attachments: [] }),
+          this.client.submit({
+            operationId,
+            sessionId,
+            text,
+            delivery,
+            renderUserMessageAsMarkdown: false,
+            attachments: [],
+          }),
         ),
       abortSession: (sessionId) =>
         this.appControlOperationStore.run((operationId) =>

@@ -516,6 +516,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
       requestId: z.uuid(),
       sessionId: z.string().min(1).max(256),
       text: z.string().max(262_144),
+      renderUserMessageAsMarkdown: z.boolean().default(false),
       attachments: z.array(attachmentSchema).max(20),
       newSession: z
         .object({
@@ -714,6 +715,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
       requestId: z.uuid(),
       text: z.string().max(262_144),
       delivery: z.enum(["prompt", "steer", "follow-up"]),
+      renderUserMessageAsMarkdown: z.boolean().default(false),
       attachments: z.array(attachmentSchema).max(20),
       sessionId: z.string().max(256),
       newSession: z

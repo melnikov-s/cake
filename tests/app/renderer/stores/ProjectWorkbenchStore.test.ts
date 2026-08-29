@@ -404,6 +404,7 @@ describe("ProjectWorkbenchStore", () => {
       sessionId,
       text: "Implement the requested feature",
       delivery: "prompt",
+      renderUserMessageAsMarkdown: true,
       attachments: [],
       newSession: {
         path: "/project",

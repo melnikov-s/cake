@@ -82,7 +82,7 @@ describe("MessageComposerStore prompt queue", () => {
     const { store } = harness;
 
     harness.setDraft("First fix the tests");
-    await store.submit();
+    await store.submit(undefined, true);
 
     expect(clientSubmit).not.toHaveBeenCalled();
     expect(store.queuedPrompts.map((entry) => entry.text)).toEqual(["First fix the tests"]);
@@ -95,6 +95,7 @@ describe("MessageComposerStore prompt queue", () => {
       sessionId: "session-1",
       text: "First fix the tests",
       delivery: "prompt",
+      renderUserMessageAsMarkdown: true,
     });
     expect(store.queuedPrompts).toEqual([]);
     harness.dispose();

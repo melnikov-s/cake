@@ -143,7 +143,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     }
   }
 
-  async submit(text: string) {
+  async submit(text: string, renderUserMessageAsMarkdown = false) {
     text = text.trim();
     const attachments = this.attachments.slice();
     if (!text && attachments.length === 0) return false;
@@ -246,6 +246,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         operationId,
         sessionId: this.sessionId,
         text,
+        renderUserMessageAsMarkdown,
         attachments,
         newSession: this.props.collection.newSessionRequest(this.sessionId),
       });
@@ -400,7 +401,8 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       placeholder: () => "Ask Cake to find or control a task…",
       inputLabel: () => "Message Cake Chat",
       canSubmit: (draft) => Boolean(draft.trim() || this.attachments.length > 0),
-      submit: (draft) => this.submit(draft),
+      submit: (draft, options) => this.submit(draft, options?.renderUserMessageAsMarkdown ?? false),
+      supportsUserMessageMarkdown: () => true,
       createDraft: () => this.createDraftSession(),
       showDraftMenu: (x, y) =>
         this.props.collection.port.showSendContextMenu?.({ x, y }) ?? Promise.resolve(undefined),

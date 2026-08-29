@@ -261,10 +261,10 @@ describe("GlobalChatDriver", () => {
       { sessionId: "global-1" },
     );
     await vi.waitFor(() => expect(cakeRuntime.snapshot).toHaveBeenCalled());
-    driver.prompt(requestId, "global-1", "", attachments);
+    driver.prompt(requestId, "global-1", "", attachments, true);
 
     await vi.waitFor(() =>
-      expect(cakeRuntime.prompt).toHaveBeenCalledWith("", "prompt", attachments),
+      expect(cakeRuntime.prompt).toHaveBeenCalledWith("", "prompt", attachments, true),
     );
     expect(events).toContainEqual({ type: "global-chat-operation-completed", requestId });
     driver[Symbol.dispose]();
@@ -290,7 +290,7 @@ describe("GlobalChatDriver", () => {
       },
     ];
 
-    driver.prompt(requestId, "global-1", "hello", [], {
+    driver.prompt(requestId, "global-1", "hello", [], false, {
       tools,
       configuration: {
         provider: "openai",
@@ -309,7 +309,7 @@ describe("GlobalChatDriver", () => {
     );
     expect(cakeRuntime.applyConfiguration).toHaveBeenCalledOnce();
     expect(cakeRuntime.rename).toHaveBeenCalledWith("Pending title");
-    expect(cakeRuntime.prompt).toHaveBeenCalledWith("hello", "prompt", []);
+    expect(cakeRuntime.prompt).toHaveBeenCalledWith("hello", "prompt", [], false);
     driver[Symbol.dispose]();
   });
 
@@ -390,10 +390,14 @@ describe("GlobalChatDriver", () => {
       { sessionId: "global-2" },
     );
     await vi.waitFor(() => expect(createRuntime).toHaveBeenCalledTimes(2));
-    driver.prompt(crypto.randomUUID(), "global-1", "first turn", []);
-    driver.prompt(crypto.randomUUID(), "global-2", "second turn", []);
-    await vi.waitFor(() => expect(first.prompt).toHaveBeenCalledWith("first turn", "prompt", []));
-    await vi.waitFor(() => expect(second.prompt).toHaveBeenCalledWith("second turn", "prompt", []));
+    driver.prompt(crypto.randomUUID(), "global-1", "first turn", [], false);
+    driver.prompt(crypto.randomUUID(), "global-2", "second turn", [], false);
+    await vi.waitFor(() =>
+      expect(first.prompt).toHaveBeenCalledWith("first turn", "prompt", [], false),
+    );
+    await vi.waitFor(() =>
+      expect(second.prompt).toHaveBeenCalledWith("second turn", "prompt", [], false),
+    );
     expect(first.dispose).not.toHaveBeenCalled();
     expect(second.dispose).not.toHaveBeenCalled();
     driver[Symbol.dispose]();

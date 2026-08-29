@@ -90,6 +90,7 @@ function createBridge(
       name: string;
       initialPrompt: string;
       worktreeName?: string;
+      markdown?: boolean;
     }): Promise<{
       workspacePath: string;
       sessionId: string;
@@ -501,6 +502,21 @@ describe("AppControlBridge", () => {
       managedWorktree,
       status: "started",
     });
+    const plainInput = {
+      workspacePath: "/cake",
+      name: "Plain session",
+      initialPrompt: "Implement the plain version",
+      markdown: false,
+    };
+    await expect(bridge.invoke({ name: "create_session", arguments: plainInput })).resolves.toEqual(
+      {
+        ok: true,
+        name: "create_session",
+        workspacePath: "/cake",
+        sessionId: "new-session",
+        status: "started",
+      },
+    );
     await expect(
       bridge.invoke({
         name: "create_session",
@@ -559,6 +575,7 @@ describe("AppControlBridge", () => {
       },
     });
     expect(createSession).toHaveBeenNthCalledWith(2, worktreeInput);
+    expect(createSession).toHaveBeenNthCalledWith(3, plainInput);
     expect(renameSession).toHaveBeenCalledWith("current", "Global controls");
     expect(setSessionResolved).toHaveBeenCalledWith("current", true);
     expect(setSessionsResolved).toHaveBeenCalledWith(["current", "running"], false);

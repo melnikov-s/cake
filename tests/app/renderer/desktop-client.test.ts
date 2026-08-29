@@ -168,6 +168,7 @@ describe("desktop client", () => {
       operationId,
       sessionId: "cake-chat",
       text: "",
+      renderUserMessageAsMarkdown: true,
       attachments: [
         { kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" },
       ],
@@ -250,6 +251,7 @@ describe("desktop client", () => {
       requestId: operationId,
       sessionId: "cake-chat",
       text: "",
+      renderUserMessageAsMarkdown: true,
       attachments: [
         { kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" },
       ],

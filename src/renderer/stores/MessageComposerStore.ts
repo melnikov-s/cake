@@ -29,6 +29,7 @@ export interface QueuedPrompt {
   id: string;
   text: string;
   attachments: Attachment[];
+  renderUserMessageAsMarkdown: boolean;
 }
 
 export interface MessageComposerStoreProps {
@@ -232,7 +233,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     this.attachments.splice(index, 1);
   }
 
-  async submit(deliveryOverride?: "steer") {
+  async submit(deliveryOverride?: "steer", renderUserMessageAsMarkdown = false) {
     if (!this.props.canSubmit()) return;
     this.error = undefined;
     this.errorDetails = undefined;
@@ -340,7 +341,12 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         this.props.setDraft("");
         this.attachments.splice(0);
         this.annotations.splice(0);
-        this.queuedPrompts.push({ id: crypto.randomUUID(), text, attachments });
+        this.queuedPrompts.push({
+          id: crypto.randomUUID(),
+          text,
+          attachments,
+          renderUserMessageAsMarkdown,
+        });
       }
       return;
     }
@@ -348,7 +354,14 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       this.props.setDraft("");
       this.attachments.splice(0);
       this.annotations.splice(0);
-      await this.deliver(text, attachments, deliveryOverride ?? "prompt", sessionId, true);
+      await this.deliver(
+        text,
+        attachments,
+        deliveryOverride ?? "prompt",
+        sessionId,
+        true,
+        renderUserMessageAsMarkdown,
+      );
     }
   }
 
@@ -479,6 +492,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       else this.attachments.push(attachment);
     }
     this.requestFocus();
+    return entry.renderUserMessageAsMarkdown;
   }
 
   steerQueuedPrompt(id: string) {
@@ -507,7 +521,14 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     const sessionId = this.props.sessionId();
     const delivered =
       sessionId !== undefined && (entry.text || entry.attachments.length > 0)
-        ? await this.deliver(entry.text, entry.attachments.slice(), delivery, sessionId, false)
+        ? await this.deliver(
+            entry.text,
+            entry.attachments.slice(),
+            delivery,
+            sessionId,
+            false,
+            entry.renderUserMessageAsMarkdown,
+          )
         : false;
     if (!delivered && !this.signal.aborted) this.queuedPrompts.unshift(entry);
   }
@@ -519,7 +540,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     sessionId: string,
   ) {
     const operationId = this.props.operations.start(this.props.operationOwner);
-    this.addPendingUserMessage(operationId, sessionId, text, attachments, "prompt");
+    this.addPendingUserMessage(operationId, sessionId, text, attachments, "prompt", false);
     try {
       if (!this.props.client.editSessionMessage)
         throw new Error("This Cake client does not support message editing");
@@ -674,6 +695,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     delivery: "prompt" | "steer",
     sessionId: string,
     restoreOnError: boolean,
+    renderUserMessageAsMarkdown: boolean,
   ): Promise<boolean> {
     this.error = undefined;
     this.errorDetails = undefined;
@@ -704,7 +726,14 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       }
     }
     const operationId = this.props.operations.start(this.props.operationOwner);
-    this.addPendingUserMessage(operationId, sessionId, text, attachments, delivery);
+    this.addPendingUserMessage(
+      operationId,
+      sessionId,
+      text,
+      attachments,
+      delivery,
+      renderUserMessageAsMarkdown,
+    );
     try {
       const newSession = this.props.newSessionRequest?.();
       await this.props.client.submit({
@@ -712,6 +741,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         sessionId,
         text,
         delivery,
+        renderUserMessageAsMarkdown,
         attachments,
         newSession,
       });
@@ -791,6 +821,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     text: string,
     attachments: Attachment[],
     delivery: "prompt" | "steer" | "follow-up",
+    renderUserMessageAsMarkdown: boolean,
   ) {
     const attachmentParts = attachments.flatMap((attachment, index): UiPart[] => {
       if (attachment.kind === "image")
@@ -840,6 +871,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
               role: "user" as const,
               text,
               status: "complete" as const,
+              renderAs: renderUserMessageAsMarkdown ? ("markdown" as const) : undefined,
               deliveryState,
             },
           ]

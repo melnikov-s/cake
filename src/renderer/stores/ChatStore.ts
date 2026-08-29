@@ -23,7 +23,11 @@ export interface ChatStoreProps {
   placeholder(): string;
   inputLabel(): string;
   canSubmit(draft: string): boolean;
-  submit(draft: string): Promise<boolean | void>;
+  submit(
+    draft: string,
+    options?: { renderUserMessageAsMarkdown?: boolean },
+  ): Promise<boolean | void>;
+  supportsUserMessageMarkdown?(): boolean;
   createDraft?(): Promise<boolean>;
   showDraftMenu?(x: number, y: number): Promise<"create-draft" | undefined>;
   canCreateDraft?(): boolean;
@@ -44,7 +48,7 @@ export interface ChatStoreProps {
   usage?(): SessionSnapshot["usage"];
   queuedPrompts?(): readonly QueuedPrompt[];
   steerQueuedPrompt?(id: string): void;
-  editQueuedPrompt?(id: string): void;
+  editQueuedPrompt?(id: string): boolean | undefined;
   removeQueuedPrompt?(id: string): void;
   composerVisible?(): boolean;
   showComposerContextMenu?(
@@ -77,6 +81,7 @@ export type { WorkLogViewMode, WorkLogsExpansion };
 /** Common state and behavior contract for every Cake conversation surface. */
 export class ChatStore extends Store<ChatStoreProps> {
   draft = "";
+  renderUserMessageAsMarkdown = false;
   private localWorkLogViewMode: WorkLogViewMode = "auto";
   private localWorkLogsExpansion: WorkLogsExpansion = "collapsed";
   readonly workLogItemOverrides = observable(new Map<string, boolean>());
@@ -241,6 +246,13 @@ export class ChatStore extends Store<ChatStoreProps> {
   get canAttach() {
     return Boolean(this.props.addAttachments);
   }
+  get supportsUserMessageMarkdown() {
+    return this.props.supportsUserMessageMarkdown?.() ?? false;
+  }
+  toggleUserMessageMarkdown() {
+    if (this.supportsUserMessageMarkdown)
+      this.renderUserMessageAsMarkdown = !this.renderUserMessageAsMarkdown;
+  }
   get canPasteImages() {
     return Boolean(this.props.addPastedImages);
   }
@@ -396,7 +408,7 @@ export class ChatStore extends Store<ChatStoreProps> {
     this.workLogItemOverrides.set(partId, open);
   }
 
-  async submit(value = this.draft) {
+  async submit(value = this.draft, options?: { renderUserMessageAsMarkdown?: boolean }) {
     if (value !== this.draft) this.setDraft(value);
     // Submitting an empty composer while prompts are queued steers the head of
     // the queue immediately, so "type + Enter, Enter" is a keyboard-only way to
@@ -414,7 +426,10 @@ export class ChatStore extends Store<ChatStoreProps> {
     this.submittingLocally = true;
     const submittedRevision = this.draftRevision;
     try {
-      const submitted = await this.props.submit(value);
+      const submitted = await this.props.submit(value, {
+        renderUserMessageAsMarkdown:
+          options?.renderUserMessageAsMarkdown ?? this.renderUserMessageAsMarkdown,
+      });
       if (submitted !== false && this.draft === value && this.draftRevision === submittedRevision)
         this.setDraft("");
       return submitted !== false;
@@ -427,7 +442,8 @@ export class ChatStore extends Store<ChatStoreProps> {
     this.props.steerQueuedPrompt?.(id);
   }
   editQueuedPrompt(id: string) {
-    this.props.editQueuedPrompt?.(id);
+    const renderAsMarkdown = this.props.editQueuedPrompt?.(id);
+    if (renderAsMarkdown !== undefined) this.renderUserMessageAsMarkdown = renderAsMarkdown;
   }
   removeQueuedPrompt(id: string) {
     this.props.removeQueuedPrompt?.(id);

@@ -108,6 +108,7 @@ import {
   reviewRunEntryType,
   reviewRunPart,
   textFromContent,
+  userMessagePresentationEntryType,
   toolArtifactId,
   toolFilePath,
   toolResultOutputContent,
@@ -566,6 +567,7 @@ export interface CakeRuntime {
     text: string,
     delivery: "prompt" | "steer" | "follow-up",
     attachments: Attachment[],
+    renderUserMessageAsMarkdown?: boolean,
   ): Promise<void>;
   editMessage?(entryId: string, text: string, attachments: Attachment[]): Promise<void>;
   compact(instructions?: string): Promise<void>;
@@ -1316,7 +1318,30 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     text: string;
     attachments: Attachment[];
     delivery: "steer" | "follow-up";
+    renderUserMessageAsMarkdown: boolean;
   }[] = [];
+  const pendingUserPresentations: {
+    content: string;
+    renderUserMessageAsMarkdown: boolean;
+    consumed: boolean;
+  }[] = [];
+  async function deliverTrackedUserMessage(
+    content: string,
+    renderUserMessageAsMarkdown: boolean,
+    deliver: () => Promise<void>,
+  ) {
+    const pending = { content, renderUserMessageAsMarkdown, consumed: false };
+    pendingUserPresentations.push(pending);
+    try {
+      await deliver();
+    } catch (error) {
+      if (!pending.consumed) {
+        const index = pendingUserPresentations.indexOf(pending);
+        if (index >= 0) pendingUserPresentations.splice(index, 1);
+      }
+      throw error;
+    }
+  }
   const allQueuedParts = () =>
     projectQueuedMessages(
       session.getSteeringMessages(),
@@ -1635,10 +1660,36 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     if (event.type === "queue_update") {
       syncQueuedParts();
     }
-    if (!options.auxiliary && event.type === "message_end" && event.message.role === "user") {
-      // The user message is not appended to SessionManager until after subscribers run, so
-      // pass the event payload while still using the active branch for reopened sessions.
-      void nameSessionFromFirstMessage(textFromContent(event.message.content));
+    if (event.type === "message_end" && event.message.role === "user") {
+      const content = textFromContent(event.message.content);
+      const presentationIndex = pendingUserPresentations.findIndex(
+        (candidate) => candidate.content === content,
+      );
+      const presentation =
+        presentationIndex >= 0
+          ? pendingUserPresentations.splice(presentationIndex, 1)[0]
+          : undefined;
+      if (presentation) {
+        presentation.consumed = true;
+        if (presentation.renderUserMessageAsMarkdown)
+          queueMicrotask(() => {
+            if (disposed) return;
+            const target = session.sessionManager
+              .getEntries()
+              .findLast((entry) => entry.type === "message" && entry.message === event.message);
+            if (!target) return;
+            session.sessionManager.appendCustomEntry(userMessagePresentationEntryType, {
+              targetId: target.id,
+              renderAs: "markdown",
+            });
+            emitSnapshotInBackground();
+          });
+      }
+      if (!options.auxiliary) {
+        // The user message is not appended to SessionManager until after subscribers run, so
+        // pass the event payload while still using the active branch for reopened sessions.
+        void nameSessionFromFirstMessage(textFromContent(event.message.content));
+      }
     }
     if (event.type === "agent_settled") {
       options.onEvent({ type: "streaming", sessionId: cakeSessionId, streaming: false });
@@ -1670,8 +1721,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         const images = imageContent(item.attachments);
         if (index === 0 && !session.isStreaming) {
           try {
-            await withResponseRetries(() =>
-              session.prompt(content, { images, source: "interactive" }),
+            await deliverTrackedUserMessage(content, item.renderUserMessageAsMarkdown, () =>
+              withResponseRetries(() => session.prompt(content, { images, source: "interactive" })),
             );
             continue;
           } catch (error) {
@@ -1679,8 +1730,14 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
             if (!isAlreadyProcessingError(error)) throw error;
           }
         }
-        if (item.delivery === "steer") await session.steer(content, images);
-        else await session.followUp(content, images);
+        if (item.delivery === "steer")
+          await deliverTrackedUserMessage(content, item.renderUserMessageAsMarkdown, () =>
+            session.steer(content, images),
+          );
+        else
+          await deliverTrackedUserMessage(content, item.renderUserMessageAsMarkdown, () =>
+            session.followUp(content, images),
+          );
       } catch {
         // Delivery failed; keep the remainder queued for the next flush.
         compactionQueue.unshift(...queued.slice(index));
@@ -1804,7 +1861,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     },
     snapshot: makeSnapshot,
     compact: (instructions) => runCompact(instructions),
-    async prompt(text, delivery, attachments) {
+    async prompt(text, delivery, attachments, renderUserMessageAsMarkdown = false) {
       if (disposed) throw new Error("The Cake runtime has been disposed");
       // A real user submission starts a fresh bounded recovery budget.
       userAbortRequested = false;
@@ -1826,27 +1883,38 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           // A plain "prompt" intent degrades to a follow-up when it has to
           // wait behind compaction; steering intent is preserved.
           delivery: delivery === "steer" ? "steer" : "follow-up",
+          renderUserMessageAsMarkdown,
         });
         syncQueuedParts();
         return;
       }
       const content = promptText(text, attachments);
       const images = imageContent(attachments);
-      if (delivery === "steer") await session.steer(content, images);
-      else if (delivery === "follow-up") await session.followUp(content, images);
+      if (delivery === "steer")
+        await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
+          session.steer(content, images),
+        );
+      else if (delivery === "follow-up")
+        await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
+          session.followUp(content, images),
+        );
       else if (session.isStreaming) {
         // The renderer may see a stale idle snapshot while a turn is still
         // running. Queue the message instead of failing the submission.
-        await session.followUp(content, images);
+        await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
+          session.followUp(content, images),
+        );
       } else {
         try {
-          await withResponseRetries(() =>
-            session.prompt(content, { images, source: "interactive" }),
+          await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
+            withResponseRetries(() => session.prompt(content, { images, source: "interactive" })),
           );
         } catch (error) {
           // The turn may have started between the check and this call.
           if (!isAlreadyProcessingError(error)) throw error;
-          await session.followUp(content, images);
+          await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
+            session.followUp(content, images),
+          );
         }
       }
     },

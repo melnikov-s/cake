@@ -99,6 +99,7 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
         sessionId: context.sessionId,
         text,
         delivery: this.props.isStreaming() ? "steer" : "prompt",
+        renderUserMessageAsMarkdown: false,
         attachments: [],
       });
       if (this.signal.aborted) return;

@@ -398,12 +398,15 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     name: string,
     initialPrompt: string,
     configuration?: ChatConfiguration,
+    renderUserMessageAsMarkdown = true,
   ) {
     const sessionId = crypto.randomUUID();
     this.showTemporarySession(path, sessionId);
     this.sessionRegistry.setPendingName(sessionId, name);
     if (configuration) this.sessionRegistry.setPendingConfiguration(sessionId, configuration);
-    const submitted = await this.sessionRegistry.ensure(sessionId).chatStore.submit(initialPrompt);
+    const submitted = await this.sessionRegistry
+      .ensure(sessionId)
+      .chatStore.submit(initialPrompt, { renderUserMessageAsMarkdown });
     if (!submitted) throw new Error("Cake could not submit the new session's initial prompt.");
     return sessionId;
   }

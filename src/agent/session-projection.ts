@@ -17,6 +17,11 @@ import {
 } from "../ipc/session-contract";
 
 export const reviewRunEntryType = "cake.review-run/v1";
+export const userMessagePresentationEntryType = "cake.user-message-presentation/v1";
+const userMessagePresentationEntrySchema = z.object({
+  targetId: z.string().min(1).max(256),
+  renderAs: z.literal("markdown"),
+});
 /** Marks the orientation preamble appended as the first entry of a handoff session. */
 export const handoffEntryType = "cake.handoff/v1";
 export const reviewRunEntrySchema = z.object({
@@ -182,6 +187,7 @@ function partsFromMessage(
   baseId: string,
   streaming = false,
   entryId?: string,
+  renderUserMessageAsMarkdown = false,
 ): UiPart[] {
   if (typeof message !== "object" || message === null) return [];
   const role = Reflect.get(message, "role");
@@ -208,6 +214,7 @@ function partsFromMessage(
           entryId,
           text: skill.userMessage,
           status: "complete",
+          renderAs: renderUserMessageAsMarkdown ? "markdown" : undefined,
         });
     } else if (text)
       parts.push({
@@ -217,6 +224,7 @@ function partsFromMessage(
         entryId,
         text,
         status: "complete",
+        renderAs: renderUserMessageAsMarkdown ? "markdown" : undefined,
       });
     parsedContext.attachments.forEach((attachment, index) => {
       if (attachment.kind === "annotation") {
@@ -508,6 +516,13 @@ export function projectSessionEntries(
   }
   for (const run of compactedRuns.values()) append(reviewRunPart(run));
 
+  const markdownUserMessageIds = new Set<string>();
+  for (const entry of entries) {
+    if (entry.type !== "custom" || entry.customType !== userMessagePresentationEntryType) continue;
+    const presentation = userMessagePresentationEntrySchema.safeParse(entry.data);
+    if (presentation.success) markdownUserMessageIds.add(presentation.data.targetId);
+  }
+
   const intermediateRetryErrors = new Set<string>();
   let nextContextRole: string | undefined;
   for (let index = entries.length - 1; index >= 0; index -= 1) {
@@ -527,7 +542,13 @@ export function projectSessionEntries(
   for (const entry of entries) {
     if (entry.type === "message") {
       if (intermediateRetryErrors.has(entry.id)) continue;
-      for (const part of partsFromMessage(entry.message, `entry-${entry.id}`, false, entry.id))
+      for (const part of partsFromMessage(
+        entry.message,
+        `entry-${entry.id}`,
+        false,
+        entry.id,
+        markdownUserMessageIds.has(entry.id),
+      ))
         append(part);
       continue;
     }

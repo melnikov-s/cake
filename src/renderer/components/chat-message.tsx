@@ -10,6 +10,7 @@ import {
 } from "react";
 import { observer } from "r-state-tree/react";
 import { Markdown } from "@/components/ai-elements/markdown";
+import { cn } from "@/lib/utils";
 import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
 import { FullscreenButton, FullscreenSurface } from "@/components/fullscreen-surface";
 import { IconButton } from "@/components/ui/icon-button";
@@ -73,21 +74,22 @@ export const ChatTextMessage = forwardRef<
   return (
     <Message
       ref={ref}
-      className={[
+      className={cn(
         assistant ? "assistant-message mr-auto w-full" : "ml-auto w-[min(88%,42rem)]",
-        pending ? "user-message-pending" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
+        pending && "user-message-pending",
+      )}
     >
       <MessageLabel>
         {assistant ? (part.status === "streaming" ? "Cake · working" : "Cake") : userLabel}
       </MessageLabel>
       <MessageContent
         ref={contentRef}
-        className={assistant ? "assistant-message-content" : "user-message whitespace-pre-wrap"}
+        className={cn(
+          assistant ? "assistant-message-content" : "user-message",
+          !assistant && part.renderAs !== "markdown" && "whitespace-pre-wrap",
+        )}
       >
-        {assistant ? (
+        {assistant || part.renderAs === "markdown" ? (
           <Markdown
             highlightCode={part.status !== "streaming"}
             onOpenSourceLocation={onOpenSourceLocation}

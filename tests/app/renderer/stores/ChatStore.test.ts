@@ -2,7 +2,10 @@ import { createStore, mount } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatStore, type ChatStoreProps } from "../../../../src/renderer/stores/ChatStore";
 
-function createChatStore(submit: () => Promise<boolean>, overrides: Partial<ChatStoreProps> = {}) {
+function createChatStore(
+  submit: ChatStoreProps["submit"],
+  overrides: Partial<ChatStoreProps> = {},
+) {
   return mount(
     createStore(ChatStore, {
       id: () => "chat",
@@ -26,8 +29,18 @@ describe("ChatStore empty-composer submit", () => {
     const submit = vi.fn(() => Promise.resolve(true));
     const store = createChatStore(submit, {
       queuedPrompts: () => [
-        { id: "first", text: "First", attachments: [] },
-        { id: "second", text: "Second", attachments: [] },
+        {
+          id: "first",
+          text: "First",
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+        },
+        {
+          id: "second",
+          text: "Second",
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+        },
       ],
       steerQueuedPrompt,
     });
@@ -56,7 +69,14 @@ describe("ChatStore empty-composer submit", () => {
     const steerQueuedPrompt = vi.fn();
     const submit = vi.fn(() => Promise.resolve(true));
     const store = createChatStore(submit, {
-      queuedPrompts: () => [{ id: "first", text: "First", attachments: [] }],
+      queuedPrompts: () => [
+        {
+          id: "first",
+          text: "First",
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+        },
+      ],
       steerQueuedPrompt,
     });
     store.setDraft("New instruction");
@@ -65,6 +85,21 @@ describe("ChatStore empty-composer submit", () => {
 
     expect(steerQueuedPrompt).not.toHaveBeenCalled();
     expect(submit).toHaveBeenCalled();
+    store[Symbol.dispose]();
+  });
+});
+
+describe("ChatStore user message Markdown", () => {
+  it("captures the active Markdown mode in each submission", async () => {
+    const submit = vi.fn(() => Promise.resolve(true));
+    const store = createChatStore(submit, { supportsUserMessageMarkdown: () => true });
+
+    store.toggleUserMessageMarkdown();
+    await store.submit("# Heading");
+
+    expect(submit).toHaveBeenCalledWith("# Heading", {
+      renderUserMessageAsMarkdown: true,
+    });
     store[Symbol.dispose]();
   });
 });

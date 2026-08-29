@@ -313,6 +313,7 @@ export interface DesktopClient {
     operationId: string;
     sessionId: string;
     text: string;
+    renderUserMessageAsMarkdown: boolean;
     attachments: Attachment[];
     newSession?: {
       tools: ReadonlyArray<{
@@ -452,6 +453,7 @@ export interface DesktopClient {
     sessionId: string;
     text: string;
     delivery: "prompt" | "steer" | "follow-up";
+    renderUserMessageAsMarkdown: boolean;
     attachments: Attachment[];
     newSession?: { path: string; configuration?: ChatConfiguration; name?: string };
   }): Promise<void>;
@@ -1044,6 +1046,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         requestId: input.operationId,
         sessionId: input.sessionId,
         text: input.text,
+        renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
         attachments: input.attachments,
         newSession: input.newSession
           ? {
@@ -1298,6 +1301,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         sessionId: input.sessionId,
         text: input.text,
         delivery: input.delivery,
+        renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
         attachments: input.attachments,
         newSession: input.newSession,
       }),

@@ -201,6 +201,7 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
     entryId: z.string().min(1).max(256).optional(),
     text: boundedText,
     status: z.enum(["streaming", "complete", "error"]),
+    renderAs: z.enum(["markdown"]).optional(),
     deliveryState: z.enum(["sending", "queued", "steering"]).optional(),
     draft: z.boolean().optional(),
   }),

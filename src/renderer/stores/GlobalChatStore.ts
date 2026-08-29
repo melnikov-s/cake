@@ -50,6 +50,7 @@ export interface GlobalChatPort {
     operationId: string;
     sessionId: string;
     text: string;
+    renderUserMessageAsMarkdown: boolean;
     attachments: Attachment[];
     newSession?: {
       tools: ReadonlyArray<CakeControlTool>;

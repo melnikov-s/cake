@@ -74,6 +74,7 @@ describe("PiWorkspaceDriver", () => {
       sessionId: snapshot.sessionId,
       text: "First message",
       delivery: "prompt",
+      renderUserMessageAsMarkdown: true,
       attachments: [],
       newSession: {
         path: "/project",
@@ -105,7 +106,7 @@ describe("PiWorkspaceDriver", () => {
       thinkingLevel: "high",
       fastMode: true,
     });
-    expect(runtime.prompt).toHaveBeenCalledWith("First message", "prompt", []);
+    expect(runtime.prompt).toHaveBeenCalledWith("First message", "prompt", [], true);
 
     const editRequestId = crypto.randomUUID();
     driver.dispatch({
@@ -952,6 +953,7 @@ describe("PiWorkspaceDriver", () => {
       sessionId: "session-2",
       text: "Commit the work",
       delivery: "prompt",
+      renderUserMessageAsMarkdown: false,
       attachments: [],
     });
 
@@ -961,7 +963,7 @@ describe("PiWorkspaceDriver", () => {
     expect(createRuntime).toHaveBeenCalledWith(
       expect.objectContaining({ newSession: false, sessionId: "session-2" }),
     );
-    expect(runtime.prompt).toHaveBeenCalledWith("Commit the work", "prompt", []);
+    expect(runtime.prompt).toHaveBeenCalledWith("Commit the work", "prompt", [], false);
     driver[Symbol.dispose]();
   });
 
@@ -1240,6 +1242,7 @@ describe("PiWorkspaceDriver", () => {
       sessionId: snapshot.sessionId,
       text: "hello",
       delivery: "prompt",
+      renderUserMessageAsMarkdown: false,
       attachments: [],
     });
     await vi.waitFor(() =>
@@ -1283,6 +1286,7 @@ describe("PiWorkspaceDriver", () => {
       sessionId: snapshot.sessionId,
       text: "pending",
       delivery: "prompt",
+      renderUserMessageAsMarkdown: false,
       attachments: [],
     });
     await vi.waitFor(() =>
@@ -1480,6 +1484,7 @@ describe("PiWorkspaceDriver", () => {
       sessionId: snapshot.sessionId,
       text: "request",
       delivery: "prompt",
+      renderUserMessageAsMarkdown: false,
       attachments: [],
     });
     await vi.waitFor(() =>

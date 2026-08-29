@@ -379,7 +379,12 @@ export class PiWorkspaceDriver {
         }
         if (command.type === "abort") await this.agentAbort(command.sessionId);
         else if (command.type === "prompt") {
-          await runtime.prompt(command.text, command.delivery, command.attachments);
+          await runtime.prompt(
+            command.text,
+            command.delivery,
+            command.attachments,
+            command.renderUserMessageAsMarkdown,
+          );
           this.emit({ type: "session-snapshot", snapshot: await runtime.snapshot() });
         } else if (command.type === "edit-session-message") {
           if (!runtime.editMessage)

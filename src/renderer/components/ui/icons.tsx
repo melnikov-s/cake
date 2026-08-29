@@ -153,6 +153,11 @@ export const ChevronDownIcon = ({ size = 14 }: { size?: number }) => (
     <path d="m6 9 6 6 6-6" />
   </Icon>
 );
+export const MarkdownIcon = () => (
+  <svg aria-hidden="true" width="18" height="16" viewBox="0 0 18 16" fill="currentColor">
+    <path d="M1 3.25A1.25 1.25 0 0 1 2.25 2h13.5A1.25 1.25 0 0 1 17 3.25v9.5A1.25 1.25 0 0 1 15.75 14H2.25A1.25 1.25 0 0 1 1 12.75zm2 2v5.5h1.5V7.5L6 9.35 7.5 7.5v3.25H9v-5.5H7.5L6 7.2 4.5 5.25zm8 0v3h-1.5L12.75 11l3.25-2.75h-1.5v-3z" />
+  </svg>
+);
 export const PaperclipIcon = () => (
   <Icon>
     <path d="m20.5 11.5-8.9 8.9a6 6 0 0 1-8.5-8.5l9.6-9.6a4 4 0 0 1 5.7 5.7l-9.6 9.6a2 2 0 1 1-2.8-2.8l8.9-8.9" />
