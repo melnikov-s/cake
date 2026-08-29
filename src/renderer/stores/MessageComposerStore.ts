@@ -45,6 +45,7 @@ export interface MessageComposerStoreProps {
   canonicalParts(): UiPart[];
   draft(): string;
   setDraft(value: string): void;
+  persist(): void;
   canSubmit(): boolean;
   isStreaming(): boolean;
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
@@ -154,6 +155,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
             ),
         ),
       );
+      this.props.persist();
     } catch (error) {
       if (this.signal.aborted) return;
       this.reportError(error);
@@ -181,16 +183,21 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       return;
     }
     this.annotations.push({ id: crypto.randomUUID(), ...annotation });
+    this.props.persist();
     this.requestFocus();
   }
 
   removeAnnotation(id: string) {
     const index = this.annotations.findIndex((annotation) => annotation.id === id);
-    if (index >= 0) this.annotations.splice(index, 1);
+    if (index >= 0) {
+      this.annotations.splice(index, 1);
+      this.props.persist();
+    }
   }
 
   setEditorContextAttachment(attachment: Extract<Attachment, { kind: "source" }> | undefined) {
     this.editorContextAttachment = attachment;
+    this.props.persist();
   }
 
   addSourceAttachment(attachment: Extract<Attachment, { kind: "source" }>) {
@@ -200,7 +207,10 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         current.location.path === attachment.location.path &&
         JSON.stringify(current.location.range) === JSON.stringify(attachment.location.range),
     );
-    if (!duplicate) this.attachments.push(attachment);
+    if (!duplicate) {
+      this.attachments.push(attachment);
+      this.props.persist();
+    }
     this.requestFocus();
   }
 
@@ -211,6 +221,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       const attachments = await pastedImageAttachments(files, 20 - this.attachments.length);
       if (this.signal.aborted) return;
       this.attachments.push(...attachments);
+      this.props.persist();
     } catch (error) {
       if (this.signal.aborted) return;
       this.reportError(error);
@@ -226,11 +237,13 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     if (this.editorContextAttachment) {
       if (index === 0) {
         this.editorContextAttachment = undefined;
+        this.props.persist();
         return;
       }
       index -= 1;
     }
     this.attachments.splice(index, 1);
+    this.props.persist();
   }
 
   async submit(deliveryOverride?: "steer", renderUserMessageAsMarkdown = false) {
@@ -567,6 +580,10 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     }
   }
 
+  get stagedAttachments(): Attachment[] {
+    return this.submissionAttachments().map((attachment) => ({ ...attachment }));
+  }
+
   private submissionAttachments() {
     const explicit = this.attachments.filter((attachment) => attachment.kind !== "annotation");
     const context = this.editorContextAttachment;
@@ -594,6 +611,11 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     this.attachments.splice(0);
     this.annotations.splice(0);
     this.editorContextAttachment = undefined;
+  }
+
+  restoreStagedAttachments(attachments: readonly Attachment[]) {
+    this.restoreAttachments(attachments);
+    this.props.persist();
   }
 
   private restoreAttachments(attachments: readonly Attachment[]) {

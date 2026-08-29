@@ -68,6 +68,7 @@ test("restores, edits, resolves, and activates a project draft session", async (
     await expect(page.getByText("Original plan", { exact: true })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText("Draft", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Resolve Planned work" }).click();
+    await page.getByRole("button", { name: "Expand Resolved" }).click();
     await expect(page.getByRole("button", { name: "Restore Planned work" })).toBeVisible();
     await page.getByRole("button", { name: "Restore Planned work" }).click();
 

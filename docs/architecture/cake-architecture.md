@@ -233,16 +233,20 @@ The window Store hierarchy mirrors the product surfaces:
   state and lifetime; the workbench does not re-export one-for-one child APIs.
 - The root-scoped `SessionRegistryStore` preserves one keyed
   `ProjectSessionStore` for every loaded project-session ID so background
-  project events and navigation share session identity. Multiple unsent project
-  sessions may coexist in the same workspace; each keeps its own identity, composer
-  draft, and configuration and appears in the session catalog before Pi creates its
-  runtime on the first prompt. An explicitly saved draft session additionally stages
-  its initial message and attachments in Cake window state, projects them through the
-  shared `Chat`, and carries draft and resolved presentation metadata until activation.
-  Activation clears the draft state and uses the ordinary first-prompt path; Pi remains
-  the transcript authority once the session starts. The workspace path remains routing/storage context
-  for the Pi runtime, not part of session identity. Cake Chat never enters this
-  registry.
+  project events and navigation share session identity. The window has exactly one
+  unsent, unsaved project chat. It is staged renderer state, not a session: it does
+  not enter the session catalog or navigation history, and repeatedly choosing New
+  Chat reopens the same staged composer with its text, attachments, configuration,
+  and workspace intact. Cake persists that staged input continuously in window state.
+  The first submitted prompt promotes it to an ordinary Pi session. An explicitly
+  saved draft is different: it becomes a cataloged pseudo-session, stages its initial
+  message and attachments in Cake window state, projects them through the shared
+  `Chat`, and carries draft and resolved presentation metadata until activation.
+  Saving the staged chat as a draft also frees New Chat to create one new staged
+  composer. Activation clears the draft state and uses the ordinary first-prompt
+  path; Pi remains the transcript authority once the session starts. The workspace
+  path remains routing/storage context for the Pi runtime, not part of session
+  identity. Cake Chat never enters this registry.
 - Each `ProjectSessionStore` owns that session's activity, `Session`,
   message composer, chat configuration, managed-worktree status and actions,
   artifacts, and message comments. Its

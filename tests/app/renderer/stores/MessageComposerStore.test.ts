@@ -45,6 +45,7 @@ function createComposerStore(options: {
       setDraft: (value: string) => {
         draft = value;
       },
+      persist: vi.fn(),
       canSubmit: () => true,
       isStreaming: options.streaming,
       openCommandPane: vi.fn(async () => undefined),

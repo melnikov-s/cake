@@ -1141,6 +1141,16 @@ describe("ProjectWorkbenchStore", () => {
           sessionId: "unpersisted-session",
           workspacePath: "/project",
           draft: "restored temporary draft",
+          attachments: [
+            {
+              kind: "source" as const,
+              name: "restored.ts",
+              location: {
+                path: "/project/restored.ts",
+                range: { start: { line: 1 }, end: { line: 2 } },
+              },
+            },
+          ],
         },
       ],
     }));
@@ -1151,7 +1161,11 @@ describe("ProjectWorkbenchStore", () => {
     expect(desktop.client.openWorkspace).not.toHaveBeenCalled();
     expect(store.activeSession?.workspacePath).toBe("/project");
     expect(store.activeSession?.chatStore.draft).toBe("restored temporary draft");
+    expect(store.activeSession?.composerStore.stagedAttachments).toEqual([
+      expect.objectContaining({ kind: "source", name: "restored.ts" }),
+    ]);
     expect(store.sessionRegistry.isTemporarySession(store.activeSession!.sessionId)).toBe(true);
+    expect(root.sessionCatalogStore.find(store.activeSession!.sessionId)).toBeUndefined();
     root[Symbol.dispose]();
   });
 
@@ -2434,78 +2448,63 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("keeps multiple pending sessions in one workspace", async () => {
+  it("keeps exactly one staged new chat and continuously persists its input", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop);
 
     await store.startNewSession("/project");
+    const stagedSessionId = store.activeSession!.sessionId;
+    store.activeSession!.chatStore.setDraft("irreplaceable input");
+    store.activeSession!.composerStore.addSourceAttachment({
+      kind: "source",
+      name: "important.ts",
+      location: { path: "/project/important.ts", range: { start: { line: 4 }, end: { line: 8 } } },
+    });
+
+    await store.openSession(snapshot.sessionId);
+    await store.startNewSession("/project");
+
+    expect(store.activeSession?.sessionId).toBe(stagedSessionId);
+    expect(store.activeSession?.chatStore.draft).toBe("irreplaceable input");
+    expect(store.activeSession?.composerStore.stagedAttachments).toEqual([
+      expect.objectContaining({ kind: "source", name: "important.ts" }),
+    ]);
+    expect(root.sessionCatalogStore.find(stagedSessionId)).toBeUndefined();
+
+    await store.startNewSession("/project");
+    expect(store.activeSession?.sessionId).toBe(stagedSessionId);
+    expect(root.sessionRegistry.pendingNewSessions()).toEqual([
+      expect.objectContaining({
+        sessionId: stagedSessionId,
+        draft: "irreplaceable input",
+        attachments: [expect.objectContaining({ kind: "source", name: "important.ts" })],
+      }),
+    ]);
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(
+      vi.mocked(desktop.client.saveWindowState).mock.calls.at(-1)?.[0].pendingProjectSessions,
+    ).toEqual([
+      expect.objectContaining({ sessionId: stagedSessionId, draft: "irreplaceable input" }),
+    ]);
+    root[Symbol.dispose]();
+  });
+
+  it("resolves multiple explicit drafts without calling Pi", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+    await store.startNewSession("/project");
     const firstSessionId = store.activeSession!.sessionId;
     store.activeSession!.chatStore.setDraft("first draft");
-
+    await store.activeSession!.composerStore.createDraftSession();
     await store.startNewSession("/project");
     const secondSessionId = store.activeSession!.sessionId;
     store.activeSession!.chatStore.setDraft("second draft");
-
-    expect(secondSessionId).not.toBe(firstSessionId);
-    expect(root.sessionCatalogStore.find(firstSessionId)?.title).toBe("New chat");
-    expect(root.sessionCatalogStore.find(secondSessionId)?.title).toBe("New chat");
-
-    await store.openSession(firstSessionId);
-    expect(store.activeSession?.sessionId).toBe(firstSessionId);
-    expect(store.activeSession?.chatStore.draft).toBe("first draft");
-    expect(desktop.client.openWorkspace).toHaveBeenCalledTimes(1);
-
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(
-      vi.mocked(desktop.client.saveWindowState).mock.calls.at(-1)?.[0].pendingProjectSessions,
-    ).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ sessionId: firstSessionId, draft: "first draft" }),
-        expect.objectContaining({ sessionId: secondSessionId, draft: "second draft" }),
-      ]),
-    );
-
-    await expect(
-      store.createSession("/project", "Started immediately", "Investigate this"),
-    ).resolves.toEqual(expect.any(String));
-    root[Symbol.dispose]();
-  });
-
-  it("discards an unsent session when it is resolved and returns to chat history", async () => {
-    const desktop = createDesktopClient();
-    const { root, store } = mountTestStore(desktop.client);
-    await flush();
-    await openSnapshot(store, desktop);
-    await root.createSession("/project");
-    const pendingSessionId = store.activeSession!.sessionId;
-    await root.openSession(pendingSessionId);
-
-    await root.sidebarStore.setSessionResolved(pendingSessionId, true);
-
-    expect(store.sessionRegistry.findSession(pendingSessionId)).toBeUndefined();
-    expect(root.sessionCatalogStore.find(pendingSessionId)).toBeUndefined();
-    expect(store.activeSession?.sessionId).toBe(snapshot.sessionId);
-    expect(desktop.client.resolveSession).not.toHaveBeenCalled();
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(
-      vi.mocked(desktop.client.saveWindowState).mock.calls.at(-1)?.[0].pendingProjectSessions,
-    ).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ sessionId: pendingSessionId })]),
-    );
-    root[Symbol.dispose]();
-  });
-
-  it("discards unsent sessions during bulk resolution without calling Pi", async () => {
-    const desktop = createDesktopClient();
-    const { root, store } = mountTestStore(desktop.client);
-    await flush();
-    await openSnapshot(store, desktop);
-    await store.startNewSession("/project");
-    const firstSessionId = store.activeSession!.sessionId;
-    await store.startNewSession("/project");
-    const secondSessionId = store.activeSession!.sessionId;
+    await store.activeSession!.composerStore.createDraftSession();
 
     await expect(
       store.sessionManagementStore.resolveSessionsById(
@@ -2515,8 +2514,10 @@ describe("ProjectWorkbenchStore", () => {
       ),
     ).resolves.toBe(2);
 
-    expect(store.sessionRegistry.findSession(firstSessionId)).toBeUndefined();
-    expect(store.sessionRegistry.findSession(secondSessionId)).toBeUndefined();
+    expect(store.sessionRegistry.draftSessionPrompt(firstSessionId)?.resolved).toBe(true);
+    expect(store.sessionRegistry.draftSessionPrompt(secondSessionId)?.resolved).toBe(true);
+    expect(root.sessionCatalogStore.find(firstSessionId)?.resolved).toBe(true);
+    expect(root.sessionCatalogStore.find(secondSessionId)?.resolved).toBe(true);
     expect(desktop.client.resolveSessions).not.toHaveBeenCalled();
     root[Symbol.dispose]();
   });

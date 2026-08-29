@@ -73,7 +73,13 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   selectedSessionId: string | undefined;
   pendingTrustPath: string | undefined;
   private pendingOpen:
-    | { inspectOperationId: string; path: string; newSession: boolean; sessionId?: string }
+    | {
+        inspectOperationId: string;
+        path: string;
+        newSession: boolean;
+        stagedSession: boolean;
+        sessionId?: string;
+      }
     | undefined;
   private activeOpenOperationId: string | undefined;
   private activeOpenTarget: { path: string; sessionId?: string; newSession: boolean } | undefined;
@@ -199,7 +205,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return this.activeSession?.model;
   }
 
-  /** False for a pending draft session; Pi only lists it after its first prompt. */
+  /** False for a staged or explicit draft session; Pi lists it only after activation. */
   get activeSessionExists(): boolean {
     const sessionId = this.selectedSessionId;
     return sessionId !== undefined && !this.sessionRegistry.isTemporarySession(sessionId);
@@ -317,7 +323,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     try {
       const path = await this.client.getHomeDirectory();
       if (!this.signal.aborted && revision === this.projectPickerRevision)
-        await this.inspectPath(path, true);
+        await this.inspectPath(path, true, undefined, true);
     } catch (error) {
       if (!this.signal.aborted && revision === this.projectPickerRevision) this.setError(error);
     }
@@ -378,13 +384,18 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   async startNewSession(path = this.projectPath) {
+    const staged = this.sessionRegistry.stagedSession();
+    if (staged) {
+      this.showCachedSession(staged.sessionId);
+      return;
+    }
     if (!path) {
       await this.chooseProject();
       return;
     }
     const sessionId = crypto.randomUUID();
-    if (path === this.projectPath) this.showTemporarySession(path, sessionId);
-    else await this.inspectPath(path, true, sessionId);
+    if (path === this.projectPath) this.showTemporarySession(path, sessionId, true);
+    else await this.inspectPath(path, true, sessionId, true);
   }
 
   newSessionRequest(sessionId: string) {
@@ -440,9 +451,11 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.embeddedEditorStore.close();
   }
 
-  private showTemporarySession(path: string, sessionId: string) {
+  private showTemporarySession(path: string, sessionId: string, staged = false) {
     this.pendingOpen = undefined;
-    const session = this.sessionRegistry.prepareNewSession(path, sessionId);
+    const session = staged
+      ? this.sessionRegistry.prepareStagedSession(path, sessionId)
+      : this.sessionRegistry.prepareNewSession(path, sessionId);
     this.props.persistence().applySessionRestore(session, this.selectedSessionId);
     this.closeEmbeddedEditor();
     this.projectPath = path;
@@ -518,12 +531,23 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return true;
   }
 
-  private async inspectPath(path: string, newSession = false, sessionId?: string) {
+  private async inspectPath(
+    path: string,
+    newSession = false,
+    sessionId?: string,
+    stagedSession = false,
+  ) {
     const revision = ++this.openRevision;
     const operationId = this.startOperation();
     this.extensionUi.clear();
     this.pendingTrustPath = undefined;
-    this.pendingOpen = { inspectOperationId: operationId, path, newSession, sessionId };
+    this.pendingOpen = {
+      inspectOperationId: operationId,
+      path,
+      newSession,
+      stagedSession,
+      sessionId,
+    };
     try {
       await this.client.inspectWorkspace({ operationId, path });
     } catch (error) {
@@ -554,7 +578,11 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       return;
     }
     if (pending.newSession)
-      this.showTemporarySession(pending.path, pending.sessionId ?? crypto.randomUUID());
+      this.showTemporarySession(
+        pending.path,
+        pending.sessionId ?? crypto.randomUUID(),
+        pending.stagedSession,
+      );
     else await this.openPath(pending.path, false, pending.sessionId);
   }
 
@@ -849,7 +877,11 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       if (!pending || pending.inspectOperationId !== event.operationId) return;
       if (event.trustRequired) this.pendingTrustPath = event.path;
       else if (pending.newSession)
-        this.showTemporarySession(event.path, pending.sessionId ?? crypto.randomUUID());
+        this.showTemporarySession(
+          event.path,
+          pending.sessionId ?? crypto.randomUUID(),
+          pending.stagedSession,
+        );
       else void this.openPath(event.path, false, pending.sessionId);
       return;
     }

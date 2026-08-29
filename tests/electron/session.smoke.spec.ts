@@ -108,6 +108,17 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(newChatComposer).toBeFocused();
     await newChatComposer.pressSequentially("Immediate draft");
     await expect(newChatComposer).toHaveValue("Immediate draft");
+    await expect(page.locator(".session-item")).toHaveCount(sessionCountBeforeNewChat);
+
+    // New Chat is one durable staged composer, not a sidebar session. Navigating
+    // away and choosing New Chat again must recover the exact in-progress input.
+    await page.locator(".sidebar").getByLabel("Open settings").click();
+    await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await expect(newChatComposer).toHaveValue("Immediate draft");
+    await expect(newChatComposer).toBeFocused();
+    await expect(page.locator(".session-item")).toHaveCount(sessionCountBeforeNewChat);
+
     const draftSendButton = page.getByRole("button", { name: "Send · hold to save as draft" });
     await expect(draftSendButton).toBeEnabled();
     await draftSendButton.dispatchEvent("pointerdown", { button: 0 });
@@ -117,8 +128,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(page.getByText("Immediate draft", { exact: true })).toBeVisible();
     await expect(page.getByText("Draft", { exact: true })).toBeVisible();
     await expect(newChatComposer).toHaveValue("");
-    // New chats have stable pending identities and remain available in the sidebar
-    // even when their initial prompt is staged as a draft.
+    // An explicitly saved draft is the pseudo-session that belongs in the sidebar.
     await expect(page.locator(".session-item")).toHaveCount(sessionCountBeforeNewChat + 1);
     await expect(page.locator(".workspace-header strong")).toHaveText("New chat");
     await expect(page.getByLabel("Back to chat")).toHaveCount(0);

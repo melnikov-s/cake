@@ -212,6 +212,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       canonicalParts: () => this.canonicalParts,
       draft: () => this.chatStore.draft,
       setDraft: (value) => this.chatStore.setDraft(value),
+      persist: () => this.props.persist(),
       canSubmit: () => this.canSubmit,
       isStreaming: () => this.isStreaming,
       openCommandPane: (pane) => this.props.openCommandPane(pane),
