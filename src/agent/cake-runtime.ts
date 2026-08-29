@@ -153,7 +153,7 @@ The \`cake\` tool provides capabilities that cannot be reproduced through shell 
 - \`requests\`: collect structured information or confirmation from the user.
 - \`notifications\`: notify the user when appropriate.
 
-This is a capability map, not the complete operation protocol. Call the relevant topic for its current commands, schemas, and constraints before using that area. Call the gateway without a topic when you need to discover the capabilities currently available. Use ordinary filesystem and shell tools for read-only transcript search and directly requested machine work. Never claim a Cake action succeeded unless its tool result confirms it.
+This is a capability map, not the complete operation protocol. Request a topic's current commands, schemas, and constraints by setting the Cake tool's \`command\` to the exact topic name (for example, \`{"command":"sessions"}\`). Call the gateway with \`{}\` to discover the capabilities currently available; do not put a help topic in \`input\`. Use ordinary filesystem and shell tools for read-only transcript search and directly requested machine work. Never claim a Cake action succeeded unless its tool result confirms it.
 
 ### Customizing Cake
 

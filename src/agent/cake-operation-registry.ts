@@ -8,12 +8,19 @@ import {
 
 const CAKE_OPERATION_PROTOCOL = "cake.operation/v1" as const;
 export const cakeToolDescription =
-  "Access Cake-native capabilities unavailable through files or the shell: manage sessions and context, communicate with other sessions, guide the user in embedded VS Code, delegate to subagents, request structured user input, create interactive visual widgets, manage customizations, and send notifications. Call without a command for help or with a topic for its protocol.";
+  'Access Cake-native capabilities unavailable through files or the shell: manage sessions and context, communicate with other sessions, guide the user in embedded VS Code, delegate to subagents, request structured user input, create interactive visual widgets, manage customizations, and send notifications. Call with {} for help. For a topic protocol, set command to the exact topic name, for example {"command":"vscode"}; do not put the topic in input.';
 
 export const cakeToolEnvelopeSchema = z
   .object({
-    command: z.string().min(1).max(256).optional(),
-    input: jsonObjectSchema.optional(),
+    command: z
+      .string()
+      .min(1)
+      .max(256)
+      .optional()
+      .describe("Exact topic or operation command. Omit for the help index."),
+    input: jsonObjectSchema
+      .optional()
+      .describe("Operation arguments only. Omit for help and topic protocol discovery."),
   })
   .strict();
 
@@ -172,7 +179,6 @@ export class CakeOperationRegistry {
     const envelope = cakeToolEnvelopeSchema.parse(envelopeInput);
     const command = envelope.command ?? "help";
     if (command === "help") {
-      if (envelope.input !== undefined) throw new Error("Cake help does not accept input");
       const text = this.help();
       return { text, details: { protocol: CAKE_OPERATION_PROTOCOL, command, result: text } };
     }

@@ -1344,12 +1344,16 @@ describe("S1 Pi runtime", () => {
       "You are Cake Chat, the application-level assistant built into Cake",
     );
     expect(context?.systemPrompt).toContain("Unlike a project session");
-    expect(context?.systemPrompt).toContain("Use `cake sessions` for live, bounded discovery");
+    expect(context?.systemPrompt).toContain("Reserve `cake sessions`");
     expect(context?.systemPrompt).toContain("Search transcript files with rg, grep, or jq");
     expect(context?.systemPrompt).toContain("Resolved project sessions");
     expect(context?.systemPrompt).toContain("archived and read-only");
     expect(context?.systemPrompt).toContain("Treat it as read-only");
     expect(context?.systemPrompt).toContain("This is a capability map");
+    expect(context?.systemPrompt).toContain(
+      'setting the Cake tool\'s `command` to the exact topic name (for example, `{"command":"sessions"}`)',
+    );
+    expect(context?.systemPrompt).toContain("do not put a help topic in `input`");
     expect(context?.systemPrompt).toContain("call `cake customizations`");
     expect(context?.systemPrompt).not.toContain("Call `cake widgets`");
     expect(context?.systemPrompt).not.toContain("customizations.write-file");

@@ -44,14 +44,33 @@ describe("Cake operation registry", () => {
       expect.objectContaining({ command: expect.any(Object), input: expect.any(Object) }),
     );
     expect(JSON.stringify(schema)).not.toContain("context.compact");
-    expect(cakeToolDescription).toContain("Call without a command for help");
+    expect(schema.properties?.command).toEqual(
+      expect.objectContaining({
+        description: "Exact topic or operation command. Omit for the help index.",
+      }),
+    );
+    expect(schema.properties?.input).toEqual(
+      expect.objectContaining({
+        description: "Operation arguments only. Omit for help and topic protocol discovery.",
+      }),
+    );
+    expect(cakeToolDescription).toContain(
+      'set command to the exact topic name, for example {"command":"vscode"}',
+    );
   });
 
-  it("treats a missing command and help as equivalent", async () => {
+  it("treats a missing command and help with incidental input as equivalent", async () => {
     const available = registry();
     const missing = await available.invoke({}, context());
     const explicit = await available.invoke({ command: "help" }, context());
-    expect(missing.text).toBe(explicit.text);
+    const missingWithInput = await available.invoke({ input: {} }, context());
+    const explicitWithInput = await available.invoke(
+      { command: "help", input: { topic: "vscode guide selection" } },
+      context(),
+    );
+    expect(missing).toEqual(explicit);
+    expect(missing).toEqual(missingWithInput);
+    expect(missing).toEqual(explicitWithInput);
     expect(missing.text).toContain("sessions —");
     expect(missing.text).not.toContain("widgets —");
   });
