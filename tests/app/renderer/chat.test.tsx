@@ -322,6 +322,44 @@ describe("Chat", () => {
     expect(store.draft).toBe("");
   });
 
+  it("opens the draft action when the send button is held", async () => {
+    vi.useFakeTimers();
+    const submit = vi.fn(async () => true);
+    const createDraft = vi.fn(async () => true);
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "draft-chat",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Message Cake",
+        inputLabel: () => "Message",
+        canSubmit: (draft) => Boolean(draft.trim()),
+        submit,
+        createDraft,
+        canCreateDraft: () => true,
+      }),
+    );
+    store.setDraft("Plan this work");
+    act(() => root.render(<Chat store={store!} />));
+
+    const send = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Send · hold to save as draft"]',
+    )!;
+    act(() => {
+      send.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
+      vi.advanceTimersByTime(600);
+    });
+
+    const createDraftAction = document.body.querySelector<HTMLButtonElement>('[role="menuitem"]')!;
+    expect(createDraftAction.textContent).toBe("Create draft");
+    await act(async () => createDraftAction.click());
+    expect(createDraft).toHaveBeenCalledOnce();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
   it("stops active work when Escape is pressed in the focused composer", () => {
     const abort = vi.fn(async () => undefined);
     store = mount(

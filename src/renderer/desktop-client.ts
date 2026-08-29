@@ -175,7 +175,6 @@ export interface DesktopClient {
     x: number;
     y: number;
   }): Promise<"reword" | "reword-with-prompt" | undefined>;
-  showSendContextMenu?(input: { x: number; y: number }): Promise<"create-draft" | undefined>;
   rewordComposerSelection(input: {
     selection: string;
     prompt?: string;
@@ -705,12 +704,6 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       const response = await bridge.request({ type: "show-composer-context-menu", ...input });
       if (response.type !== "composer-context-menu-closed")
         throw new Error("Cake received an invalid composer context menu response");
-      return response.action;
-    },
-    async showSendContextMenu(input) {
-      const response = await bridge.request({ type: "show-send-context-menu", ...input });
-      if (response.type !== "send-context-menu-closed")
-        throw new Error("Cake received an invalid send context menu response");
       return response.action;
     },
     async rewordComposerSelection(input) {

@@ -29,7 +29,6 @@ export interface ChatStoreProps {
   ): Promise<boolean | void>;
   supportsUserMessageMarkdown?(): boolean;
   createDraft?(): Promise<boolean>;
-  showDraftMenu?(x: number, y: number): Promise<"create-draft" | undefined>;
   canCreateDraft?(): boolean;
   activateDraft?(): Promise<boolean>;
   editLastUserMessage?(entryId: string): void;
@@ -451,9 +450,6 @@ export class ChatStore extends Store<ChatStoreProps> {
 
   createDraft() {
     return this.props.createDraft?.() ?? Promise.resolve(false);
-  }
-  showDraftMenu(x: number, y: number) {
-    return this.props.showDraftMenu?.(x, y) ?? Promise.resolve(undefined);
   }
   activateDraft() {
     return this.props.activateDraft?.() ?? Promise.resolve(false);

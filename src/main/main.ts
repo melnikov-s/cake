@@ -934,26 +934,6 @@ async function handleCakeRequest(
       action,
     });
   }
-  if (request.type === "show-send-context-menu") {
-    if (!owner) return desktopResponseSchema.parse({ type: "send-context-menu-closed" });
-    const action = await new Promise<"create-draft" | undefined>((resolve) => {
-      let completed = false;
-      const finish = (selected?: "create-draft") => {
-        if (completed) return;
-        completed = true;
-        resolve(selected);
-      };
-      Menu.buildFromTemplate([
-        { label: "Create Draft", click: () => finish("create-draft") },
-      ]).popup({
-        window: owner,
-        x: request.x,
-        y: request.y,
-        callback: () => finish(),
-      });
-    });
-    return desktopResponseSchema.parse({ type: "send-context-menu-closed", action });
-  }
   if (request.type === "show-composer-context-menu") {
     if (!owner) return desktopResponseSchema.parse({ type: "composer-context-menu-closed" });
     const action = await new Promise<"reword" | "reword-with-prompt" | undefined>((resolve) => {

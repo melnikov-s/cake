@@ -440,8 +440,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         listModels: () => this.client.listModels(),
         showComposerContextMenu: (input) => this.client.showComposerContextMenu(input),
         rewordComposerSelection: (input) => this.client.rewordComposerSelection(input),
-        showSendContextMenu: (input) =>
-          this.client.showSendContextMenu?.(input) ?? Promise.resolve(undefined),
         generateSessionTitle: (firstUserMessage) =>
           this.client.generateSessionTitle?.(firstUserMessage) ?? Promise.resolve(undefined),
         open: (input) => this.client.openGlobalChat(input),

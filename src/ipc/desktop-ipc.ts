@@ -281,11 +281,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     y: z.number().int().min(-1_000_000).max(1_000_000),
   }),
   z.object({
-    type: z.literal("show-send-context-menu"),
-    x: z.number().int().min(-1_000_000).max(1_000_000),
-    y: z.number().int().min(-1_000_000).max(1_000_000),
-  }),
-  z.object({
     type: z.literal("reword-composer-selection"),
     selection: z.string().min(1).max(32_000),
     prompt: z.string().max(4_096).optional(),
@@ -873,10 +868,6 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("composer-context-menu-closed"),
     action: z.enum(["reword", "reword-with-prompt"]).optional(),
-  }),
-  z.object({
-    type: z.literal("send-context-menu-closed"),
-    action: z.literal("create-draft").optional(),
   }),
   z.object({
     type: z.literal("composer-selection-reworded"),

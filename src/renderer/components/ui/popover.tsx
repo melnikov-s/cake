@@ -88,12 +88,14 @@ export function PopoverTrigger({
 
 export interface PopoverContentProps extends HTMLAttributes<HTMLDivElement> {
   align?: PopoverAlign;
+  anchorRef?: RefObject<HTMLButtonElement | null>;
   offset?: number;
   side?: PopoverSide;
 }
 
 export function PopoverContent({
   align = "center",
+  anchorRef,
   children,
   className,
   offset = 8,
@@ -102,14 +104,15 @@ export function PopoverContent({
   ...props
 }: PopoverContentProps) {
   const { contentId, open, setOpen, triggerRef } = usePopoverContext("PopoverContent");
+  const effectiveAnchorRef = anchorRef ?? triggerRef;
   const contentRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: 0, top: 0, ready: false });
   const updatePosition = useCallback(() => {
-    const trigger = triggerRef.current;
+    const anchor = effectiveAnchorRef.current;
     const content = contentRef.current;
-    if (!trigger || !content) return;
+    if (!anchor || !content) return;
     const next = calculatePopoverPosition(
-      trigger.getBoundingClientRect(),
+      anchor.getBoundingClientRect(),
       content.getBoundingClientRect(),
       { width: window.innerWidth, height: window.innerHeight },
       side,
@@ -117,7 +120,7 @@ export function PopoverContent({
       offset,
     );
     setPosition({ ...next, ready: true });
-  }, [align, offset, side, triggerRef]);
+  }, [align, effectiveAnchorRef, offset, side]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -136,7 +139,7 @@ export function PopoverContent({
       if (
         !(target instanceof Node) ||
         contentRef.current?.contains(target) ||
-        triggerRef.current?.contains(target)
+        effectiveAnchorRef.current?.contains(target)
       )
         return;
       setOpen(false);
@@ -145,7 +148,7 @@ export function PopoverContent({
       if (event.key !== "Escape") return;
       event.preventDefault();
       setOpen(false);
-      triggerRef.current?.focus();
+      effectiveAnchorRef.current?.focus();
     };
     const reposition = () => updatePosition();
     document.addEventListener("pointerdown", dismiss, true);
@@ -155,7 +158,7 @@ export function PopoverContent({
     const observer =
       "ResizeObserver" in globalThis ? new globalThis.ResizeObserver(reposition) : undefined;
     if (contentRef.current) observer?.observe(contentRef.current);
-    if (triggerRef.current) observer?.observe(triggerRef.current);
+    if (effectiveAnchorRef.current) observer?.observe(effectiveAnchorRef.current);
     return () => {
       document.removeEventListener("pointerdown", dismiss, true);
       document.removeEventListener("keydown", escape);
@@ -163,7 +166,7 @@ export function PopoverContent({
       window.removeEventListener("resize", reposition);
       observer?.disconnect();
     };
-  }, [open, setOpen, triggerRef, updatePosition]);
+  }, [effectiveAnchorRef, open, setOpen, updatePosition]);
 
   if (!open || !("document" in globalThis)) return null;
   return createPortal(

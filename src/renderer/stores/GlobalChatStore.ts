@@ -39,7 +39,6 @@ export interface GlobalChatPort {
     y: number;
   }): Promise<"reword" | "reword-with-prompt" | undefined>;
   rewordComposerSelection(input: { selection: string; prompt?: string }): Promise<string>;
-  showSendContextMenu?(input: { x: number; y: number }): Promise<"create-draft" | undefined>;
   generateSessionTitle?(firstUserMessage: string): Promise<string | undefined>;
   open(input: {
     operationId: string;

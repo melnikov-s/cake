@@ -404,8 +404,6 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       submit: (draft, options) => this.submit(draft, options?.renderUserMessageAsMarkdown ?? false),
       supportsUserMessageMarkdown: () => true,
       createDraft: () => this.createDraftSession(),
-      showDraftMenu: (x, y) =>
-        this.props.collection.port.showSendContextMenu?.({ x, y }) ?? Promise.resolve(undefined),
       canCreateDraft: () =>
         this.props.collection.isPendingSession(this.sessionId) &&
         !this.props.collection.isDraftSession(this.sessionId),

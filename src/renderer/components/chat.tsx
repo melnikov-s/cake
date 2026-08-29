@@ -8,10 +8,12 @@ import { QueuedPrompts } from "@/components/queued-prompts";
 import { RewordPromptDialog } from "@/components/reword-prompt-dialog";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
 import { SourceAttachment } from "@/components/source-attachment";
+import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { MarkdownIcon, PaperclipIcon, SendIcon, StopIcon } from "@/components/ui/icons";
-import { cn } from "@/lib/utils";
+import { Popover, PopoverContent } from "@/components/ui/popover";
 import { TooltipBubble, useTooltip } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import type { ChatStore } from "../stores/ChatStore";
 
 function formatCompactTokenCount(tokens: number | null | undefined) {
@@ -109,8 +111,10 @@ export const Chat = observer(function Chat({
   const layoutRef = useRef<HTMLDivElement>(null);
   const composerDockRef = useRef<HTMLDivElement>(null);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
+  const draftSendButtonRef = useRef<HTMLButtonElement>(null);
   const draftHoldTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const suppressSendClickRef = useRef(false);
+  const [draftMenuOpen, setDraftMenuOpen] = useState(false);
   const [promptedSelection, setPromptedSelection] = useState<{
     draft: string;
     start: number;
@@ -118,6 +122,12 @@ export const Chat = observer(function Chat({
     text: string;
   }>();
   const composerVisible = store.composerVisible;
+  useLayoutEffect(
+    () => () => {
+      if (draftHoldTimerRef.current) clearTimeout(draftHoldTimerRef.current);
+    },
+    [],
+  );
   useLayoutEffect(() => {
     const layout = layoutRef.current;
     const dock = composerDockRef.current;
@@ -335,54 +345,75 @@ export const Chat = observer(function Chat({
               return (
                 <>
                   {(!store.loading || hasInput) && (
-                    <IconButton
-                      className="send-button"
-                      tooltip={
-                        store.editingMessage
-                          ? store.isDraftSession
-                            ? "Save draft"
-                            : "Save and regenerate"
-                          : store.canCreateDraft
-                            ? "Send · hold to save as draft"
-                            : "Send"
-                      }
-                      type="submit"
-                      disabled={!store.canSubmitDraft(store.draft)}
-                      onClick={(event) => {
-                        if (!suppressSendClickRef.current) return;
-                        event.preventDefault();
-                        suppressSendClickRef.current = false;
-                      }}
-                      onContextMenu={(event) => {
-                        if (!store.canCreateDraft) return;
-                        event.preventDefault();
-                        void store.showDraftMenu(event.clientX, event.clientY).then((action) => {
-                          if (action === "create-draft") void store.createDraft();
-                        });
-                      }}
-                      onPointerDown={(event) => {
-                        if (!store.canCreateDraft) return;
-                        suppressSendClickRef.current = false;
-                        const { clientX, clientY } = event;
-                        draftHoldTimerRef.current = setTimeout(() => {
-                          suppressSendClickRef.current = true;
-                          void store.showDraftMenu(clientX, clientY).then((action) => {
-                            if (action === "create-draft") void store.createDraft();
-                          });
-                        }, 600);
-                      }}
-                      onPointerUp={() => {
-                        if (draftHoldTimerRef.current) clearTimeout(draftHoldTimerRef.current);
-                      }}
-                      onPointerCancel={() => {
-                        if (draftHoldTimerRef.current) clearTimeout(draftHoldTimerRef.current);
-                      }}
-                      onPointerLeave={() => {
-                        if (draftHoldTimerRef.current) clearTimeout(draftHoldTimerRef.current);
-                      }}
-                    >
-                      <SendIcon />
-                    </IconButton>
+                    <Popover open={draftMenuOpen} onOpenChange={setDraftMenuOpen}>
+                      <IconButton
+                        ref={draftSendButtonRef}
+                        className="send-button"
+                        tooltip={
+                          store.editingMessage
+                            ? store.isDraftSession
+                              ? "Save draft"
+                              : "Save and regenerate"
+                            : store.canCreateDraft
+                              ? "Send · hold to save as draft"
+                              : "Send"
+                        }
+                        type="submit"
+                        disabled={!store.canSubmitDraft(store.draft)}
+                        onClick={(event) => {
+                          if (!suppressSendClickRef.current) return;
+                          event.preventDefault();
+                          suppressSendClickRef.current = false;
+                        }}
+                        onContextMenu={(event) => {
+                          if (!store.canCreateDraft) return;
+                          event.preventDefault();
+                          setDraftMenuOpen(true);
+                        }}
+                        onPointerDown={() => {
+                          if (!store.canCreateDraft) return;
+                          suppressSendClickRef.current = false;
+                          draftHoldTimerRef.current = setTimeout(() => {
+                            suppressSendClickRef.current = true;
+                            setDraftMenuOpen(true);
+                          }, 600);
+                        }}
+                        onPointerUp={() => {
+                          if (draftHoldTimerRef.current) clearTimeout(draftHoldTimerRef.current);
+                          draftHoldTimerRef.current = undefined;
+                        }}
+                        onPointerCancel={() => {
+                          if (draftHoldTimerRef.current) clearTimeout(draftHoldTimerRef.current);
+                          draftHoldTimerRef.current = undefined;
+                        }}
+                        onPointerLeave={() => {
+                          if (draftHoldTimerRef.current) clearTimeout(draftHoldTimerRef.current);
+                          draftHoldTimerRef.current = undefined;
+                        }}
+                      >
+                        <SendIcon />
+                      </IconButton>
+                      <PopoverContent
+                        anchorRef={draftSendButtonRef}
+                        align="end"
+                        className="w-44 p-1"
+                        role="menu"
+                        side="top"
+                      >
+                        <Button
+                          className="w-full justify-start"
+                          role="menuitem"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setDraftMenuOpen(false);
+                            void store.createDraft();
+                          }}
+                        >
+                          Create draft
+                        </Button>
+                      </PopoverContent>
+                    </Popover>
                   )}
                   {store.canStop && !hasInput && (
                     <IconButton
