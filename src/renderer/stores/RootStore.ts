@@ -651,6 +651,10 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     // event so snapshots, removals, and streaming state retain desktop event order.
     if (event.type !== "part-updated") this.flushProjectPartUpdates();
     this.customizationStore.receive(event);
+    if (event.type === "notification") {
+      this.toastStore.show(event);
+      return;
+    }
     if (event.type === "application-state-changed") {
       const activeProjectSessionId =
         this.appShellStore.activeConversation?.kind === "project-session"

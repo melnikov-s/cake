@@ -428,13 +428,18 @@ export class WorktreeService implements WorktreeLandingCoordinator {
   async restoreResolved(worktreePath: string): Promise<WorktreeRecord | undefined> {
     await this.load();
     const normalized = resolveNormalized(worktreePath);
-    const record = this.allRecords.find(
-      (entry) => entry.state === "resolved" && resolveNormalized(entry.worktreePath) === normalized,
+    const pendingRecord = this.allRecords.find(
+      (entry) => resolveNormalized(entry.worktreePath) === normalized,
     );
-    if (!record) return undefined;
-    if (record.parentWorktreePath && !existsSync(record.parentWorktreePath))
-      await this.restoreResolved(record.parentWorktreePath);
-    return this.withRepositoryLock(record.projectPath, async () => {
+    if (!pendingRecord) return undefined;
+    if (pendingRecord.parentWorktreePath && !existsSync(pendingRecord.parentWorktreePath))
+      await this.restoreResolved(pendingRecord.parentWorktreePath);
+    return this.withRepositoryLock(pendingRecord.projectPath, async () => {
+      const record = this.allRecords.find(
+        (entry) =>
+          entry.state === "resolved" && resolveNormalized(entry.worktreePath) === normalized,
+      );
+      if (!record) return undefined;
       if (!existsSync(record.worktreePath)) {
         const targetPath = record.parentWorktreePath ?? record.projectPath;
         if (!existsSync(targetPath))

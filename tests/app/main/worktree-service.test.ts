@@ -596,6 +596,22 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     ).resolves.toMatchObject({ stdout: expect.stringContaining(record.branch) });
   });
 
+  it("restores a worktree when restoration is requested during resolved cleanup", async () => {
+    const repo = await repository();
+    const worktrees = service();
+    const record = await worktrees.create(repo);
+    await writeFile(join(record.worktreePath, "feature.ts"), "x\n");
+    await commitAll(record.worktreePath, "feature");
+    await worktrees.land(record.worktreePath, { request: { strategy: "preserve" } });
+
+    const cleanup = worktrees.cleanupResolved(record.worktreePath);
+    const restoration = worktrees.restoreResolved(record.worktreePath);
+
+    await cleanup;
+    await expect(restoration).resolves.toMatchObject({ state: "active" });
+    expect(existsSync(record.worktreePath)).toBe(true);
+  });
+
   it("discards the worktree and optionally keeps the branch", async () => {
     const repo = await repository();
     const worktrees = service();

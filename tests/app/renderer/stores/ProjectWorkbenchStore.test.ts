@@ -353,6 +353,27 @@ async function openSnapshot(
 }
 
 describe("ProjectWorkbenchStore", () => {
+  it("shows desktop notifications as app toasts", () => {
+    const desktop = createDesktopClient();
+    const { root } = mountTestStore(desktop.client);
+
+    desktop.emit({
+      type: "notification",
+      tone: "error",
+      title: "Could not delete resolved worktree",
+      message: "The checkout remains on disk.",
+    });
+
+    expect(root.toastStore.toasts).toEqual([
+      expect.objectContaining({
+        tone: "error",
+        title: "Could not delete resolved worktree",
+        message: "The checkout remains on disk.",
+      }),
+    ]);
+    root[Symbol.dispose]();
+  });
+
   it("switches away from a session's worktree state synchronously", () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);

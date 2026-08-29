@@ -375,6 +375,12 @@ describe("desktop client", () => {
       sessionId: "session",
       markdown: "# Changelog",
     });
+    desktop.emit({
+      type: "notification",
+      tone: "error",
+      title: "Cleanup failed",
+      message: "The worktree remains on disk.",
+    });
     expect(listener).toHaveBeenCalledWith({
       type: "workspace-inspected",
       operationId: requestId,
@@ -387,6 +393,12 @@ describe("desktop client", () => {
       workspacePath: "/project",
       sessionId: "session",
       markdown: "# Changelog",
+    });
+    expect(listener).toHaveBeenCalledWith({
+      type: "notification",
+      tone: "error",
+      title: "Cleanup failed",
+      message: "The worktree remains on disk.",
     });
   });
 });

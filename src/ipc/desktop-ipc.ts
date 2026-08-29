@@ -198,6 +198,12 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("customization-state-changed"), state: customizationStateSchema }),
   z.object({ type: z.literal("application-state-changed"), state: applicationStateSchema }),
   z.object({
+    type: z.literal("notification"),
+    tone: z.enum(["info", "warning", "error"]),
+    title: ipcProjectionString(256),
+    message: ipcProjectionString(2_048),
+  }),
+  z.object({
     type: z.literal("plugin-agent-event"),
     pluginId: pluginIdSchema,
     snapshot: pluginAgentSnapshotSchema,
