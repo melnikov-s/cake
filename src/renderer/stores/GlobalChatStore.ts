@@ -7,6 +7,7 @@ import type {
   ChatConfiguration,
   ModelOption,
   ModelPreset,
+  SessionPreview,
   SessionSnapshot,
   SessionSummary,
   ThinkingLevel,
@@ -30,6 +31,7 @@ interface CakeControlTool {
 
 export interface GlobalChatPort {
   listSessions(): Promise<SessionSummary[]>;
+  loadSession(sessionId: string): Promise<SessionPreview | undefined>;
   listModels(): Promise<ModelOption[]>;
   showComposerContextMenu(input: {
     selection: string;
@@ -374,6 +376,14 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   async openSession(sessionId: string) {
     if (!this.hydrated) await this.initialize();
     if (sessionId === this.pendingSessionId || sessionId === this.selectedSessionId) {
+      this.selectedSessionId = sessionId;
+      return;
+    }
+    if (this.isSessionResolved(sessionId)) {
+      const preview = await this.port.loadSession(sessionId);
+      if (!preview || this.signal.aborted) return;
+      this.ensureTarget(sessionId);
+      this.findSession(sessionId)?.applyPreview(preview);
       this.selectedSessionId = sessionId;
       return;
     }

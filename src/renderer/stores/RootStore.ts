@@ -54,10 +54,11 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     this.projectSession(sessionId);
     this.showEmptyWorkbench();
     const opening = this.projectWorkbenchStore.openSession(sessionId);
-    if (this.projectWorkbenchStore.isActiveSession(sessionId)) {
-      this.appShellStore.selectProjectSession(sessionId);
-    }
+    if (this.projectWorkbenchStore.isActiveSession(sessionId))
+      this.selectProjectSessionForShell(sessionId);
     await opening;
+    if (this.projectWorkbenchStore.isActiveSession(sessionId))
+      this.selectProjectSessionForShell(sessionId);
     if (!messageId) return true;
     const session = this.sessionRegistry.findSession(sessionId);
     if (!session) return false;
@@ -69,6 +70,12 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     if (!message) return false;
     session.chatStore.navigateToMessage(message.id);
     return true;
+  }
+
+  private selectProjectSessionForShell(sessionId: string) {
+    if (this.sessionCatalogStore.find(sessionId)?.resolved)
+      this.appShellStore.previewResolvedProjectSession(sessionId);
+    else this.appShellStore.selectProjectSession(sessionId);
   }
 
   /** Opens the project or Cake Chat session addressed by a Markdown session link. */
@@ -165,7 +172,11 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     this.windowPersistence.schedule();
   }
   async openCakeChat(sessionId?: string) {
-    this.showGlobalChat(sessionId);
+    this.projectWorkbenchStore.dismissSecondarySurfaces();
+    if (sessionId && this.globalChatStore.isSessionResolved(sessionId))
+      this.appShellStore.previewResolvedCakeChat(sessionId);
+    else this.appShellStore.selectCakeChat(sessionId);
+    this.windowPersistence.schedule();
     if (sessionId) await this.globalChatStore.openSession(sessionId);
   }
   async startCakeChat(prompt?: string) {
@@ -385,6 +396,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     return createStore(GlobalChatStore, {
       port: {
         listSessions: () => this.client.listCakeChatSessions(),
+        loadSession: (sessionId) => this.client.loadCakeChatSession(sessionId),
         listModels: () => this.client.listModels(),
         showComposerContextMenu: (input) => this.client.showComposerContextMenu(input),
         rewordComposerSelection: (input) => this.client.rewordComposerSelection(input),
@@ -564,9 +576,35 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     if (event.type !== "part-updated") this.flushProjectPartUpdates();
     this.customizationStore.receive(event);
     if (event.type === "application-state-changed") {
+      const activeProjectSessionId =
+        this.appShellStore.activeConversation?.kind === "project-session"
+          ? this.appShellStore.activeConversation.sessionId
+          : undefined;
+      const activeProjectSessionWasResolved = activeProjectSessionId
+        ? this.sessionCatalogStore.find(activeProjectSessionId)?.resolved === true
+        : false;
+      const activeCakeChatSessionId =
+        this.appShellStore.activeConversation?.kind === "cake-chat"
+          ? this.appShellStore.activeConversation.sessionId
+          : undefined;
+      const activeCakeChatSessionWasResolved = activeCakeChatSessionId
+        ? this.globalChatStore.isSessionResolved(activeCakeChatSessionId)
+        : false;
       this.projectCatalogStore.applyApplicationState(event.state);
       this.globalChatStore.applyApplicationState(event.state);
       this.settingsStore.applyApplicationState(event.state);
+      if (
+        activeProjectSessionId &&
+        activeProjectSessionWasResolved &&
+        !this.sessionCatalogStore.find(activeProjectSessionId)?.resolved
+      )
+        this.appShellStore.selectProjectSession(activeProjectSessionId);
+      if (
+        activeCakeChatSessionId &&
+        activeCakeChatSessionWasResolved &&
+        !this.globalChatStore.isSessionResolved(activeCakeChatSessionId)
+      )
+        this.appShellStore.selectCakeChat(activeCakeChatSessionId);
       return;
     }
     if (event.type === "global-chat-control-requested") {

@@ -137,12 +137,17 @@ export async function loadWorkspaceSessionPreview(
   sessionId: string,
   sessionDir: string,
   resolvedSessionDir?: string,
+  direct = false,
 ): Promise<SessionPreview | undefined> {
-  const activeDirectory = cakeWorkspaceSessionDirectory(cwd, sessionDir);
+  const activeDirectory = direct
+    ? resolve(sessionDir)
+    : cakeWorkspaceSessionDirectory(cwd, sessionDir);
   const active = await SessionManager.list(cwd, activeDirectory);
   const activeTarget = active.find((session) => session.id === sessionId);
   const resolvedDirectory = resolvedSessionDir
-    ? cakeWorkspaceSessionDirectory(cwd, resolvedSessionDir)
+    ? direct
+      ? resolve(resolvedSessionDir)
+      : cakeWorkspaceSessionDirectory(cwd, resolvedSessionDir)
     : undefined;
   const resolvedTarget = resolvedDirectory
     ? (await SessionManager.list(cwd, resolvedDirectory)).find(

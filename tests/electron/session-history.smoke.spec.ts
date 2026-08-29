@@ -139,6 +139,18 @@ test("navigates session history with back, forward, and resolve", async () => {
         ".resolved-lane .session-item.active[data-session-id='history-forward-session']",
       ),
     ).toHaveCount(0);
+
+    const resolvedForwardSession = page.locator(
+      ".resolved-lane .session-item[data-session-id='history-forward-session']",
+    );
+    await resolvedForwardSession.locator(".session-row").click();
+    await expect(resolvedForwardSession).toHaveClass(/active/);
+    await expect(resolvedForwardSession.locator(".session-resolve-action")).toHaveAttribute(
+      "aria-label",
+      /^Restore /,
+    );
+    await expect(back).toBeDisabled();
+    await expect(forward).toBeDisabled();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

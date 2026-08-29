@@ -1553,6 +1553,18 @@ async function handleCakeRequest(
       .sort((left, right) => right.modified.localeCompare(left.modified));
     return desktopResponseSchema.parse({ type: "cake-chat-sessions-listed", sessions });
   }
+  if (request.type === "load-cake-chat-session") {
+    return desktopResponseSchema.parse({
+      type: "session-loaded",
+      session: await loadWorkspaceSessionPreview(
+        homedir(),
+        request.sessionId,
+        cakePaths.piGlobalChatSessions,
+        cakePaths.piGlobalChatResolvedSessions,
+        true,
+      ),
+    });
+  }
   if (request.type === "list-sessions") {
     const resolvedSessionIds = new Set(applicationModel.resolvedSessionIds);
     const projectSessions = (

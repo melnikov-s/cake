@@ -490,6 +490,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("list-sessions") }),
   z.object({ type: z.literal("list-cake-chat-sessions") }),
+  z.object({ type: z.literal("load-cake-chat-session"), sessionId: z.string().min(1).max(256) }),
   z.object({ type: z.literal("load-session"), sessionId: z.string().min(1).max(256) }),
   z.object({
     type: z.literal("open-global-chat"),

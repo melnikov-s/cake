@@ -91,16 +91,30 @@ export class AppShellStore extends Store<AppShellStoreProps> {
     this.activeConversation = undefined;
   }
   selectProjectSession(sessionId: string) {
+    this.setProjectSessionSelection(sessionId);
+    this.recordSessionVisit({ kind: "project-session", sessionId });
+  }
+  /** Selects an archived transcript without adding it to back/forward history. */
+  previewResolvedProjectSession(sessionId: string) {
+    this.setProjectSessionSelection(sessionId);
+  }
+  private setProjectSessionSelection(sessionId: string) {
     const workspacePath = this.props.sessionWorkspacePath(sessionId);
     if (!workspacePath) throw new Error(`Cake could not find session ${sessionId}`);
     this.selection = { kind: "project-session", workspacePath, sessionId };
     this.activeConversation = this.selection;
-    this.recordSessionVisit({ kind: "project-session", sessionId });
   }
   selectCakeChat(sessionId?: string) {
+    this.setCakeChatSelection(sessionId);
+    if (sessionId) this.recordSessionVisit({ kind: "cake-chat", sessionId });
+  }
+  /** Selects an archived Cake Chat transcript without adding it to history. */
+  previewResolvedCakeChat(sessionId: string) {
+    this.setCakeChatSelection(sessionId);
+  }
+  private setCakeChatSelection(sessionId?: string) {
     this.selection = { kind: "cake-chat", sessionId };
     this.activeConversation = sessionId ? { kind: "cake-chat", sessionId } : undefined;
-    if (sessionId) this.recordSessionVisit({ kind: "cake-chat", sessionId });
   }
   showSettings() {
     this.selection = { kind: "settings" };

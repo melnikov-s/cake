@@ -58,6 +58,21 @@ describe("AppShellStore session history", () => {
     shell[Symbol.dispose]();
   });
 
+  it("selects a resolved session preview without adding it to history", () => {
+    const shell = createShell();
+    shell.selectProjectSession("a");
+    shell.previewResolvedProjectSession("resolved");
+
+    expect(shell.selection).toEqual({
+      kind: "project-session",
+      workspacePath: "/work/resolved",
+      sessionId: "resolved",
+    });
+    expect(shell.goBack()).toBeUndefined();
+    expect(shell.goForward()).toBeUndefined();
+    shell[Symbol.dispose]();
+  });
+
   it("does not record a cake chat selection that has no session yet", () => {
     const shell = createShell();
     shell.selectCakeChat();

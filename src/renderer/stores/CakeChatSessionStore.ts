@@ -1,6 +1,11 @@
 import { Store, applySnapshot, child, createStore, observable } from "r-state-tree";
 import { Session } from "../../models/Session";
-import type { Attachment, ModelPreset, SessionSnapshot } from "../../ipc/session-contract";
+import type {
+  Attachment,
+  ModelPreset,
+  SessionPreview,
+  SessionSnapshot,
+} from "../../ipc/session-contract";
 import { parsePiBuiltinCommand } from "../../ipc/session-contract";
 import { pastedImageAttachments } from "../pasted-image-attachments";
 import { describeError } from "../error-details";
@@ -10,7 +15,7 @@ import type { GlobalChatStore } from "./GlobalChatStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { DesktopClientEvent } from "../desktop-client";
-import { toSessionSnapshot } from "../../utils/session-snapshot";
+import { toSessionPreviewSnapshot, toSessionSnapshot } from "../../utils/session-snapshot";
 
 export interface CakeChatSessionStoreProps {
   sessionId: string;
@@ -58,6 +63,10 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
 
   applySnapshot(snapshot: SessionSnapshot) {
     applySnapshot(this.model, toSessionSnapshot(snapshot));
+  }
+
+  applyPreview(preview: SessionPreview) {
+    applySnapshot(this.model, toSessionPreviewSnapshot(preview));
   }
 
   upsertPart(part: SessionSnapshot["parts"][number]) {

@@ -161,6 +161,7 @@ function createDesktopClient(restoredPath?: string) {
     })),
     listSessions: vi.fn(async () => ({ sessions: [], reviewThreads: [] })),
     listCakeChatSessions: vi.fn(async () => []),
+    loadCakeChatSession: vi.fn(async () => undefined),
     loadSession: vi.fn(async () => undefined),
     openGlobalChat: vi.fn(async () => undefined),
     promptGlobalChat: vi.fn(async () => undefined),
@@ -315,6 +316,50 @@ async function openSnapshot(
 }
 
 describe("ProjectWorkbenchStore", () => {
+  it("opens a resolved session from its read-only preview without restoring a Pi runtime", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    root.sessionCatalogStore.replace([
+      {
+        id: "resolved-session",
+        title: "Resolved work",
+        created: new Date(0).toISOString(),
+        modified: new Date(0).toISOString(),
+        messageCount: 1,
+        resolved: true,
+        workspacePath: "/project",
+        workspaceName: "Project",
+      },
+    ]);
+    vi.mocked(desktop.client.loadSession).mockResolvedValue({
+      workspacePath: "/project",
+      sessionId: "resolved-session",
+      sessionFile: "/resolved/resolved-session.jsonl",
+      parts: [
+        {
+          kind: "text",
+          id: "message-1",
+          role: "user",
+          text: "Archived prompt",
+          status: "complete",
+        },
+      ],
+    });
+
+    await root.openSession("resolved-session");
+
+    expect(desktop.client.loadSession).toHaveBeenCalledWith("resolved-session");
+    expect(desktop.client.inspectWorkspace).not.toHaveBeenCalled();
+    expect(desktop.client.openWorkspace).not.toHaveBeenCalled();
+    expect(store.activeSession?.sessionId).toBe("resolved-session");
+    expect(store.activeSession?.chatStore.parts).toEqual([
+      expect.objectContaining({ kind: "text", text: "Archived prompt" }),
+    ]);
+    expect(root.appShellStore.canGoBack).toBe(false);
+    root[Symbol.dispose]();
+  });
+
   it("creates a named session and submits its initial prompt", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
@@ -2293,6 +2338,12 @@ describe("ProjectWorkbenchStore", () => {
     await openSnapshot(store, desktop, { ...snapshot, sessions });
     const firstSession = store.activeSession;
     store.activeSession!.chatStore.setDraft("alpha draft");
+    vi.mocked(desktop.client.loadSession).mockResolvedValue({
+      workspacePath: "/project",
+      sessionId: "session-2",
+      sessionFile: "/resolved/session-2.jsonl",
+      parts: [],
+    });
     await store.openSession("session-2");
     const openId = store.activeOperations.at(-1)!;
     desktop.emit({

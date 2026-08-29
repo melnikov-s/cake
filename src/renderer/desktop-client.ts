@@ -286,6 +286,7 @@ export interface DesktopClient {
   ): Promise<ApplicationState>;
   listSessions(): Promise<{ sessions: GlobalSessionSummary[]; reviewThreads: ReviewThread[] }>;
   listCakeChatSessions(): Promise<SessionSummary[]>;
+  loadCakeChatSession(sessionId: string): Promise<SessionPreview | undefined>;
   loadSession(sessionId: string): Promise<SessionPreview | undefined>;
   openGlobalChat(input: {
     operationId: string;
@@ -974,6 +975,12 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       if (response.type !== "cake-chat-sessions-listed")
         throw new Error("Cake received an invalid Cake Chat session index");
       return response.sessions;
+    },
+    async loadCakeChatSession(sessionId) {
+      const response = await bridge.request({ type: "load-cake-chat-session", sessionId });
+      if (response.type !== "session-loaded")
+        throw new Error("Cake received invalid Cake Chat session content");
+      return response.session;
     },
     async loadSession(sessionId) {
       const response = await bridge.request({ type: "load-session", sessionId });

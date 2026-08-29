@@ -4,7 +4,11 @@ import {
   GlobalChatStore,
   type GlobalChatPort,
 } from "../../../../src/renderer/stores/GlobalChatStore";
-import type { ApplicationState, SessionSnapshot } from "../../../../src/ipc/session-contract";
+import type {
+  ApplicationState,
+  SessionPreview,
+  SessionSnapshot,
+} from "../../../../src/ipc/session-contract";
 
 const snapshot: SessionSnapshot = {
   workspacePath: "/home/user",
@@ -56,6 +60,7 @@ function createTestStore() {
         resolved: false,
       },
     ]),
+    loadSession: vi.fn(async (): Promise<SessionPreview | undefined> => undefined),
     listModels: vi.fn(async () => []),
     showComposerContextMenu: vi.fn(async () => undefined),
     rewordComposerSelection: vi.fn(async () => "rewritten"),
@@ -318,6 +323,43 @@ describe("GlobalChatStore", () => {
     await store.resolveSession("global-1", false);
     expect(port.resolveSession).toHaveBeenCalledWith("global-1", false);
     expect(store.summaries[0]?.resolved).toBe(false);
+    store[Symbol.dispose]();
+  });
+
+  it("opens a resolved Cake Chat from preview without restoring its runtime", async () => {
+    const { store, port } = createTestStore();
+    await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
+    store.applyApplicationState({
+      schemaVersion: 1,
+      projects: [],
+      resolvedSessionIds: [],
+      resolvedCakeChatSessionIds: ["global-1"],
+      trustedProjectPaths: [],
+    });
+    await store.startNewSession();
+    port.loadSession.mockResolvedValue({
+      workspacePath: "/home/user",
+      sessionId: "global-1",
+      sessionFile: "/resolved/global-1.jsonl",
+      parts: [
+        {
+          kind: "text",
+          id: "message-1",
+          role: "user",
+          text: "Resolved Cake Chat prompt",
+          status: "complete",
+        },
+      ],
+    });
+
+    await store.openSession("global-1");
+
+    expect(port.loadSession).toHaveBeenCalledWith("global-1");
+    expect(port.open).toHaveBeenCalledOnce();
+    expect(store.selectedSessionId).toBe("global-1");
+    expect(store.activeSession?.parts).toEqual([
+      expect.objectContaining({ kind: "text", text: "Resolved Cake Chat prompt" }),
+    ]);
     store[Symbol.dispose]();
   });
 

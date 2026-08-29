@@ -263,6 +263,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       this.showCachedSession(state.selectedSessionId)
     )
       return;
+    if (selectedSession?.resolved) {
+      await this.openResolvedSessionPreview(selectedSession.id);
+      return;
+    }
     await this.inspectPath(
       projectPath,
       Boolean(state.selectedSessionId && !selectedSession),
@@ -420,18 +424,37 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   async openSession(sessionId: string) {
+    const summary = this.props.catalog.find(sessionId);
     const workspacePath =
-      this.props.catalog.find(sessionId)?.workspacePath ??
-      this.sessionRegistry.findSession(sessionId)?.workspacePath;
+      summary?.workspacePath ?? this.sessionRegistry.findSession(sessionId)?.workspacePath;
     if (!workspacePath) throw new Error(`Cake could not find session ${sessionId}`);
     this.markSessionRead(sessionId);
     if (workspacePath === this.projectPath && sessionId === this.session?.sessionId) return;
+    if (summary?.resolved) {
+      await this.openResolvedSessionPreview(sessionId);
+      return;
+    }
     const sameWorkspace = workspacePath === this.projectPath;
     const cached = this.showCachedSession(sessionId);
     if (cached && this.sessionRegistry.isTemporarySession(sessionId)) return;
     if (!cached) void this.loadSessionPreview(sessionId);
     if (sameWorkspace) await this.openPath(workspacePath, false, sessionId);
     else await this.inspectPath(workspacePath, false, sessionId);
+  }
+
+  /** Resolved transcripts remain archived and read-only until the user submits a prompt. */
+  private async openResolvedSessionPreview(sessionId: string) {
+    const revision = ++this.openRevision;
+    this.pendingOpen = undefined;
+    try {
+      const preview = await this.client.loadSession(sessionId);
+      if (!preview || this.signal.aborted || revision !== this.openRevision) return;
+      this.sessionRegistry.hydratePreview(preview);
+      this.showCachedSession(sessionId);
+    } catch (error) {
+      if (!this.signal.aborted && revision === this.openRevision)
+        this.setError(error, "Opening resolved session");
+    }
   }
 
   private async loadSessionPreview(sessionId: string) {
