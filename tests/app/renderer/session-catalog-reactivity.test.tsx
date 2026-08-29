@@ -15,6 +15,7 @@ const summary = (id: string) => ({
   modified: new Date(0).toISOString(),
   messageCount: 1,
   resolved: false,
+  unread: false,
   workspacePath: "/project",
   workspaceName: "Project",
 });

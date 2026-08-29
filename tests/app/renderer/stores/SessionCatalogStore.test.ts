@@ -9,6 +9,7 @@ const summary = (id: string, modified: string) => ({
   modified,
   messageCount: 1,
   resolved: false,
+  unread: false,
   workspacePath: "/project",
   workspaceName: "Project",
 });
@@ -141,6 +142,30 @@ describe("SessionCatalogStore", () => {
     ]);
 
     expect(store.find("discovered")?.resolved).toBe(true);
+    store[Symbol.dispose]();
+  });
+
+  it("keeps Cake-owned unread reminders when Pi refreshes workspace summaries", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    store.replace([{ ...summary("unread", "2026-08-16T12:00:00.000Z"), unread: true }]);
+    store.applyWorkspace("/project", "Project", [
+      { ...summary("unread", "2026-08-17T12:00:00.000Z"), resolved: false },
+    ]);
+
+    expect(store.sessions[0]?.unread).toBe(true);
+    store.applyUnreadState([]);
+    expect(store.sessions[0]?.unread).toBe(false);
+    store[Symbol.dispose]();
+  });
+
+  it("applies the global unread index to sessions discovered after hydration", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    store.applyUnreadState(["discovered"]);
+    store.applyWorkspace("/project", "Project", [
+      { ...summary("discovered", "2026-08-17T12:00:00.000Z"), resolved: false },
+    ]);
+
+    expect(store.find("discovered")?.unread).toBe(true);
     store[Symbol.dispose]();
   });
 });

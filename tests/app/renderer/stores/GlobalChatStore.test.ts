@@ -99,6 +99,7 @@ function createTestStore() {
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
       trustedProjectPaths: [],
     })),
   };
@@ -293,6 +294,7 @@ describe("GlobalChatStore", () => {
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: ["global-1"],
+      unreadSessionIds: [],
       trustedProjectPaths: [],
     });
     store.receive({
@@ -318,6 +320,7 @@ describe("GlobalChatStore", () => {
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
       trustedProjectPaths: [],
     });
     await store.resolveSession("global-1", false);
@@ -334,6 +337,7 @@ describe("GlobalChatStore", () => {
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: ["global-1"],
+      unreadSessionIds: [],
       trustedProjectPaths: [],
     });
     await store.startNewSession();
@@ -374,6 +378,7 @@ describe("GlobalChatStore", () => {
         projects: [],
         resolvedSessionIds: [],
         resolvedCakeChatSessionIds: ["global-1", "global-2"],
+        unreadSessionIds: [],
         trustedProjectPaths: [],
       });
 
@@ -387,6 +392,7 @@ describe("GlobalChatStore", () => {
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: ["global-1"],
+      unreadSessionIds: [],
       trustedProjectPaths: [],
     });
     await Promise.all([firstResolution, secondResolution]);

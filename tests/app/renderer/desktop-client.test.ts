@@ -27,6 +27,18 @@ function createBridge() {
       return { type: "composer-selection-reworded", text: "Clear text" };
     if (input.type === "show-session-context-menu")
       return { type: "session-context-menu-closed", action: "rename" };
+    if (input.type === "set-session-unread")
+      return {
+        type: "application-state-updated",
+        state: {
+          schemaVersion: 1,
+          projects: [],
+          resolvedSessionIds: [],
+          resolvedCakeChatSessionIds: [],
+          unreadSessionIds: [],
+          trustedProjectPaths: [],
+        },
+      };
     if (input.type === "get-home-directory") return { type: "home-directory", path: "/home/user" };
     if (input.type === "choose-attachments") return { type: "attachments-chosen", attachments: [] };
     if (input.type === "suggest-files")
@@ -117,6 +129,22 @@ describe("desktop client", () => {
       sessionId: "session",
       x: 12,
       y: 34,
+    });
+    expect(
+      await client.showSessionContextMenu({ sessionId: "session", x: 12, y: 34, unread: true }),
+    ).toBe("rename");
+    expect(desktop.request).toHaveBeenCalledWith({
+      type: "show-session-context-menu",
+      sessionId: "session",
+      x: 12,
+      y: 34,
+      unread: true,
+    });
+    await client.setSessionUnread("session", true);
+    expect(desktop.request).toHaveBeenCalledWith({
+      type: "set-session-unread",
+      sessionId: "session",
+      unread: true,
     });
     expect(await client.listSessions()).toEqual({ sessions: [], reviewThreads: [] });
     expect(await client.listCakeChatSessions()).toEqual([]);

@@ -327,6 +327,8 @@ export const sessionSummarySchema = z.object({
 });
 
 export const globalSessionSummarySchema = sessionSummarySchema.extend({
+  /** User-marked reminder state shown as the unread activity badge. */
+  unread: z.boolean().default(false),
   workspacePath: z.string().min(1).max(4_096),
   workspaceName: ipcProjectionString(512).pipe(z.string().min(1)),
   /** Set when the session works inside a managed worktree belonging to this project. */
@@ -501,6 +503,7 @@ export const applicationStateSchema = z.object({
   projects: z.array(projectRecordSchema).max(200).default([]),
   resolvedSessionIds: z.array(z.string().max(256)).max(10_000).default([]),
   resolvedCakeChatSessionIds: z.array(z.string().max(256)).max(10_000).default([]),
+  unreadSessionIds: z.array(z.string().max(256)).max(10_000).default([]),
   trustedProjectPaths: z.array(z.string().max(4_096)).max(200).default([]),
   fastModeSessionIds: z.array(z.string().max(256)).max(10_000).optional(),
   utilityModel: utilityModelSchema.optional(),

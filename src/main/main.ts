@@ -963,27 +963,46 @@ async function handleCakeRequest(
   }
   if (request.type === "show-session-context-menu") {
     if (!owner) return desktopResponseSchema.parse({ type: "session-context-menu-closed" });
-    const action = await new Promise<"rename" | undefined>((resolve) => {
-      let completed = false;
-      const finish = (selected?: "rename") => {
-        if (completed) return;
-        completed = true;
-        resolve(selected);
-      };
-      Menu.buildFromTemplate([
-        { label: "Rename", click: () => finish("rename") },
-        {
-          label: "Copy Session ID",
-          click: () => clipboard.writeText(request.sessionId),
-        },
-      ]).popup({
-        window: owner,
-        x: request.x,
-        y: request.y,
-        callback: () => finish(),
-      });
-    });
+    const action = await new Promise<"rename" | "mark-unread" | "mark-read" | undefined>(
+      (resolve) => {
+        let completed = false;
+        const finish = (selected?: "rename" | "mark-unread" | "mark-read") => {
+          if (completed) return;
+          completed = true;
+          resolve(selected);
+        };
+        Menu.buildFromTemplate([
+          { label: "Rename", click: () => finish("rename") },
+          ...(request.unread === undefined
+            ? []
+            : [
+                {
+                  label: request.unread ? "Mark as Read" : "Mark as Unread",
+                  click: () => finish(request.unread ? "mark-read" : "mark-unread"),
+                },
+              ]),
+          {
+            label: "Copy Session ID",
+            click: () => clipboard.writeText(request.sessionId),
+          },
+        ]).popup({
+          window: owner,
+          x: request.x,
+          y: request.y,
+          callback: () => finish(),
+        });
+      },
+    );
     return desktopResponseSchema.parse({ type: "session-context-menu-closed", action });
+  }
+  if (request.type === "set-session-unread") {
+    applicationModel.setSessionUnread(request.sessionId, request.unread);
+    await persistApplicationState();
+    broadcast({ type: "application-state-changed", state: applicationModel.snapshot() });
+    return desktopResponseSchema.parse({
+      type: "application-state-updated",
+      state: applicationModel.snapshot(),
+    });
   }
   if (request.type === "set-vscode-server-path") {
     applicationModel.setVscodeServerPath(request.path);
@@ -1566,6 +1585,7 @@ async function handleCakeRequest(
   }
   if (request.type === "list-sessions") {
     const resolvedSessionIds = new Set(applicationModel.resolvedSessionIds);
+    const unreadSessionIds = new Set(applicationModel.unreadSessionIds);
     const projectSessions = (
       await Promise.all(
         applicationModel.projects.map(async (project) => {
@@ -1579,6 +1599,7 @@ async function handleCakeRequest(
               return {
                 ...session,
                 resolved: resolvedSessionIds.has(session.id),
+                unread: unreadSessionIds.has(session.id),
                 workspacePath: project.path,
                 workspaceName: project.name,
               };
@@ -1606,6 +1627,7 @@ async function handleCakeRequest(
               return {
                 ...session,
                 resolved: resolvedSessionIds.has(session.id),
+                unread: unreadSessionIds.has(session.id),
                 workspacePath: record.worktreePath,
                 projectPath: project.path,
                 managedWorktree: record,

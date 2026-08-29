@@ -5,7 +5,10 @@ import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
 export interface SessionManagementStoreProps {
-  client: Pick<DesktopClient, "renameSession" | "resolveSession" | "resolveSessions">;
+  client: Pick<
+    DesktopClient,
+    "renameSession" | "resolveSession" | "resolveSessions" | "setSessionUnread"
+  >;
   operations: SessionOperationCoordinatorStore;
   catalog: SessionCatalogStore;
   applyApplicationState(state: ApplicationState): void;
@@ -52,6 +55,16 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     if (!this.props.catalog.find(sessionId) || this.signal.aborted) return;
     try {
       const state = await this.props.client.resolveSession(sessionId, resolved);
+      if (!this.signal.aborted) this.props.applyApplicationState(state);
+    } catch (error) {
+      if (!this.signal.aborted) this.props.reportError(error);
+    }
+  }
+
+  async setSessionUnread(sessionId: string, unread: boolean) {
+    if (!this.props.catalog.find(sessionId) || this.signal.aborted) return;
+    try {
+      const state = await this.props.client.setSessionUnread(sessionId, unread);
       if (!this.signal.aborted) this.props.applyApplicationState(state);
     } catch (error) {
       if (!this.signal.aborted) this.props.reportError(error);

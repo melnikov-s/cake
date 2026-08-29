@@ -54,6 +54,7 @@ export class ProjectCatalogStore extends Store<{ sessions: SessionCatalogStore }
   applyApplicationState(state: ApplicationState) {
     this.projects.splice(0, this.projects.length, ...state.projects);
     this.props.sessions.applyResolvedState(state.resolvedSessionIds);
+    this.props.sessions.applyUnreadState(state.unreadSessionIds);
     this.props.sessions.updateWorkspaceNames(
       new Map(state.projects.map((project) => [project.path, project.name])),
     );

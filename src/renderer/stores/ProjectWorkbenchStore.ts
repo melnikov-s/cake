@@ -246,6 +246,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   private markSessionRead(sessionId: string) {
     this.sessionRegistry.findSession(sessionId)?.markRead();
+    // Opening a session also settles a user-marked unread reminder.
+    if (this.props.catalog.find(sessionId)?.unread)
+      void this.sessionManagementStore.setSessionUnread(sessionId, false);
   }
 
   private applyApplicationState(state: ApplicationState) {

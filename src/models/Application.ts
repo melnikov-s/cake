@@ -17,6 +17,7 @@ export class Application extends Model {
   projects: Project[] = [];
   resolvedSessionIds: string[] = observable([]);
   resolvedCakeChatSessionIds: string[] = observable([]);
+  unreadSessionIds: string[] = observable([]);
   trustedProjectPaths: string[] = observable([]);
   fastModeSessionIds: string[] = observable([]);
   utilityModel: UtilityModel | undefined;
@@ -128,14 +129,23 @@ export class Application extends Model {
 
   setSessionsResolved(sessionIds: readonly string[], resolved: boolean) {
     if (resolved) {
-      for (const sessionId of sessionIds)
+      for (const sessionId of sessionIds) {
         if (!this.resolvedSessionIds.includes(sessionId)) this.resolvedSessionIds.push(sessionId);
+        // Archiving a session also settles its unread reminder.
+        this.setSessionUnread(sessionId, false);
+      }
       return;
     }
     for (const sessionId of sessionIds) {
       const index = this.resolvedSessionIds.indexOf(sessionId);
       if (index !== -1) this.resolvedSessionIds.splice(index, 1);
     }
+  }
+
+  setSessionUnread(sessionId: string, unread: boolean) {
+    const index = this.unreadSessionIds.indexOf(sessionId);
+    if (unread && index === -1) this.unreadSessionIds.push(sessionId);
+    else if (!unread && index !== -1) this.unreadSessionIds.splice(index, 1);
   }
 
   isProjectTrusted(path: string) {

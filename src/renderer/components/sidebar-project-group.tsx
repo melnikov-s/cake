@@ -102,6 +102,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               onResolve={(sessionId, nextResolved) =>
                 void store.setSessionResolved(sessionId, nextResolved)
               }
+              onMarkUnread={(sessionId, unread) => void store.setSessionUnread(sessionId, unread)}
             />
           ))}
           {sessions.length > visibleSessions.length && (

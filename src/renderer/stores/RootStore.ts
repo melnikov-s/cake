@@ -303,6 +303,8 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       setSessionResolved: (sessionId, resolved) => this.resolveProjectSession(sessionId, resolved),
       setCakeChatSessionResolved: (sessionId, resolved) =>
         this.resolveCakeChatSession(sessionId, resolved),
+      setSessionUnread: (sessionId, unread) =>
+        this.projectWorkbenchStore.sessionManagementStore.setSessionUnread(sessionId, unread),
     });
   }
 

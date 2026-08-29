@@ -12,6 +12,7 @@ function createHarness(annotations?: EditorAnnotationSnapshot) {
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
       trustedProjectPaths: [],
     })),
     openEmbeddedEditor: vi.fn(async () => undefined),

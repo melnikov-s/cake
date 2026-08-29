@@ -140,6 +140,7 @@ function createDesktopClient(restoredPath?: string) {
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
       trustedProjectPaths: [],
     })),
     setUtilityModel: vi.fn(async (model) => ({
@@ -147,6 +148,7 @@ function createDesktopClient(restoredPath?: string) {
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
       trustedProjectPaths: [],
       utilityModel: model,
     })),
@@ -155,6 +157,7 @@ function createDesktopClient(restoredPath?: string) {
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
       trustedProjectPaths: [],
       modelPresets: [...modelPresets],
       defaultModelPresetId,
@@ -188,6 +191,7 @@ function createDesktopClient(restoredPath?: string) {
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
       trustedProjectPaths: [],
     })),
     renameProject: vi.fn(async () => ({
@@ -195,6 +199,7 @@ function createDesktopClient(restoredPath?: string) {
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
       trustedProjectPaths: [],
     })),
     removeProject: vi.fn(async () => ({
@@ -202,6 +207,7 @@ function createDesktopClient(restoredPath?: string) {
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
       trustedProjectPaths: [],
     })),
     resolveSession: vi.fn(async () => ({
@@ -209,6 +215,7 @@ function createDesktopClient(restoredPath?: string) {
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
       trustedProjectPaths: [],
     })),
     resolveSessions: vi.fn(async () => ({
@@ -216,6 +223,15 @@ function createDesktopClient(restoredPath?: string) {
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
+      trustedProjectPaths: [],
+    })),
+    setSessionUnread: vi.fn(async () => ({
+      schemaVersion: 1 as const,
+      projects: [],
+      resolvedSessionIds: [],
+      resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
       trustedProjectPaths: [],
     })),
     resolveCakeChatSession: vi.fn(async () => ({
@@ -223,6 +239,7 @@ function createDesktopClient(restoredPath?: string) {
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
       trustedProjectPaths: [],
     })),
     restartPi: vi.fn(async () => undefined),
@@ -250,6 +267,7 @@ function createDesktopClient(restoredPath?: string) {
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
       trustedProjectPaths: [],
     })),
     openEmbeddedEditor: vi.fn(async () => undefined),
@@ -328,6 +346,7 @@ describe("ProjectWorkbenchStore", () => {
         modified: new Date(0).toISOString(),
         messageCount: 1,
         resolved: true,
+        unread: false,
         workspacePath: "/project",
         workspaceName: "Project",
       },
@@ -414,6 +433,7 @@ describe("ProjectWorkbenchStore", () => {
       ],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
       trustedProjectPaths: ["/project"],
     });
     vi.mocked(desktop.client.createWorktree).mockResolvedValueOnce({
@@ -976,6 +996,7 @@ describe("ProjectWorkbenchStore", () => {
           modified: new Date(0).toISOString(),
           messageCount: 1,
           resolved: false,
+          unread: false,
           workspacePath: "/project",
           workspaceName: "Project",
         },
@@ -1078,6 +1099,7 @@ describe("ProjectWorkbenchStore", () => {
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
       trustedProjectPaths: [],
       modelPresets: [preset],
       defaultModelPresetId: preset.id,
@@ -2219,6 +2241,7 @@ describe("ProjectWorkbenchStore", () => {
         modified: new Date(0).toISOString(),
         messageCount: 1,
         resolved: false,
+        unread: false,
         workspacePath: "/project",
         workspaceName: "Project",
       },
@@ -2345,6 +2368,7 @@ describe("ProjectWorkbenchStore", () => {
       schemaVersion: 1 as const,
       resolvedSessionIds: ["session-2"],
       resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
       trustedProjectPaths: [],
       projects: [
         {
@@ -2371,6 +2395,7 @@ describe("ProjectWorkbenchStore", () => {
           modified: new Date(0).toISOString(),
           messageCount: 3,
           resolved: false,
+          unread: false,
           workspacePath: "/other",
           workspaceName: "Other",
         },
@@ -2450,6 +2475,7 @@ describe("ProjectWorkbenchStore", () => {
       projects,
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
       trustedProjectPaths: [],
     };
     desktop.client.loadApplicationState = vi.fn(async () => applicationState);
@@ -2509,6 +2535,7 @@ describe("ProjectWorkbenchStore", () => {
         modified: new Date(0).toISOString(),
         messageCount: 0,
         resolved: false,
+        unread: false,
         workspacePath: "/project",
         workspaceName: "Project",
       },
@@ -2564,6 +2591,7 @@ describe("ProjectWorkbenchStore", () => {
         modified: new Date(0).toISOString(),
         messageCount: 0,
         resolved: false,
+        unread: false,
         workspacePath: "/project",
         workspaceName: "Project",
       },
@@ -2584,6 +2612,34 @@ describe("ProjectWorkbenchStore", () => {
     expect(root.sidebarStore.sessionActivity("session-1")).toBe("unread");
 
     await store.openSession("session-1");
+    expect(root.sidebarStore.sessionActivity("session-1")).toBeUndefined();
+    root[Symbol.dispose]();
+  });
+
+  it("clears a user-marked unread reminder when the session is opened", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+    root.sessionCatalogStore.replace([
+      {
+        id: "session-1",
+        title: "Session one",
+        created: new Date(0).toISOString(),
+        modified: new Date(0).toISOString(),
+        messageCount: 0,
+        resolved: false,
+        unread: true,
+        workspacePath: "/project",
+        workspaceName: "Project",
+      },
+    ]);
+    expect(root.sidebarStore.sessionActivity("session-1")).toBe("unread");
+
+    await store.openSession("session-1");
+    await flush();
+
+    expect(desktop.client.setSessionUnread).toHaveBeenCalledWith("session-1", false);
     expect(root.sidebarStore.sessionActivity("session-1")).toBeUndefined();
     root[Symbol.dispose]();
   });
@@ -2625,6 +2681,7 @@ describe("ProjectWorkbenchStore", () => {
         modified: new Date(0).toISOString(),
         messageCount: 0,
         resolved: false,
+        unread: false,
         workspacePath: "/project",
         workspaceName: "Project",
       },
@@ -2693,6 +2750,7 @@ describe("ProjectWorkbenchStore", () => {
         modified: new Date(index).toISOString(),
         messageCount: index,
         resolved: false,
+        unread: false,
         workspacePath: "/other",
         workspaceName: "Other",
       })),
@@ -2729,6 +2787,7 @@ describe("ProjectWorkbenchStore", () => {
           modified: new Date(0).toISOString(),
           messageCount: 1,
           resolved: false,
+          unread: false,
           workspacePath: "/other",
           workspaceName: "Other",
         },

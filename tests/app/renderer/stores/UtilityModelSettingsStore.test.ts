@@ -8,6 +8,7 @@ const applicationState = (utilityModel?: UtilityModel): ApplicationState => ({
   projects: [],
   resolvedSessionIds: [],
   resolvedCakeChatSessionIds: [],
+  unreadSessionIds: [],
   trustedProjectPaths: [],
   utilityModel,
 });

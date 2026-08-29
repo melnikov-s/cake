@@ -14,6 +14,7 @@ export interface SidebarStoreProps {
   cakeChat(): GlobalChatStore;
   setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
   setCakeChatSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
+  setSessionUnread(sessionId: string, unread: boolean): Promise<void>;
 }
 
 /** Owns project navigation, session pagination, and activity badges. */
@@ -37,8 +38,8 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     return this.props.catalog.sessions;
   }
 
-  showSessionContextMenu(sessionId: string, x: number, y: number) {
-    return this.props.client.showSessionContextMenu({ sessionId, x, y });
+  showSessionContextMenu(sessionId: string, x: number, y: number, unread?: boolean) {
+    return this.props.client.showSessionContextMenu({ sessionId, x, y, unread });
   }
 
   projectSessions(workspacePath: string, resolved = false) {
@@ -61,7 +62,9 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   }
 
   sessionActivity(sessionId: string) {
-    return this.props.sessions.findSession(sessionId)?.activity;
+    const activity = this.props.sessions.findSession(sessionId)?.activity;
+    if (activity) return activity;
+    return this.props.catalog.find(sessionId)?.unread ? "unread" : undefined;
   }
 
   sessionLimit(workspacePath: string, resolved = false) {
@@ -87,6 +90,11 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   setCakeChatSessionResolved(sessionId: string, resolved: boolean) {
     return this.props.setCakeChatSessionResolved(sessionId, resolved);
+  }
+
+  setSessionUnread(sessionId: string, unread: boolean) {
+    if (!unread) this.props.sessions.findSession(sessionId)?.markRead();
+    return this.props.setSessionUnread(sessionId, unread);
   }
 
   toggleResolvedLane() {

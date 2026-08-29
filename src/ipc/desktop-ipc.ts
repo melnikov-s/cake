@@ -290,6 +290,8 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     sessionId: z.string().min(1).max(256),
     x: z.number().int().min(-1_000_000).max(1_000_000),
     y: z.number().int().min(-1_000_000).max(1_000_000),
+    /** Omitted when the surface cannot mark sessions unread. */
+    unread: z.boolean().optional(),
   }),
   z.object({ type: z.literal("get-home-directory") }),
   z.object({ type: z.literal("set-vscode-server-path"), path: z.string().max(4_096).optional() }),
@@ -612,6 +614,11 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     resolved: z.boolean(),
   }),
   z.object({
+    type: z.literal("set-session-unread"),
+    sessionId: z.string().min(1).max(256),
+    unread: z.boolean(),
+  }),
+  z.object({
     type: z.literal("resolve-cake-chat-session"),
     sessionId: z.string().max(256),
     resolved: z.boolean(),
@@ -834,7 +841,7 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("session-context-menu-closed"),
-    action: z.literal("rename").optional(),
+    action: z.enum(["rename", "mark-unread", "mark-read"]).optional(),
   }),
   z.object({
     type: z.literal("models-listed"),

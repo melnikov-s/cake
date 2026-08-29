@@ -180,7 +180,8 @@ export interface DesktopClient {
     sessionId: string;
     x: number;
     y: number;
-  }): Promise<"rename" | undefined>;
+    unread?: boolean;
+  }): Promise<"rename" | "mark-unread" | "mark-read" | undefined>;
   listModels(): Promise<ModelOption[]>;
   getHomeDirectory(): Promise<string>;
   getCustomizationState(): Promise<CustomizationState>;
@@ -386,6 +387,7 @@ export interface DesktopClient {
   removeProject(path: string): Promise<ApplicationState>;
   resolveSession(sessionId: string, resolved: boolean): Promise<ApplicationState>;
   resolveSessions(sessionIds: readonly string[], resolved: boolean): Promise<ApplicationState>;
+  setSessionUnread(sessionId: string, unread: boolean): Promise<ApplicationState>;
   resolveCakeChatSession(sessionId: string, resolved: boolean): Promise<ApplicationState>;
   restartPi(path: string): Promise<void>;
   inspectWorkspace(input: { operationId: string; path: string }): Promise<void>;
@@ -1142,6 +1144,12 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       });
       if (response.type !== "application-state-updated")
         throw new Error("Cake could not resolve the sessions");
+      return response.state;
+    },
+    async setSessionUnread(sessionId, unread) {
+      const response = await bridge.request({ type: "set-session-unread", sessionId, unread });
+      if (response.type !== "application-state-updated")
+        throw new Error("Cake could not update the session");
       return response.state;
     },
     async resolveCakeChatSession(sessionId, resolved) {

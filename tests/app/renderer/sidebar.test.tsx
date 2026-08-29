@@ -22,6 +22,7 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       showMoreSessions: fixture.showMoreSessions,
       setSessionResolved: fixture.setSessionResolved ?? vi.fn(),
       setCakeChatSessionResolved: fixture.setCakeChatSessionResolved ?? vi.fn(),
+      setSessionUnread: fixture.setSessionUnread ?? vi.fn(),
       showSessionContextMenu: fixture.showSessionContextMenu ?? vi.fn(),
       resolvedLaneExpanded: fixture.resolvedLaneExpanded ?? true,
       toggleResolvedLane: fixture.toggleResolvedLane ?? vi.fn(),
@@ -862,11 +863,85 @@ describe("Sidebar projects", () => {
       await Promise.resolve();
     });
 
-    expect(showSessionContextMenu).toHaveBeenCalledWith("session-1", 12, 34);
+    expect(showSessionContextMenu).toHaveBeenCalledWith("session-1", 12, 34, false);
     expect(container.querySelector<HTMLInputElement>('[aria-label="Session name"]')?.value).toBe(
       "Original title",
     );
     expect(container.querySelector('[role="menu"]')).toBeNull();
+  });
+
+  it("marks a project session unread from the native session menu", async () => {
+    const showSessionContextMenu = vi.fn(async () => "mark-unread" as const);
+    const setSessionUnread = vi.fn();
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [
+        { id: "session-1", title: "Follow up", modified: new Date(0).toISOString() },
+      ],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      sessionActivityTime: vi.fn(() => "Today"),
+      nameFromPath: () => "cake",
+      showMoreSessions: vi.fn(),
+      showSessionContextMenu,
+      setSessionUnread,
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>(".session-row")!.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 12,
+          clientY: 34,
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(showSessionContextMenu).toHaveBeenCalledWith("session-1", 12, 34, false);
+    expect(setSessionUnread).toHaveBeenCalledWith("session-1", true);
+  });
+
+  it("marks an unread session read from the native session menu", async () => {
+    const showSessionContextMenu = vi.fn(async () => "mark-read" as const);
+    const setSessionUnread = vi.fn();
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [
+        { id: "session-1", title: "Follow up", modified: new Date(0).toISOString() },
+      ],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(() => "unread"),
+      sessionActivityTime: vi.fn(() => "Today"),
+      nameFromPath: () => "cake",
+      showMoreSessions: vi.fn(),
+      showSessionContextMenu,
+      setSessionUnread,
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>(".session-row")!.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 12,
+          clientY: 34,
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(showSessionContextMenu).toHaveBeenCalledWith("session-1", 12, 34, true);
+    expect(setSessionUnread).toHaveBeenCalledWith("session-1", false);
   });
 
   it("opens the native session menu and renames a Cake Chat", async () => {
@@ -910,7 +985,7 @@ describe("Sidebar projects", () => {
       await Promise.resolve();
     });
 
-    expect(showSessionContextMenu).toHaveBeenCalledWith("cake-chat-1", 21, 43);
+    expect(showSessionContextMenu).toHaveBeenCalledWith("cake-chat-1", 21, 43, undefined);
     const input = container.querySelector<HTMLInputElement>('[aria-label="Session name"]')!;
     expect(input.value).toBe("Original Cake Chat");
     act(() => {

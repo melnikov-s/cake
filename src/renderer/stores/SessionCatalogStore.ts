@@ -9,6 +9,7 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
   private indexedById = new Map<string, GlobalSessionSummary>();
   private indexedByProject = new Map<string, GlobalSessionSummary[]>();
   private resolvedSessionIds = new Set<string>();
+  private unreadSessionIds = new Set<string>();
   /** Managed worktree workspaces mapped to their durable Git metadata. */
   private readonly managedWorktrees = observable(new Map<string, WorktreeRecord>());
 
@@ -72,6 +73,7 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
         this.resolvedSessionIds.has(session.id) ||
         prior.get(session.id)?.resolved === true ||
         session.resolved,
+      unread: this.unreadSessionIds.has(session.id) || prior.get(session.id)?.unread === true,
       workspacePath,
       workspaceName,
     }));
@@ -97,6 +99,16 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
     this.rebuildIndexes();
   }
 
+  applyUnreadState(unreadSessionIds: readonly string[]) {
+    this.unreadSessionIds = new Set(unreadSessionIds);
+    for (let index = 0; index < this.sessions.length; index += 1) {
+      const session = this.sessions[index]!;
+      const unread = this.unreadSessionIds.has(session.id);
+      if (session.unread !== unread) this.sessions.splice(index, 1, { ...session, unread });
+    }
+    this.rebuildIndexes();
+  }
+
   upsertPending(sessionId: string, workspacePath: string, workspaceName: string) {
     const now = new Date().toISOString();
     const existing = this.indexedById.get(sessionId);
@@ -108,6 +120,7 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
       modified: now,
       messageCount: 0,
       resolved: false,
+      unread: existing?.unread ?? false,
       workspacePath,
       workspaceName,
       managedWorktree,
