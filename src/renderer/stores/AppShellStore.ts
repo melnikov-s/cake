@@ -64,19 +64,21 @@ export class AppShellStore extends Store<AppShellStoreProps> {
   }
 
   /**
-   * Drops every history entry for a session. Returns the entry to navigate to when the
-   * removal orphaned the current position; the caller navigates there.
+   * Drops every history entry for the given sessions. Returns the nearest retained entry when
+   * the current conversation was removed so the caller can navigate there.
    */
-  removeSessionFromHistory(sessionId: string): SessionHistoryEntry | undefined {
-    if (this.pendingTraversal?.entry.sessionId === sessionId) this.pendingTraversal = undefined;
+  removeSessionsFromHistory(sessionIds: readonly string[]): SessionHistoryEntry | undefined {
+    const removedIds = new Set(sessionIds);
+    if (this.pendingTraversal && removedIds.has(this.pendingTraversal.entry.sessionId))
+      this.pendingTraversal = undefined;
     const cursor = this.sessionHistoryCursor;
     const current = this.sessionHistory[cursor];
-    const currentRemoved = current !== undefined && current.sessionId === sessionId;
+    const currentRemoved = current !== undefined && removedIds.has(current.sessionId);
     const kept: SessionHistoryEntry[] = [];
     let keptBeforeCursor = 0;
     for (let index = 0; index < this.sessionHistory.length; index += 1) {
       const entry = this.sessionHistory[index]!;
-      if (entry.sessionId === sessionId) continue;
+      if (removedIds.has(entry.sessionId)) continue;
       if (index < cursor) keptBeforeCursor += 1;
       kept.push(entry);
     }

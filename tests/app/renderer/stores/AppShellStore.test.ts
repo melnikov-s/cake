@@ -129,7 +129,7 @@ describe("AppShellStore session history", () => {
     shell.selectProjectSession("a");
     shell.selectProjectSession("b");
 
-    expect(shell.removeSessionFromHistory("b")).toEqual({
+    expect(shell.removeSessionsFromHistory(["b"])).toEqual({
       kind: "project-session",
       sessionId: "a",
     });
@@ -143,7 +143,7 @@ describe("AppShellStore session history", () => {
     shell.selectProjectSession("a");
     shell.selectProjectSession("b");
 
-    expect(shell.removeSessionFromHistory("a")).toBeUndefined();
+    expect(shell.removeSessionsFromHistory(["a"])).toBeUndefined();
     expect(shell.goBack()).toBeUndefined();
     expect(shell.canGoForward).toBe(false);
     shell[Symbol.dispose]();
@@ -155,11 +155,25 @@ describe("AppShellStore session history", () => {
     shell.selectProjectSession("b");
     shell.selectProjectSession("a");
 
-    expect(shell.removeSessionFromHistory("a")).toEqual({
+    expect(shell.removeSessionsFromHistory(["a"])).toEqual({
       kind: "project-session",
       sessionId: "b",
     });
     expect(shell.goBack()).toBeUndefined();
+    shell[Symbol.dispose]();
+  });
+
+  it("removes a resolved workspace batch atomically and skips another removed session", () => {
+    const shell = createShell();
+    shell.selectProjectSession("previous");
+    shell.selectProjectSession("worktree-a");
+    shell.selectProjectSession("worktree-b");
+
+    expect(shell.removeSessionsFromHistory(["worktree-a", "worktree-b"])).toEqual({
+      kind: "project-session",
+      sessionId: "previous",
+    });
+    expect(shell.canGoBack).toBe(false);
     shell[Symbol.dispose]();
   });
 
@@ -168,7 +182,7 @@ describe("AppShellStore session history", () => {
     shell.selectProjectSession("a");
     shell.selectCakeChat("cake-1");
 
-    expect(shell.removeSessionFromHistory("nope")).toBeUndefined();
+    expect(shell.removeSessionsFromHistory(["nope"])).toBeUndefined();
     expect(shell.goBack()).toEqual({ kind: "project-session", sessionId: "a" });
     shell[Symbol.dispose]();
   });

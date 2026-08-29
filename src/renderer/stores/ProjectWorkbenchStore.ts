@@ -59,8 +59,10 @@ export interface ProjectWorkbenchStoreProps {
   persistence(): WindowPersistenceCoordinatorStore;
   catalog: SessionCatalogStore;
   startCakeChat(prompt?: string): Promise<void>;
-  /** Leaves the current surface and opens a fresh session in the given project. */
-  startFreshSessionInProject(path: string): Promise<void>;
+  /** Reports a completed merge while leaving the worktree session selected. */
+  onWorktreeLanded(projectPath: string): Promise<void> | void;
+  /** Removes resolved worktree sessions from history and chooses the next conversation. */
+  onWorktreeSessionsResolved(sessionIds: readonly string[], projectPath: string): Promise<void>;
   /** Navigates the shell to an existing session by ID. */
   openSessionById(sessionId: string): Promise<void>;
 }
@@ -120,15 +122,16 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         this.selectedSessionId ? (this.session?.workspacePath ?? this.projectPath) : undefined,
       sessionId: () => this.selectedSessionId,
       isStreaming: () => this.activeSession?.isStreaming ?? false,
-      onLanded: async (workspacePath, projectPath) => {
-        await this.resolveWorkspaceSessions(workspacePath);
-        await this.props.startFreshSessionInProject(projectPath);
+      onLanded: (record) => {
+        this.props.catalog.noteManagedWorktree(record);
+        return this.props.onWorktreeLanded(record.projectPath);
       },
+      onDiscarded: (record) => this.props.catalog.noteManagedWorktree(record),
       onResolveWorkspace: async (workspacePath) => {
         const projectPath =
           this.props.catalog.projectOfManagedWorktree(workspacePath) ?? workspacePath;
-        await this.resolveWorkspaceSessions(workspacePath);
-        await this.props.startFreshSessionInProject(projectPath);
+        const sessionIds = await this.resolveWorkspaceSessions(workspacePath);
+        await this.props.onWorktreeSessionsResolved(sessionIds, projectPath);
       },
     });
   }
@@ -416,8 +419,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const sessionIds = this.props.catalog.sessions
       .filter((session) => session.workspacePath === workspacePath && !session.resolved)
       .map((session) => session.id);
-    if (sessionIds.length === 0) return;
-    await this.sessionManagementStore.resolveSessionsById(sessionIds, true);
+    if (sessionIds.length === 0) return sessionIds;
+    await this.sessionManagementStore.resolveSessionsById(sessionIds, true, workspacePath);
+    return sessionIds;
   }
 
   private closeEmbeddedEditor() {

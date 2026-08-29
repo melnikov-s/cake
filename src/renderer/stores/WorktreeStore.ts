@@ -4,6 +4,7 @@ import { describeError } from "../error-details";
 import type {
   WorktreeLandOutcome,
   WorktreeLandRequest,
+  WorktreeRecord,
   WorktreeStatus,
 } from "../../ipc/worktree-contract";
 
@@ -14,7 +15,8 @@ export interface WorktreeStoreProps {
   workspacePath(): string | undefined;
   sessionId(): string | undefined;
   isStreaming(): boolean;
-  onLanded(workspacePath: string, projectPath: string): Promise<void> | void;
+  onLanded(record: WorktreeRecord): Promise<void> | void;
+  onDiscarded(record: WorktreeRecord): Promise<void> | void;
   onResolveWorkspace(workspacePath: string): Promise<void> | void;
 }
 
@@ -26,7 +28,14 @@ export interface WorktreeStoreProps {
  */
 export class WorktreeStore extends Store<WorktreeStoreProps> {
   status: WorktreeStatus | undefined;
-  phase: "idle" | "landing" | "proposing" | "resolving" | "discarding" = "idle";
+  phase:
+    | "idle"
+    | "committing"
+    | "landing"
+    | "proposing"
+    | "resolving"
+    | "resolving-session"
+    | "discarding" = "idle";
   error: string | undefined;
   /** True when a paused landing is waiting on the user because the agent stopped without finishing. */
   stalled = false;
@@ -92,6 +101,29 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     }
   }
 
+  /** Asks the session to commit dirty changes, then automatically lands the clean branch. */
+  async commitAndMerge(allowDirtyTarget = false): Promise<void> {
+    const workspacePath = this.requiredWorkspacePath();
+    if (this.isBusy) throw new Error("A worktree operation is already in progress.");
+    if (this.props.isStreaming()) throw new Error("Wait for the current reply to finish first.");
+    if (!this.status?.dirtyCount) {
+      await this.land({ strategy: "preserve", allowDirtyTarget: allowDirtyTarget || undefined });
+      return;
+    }
+    this.phase = "committing";
+    this.pendingStrategy = "preserve";
+    this.pendingAllowDirtyTarget = allowDirtyTarget;
+    this.stalled = false;
+    this.error = undefined;
+    try {
+      await this.requestCommit();
+      if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return;
+    } catch (error) {
+      this.fail(error);
+      throw error;
+    }
+  }
+
   /** Lands with the given strategy; conflicts and squash messages are delegated to the session agent. */
   async land(
     request: WorktreeLandRequest = { strategy: "preserve" },
@@ -127,9 +159,24 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     }
   }
 
+  async resolve() {
+    const workspacePath = this.requiredWorkspacePath();
+    if (this.isBusy) throw new Error("A worktree operation is already in progress.");
+    this.phase = "resolving-session";
+    this.error = undefined;
+    try {
+      await this.props.onResolveWorkspace(workspacePath);
+      if (!this.signal.aborted) this.phase = "idle";
+    } catch (error) {
+      this.fail(error);
+      throw error;
+    }
+  }
+
   async discard(keepUnmergedBranch: boolean, resolve = false) {
     const workspacePath = this.requiredWorkspacePath();
     if (this.isBusy) throw new Error("A worktree operation is already in progress.");
+    const record = this.status?.record;
     this.phase = "discarding";
     this.error = undefined;
     try {
@@ -144,6 +191,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       this.pendingStrategy = undefined;
       this.pendingAllowDirtyTarget = false;
       this.stalled = false;
+      if (record) await this.props.onDiscarded({ ...record, state: "discarded" });
       if (resolve) await this.props.onResolveWorkspace(workspacePath);
     } catch (error) {
       this.fail(error);
@@ -163,6 +211,13 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
    * landing either completes now or pauses again with a fresh agent request.
    */
   async retryLanding() {
+    if (this.phase === "committing") {
+      const allowDirtyTarget = this.pendingAllowDirtyTarget;
+      this.phase = "idle";
+      this.stalled = false;
+      await this.commitAndMerge(allowDirtyTarget);
+      return;
+    }
     if (this.phase !== "resolving" && this.phase !== "proposing") return;
     const strategy = this.pendingStrategy;
     if (!strategy) return;
@@ -177,7 +232,8 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
 
   /** Releases a paused landing back to manual control without touching Git state. */
   cancelLanding() {
-    if (this.phase !== "resolving" && this.phase !== "proposing") return;
+    if (this.phase !== "committing" && this.phase !== "resolving" && this.phase !== "proposing")
+      return;
     this.phase = "idle";
     this.pendingStrategy = undefined;
     this.pendingAllowDirtyTarget = false;
@@ -207,7 +263,8 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
    * the agent proposed a commit message for the current branch tip.
    */
   private async maybeAutoRetry(status: WorktreeStatus) {
-    if (this.phase !== "resolving" && this.phase !== "proposing") return;
+    if (this.phase !== "committing" && this.phase !== "resolving" && this.phase !== "proposing")
+      return;
     if (this.props.isStreaming() || !this.pendingStrategy) {
       this.stalled = false;
       return;
@@ -229,6 +286,25 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     const allowDirtyTarget = this.pendingAllowDirtyTarget || undefined;
     this.phase = "idle";
     await this.land({ strategy, allowDirtyTarget });
+  }
+
+  private async requestCommit() {
+    const sessionId = this.props.sessionId();
+    if (!sessionId) throw new Error("Cake could not find the session to commit with");
+    const target = this.status?.targetBranch ?? "its target";
+    await this.props.client.submit({
+      operationId: crypto.randomUUID(),
+      sessionId,
+      delivery: "prompt",
+      attachments: [],
+      text: [
+        `Cake is preparing to merge this worktree into ${target}, but it has uncommitted changes.`,
+        "",
+        "Inspect the complete working tree, verify the change, and commit all intended work with an appropriate commit message.",
+        "",
+        "Do not merge, rebase, push, switch branches, or modify the target checkout. Cake will merge the committed branch after this turn finishes.",
+      ].join("\n"),
+    });
   }
 
   private async requestConflictResolution(
@@ -297,13 +373,24 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   }
 
   private async finishLanded(workspacePath: string) {
-    const projectPath = this.status?.record.projectPath;
+    const currentStatus = this.status;
+    const projectPath = currentStatus?.record.projectPath;
     this.phase = "idle";
     this.pendingStrategy = undefined;
     this.pendingAllowDirtyTarget = false;
     this.stalled = false;
-    this.status = undefined;
-    if (projectPath) await this.props.onLanded(workspacePath, projectPath);
+    if (currentStatus)
+      this.status = {
+        ...currentStatus,
+        merged: true,
+        record: { ...currentStatus.record, state: "landed", pendingStrategy: undefined },
+      };
+    if (currentStatus && projectPath && this.props.workspacePath() === workspacePath)
+      await this.props.onLanded({
+        ...currentStatus.record,
+        state: "landed",
+        pendingStrategy: undefined,
+      });
   }
 
   private requiredWorkspacePath() {

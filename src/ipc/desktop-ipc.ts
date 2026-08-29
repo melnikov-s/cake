@@ -612,6 +612,8 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     type: z.literal("resolve-sessions"),
     sessionIds: z.array(z.string().min(1).max(256)).min(1).max(10_000),
     resolved: z.boolean(),
+    /** Known workspace for a batch whose checkout may be removed during the operation. */
+    workspacePath: z.string().min(1).max(4_096).optional(),
   }),
   z.object({
     type: z.literal("set-session-unread"),

@@ -24,7 +24,7 @@ export interface WorktreePillProps {
   onConfigured(): void;
 }
 
-type ConfirmationKind = "dirty-merge" | "dirty-target-preserve" | "dirty-target-squash" | "discard";
+type ConfirmationKind = "dirty-target" | "discard" | "discard-resolve";
 
 /** Horizontal checkout choices for drafts and deterministic worktree actions for running sessions. */
 export const WorktreePill = observer(function WorktreePill({
@@ -152,34 +152,15 @@ export const WorktreePill = observer(function WorktreePill({
 
   const target = status.targetBranch.replace(/^agent\//, "");
   const branch = status.record.branch.replace(/^agent\//, "");
-  const dirty = status.dirtyCount > 0;
-  const merging = actions.phase !== "idle" && actions.phase !== "discarding";
+  const landed = status.record.state === "landed";
   const mergeLabel =
-    actions.phase === "landing"
-      ? "Merging…"
-      : actions.phase === "proposing"
-        ? "Preparing message…"
+    actions.phase === "committing"
+      ? "Committing…"
+      : actions.phase === "landing"
+        ? "Merging…"
         : actions.phase === "resolving"
           ? "Resolving conflicts…"
-          : "Merge";
-
-  const squash = () => {
-    if (dirty) {
-      setConfirmation("dirty-merge");
-      return;
-    }
-    if (status.targetDirty) {
-      setConfirmation("dirty-target-squash");
-      return;
-    }
-    run(actions.land({ strategy: "squash" }));
-  };
-  const targetDirtyStrategy =
-    confirmation === "dirty-target-squash"
-      ? "squash"
-      : confirmation === "dirty-target-preserve"
-        ? "preserve"
-        : undefined;
+          : "Commit & merge";
 
   return (
     <>
@@ -191,62 +172,34 @@ export const WorktreePill = observer(function WorktreePill({
             <span aria-hidden="true">→</span>
             <span className="truncate">{target}</span>
           </span>
-          {status.aheadCount > 0 && (
-            <Popover
-              open={confirmation === "dirty-merge"}
-              onOpenChange={(open) => {
-                if (!open && confirmation === "dirty-merge") setConfirmation(undefined);
-              }}
-            >
-              <PopoverTrigger
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={busy}
-                className="h-8 shrink-0 rounded-lg px-2.5 text-sm font-normal text-foreground shadow-none"
-                onClick={(event) => {
-                  event.preventDefault();
-                  if (dirty) {
-                    setConfirmation("dirty-merge");
-                    return;
-                  }
-                  if (status.targetDirty) {
-                    setConfirmation("dirty-target-preserve");
-                    return;
-                  }
-                  run(actions.land());
-                }}
-              >
-                {mergeLabel}
-              </PopoverTrigger>
-              <PopoverContent align="start" side="top" className="!w-80 !p-0">
-                <Confirmation state="requested" className="border-0 shadow-none">
-                  <ConfirmationRequest>
-                    <ConfirmationTitle>Commit changes before merging</ConfirmationTitle>
-                    <ConfirmationDescription>
-                      This worktree has uncommitted changes. Ask the agent to commit them, then
-                      merge into {target}.
-                    </ConfirmationDescription>
-                    <ConfirmationActions>
-                      <ConfirmationAction onClick={() => setConfirmation(undefined)}>
-                        Got it
-                      </ConfirmationAction>
-                    </ConfirmationActions>
-                  </ConfirmationRequest>
-                </Confirmation>
-              </PopoverContent>
-            </Popover>
-          )}
-          {status.aheadCount > 1 && !merging && (
+          {!landed && (status.aheadCount > 0 || status.dirtyCount > 0) && (
             <Button
               type="button"
               variant="ghost"
               size="sm"
               disabled={busy}
               className="h-8 shrink-0 rounded-lg px-2.5 text-sm font-normal text-foreground shadow-none"
-              onClick={squash}
+              onClick={() => {
+                if (status.targetDirty) {
+                  setConfirmation("dirty-target");
+                  return;
+                }
+                run(actions.commitAndMerge());
+              }}
             >
-              Squash…
+              {mergeLabel}
+            </Button>
+          )}
+          {landed && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              className="h-8 shrink-0 rounded-lg px-2.5 text-sm font-normal text-foreground shadow-none"
+              onClick={() => run(actions.resolve())}
+            >
+              {actions.phase === "resolving-session" ? "Resolving…" : "Resolve"}
             </Button>
           )}
           {actions.stalled && (
@@ -271,9 +224,50 @@ export const WorktreePill = observer(function WorktreePill({
               </Button>
             </>
           )}
+          {landed && (
+            <Popover
+              open={confirmation === "discard"}
+              onOpenChange={(open) => setConfirmation(open ? "discard" : undefined)}
+            >
+              <PopoverTrigger
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                className="h-8 shrink-0 rounded-lg px-2.5 text-sm font-normal text-destructive shadow-none hover:bg-destructive/10 hover:text-destructive"
+              >
+                {actions.phase === "discarding" ? "Discarding…" : "Discard"}
+              </PopoverTrigger>
+              <PopoverContent align="start" side="top" className="!w-80 !p-0">
+                <Confirmation state="requested" className="border-0 shadow-none">
+                  <ConfirmationRequest>
+                    <ConfirmationTitle>Discard this worktree?</ConfirmationTitle>
+                    <ConfirmationDescription>
+                      The worktree and its branch will be deleted. Its sessions will remain in the
+                      project history.
+                    </ConfirmationDescription>
+                    <ConfirmationActions>
+                      <ConfirmationAction
+                        variant="outline"
+                        onClick={() => setConfirmation(undefined)}
+                      >
+                        Cancel
+                      </ConfirmationAction>
+                      <ConfirmationAction
+                        variant="destructive"
+                        onClick={() => run(actions.discard(false))}
+                      >
+                        Discard
+                      </ConfirmationAction>
+                    </ConfirmationActions>
+                  </ConfirmationRequest>
+                </Confirmation>
+              </PopoverContent>
+            </Popover>
+          )}
           <Popover
-            open={confirmation === "discard"}
-            onOpenChange={(open) => setConfirmation(open ? "discard" : undefined)}
+            open={confirmation === "discard-resolve"}
+            onOpenChange={(open) => setConfirmation(open ? "discard-resolve" : undefined)}
           >
             <PopoverTrigger
               type="button"
@@ -289,8 +283,9 @@ export const WorktreePill = observer(function WorktreePill({
                 <ConfirmationRequest>
                   <ConfirmationTitle>Discard this worktree?</ConfirmationTitle>
                   <ConfirmationDescription>
-                    The worktree and its branch will be deleted, all unmerged work will be lost, and
-                    its sessions will be resolved.
+                    The worktree and its branch will be deleted
+                    {!landed && ", all unmerged work will be lost"}, and its sessions will be
+                    resolved.
                   </ConfirmationDescription>
                   <ConfirmationActions>
                     <ConfirmationAction
@@ -320,7 +315,7 @@ export const WorktreePill = observer(function WorktreePill({
           </p>
         )}
       </div>
-      {targetDirtyStrategy && (
+      {confirmation === "dirty-target" && (
         <div className="dialog-backdrop">
           <Confirmation
             state="requested"
@@ -340,11 +335,7 @@ export const WorktreePill = observer(function WorktreePill({
                 <ConfirmationAction variant="outline" onClick={() => setConfirmation(undefined)}>
                   Cancel
                 </ConfirmationAction>
-                <ConfirmationAction
-                  onClick={() =>
-                    run(actions.land({ strategy: targetDirtyStrategy, allowDirtyTarget: true }))
-                  }
-                >
+                <ConfirmationAction onClick={() => run(actions.commitAndMerge(true))}>
                   Continue
                 </ConfirmationAction>
               </ConfirmationActions>

@@ -332,10 +332,17 @@ async function resolveSessionWorkspacePath(sessionId: string) {
   return matches[0]!;
 }
 
-async function requireWorktreeRecord(worktreePath: string) {
-  const record = (await worktrees.records()).find(
-    (entry) => entry.worktreePath === worktreePath && (entry.state ?? "active") === "active",
-  );
+async function requireWorktreeRecord(
+  worktreePath: string,
+  states: ReadonlySet<"active" | "landed"> = new Set(["active"]),
+) {
+  const record = (await worktrees.records()).find((entry) => {
+    const state = entry.state ?? "active";
+    return (
+      entry.worktreePath === worktreePath &&
+      (state === "active" || (state === "landed" && states.has("landed")))
+    );
+  });
   if (!record) throw new Error("Cake could not find that worktree");
   return record;
 }
@@ -1738,9 +1745,11 @@ async function handleCakeRequest(
     });
   }
   if (request.type === "resolve-sessions") {
+    if (request.workspacePath && !allowedProjectPaths.has(request.workspacePath))
+      throw new Error("Project path was not selected by the user");
     const outcomes = await Promise.allSettled(
       request.sessionIds.map((sessionId) =>
-        setProjectSessionResolution(sessionId, request.resolved),
+        setProjectSessionResolution(sessionId, request.resolved, request.workspacePath),
       ),
     );
     const failures = outcomes.filter((outcome) => outcome.status === "rejected");
@@ -1821,7 +1830,7 @@ async function handleCakeRequest(
     });
   }
   if (request.type === "discard-worktree") {
-    await requireWorktreeRecord(request.workspacePath);
+    await requireWorktreeRecord(request.workspacePath, new Set(["active", "landed"]));
     await worktrees.discard(request.workspacePath, request.keepBranch);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }

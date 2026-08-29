@@ -121,8 +121,14 @@ describe("process IPC", () => {
         type: "resolve-sessions",
         sessionIds: ["session"],
         resolved: true,
+        workspacePath: "/managed/worktree",
       }),
-    ).toEqual({ type: "resolve-sessions", sessionIds: ["session"], resolved: true });
+    ).toEqual({
+      type: "resolve-sessions",
+      sessionIds: ["session"],
+      resolved: true,
+      workspacePath: "/managed/worktree",
+    });
     expect(desktopRequestSchema.parse({ type: "load-session", sessionId: "session" })).toEqual({
       type: "load-session",
       sessionId: "session",

@@ -47,18 +47,21 @@ function createTestStore(
       async () => undefined,
     ),
   };
+  const onLanded = vi.fn();
+  const onDiscarded = vi.fn();
+  const onResolveWorkspace = vi.fn(async () => undefined);
   const store = mount(
     createStore(WorktreeStore, {
       client,
       workspacePath: () => "/project-worktree",
       sessionId: () => "session-1",
-      sessionTitle: () => "Test session",
       isStreaming: () => false,
-      onLanded: vi.fn(),
-      onResolveWorkspace: vi.fn(),
+      onLanded,
+      onDiscarded,
+      onResolveWorkspace,
     }),
   );
-  return { store, client };
+  return { store, client, onLanded, onDiscarded, onResolveWorkspace };
 }
 
 afterEach(() => vi.useRealTimers());
@@ -120,6 +123,52 @@ describe("WorktreeStore", () => {
       }),
     );
     expect(store.phase).toBe("idle");
+    store[Symbol.dispose]();
+  });
+
+  it("asks the session to commit dirty changes and merges after the turn cleans the worktree", async () => {
+    const dirtyStatus = { ...status, dirtyCount: 2, aheadCount: 0 };
+    const { store, client } = createTestStore(vi.fn(async () => dirtyStatus));
+    await vi.waitFor(() => expect(store.status).toEqual(dirtyStatus));
+
+    await store.commitAndMerge();
+    expect(store.phase).toBe("committing");
+    expect(client.submit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session-1",
+        delivery: "prompt",
+        text: expect.stringContaining("commit all intended work"),
+      }),
+    );
+    expect(client.landWorktree).not.toHaveBeenCalled();
+
+    vi.mocked(client.getWorktreeStatus).mockResolvedValue({ ...status, aheadCount: 1 });
+    await store.refresh();
+    expect(client.landWorktree).toHaveBeenCalledWith(
+      expect.objectContaining({ request: { strategy: "preserve" } }),
+    );
+    expect(store.status).toMatchObject({ merged: true, record: { state: "landed" } });
+    store[Symbol.dispose]();
+  });
+
+  it("resolves the worktree sessions without discarding the checkout", async () => {
+    const { store, client, onResolveWorkspace } = createTestStore();
+    await vi.waitFor(() => expect(store.status).toEqual(status));
+
+    await store.resolve();
+
+    expect(onResolveWorkspace).toHaveBeenCalledWith("/project-worktree");
+    expect(client.discardWorktree).not.toHaveBeenCalled();
+    store[Symbol.dispose]();
+  });
+
+  it("projects a discarded record after cleanup", async () => {
+    const { store, onDiscarded } = createTestStore();
+    await vi.waitFor(() => expect(store.status).toEqual(status));
+
+    await store.discard(false);
+
+    expect(onDiscarded).toHaveBeenCalledWith(expect.objectContaining({ state: "discarded" }));
     store[Symbol.dispose]();
   });
 
@@ -216,7 +265,7 @@ describe("WorktreeStore", () => {
       expect.objectContaining({ request: { strategy: "squash" } }),
     );
     expect(store.phase).toBe("idle");
-    expect(store.status).toBeUndefined();
+    expect(store.status).toMatchObject({ merged: true, record: { state: "landed" } });
     store[Symbol.dispose]();
   });
 

@@ -71,13 +71,17 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     }
   }
 
-  async resolveSessionsById(sessionIds: readonly string[], resolved: boolean) {
+  async resolveSessionsById(
+    sessionIds: readonly string[],
+    resolved: boolean,
+    workspacePath?: string,
+  ) {
     for (const sessionId of sessionIds) {
       if (!this.props.catalog.find(sessionId))
         throw new Error(`Cake could not find session ${sessionId}`);
     }
     try {
-      const state = await this.props.client.resolveSessions(sessionIds, resolved);
+      const state = await this.props.client.resolveSessions(sessionIds, resolved, workspacePath);
       if (this.signal.aborted) return 0;
       this.props.applyApplicationState(state);
       return sessionIds.length;

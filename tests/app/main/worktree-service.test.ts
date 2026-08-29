@@ -126,12 +126,15 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     expect(log.stdout).toContain("feature two");
     // The target had not moved, so the original commits were fast-forwarded verbatim.
     expect((await git(repo, "rev-parse", "main")).stdout.trim()).toBe(worktreeHead);
-    expect(existsSync(record.worktreePath)).toBe(false);
-    await expect(git(repo, "rev-parse", "--verify", record.branch)).rejects.toThrow();
+    expect(existsSync(record.worktreePath)).toBe(true);
+    await expect(git(repo, "rev-parse", "--verify", record.branch)).resolves.toBeDefined();
     await expect(worktrees.records()).resolves.toEqual([
       expect.objectContaining({ worktreePath: record.worktreePath, state: "landed" }),
     ]);
-    expect(await service().status(record.worktreePath)).toBeUndefined();
+    await expect(worktrees.status(record.worktreePath)).resolves.toMatchObject({
+      merged: true,
+      record: { state: "landed" },
+    });
   });
 
   it("replays commits on top of an advanced target when preserving", async () => {
@@ -151,10 +154,10 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     const log = await git(repo, "log", "--oneline", "main");
     expect(log.stdout).toContain("main moves");
     expect(log.stdout).toContain("feature");
-    expect(existsSync(record.worktreePath)).toBe(false);
+    expect(existsSync(record.worktreePath)).toBe(true);
   });
 
-  it("squashes into one commit with an explicit message and cleans up", async () => {
+  it("squashes into one commit with an explicit message and retains the checkout", async () => {
     const repo = await repository();
     const worktrees = service();
     const record = await worktrees.create(repo);
@@ -171,12 +174,15 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     // The work commits are squashed into one commit on top of the base.
     const landedCommits = log.stdout.split("\n").filter((line) => line.trim().length > 0);
     expect(landedCommits.length).toBe(2);
-    expect(existsSync(record.worktreePath)).toBe(false);
-    await expect(git(repo, "rev-parse", "--verify", record.branch)).rejects.toThrow();
+    expect(existsSync(record.worktreePath)).toBe(true);
+    await expect(git(repo, "rev-parse", "--verify", record.branch)).resolves.toBeDefined();
     await expect(worktrees.records()).resolves.toEqual([
       expect.objectContaining({ worktreePath: record.worktreePath, state: "landed" }),
     ]);
-    expect(await service().status(record.worktreePath)).toBeUndefined();
+    await expect(worktrees.status(record.worktreePath)).resolves.toMatchObject({
+      merged: true,
+      record: { state: "landed" },
+    });
   });
 
   it("pauses squash landing until the session agent proposes a commit message", async () => {
@@ -228,7 +234,7 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     const message = await git(repo, "log", "-1", "--pretty=%B");
     expect(message.stdout).toContain("Combined feature");
     expect(message.stdout).toContain("Squashed from the worktree branch.");
-    expect(existsSync(record.worktreePath)).toBe(false);
+    expect(existsSync(record.worktreePath)).toBe(true);
     const [landed] = await worktrees.records();
     expect(landed).toBeDefined();
     expect(landed!.pendingStrategy).toBeUndefined();
@@ -253,7 +259,7 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     ).rejects.toThrow();
   });
 
-  it("cleans up without merging when there is nothing ahead", async () => {
+  it("marks the worktree landed without cleanup when there is nothing ahead", async () => {
     const repo = await repository();
     const worktrees = service();
     const record = await worktrees.create(repo);
@@ -261,7 +267,11 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
       request: { strategy: "squash" },
     });
     expect(outcome).toEqual({ outcome: "landed" });
-    expect(existsSync(record.worktreePath)).toBe(false);
+    expect(existsSync(record.worktreePath)).toBe(true);
+    await expect(worktrees.status(record.worktreePath)).resolves.toMatchObject({
+      merged: true,
+      record: { state: "landed" },
+    });
   });
 
   it("refuses to land a dirty worktree or a dirty canonical checkout", async () => {
@@ -354,7 +364,7 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     expect(await readFileText(join(repo, "shared.txt"))).toBe("resolved version\n");
     const log = await git(repo, "log", "--oneline", "main");
     expect(log.stdout).toContain("worktree change");
-    expect(existsSync(record.worktreePath)).toBe(false);
+    expect(existsSync(record.worktreePath)).toBe(true);
     const [landed] = await worktrees.records();
     expect(landed).toBeDefined();
     expect(landed!.pendingStrategy).toBeUndefined();
@@ -404,7 +414,7 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     expect(await readFileText(join(repo, "shared.txt"))).toBe("resolved version\n");
     const message = await git(repo, "log", "-1", "--pretty=%B");
     expect(message.stdout).toContain("Combined worktree change");
-    expect(existsSync(record.worktreePath)).toBe(false);
+    expect(existsSync(record.worktreePath)).toBe(true);
   });
 
   it("keeps the landing target clean when an explicit squash message hits conflicts", async () => {
@@ -443,7 +453,7 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     await expect(git(repo, "log", "-1", "--pretty=%B")).resolves.toMatchObject({
       stdout: expect.stringContaining("Resolved combined change"),
     });
-    expect(existsSync(record.worktreePath)).toBe(false);
+    expect(existsSync(record.worktreePath)).toBe(true);
   });
 
   it("re-pauses for resolution instead of squashing when the target moves after the proposal", async () => {
@@ -490,7 +500,7 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
       worktrees.land(record.worktreePath, { request: { strategy: "squash" } }),
     ).resolves.toEqual({ outcome: "landed", commit: expect.any(String) });
     expect(await readFileText(join(repo, "shared.txt"))).toBe("final version\n");
-    expect(existsSync(record.worktreePath)).toBe(false);
+    expect(existsSync(record.worktreePath)).toBe(true);
   });
 
   it("resumes resolving instead of failing when a landing is retried mid-rebase", async () => {
@@ -526,7 +536,25 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     await expect(
       worktrees.land(record.worktreePath, { request: { strategy: "preserve" } }),
     ).resolves.toEqual({ outcome: "landed", commit: expect.any(String) });
+    expect(existsSync(record.worktreePath)).toBe(true);
+  });
+
+  it("discards a landed worktree during explicit cleanup", async () => {
+    const repo = await repository();
+    const worktrees = service();
+    const record = await worktrees.create(repo);
+    await writeFile(join(record.worktreePath, "feature.ts"), "x\n");
+    await commitAll(record.worktreePath, "feature");
+    await worktrees.land(record.worktreePath, { request: { strategy: "preserve" } });
+
+    await expect(worktrees.status(record.worktreePath)).resolves.toMatchObject({
+      record: { state: "landed" },
+    });
+    await worktrees.discard(record.worktreePath, false);
+
     expect(existsSync(record.worktreePath)).toBe(false);
+    await expect(git(repo, "rev-parse", "--verify", record.branch)).rejects.toThrow();
+    await expect(worktrees.status(record.worktreePath)).resolves.toBeUndefined();
   });
 
   it("discards the worktree and optionally keeps the branch", async () => {

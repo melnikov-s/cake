@@ -136,15 +136,15 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   }
 
   navigateBack() {
-    this.navigateToHistoryEntry(this.appShellStore.goBack());
+    void this.navigateToHistoryEntry(this.appShellStore.goBack());
   }
   navigateForward() {
-    this.navigateToHistoryEntry(this.appShellStore.goForward());
+    void this.navigateToHistoryEntry(this.appShellStore.goForward());
   }
-  private navigateToHistoryEntry(entry: SessionHistoryEntry | undefined) {
+  private async navigateToHistoryEntry(entry: SessionHistoryEntry | undefined) {
     if (!entry) return;
-    if (entry.kind === "cake-chat") void this.openCakeChat(entry.sessionId);
-    else void this.openSession(entry.sessionId);
+    if (entry.kind === "cake-chat") await this.openCakeChat(entry.sessionId);
+    else await this.openSession(entry.sessionId);
   }
   showWorkbench() {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
@@ -205,14 +205,14 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   private async resolveProjectSession(sessionId: string, resolved: boolean) {
     await this.projectWorkbenchStore.sessionManagementStore.resolveSession(sessionId, resolved);
     if (resolved && this.sessionCatalogStore.find(sessionId)?.resolved)
-      this.forgetResolvedSessions([sessionId]);
+      await this.forgetResolvedSessions([sessionId]);
   }
 
   private async resolveCakeChatSession(sessionId: string, resolved: boolean) {
     await this.globalChatStore.resolveSession(sessionId, resolved);
     if (!resolved) return;
     if (this.globalChatStore.isSessionResolved(sessionId)) {
-      this.forgetResolvedSessions([sessionId]);
+      await this.forgetResolvedSessions([sessionId]);
       return;
     }
     if (
@@ -225,11 +225,16 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   }
 
   /** Drops resolved sessions from navigation history and returns to the previous session. */
-  private forgetResolvedSessions(sessionIds: readonly string[]) {
-    let target: SessionHistoryEntry | undefined;
-    for (const sessionId of sessionIds)
-      target ??= this.appShellStore.removeSessionFromHistory(sessionId);
-    if (target) this.navigateToHistoryEntry(target);
+  private async forgetResolvedSessions(
+    sessionIds: readonly string[],
+    fallbackProjectPath?: string,
+  ) {
+    const target = this.appShellStore.removeSessionsFromHistory(sessionIds);
+    if (target) {
+      await this.navigateToHistoryEntry(target);
+      return;
+    }
+    if (fallbackProjectPath) await this.createSession(fallbackProjectPath);
   }
 
   @child
@@ -366,14 +371,15 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       persistence: () => this.windowPersistence,
       catalog: this.sessionCatalogStore,
       startCakeChat: (prompt) => this.startCakeChat(prompt),
-      startFreshSessionInProject: async (path) => {
+      onWorktreeLanded: () => {
         this.toastStore.show({
           tone: "info",
           title: "Worktree merged",
           message: "Your work was merged back into the project.",
         });
-        await this.createSession(path);
       },
+      onWorktreeSessionsResolved: (sessionIds, projectPath) =>
+        this.forgetResolvedSessions(sessionIds, projectPath),
       openSessionById: async (sessionId) => {
         await this.openSession(sessionId);
       },
@@ -467,12 +473,12 @@ export class RootStore extends Store<{ client: DesktopClient }> {
           sessionIds,
           resolved,
         );
-        if (resolved) this.forgetResolvedSessions(sessionIds);
+        if (resolved) await this.forgetResolvedSessions(sessionIds);
         return count;
       },
       setCakeChatSessionsResolved: async (sessionIds, resolved) => {
         const count = await this.globalChatStore.resolveSessions(sessionIds, resolved);
-        if (resolved) this.forgetResolvedSessions(sessionIds);
+        if (resolved) await this.forgetResolvedSessions(sessionIds);
         return count;
       },
       setSessionModel: (sessionId, provider, modelId) =>

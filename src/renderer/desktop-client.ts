@@ -386,7 +386,11 @@ export interface DesktopClient {
   renameProject(path: string, name: string): Promise<ApplicationState>;
   removeProject(path: string): Promise<ApplicationState>;
   resolveSession(sessionId: string, resolved: boolean): Promise<ApplicationState>;
-  resolveSessions(sessionIds: readonly string[], resolved: boolean): Promise<ApplicationState>;
+  resolveSessions(
+    sessionIds: readonly string[],
+    resolved: boolean,
+    workspacePath?: string,
+  ): Promise<ApplicationState>;
   setSessionUnread(sessionId: string, unread: boolean): Promise<ApplicationState>;
   resolveCakeChatSession(sessionId: string, resolved: boolean): Promise<ApplicationState>;
   restartPi(path: string): Promise<void>;
@@ -1136,11 +1140,12 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         throw new Error("Cake could not resolve the session");
       return response.state;
     },
-    async resolveSessions(sessionIds, resolved) {
+    async resolveSessions(sessionIds, resolved, workspacePath) {
       const response = await bridge.request({
         type: "resolve-sessions",
         sessionIds: [...sessionIds],
         resolved,
+        workspacePath,
       });
       if (response.type !== "application-state-updated")
         throw new Error("Cake could not resolve the sessions");

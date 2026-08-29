@@ -33,7 +33,8 @@ interface LandOptions {
  * Each record is one isolated checkout in a sibling directory of its
  * repository, paired with an `agent/`-namespaced branch. Cake owns the whole
  * lifecycle. Landing either replays the branch commits onto the target branch
- * or squashes them into one commit; conflict resolution and squash-message
+ * or squashes them into one commit, but leaves the merged checkout available
+ * until the user explicitly discards it. Conflict resolution and squash-message
  * proposals are delegated to the worktree's session agent through the Cake
  * gateway, and landing is retried once the agent finishes.
  */
@@ -133,7 +134,7 @@ export class WorktreeService implements WorktreeLandingCoordinator {
     const record = this.allRecords.find(
       (entry) => resolveNormalized(entry.worktreePath) === normalized,
     );
-    if (!record || (record.state ?? "active") !== "active") return undefined;
+    if (!record || !["active", "landed"].includes(record.state ?? "active")) return undefined;
     if (!existsSync(record.worktreePath)) {
       // Preserve the historical checkout association so its transcripts remain discoverable.
       await git(record.projectPath, "worktree", "prune").catch(() => undefined);
@@ -146,7 +147,9 @@ export class WorktreeService implements WorktreeLandingCoordinator {
       await Promise.all([
         dirtyFileCount(record.worktreePath),
         revListCount(record.worktreePath, `${record.baseBranch}..HEAD`),
-        isAncestor(record.worktreePath, "HEAD", record.baseBranch),
+        record.state === "landed"
+          ? Promise.resolve(true)
+          : isAncestor(record.worktreePath, "HEAD", record.baseBranch),
         dirtyFileCount(targetPath).then((count) => count > 0),
         gitWithFallback(targetPath, ["rev-parse", "--abbrev-ref", "HEAD"]),
         revParseExists(record.worktreePath, "MERGE_HEAD"),
@@ -167,7 +170,7 @@ export class WorktreeService implements WorktreeLandingCoordinator {
   }
 
   /**
-   * Lands the worktree branch into its base branch and removes the worktree.
+   * Lands the worktree branch into its base branch and marks it as landed.
    * With the `preserve` strategy the commits are replayed onto the target and
    * fast-forwarded; with `squash` they become one target commit. Conflicts and
    * missing squash messages pause the landing for the session agent; call
@@ -221,7 +224,7 @@ export class WorktreeService implements WorktreeLandingCoordinator {
 
     const aheadCount = await revListCount(record.worktreePath, `${record.baseBranch}..HEAD`);
     if (aheadCount === 0) {
-      await this.cleanup(record, { keepBranch: false, state: "landed" });
+      await this.closeRecord(record, "landed");
       return { outcome: "landed" };
     }
 
@@ -242,7 +245,7 @@ export class WorktreeService implements WorktreeLandingCoordinator {
       try {
         await git(targetPath, "merge", "--ff-only", record.branch);
         const commit = (await git(targetPath, "rev-parse", "HEAD")).trim();
-        await this.cleanup(record, { keepBranch: false, state: "landed" });
+        await this.closeRecord(record, "landed");
         return { outcome: "landed", commit };
       } catch (error) {
         // The target advanced while rebasing; replay onto the new tip and retry.
@@ -287,7 +290,7 @@ export class WorktreeService implements WorktreeLandingCoordinator {
       this.awaitingSquashProposals.add(normalized);
       return { outcome: "proposal" };
     }
-    const commit = await this.squashMergeAndCleanup(record, requested);
+    const commit = await this.squashMergeAndMarkLanded(record, requested);
     return { outcome: "landed", commit };
   }
 
@@ -393,7 +396,7 @@ export class WorktreeService implements WorktreeLandingCoordinator {
     const normalized = resolveNormalized(worktreePath);
     const record = this.allRecords.find(
       (entry) =>
-        (entry.state ?? "active") === "active" &&
+        ["active", "landed"].includes(entry.state ?? "active") &&
         resolveNormalized(entry.worktreePath) === normalized,
     );
     if (!record) throw new Error("Cake could not find that worktree");
@@ -423,7 +426,7 @@ export class WorktreeService implements WorktreeLandingCoordinator {
     }
   }
 
-  private async squashMergeAndCleanup(record: WorktreeRecord, message: string): Promise<string> {
+  private async squashMergeAndMarkLanded(record: WorktreeRecord, message: string): Promise<string> {
     const targetPath = record.parentWorktreePath ?? record.projectPath;
     try {
       await git(targetPath, "merge", "--squash", record.branch);
@@ -434,13 +437,13 @@ export class WorktreeService implements WorktreeLandingCoordinator {
       throw error;
     }
     const commit = (await git(targetPath, "rev-parse", "HEAD")).trim();
-    await this.cleanup(record, { keepBranch: false, state: "landed" });
+    await this.closeRecord(record, "landed");
     return commit;
   }
 
   private async cleanup(
     record: WorktreeRecord,
-    options: { keepBranch: boolean; state: "landed" | "discarded" },
+    options: { keepBranch: boolean; state: "discarded" },
   ) {
     const normalized = resolveNormalized(record.worktreePath);
     this.awaitingSquashProposals.delete(normalized);
