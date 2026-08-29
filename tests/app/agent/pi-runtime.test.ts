@@ -1,8 +1,19 @@
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createCakeRuntime,
@@ -36,6 +47,7 @@ import { loadReviewSessionProjection, runReviewTurn } from "../../../src/agent/s
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { sessionSnapshotSchema, type SessionSnapshot } from "../../../src/ipc/session-contract";
 
+const execFileAsync = promisify(execFile);
 const temporaryDirectories: string[] = [];
 const runtimes: Array<FoundationRuntime | CakeRuntime> = [];
 
@@ -100,6 +112,43 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(systemPrompt).not.toContain("Fast source-of-truth map");
     expect(systemPrompt).not.toContain("modelPresets");
     expect(activeTools).toContain("cake");
+  });
+
+  it("adds checkout-specific isolation guidance for linked worktrees", async () => {
+    const repository = await createTemporaryDirectory();
+    await execFileAsync("git", ["init", "--initial-branch=main"], { cwd: repository });
+    await execFileAsync("git", ["config", "user.email", "cake@example.test"], {
+      cwd: repository,
+    });
+    await execFileAsync("git", ["config", "user.name", "Cake Test"], { cwd: repository });
+    await writeFile(join(repository, "README.md"), "test\n");
+    await execFileAsync("git", ["add", "README.md"], { cwd: repository });
+    await execFileAsync("git", ["commit", "-m", "initial"], { cwd: repository });
+    const worktree = `${repository}-linked`;
+    temporaryDirectories.push(worktree);
+    await execFileAsync("git", ["worktree", "add", "-b", "agent/fix", worktree], {
+      cwd: repository,
+    });
+
+    const runtime = await createCakeRuntime({
+      cwd: worktree,
+      agentDir: join(repository, "agent"),
+      sessionDir: join(repository, "sessions"),
+      trusted: false,
+      newSession: true,
+      additionalSystemPrompt: "Session-specific guidance.",
+      requestUi: async () => undefined,
+      onEvent: () => undefined,
+    });
+    runtimes.push(runtime);
+
+    if (!runtime.getReviewParentContext) throw new Error("Expected a project runtime");
+    const { systemPrompt } = runtime.getReviewParentContext();
+    expect(systemPrompt).toContain("Session-specific guidance.");
+    expect(systemPrompt).toContain(`Worktree checkout: ${await realpath(worktree)}`);
+    expect(systemPrompt).toContain(`Main checkout: ${await realpath(repository)}`);
+    expect(systemPrompt).toContain("Worktree branch: agent/fix");
+    expect(systemPrompt).toContain("confirm before writing outside the worktree");
   });
 
   it("keeps session listing alive when Pi's first-message title exceeds Cake's IPC limit", async () => {

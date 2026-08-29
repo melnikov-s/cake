@@ -84,6 +84,7 @@ import {
 } from "./session-discovery";
 import { generateSessionTitle } from "./utility-model";
 import { createConversationHandoff } from "./session-handoff";
+import { detectGitWorktree, worktreeSystemPrompt } from "./worktree-system-prompt";
 import {
   parallelSubagentSchema,
   subagentTaskSchema,
@@ -794,99 +795,104 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   const filterRuntimeOperations = (definitions: CakeOperationDefinition[]) =>
     readOnlyAuxiliary
       ? definitions.filter((definition) =>
-        ["session.info", "session.usage", "context.status"].includes(definition.command),
-      )
+          ["session.info", "session.usage", "context.status"].includes(definition.command),
+        )
       : definitions;
   const globalControl = options.globalControl;
+  const detectedWorktree = globalControl ? undefined : await detectGitWorktree(options.cwd);
+  const detectedWorktreePrompt = detectedWorktree
+    ? worktreeSystemPrompt(detectedWorktree)
+    : undefined;
   const resourceLoader = new DefaultResourceLoader(
     globalControl
       ? {
-        cwd: options.cwd,
-        agentDir,
-        settingsManager,
-        additionalSkillPaths: [cakePluginAuthoringSkillPath()],
-        extensionFactories: [
-          createFastModeExtension(fastModeEnabled),
-          createCakeGatewayExtension((pi) =>
-            filterRuntimeOperations([
-              ...localOperations(),
-              ...createGlobalControlOperations(globalControl),
-              ...createCakeArtifactOperations(pi, {
-                persistArtifact,
-                requestArtifact,
-                generateInlineWidget: options.generateInlineWidget,
-              }),
-              ...(options.vscodeControl ? createCakeVscodeOperations(options.vscodeControl) : []),
-              ...(options.worktreeLandingControl
-                ? createCakeWorktreeOperations(options.worktreeLandingControl)
-                : []),
-              ...(options.agentControl
-                ? createAgentControlOperations(
-                  options.agentControl,
-                  () => runtimeIdentity.sessionId,
-                )
-                : []),
-            ]),
-          ),
-          createCakeArtifactExtension({ persistArtifact, requestArtifact }),
-        ],
-        appendSystemPromptOverride: (base) => [
-          ...base,
-          globalControl.recoveryContext
-            ? `${cakeChatSystemPrompt}\n\nCustomization recovery context from immutable Cake core:\n${globalControl.recoveryContext}`
-            : cakeChatSystemPrompt,
-        ],
-      }
+          cwd: options.cwd,
+          agentDir,
+          settingsManager,
+          additionalSkillPaths: [cakePluginAuthoringSkillPath()],
+          extensionFactories: [
+            createFastModeExtension(fastModeEnabled),
+            createCakeGatewayExtension((pi) =>
+              filterRuntimeOperations([
+                ...localOperations(),
+                ...createGlobalControlOperations(globalControl),
+                ...createCakeArtifactOperations(pi, {
+                  persistArtifact,
+                  requestArtifact,
+                  generateInlineWidget: options.generateInlineWidget,
+                }),
+                ...(options.vscodeControl ? createCakeVscodeOperations(options.vscodeControl) : []),
+                ...(options.worktreeLandingControl
+                  ? createCakeWorktreeOperations(options.worktreeLandingControl)
+                  : []),
+                ...(options.agentControl
+                  ? createAgentControlOperations(
+                      options.agentControl,
+                      () => runtimeIdentity.sessionId,
+                    )
+                  : []),
+              ]),
+            ),
+            createCakeArtifactExtension({ persistArtifact, requestArtifact }),
+          ],
+          appendSystemPromptOverride: (base) => [
+            ...base,
+            globalControl.recoveryContext
+              ? `${cakeChatSystemPrompt}\n\nCustomization recovery context from immutable Cake core:\n${globalControl.recoveryContext}`
+              : cakeChatSystemPrompt,
+          ],
+        }
       : {
-        cwd: options.cwd,
-        agentDir,
-        settingsManager,
-        appendSystemPromptOverride: (base) => [
-          ...base,
-          cakeProjectSystemPrompt,
-          ...(options.additionalSystemPrompt ? [options.additionalSystemPrompt] : []),
-        ],
-        additionalSkillPaths: options.auxiliary
-          ? []
-          : [cakePluginAuthoringSkillPath(), ...(options.pluginResources?.skills ?? [])],
-        additionalPromptTemplatePaths: options.auxiliary
-          ? []
-          : (options.pluginResources?.prompts ?? []),
-        additionalExtensionPaths: options.auxiliary
-          ? []
-          : (options.pluginResources?.extensions ?? []),
-        noExtensions: options.auxiliary,
-        noSkills: options.auxiliary,
-        noPromptTemplates: options.auxiliary,
-        noThemes: options.auxiliary,
-        extensionFactories: [
-          createFastModeExtension(fastModeEnabled),
-          createCakeGatewayExtension((pi) =>
-            filterRuntimeOperations([
-              ...localOperations(),
-              ...createCakeArtifactOperations(pi, {
-                persistArtifact,
-                requestArtifact,
-                generateInlineWidget: options.generateInlineWidget,
-              }),
-              ...(options.vscodeControl ? createCakeVscodeOperations(options.vscodeControl) : []),
-              ...(options.worktreeLandingControl
-                ? createCakeWorktreeOperations(options.worktreeLandingControl)
-                : []),
-              ...(options.agentControl
-                ? createAgentControlOperations(
-                  options.agentControl,
-                  () => runtimeIdentity.sessionId,
-                )
-                : []),
-            ]),
-          ),
-          createCakeArtifactExtension({ persistArtifact, requestArtifact }),
-          ...(options.reviewContextPath
-            ? [reviewContextExtension(options.reviewContextPath, () => runtimeIdentity.sessionId)]
-            : []),
-        ],
-      },
+          cwd: options.cwd,
+          agentDir,
+          settingsManager,
+          appendSystemPromptOverride: (base) => [
+            ...base,
+            cakeProjectSystemPrompt,
+            ...(options.additionalSystemPrompt ? [options.additionalSystemPrompt] : []),
+            ...(detectedWorktreePrompt ? [detectedWorktreePrompt] : []),
+          ],
+          additionalSkillPaths: options.auxiliary
+            ? []
+            : [cakePluginAuthoringSkillPath(), ...(options.pluginResources?.skills ?? [])],
+          additionalPromptTemplatePaths: options.auxiliary
+            ? []
+            : (options.pluginResources?.prompts ?? []),
+          additionalExtensionPaths: options.auxiliary
+            ? []
+            : (options.pluginResources?.extensions ?? []),
+          noExtensions: options.auxiliary,
+          noSkills: options.auxiliary,
+          noPromptTemplates: options.auxiliary,
+          noThemes: options.auxiliary,
+          extensionFactories: [
+            createFastModeExtension(fastModeEnabled),
+            createCakeGatewayExtension((pi) =>
+              filterRuntimeOperations([
+                ...localOperations(),
+                ...createCakeArtifactOperations(pi, {
+                  persistArtifact,
+                  requestArtifact,
+                  generateInlineWidget: options.generateInlineWidget,
+                }),
+                ...(options.vscodeControl ? createCakeVscodeOperations(options.vscodeControl) : []),
+                ...(options.worktreeLandingControl
+                  ? createCakeWorktreeOperations(options.worktreeLandingControl)
+                  : []),
+                ...(options.agentControl
+                  ? createAgentControlOperations(
+                      options.agentControl,
+                      () => runtimeIdentity.sessionId,
+                    )
+                  : []),
+              ]),
+            ),
+            createCakeArtifactExtension({ persistArtifact, requestArtifact }),
+            ...(options.reviewContextPath
+              ? [reviewContextExtension(options.reviewContextPath, () => runtimeIdentity.sessionId)]
+              : []),
+          ],
+        },
   );
   await resourceLoader.reload({ resolveProjectTrust: async () => options.trusted });
   const sessionDir = options.globalControl
@@ -908,10 +914,10 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     throw new Error("That session is no longer available");
   const sessionManager = options.newSession
     ? SessionManager.create(
-      options.cwd,
-      sessionDir,
-      options.sessionId ? { id: options.sessionId } : undefined,
-    )
+        options.cwd,
+        sessionDir,
+        options.sessionId ? { id: options.sessionId } : undefined,
+      )
     : (directSession ??
       (requestedSession
         ? SessionManager.open(requestedSession.path, sessionDir, options.cwd)
@@ -1036,9 +1042,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       options.auxiliary
         ? Promise.resolve([])
         : listWorkspaceSessions(options.cwd, options.sessionDir, {
-          direct: Boolean(options.globalControl),
-          resolvedSessionDir: options.resolvedSessionDir,
-        }),
+            direct: Boolean(options.globalControl),
+            resolvedSessionDir: options.resolvedSessionDir,
+          }),
       options.auxiliary ? Promise.resolve([]) : modelOptions(),
       options.auxiliary
         ? Promise.resolve([])
@@ -1119,23 +1125,23 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       commands: options.auxiliary
         ? []
         : [
-          ...piBuiltinSlashCommands.filter(
-            (command) => !options.slashCommands || options.slashCommands.includes(command.name),
-          ),
-          ...piCommandCatalog(),
-        ].flatMap((command) => {
-          const parsed = slashCommandSchema.safeParse(command);
-          return parsed.success ? [parsed.data] : [];
-        }),
+            ...piBuiltinSlashCommands.filter(
+              (command) => !options.slashCommands || options.slashCommands.includes(command.name),
+            ),
+            ...piCommandCatalog(),
+          ].flatMap((command) => {
+            const parsed = slashCommandSchema.safeParse(command);
+            return parsed.success ? [parsed.data] : [];
+          }),
       usage: {
         tokens: stats.tokens,
         cost: stats.cost,
         context: stats.contextUsage
           ? {
-            tokens: stats.contextUsage.tokens,
-            contextWindow: stats.contextUsage.contextWindow,
-            percent: stats.contextUsage.percent,
-          }
+              tokens: stats.contextUsage.tokens,
+              contextWindow: stats.contextUsage.contextWindow,
+              percent: stats.contextUsage.percent,
+            }
           : undefined,
       },
       compatibility: catalog,
