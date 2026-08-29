@@ -3,6 +3,7 @@ import { observer } from "r-state-tree/react";
 import { Composer, ComposerToolbar } from "@/components/ai-elements/composer";
 import { ChatConfigurationSelector } from "@/components/chat-configuration-selector";
 import type { ChatConfigurationStore } from "../stores/ChatConfigurationStore";
+import { cn } from "@/lib/utils";
 
 /** The authoritative composer frame shared by every Cake chat surface. */
 export const ChatComposer = observer(function ChatComposer({
@@ -25,20 +26,27 @@ export const ChatComposer = observer(function ChatComposer({
   className?: string;
 }) {
   return (
-    <Composer
-      className={`workbench-composer${className ? ` ${className}` : ""}`}
-      onSubmit={onSubmit}
+    <div
+      className={cn(
+        "workbench-composer pointer-events-auto mx-auto w-full max-w-[51.25rem] min-w-0",
+        className,
+      )}
     >
       {header}
-      {children}
-      {input}
-      <ComposerToolbar className="composer-toolbar">
-        <div className="composer-context">
-          {toolbarLeading}
-          {configuration && <ChatConfigurationSelector configuration={configuration} />}
-        </div>
-        <div className="composer-actions">{toolbarActions}</div>
-      </ComposerToolbar>
-    </Composer>
+      <Composer
+        className="relative z-10 border-border/90 bg-[var(--composer)] shadow-[0_24px_80px_-30px_hsl(var(--shadow)/0.55),0_2px_10px_hsl(var(--shadow)/0.08)]"
+        onSubmit={onSubmit}
+      >
+        {children}
+        {input}
+        <ComposerToolbar className="composer-toolbar">
+          <div className="composer-context">
+            {toolbarLeading}
+            {configuration && <ChatConfigurationSelector configuration={configuration} />}
+          </div>
+          <div className="composer-actions">{toolbarActions}</div>
+        </ComposerToolbar>
+      </Composer>
+    </div>
   );
 });

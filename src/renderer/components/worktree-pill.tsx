@@ -58,7 +58,7 @@ export const WorktreePill = observer(function WorktreePill({
         ? candidates.find((record) => record.worktreePath === choice.worktreePath)
         : undefined;
     return (
-      <div className="flex min-w-0 items-center gap-1 overflow-x-auto px-3 pt-2 text-xs">
+      <div className="mx-4 -mb-5 flex min-w-0 items-center gap-2 overflow-x-auto rounded-t-[1.75rem] border border-b-0 border-border/70 bg-card/70 px-5 pt-3.5 pb-8 text-sm">
         <Button
           type="button"
           variant="ghost"
@@ -66,7 +66,7 @@ export const WorktreePill = observer(function WorktreePill({
           disabled={busy}
           aria-pressed={choice.kind === "current"}
           className={cn(
-            "h-7 shrink-0 gap-1.5 rounded-full px-2.5 text-xs font-medium text-muted-foreground shadow-none",
+            "h-8 shrink-0 gap-2 rounded-lg px-2.5 text-sm font-normal text-foreground shadow-none",
             choice.kind === "current" && "bg-muted text-foreground",
           )}
           onClick={() => choose({ kind: "current" })}
@@ -81,7 +81,7 @@ export const WorktreePill = observer(function WorktreePill({
           disabled={busy}
           aria-pressed={choice.kind === "new"}
           className={cn(
-            "h-7 shrink-0 gap-1.5 rounded-full px-2.5 text-xs font-medium text-muted-foreground shadow-none",
+            "h-8 shrink-0 gap-2 rounded-lg px-2.5 text-sm font-normal text-foreground shadow-none",
             choice.kind === "new" && "bg-muted text-foreground",
           )}
           onClick={() => choose({ kind: "new" })}
@@ -98,7 +98,7 @@ export const WorktreePill = observer(function WorktreePill({
             aria-label="Choose existing worktree"
             aria-haspopup="menu"
             className={cn(
-              "h-7 shrink-0 gap-1.5 rounded-full px-2.5 text-xs font-medium text-muted-foreground shadow-none",
+              "h-8 shrink-0 gap-2 rounded-lg px-2.5 text-sm font-normal text-foreground shadow-none",
               choice.kind === "reuse" && "bg-muted text-foreground",
             )}
           >
@@ -171,9 +171,9 @@ export const WorktreePill = observer(function WorktreePill({
   };
 
   return (
-    <div className="flex flex-col gap-1 px-3 pt-2">
-      <div className="flex min-w-0 items-center gap-1 overflow-x-auto text-xs">
-        <span className="flex h-7 min-w-0 shrink items-center gap-1.5 rounded-full bg-muted px-2.5 font-medium text-muted-foreground">
+    <div className="mx-4 -mb-5 flex flex-col gap-1 rounded-t-[1.75rem] border border-b-0 border-border/70 bg-card/70 px-5 pt-3.5 pb-8">
+      <div className="flex min-w-0 items-center gap-2 overflow-x-auto text-sm">
+        <span className="flex h-8 min-w-0 shrink items-center gap-2 px-2.5 text-foreground">
           <PullRequestIcon />
           <span className="truncate">{branch}</span>
           <span aria-hidden="true">→</span>
@@ -189,7 +189,7 @@ export const WorktreePill = observer(function WorktreePill({
               variant="ghost"
               size="sm"
               disabled={busy}
-              className="h-7 shrink-0 rounded-full px-2.5 text-xs font-medium text-muted-foreground shadow-none"
+              className="h-8 shrink-0 rounded-lg px-2.5 text-sm font-normal text-foreground shadow-none"
               onClick={(event) => {
                 if (dirty) return;
                 event.preventDefault();
@@ -222,7 +222,7 @@ export const WorktreePill = observer(function WorktreePill({
             variant="ghost"
             size="sm"
             disabled={busy}
-            className="h-7 shrink-0 rounded-full px-2.5 text-xs font-medium text-muted-foreground shadow-none"
+            className="h-8 shrink-0 rounded-lg px-2.5 text-sm font-normal text-foreground shadow-none"
             onClick={squash}
           >
             Squash…
@@ -234,7 +234,7 @@ export const WorktreePill = observer(function WorktreePill({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 shrink-0 rounded-full px-2.5 text-xs font-medium text-muted-foreground shadow-none"
+              className="h-8 shrink-0 rounded-lg px-2.5 text-sm font-normal text-foreground shadow-none"
               onClick={() => run(actions.retryLanding())}
             >
               Retry
@@ -243,7 +243,7 @@ export const WorktreePill = observer(function WorktreePill({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 shrink-0 rounded-full px-2.5 text-xs font-medium text-muted-foreground shadow-none"
+              className="h-8 shrink-0 rounded-lg px-2.5 text-sm font-normal text-foreground shadow-none"
               onClick={() => actions.cancelLanding()}
             >
               Dismiss
@@ -259,7 +259,7 @@ export const WorktreePill = observer(function WorktreePill({
             variant="ghost"
             size="sm"
             disabled={busy}
-            className="h-7 shrink-0 rounded-full px-2.5 text-xs font-medium text-destructive shadow-none hover:bg-destructive/10 hover:text-destructive"
+            className="h-8 shrink-0 rounded-lg px-2.5 text-sm font-normal text-destructive shadow-none hover:bg-destructive/10 hover:text-destructive"
           >
             {actions.phase === "discarding" ? "Discarding…" : "Discard & resolve"}
           </PopoverTrigger>
