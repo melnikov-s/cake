@@ -14,6 +14,8 @@ export interface SidebarStoreProps {
   cakeChat(): GlobalChatStore;
   setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
   setCakeChatSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
+  deleteSession(sessionId: string): Promise<void>;
+  deleteCakeChatSession(sessionId: string): Promise<void>;
   setSessionUnread(sessionId: string, unread: boolean): Promise<void>;
 }
 
@@ -38,8 +40,14 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     return this.props.catalog.sessions;
   }
 
-  showSessionContextMenu(sessionId: string, x: number, y: number, unread?: boolean) {
-    return this.props.client.showSessionContextMenu({ sessionId, x, y, unread });
+  showSessionContextMenu(
+    sessionId: string,
+    x: number,
+    y: number,
+    resolved: boolean,
+    unread?: boolean,
+  ) {
+    return this.props.client.showSessionContextMenu({ sessionId, x, y, resolved, unread });
   }
 
   projectSessions(workspacePath: string, resolved = false) {
@@ -90,6 +98,14 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   setCakeChatSessionResolved(sessionId: string, resolved: boolean) {
     return this.props.setCakeChatSessionResolved(sessionId, resolved);
+  }
+
+  deleteSession(sessionId: string) {
+    return this.props.deleteSession(sessionId);
+  }
+
+  deleteCakeChatSession(sessionId: string) {
+    return this.props.deleteCakeChatSession(sessionId);
   }
 
   setSessionUnread(sessionId: string, unread: boolean) {

@@ -27,7 +27,11 @@ function createBridge() {
       return { type: "composer-selection-reworded", text: "Clear text" };
     if (input.type === "show-session-context-menu")
       return { type: "session-context-menu-closed", action: "rename" };
-    if (input.type === "set-session-unread")
+    if (
+      input.type === "set-session-unread" ||
+      input.type === "delete-session" ||
+      input.type === "delete-cake-chat-session"
+    )
       return {
         type: "application-state-updated",
         state: {
@@ -126,24 +130,39 @@ describe("desktop client", () => {
       prompt: "Be concise",
       workspacePath: "/project",
     });
-    expect(await client.showSessionContextMenu({ sessionId: "session", x: 12, y: 34 })).toBe(
-      "rename",
-    );
-    expect(desktop.request).toHaveBeenCalledWith({
-      type: "show-session-context-menu",
-      sessionId: "session",
-      x: 12,
-      y: 34,
-    });
     expect(
-      await client.showSessionContextMenu({ sessionId: "session", x: 12, y: 34, unread: true }),
+      await client.showSessionContextMenu({ sessionId: "session", x: 12, y: 34, resolved: false }),
     ).toBe("rename");
     expect(desktop.request).toHaveBeenCalledWith({
       type: "show-session-context-menu",
       sessionId: "session",
       x: 12,
       y: 34,
+      resolved: false,
+    });
+    expect(
+      await client.showSessionContextMenu({
+        sessionId: "session",
+        x: 12,
+        y: 34,
+        resolved: false,
+        unread: true,
+      }),
+    ).toBe("rename");
+    expect(desktop.request).toHaveBeenCalledWith({
+      type: "show-session-context-menu",
+      sessionId: "session",
+      x: 12,
+      y: 34,
+      resolved: false,
       unread: true,
+    });
+    await client.deleteSession("session");
+    expect(desktop.request).toHaveBeenCalledWith({ type: "delete-session", sessionId: "session" });
+    await client.deleteCakeChatSession("cake-chat");
+    expect(desktop.request).toHaveBeenCalledWith({
+      type: "delete-cake-chat-session",
+      sessionId: "cake-chat",
     });
     await client.setSessionUnread("session", true);
     expect(desktop.request).toHaveBeenCalledWith({

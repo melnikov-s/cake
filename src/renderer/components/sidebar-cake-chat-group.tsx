@@ -94,6 +94,7 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
                 onResolve={(sessionId, nextResolved) =>
                   void store.setCakeChatSessionResolved(sessionId, nextResolved)
                 }
+                onDelete={(sessionId) => void store.deleteCakeChatSession(sessionId)}
               />
             );
           })}

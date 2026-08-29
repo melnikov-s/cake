@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import {
@@ -52,6 +52,16 @@ export class ReviewRepository {
 
   reviewContextPath(workspacePath: string, sessionId: string) {
     return join(this.sessionDirectory(workspacePath, sessionId), "review-threads.md");
+  }
+
+  async deleteSession(workspacePath: string, sessionId: string) {
+    await Promise.all([
+      rm(this.sessionDirectory(workspacePath, sessionId), { recursive: true, force: true }),
+      rm(join(this.piSessionRoot, digestKey(workspacePath), digestKey(sessionId)), {
+        recursive: true,
+        force: true,
+      }),
+    ]);
   }
 
   async listSession(workspacePath: string, sessionId: string): Promise<ReviewThread[]> {

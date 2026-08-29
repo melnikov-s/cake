@@ -228,6 +228,22 @@ function createDesktopClient(restoredPath?: string) {
       unreadSessionIds: [],
       trustedProjectPaths: [],
     })),
+    deleteSession: vi.fn(async () => ({
+      schemaVersion: 1 as const,
+      projects: [],
+      resolvedSessionIds: [],
+      resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
+      trustedProjectPaths: [],
+    })),
+    deleteCakeChatSession: vi.fn(async () => ({
+      schemaVersion: 1 as const,
+      projects: [],
+      resolvedSessionIds: [],
+      resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
+      trustedProjectPaths: [],
+    })),
     setSessionUnread: vi.fn(async () => ({
       schemaVersion: 1 as const,
       projects: [],
@@ -2448,6 +2464,33 @@ describe("ProjectWorkbenchStore", () => {
     expect(store.sessionRegistry.findSession(firstSessionId)).toBeUndefined();
     expect(store.sessionRegistry.findSession(secondSessionId)).toBeUndefined();
     expect(desktop.client.resolveSessions).not.toHaveBeenCalled();
+    root[Symbol.dispose]();
+  });
+
+  it("deletes a resolved project session from the catalog and registry", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+    root.sessionCatalogStore.replace([
+      {
+        id: snapshot.sessionId,
+        title: "Resolved work",
+        created: new Date(0).toISOString(),
+        modified: new Date(0).toISOString(),
+        messageCount: 1,
+        resolved: true,
+        unread: false,
+        workspacePath: snapshot.workspacePath,
+        workspaceName: "Project",
+      },
+    ]);
+
+    await store.sessionManagementStore.deleteSession(snapshot.sessionId);
+
+    expect(desktop.client.deleteSession).toHaveBeenCalledWith(snapshot.sessionId);
+    expect(root.sessionCatalogStore.find(snapshot.sessionId)).toBeUndefined();
+    expect(store.sessionRegistry.findSession(snapshot.sessionId)).toBeUndefined();
     root[Symbol.dispose]();
   });
 

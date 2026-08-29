@@ -73,7 +73,10 @@ export class AppShellStore extends Store<AppShellStoreProps> {
       this.pendingTraversal = undefined;
     const cursor = this.sessionHistoryCursor;
     const current = this.sessionHistory[cursor];
-    const currentRemoved = current !== undefined && removedIds.has(current.sessionId);
+    const activeConversationRemoved =
+      this.activeConversation !== undefined && removedIds.has(this.activeConversation.sessionId);
+    const currentRemoved =
+      activeConversationRemoved || (current !== undefined && removedIds.has(current.sessionId));
     const kept: SessionHistoryEntry[] = [];
     let keptBeforeCursor = 0;
     for (let index = 0; index < this.sessionHistory.length; index += 1) {

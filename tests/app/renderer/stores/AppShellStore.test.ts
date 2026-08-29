@@ -70,6 +70,10 @@ describe("AppShellStore session history", () => {
     });
     expect(shell.goBack()).toBeUndefined();
     expect(shell.goForward()).toBeUndefined();
+    expect(shell.removeSessionsFromHistory(["resolved"])).toEqual({
+      kind: "project-session",
+      sessionId: "a",
+    });
     shell[Symbol.dispose]();
   });
 

@@ -106,6 +106,14 @@ function createTestStore() {
       unreadSessionIds: [],
       trustedProjectPaths: [],
     })),
+    deleteSession: vi.fn(async (): Promise<ApplicationState> => ({
+      schemaVersion: 1 as const,
+      projects: [],
+      resolvedSessionIds: [],
+      resolvedCakeChatSessionIds: [],
+      unreadSessionIds: [],
+      trustedProjectPaths: [],
+    })),
   };
   const store = mount(
     createStore(GlobalChatStore, {
@@ -409,6 +417,42 @@ describe("GlobalChatStore", () => {
     expect(store.activeSession?.parts).toEqual([
       expect.objectContaining({ kind: "text", text: "Resolved Cake Chat prompt" }),
     ]);
+    store[Symbol.dispose]();
+  });
+
+  it("deletes a resolved Cake Chat from its collection", async () => {
+    const { store, port } = createTestStore();
+    await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
+    const now = new Date().toISOString();
+    store.receive({
+      type: "global-chat-snapshot-received",
+      snapshot: {
+        ...snapshot,
+        sessions: [
+          {
+            id: "global-1",
+            title: "Resolved work",
+            created: now,
+            modified: now,
+            messageCount: 1,
+            resolved: true,
+          },
+        ],
+      },
+    });
+    store.applyApplicationState({
+      schemaVersion: 1,
+      projects: [],
+      resolvedSessionIds: [],
+      resolvedCakeChatSessionIds: ["global-1"],
+      unreadSessionIds: [],
+      trustedProjectPaths: [],
+    });
+
+    await store.deleteSession("global-1");
+
+    expect(port.deleteSession).toHaveBeenCalledWith("global-1");
+    expect(store.summaries).toEqual([]);
     store[Symbol.dispose]();
   });
 

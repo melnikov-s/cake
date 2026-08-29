@@ -22,6 +22,8 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       showMoreSessions: fixture.showMoreSessions,
       setSessionResolved: fixture.setSessionResolved ?? vi.fn(),
       setCakeChatSessionResolved: fixture.setCakeChatSessionResolved ?? vi.fn(),
+      deleteSession: fixture.deleteSession ?? vi.fn(),
+      deleteCakeChatSession: fixture.deleteCakeChatSession ?? vi.fn(),
       setSessionUnread: fixture.setSessionUnread ?? vi.fn(),
       showSessionContextMenu: fixture.showSessionContextMenu ?? vi.fn(),
       resolvedLaneExpanded: fixture.resolvedLaneExpanded ?? true,
@@ -863,7 +865,7 @@ describe("Sidebar projects", () => {
       await Promise.resolve();
     });
 
-    expect(showSessionContextMenu).toHaveBeenCalledWith("session-1", 12, 34, false);
+    expect(showSessionContextMenu).toHaveBeenCalledWith("session-1", 12, 34, false, false);
     expect(container.querySelector<HTMLInputElement>('[aria-label="Session name"]')?.value).toBe(
       "Original title",
     );
@@ -903,12 +905,12 @@ describe("Sidebar projects", () => {
       await Promise.resolve();
     });
 
-    expect(showSessionContextMenu).toHaveBeenCalledWith("session-1", 12, 34, false);
+    expect(showSessionContextMenu).toHaveBeenCalledWith("session-1", 12, 34, false, false);
     expect(setSessionUnread).toHaveBeenCalledWith("session-1", true);
   });
 
-  it("marks an unread session read from the native session menu", async () => {
-    const showSessionContextMenu = vi.fn(async () => "mark-read" as const);
+  it("does not offer a mark-read action for an unread session", async () => {
+    const showSessionContextMenu = vi.fn(async () => undefined);
     const setSessionUnread = vi.fn();
     const store = {
       recentProjectPaths: ["/work/cake"],
@@ -940,8 +942,47 @@ describe("Sidebar projects", () => {
       await Promise.resolve();
     });
 
-    expect(showSessionContextMenu).toHaveBeenCalledWith("session-1", 12, 34, true);
-    expect(setSessionUnread).toHaveBeenCalledWith("session-1", false);
+    expect(showSessionContextMenu).toHaveBeenCalledWith("session-1", 12, 34, false, true);
+    expect(setSessionUnread).not.toHaveBeenCalled();
+  });
+
+  it("deletes a resolved project session from its native menu", async () => {
+    const showSessionContextMenu = vi.fn(async () => "delete" as const);
+    const deleteSession = vi.fn();
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: (_path: string, resolved: boolean) =>
+        resolved ? [{ id: "session-1", title: "Done", modified: new Date(0).toISOString() }] : [],
+      hasResolvedSessions: true,
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      sessionActivityTime: vi.fn(() => "Today"),
+      nameFromPath: () => "cake",
+      showMoreSessions: vi.fn(),
+      showSessionContextMenu,
+      deleteSession,
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
+    await act(async () => {
+      container
+        .querySelector<HTMLButtonElement>('[data-session-id="session-1"] .session-row')!
+        .dispatchEvent(
+          new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            clientX: 9,
+            clientY: 18,
+          }),
+        );
+      await Promise.resolve();
+    });
+
+    expect(showSessionContextMenu).toHaveBeenCalledWith("session-1", 9, 18, true, false);
+    expect(deleteSession).toHaveBeenCalledWith("session-1");
   });
 
   it("opens the native session menu and renames a Cake Chat", async () => {
@@ -985,7 +1026,7 @@ describe("Sidebar projects", () => {
       await Promise.resolve();
     });
 
-    expect(showSessionContextMenu).toHaveBeenCalledWith("cake-chat-1", 21, 43, undefined);
+    expect(showSessionContextMenu).toHaveBeenCalledWith("cake-chat-1", 21, 43, false, undefined);
     const input = container.querySelector<HTMLInputElement>('[aria-label="Session name"]')!;
     expect(input.value).toBe("Original Cake Chat");
     act(() => {

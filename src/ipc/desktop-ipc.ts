@@ -300,6 +300,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     sessionId: z.string().min(1).max(256),
     x: z.number().int().min(-1_000_000).max(1_000_000),
     y: z.number().int().min(-1_000_000).max(1_000_000),
+    resolved: z.boolean(),
     /** Omitted when the surface cannot mark sessions unread. */
     unread: z.boolean().optional(),
   }),
@@ -635,6 +636,14 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     workspacePath: z.string().min(1).max(4_096).optional(),
   }),
   z.object({
+    type: z.literal("delete-session"),
+    sessionId: z.string().min(1).max(256),
+  }),
+  z.object({
+    type: z.literal("delete-cake-chat-session"),
+    sessionId: z.string().min(1).max(256),
+  }),
+  z.object({
     type: z.literal("set-session-unread"),
     sessionId: z.string().min(1).max(256),
     unread: z.boolean(),
@@ -879,7 +888,7 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("session-context-menu-closed"),
-    action: z.enum(["rename", "mark-unread", "mark-read"]).optional(),
+    action: z.enum(["rename", "mark-unread", "resolve", "unresolve", "delete"]).optional(),
   }),
   z.object({
     type: z.literal("models-listed"),

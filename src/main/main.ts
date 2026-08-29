@@ -293,6 +293,40 @@ async function setProjectSessionResolution(
   broadcast({ type: "application-state-changed", state: applicationModel.snapshot() });
 }
 
+async function deleteCakeChatSession(sessionId: string) {
+  if (!applicationModel.resolvedCakeChatSessionIds.includes(sessionId))
+    throw new Error("Only resolved Cake Chat sessions can be deleted");
+  await sessionArchive.deleteResolved(sessionId, {
+    cwd: homedir(),
+    activeRoot: cakePaths.piGlobalChatSessions,
+    resolvedRoot: cakePaths.piGlobalChatResolvedSessions,
+    direct: true,
+  });
+  applicationModel.setCakeChatSessionResolved(sessionId, false);
+  await persistApplicationState();
+  broadcast({ type: "application-state-changed", state: applicationModel.snapshot() });
+}
+
+async function deleteProjectSession(sessionId: string) {
+  if (!applicationModel.resolvedSessionIds.includes(sessionId))
+    throw new Error("Only resolved project sessions can be deleted");
+  const workspacePath = await resolveSessionWorkspacePath(sessionId);
+  await Promise.all([
+    artifactRepository.deleteSession(workspacePath, sessionId),
+    reviewRepository.deleteSession(workspacePath, sessionId),
+  ]);
+  await sessionArchive.deleteResolved(sessionId, {
+    cwd: workspacePath,
+    activeRoot: cakePaths.piSessions,
+    resolvedRoot: cakePaths.piResolvedSessions,
+  });
+  sessionWorkspacePaths.delete(sessionId);
+  applicationModel.setSessionsResolved([sessionId], false);
+  applicationModel.setSessionUnread(sessionId, false);
+  await persistApplicationState();
+  broadcast({ type: "application-state-changed", state: applicationModel.snapshot() });
+}
+
 async function restoreCakeChatSessionForUse(sessionId: string) {
   if (applicationModel.resolvedCakeChatSessionIds.includes(sessionId))
     await setCakeChatSessionResolution(sessionId, false);
@@ -1025,36 +1059,48 @@ async function handleCakeRequest(
   }
   if (request.type === "show-session-context-menu") {
     if (!owner) return desktopResponseSchema.parse({ type: "session-context-menu-closed" });
-    const action = await new Promise<"rename" | "mark-unread" | "mark-read" | undefined>(
-      (resolve) => {
-        let completed = false;
-        const finish = (selected?: "rename" | "mark-unread" | "mark-read") => {
-          if (completed) return;
-          completed = true;
-          resolve(selected);
-        };
-        Menu.buildFromTemplate([
-          { label: "Rename", click: () => finish("rename") },
-          ...(request.unread === undefined
-            ? []
-            : [
-                {
-                  label: request.unread ? "Mark as Read" : "Mark as Unread",
-                  click: () => finish(request.unread ? "mark-read" : "mark-unread"),
-                },
-              ]),
-          {
-            label: "Copy Session ID",
-            click: () => clipboard.writeText(request.sessionId),
-          },
-        ]).popup({
-          window: owner,
-          x: request.x,
-          y: request.y,
-          callback: () => finish(),
-        });
-      },
-    );
+    type SessionMenuAction = "rename" | "mark-unread" | "resolve" | "unresolve" | "delete";
+    const action = await new Promise<SessionMenuAction | undefined>((resolve) => {
+      let completed = false;
+      const finish = (selected?: SessionMenuAction) => {
+        if (completed) return;
+        completed = true;
+        resolve(selected);
+      };
+      Menu.buildFromTemplate(
+        request.resolved
+          ? [
+              { label: "Unresolve", click: () => finish("unresolve") },
+              {
+                label: "Copy Session ID",
+                click: () => clipboard.writeText(request.sessionId),
+              },
+              { type: "separator" },
+              { label: "Delete", click: () => finish("delete") },
+            ]
+          : [
+              { label: "Rename", click: () => finish("rename") },
+              ...(request.unread === false
+                ? [
+                    {
+                      label: "Mark as Unread",
+                      click: () => finish("mark-unread"),
+                    } as const,
+                  ]
+                : []),
+              {
+                label: "Copy Session ID",
+                click: () => clipboard.writeText(request.sessionId),
+              },
+              { label: "Resolve", click: () => finish("resolve") },
+            ],
+      ).popup({
+        window: owner,
+        x: request.x,
+        y: request.y,
+        callback: () => finish(),
+      });
+    });
     return desktopResponseSchema.parse({ type: "session-context-menu-closed", action });
   }
   if (request.type === "set-session-unread") {
@@ -1835,6 +1881,20 @@ async function handleCakeRequest(
   }
   if (request.type === "resolve-cake-chat-session") {
     await setCakeChatSessionResolution(request.sessionId, request.resolved);
+    return desktopResponseSchema.parse({
+      type: "application-state-updated",
+      state: applicationModel.snapshot(),
+    });
+  }
+  if (request.type === "delete-session") {
+    await deleteProjectSession(request.sessionId);
+    return desktopResponseSchema.parse({
+      type: "application-state-updated",
+      state: applicationModel.snapshot(),
+    });
+  }
+  if (request.type === "delete-cake-chat-session") {
+    await deleteCakeChatSession(request.sessionId);
     return desktopResponseSchema.parse({
       type: "application-state-updated",
       state: applicationModel.snapshot(),

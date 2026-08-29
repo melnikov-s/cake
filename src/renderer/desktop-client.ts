@@ -186,8 +186,9 @@ export interface DesktopClient {
     sessionId: string;
     x: number;
     y: number;
+    resolved: boolean;
     unread?: boolean;
-  }): Promise<"rename" | "mark-unread" | "mark-read" | undefined>;
+  }): Promise<"rename" | "mark-unread" | "resolve" | "unresolve" | "delete" | undefined>;
   listModels(): Promise<ModelOption[]>;
   getHomeDirectory(): Promise<string>;
   getCustomizationState(): Promise<CustomizationState>;
@@ -405,6 +406,8 @@ export interface DesktopClient {
     resolved: boolean,
     workspacePath?: string,
   ): Promise<ApplicationState>;
+  deleteSession(sessionId: string): Promise<ApplicationState>;
+  deleteCakeChatSession(sessionId: string): Promise<ApplicationState>;
   setSessionUnread(sessionId: string, unread: boolean): Promise<ApplicationState>;
   resolveCakeChatSession(sessionId: string, resolved: boolean): Promise<ApplicationState>;
   restartPi(path: string): Promise<void>;
@@ -1193,6 +1196,18 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       });
       if (response.type !== "application-state-updated")
         throw new Error("Cake could not resolve the sessions");
+      return response.state;
+    },
+    async deleteSession(sessionId) {
+      const response = await bridge.request({ type: "delete-session", sessionId });
+      if (response.type !== "application-state-updated")
+        throw new Error("Cake could not delete the session");
+      return response.state;
+    },
+    async deleteCakeChatSession(sessionId) {
+      const response = await bridge.request({ type: "delete-cake-chat-session", sessionId });
+      if (response.type !== "application-state-updated")
+        throw new Error("Cake could not delete the Cake Chat session");
       return response.state;
     },
     async setSessionUnread(sessionId, unread) {

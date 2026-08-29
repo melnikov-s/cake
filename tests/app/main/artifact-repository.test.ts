@@ -44,6 +44,8 @@ describe("ArtifactRepository", () => {
       (await new ArtifactRepository(root).listSession("/project", "session-1"))[0]?.artifact,
     ).toMatchObject({ id: "table-1", revision: 2 });
     expect(await repository.exportMarkdown("/project", "session-1")).toContain("| Score |");
+    await repository.deleteSession("/project", "session-1");
+    expect(await repository.listSession("/project", "session-1")).toEqual([]);
   });
 
   it("serializes revision validation and writes for the same artifact", async () => {

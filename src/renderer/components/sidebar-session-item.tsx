@@ -25,6 +25,7 @@ export interface SidebarSessionItemProps {
   onOpen(sessionId: string): void;
   onRename(sessionId: string, name: string): void;
   onResolve(sessionId: string, resolved: boolean): void;
+  onDelete(sessionId: string): void;
   /** Omitted on surfaces without unread support; enables the context-menu toggle. */
   onMarkUnread?(sessionId: string, unread: boolean): void;
 }
@@ -40,6 +41,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   onOpen,
   onRename,
   onResolve,
+  onDelete,
   onMarkUnread,
 }: SidebarSessionItemProps) {
   const [renamingValue, setRenamingValue] = useState<string | null>(null);
@@ -96,12 +98,15 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                   session.id,
                   event.clientX,
                   event.clientY,
+                  resolved,
                   onMarkUnread ? unread : undefined,
                 )
                 .then((action) => {
                   if (action === "rename") setRenamingValue(session.title);
                   else if (action === "mark-unread") onMarkUnread?.(session.id, true);
-                  else if (action === "mark-read") onMarkUnread?.(session.id, false);
+                  else if (action === "resolve") onResolve(session.id, true);
+                  else if (action === "unresolve") onResolve(session.id, false);
+                  else if (action === "delete") onDelete(session.id);
                 });
             }}
           >

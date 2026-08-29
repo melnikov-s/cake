@@ -700,7 +700,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         this.activeOpenTarget.sessionId &&
         this.activeOpenTarget.sessionId !== event.snapshot.sessionId
       ) {
-        this.sessionRegistry.discardNewSession(this.activeOpenTarget.sessionId);
+        this.sessionRegistry.removeSession(this.activeOpenTarget.sessionId);
       }
       if (this.activeOpenExpectsEmpty && event.snapshot.parts.length > 0) {
         this.activeOpenOperationId = undefined;

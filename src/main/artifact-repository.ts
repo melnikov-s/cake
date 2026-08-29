@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import {
@@ -82,6 +82,10 @@ export class ArtifactRepository {
       await this.writer.write(key, `${JSON.stringify(toMetadata(record), null, 2)}\n`);
       return record;
     });
+  }
+
+  async deleteSession(workspacePath: string, sessionId: string) {
+    await rm(this.recordDirectory(workspacePath, sessionId), { recursive: true, force: true });
   }
 
   async get(

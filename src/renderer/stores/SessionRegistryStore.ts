@@ -269,7 +269,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     this.pendingConfigurationsBySession[sessionId] = configuration;
   }
 
-  discardNewSession(sessionId: string) {
+  removeSession(sessionId: string) {
     const index = this.targets.findIndex((target) => target.sessionId === sessionId);
     if (index >= 0) this.targets.splice(index, 1);
     this.sessionsById.delete(sessionId);

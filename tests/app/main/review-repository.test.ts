@@ -76,6 +76,9 @@ describe("ReviewRepository", () => {
     await repository.resolve("/project", "parent", created.id, true);
     context = await readFile(repository.reviewContextPath("/project", "parent"), "utf8");
     expect(context).toContain(`${created.id} · resolved`);
+
+    await repository.deleteSession("/project", "parent");
+    expect(await repository.listSession("/project", "parent")).toEqual([]);
   });
 
   it("persists only review metadata and projects chat parts from the referenced Pi session", async () => {

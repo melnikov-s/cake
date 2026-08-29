@@ -1,4 +1,4 @@
-import { access, mkdir, rename } from "node:fs/promises";
+import { access, mkdir, rename, rm } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { cakeWorkspaceSessionDirectory, findSessionFile } from "../agent/session-discovery";
 
@@ -17,6 +17,17 @@ export class SessionArchiveRepository {
 
   async restore(sessionId: string, location: SessionArchiveLocation) {
     return this.move(sessionId, location, false);
+  }
+
+  async deleteResolved(sessionId: string, location: SessionArchiveLocation) {
+    const source = await findSessionFile(
+      location.cwd,
+      sessionId,
+      location.resolvedRoot,
+      location.direct,
+    );
+    if (!source) throw new Error(`Cake could not find resolved session ${sessionId}`);
+    await rm(source);
   }
 
   private async move(

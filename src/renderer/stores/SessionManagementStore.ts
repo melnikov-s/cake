@@ -8,7 +8,7 @@ import type { SessionRegistryStore } from "./SessionRegistryStore";
 export interface SessionManagementStoreProps {
   client: Pick<
     DesktopClient,
-    "renameSession" | "resolveSession" | "resolveSessions" | "setSessionUnread"
+    "renameSession" | "resolveSession" | "resolveSessions" | "deleteSession" | "setSessionUnread"
   >;
   operations: SessionOperationCoordinatorStore;
   catalog: SessionCatalogStore;
@@ -17,7 +17,7 @@ export interface SessionManagementStoreProps {
   reportError(error: unknown): void;
 }
 
-/** Owns session rename rollback, resolved state, and resolution-time worktree cleanup. */
+/** Owns session rename rollback, resolution, deletion, and resolution-time worktree cleanup. */
 export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   private readonly pendingRenames: Record<string, { sessionId: string; previousTitle: string }> =
     observable({});
@@ -61,12 +61,24 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     if (!this.props.catalog.find(sessionId) || this.signal.aborted) return;
     if (this.props.registry.setDraftSessionResolved(sessionId, resolved)) return;
     if (resolved && this.props.registry.isTemporarySession(sessionId)) {
-      this.props.registry.discardNewSession(sessionId);
+      this.props.registry.removeSession(sessionId);
       return;
     }
     try {
       const state = await this.props.client.resolveSession(sessionId, resolved);
       if (!this.signal.aborted) this.props.applyApplicationState(state);
+    } catch (error) {
+      if (!this.signal.aborted) this.props.reportError(error);
+    }
+  }
+
+  async deleteSession(sessionId: string) {
+    if (!this.props.catalog.find(sessionId)?.resolved || this.signal.aborted) return;
+    try {
+      const state = await this.props.client.deleteSession(sessionId);
+      if (this.signal.aborted) return;
+      this.props.registry.removeSession(sessionId);
+      this.props.applyApplicationState(state);
     } catch (error) {
       if (!this.signal.aborted) this.props.reportError(error);
     }
@@ -93,7 +105,7 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
         throw new Error(`Cake could not find session ${sessionId}`);
       if (this.props.registry.setDraftSessionResolved(sessionId, resolved)) continue;
       if (resolved && this.props.registry.isTemporarySession(sessionId)) {
-        this.props.registry.discardNewSession(sessionId);
+        this.props.registry.removeSession(sessionId);
         continue;
       }
       persistedIds.push(sessionId);

@@ -93,6 +93,7 @@ export interface GlobalChatPort {
   setFastMode(input: { operationId: string; sessionId: string; enabled: boolean }): Promise<void>;
   rename(input: { operationId: string; sessionId: string; name: string }): Promise<void>;
   resolveSession(sessionId: string, resolved: boolean): Promise<ApplicationState>;
+  deleteSession(sessionId: string): Promise<ApplicationState>;
 }
 
 export interface GlobalChatStoreProps {
@@ -429,6 +430,20 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     return this.enqueueResolution([sessionId], resolved, false).then(() => undefined);
   }
 
+  async deleteSession(sessionId: string) {
+    if (!this.isSessionResolved(sessionId) || this.signal.aborted) return;
+    try {
+      await this.resolutionQueue;
+      const state = await this.port.deleteSession(sessionId);
+      if (this.signal.aborted) return;
+      this.applyApplicationState(state);
+      this.removeSession(sessionId);
+      if (this.selectedSessionId === sessionId) this.selectedSessionId = undefined;
+    } catch (error) {
+      if (!this.signal.aborted) this.reportError(error);
+    }
+  }
+
   isSessionResolved(sessionId: string) {
     return this.resolvedSessionIds.includes(sessionId);
   }
@@ -614,20 +629,26 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   }
 
   private discardPendingSession(sessionId: string) {
-    const targetIndex = this.targets.indexOf(sessionId);
-    if (targetIndex >= 0) this.targets.splice(targetIndex, 1);
-    const summaryIndex = this.summaries.findIndex((summary) => summary.id === sessionId);
-    if (summaryIndex >= 0) this.summaries.splice(summaryIndex, 1);
+    this.removeSession(sessionId);
     this.pendingSessionId = undefined;
     this.pendingConfiguration = undefined;
     this.pendingName = undefined;
     this.pendingDraftPrompt = undefined;
-    this.props.persist?.();
     if (this.selectedSessionId === sessionId) {
       const next = this.loadedSessions[0];
       if (next) this.selectedSessionId = next.sessionId;
       else this.prepareNewSession();
     }
+  }
+
+  private removeSession(sessionId: string) {
+    const targetIndex = this.targets.indexOf(sessionId);
+    if (targetIndex >= 0) this.targets.splice(targetIndex, 1);
+    const summaryIndex = this.summaries.findIndex((summary) => summary.id === sessionId);
+    if (summaryIndex >= 0) this.summaries.splice(summaryIndex, 1);
+    this.pendingPartsBySession.delete(sessionId);
+    this.pendingStreamingBySession.delete(sessionId);
+    this.props.persist?.();
   }
 
   private replaceSummaries(summaries: readonly SessionSummary[]) {

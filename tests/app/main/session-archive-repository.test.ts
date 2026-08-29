@@ -62,4 +62,23 @@ describe("SessionArchiveRepository", () => {
       expect.objectContaining({ id: "session-1", resolved: false }),
     ]);
   });
+
+  it("permanently deletes only a resolved transcript", async () => {
+    const location = await fixture();
+    const repository = new SessionArchiveRepository();
+
+    await expect(repository.deleteResolved("session-1", location)).rejects.toThrow(
+      "Cake could not find resolved session session-1",
+    );
+    await repository.resolve("session-1", location);
+    await expect(repository.deleteResolved("session-1", location)).resolves.toBeUndefined();
+    await expect(repository.deleteResolved("session-1", location)).rejects.toThrow(
+      "Cake could not find resolved session session-1",
+    );
+    expect(
+      await listWorkspaceSessions(location.cwd, location.activeRoot, {
+        resolvedSessionDir: location.resolvedRoot,
+      }),
+    ).toEqual([]);
+  });
 });

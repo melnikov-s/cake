@@ -212,6 +212,26 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       await this.forgetResolvedSessions([sessionId]);
   }
 
+  private async deleteProjectSession(sessionId: string) {
+    const session = this.sessionCatalogStore.find(sessionId);
+    const wasSelected = this.appShellStore.activeConversation?.sessionId === sessionId;
+    await this.projectWorkbenchStore.sessionManagementStore.deleteSession(sessionId);
+    if (!this.sessionCatalogStore.find(sessionId))
+      await this.forgetResolvedSessions(
+        [sessionId],
+        wasSelected ? session?.workspacePath : undefined,
+      );
+  }
+
+  private async deleteCakeChatSession(sessionId: string) {
+    const wasSelected = this.appShellStore.activeConversation?.sessionId === sessionId;
+    await this.globalChatStore.deleteSession(sessionId);
+    if (this.globalChatStore.summaries.some((session) => session.id === sessionId)) return;
+    await this.forgetResolvedSessions([sessionId]);
+    if (wasSelected && this.appShellStore.activeConversation?.sessionId === sessionId)
+      this.showGlobalChat();
+  }
+
   private async resolveCakeChatSession(sessionId: string, resolved: boolean) {
     await this.globalChatStore.resolveSession(sessionId, resolved);
     if (!resolved) return;
@@ -324,6 +344,8 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       setSessionResolved: (sessionId, resolved) => this.resolveProjectSession(sessionId, resolved),
       setCakeChatSessionResolved: (sessionId, resolved) =>
         this.resolveCakeChatSession(sessionId, resolved),
+      deleteSession: (sessionId) => this.deleteProjectSession(sessionId),
+      deleteCakeChatSession: (sessionId) => this.deleteCakeChatSession(sessionId),
       setSessionUnread: (sessionId, unread) =>
         this.projectWorkbenchStore.sessionManagementStore.setSessionUnread(sessionId, unread),
     });
@@ -439,6 +461,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         rename: (input) => this.client.renameGlobalChat(input),
         resolveSession: (sessionId, resolved) =>
           this.client.resolveCakeChatSession(sessionId, resolved),
+        deleteSession: (sessionId) => this.client.deleteCakeChatSession(sessionId),
       },
       tools: () => this.appControl.listTools(),
       modelPresets: () => this.settingsStore.modelPresets.presets,
