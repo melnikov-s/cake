@@ -188,6 +188,12 @@ export interface DesktopClient {
     resolved: boolean;
     unread?: boolean;
   }): Promise<"rename" | "mark-unread" | "resolve" | "unresolve" | "delete" | undefined>;
+  showProjectContextMenu(input: {
+    path: string;
+    x: number;
+    y: number;
+    resolvedWorktreeCount: number;
+  }): Promise<"remove-project" | "delete-resolved-worktrees" | undefined>;
   listModels(): Promise<ModelOption[]>;
   getHomeDirectory(): Promise<string>;
   getCustomizationState(): Promise<CustomizationState>;
@@ -398,7 +404,7 @@ export interface DesktopClient {
   }): Promise<void>;
   registerProject(path: string, name: string): Promise<ApplicationState>;
   renameProject(path: string, name: string): Promise<ApplicationState>;
-  removeProject(path: string): Promise<ApplicationState>;
+  removeProject(path: string, deleteSessions: boolean): Promise<ApplicationState>;
   resolveSession(sessionId: string, resolved: boolean): Promise<ApplicationState>;
   resolveSessions(
     sessionIds: readonly string[],
@@ -722,6 +728,12 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       const response = await bridge.request({ type: "show-session-context-menu", ...input });
       if (response.type !== "session-context-menu-closed")
         throw new Error("Cake received an invalid session context menu response");
+      return response.action;
+    },
+    async showProjectContextMenu(input) {
+      const response = await bridge.request({ type: "show-project-context-menu", ...input });
+      if (response.type !== "project-context-menu-closed")
+        throw new Error("Cake received an invalid project context menu response");
       return response.action;
     },
     async listModels() {
@@ -1168,8 +1180,8 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         throw new Error("Cake could not rename the project");
       return response.state;
     },
-    async removeProject(path) {
-      const response = await bridge.request({ type: "remove-project", path });
+    async removeProject(path, deleteSessions) {
+      const response = await bridge.request({ type: "remove-project", path, deleteSessions });
       if (response.type !== "application-state-updated")
         throw new Error("Cake could not remove the project");
       return response.state;

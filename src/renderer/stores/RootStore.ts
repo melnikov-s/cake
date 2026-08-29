@@ -199,6 +199,27 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     this.showSettings();
   }
 
+  async removeProject(path: string, deleteSessions: boolean) {
+    const sessionIds = this.sessionCatalogStore.projectSessions(path).map((session) => session.id);
+    const removed = await this.projectWorkbenchStore.removeProject(path, deleteSessions);
+    if (!removed) return false;
+    const target = this.appShellStore.removeSessionsFromHistory(sessionIds);
+    if (deleteSessions) {
+      for (const sessionId of sessionIds) {
+        this.sessionRegistry.removeSession(sessionId);
+        this.sessionCatalogStore.remove(sessionId);
+      }
+    }
+    if (target) await this.navigateToHistoryEntry(target);
+    else if (
+      this.appShellStore.selection.kind === "project-session" &&
+      sessionIds.includes(this.appShellStore.selection.sessionId)
+    )
+      this.showEmptyWorkbench();
+    this.windowPersistence.schedule();
+    return true;
+  }
+
   private showEmptyWorkbench() {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.appShellStore.showWorkbench();

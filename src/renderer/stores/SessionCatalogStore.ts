@@ -55,6 +55,21 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
     return this.indexedByProject.get(workspacePath) ?? [];
   }
 
+  /** Landed worktrees whose sessions have all been resolved and are safe to clean up. */
+  resolvedWorktrees(projectPath: string) {
+    const sessionsByWorktree = new Map<string, GlobalSessionSummary[]>();
+    for (const session of this.projectSessions(projectPath)) {
+      const record = session.managedWorktree;
+      if (!record || record.state !== "landed") continue;
+      const sessions = sessionsByWorktree.get(record.worktreePath) ?? [];
+      sessions.push(session);
+      sessionsByWorktree.set(record.worktreePath, sessions);
+    }
+    return [...sessionsByWorktree.values()]
+      .filter((sessions) => sessions.length > 0 && sessions.every((session) => session.resolved))
+      .map((sessions) => sessions[0]!.managedWorktree!);
+  }
+
   replace(sessions: GlobalSessionSummary[]) {
     this.assertUniqueIds(sessions);
     this.sessions.splice(0, this.sessions.length, ...sessions);

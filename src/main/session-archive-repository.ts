@@ -30,6 +30,26 @@ export class SessionArchiveRepository {
     await rm(source);
   }
 
+  /** Permanently deletes a transcript from either the active or resolved namespace. */
+  async delete(sessionId: string, location: SessionArchiveLocation) {
+    const active = await findSessionFile(
+      location.cwd,
+      sessionId,
+      location.activeRoot,
+      location.direct,
+    );
+    const resolved = await findSessionFile(
+      location.cwd,
+      sessionId,
+      location.resolvedRoot,
+      location.direct,
+    );
+    if (active && resolved) throw new Error(`Session ${sessionId} exists in both namespaces`);
+    const source = active ?? resolved;
+    if (!source) throw new Error(`Cake could not find session ${sessionId}`);
+    await rm(source);
+  }
+
   private async move(
     sessionId: string,
     location: SessionArchiveLocation,

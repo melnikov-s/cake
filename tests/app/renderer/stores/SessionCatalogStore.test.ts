@@ -115,6 +115,52 @@ describe("SessionCatalogStore", () => {
     store[Symbol.dispose]();
   });
 
+  it("finds only landed worktrees whose sessions are all resolved", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    const landedWorktree = {
+      projectPath: "/project",
+      worktreePath: "/landed-worktree",
+      branch: "agent/landed",
+      baseBranch: "main",
+      state: "landed" as const,
+      createdAt: "2026-08-16T12:00:00.000Z",
+    };
+    const activeWorktree = {
+      ...landedWorktree,
+      worktreePath: "/active-worktree",
+      branch: "agent/active",
+      state: "active" as const,
+    };
+    store.replace([
+      {
+        ...summary("resolved-one", "2026-08-16T12:00:00.000Z"),
+        resolved: true,
+        workspacePath: landedWorktree.worktreePath,
+        projectPath: "/project",
+        managedWorktree: landedWorktree,
+      },
+      {
+        ...summary("resolved-two", "2026-08-15T12:00:00.000Z"),
+        resolved: true,
+        workspacePath: landedWorktree.worktreePath,
+        projectPath: "/project",
+        managedWorktree: landedWorktree,
+      },
+      {
+        ...summary("active-state", "2026-08-14T12:00:00.000Z"),
+        resolved: true,
+        workspacePath: activeWorktree.worktreePath,
+        projectPath: "/project",
+        managedWorktree: activeWorktree,
+      },
+    ]);
+
+    expect(store.resolvedWorktrees("/project")).toEqual([landedWorktree]);
+    store.setResolved("resolved-two", false);
+    expect(store.resolvedWorktrees("/project")).toEqual([]);
+    store[Symbol.dispose]();
+  });
+
   it("indexes sessions by ID and project without duplicating session records", () => {
     const store = mount(createStore(SessionCatalogStore));
     store.replace([

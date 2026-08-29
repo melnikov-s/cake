@@ -28,6 +28,7 @@ export const Sidebar = observer(function Sidebar({
   onCreateCakeChat,
   onOpenSession,
   onCreateSession,
+  onRemoveProject,
   onChooseProject,
   onGoBack,
   onGoForward,
@@ -43,6 +44,7 @@ export const Sidebar = observer(function Sidebar({
   onCreateCakeChat(): void;
   onOpenSession(sessionId: string): void;
   onCreateSession(workspacePath: string): void;
+  onRemoveProject(path: string, deleteSessions: boolean): Promise<boolean>;
   onChooseProject(): void;
   onGoBack(): void;
   onGoForward(): void;
@@ -106,6 +108,7 @@ export const Sidebar = observer(function Sidebar({
               resolved={false}
               onCreateSession={onCreateSession}
               onOpenSession={onOpenSession}
+              onRemoveProject={onRemoveProject}
             />
           ))
         )}
@@ -149,6 +152,7 @@ export const Sidebar = observer(function Sidebar({
                     resolved
                     onCreateSession={onCreateSession}
                     onOpenSession={onOpenSession}
+                    onRemoveProject={onRemoveProject}
                   />
                 ))}
               </div>

@@ -32,8 +32,10 @@ export interface ProjectWorkbenchStoreProps {
     DesktopClient,
     | "abort"
     | "chooseProject"
+    | "discardWorktree"
     | "getHomeDirectory"
     | "inspectWorkspace"
+    | "listSessions"
     | "loadSession"
     | "openWorkspace"
     | "registerProject"
@@ -339,18 +341,39 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     }
   }
 
-  async removeProject(path: string) {
+  async removeProject(path: string, deleteSessions: boolean) {
     try {
-      const state = await this.client.removeProject(path);
-      if (this.signal.aborted) return;
+      const state = await this.client.removeProject(path, deleteSessions);
+      if (this.signal.aborted) return false;
       this.applyApplicationState(state);
       if (this.projectPath === path) {
         this.projectPath = undefined;
         this.selectedSessionId = undefined;
       }
       this.props.persistence().schedule();
+      return true;
     } catch (error) {
       if (!this.signal.aborted) this.setError(error);
+      return false;
+    }
+  }
+
+  async deleteResolvedWorktrees(path: string) {
+    const records = this.props.catalog.resolvedWorktrees(path);
+    try {
+      for (const record of records) {
+        await this.client.discardWorktree({
+          operationId: crypto.randomUUID(),
+          workspacePath: record.worktreePath,
+          keepBranch: false,
+        });
+        if (this.signal.aborted) return false;
+        this.props.catalog.noteManagedWorktree({ ...record, state: "discarded" });
+      }
+      return true;
+    } catch (error) {
+      if (!this.signal.aborted) this.setError(error, "Deleting resolved worktrees");
+      return false;
     }
   }
 
@@ -429,14 +452,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.commandPaneStore.dismiss();
     this.props.persistence().schedule();
     session.composerStore.requestFocus();
-    void this.client
-      .registerProject(path, this.props.projects.nameFromPath(path))
-      .then((state) => {
-        if (!this.signal.aborted) this.applyApplicationState(state);
-      })
-      .catch((error) => {
-        if (!this.signal.aborted) this.setError(error);
-      });
+    void this.refreshRegisteredProject(path);
   }
 
   async openSession(sessionId: string) {
@@ -561,15 +577,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         configuration: newSession ? this.props.defaultConfiguration?.() : undefined,
       });
       if (this.signal.aborted || revision !== this.openRevision) return;
-      void this.client
-        .registerProject(path, this.props.projects.nameFromPath(path))
-        .then((state) => {
-          if (!this.signal.aborted && revision === this.openRevision)
-            this.applyApplicationState(state);
-        })
-        .catch((error) => {
-          if (!this.signal.aborted && revision === this.openRevision) this.setError(error);
-        });
+      void this.refreshRegisteredProject(path, revision);
     } catch (error) {
       if (this.signal.aborted) return;
       if (revision === this.openRevision) this.setError(error);
@@ -579,6 +587,31 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         this.activeOpenExpectsEmpty = false;
       }
       this.finishOperation(operationId);
+    }
+  }
+
+  private async refreshRegisteredProject(path: string, openRevision?: number) {
+    const shouldRefreshSessions = !this.props.projects.find(path);
+    try {
+      const state = await this.client.registerProject(path, this.props.projects.nameFromPath(path));
+      if (this.signal.aborted || (openRevision !== undefined && openRevision !== this.openRevision))
+        return;
+      this.applyApplicationState(state);
+      if (!shouldRefreshSessions) return;
+      const sessionIndex = await this.client.listSessions();
+      if (this.signal.aborted || (openRevision !== undefined && openRevision !== this.openRevision))
+        return;
+      const listedIds = new Set(sessionIndex.sessions.map((session) => session.id));
+      const retainedProjectSessions = this.props.catalog
+        .projectSessions(path)
+        .filter((session) => !listedIds.has(session.id));
+      this.props.catalog.replace([...sessionIndex.sessions, ...retainedProjectSessions]);
+    } catch (error) {
+      if (
+        !this.signal.aborted &&
+        (openRevision === undefined || openRevision === this.openRevision)
+      )
+        this.setError(error);
     }
   }
 

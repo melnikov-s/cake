@@ -37,6 +37,7 @@ function createDesktopClient(restoredPath?: string) {
     rewordComposerSelection: vi.fn(async ({ selection }) => selection),
     generateSessionTitle: vi.fn(async () => undefined),
     showSessionContextMenu: vi.fn(async () => undefined),
+    showProjectContextMenu: vi.fn(async () => undefined),
     listModels: vi.fn(async () => [
       {
         provider: "fixture-provider",

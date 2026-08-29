@@ -25,6 +25,7 @@ import {
   type WindowViewState,
 } from "../ipc/session-contract";
 import type { SourceLocation } from "../ipc/source-location";
+import type { WorktreeRecord } from "../ipc/worktree-contract";
 import {
   findSessionFile,
   forkWorkspaceSession,
@@ -326,11 +327,48 @@ async function deleteProjectSession(sessionId: string) {
     activeRoot: cakePaths.piSessions,
     resolvedRoot: cakePaths.piResolvedSessions,
   });
+  forgetProjectSession(sessionId);
+  await persistApplicationState();
+  broadcast({ type: "application-state-changed", state: applicationModel.snapshot() });
+}
+
+function forgetProjectSession(sessionId: string) {
   sessionWorkspacePaths.delete(sessionId);
   applicationModel.setSessionsResolved([sessionId], false);
   applicationModel.setSessionUnread(sessionId, false);
-  await persistApplicationState();
-  broadcast({ type: "application-state-changed", state: applicationModel.snapshot() });
+  applicationModel.setSessionFastMode(sessionId, false);
+}
+
+async function deleteProjectSessions(projectPath: string, records: readonly WorktreeRecord[]) {
+  const workspacePaths = [
+    projectPath,
+    ...records
+      .filter((record) => record.projectPath === projectPath)
+      .map((record) => record.worktreePath),
+  ];
+  const sessionsByWorkspace = await Promise.all(
+    workspacePaths.map(async (workspacePath) => ({
+      workspacePath,
+      sessions: await listWorkspaceSessions(workspacePath, cakePaths.piSessions, {
+        resolvedSessionDir: cakePaths.piResolvedSessions,
+      }),
+    })),
+  );
+  for (const { workspacePath, sessions } of sessionsByWorkspace) {
+    for (const session of sessions) {
+      await piHosts.get(workspacePath)?.driver.releaseSessionForArchive(session.id);
+      await Promise.all([
+        artifactRepository.deleteSession(workspacePath, session.id),
+        reviewRepository.deleteSession(workspacePath, session.id),
+      ]);
+      await sessionArchive.delete(session.id, {
+        cwd: workspacePath,
+        activeRoot: cakePaths.piSessions,
+        resolvedRoot: cakePaths.piResolvedSessions,
+      });
+      forgetProjectSession(session.id);
+    }
+  }
 }
 
 async function restoreCakeChatSessionForUse(sessionId: string) {
@@ -1042,6 +1080,35 @@ async function handleCakeRequest(
       if (surfaceIds.size === 0) fullscreenSurfaces.delete(event.sender.id);
     }
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  if (request.type === "show-project-context-menu") {
+    if (!owner) return desktopResponseSchema.parse({ type: "project-context-menu-closed" });
+    type ProjectMenuAction = "remove-project" | "delete-resolved-worktrees";
+    const action = await new Promise<ProjectMenuAction | undefined>((resolve) => {
+      let completed = false;
+      const finish = (selected?: ProjectMenuAction) => {
+        if (completed) return;
+        completed = true;
+        resolve(selected);
+      };
+      Menu.buildFromTemplate([
+        { label: "Copy Project Path", click: () => clipboard.writeText(request.path) },
+        { type: "separator" },
+        {
+          label: `Delete Resolved Worktrees${request.resolvedWorktreeCount > 0 ? ` (${request.resolvedWorktreeCount})` : ""}`,
+          enabled: request.resolvedWorktreeCount > 0,
+          click: () => finish("delete-resolved-worktrees"),
+        },
+        { type: "separator" },
+        { label: "Remove Project…", click: () => finish("remove-project") },
+      ]).popup({
+        window: owner,
+        x: request.x,
+        y: request.y,
+        callback: () => finish(),
+      });
+    });
+    return desktopResponseSchema.parse({ type: "project-context-menu-closed", action });
   }
   if (request.type === "show-session-context-menu") {
     if (!owner) return desktopResponseSchema.parse({ type: "session-context-menu-closed" });
@@ -1790,13 +1857,16 @@ async function handleCakeRequest(
   if (request.type === "register-project") {
     if (!allowedProjectPaths.has(request.path))
       throw new Error("Project path was not selected by the user");
+    const worktreeRecords = await worktrees.records();
     // Managed worktrees belong to their parent project; never register them as projects.
-    if ((await worktrees.records()).some((entry) => entry.worktreePath === request.path))
+    if (worktreeRecords.some((entry) => entry.worktreePath === request.path))
       return desktopResponseSchema.parse({
         type: "application-state-updated",
         state: applicationModel.snapshot(),
       });
     applicationModel.upsertProject(request.path, request.name);
+    for (const record of worktreeRecords)
+      if (record.projectPath === request.path) allowedProjectPaths.add(record.worktreePath);
     await persistApplicationState();
     return desktopResponseSchema.parse({
       type: "application-state-updated",
@@ -1818,18 +1888,28 @@ async function handleCakeRequest(
   if (request.type === "remove-project") {
     if (!allowedProjectPaths.has(request.path))
       throw new Error("Project path was not selected by the user");
+    const projectWorktrees = (await worktrees.records()).filter(
+      (record) => record.projectPath === request.path,
+    );
+    if (request.deleteSessions) await deleteProjectSessions(request.path, projectWorktrees);
     applicationModel.removeProject(request.path);
-    allowedProjectPaths.delete(request.path);
-    for (const [sessionId, workspacePath] of sessionWorkspacePaths)
-      if (workspacePath === request.path) sessionWorkspacePaths.delete(sessionId);
-    const host = piHosts.get(request.path);
-    if (host) {
-      piHosts.delete(request.path);
-      host.driver[Symbol.dispose]();
-      setPiState(host, "stopped");
+    const projectWorkspacePaths = new Set([
+      request.path,
+      ...projectWorktrees.map((record) => record.worktreePath),
+    ]);
+    for (const workspacePath of projectWorkspacePaths) {
+      allowedProjectPaths.delete(workspacePath);
+      const host = piHosts.get(workspacePath);
+      if (host) {
+        piHosts.delete(workspacePath);
+        host.driver[Symbol.dispose]();
+        setPiState(host, "stopped");
+      }
     }
+    for (const [sessionId, workspacePath] of sessionWorkspacePaths)
+      if (projectWorkspacePaths.has(workspacePath)) sessionWorkspacePaths.delete(sessionId);
     for (const [webContentsId, workspacePath] of windowWorkspaces)
-      if (workspacePath === request.path) windowWorkspaces.delete(webContentsId);
+      if (projectWorkspacePaths.has(workspacePath)) windowWorkspaces.delete(webContentsId);
     await persistApplicationState();
     return desktopResponseSchema.parse({
       type: "application-state-updated",

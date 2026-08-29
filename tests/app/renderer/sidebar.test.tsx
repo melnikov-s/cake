@@ -26,6 +26,9 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       deleteCakeChatSession: fixture.deleteCakeChatSession ?? vi.fn(),
       setSessionUnread: fixture.setSessionUnread ?? vi.fn(),
       showSessionContextMenu: fixture.showSessionContextMenu ?? vi.fn(),
+      showProjectContextMenu: fixture.showProjectContextMenu ?? vi.fn(),
+      projectSessionCount: fixture.projectSessionCount ?? (() => fixture.projectSessions().length),
+      resolvedWorktreeCount: fixture.resolvedWorktreeCount ?? (() => 0),
       resolvedLaneExpanded: fixture.resolvedLaneExpanded ?? true,
       toggleResolvedLane: fixture.toggleResolvedLane ?? vi.fn(),
       isGroupCollapsed: fixture.isGroupCollapsed ?? (() => false),
@@ -53,6 +56,7 @@ function sidebarProps(store: ProjectWorkbenchStore) {
     onCreateCakeChat: vi.fn(),
     onOpenSession: fixture.openSession ?? vi.fn(),
     onCreateSession: fixture.startNewSession ?? vi.fn(),
+    onRemoveProject: fixture.removeProjectFromRoot ?? vi.fn(async () => true),
     onChooseProject: fixture.chooseProject ?? vi.fn(),
     onGoBack: fixture.goBack ?? vi.fn(),
     onGoForward: fixture.goForward ?? vi.fn(),
@@ -416,6 +420,41 @@ describe("Sidebar projects", () => {
     );
 
     expect(startNewSession).toHaveBeenCalledWith("/work/cake");
+  });
+
+  it("removes a project from its context menu and offers permanent session deletion", async () => {
+    const showProjectContextMenu = vi.fn(async () => "remove-project" as const);
+    const removeProjectFromRoot = vi.fn(async () => true);
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [{ id: "one" }, { id: "two" }],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      nameFromPath: () => "cake",
+      showProjectContextMenu,
+      removeProjectFromRoot,
+      showMoreSessions: vi.fn(),
+    } as unknown as ProjectWorkbenchStore;
+    const props = sidebarProps(store);
+    act(() => root.render(<Sidebar {...props} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
+
+    await act(async () => {
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Start new chat in cake"]')!
+        .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 12, clientY: 34 }));
+      await Promise.resolve();
+    });
+
+    expect(showProjectContextMenu).toHaveBeenCalledWith("/work/cake", 12, 34);
+    expect(container.textContent).toContain("Adding the folder again restores them");
+    await act(async () => {
+      Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+        .find((button) => button.textContent === "Remove and delete sessions")!
+        .click();
+      await Promise.resolve();
+    });
+    expect(removeProjectFromRoot).toHaveBeenCalledWith("/work/cake", true);
   });
 
   it("lists Cake Chat sessions and creates another without clearing history", () => {

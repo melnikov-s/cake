@@ -7,7 +7,7 @@ import type { GlobalChatStore } from "./GlobalChatStore";
 import type { DesktopClient } from "../desktop-client";
 
 export interface SidebarStoreProps {
-  client: Pick<DesktopClient, "showSessionContextMenu">;
+  client: Pick<DesktopClient, "showSessionContextMenu" | "showProjectContextMenu">;
   projects: ProjectCatalogStore;
   catalog: SessionCatalogStore;
   sessions: SessionRegistryStore;
@@ -48,6 +48,23 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     unread?: boolean,
   ) {
     return this.props.client.showSessionContextMenu({ sessionId, x, y, resolved, unread });
+  }
+
+  showProjectContextMenu(path: string, x: number, y: number) {
+    return this.props.client.showProjectContextMenu({
+      path,
+      x,
+      y,
+      resolvedWorktreeCount: this.props.catalog.resolvedWorktrees(path).length,
+    });
+  }
+
+  projectSessionCount(path: string) {
+    return this.props.catalog.projectSessions(path).length;
+  }
+
+  resolvedWorktreeCount(path: string) {
+    return this.props.catalog.resolvedWorktrees(path).length;
   }
 
   projectSessions(workspacePath: string, resolved = false) {

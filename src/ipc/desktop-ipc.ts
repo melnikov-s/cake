@@ -299,6 +299,13 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     /** Omitted when the surface cannot mark sessions unread. */
     unread: z.boolean().optional(),
   }),
+  z.object({
+    type: z.literal("show-project-context-menu"),
+    path: z.string().min(1).max(4_096),
+    x: z.number().int().min(-1_000_000).max(1_000_000),
+    y: z.number().int().min(-1_000_000).max(1_000_000),
+    resolvedWorktreeCount: z.number().int().nonnegative().max(500),
+  }),
   z.object({ type: z.literal("get-home-directory") }),
   z.object({ type: z.literal("set-vscode-server-path"), path: z.string().max(4_096).optional() }),
   z.object({ type: z.literal("get-embedded-editor-state") }),
@@ -617,7 +624,11 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     path: z.string().max(4_096),
     name: z.string().min(1).max(512),
   }),
-  z.object({ type: z.literal("remove-project"), path: z.string().max(4_096) }),
+  z.object({
+    type: z.literal("remove-project"),
+    path: z.string().max(4_096),
+    deleteSessions: z.boolean(),
+  }),
   z.object({
     type: z.literal("resolve-session"),
     sessionId: z.string().min(1).max(256),
@@ -880,6 +891,10 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("session-context-menu-closed"),
     action: z.enum(["rename", "mark-unread", "resolve", "unresolve", "delete"]).optional(),
+  }),
+  z.object({
+    type: z.literal("project-context-menu-closed"),
+    action: z.enum(["remove-project", "delete-resolved-worktrees"]).optional(),
   }),
   z.object({
     type: z.literal("models-listed"),

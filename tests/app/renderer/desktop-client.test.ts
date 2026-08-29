@@ -27,6 +27,8 @@ function createBridge() {
       return { type: "composer-selection-reworded", text: "Clear text" };
     if (input.type === "show-session-context-menu")
       return { type: "session-context-menu-closed", action: "rename" };
+    if (input.type === "show-project-context-menu")
+      return { type: "project-context-menu-closed", action: "remove-project" };
     if (
       input.type === "set-session-unread" ||
       input.type === "delete-session" ||
@@ -156,6 +158,21 @@ describe("desktop client", () => {
       y: 34,
       resolved: false,
       unread: true,
+    });
+    expect(
+      await client.showProjectContextMenu({
+        path: "/project",
+        x: 21,
+        y: 43,
+        resolvedWorktreeCount: 2,
+      }),
+    ).toBe("remove-project");
+    expect(desktop.request).toHaveBeenCalledWith({
+      type: "show-project-context-menu",
+      path: "/project",
+      x: 21,
+      y: 43,
+      resolvedWorktreeCount: 2,
     });
     await client.deleteSession("session");
     expect(desktop.request).toHaveBeenCalledWith({ type: "delete-session", sessionId: "session" });

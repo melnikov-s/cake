@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "../lib/utils";
 import { ChevronIcon, FolderIcon, PlusIcon } from "./ui/icons";
@@ -7,6 +8,7 @@ import type { AppShellStore } from "../stores/AppShellStore";
 import type { ProjectCatalogStore } from "../stores/ProjectCatalogStore";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { SidebarStore } from "../stores/SidebarStore";
+import { ProjectActionDialog, type ProjectAction } from "./project-action-dialog";
 
 export interface SidebarProjectGroupProps {
   store: SidebarStore;
@@ -17,6 +19,7 @@ export interface SidebarProjectGroupProps {
   resolved: boolean;
   onCreateSession(workspacePath: string): void;
   onOpenSession(sessionId: string): void;
+  onRemoveProject(path: string, deleteSessions: boolean): Promise<boolean>;
 }
 
 /** One project section in the sidebar: header row plus its visible session rows. */
@@ -29,7 +32,10 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
   resolved,
   onCreateSession,
   onOpenSession,
+  onRemoveProject,
 }: SidebarProjectGroupProps) {
+  const [projectAction, setProjectAction] = useState<ProjectAction>();
+  const [actionBusy, setActionBusy] = useState(false);
   const collapseKey = `${resolved ? "resolved" : "active"}:${path}`;
   const collapsed = store.isGroupCollapsed(collapseKey);
   const sessions = store.projectSessions(path, resolved);
@@ -66,6 +72,12 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           onClick={() =>
             resolved ? store.toggleGroupCollapsed(collapseKey) : onCreateSession(path)
           }
+          onContextMenu={(event) => {
+            event.preventDefault();
+            void store.showProjectContextMenu(path, event.clientX, event.clientY).then((action) => {
+              if (action) setProjectAction(action);
+            });
+          }}
         >
           <FolderIcon />
           <span className="truncate">{projects.nameForPath(path)}</span>
@@ -116,6 +128,29 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
             </button>
           )}
         </div>
+      )}
+      {projectAction && (
+        <ProjectActionDialog
+          action={projectAction}
+          projectName={projects.nameForPath(path)}
+          sessionCount={store.projectSessionCount(path)}
+          resolvedWorktreeCount={store.resolvedWorktreeCount(path)}
+          busy={actionBusy}
+          onCancel={() => setProjectAction(undefined)}
+          onRemove={(deleteSessions) => {
+            setActionBusy(true);
+            void onRemoveProject(path, deleteSessions).then((removed) => {
+              if (!removed) setActionBusy(false);
+            });
+          }}
+          onDeleteResolvedWorktrees={() => {
+            setActionBusy(true);
+            void chat.deleteResolvedWorktrees(path).then((deleted) => {
+              setActionBusy(false);
+              if (deleted) setProjectAction(undefined);
+            });
+          }}
+        />
       )}
     </div>
   );

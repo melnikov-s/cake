@@ -63,6 +63,19 @@ describe("SessionArchiveRepository", () => {
     ]);
   });
 
+  it("permanently deletes a transcript from either namespace", async () => {
+    const activeLocation = await fixture();
+    const resolvedLocation = await fixture();
+    const repository = new SessionArchiveRepository();
+    await repository.resolve("session-1", resolvedLocation);
+
+    await expect(repository.delete("session-1", activeLocation)).resolves.toBeUndefined();
+    await expect(repository.delete("session-1", resolvedLocation)).resolves.toBeUndefined();
+    await expect(repository.delete("session-1", activeLocation)).rejects.toThrow(
+      "Cake could not find session session-1",
+    );
+  });
+
   it("permanently deletes only a resolved transcript", async () => {
     const location = await fixture();
     const repository = new SessionArchiveRepository();
