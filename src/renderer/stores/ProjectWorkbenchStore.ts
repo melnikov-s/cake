@@ -155,6 +155,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       client: this.props.sessionManagementClient,
       operations: this.props.operations,
       catalog: this.props.catalog,
+      registry: this.sessionRegistry,
       applyApplicationState: (state) => this.applyApplicationState(state),
       reportError: (error) => this.setError(error),
     });
@@ -458,13 +459,13 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (!workspacePath) throw new Error(`Cake could not find session ${sessionId}`);
     this.markSessionRead(sessionId);
     if (workspacePath === this.projectPath && sessionId === this.session?.sessionId) return;
+    const sameWorkspace = workspacePath === this.projectPath;
+    const cached = this.showCachedSession(sessionId);
+    if (cached && this.sessionRegistry.isTemporarySession(sessionId)) return;
     if (summary?.resolved) {
       await this.openResolvedSessionPreview(sessionId);
       return;
     }
-    const sameWorkspace = workspacePath === this.projectPath;
-    const cached = this.showCachedSession(sessionId);
-    if (cached && this.sessionRegistry.isTemporarySession(sessionId)) return;
     if (!cached) void this.loadSessionPreview(sessionId);
     if (sameWorkspace) await this.openPath(workspacePath, false, sessionId);
     else await this.inspectPath(workspacePath, false, sessionId);

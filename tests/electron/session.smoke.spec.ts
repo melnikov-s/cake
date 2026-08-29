@@ -110,7 +110,9 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(newChatComposer).toHaveValue("Immediate draft");
     await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
     await newChatComposer.fill("");
-    await expect(page.locator(".session-item")).toHaveCount(sessionCountBeforeNewChat);
+    // New chats have stable pending identities and remain available in the sidebar
+    // even when their ordinary composer draft is cleared.
+    await expect(page.locator(".session-item")).toHaveCount(sessionCountBeforeNewChat + 1);
     await expect(page.locator(".workspace-header strong")).toHaveText("New chat");
     await expect(page.getByLabel("Back to chat")).toHaveCount(0);
     await page.evaluate(() => {

@@ -14,6 +14,7 @@ interface SubmittedPrompt {
 function createComposerStore(options: {
   clientSubmit?: (input: unknown) => Promise<void>;
   clientCompactSession?: (input: unknown) => Promise<void>;
+  clientEditSessionMessage?: (input: unknown) => Promise<void>;
   clientSetModel?: (input: unknown) => Promise<void>;
   renameSession?: (name: string) => Promise<void>;
   handoffSession?: (entryId: string, prompt?: string) => Promise<boolean>;
@@ -27,6 +28,7 @@ function createComposerStore(options: {
         chooseAttachments: vi.fn(async () => []),
         suggestFiles: vi.fn(async () => []),
         submit: options.clientSubmit ?? (async () => undefined),
+        editSessionMessage: options.clientEditSessionMessage,
         compactSession: options.clientCompactSession ?? (async () => undefined),
         setModel: options.clientSetModel ?? (async () => undefined),
       },
@@ -166,6 +168,84 @@ describe("MessageComposerStore prompt queue", () => {
     state.streaming = false;
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(clientSubmit).not.toHaveBeenCalled();
+    harness.dispose();
+  });
+});
+
+describe("MessageComposerStore message editing", () => {
+  it("restores an activated message when asynchronous preflight fails", async () => {
+    const harness = createComposerStore({
+      clientSubmit: async () => undefined,
+      streaming: () => false,
+    });
+    harness.setDraft("Retry this later");
+    await harness.store.submit();
+    const operationId = harness.store.activeOperations[0]!;
+    expect(harness.getDraft()).toBe("");
+
+    harness.store.receive({
+      type: "operation-failed",
+      operationId,
+      message: "No model selected",
+    });
+
+    expect(harness.getDraft()).toBe("Retry this later");
+    harness.dispose();
+  });
+
+  it("restores the last user message attachments and submits an in-place branch edit", async () => {
+    const editSessionMessage = vi.fn(async () => undefined);
+    const canonicalParts: UiPart[] = [
+      {
+        id: "user-text",
+        kind: "text",
+        role: "user",
+        entryId: "user-entry",
+        text: "Original request",
+        status: "complete",
+      },
+      {
+        id: "user-image",
+        kind: "attachment",
+        name: "diagram.png",
+        mediaType: "image/png",
+        attachmentKind: "image",
+        data: "aW1hZ2U=",
+      },
+      {
+        id: "assistant-text",
+        kind: "text",
+        role: "assistant",
+        entryId: "assistant-entry",
+        text: "Original answer",
+        status: "complete",
+      },
+    ];
+    const harness = createComposerStore({
+      clientEditSessionMessage: editSessionMessage,
+      canonicalParts: () => canonicalParts,
+      streaming: () => false,
+    });
+
+    harness.store.beginEditMessage("user-entry");
+    expect(harness.getDraft()).toBe("Original request");
+    expect(harness.store.attachments).toEqual([
+      expect.objectContaining({ kind: "image", name: "diagram.png", data: "aW1hZ2U=" }),
+    ]);
+
+    harness.setDraft("Edited request");
+    await harness.store.submit();
+
+    expect(editSessionMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session-1",
+        entryId: "user-entry",
+        text: "Edited request",
+        attachments: [
+          expect.objectContaining({ kind: "image", name: "diagram.png", data: "aW1hZ2U=" }),
+        ],
+      }),
+    );
     harness.dispose();
   });
 });

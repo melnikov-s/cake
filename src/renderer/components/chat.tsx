@@ -108,6 +108,8 @@ export const Chat = observer(function Chat({
   const layoutRef = useRef<HTMLDivElement>(null);
   const composerDockRef = useRef<HTMLDivElement>(null);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
+  const draftHoldTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const suppressSendClickRef = useRef(false);
   const [promptedSelection, setPromptedSelection] = useState<{
     draft: string;
     start: number;
@@ -314,9 +316,49 @@ export const Chat = observer(function Chat({
                   {(!store.loading || hasInput) && (
                     <IconButton
                       className="send-button"
-                      tooltip="Send"
+                      tooltip={
+                        store.editingMessage
+                          ? store.isDraftSession
+                            ? "Save draft"
+                            : "Save and regenerate"
+                          : store.canCreateDraft
+                            ? "Send · hold to save as draft"
+                            : "Send"
+                      }
                       type="submit"
                       disabled={!store.canSubmitDraft(store.draft)}
+                      onClick={(event) => {
+                        if (!suppressSendClickRef.current) return;
+                        event.preventDefault();
+                        suppressSendClickRef.current = false;
+                      }}
+                      onContextMenu={(event) => {
+                        if (!store.canCreateDraft) return;
+                        event.preventDefault();
+                        void store.showDraftMenu(event.clientX, event.clientY).then((action) => {
+                          if (action === "create-draft") void store.createDraft();
+                        });
+                      }}
+                      onPointerDown={(event) => {
+                        if (!store.canCreateDraft) return;
+                        suppressSendClickRef.current = false;
+                        const { clientX, clientY } = event;
+                        draftHoldTimerRef.current = setTimeout(() => {
+                          suppressSendClickRef.current = true;
+                          void store.showDraftMenu(clientX, clientY).then((action) => {
+                            if (action === "create-draft") void store.createDraft();
+                          });
+                        }, 600);
+                      }}
+                      onPointerUp={() => {
+                        if (draftHoldTimerRef.current) clearTimeout(draftHoldTimerRef.current);
+                      }}
+                      onPointerCancel={() => {
+                        if (draftHoldTimerRef.current) clearTimeout(draftHoldTimerRef.current);
+                      }}
+                      onPointerLeave={() => {
+                        if (draftHoldTimerRef.current) clearTimeout(draftHoldTimerRef.current);
+                      }}
                     >
                       <SendIcon />
                     </IconButton>

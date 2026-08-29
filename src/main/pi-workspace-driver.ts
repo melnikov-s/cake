@@ -66,6 +66,7 @@ type PiCommandType =
   | "navigate-session"
   | "get-changelog"
   | "prompt"
+  | "edit-session-message"
   | "submit-review-thread"
   | "abort"
   | "compact-session"
@@ -358,9 +359,9 @@ export class PiWorkspaceDriver {
       async () => {
         let runtime: CakeRuntime;
         if (command.type === "prompt" && command.newSession) {
-          if (this.runtimes.has(command.sessionId))
-            throw new Error("That temporary session has already been started");
-          runtime = await this.createRuntime(true, command.sessionId);
+          runtime =
+            this.runtimes.get(command.sessionId) ??
+            (await this.createRuntime(true, command.sessionId));
           if (command.newSession.configuration)
             await runtime.applyConfiguration(command.newSession.configuration);
           if (command.newSession.name) await runtime.rename(command.newSession.name);
@@ -368,6 +369,7 @@ export class PiWorkspaceDriver {
           runtime =
             command.type === "rename-session" ||
             command.type === "prompt" ||
+            command.type === "edit-session-message" ||
             command.type === "compact-session" ||
             command.type === "set-model" ||
             command.type === "set-chat-configuration"
@@ -378,6 +380,11 @@ export class PiWorkspaceDriver {
         if (command.type === "abort") await this.agentAbort(command.sessionId);
         else if (command.type === "prompt") {
           await runtime.prompt(command.text, command.delivery, command.attachments);
+          this.emit({ type: "session-snapshot", snapshot: await runtime.snapshot() });
+        } else if (command.type === "edit-session-message") {
+          if (!runtime.editMessage)
+            throw new Error("This Pi runtime does not support message editing");
+          await runtime.editMessage(command.entryId, command.text, command.attachments);
           this.emit({ type: "session-snapshot", snapshot: await runtime.snapshot() });
         } else if (command.type === "compact-session") {
           await runtime.compact(command.instructions);

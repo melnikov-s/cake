@@ -52,6 +52,7 @@ describe("PiWorkspaceDriver", () => {
       navigate: vi.fn(async () => undefined),
       dispose: vi.fn(),
     };
+    runtime.editMessage = vi.fn(async () => undefined);
     let runtimeOptions: CakeRuntimeOptions | undefined;
     const createRuntime = vi.fn(async (options: CakeRuntimeOptions) => {
       runtimeOptions = options;
@@ -105,6 +106,20 @@ describe("PiWorkspaceDriver", () => {
       fastMode: true,
     });
     expect(runtime.prompt).toHaveBeenCalledWith("First message", "prompt", []);
+
+    const editRequestId = crypto.randomUUID();
+    driver.dispatch({
+      type: "edit-session-message",
+      requestId: editRequestId,
+      sessionId: snapshot.sessionId,
+      entryId: "user-entry",
+      text: "Edited message",
+      attachments: [],
+    });
+    await vi.waitFor(() =>
+      expect(events).toContainEqual({ type: "complete", requestId: editRequestId }),
+    );
+    expect(runtime.editMessage).toHaveBeenCalledWith("user-entry", "Edited message", []);
     driver[Symbol.dispose]();
   });
 

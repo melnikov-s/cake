@@ -4,6 +4,9 @@ import { Reasoning } from "@/components/ai-elements/reasoning";
 import { Source } from "@/components/ai-elements/source";
 import { Tool, ToolRunTimer } from "@/components/ai-elements/tool";
 import { AnnotationSummary } from "@/components/annotation-summary";
+import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
+import { EditIcon } from "@/components/ui/icons";
 import { ArtifactHost } from "@/components/artifact-host";
 import { CompactionMessage } from "@/components/compaction-message";
 import { ImagePreview } from "@/components/image-preview";
@@ -39,10 +42,43 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
     return part.role === "assistant" ? (
       <AssistantTextMessage part={part} behavior={behavior} />
     ) : (
-      <ChatTextMessage part={part} onOpenSourceLocation={behavior.openSourceLocation} />
+      <ChatTextMessage part={part} onOpenSourceLocation={behavior.openSourceLocation}>
+        {part.entryId === behavior.store.lastEditableUserEntryId &&
+          behavior.store.canEditLastUserMessage && (
+            <div className="ml-auto flex items-center gap-2" aria-label="User actions">
+              {part.draft && (
+                <Button size="sm" onClick={() => void behavior.store.activateDraft()}>
+                  Activate draft
+                </Button>
+              )}
+              <IconButton
+                tooltip="Edit message"
+                ariaLabel="Edit latest prompt"
+                onClick={() => behavior.store.editLastUserMessage(part.entryId!)}
+              >
+                <EditIcon />
+              </IconButton>
+            </div>
+          )}
+      </ChatTextMessage>
     );
   if (part.kind === "skill")
-    return <SkillMessage part={part} onOpenSourceLocation={behavior.openSourceLocation} />;
+    return (
+      <div className="grid gap-2">
+        <SkillMessage part={part} onOpenSourceLocation={behavior.openSourceLocation} />
+        {part.entryId === behavior.store.lastEditableUserEntryId &&
+          behavior.store.canEditLastUserMessage && (
+            <IconButton
+              className="ml-auto"
+              tooltip="Edit message"
+              ariaLabel="Edit latest prompt"
+              onClick={() => behavior.store.editLastUserMessage(part.entryId!)}
+            >
+              <EditIcon />
+            </IconButton>
+          )}
+      </div>
+    );
   if (part.kind === "reasoning")
     return (
       <Reasoning

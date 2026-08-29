@@ -3,6 +3,7 @@ import type { ApplicationState } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
+import type { SessionRegistryStore } from "./SessionRegistryStore";
 
 export interface SessionManagementStoreProps {
   client: Pick<
@@ -11,6 +12,7 @@ export interface SessionManagementStoreProps {
   >;
   operations: SessionOperationCoordinatorStore;
   catalog: SessionCatalogStore;
+  registry: SessionRegistryStore;
   applyApplicationState(state: ApplicationState): void;
   reportError(error: unknown): void;
 }
@@ -32,9 +34,13 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
 
   async renameSession(sessionId: string, name: string) {
     if (!name.trim() || this.signal.aborted) return;
+    const title = name.trim();
+    if (this.props.registry.isTemporarySession(sessionId)) {
+      this.props.registry.setPendingName(sessionId, title);
+      return;
+    }
     const operationId = this.props.operations.start("project-workbench");
     try {
-      const title = name.trim();
       const previousTitle = this.props.catalog.rename(sessionId, title);
       if (previousTitle !== undefined)
         this.pendingRenames[operationId] = { sessionId, previousTitle };
@@ -53,6 +59,7 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
 
   async resolveSession(sessionId: string, resolved: boolean) {
     if (!this.props.catalog.find(sessionId) || this.signal.aborted) return;
+    if (this.props.registry.setDraftSessionResolved(sessionId, resolved)) return;
     try {
       const state = await this.props.client.resolveSession(sessionId, resolved);
       if (!this.signal.aborted) this.props.applyApplicationState(state);
@@ -76,12 +83,16 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     resolved: boolean,
     workspacePath?: string,
   ) {
+    const persistedIds: string[] = [];
     for (const sessionId of sessionIds) {
       if (!this.props.catalog.find(sessionId))
         throw new Error(`Cake could not find session ${sessionId}`);
+      if (!this.props.registry.setDraftSessionResolved(sessionId, resolved))
+        persistedIds.push(sessionId);
     }
+    if (persistedIds.length === 0) return sessionIds.length;
     try {
-      const state = await this.props.client.resolveSessions(sessionIds, resolved, workspacePath);
+      const state = await this.props.client.resolveSessions(persistedIds, resolved, workspacePath);
       if (this.signal.aborted) return 0;
       this.props.applyApplicationState(state);
       return sessionIds.length;

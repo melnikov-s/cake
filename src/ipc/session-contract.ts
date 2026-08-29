@@ -202,10 +202,12 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
     text: boundedText,
     status: z.enum(["streaming", "complete", "error"]),
     deliveryState: z.enum(["sending", "queued", "steering"]).optional(),
+    draft: z.boolean().optional(),
   }),
   z.object({
     ...partBase,
     kind: z.literal("skill"),
+    entryId: z.string().min(1).max(256).optional(),
     name: ipcProjectionString(256),
     content: boundedText,
   }),
@@ -324,6 +326,7 @@ export const sessionSummarySchema = z.object({
   messageCount: z.number().int().nonnegative(),
   parentSessionId: z.string().max(256).optional(),
   resolved: z.boolean().default(false),
+  draft: z.boolean().optional(),
 });
 
 export const globalSessionSummarySchema = sessionSummarySchema.extend({
@@ -542,6 +545,14 @@ export const windowViewStateSchema = z.object({
         draft: z.string().max(262_144),
         configuration: chatConfigurationSchema.optional(),
         name: z.string().min(1).max(512).optional(),
+        draftSession: z.boolean().optional(),
+        resolved: z.boolean().optional(),
+        stagedPrompt: z
+          .object({
+            text: z.string().max(262_144),
+            attachments: z.array(attachmentSchema).max(20),
+          })
+          .optional(),
       }),
     )
     .max(1_000)
@@ -552,6 +563,14 @@ export const windowViewStateSchema = z.object({
       draft: z.string().max(262_144),
       configuration: chatConfigurationSchema.optional(),
       name: z.string().min(1).max(512).optional(),
+      draftSession: z.boolean().optional(),
+      resolved: z.boolean().optional(),
+      stagedPrompt: z
+        .object({
+          text: z.string().max(262_144),
+          attachments: z.array(attachmentSchema).max(20),
+        })
+        .optional(),
     })
     .optional(),
   lastChatConfiguration: chatConfigurationSchema.optional(),

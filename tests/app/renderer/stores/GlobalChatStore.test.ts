@@ -64,10 +64,14 @@ function createTestStore() {
     listModels: vi.fn(async () => []),
     showComposerContextMenu: vi.fn(async () => undefined),
     rewordComposerSelection: vi.fn(async () => "rewritten"),
+    generateSessionTitle: vi.fn(async () => "Planned Cake work"),
     open: vi.fn(async (input: Parameters<GlobalChatPort["open"]>[0]) => {
       void input;
     }),
     prompt: vi.fn(async (input: Parameters<GlobalChatPort["prompt"]>[0]) => {
+      void input;
+    }),
+    editMessage: vi.fn(async (input: Parameters<NonNullable<GlobalChatPort["editMessage"]>>[0]) => {
       void input;
     }),
     abort: vi.fn(async (input: Parameters<GlobalChatPort["abort"]>[0]) => {
@@ -282,6 +286,47 @@ describe("GlobalChatStore", () => {
 
     expect(store.pendingSessionState()).toBeUndefined();
     expect(port.open).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "global-1" }));
+    store[Symbol.dispose]();
+  });
+
+  it("stages, names, edits, resolves, and activates a Cake Chat draft", async () => {
+    const { store, port } = createTestStore();
+    await vi.waitFor(() => expect(store.hydrated).toBe(true));
+    await store.startNewSession();
+    const session = store.activeSession!;
+    session.chatStore.setDraft("Plan this Cake task");
+
+    await expect(session.createDraftSession()).resolves.toBe(true);
+    await vi.waitFor(() =>
+      expect(store.summaries.find((summary) => summary.id === session.sessionId)).toMatchObject({
+        title: "Planned Cake work",
+        draft: true,
+      }),
+    );
+    expect(session.parts).toEqual([
+      expect.objectContaining({ text: "Plan this Cake task", draft: true }),
+    ]);
+
+    await store.resolveSession(session.sessionId, true);
+    expect(store.summaries.find((summary) => summary.id === session.sessionId)?.resolved).toBe(
+      true,
+    );
+    await store.resolveSession(session.sessionId, false);
+
+    session.beginEditMessage(`draft:${session.sessionId}`);
+    session.chatStore.setDraft("Plan only the renderer task");
+    await session.submit(session.chatStore.draft);
+    expect(session.parts).toEqual([
+      expect.objectContaining({ text: "Plan only the renderer task", draft: true }),
+    ]);
+
+    await session.activateDraftSession();
+    expect(port.prompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: session.sessionId,
+        text: "Plan only the renderer task",
+      }),
+    );
     store[Symbol.dispose]();
   });
 

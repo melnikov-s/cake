@@ -236,6 +236,21 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       inputLabel: () => "Message",
       canSubmit: () => this.canSubmit,
       submit: () => this.composerStore.submit(),
+      createDraft: () => this.composerStore.createDraftSession(),
+      showDraftMenu: (x, y) =>
+        this.props.client.showSendContextMenu?.({ x, y }) ?? Promise.resolve(undefined),
+      canCreateDraft: () =>
+        this.props.registry.isTemporarySession(this.sessionId) &&
+        !this.props.registry.isDraftSession(this.sessionId),
+      activateDraft: () => this.composerStore.activateDraftSession(),
+      editLastUserMessage: (entryId) =>
+        this.composerStore.beginEditMessage(
+          entryId,
+          this.model.tree.find((entry) => entry.id === entryId)?.editorText,
+        ),
+      isDraftSession: () => this.props.registry.isDraftSession(this.sessionId),
+      editingMessage: () =>
+        Boolean(this.composerStore.editingEntryId || this.composerStore.editingDraftSession),
       abort: () => this.props.abort(),
       attachments: () => this.composerStore.visibleAttachments,
       addAttachments: () => this.composerStore.addAttachments(),

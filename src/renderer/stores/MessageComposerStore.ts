@@ -20,6 +20,7 @@ interface PendingUserMessage {
   canonicalPartCount: number;
   expectedOccurrence: number;
   text: string;
+  attachments: Attachment[];
   parts: UiPart[];
 }
 
@@ -34,7 +35,8 @@ export interface MessageComposerStoreProps {
   client: Pick<
     DesktopClient,
     "chooseAttachments" | "suggestFiles" | "submit" | "compactSession" | "setModel"
-  >;
+  > &
+    Partial<Pick<DesktopClient, "editSessionMessage" | "generateSessionTitle">>;
   sessionRegistry: SessionRegistryStore;
   reviews(): ReviewsStore;
   projectPath(): string | undefined;
@@ -67,6 +69,8 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   focusRequestRevision = 0;
   error: string | undefined;
   errorDetails: string | undefined;
+  editingEntryId: string | undefined;
+  editingDraftSession = false;
   private drainingQueue = false;
 
   constructor(props: MessageComposerStore["props"]) {
@@ -97,6 +101,8 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     const canonical = this.props.canonicalParts();
     const sessionId = this.props.sessionId();
     if (!sessionId) return canonical;
+    const staged = this.props.sessionRegistry.draftSessionPrompt?.(sessionId);
+    if (staged && !this.editingDraftSession) return this.draftParts(sessionId, staged);
     const pendingParts = this.pendingUserMessages
       .filter((pending) => pending.sessionId === sessionId)
       .filter(
@@ -231,6 +237,15 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     this.error = undefined;
     this.errorDetails = undefined;
     const text = this.props.draft().trim();
+    if (this.editingDraftSession) {
+      const attachments = this.submissionAttachments();
+      const sessionId = this.props.sessionId();
+      if (!sessionId) return;
+      this.props.sessionRegistry.updateDraftSession(sessionId, text, attachments);
+      this.clearComposer();
+      this.editingDraftSession = false;
+      return;
+    }
     const command = text.toLocaleLowerCase();
     if (command === "/tree" || command === "/resources" || command === "/changelog") {
       this.props.setDraft("");
@@ -312,6 +327,13 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       ...contextAttachments,
       ...(annotations.length > 0 ? [{ kind: "annotation" as const, annotations }] : []),
     ];
+    if (this.editingEntryId) {
+      const entryId = this.editingEntryId;
+      this.editingEntryId = undefined;
+      this.clearComposer();
+      await this.deliverEdit(entryId, text, attachments, sessionId);
+      return;
+    }
     if (deliveryOverride === undefined && this.props.isStreaming()) {
       // While streaming, submissions queue locally and stay editable above the composer.
       if (text || explicitAttachments.length > 0 || annotations.length > 0) {
@@ -328,6 +350,75 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       this.annotations.splice(0);
       await this.deliver(text, attachments, deliveryOverride ?? "prompt", sessionId, true);
     }
+  }
+
+  async createDraftSession() {
+    const sessionId = this.props.sessionId();
+    if (!sessionId || !this.props.sessionRegistry.isTemporarySession?.(sessionId)) return false;
+    const text = this.props.draft().trim();
+    const attachments = this.submissionAttachments();
+    if (!text && attachments.length === 0) return false;
+    this.props.sessionRegistry.createDraftSession(sessionId, text, attachments);
+    this.clearComposer();
+    if (text && this.props.client.generateSessionTitle)
+      void this.props.client
+        .generateSessionTitle(text)
+        .then((title) => {
+          if (title && !this.signal.aborted)
+            this.props.sessionRegistry.applyGeneratedDraftName(sessionId, title);
+        })
+        .catch(() => undefined);
+    return true;
+  }
+
+  async activateDraftSession() {
+    const sessionId = this.props.sessionId();
+    if (!sessionId) return false;
+    const staged = this.props.sessionRegistry.activateDraftSession(sessionId);
+    if (!staged) return false;
+    this.props.setDraft(staged.text);
+    this.restoreAttachments(staged.attachments);
+    await this.submit();
+    return true;
+  }
+
+  beginEditMessage(entryId: string, editorText?: string) {
+    const sessionId = this.props.sessionId();
+    if (!sessionId || this.props.isStreaming()) return;
+    const staged = this.props.sessionRegistry.draftSessionPrompt?.(sessionId);
+    if (staged && entryId === `draft:${sessionId}`) {
+      this.props.setDraft(staged.text);
+      this.restoreAttachments(staged.attachments);
+      this.editingDraftSession = true;
+      this.requestFocus();
+      return;
+    }
+    const parts = this.props.canonicalParts();
+    const userPart = parts.find(
+      (part) =>
+        ((part.kind === "text" && part.role === "user") || part.kind === "skill") &&
+        part.entryId === entryId,
+    );
+    if (
+      !userPart ||
+      (userPart.kind !== "skill" && !(userPart.kind === "text" && userPart.role === "user"))
+    )
+      return;
+    const userPartIndex = parts.indexOf(userPart);
+    const lastAssistantIndex = parts.findLastIndex(
+      (part, index) => index < userPartIndex && part.kind === "text" && part.role === "assistant",
+    );
+    const nextAssistantOffset = parts
+      .slice(userPartIndex + 1)
+      .findIndex((part) => part.kind === "text" && part.role === "assistant");
+    const end = nextAssistantOffset < 0 ? parts.length : userPartIndex + 1 + nextAssistantOffset;
+    const turnParts = parts.slice(lastAssistantIndex + 1, end);
+    this.props.setDraft(
+      editorText ?? (userPart.kind === "text" ? userPart.text : userPart.content),
+    );
+    this.restoreAttachments(this.attachmentsFromParts(turnParts));
+    this.editingEntryId = entryId;
+    this.requestFocus();
   }
 
   removeQueuedPrompt(id: string) {
@@ -421,6 +512,162 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     if (!delivered && !this.signal.aborted) this.queuedPrompts.unshift(entry);
   }
 
+  private async deliverEdit(
+    entryId: string,
+    text: string,
+    attachments: Attachment[],
+    sessionId: string,
+  ) {
+    const operationId = this.props.operations.start(this.props.operationOwner);
+    this.addPendingUserMessage(operationId, sessionId, text, attachments, "prompt");
+    try {
+      if (!this.props.client.editSessionMessage)
+        throw new Error("This Cake client does not support message editing");
+      await this.props.client.editSessionMessage({
+        operationId,
+        sessionId,
+        entryId,
+        text,
+        attachments,
+      });
+      return true;
+    } catch (error) {
+      if (this.signal.aborted) {
+        this.finishOperation(operationId);
+        return false;
+      }
+      this.removePendingUserMessage(operationId);
+      this.reportError(error);
+      this.finishOperation(operationId);
+      this.props.setDraft(text);
+      this.restoreAttachments(attachments);
+      this.editingEntryId = entryId;
+      return false;
+    }
+  }
+
+  private submissionAttachments() {
+    const explicit = this.attachments.filter((attachment) => attachment.kind !== "annotation");
+    const context = this.editorContextAttachment;
+    const attachments = context
+      ? [
+          context,
+          ...explicit.filter(
+            (attachment) =>
+              attachment.kind !== "source" ||
+              attachment.location.path !== context.location.path ||
+              JSON.stringify(attachment.location.range) !== JSON.stringify(context.location.range),
+          ),
+        ]
+      : explicit;
+    return [
+      ...attachments,
+      ...(this.annotations.length > 0
+        ? [{ kind: "annotation" as const, annotations: this.annotations.slice() }]
+        : []),
+    ];
+  }
+
+  private clearComposer() {
+    this.props.setDraft("");
+    this.attachments.splice(0);
+    this.annotations.splice(0);
+    this.editorContextAttachment = undefined;
+  }
+
+  private restoreAttachments(attachments: readonly Attachment[]) {
+    this.attachments.splice(0);
+    this.annotations.splice(0);
+    this.editorContextAttachment = undefined;
+    for (const attachment of attachments) {
+      if (attachment.kind === "annotation") this.annotations.push(...attachment.annotations);
+      else this.attachments.push({ ...attachment });
+    }
+  }
+
+  private attachmentsFromParts(parts: readonly UiPart[]): Attachment[] {
+    return parts.flatMap((part): Attachment[] => {
+      if (part.kind === "annotation")
+        return [{ kind: "annotation", annotations: part.annotations }];
+      if (part.kind !== "attachment") return [];
+      if (part.attachmentKind === "image" && part.data)
+        return [
+          {
+            kind: "image",
+            name: part.name,
+            mimeType: part.mediaType,
+            data: part.data,
+          },
+        ];
+      if (part.attachmentKind === "source" && part.location?.range?.end && part.location.path)
+        return [
+          {
+            kind: "source",
+            name: part.name,
+            location: {
+              path: part.location.path,
+              range: {
+                start: { line: part.location.range.start.line },
+                end: { line: part.location.range.end.line },
+              },
+            },
+          },
+        ];
+      return [];
+    });
+  }
+
+  private draftParts(
+    sessionId: string,
+    staged: { text: string; attachments: Attachment[] },
+  ): UiPart[] {
+    const entryId = `draft:${sessionId}`;
+    return [
+      {
+        id: `draft-${sessionId}-text`,
+        kind: "text" as const,
+        role: "user" as const,
+        entryId,
+        text: staged.text,
+        status: "complete" as const,
+        draft: true,
+      },
+      ...staged.attachments.flatMap((attachment, index): UiPart[] => {
+        if (attachment.kind === "annotation")
+          return [
+            {
+              id: `draft-${sessionId}-annotation-${index}`,
+              kind: "annotation",
+              annotations: attachment.annotations,
+            },
+          ];
+        if (attachment.kind === "image")
+          return [
+            {
+              id: `draft-${sessionId}-attachment-${index}`,
+              kind: "attachment",
+              name: attachment.name,
+              mediaType: attachment.mimeType,
+              attachmentKind: "image",
+              data: attachment.data,
+            },
+          ];
+        if (attachment.kind === "source")
+          return [
+            {
+              id: `draft-${sessionId}-attachment-${index}`,
+              kind: "attachment",
+              name: attachment.name,
+              mediaType: "text/plain",
+              attachmentKind: "source",
+              location: attachment.location,
+            },
+          ];
+        return [];
+      }),
+    ];
+  }
+
   private async deliver(
     text: string,
     attachments: Attachment[],
@@ -472,7 +719,6 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         this.finishOperation(operationId);
         return false;
       }
-      if (newSession) this.props.sessionRegistry.markNewSessionStarted(sessionId);
       return true;
     } catch (error) {
       if (this.signal.aborted) {
@@ -520,7 +766,14 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       this.activeOperations.includes(event.operationId)
     ) {
       if (event.type === "operation-failed") {
+        const pending = this.pendingUserMessages.find(
+          (message) => message.operationId === event.operationId,
+        );
         this.removePendingUserMessage(event.operationId);
+        if (pending && !this.props.draft().trim()) {
+          this.props.setDraft(pending.text);
+          this.restoreAttachments(pending.attachments);
+        }
         this.error = event.message;
         this.errorDetails = event.details ?? event.message;
       }
@@ -615,6 +868,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       expectedOccurrence:
         this.userMessageOccurrenceCount(sessionId, text, parts) + earlierPendingCount + 1,
       text,
+      attachments: attachments.map((attachment) => ({ ...attachment })),
       parts,
     });
   }

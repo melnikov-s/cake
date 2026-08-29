@@ -175,7 +175,9 @@ export interface DesktopClient {
     x: number;
     y: number;
   }): Promise<"reword" | "reword-with-prompt" | undefined>;
+  showSendContextMenu?(input: { x: number; y: number }): Promise<"create-draft" | undefined>;
   rewordComposerSelection(input: { selection: string; prompt?: string }): Promise<string>;
+  generateSessionTitle?(firstUserMessage: string): Promise<string | undefined>;
   showSessionContextMenu(input: {
     sessionId: string;
     x: number;
@@ -323,6 +325,13 @@ export interface DesktopClient {
       name?: string;
     };
   }): Promise<void>;
+  editGlobalChatMessage?(input: {
+    operationId: string;
+    sessionId: string;
+    entryId: string;
+    text: string;
+    attachments: Attachment[];
+  }): Promise<void>;
   abortGlobalChat(input: { operationId: string; sessionId: string }): Promise<void>;
   compactGlobalChat(input: {
     operationId: string;
@@ -441,6 +450,13 @@ export interface DesktopClient {
     delivery: "prompt" | "steer" | "follow-up";
     attachments: Attachment[];
     newSession?: { path: string; configuration?: ChatConfiguration; name?: string };
+  }): Promise<void>;
+  editSessionMessage?(input: {
+    operationId: string;
+    sessionId: string;
+    entryId: string;
+    text: string;
+    attachments: Attachment[];
   }): Promise<void>;
   abort(input: { operationId: string; sessionId: string }): Promise<void>;
   compactSession(input: {
@@ -682,11 +698,23 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         throw new Error("Cake received an invalid composer context menu response");
       return response.action;
     },
+    async showSendContextMenu(input) {
+      const response = await bridge.request({ type: "show-send-context-menu", ...input });
+      if (response.type !== "send-context-menu-closed")
+        throw new Error("Cake received an invalid send context menu response");
+      return response.action;
+    },
     async rewordComposerSelection(input) {
       const response = await bridge.request({ type: "reword-composer-selection", ...input });
       if (response.type !== "composer-selection-reworded")
         throw new Error("Cake received an invalid composer rewrite response");
       return response.text;
+    },
+    async generateSessionTitle(firstUserMessage) {
+      const response = await bridge.request({ type: "generate-session-title", firstUserMessage });
+      if (response.type !== "session-title-generated")
+        throw new Error("Cake received an invalid session title response");
+      return response.title;
     },
     async showSessionContextMenu(input) {
       const response = await bridge.request({ type: "show-session-context-menu", ...input });
@@ -1025,6 +1053,15 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
             }
           : undefined,
       }),
+    editGlobalChatMessage: (input) =>
+      accept(bridge, {
+        type: "edit-global-chat-message",
+        requestId: input.operationId,
+        sessionId: input.sessionId,
+        entryId: input.entryId,
+        text: input.text,
+        attachments: input.attachments,
+      }),
     abortGlobalChat: (input) =>
       accept(bridge, {
         type: "abort-global-chat",
@@ -1259,6 +1296,15 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         delivery: input.delivery,
         attachments: input.attachments,
         newSession: input.newSession,
+      }),
+    editSessionMessage: (input) =>
+      accept(bridge, {
+        type: "edit-session-message",
+        requestId: input.operationId,
+        sessionId: input.sessionId,
+        entryId: input.entryId,
+        text: input.text,
+        attachments: input.attachments,
       }),
     submitReviewThread: (input) =>
       accept(bridge, {

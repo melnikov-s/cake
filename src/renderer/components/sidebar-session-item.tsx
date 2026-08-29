@@ -11,6 +11,7 @@ export interface SidebarSessionItemProps {
     id: string;
     title: string;
     modified: string;
+    draft?: boolean;
     managedWorktree?: {
       branch: string;
       baseBranch: string;
@@ -104,8 +105,16 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                 });
             }}
           >
-            <span className="session-title w-full min-w-0 truncate text-left" title={session.title}>
-              {session.title}
+            <span
+              className="session-title flex w-full min-w-0 items-center gap-1.5 text-left"
+              title={session.title}
+            >
+              <span className="min-w-0 truncate">{session.title}</span>
+              {session.draft && (
+                <span className="shrink-0 rounded-full border border-border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Draft
+                </span>
+              )}
             </span>
             {(branch || !activity) && (
               <span

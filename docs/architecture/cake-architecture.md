@@ -176,11 +176,16 @@ Automatic project-session naming is the first utility workflow. After the
 initial user message is accepted, an unnamed session may send that original
 user message, with bounded length, to the configured utility model without
 waiting for the assistant turn to finish. A successful short title is appended
-through Pi's normal session-name API. The completion is discarded if the
-session is manually named while it is running. Failures are silent and leave
-Pi's first-message session-list title as the display fallback. Configuring a
-utility model later makes an unnamed session eligible after its next
-interaction; already named sessions are never regenerated automatically.
+through Pi's normal session-name API. A Cake-owned draft session attempts the
+same bounded naming work when its staged initial message is saved; the title
+remains pending metadata until activation. If that attempt fails, normal
+first-message naming retries after activation. With no configured utility
+model, draft naming is skipped without a fallback. The completion is discarded
+if the session is manually named while it is running. Failures are silent and
+leave Pi's first-message session-list title as the display fallback for active
+sessions. Configuring a utility model later makes an unnamed active session
+eligible after its next interaction; already named sessions are never
+regenerated automatically.
 
 ## Renderer state
 
@@ -229,9 +234,13 @@ The window Store hierarchy mirrors the product surfaces:
 - The root-scoped `SessionRegistryStore` preserves one keyed
   `ProjectSessionStore` for every loaded project-session ID so background
   project events and navigation share session identity. Multiple unsent project
-  sessions may coexist in the same workspace; each keeps its own identity, draft,
-  and configuration and appears in the session catalog before Pi creates its
-  runtime on the first prompt. The workspace path remains routing/storage context
+  sessions may coexist in the same workspace; each keeps its own identity, composer
+  draft, and configuration and appears in the session catalog before Pi creates its
+  runtime on the first prompt. An explicitly saved draft session additionally stages
+  its initial message and attachments in Cake window state, projects them through the
+  shared `Chat`, and carries draft and resolved presentation metadata until activation.
+  Activation clears the draft state and uses the ordinary first-prompt path; Pi remains
+  the transcript authority once the session starts. The workspace path remains routing/storage context
   for the Pi runtime, not part of session identity. Cake Chat never enters this
   registry.
 - Each `ProjectSessionStore` owns that session's activity, `Session`,

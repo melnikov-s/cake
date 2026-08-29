@@ -567,6 +567,7 @@ export interface CakeRuntime {
     delivery: "prompt" | "steer" | "follow-up",
     attachments: Attachment[],
   ): Promise<void>;
+  editMessage?(entryId: string, text: string, attachments: Attachment[]): Promise<void>;
   compact(instructions?: string): Promise<void>;
   abort(): Promise<void>;
   setModel(provider: string, modelId: string): Promise<void>;
@@ -1848,6 +1849,25 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           await session.followUp(content, images);
         }
       }
+    },
+    async editMessage(entryId, text, attachments) {
+      if (disposed) throw new Error("The Cake runtime has been disposed");
+      if (session.isStreaming || session.isCompacting)
+        throw new Error("Wait for the current response to finish before editing a message");
+      const lastUserEntry = session.sessionManager
+        .getBranch()
+        .findLast((entry) => entry.type === "message" && entry.message.role === "user");
+      if (!lastUserEntry || lastUserEntry.id !== entryId)
+        throw new Error("Only the last user message can be edited");
+      userAbortRequested = false;
+      turnRecoveryContinuations = 0;
+      removeRecoveryNotice();
+      const result = await session.navigateTree(entryId, { summarize: false });
+      if (result.cancelled) throw new Error("Message editing was cancelled");
+      await emitSnapshot();
+      const content = promptText(text, attachments);
+      const images = imageContent(attachments);
+      await withResponseRetries(() => session.prompt(content, { images, source: "interactive" }));
     },
     abort: () => {
       userAbortRequested = true;

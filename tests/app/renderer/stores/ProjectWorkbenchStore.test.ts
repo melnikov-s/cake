@@ -34,6 +34,7 @@ function createDesktopClient(restoredPath?: string) {
     showTranscriptSelectionContextMenu: vi.fn(async () => undefined),
     showComposerContextMenu: vi.fn(async () => undefined),
     rewordComposerSelection: vi.fn(async ({ selection }) => selection),
+    generateSessionTitle: vi.fn(async () => undefined),
     showSessionContextMenu: vi.fn(async () => undefined),
     listModels: vi.fn(async () => [
       {
@@ -278,6 +279,7 @@ function createDesktopClient(restoredPath?: string) {
     steerSubagent: vi.fn(async () => undefined),
     abortSubagent: vi.fn(async () => undefined),
     submit: vi.fn(async () => undefined),
+    editSessionMessage: vi.fn(async () => undefined),
     abort: vi.fn(async () => undefined),
     compactSession: vi.fn(async () => undefined),
     setModel: vi.fn(async () => undefined),
@@ -2282,7 +2284,7 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("allows another new session as soon as the first prompt is accepted", async () => {
+  it("allows another new session while the first prompt starts", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
@@ -2293,7 +2295,9 @@ describe("ProjectWorkbenchStore", () => {
     store.activeSession!.chatStore.setDraft("Hello");
     await store.activeSession!.composerStore.submit();
 
-    expect(store.sessionRegistry.isTemporarySession(startedSessionId)).toBe(false);
+    // Until Pi emits its first snapshot, Cake retains the pending identity so a
+    // preflight failure remains a normal revisit-able session.
+    expect(store.sessionRegistry.isTemporarySession(startedSessionId)).toBe(true);
 
     const pendingSnapshot = {
       ...snapshot,
@@ -2359,6 +2363,67 @@ describe("ProjectWorkbenchStore", () => {
     await expect(
       store.createSession("/project", "Started immediately", "Investigate this"),
     ).resolves.toEqual(expect.any(String));
+    root[Symbol.dispose]();
+  });
+
+  it("stages, names, persists, edits, and activates a draft session", async () => {
+    const desktop = createDesktopClient();
+    desktop.client.generateSessionTitle = vi.fn(async () => "Investigate flaky tests");
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+
+    await store.startNewSession("/project");
+    const session = store.activeSession!;
+    session.chatStore.setDraft("Investigate the flaky tests");
+
+    await expect(session.composerStore.createDraftSession()).resolves.toBe(true);
+    await vi.waitFor(() =>
+      expect(root.sessionCatalogStore.find(session.sessionId)).toMatchObject({
+        title: "Investigate flaky tests",
+        draft: true,
+      }),
+    );
+    expect(session.chatStore.draft).toBe("");
+    await store.sessionManagementStore.resolveSession(session.sessionId, true);
+    expect(root.sessionCatalogStore.find(session.sessionId)?.resolved).toBe(true);
+    await store.sessionManagementStore.resolveSession(session.sessionId, false);
+    expect(root.sessionCatalogStore.find(session.sessionId)?.resolved).toBe(false);
+    expect(session.chatStore.parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "text",
+          text: "Investigate the flaky tests",
+          draft: true,
+        }),
+      ]),
+    );
+
+    session.composerStore.beginEditMessage(`draft:${session.sessionId}`);
+    session.chatStore.setDraft("Investigate only the Linux failures");
+    await session.composerStore.submit();
+    expect(session.chatStore.parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ text: "Investigate only the Linux failures", draft: true }),
+      ]),
+    );
+
+    await session.composerStore.activateDraftSession();
+    expect(root.sessionCatalogStore.find(session.sessionId)?.draft).toBe(false);
+    expect(desktop.client.submit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: session.sessionId,
+        text: "Investigate only the Linux failures",
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(
+      vi.mocked(desktop.client.saveWindowState).mock.calls.at(-1)?.[0].pendingProjectSessions,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sessionId: session.sessionId, draftSession: false }),
+      ]),
+    );
     root[Symbol.dispose]();
   });
 

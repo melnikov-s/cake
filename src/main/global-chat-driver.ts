@@ -83,6 +83,20 @@ export class GlobalChatDriver {
     });
   }
 
+  editMessage(
+    requestId: string,
+    sessionId: string,
+    entryId: string,
+    text: string,
+    attachments: Attachment[],
+  ) {
+    void this.run(requestId, async () => {
+      const runtime = await this.ensureRuntime(false, sessionId);
+      if (!runtime.editMessage) throw new Error("This Pi runtime does not support message editing");
+      await runtime.editMessage(entryId, text, attachments);
+    });
+  }
+
   abort(requestId: string, sessionId: string) {
     void this.run(requestId, async () => this.runtimeFor(sessionId).abort());
   }

@@ -24,6 +24,13 @@ export interface ChatStoreProps {
   inputLabel(): string;
   canSubmit(draft: string): boolean;
   submit(draft: string): Promise<boolean | void>;
+  createDraft?(): Promise<boolean>;
+  showDraftMenu?(x: number, y: number): Promise<"create-draft" | undefined>;
+  canCreateDraft?(): boolean;
+  activateDraft?(): Promise<boolean>;
+  editLastUserMessage?(entryId: string): void;
+  isDraftSession?(): boolean;
+  editingMessage?(): boolean;
   abort?(): Promise<void>;
   attachments?(): Attachment[];
   addAttachments?(): Promise<void>;
@@ -82,6 +89,7 @@ export class ChatStore extends Store<ChatStoreProps> {
   transcriptScrollState: StateSnapshot | undefined;
   messageNavigationRequest: MessageNavigationRequest | undefined;
   private messageNavigationRevision = 0;
+  private draftRevision = 0;
   private workLogTickNow = 0;
   private workLogTickInterval: ReturnType<typeof setInterval> | undefined;
 
@@ -204,6 +212,26 @@ export class ChatStore extends Store<ChatStoreProps> {
   get canSubmit() {
     return !this.submittingLocally && this.props.canSubmit(this.draft);
   }
+  get canCreateDraft() {
+    return Boolean(this.props.createDraft) && Boolean(this.props.canCreateDraft?.());
+  }
+  get isDraftSession() {
+    return this.props.isDraftSession?.() ?? false;
+  }
+  get editingMessage() {
+    return this.props.editingMessage?.() ?? false;
+  }
+  get canEditLastUserMessage() {
+    return Boolean(this.props.editLastUserMessage) && !this.liveWorkPossible;
+  }
+  get lastEditableUserEntryId() {
+    const part = this.parts.findLast(
+      (candidate) =>
+        ((candidate.kind === "text" && candidate.role === "user") || candidate.kind === "skill") &&
+        Boolean(candidate.entryId),
+    );
+    return part?.kind === "text" || part?.kind === "skill" ? part.entryId : undefined;
+  }
   get canAbort() {
     return Boolean(this.props.abort);
   }
@@ -264,6 +292,7 @@ export class ChatStore extends Store<ChatStoreProps> {
   }
 
   setDraft(value: string) {
+    if (this.draft !== value) this.draftRevision += 1;
     this.draft = value;
     this.rewordError = undefined;
     this.props.persist?.();
@@ -383,9 +412,11 @@ export class ChatStore extends Store<ChatStoreProps> {
     }
     if (!this.props.canSubmit(value) || this.submittingLocally) return false;
     this.submittingLocally = true;
+    const submittedRevision = this.draftRevision;
     try {
       const submitted = await this.props.submit(value);
-      if (submitted !== false && this.draft === value) this.setDraft("");
+      if (submitted !== false && this.draft === value && this.draftRevision === submittedRevision)
+        this.setDraft("");
       return submitted !== false;
     } finally {
       this.submittingLocally = false;
@@ -402,6 +433,18 @@ export class ChatStore extends Store<ChatStoreProps> {
     this.props.removeQueuedPrompt?.(id);
   }
 
+  createDraft() {
+    return this.props.createDraft?.() ?? Promise.resolve(false);
+  }
+  showDraftMenu(x: number, y: number) {
+    return this.props.showDraftMenu?.(x, y) ?? Promise.resolve(undefined);
+  }
+  activateDraft() {
+    return this.props.activateDraft?.() ?? Promise.resolve(false);
+  }
+  editLastUserMessage(entryId: string) {
+    this.props.editLastUserMessage?.(entryId);
+  }
   abort() {
     return this.props.abort?.() ?? Promise.resolve();
   }

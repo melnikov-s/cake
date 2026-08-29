@@ -93,6 +93,7 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
     this.resolvedSessionIds = new Set(resolvedSessionIds);
     for (let index = 0; index < this.sessions.length; index += 1) {
       const session = this.sessions[index]!;
+      if (session.draft) continue;
       const resolved = this.resolvedSessionIds.has(session.id);
       if (session.resolved !== resolved) this.sessions.splice(index, 1, { ...session, resolved });
     }
@@ -109,7 +110,12 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
     this.rebuildIndexes();
   }
 
-  upsertPending(sessionId: string, workspacePath: string, workspaceName: string) {
+  upsertPending(
+    sessionId: string,
+    workspacePath: string,
+    workspaceName: string,
+    options: { draft?: boolean; resolved?: boolean } = {},
+  ) {
     const now = new Date().toISOString();
     const existing = this.indexedById.get(sessionId);
     const managedWorktree = this.managedWorktrees.get(workspacePath);
@@ -119,8 +125,9 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
       created: existing?.created ?? now,
       modified: now,
       messageCount: 0,
-      resolved: false,
+      resolved: options.resolved ?? existing?.resolved ?? false,
       unread: existing?.unread ?? false,
+      draft: options.draft ?? existing?.draft ?? false,
       workspacePath,
       workspaceName,
       managedWorktree,
@@ -129,6 +136,23 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
     const next = this.sessions.filter((session) => session.id !== sessionId);
     next.push(summary);
     this.sessions.splice(0, this.sessions.length, ...next);
+    this.sortBySidebarOrder();
+    this.rebuildIndexes();
+  }
+
+  setDraft(sessionId: string, draft: boolean) {
+    const index = this.sessions.findIndex((session) => session.id === sessionId);
+    if (index < 0) return;
+    const session = this.sessions[index]!;
+    this.sessions.splice(index, 1, { ...session, draft });
+    this.rebuildIndexes();
+  }
+
+  setResolved(sessionId: string, resolved: boolean) {
+    const index = this.sessions.findIndex((session) => session.id === sessionId);
+    if (index < 0) return;
+    const session = this.sessions[index]!;
+    this.sessions.splice(index, 1, { ...session, resolved });
     this.sortBySidebarOrder();
     this.rebuildIndexes();
   }

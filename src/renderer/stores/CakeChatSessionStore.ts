@@ -33,6 +33,12 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   attachments: Attachment[] = observable([]);
   error: string | undefined;
   errorDetails: string | undefined;
+  editingEntryId: string | undefined;
+  editingDraftSession = false;
+  private readonly pendingSubmissions = new Map<
+    string,
+    { text: string; attachments: Attachment[]; editingEntryId?: string }
+  >();
 
   constructor(props: CakeChatSessionStore["props"]) {
     super(props);
@@ -49,7 +55,33 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     return this.props.sessionId;
   }
   get parts() {
-    return this.model.uiParts;
+    const staged = this.props.collection.draftSessionPrompt(this.sessionId);
+    if (!staged || this.editingDraftSession) return this.model.uiParts;
+    return [
+      {
+        id: `draft-${this.sessionId}-text`,
+        kind: "text" as const,
+        role: "user" as const,
+        entryId: `draft:${this.sessionId}`,
+        text: staged.text,
+        status: "complete" as const,
+        draft: true,
+      },
+      ...staged.attachments.flatMap((attachment, index): SessionSnapshot["parts"] =>
+        attachment.kind === "image"
+          ? [
+              {
+                id: `draft-${this.sessionId}-attachment-${index}`,
+                kind: "attachment",
+                name: attachment.name,
+                mediaType: attachment.mimeType,
+                attachmentKind: "image",
+                data: attachment.data,
+              },
+            ]
+          : [],
+      ),
+    ];
   }
   get streaming() {
     return this.model.streaming;
@@ -96,12 +128,59 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       this.props.operations.includes(event.operationId, this.configurationOwner)
     )
       this.configurationStore.receive(event);
+    if (
+      (event.type === "global-chat-operation-completed" ||
+        event.type === "global-chat-operation-failed") &&
+      this.props.operations.includes(event.operationId, this.promptOwner)
+    ) {
+      const pending = this.pendingSubmissions.get(event.operationId);
+      this.pendingSubmissions.delete(event.operationId);
+      if (event.type === "global-chat-operation-failed" && pending) {
+        if (!this.chatStore.draft.trim()) this.chatStore.setDraft(pending.text);
+        if (this.attachments.length === 0) this.attachments.push(...pending.attachments);
+        this.editingEntryId = pending.editingEntryId;
+      }
+    }
   }
 
   async submit(text: string) {
     text = text.trim();
     const attachments = this.attachments.slice();
     if (!text && attachments.length === 0) return false;
+    if (this.editingDraftSession) {
+      this.props.collection.updateDraftSession(this.sessionId, text, attachments);
+      this.attachments.splice(0);
+      this.editingDraftSession = false;
+      return true;
+    }
+    if (this.editingEntryId) {
+      const entryId = this.editingEntryId;
+      this.editingEntryId = undefined;
+      const operationId = this.props.operations.start(this.promptOwner);
+      this.pendingSubmissions.set(operationId, { text, attachments, editingEntryId: entryId });
+      this.attachments.splice(0);
+      try {
+        if (!this.props.collection.port.editMessage)
+          throw new Error("This Cake Chat client does not support message editing");
+        await this.props.collection.port.editMessage({
+          operationId,
+          sessionId: this.sessionId,
+          entryId,
+          text,
+          attachments,
+        });
+        return true;
+      } catch (error) {
+        if (!this.signal.aborted) {
+          this.pendingSubmissions.delete(operationId);
+          this.editingEntryId = entryId;
+          this.attachments.push(...attachments);
+          this.props.operations.finish(operationId);
+          this.reportError(error);
+        }
+        return false;
+      }
+    }
     const builtin = parsePiBuiltinCommand(text);
     if (builtin?.name === "handoff" || builtin?.name === "handoffandresolve") {
       if (this.attachments.length > 0) {
@@ -160,6 +239,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       }
     }
     const operationId = this.props.operations.start(this.promptOwner);
+    this.pendingSubmissions.set(operationId, { text, attachments });
     this.attachments.splice(0);
     try {
       await this.props.collection.port.prompt({
@@ -172,11 +252,83 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       return true;
     } catch (error) {
       if (this.signal.aborted) return false;
+      this.pendingSubmissions.delete(operationId);
       this.attachments.push(...attachments);
       this.props.operations.finish(operationId);
       this.reportError(error);
       return false;
     }
+  }
+
+  async createDraftSession() {
+    const text = this.chatStore.draft.trim();
+    const attachments = this.attachments.slice();
+    if (!text && attachments.length === 0) return false;
+    if (!this.props.collection.createDraftSession(this.sessionId, text, attachments)) return false;
+    this.chatStore.setDraft("");
+    this.attachments.splice(0);
+    if (text && this.props.collection.port.generateSessionTitle)
+      void this.props.collection.port
+        .generateSessionTitle(text)
+        .then((title) => {
+          if (title && !this.signal.aborted)
+            this.props.collection.applyGeneratedDraftName(this.sessionId, title);
+        })
+        .catch(() => undefined);
+    return true;
+  }
+
+  async activateDraftSession() {
+    const staged = this.props.collection.activateDraftSession(this.sessionId);
+    if (!staged) return false;
+    this.chatStore.setDraft(staged.text);
+    this.attachments.splice(0, this.attachments.length, ...staged.attachments);
+    return this.chatStore.submit();
+  }
+
+  beginEditMessage(entryId: string) {
+    if (this.streaming) return;
+    const staged = this.props.collection.draftSessionPrompt(this.sessionId);
+    if (staged && entryId === `draft:${this.sessionId}`) {
+      this.chatStore.setDraft(staged.text);
+      this.attachments.splice(0, this.attachments.length, ...staged.attachments);
+      this.editingDraftSession = true;
+      return;
+    }
+    const userPart = this.model.uiParts.find(
+      (part) =>
+        ((part.kind === "text" && part.role === "user") || part.kind === "skill") &&
+        part.entryId === entryId,
+    );
+    if (
+      !userPart ||
+      (userPart.kind !== "skill" && !(userPart.kind === "text" && userPart.role === "user"))
+    )
+      return;
+    const textIndex = this.model.uiParts.indexOf(userPart);
+    const nextAssistantOffset = this.model.uiParts
+      .slice(textIndex + 1)
+      .findIndex((part) => part.kind === "text" && part.role === "assistant");
+    const end =
+      nextAssistantOffset < 0 ? this.model.uiParts.length : textIndex + 1 + nextAssistantOffset;
+    const images = this.model.uiParts.slice(textIndex + 1, end).flatMap((part): Attachment[] =>
+      part.kind === "attachment" && part.attachmentKind === "image" && part.data
+        ? [
+            {
+              kind: "image",
+              name: part.name,
+              mimeType: part.mediaType,
+              data: part.data,
+            },
+          ]
+        : [],
+    );
+    this.chatStore.setDraft(
+      this.model.tree.find((entry) => entry.id === entryId)?.editorText ??
+        (userPart.kind === "text" ? userPart.text : userPart.content),
+    );
+    this.attachments.splice(0, this.attachments.length, ...images);
+    this.editingEntryId = entryId;
   }
 
   async addPastedImages(files: readonly File[]) {
@@ -249,6 +401,16 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       inputLabel: () => "Message Cake Chat",
       canSubmit: (draft) => Boolean(draft.trim() || this.attachments.length > 0),
       submit: (draft) => this.submit(draft),
+      createDraft: () => this.createDraftSession(),
+      showDraftMenu: (x, y) =>
+        this.props.collection.port.showSendContextMenu?.({ x, y }) ?? Promise.resolve(undefined),
+      canCreateDraft: () =>
+        this.props.collection.isPendingSession(this.sessionId) &&
+        !this.props.collection.isDraftSession(this.sessionId),
+      activateDraft: () => this.activateDraftSession(),
+      editLastUserMessage: (entryId) => this.beginEditMessage(entryId),
+      isDraftSession: () => this.props.collection.isDraftSession(this.sessionId),
+      editingMessage: () => Boolean(this.editingEntryId || this.editingDraftSession),
       abort: () => this.abort(),
       attachments: () => this.attachments,
       addPastedImages: (files) => this.addPastedImages(files),

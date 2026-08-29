@@ -410,8 +410,17 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         listModels: () => this.client.listModels(),
         showComposerContextMenu: (input) => this.client.showComposerContextMenu(input),
         rewordComposerSelection: (input) => this.client.rewordComposerSelection(input),
+        showSendContextMenu: (input) =>
+          this.client.showSendContextMenu?.(input) ?? Promise.resolve(undefined),
+        generateSessionTitle: (firstUserMessage) =>
+          this.client.generateSessionTitle?.(firstUserMessage) ?? Promise.resolve(undefined),
         open: (input) => this.client.openGlobalChat(input),
         prompt: (input) => this.client.promptGlobalChat(input),
+        editMessage: (input) => {
+          if (!this.client.editGlobalChatMessage)
+            return Promise.reject(new Error("This Cake client does not support message editing"));
+          return this.client.editGlobalChatMessage(input);
+        },
         abort: (input) => this.client.abortGlobalChat(input),
         compact: (input) => this.client.compactGlobalChat(input),
         handoff: (input) => this.client.handoffGlobalChat(input),

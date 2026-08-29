@@ -35,7 +35,11 @@ import {
 } from "../agent/session-discovery";
 import { loadReviewSessionProjection, runInlineWidgetRepair } from "../agent/sidecar-runtime";
 import { listAgentCatalogModels, refreshAgentCatalogModels } from "../agent/model-catalog";
-import { createUtilityModelRuntime, rewordSelection } from "../agent/utility-model";
+import {
+  createUtilityModelRuntime,
+  generateSessionTitle,
+  rewordSelection,
+} from "../agent/utility-model";
 import { Application } from "../models/Application";
 import { shouldAllowNavigation } from "./navigation-policy";
 import {
@@ -894,6 +898,26 @@ async function handleCakeRequest(
       action,
     });
   }
+  if (request.type === "show-send-context-menu") {
+    if (!owner) return desktopResponseSchema.parse({ type: "send-context-menu-closed" });
+    const action = await new Promise<"create-draft" | undefined>((resolve) => {
+      let completed = false;
+      const finish = (selected?: "create-draft") => {
+        if (completed) return;
+        completed = true;
+        resolve(selected);
+      };
+      Menu.buildFromTemplate([
+        { label: "Create Draft", click: () => finish("create-draft") },
+      ]).popup({
+        window: owner,
+        x: request.x,
+        y: request.y,
+        callback: () => finish(),
+      });
+    });
+    return desktopResponseSchema.parse({ type: "send-context-menu-closed", action });
+  }
   if (request.type === "show-composer-context-menu") {
     if (!owner) return desktopResponseSchema.parse({ type: "composer-context-menu-closed" });
     const action = await new Promise<"reword" | "reword-with-prompt" | undefined>((resolve) => {
@@ -953,6 +977,19 @@ async function handleCakeRequest(
       controllers.delete(controller);
       if (controllers.size === 0) composerRewordControllers.delete(event.sender.id);
     }
+  }
+  if (request.type === "generate-session-title") {
+    const utilityModel = applicationModel.utilityModel;
+    if (!utilityModel) return desktopResponseSchema.parse({ type: "session-title-generated" });
+    const signal = AbortSignal.timeout(15_000);
+    const modelRuntime = await createUtilityModelRuntime(cakePaths.piAgent, signal);
+    const title = await generateSessionTitle({
+      modelRuntime,
+      utilityModel,
+      firstUserMessage: request.firstUserMessage,
+      signal,
+    });
+    return desktopResponseSchema.parse({ type: "session-title-generated", title });
   }
   if (request.type === "set-fullscreen-surface-open") {
     let surfaceIds = fullscreenSurfaces.get(event.sender.id);
@@ -1422,6 +1459,18 @@ async function handleCakeRequest(
       request.text,
       request.attachments,
       request.newSession,
+    );
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  if (request.type === "edit-global-chat-message") {
+    globalChatController = event.sender;
+    await restoreCakeChatSessionForUse(request.sessionId);
+    globalChatDriver.editMessage(
+      request.requestId,
+      request.sessionId,
+      request.entryId,
+      request.text,
+      request.attachments,
     );
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }

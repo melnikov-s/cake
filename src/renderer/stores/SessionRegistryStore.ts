@@ -1,6 +1,7 @@
 import { Store, applySnapshot, child, createStore, observable, updateStore } from "r-state-tree";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type {
+  Attachment,
   ChatConfiguration,
   ModelPreset,
   SessionPreview,
@@ -52,6 +53,10 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     {},
   );
   private readonly pendingNamesBySession: Record<string, string> = observable({});
+  private readonly draftSessionsById: Record<
+    string,
+    { text: string; attachments: Attachment[]; resolved: boolean }
+  > = observable({});
   private readonly temporarySessionIds: Set<string> = observable(new Set<string>());
   private readonly sessionsById = new Map<string, ProjectSessionStore>();
   private readonly sessionWorkspacePaths = new Map<string, string>();
@@ -115,6 +120,8 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     if (!this.temporarySessionIds.delete(sessionId)) return;
     delete this.pendingConfigurationsBySession[sessionId];
     delete this.pendingNamesBySession[sessionId];
+    delete this.draftSessionsById[sessionId];
+    this.props.catalog?.setDraft(sessionId, false);
     this.unlistedNewSessionIds.add(sessionId);
     this.props.persist();
   }
@@ -160,6 +167,56 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     return this.temporarySessionIds.has(sessionId);
   }
 
+  isDraftSession(sessionId: string) {
+    return this.draftSessionsById[sessionId] !== undefined;
+  }
+
+  draftSessionPrompt(sessionId: string) {
+    return this.draftSessionsById[sessionId];
+  }
+
+  createDraftSession(sessionId: string, text: string, attachments: Attachment[]) {
+    if (!this.temporarySessionIds.has(sessionId))
+      throw new Error("Only a new session can be saved as a draft");
+    this.draftSessionsById[sessionId] = {
+      text,
+      attachments: attachments.map((attachment) => ({ ...attachment })),
+      resolved: false,
+    };
+    this.props.catalog?.setDraft(sessionId, true);
+    this.props.persist();
+  }
+
+  updateDraftSession(sessionId: string, text: string, attachments: Attachment[]) {
+    const current = this.draftSessionsById[sessionId];
+    if (!current) throw new Error("Cake could not find that draft session");
+    this.draftSessionsById[sessionId] = {
+      text,
+      attachments: attachments.map((attachment) => ({ ...attachment })),
+      resolved: current.resolved,
+    };
+    this.props.persist();
+  }
+
+  activateDraftSession(sessionId: string) {
+    const current = this.draftSessionsById[sessionId];
+    if (!current) return undefined;
+    delete this.draftSessionsById[sessionId];
+    this.props.catalog?.setDraft(sessionId, false);
+    this.props.catalog?.setResolved(sessionId, false);
+    this.props.persist();
+    return current;
+  }
+
+  setDraftSessionResolved(sessionId: string, resolved: boolean) {
+    const current = this.draftSessionsById[sessionId];
+    if (!current) return false;
+    this.draftSessionsById[sessionId] = { ...current, resolved };
+    this.props.catalog?.setResolved(sessionId, resolved);
+    this.props.persist();
+    return true;
+  }
+
   relocateTemporarySession(sessionId: string, workspacePath: string) {
     if (!this.temporarySessionIds.has(sessionId))
       throw new Error("Only an unsent session can choose another worktree.");
@@ -190,6 +247,13 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     if (!this.temporarySessionIds.has(sessionId))
       throw new Error("Only an unsent session can receive an initial name.");
     this.pendingNamesBySession[sessionId] = name;
+    this.props.catalog?.rename(sessionId, name);
+    this.props.persist();
+  }
+
+  applyGeneratedDraftName(sessionId: string, name: string) {
+    if (!this.isDraftSession(sessionId) || this.pendingNamesBySession[sessionId]) return;
+    this.setPendingName(sessionId, name);
   }
 
   setPendingConfiguration(sessionId: string, configuration: ChatConfiguration) {
@@ -204,6 +268,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     this.unlistedNewSessionIds.delete(sessionId);
     delete this.pendingConfigurationsBySession[sessionId];
     delete this.pendingNamesBySession[sessionId];
+    delete this.draftSessionsById[sessionId];
     this.sessionWorkspacePaths.delete(sessionId);
     this.pendingPartsBySession.delete(sessionId);
     this.pendingStreamingBySession.delete(sessionId);
@@ -222,6 +287,14 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
           draft: session.chatStore.draft,
           configuration: this.pendingConfiguration(sessionId),
           name: this.pendingName(sessionId),
+          draftSession: this.isDraftSession(sessionId),
+          resolved: this.draftSessionPrompt(sessionId)?.resolved ?? false,
+          stagedPrompt: this.draftSessionPrompt(sessionId)
+            ? {
+                text: this.draftSessionPrompt(sessionId)!.text,
+                attachments: this.draftSessionPrompt(sessionId)!.attachments,
+              }
+            : undefined,
         },
       ];
     });
@@ -233,11 +306,26 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     draft: string;
     configuration?: ChatConfiguration;
     name?: string;
+    draftSession?: boolean;
+    resolved?: boolean;
+    stagedPrompt?: { text: string; attachments: Attachment[] };
   }) {
     const session = this.prepareNewSession(state.workspacePath, state.sessionId);
     session.chatStore.setDraft(state.draft);
     if (state.configuration) this.setPendingConfiguration(state.sessionId, state.configuration);
     if (state.name) this.setPendingName(state.sessionId, state.name);
+    if (state.draftSession && state.stagedPrompt) {
+      this.draftSessionsById[state.sessionId] = {
+        ...state.stagedPrompt,
+        resolved: state.resolved ?? false,
+      };
+      this.props.catalog?.upsertPending(
+        state.sessionId,
+        state.workspacePath,
+        this.props.projectName(state.workspacePath),
+        { draft: true, resolved: state.resolved },
+      );
+    }
     return session;
   }
 

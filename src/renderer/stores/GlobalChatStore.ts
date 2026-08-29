@@ -39,6 +39,8 @@ export interface GlobalChatPort {
     y: number;
   }): Promise<"reword" | "reword-with-prompt" | undefined>;
   rewordComposerSelection(input: { selection: string; prompt?: string }): Promise<string>;
+  showSendContextMenu?(input: { x: number; y: number }): Promise<"create-draft" | undefined>;
+  generateSessionTitle?(firstUserMessage: string): Promise<string | undefined>;
   open(input: {
     operationId: string;
     tools: ReadonlyArray<CakeControlTool>;
@@ -54,6 +56,13 @@ export interface GlobalChatPort {
       configuration?: ChatConfiguration;
       name?: string;
     };
+  }): Promise<void>;
+  editMessage?(input: {
+    operationId: string;
+    sessionId: string;
+    entryId: string;
+    text: string;
+    attachments: Attachment[];
   }): Promise<void>;
   abort(input: { operationId: string; sessionId: string }): Promise<void>;
   compact(input: { operationId: string; sessionId: string; instructions?: string }): Promise<void>;
@@ -108,6 +117,9 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   private pendingSessionId: string | undefined;
   private pendingConfiguration: ChatConfiguration | undefined;
   private pendingName: string | undefined;
+  private pendingDraftPrompt:
+    | { text: string; attachments: Attachment[]; resolved: boolean }
+    | undefined;
   private selectionOpenOperationId: string | undefined;
   private handoffOperationId: string | undefined;
   private resolutionQueue: Promise<void> = Promise.resolve();
@@ -228,6 +240,53 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     this.props.persist?.();
   }
 
+  isDraftSession(sessionId: string) {
+    return this.isPendingSession(sessionId) && this.pendingDraftPrompt !== undefined;
+  }
+
+  draftSessionPrompt(sessionId: string) {
+    return this.isDraftSession(sessionId) ? this.pendingDraftPrompt : undefined;
+  }
+
+  createDraftSession(sessionId: string, text: string, attachments: Attachment[]) {
+    if (!this.isPendingSession(sessionId)) return false;
+    this.pendingDraftPrompt = { text, attachments: attachments.slice(), resolved: false };
+    this.updateSummary(sessionId, (summary) => ({
+      ...summary,
+      draft: true,
+      modified: new Date().toISOString(),
+    }));
+    this.props.persist?.();
+    return true;
+  }
+
+  updateDraftSession(sessionId: string, text: string, attachments: Attachment[]) {
+    if (!this.isDraftSession(sessionId)) return false;
+    this.pendingDraftPrompt = {
+      text,
+      attachments: attachments.slice(),
+      resolved: this.pendingDraftPrompt?.resolved ?? false,
+    };
+    this.props.persist?.();
+    return true;
+  }
+
+  activateDraftSession(sessionId: string) {
+    if (!this.isDraftSession(sessionId)) return undefined;
+    const prompt = this.pendingDraftPrompt;
+    this.pendingDraftPrompt = undefined;
+    this.updateSummary(sessionId, (summary) => ({ ...summary, draft: false, resolved: false }));
+    this.props.persist?.();
+    return prompt;
+  }
+
+  applyGeneratedDraftName(sessionId: string, name: string) {
+    if (!this.isDraftSession(sessionId) || this.pendingName) return;
+    this.pendingName = name;
+    this.updateSummary(sessionId, (summary) => ({ ...summary, title: name }));
+    this.props.persist?.();
+  }
+
   newSessionRequest(sessionId: string) {
     if (!this.isPendingSession(sessionId)) return undefined;
     return {
@@ -242,6 +301,7 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     this.pendingSessionId = undefined;
     this.pendingConfiguration = undefined;
     this.pendingName = undefined;
+    this.pendingDraftPrompt = undefined;
     this.props.persist?.();
   }
 
@@ -252,6 +312,14 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       draft: this.findSession(this.pendingSessionId)?.chatStore.draft ?? "",
       configuration: this.pendingConfiguration,
       name: this.pendingName,
+      draftSession: this.pendingDraftPrompt !== undefined,
+      resolved: this.pendingDraftPrompt?.resolved ?? false,
+      stagedPrompt: this.pendingDraftPrompt
+        ? {
+            text: this.pendingDraftPrompt.text,
+            attachments: this.pendingDraftPrompt.attachments,
+          }
+        : undefined,
     };
   }
 
@@ -260,6 +328,9 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     draft: string;
     configuration?: ChatConfiguration;
     name?: string;
+    draftSession?: boolean;
+    resolved?: boolean;
+    stagedPrompt?: { text: string; attachments: Attachment[] };
   }) {
     if (this.pendingSessionId && this.pendingSessionId !== input.sessionId) {
       const targetIndex = this.targets.indexOf(this.pendingSessionId);
@@ -273,6 +344,16 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     const session = this.prepareNewSession(input.sessionId, input.name);
     this.pendingConfiguration = input.configuration;
     this.pendingName = input.name;
+    this.pendingDraftPrompt =
+      input.draftSession && input.stagedPrompt
+        ? { ...input.stagedPrompt, resolved: input.resolved ?? false }
+        : undefined;
+    if (this.pendingDraftPrompt)
+      this.updateSummary(input.sessionId, (summary) => ({
+        ...summary,
+        draft: true,
+        resolved: this.pendingDraftPrompt?.resolved ?? false,
+      }));
     session.chatStore.setDraft(input.draft);
   }
 
@@ -334,6 +415,12 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
 
   /** Resolution mutations are queued so an older response cannot overwrite newer application state. */
   resolveSession(sessionId: string, resolved: boolean) {
+    if (this.isDraftSession(sessionId) && this.pendingDraftPrompt) {
+      this.pendingDraftPrompt = { ...this.pendingDraftPrompt, resolved };
+      this.updateSummary(sessionId, (summary) => ({ ...summary, resolved }));
+      this.props.persist?.();
+      return Promise.resolve();
+    }
     if (resolved && this.isPendingSession(sessionId)) {
       this.discardPendingSession(sessionId);
       return Promise.resolve();
@@ -348,6 +435,12 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   resolveSessions(sessionIds: readonly string[], resolved: boolean) {
     const ids = [...sessionIds];
     const persistedIds = ids.filter((sessionId) => {
+      if (this.isDraftSession(sessionId) && this.pendingDraftPrompt) {
+        this.pendingDraftPrompt = { ...this.pendingDraftPrompt, resolved };
+        this.updateSummary(sessionId, (summary) => ({ ...summary, resolved }));
+        this.props.persist?.();
+        return false;
+      }
       if (!resolved || !this.isPendingSession(sessionId)) return true;
       this.discardPendingSession(sessionId);
       return false;
@@ -527,6 +620,7 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     this.pendingSessionId = undefined;
     this.pendingConfiguration = undefined;
     this.pendingName = undefined;
+    this.pendingDraftPrompt = undefined;
     this.props.persist?.();
     if (this.selectedSessionId === sessionId) {
       const next = this.loadedSessions[0];
@@ -588,6 +682,7 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     const resolvedIds = new Set(this.resolvedSessionIds);
     for (let index = 0; index < this.summaries.length; index += 1) {
       const summary = this.summaries[index]!;
+      if (summary.draft) continue;
       const resolved = resolvedIds.has(summary.id);
       if (summary.resolved !== resolved) this.summaries.splice(index, 1, { ...summary, resolved });
     }

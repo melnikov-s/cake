@@ -67,7 +67,9 @@ export const ChatTextMessage = forwardRef<
         ? "You · pending steer"
         : part.deliveryState === "sending"
           ? "You · sending"
-          : "You";
+          : part.draft
+            ? "You · draft"
+            : "You";
   return (
     <Message
       ref={ref}

@@ -196,6 +196,7 @@ function partsFromMessage(
       parts.push({
         id: `${baseId}-skill`,
         kind: "skill",
+        entryId,
         name: skill.name,
         content: skill.content,
       });
@@ -250,6 +251,19 @@ function partsFromMessage(
         }
       });
     }
+    if (
+      entryId &&
+      parts.length > 0 &&
+      !parts.some((part) => (part.kind === "text" && part.role === "user") || part.kind === "skill")
+    )
+      parts.unshift({
+        id: `${baseId}-text`,
+        kind: "text",
+        role: "user",
+        entryId,
+        text: "",
+        status: "complete",
+      });
     return parts;
   }
 

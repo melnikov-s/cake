@@ -281,9 +281,18 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     y: z.number().int().min(-1_000_000).max(1_000_000),
   }),
   z.object({
+    type: z.literal("show-send-context-menu"),
+    x: z.number().int().min(-1_000_000).max(1_000_000),
+    y: z.number().int().min(-1_000_000).max(1_000_000),
+  }),
+  z.object({
     type: z.literal("reword-composer-selection"),
     selection: z.string().min(1).max(32_000),
     prompt: z.string().max(4_096).optional(),
+  }),
+  z.object({
+    type: z.literal("generate-session-title"),
+    firstUserMessage: z.string().min(1).max(262_144),
   }),
   z.object({
     type: z.literal("show-session-context-menu"),
@@ -519,6 +528,14 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
       message: "A global-chat prompt requires text or an attachment",
     }),
   z.object({
+    type: z.literal("edit-global-chat-message"),
+    requestId: z.uuid(),
+    sessionId: z.string().min(1).max(256),
+    entryId: z.string().min(1).max(256),
+    text: z.string().max(262_144),
+    attachments: z.array(attachmentSchema).max(20),
+  }),
+  z.object({
     type: z.literal("abort-global-chat"),
     requestId: z.uuid(),
     sessionId: z.string().min(1).max(256),
@@ -710,6 +727,14 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
       message: "A prompt requires text or an attachment",
     }),
   z.object({
+    type: z.literal("edit-session-message"),
+    requestId: z.uuid(),
+    sessionId: z.string().max(256),
+    entryId: z.string().min(1).max(256),
+    text: z.string().max(262_144),
+    attachments: z.array(attachmentSchema).max(20),
+  }),
+  z.object({
     type: z.literal("submit-review-thread"),
     requestId: z.uuid(),
     sessionId: z.string().max(256),
@@ -838,8 +863,16 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
     action: z.enum(["reword", "reword-with-prompt"]).optional(),
   }),
   z.object({
+    type: z.literal("send-context-menu-closed"),
+    action: z.literal("create-draft").optional(),
+  }),
+  z.object({
     type: z.literal("composer-selection-reworded"),
     text: z.string().min(1).max(32_000),
+  }),
+  z.object({
+    type: z.literal("session-title-generated"),
+    title: z.string().min(1).max(80).optional(),
   }),
   z.object({
     type: z.literal("session-context-menu-closed"),
