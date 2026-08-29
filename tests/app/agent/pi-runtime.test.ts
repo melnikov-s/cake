@@ -97,6 +97,8 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(systemPrompt).toContain("use Markdown links with absolute paths so Cake can open them");
     expect(systemPrompt).toContain("cake://session/<session-id>");
     expect(systemPrompt).toContain("never show a bare session ID as the label");
+    expect(systemPrompt).not.toContain("Fast source-of-truth map");
+    expect(systemPrompt).not.toContain("modelPresets");
     expect(activeTools).toContain("cake");
   });
 
@@ -1346,11 +1348,20 @@ describe("S1 Pi runtime", () => {
       "You are Cake Chat, the application-level assistant built into Cake",
     );
     expect(context?.systemPrompt).toContain("Unlike a project session");
-    expect(context?.systemPrompt).toContain("Reserve `cake sessions`");
-    expect(context?.systemPrompt).toContain("Search transcript files with rg, grep, or jq");
+    expect(context?.systemPrompt).toContain("Cake is Pi expressed as a desktop application");
+    expect(context?.systemPrompt).toContain("Fast source-of-truth map");
+    expect(context?.systemPrompt).toContain("~/Library/Application Support/cake/application.json");
+    expect(context?.systemPrompt).toContain("modelPresets");
+    expect(context?.systemPrompt).toContain("~/.cake/pi/models-cache.json");
+    expect(context?.systemPrompt).toContain("PI_SESSION_FILE");
+    expect(context?.systemPrompt).toContain("/handoffandresolve");
+    expect(context?.systemPrompt).toContain("Projects and worktrees");
+    expect(context?.systemPrompt).toContain("evidence, not permission to edit that checkout");
+    expect(context?.systemPrompt).toContain("Reserve the `sessions` gateway topic");
+    expect(context?.systemPrompt).toContain("A `session_info` record supplies the durable title");
     expect(context?.systemPrompt).toContain("Resolved project sessions");
     expect(context?.systemPrompt).toContain("archived and read-only");
-    expect(context?.systemPrompt).toContain("Treat it as read-only");
+    expect(context?.systemPrompt).toContain("Cake-owned state");
     expect(context?.systemPrompt).toContain("This is a capability map");
     expect(context?.systemPrompt).toContain(
       'setting the Cake tool\'s `command` to the exact topic name (for example, `{"command":"sessions"}`)',
