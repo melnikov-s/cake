@@ -457,6 +457,7 @@ describe("AppControlBridge", () => {
       workspacePath: "/cake",
       name: "Direct session",
       initialPrompt: "Implement the direct version",
+      model: { provider: "anthropic", modelId: "claude-opus-4-6" },
     };
     await expect(
       bridge.invoke({ name: "create_session", arguments: directInput }),
@@ -546,7 +547,14 @@ describe("AppControlBridge", () => {
       arguments: { sessionId: "current", provider: "openai", modelId: "gpt-5" },
     });
 
-    expect(createSession).toHaveBeenNthCalledWith(1, directInput);
+    expect(createSession).toHaveBeenNthCalledWith(1, {
+      ...directInput,
+      model: {
+        ...directInput.model,
+        thinkingLevel: "off",
+        fastMode: false,
+      },
+    });
     expect(createSession).toHaveBeenNthCalledWith(2, worktreeInput);
     expect(renameSession).toHaveBeenCalledWith("current", "Global controls");
     expect(setSessionResolved).toHaveBeenCalledWith("current", true);

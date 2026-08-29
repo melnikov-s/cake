@@ -360,7 +360,7 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("creates a named session and submits its initial prompt", async () => {
+  it("creates a configured named session and submits its initial prompt", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
@@ -369,6 +369,12 @@ describe("ProjectWorkbenchStore", () => {
       "/project",
       "Named session",
       "Implement the requested feature",
+      {
+        provider: "anthropic",
+        modelId: "claude-opus-4-6",
+        thinkingLevel: "high",
+        fastMode: false,
+      },
     );
 
     expect(sessionId).toEqual(expect.any(String));
@@ -380,7 +386,12 @@ describe("ProjectWorkbenchStore", () => {
       attachments: [],
       newSession: {
         path: "/project",
-        configuration: undefined,
+        configuration: {
+          provider: "anthropic",
+          modelId: "claude-opus-4-6",
+          thinkingLevel: "high",
+          fastMode: false,
+        },
         name: "Named session",
       },
     });

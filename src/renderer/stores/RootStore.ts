@@ -1,6 +1,6 @@
 import { Store, child, createStore, untracked } from "r-state-tree";
 import { jsonValueSchema } from "../../ipc/json-contract";
-import type { SessionSnapshot, UiPart } from "../../ipc/session-contract";
+import type { ChatConfiguration, SessionSnapshot, UiPart } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import type { SessionHistoryEntry } from "./AppShellStore";
 import { SessionRegistryStore } from "./SessionRegistryStore";
@@ -104,6 +104,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     workspacePath: string;
     name: string;
     initialPrompt: string;
+    model?: ChatConfiguration;
     worktreeName?: string;
   }) {
     this.showEmptyWorkbench();
@@ -117,6 +118,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       workspacePath,
       input.name,
       input.initialPrompt,
+      input.model,
     );
     return managedWorktree
       ? { workspacePath, sessionId, managedWorktree }

@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { jsonObjectSchema, jsonValueSchema } from "../ipc/json-contract";
-import type { GlobalSessionSummary, ProjectRecord, SessionSummary } from "../ipc/session-contract";
+import {
+  thinkingLevelSchema,
+  type ChatConfiguration,
+  type GlobalSessionSummary,
+  type ProjectRecord,
+  type SessionSummary,
+} from "../ipc/session-contract";
 import type { WorktreeRecord } from "../ipc/worktree-contract";
 import {
   customizationStateSchema,
@@ -80,6 +86,16 @@ const appControlArgumentSchemas = {
       workspacePath: z.string().min(1).max(4_096),
       name: z.string().trim().min(1).max(500),
       initialPrompt: z.string().trim().min(1).max(100_000),
+      model: z
+        .object({
+          provider: z.string().trim().min(1).max(256),
+          modelId: z.string().trim().min(1).max(512),
+          thinkingLevel: thinkingLevelSchema.default("off"),
+          fastMode: z.boolean().default(false),
+        })
+        .strict()
+        .optional()
+        .describe("Exact model configuration to apply before sending the initial prompt."),
       worktreeName: z
         .string()
         .regex(/^[a-z0-9][a-z0-9-]{0,62}$/)
@@ -157,6 +173,7 @@ export interface AppControlHost {
     workspacePath: string;
     name: string;
     initialPrompt: string;
+    model?: ChatConfiguration;
     worktreeName?: string;
   }): Promise<{ workspacePath: string; sessionId: string; managedWorktree?: WorktreeRecord }>;
   sendSessionMessage(
@@ -377,7 +394,7 @@ const modelControlOperations = [
   operation(
     "sessions.create",
     "sessions",
-    "Create, name, open, and send the initial prompt to a project session, optionally in a new managed worktree.",
+    "Create, configure, name, open, and send the initial prompt to a project session, optionally with an exact model or in a new managed worktree.",
     appControlArgumentSchemas.create_session,
   ),
   operation(
