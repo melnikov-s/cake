@@ -282,6 +282,12 @@ async function setProjectSessionResolution(
       resolvedRoot: cakePaths.piResolvedSessions,
     });
   } else {
+    const restoredWorktree = await worktrees.restoreResolved(workspacePath);
+    if (restoredWorktree) {
+      allowedProjectPaths.add(restoredWorktree.worktreePath);
+      if (applicationModel.isProjectTrusted(restoredWorktree.projectPath))
+        applicationModel.trustProject(restoredWorktree.worktreePath);
+    }
     await sessionArchive.restore(sessionId, {
       cwd: workspacePath,
       activeRoot: cakePaths.piSessions,
@@ -1853,6 +1859,8 @@ async function handleCakeRequest(
         `Cake could not update ${failures.length} of ${request.sessionIds.length} sessions: ${cause}`,
       );
     }
+    if (request.resolved && request.workspacePath)
+      await worktrees.cleanupResolved(request.workspacePath);
     return desktopResponseSchema.parse({
       type: "application-state-updated",
       state: applicationModel.snapshot(),

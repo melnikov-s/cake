@@ -43,6 +43,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
 
   private pendingStrategy: WorktreeLandRequest["strategy"] | undefined;
   private pendingAllowDirtyTarget = false;
+  private pendingResolveAfterLanding = false;
   private adoptedPauseFor: string | undefined;
   private refreshing = false;
   private observedWorkspacePath: string | undefined;
@@ -80,6 +81,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       this.phase = "idle";
       this.pendingStrategy = undefined;
       this.pendingAllowDirtyTarget = false;
+      this.pendingResolveAfterLanding = false;
       this.stalled = false;
     }
     this.refreshing = true;
@@ -104,10 +106,11 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   }
 
   /** Asks the session to commit dirty changes, then automatically lands the clean branch. */
-  async commitAndMerge(allowDirtyTarget = false): Promise<void> {
+  async commitAndMerge(allowDirtyTarget = false, resolveAfterLanding = false): Promise<void> {
     const workspacePath = this.requiredWorkspacePath();
     if (this.isBusy) throw new Error("A worktree operation is already in progress.");
     if (this.props.isStreaming()) throw new Error("Wait for the current reply to finish first.");
+    this.pendingResolveAfterLanding = resolveAfterLanding;
     if (!this.status?.dirtyCount) {
       await this.land({ strategy: "preserve", allowDirtyTarget: allowDirtyTarget || undefined });
       return;
@@ -192,6 +195,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       this.phase = "idle";
       this.pendingStrategy = undefined;
       this.pendingAllowDirtyTarget = false;
+      this.pendingResolveAfterLanding = false;
       this.stalled = false;
       if (record) await this.props.onDiscarded({ ...record, state: "discarded" });
       if (resolve) await this.props.onResolveWorkspace(workspacePath);
@@ -205,6 +209,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     if (this.signal.aborted) return;
     this.error = describeError(error).message;
     this.phase = "idle";
+    this.pendingResolveAfterLanding = false;
     this.stalled = false;
   }
 
@@ -215,9 +220,10 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   async retryLanding() {
     if (this.phase === "committing") {
       const allowDirtyTarget = this.pendingAllowDirtyTarget;
+      const resolveAfterLanding = this.pendingResolveAfterLanding;
       this.phase = "idle";
       this.stalled = false;
-      await this.commitAndMerge(allowDirtyTarget);
+      await this.commitAndMerge(allowDirtyTarget, resolveAfterLanding);
       return;
     }
     if (this.phase !== "resolving" && this.phase !== "proposing") return;
@@ -239,6 +245,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.phase = "idle";
     this.pendingStrategy = undefined;
     this.pendingAllowDirtyTarget = false;
+    this.pendingResolveAfterLanding = false;
     this.stalled = false;
   }
 
@@ -380,9 +387,11 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   private async finishLanded(workspacePath: string) {
     const currentStatus = this.status;
     const projectPath = currentStatus?.record.projectPath;
+    const resolveAfterLanding = this.pendingResolveAfterLanding;
     this.phase = "idle";
     this.pendingStrategy = undefined;
     this.pendingAllowDirtyTarget = false;
+    this.pendingResolveAfterLanding = false;
     this.stalled = false;
     if (currentStatus)
       this.status = {
@@ -396,6 +405,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
         state: "landed",
         pendingStrategy: undefined,
       });
+    if (resolveAfterLanding && this.props.workspacePath() === workspacePath) await this.resolve();
   }
 
   private requiredWorkspacePath() {

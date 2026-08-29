@@ -20,7 +20,7 @@ export const worktreeRecordSchema = z.object({
   parentWorktreePath: z.string().min(1).max(4_096).optional(),
   /** Exact commit used to create this checkout. */
   baseCommit: z.string().min(1).max(256).optional(),
-  state: z.enum(["active", "landed", "discarded", "missing"]).optional(),
+  state: z.enum(["active", "landed", "resolved", "discarded", "missing"]).optional(),
   /** Strategy of a landing that is paused inside this worktree awaiting the session agent. */
   pendingStrategy: z.enum(["preserve", "squash"]).optional(),
   createdAt: z.string().datetime(),

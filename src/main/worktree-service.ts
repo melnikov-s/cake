@@ -33,8 +33,9 @@ interface LandOptions {
  * Each record is one isolated checkout in a sibling directory of its
  * repository, paired with an `agent/`-namespaced branch. Cake owns the whole
  * lifecycle. Landing either replays the branch commits onto the target branch
- * or squashes them into one commit, but leaves the merged checkout available
- * until the user explicitly discards it. Conflict resolution and squash-message
+ * or squashes them into one commit. Resolving the associated sessions removes
+ * the checkout, and restoring a session recreates it from the landing target.
+ * Conflict resolution and squash-message
  * proposals are delegated to the worktree's session agent through the Cake
  * gateway, and landing is retried once the agent finishes.
  */
@@ -407,6 +408,59 @@ export class WorktreeService implements WorktreeLandingCoordinator {
     );
   }
 
+  /** Removes a landed checkout after its sessions have been resolved. */
+  async cleanupResolved(worktreePath: string): Promise<void> {
+    await this.load();
+    const normalized = resolveNormalized(worktreePath);
+    const record = this.allRecords.find(
+      (entry) => resolveNormalized(entry.worktreePath) === normalized,
+    );
+    if (!record || !["landed", "discarded", "resolved"].includes(record.state ?? "active")) return;
+    if (record.state === "resolved") return;
+    await this.withRepositoryLock(record.projectPath, async () => {
+      if (record.state === "landed")
+        await this.cleanup(record, { keepBranch: false, state: "resolved" });
+      else await this.closeRecord(record, "resolved");
+    });
+  }
+
+  /** Recreates a checkout removed by resolution so an archived session can be restored. */
+  async restoreResolved(worktreePath: string): Promise<WorktreeRecord | undefined> {
+    await this.load();
+    const normalized = resolveNormalized(worktreePath);
+    const record = this.allRecords.find(
+      (entry) => entry.state === "resolved" && resolveNormalized(entry.worktreePath) === normalized,
+    );
+    if (!record) return undefined;
+    if (record.parentWorktreePath && !existsSync(record.parentWorktreePath))
+      await this.restoreResolved(record.parentWorktreePath);
+    return this.withRepositoryLock(record.projectPath, async () => {
+      if (!existsSync(record.worktreePath)) {
+        const targetPath = record.parentWorktreePath ?? record.projectPath;
+        if (!existsSync(targetPath))
+          throw new Error("The worktree restore target no longer exists");
+        await mkdir(dirname(record.worktreePath), { recursive: true });
+        const branchExists = await revParseExists(
+          record.projectPath,
+          `refs/heads/${record.branch}`,
+        );
+        await git(
+          record.projectPath,
+          "worktree",
+          "add",
+          ...(branchExists ? [] : ["-b", record.branch]),
+          record.worktreePath,
+          branchExists ? record.branch : record.baseBranch,
+        );
+      }
+      const restored = { ...record, state: "active" as const };
+      const index = this.allRecords.indexOf(record);
+      if (index >= 0) this.allRecords = this.allRecords.with(index, restored);
+      await this.persist();
+      return restored;
+    });
+  }
+
   private async withRepositoryLock<T>(
     projectPath: string,
     operation: () => Promise<T>,
@@ -445,7 +499,7 @@ export class WorktreeService implements WorktreeLandingCoordinator {
 
   private async cleanup(
     record: WorktreeRecord,
-    options: { keepBranch: boolean; state: "discarded" },
+    options: { keepBranch: boolean; state: "discarded" | "resolved" },
   ) {
     const normalized = resolveNormalized(record.worktreePath);
     this.awaitingSquashProposals.delete(normalized);
@@ -475,7 +529,10 @@ export class WorktreeService implements WorktreeLandingCoordinator {
     await this.persist();
   }
 
-  private async closeRecord(record: WorktreeRecord, state: "landed" | "discarded" | "missing") {
+  private async closeRecord(
+    record: WorktreeRecord,
+    state: "landed" | "resolved" | "discarded" | "missing",
+  ) {
     const index = this.allRecords.indexOf(record);
     if (index >= 0)
       this.allRecords = this.allRecords.with(index, {

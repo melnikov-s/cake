@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -97,7 +98,7 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
   }
 });
 
-test("shows resolve, discard, and discard-and-resolve after a worktree is merged", async () => {
+test("shows only resolve after a worktree is merged and removes the checkout", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-landed-worktree-pill-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -187,18 +188,19 @@ test("shows resolve, discard, and discard-and-resolve after a worktree is merged
     await expect(page.getByRole("button", { name: "Resolve", exact: true })).toBeVisible({
       timeout: 20_000,
     });
-    await expect(page.getByRole("button", { name: "Discard", exact: true })).toBeVisible();
-    const discardAndResolve = page.getByRole("button", {
-      name: "Discard & resolve",
-      exact: true,
-    });
-    await expect(discardAndResolve).toBeVisible();
+    await expect(page.getByRole("button", { name: "Discard", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Discard & resolve", exact: true })).toHaveCount(
+      0,
+    );
     await expect(page.getByRole("button", { name: "Commit & merge", exact: true })).toHaveCount(0);
 
-    await discardAndResolve.click();
-    await expect(page.getByText("Discard this worktree?", { exact: true })).toBeVisible();
-    await discardAndResolve.last().click();
+    await page.getByRole("button", { name: "Resolve", exact: true }).click();
     await expect(page.getByRole("button", { name: "Current checkout", exact: true })).toBeVisible();
+    await expect.poll(() => existsSync(worktreePath)).toBe(false);
+    const restore = page.locator(".resolved-lane .session-resolve-action");
+    await expect(restore).toHaveAttribute("aria-label", /^Restore /);
+    await restore.click();
+    await expect.poll(() => existsSync(worktreePath)).toBe(true);
     await expect(page.getByText(/Cake could not find session/)).toHaveCount(0);
   } finally {
     await application.close();

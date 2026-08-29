@@ -152,7 +152,7 @@ describe("WorktreeStore", () => {
     store[Symbol.dispose]();
   });
 
-  it("resolves the worktree sessions without discarding the checkout", async () => {
+  it("delegates resolution-time checkout cleanup to the workspace resolver", async () => {
     const { store, client, onResolveWorkspace } = createTestStore();
     await vi.waitFor(() => expect(store.status).toEqual(status));
 
@@ -160,6 +160,17 @@ describe("WorktreeStore", () => {
 
     expect(onResolveWorkspace).toHaveBeenCalledWith("/project-worktree");
     expect(client.discardWorktree).not.toHaveBeenCalled();
+    store[Symbol.dispose]();
+  });
+
+  it("merges and resolves in one operation", async () => {
+    const { store, client, onResolveWorkspace } = createTestStore();
+    await vi.waitFor(() => expect(store.status).toEqual(status));
+
+    await store.commitAndMerge(false, true);
+
+    expect(client.landWorktree).toHaveBeenCalledOnce();
+    expect(onResolveWorkspace).toHaveBeenCalledWith("/project-worktree");
     store[Symbol.dispose]();
   });
 

@@ -571,6 +571,31 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     await expect(worktrees.status(record.worktreePath)).resolves.toBeUndefined();
   });
 
+  it("removes a resolved landed worktree and recreates it when restored", async () => {
+    const repo = await repository();
+    const worktrees = service();
+    const record = await worktrees.create(repo);
+    await writeFile(join(record.worktreePath, "feature.ts"), "x\n");
+    await commitAll(record.worktreePath, "feature");
+    await worktrees.land(record.worktreePath, { request: { strategy: "preserve" } });
+
+    await worktrees.cleanupResolved(record.worktreePath);
+
+    expect(existsSync(record.worktreePath)).toBe(false);
+    await expect(git(repo, "rev-parse", "--verify", record.branch)).rejects.toThrow();
+    await expect(worktrees.records()).resolves.toEqual([
+      expect.objectContaining({ worktreePath: record.worktreePath, state: "resolved" }),
+    ]);
+
+    await expect(worktrees.restoreResolved(record.worktreePath)).resolves.toMatchObject({
+      state: "active",
+    });
+    expect(existsSync(record.worktreePath)).toBe(true);
+    await expect(
+      git(record.worktreePath, "rev-parse", "--abbrev-ref", "HEAD"),
+    ).resolves.toMatchObject({ stdout: expect.stringContaining(record.branch) });
+  });
+
   it("discards the worktree and optionally keeps the branch", async () => {
     const repo = await repository();
     const worktrees = service();
