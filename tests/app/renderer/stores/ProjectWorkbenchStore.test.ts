@@ -233,6 +233,8 @@ function createDesktopClient(restoredPath?: string) {
       createdAt: new Date().toISOString(),
     })),
     getWorktreeStatus: vi.fn(async () => undefined),
+    getWorkspaceGitStatus: vi.fn(async ({ workspacePath }) => ({ workspacePath, dirtyCount: 0 })),
+    commitWorkspace: vi.fn(async () => ({ commit: "commit" })),
     landWorktree: vi.fn(async () => ({ outcome: "landed" as const })),
     discardWorktree: vi.fn(async () => undefined),
     forkWorktreeSession: vi.fn(async () => ({ sessionId: "forked", workspacePath: "/tmp/forked" })),
@@ -945,6 +947,39 @@ describe("ProjectWorkbenchStore", () => {
     expect(store.sessionRegistry.isTemporarySession(session.sessionId)).toBe(false);
     expect(store.sessionRegistry.pendingConfiguration(session.sessionId)).toBeUndefined();
 
+    root[Symbol.dispose]();
+  });
+
+  it("creates the selected worktree on first send and starts the session inside it", async () => {
+    const desktop = createDesktopClient();
+    vi.mocked(desktop.client.createWorktree).mockResolvedValueOnce({
+      projectPath: "/project",
+      worktreePath: "/project-worktree",
+      branch: "agent/project-worktree",
+      baseBranch: "main",
+      baseCommit: "base",
+      createdAt: new Date(0).toISOString(),
+    });
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+    await store.startNewSession();
+    const session = store.activeSession!;
+    store.worktreeCreationStore.select(session.sessionId, { kind: "new" });
+    session.chatStore.setDraft("Build this in isolation");
+
+    await session.chatStore.submit();
+
+    expect(desktop.client.createWorktree).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "/project", baseWorktreePath: undefined }),
+    );
+    expect(session.workspacePath).toBe("/project-worktree");
+    expect(desktop.client.submit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "Build this in isolation",
+        newSession: expect.objectContaining({ path: "/project-worktree" }),
+      }),
+    );
     root[Symbol.dispose]();
   });
 

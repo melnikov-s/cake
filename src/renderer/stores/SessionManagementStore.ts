@@ -5,10 +5,7 @@ import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
 export interface SessionManagementStoreProps {
-  client: Pick<
-    DesktopClient,
-    "renameSession" | "resolveSession" | "resolveSessions" | "getWorktreeStatus" | "discardWorktree"
-  >;
+  client: Pick<DesktopClient, "renameSession" | "resolveSession" | "resolveSessions">;
   operations: SessionOperationCoordinatorStore;
   catalog: SessionCatalogStore;
   applyApplicationState(state: ApplicationState): void;
@@ -54,7 +51,6 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   async resolveSession(sessionId: string, resolved: boolean) {
     if (!this.props.catalog.find(sessionId) || this.signal.aborted) return;
     try {
-      await this.cleanupWorktreeForResolvedSession(sessionId, resolved);
       const state = await this.props.client.resolveSession(sessionId, resolved);
       if (!this.signal.aborted) this.props.applyApplicationState(state);
     } catch (error) {
@@ -101,23 +97,6 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
         this.props.operations.finish(operationId);
       }
     }
-  }
-
-  private async cleanupWorktreeForResolvedSession(sessionId: string, resolved: boolean) {
-    if (!resolved) return;
-    const workspacePath = this.props.catalog.find(sessionId)?.workspacePath;
-    if (!workspacePath) return;
-    const status = await this.props.client.getWorktreeStatus({ workspacePath });
-    if (this.signal.aborted || !status) return;
-    if (status.dirtyCount > 0)
-      throw new Error(
-        "This session's worktree still has uncommitted changes. Land or discard the worktree before resolving it.",
-      );
-    await this.props.client.discardWorktree({
-      operationId: crypto.randomUUID(),
-      workspacePath,
-      keepBranch: status.aheadCount > 0 && !status.merged,
-    });
   }
 
   private rollbackRename(operationId: string) {

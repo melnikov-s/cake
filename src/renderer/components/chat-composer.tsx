@@ -10,6 +10,7 @@ export const ChatComposer = observer(function ChatComposer({
   onSubmit,
   input,
   children,
+  header,
   toolbarLeading,
   toolbarActions,
   className,
@@ -18,6 +19,7 @@ export const ChatComposer = observer(function ChatComposer({
   onSubmit(event: FormEvent): void;
   input: ReactNode;
   children?: ReactNode;
+  header?: ReactNode;
   toolbarLeading?: ReactNode;
   toolbarActions: ReactNode;
   className?: string;
@@ -27,6 +29,7 @@ export const ChatComposer = observer(function ChatComposer({
       className={`workbench-composer${className ? ` ${className}` : ""}`}
       onSubmit={onSubmit}
     >
+      {header}
       {children}
       {input}
       <ComposerToolbar className="composer-toolbar">

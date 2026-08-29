@@ -205,6 +205,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       modelPresets: () => this.settingsStore.modelPresets.presets,
       openModelPresetSettings: () => this.showModelPresetSettings(),
       newSessionRequest: (sessionId) => this.projectWorkbenchStore.newSessionRequest(sessionId),
+      prepareNewSession: (sessionId) => this.projectWorkbenchStore.prepareNewSession(sessionId),
       settings: () => this.settingsStore.appearance,
     });
   }

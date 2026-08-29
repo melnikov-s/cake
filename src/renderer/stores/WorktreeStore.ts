@@ -6,23 +6,33 @@ import type { WorktreeLandOutcome, WorktreeStatus } from "../../ipc/worktree-con
 const POLL_INTERVAL_MS = 5_000;
 
 export interface WorktreeStoreProps {
-  client: Pick<DesktopClient, "getWorktreeStatus" | "landWorktree" | "discardWorktree" | "submit">;
-  /** The active session's workspace path, or undefined when no session is open. */
+  client: Pick<
+    DesktopClient,
+    | "getWorkspaceGitStatus"
+    | "getWorktreeStatus"
+    | "commitWorkspace"
+    | "landWorktree"
+    | "discardWorktree"
+    | "submit"
+  >;
   workspacePath(): string | undefined;
   sessionId(): string | undefined;
+  sessionTitle(): string;
   isStreaming(): boolean;
-  /** Invoked when a worktree lands successfully, including automatic retries. */
-  onLanded(projectPath: string): void;
+  onLanded(workspacePath: string, projectPath: string): Promise<void> | void;
+  onResolveWorkspace(workspacePath: string): Promise<void> | void;
 }
 
-/** Owns the managed-worktree workflow for the active project session. */
+/** Owns Git status, commit, landing, conflict resolution, and cleanup for the selected session. */
 export class WorktreeStore extends Store<WorktreeStoreProps> {
   status: WorktreeStatus | undefined;
-  phase: "idle" | "landing" | "resolving" | "discarding" = "idle";
+  workspaceDirtyCount = 0;
+  phase: "idle" | "committing" | "landing" | "resolving" | "discarding" = "idle";
   error: string | undefined;
 
   private autoRetryLanding = false;
   private refreshing = false;
+  private observedWorkspacePath: string | undefined;
 
   constructor(props: WorktreeStore["props"]) {
     super(props);
@@ -34,9 +44,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
         if (!active || this.signal.aborted) return;
         timer = setTimeout(() => void poll(), POLL_INTERVAL_MS);
       };
-      untracked(() => {
-        void poll();
-      });
+      untracked(() => void poll());
       return () => {
         active = false;
         if (timer !== undefined) clearTimeout(timer);
@@ -44,12 +52,12 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     });
   }
 
-  get isAttached() {
-    return this.status !== undefined;
-  }
-
   get isBusy() {
     return this.phase !== "idle";
+  }
+
+  get isWorktree() {
+    return this.status !== undefined;
   }
 
   get canLand() {
@@ -59,8 +67,8 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       !this.props.isStreaming() &&
       this.status.dirtyCount === 0 &&
       (this.status.aheadCount > 0 || this.status.merged) &&
-      !this.status.canonicalDirty &&
-      this.status.canonicalOnBaseBranch
+      !this.status.targetDirty &&
+      this.status.targetOnBranch
     );
   }
 
@@ -68,11 +76,22 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     if (this.refreshing || this.signal.aborted) return;
     const workspacePath = this.props.workspacePath();
     if (!workspacePath) return;
+    if (workspacePath !== this.observedWorkspacePath) {
+      this.observedWorkspacePath = workspacePath;
+      this.status = undefined;
+      this.workspaceDirtyCount = 0;
+      this.phase = "idle";
+      this.autoRetryLanding = false;
+    }
     this.refreshing = true;
     try {
-      const status = await this.props.client.getWorktreeStatus({ workspacePath });
+      const [status, gitStatus] = await Promise.all([
+        this.props.client.getWorktreeStatus({ workspacePath }),
+        this.props.client.getWorkspaceGitStatus({ workspacePath }),
+      ]);
       if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return;
       this.status = status;
+      this.workspaceDirtyCount = gitStatus.dirtyCount;
       if (!status) {
         this.phase = "idle";
         return;
@@ -85,16 +104,38 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     }
   }
 
-  /**
-   * Lands the worktree branch into its base branch as one squash commit and
-   * removes the worktree. Conflicts are handed to the session agent to resolve,
-   * after which landing retries automatically.
-   */
+  async commit(options: { resolve?: boolean; land?: boolean } = {}) {
+    const workspacePath = this.requiredWorkspacePath();
+    if (this.isBusy) throw new Error("A Git operation is already in progress.");
+    if (this.props.isStreaming()) throw new Error("Wait for the current reply to finish first.");
+    this.phase = "committing";
+    this.error = undefined;
+    try {
+      await this.props.client.commitWorkspace({
+        operationId: crypto.randomUUID(),
+        workspacePath,
+        message: this.props.sessionTitle().trim() || "Commit Cake session changes",
+      });
+      if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return;
+      await this.refreshAfterOperation(workspacePath);
+      if (options.land && this.status) {
+        this.phase = "idle";
+        await this.land();
+      } else {
+        this.phase = "idle";
+        if (options.resolve) await this.props.onResolveWorkspace(workspacePath);
+      }
+    } catch (error) {
+      this.fail(error);
+      throw error;
+    }
+  }
+
+  /** Lands as one local squash commit; semantic conflicts are delegated to the session agent. */
   async land(message?: string): Promise<WorktreeLandOutcome> {
     const workspacePath = this.requiredWorkspacePath();
     if (this.isBusy) throw new Error("A worktree operation is already in progress.");
-    if (this.props.isStreaming())
-      throw new Error("Wait for the current reply to finish before landing.");
+    if (this.props.isStreaming()) throw new Error("Wait for the current reply to finish first.");
     this.phase = "landing";
     this.error = undefined;
     try {
@@ -113,20 +154,17 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
         const projectPath = this.status?.record.projectPath;
         this.phase = "idle";
         this.status = undefined;
-        if (projectPath) this.props.onLanded(projectPath);
+        this.workspaceDirtyCount = 0;
+        if (projectPath) await this.props.onLanded(workspacePath, projectPath);
       }
       return outcome;
     } catch (error) {
-      if (this.signal.aborted) throw error;
-      const described = describeError(error);
-      this.error = described.message;
-      this.phase = "idle";
+      this.fail(error);
       throw error;
     }
   }
 
-  /** Deletes the worktree; keeps the branch when its commits were never merged. */
-  async discard(keepUnmergedBranch: boolean) {
+  async discard(keepUnmergedBranch: boolean, resolve = false) {
     const workspacePath = this.requiredWorkspacePath();
     if (this.isBusy) throw new Error("A worktree operation is already in progress.");
     this.phase = "discarding";
@@ -139,14 +177,29 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       });
       if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return;
       this.status = undefined;
+      this.workspaceDirtyCount = 0;
       this.phase = "idle";
+      if (resolve) await this.props.onResolveWorkspace(workspacePath);
     } catch (error) {
-      if (this.signal.aborted) throw error;
-      const described = describeError(error);
-      this.error = described.message;
-      this.phase = "idle";
+      this.fail(error);
       throw error;
     }
+  }
+
+  private async refreshAfterOperation(workspacePath: string) {
+    const [status, gitStatus] = await Promise.all([
+      this.props.client.getWorktreeStatus({ workspacePath }),
+      this.props.client.getWorkspaceGitStatus({ workspacePath }),
+    ]);
+    if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return;
+    this.status = status;
+    this.workspaceDirtyCount = gitStatus.dirtyCount;
+  }
+
+  private fail(error: unknown) {
+    if (this.signal.aborted) return;
+    this.error = describeError(error).message;
+    this.phase = "idle";
   }
 
   private async maybeAutoRetry(status: WorktreeStatus) {
@@ -176,14 +229,14 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       delivery: "prompt",
       attachments: [],
       text: [
-        "A merge from the base branch was started in this worktree to land your work,",
-        "and Git stopped on conflicts in these files:",
+        `Cake is landing this worktree into ${this.status?.targetBranch ?? "its target"}.`,
+        "Git stopped on conflicts in these files:",
         "",
         listed,
         "",
         "Resolve the conflicts in the working tree, preserving the intent of both sides.",
         "Then complete the in-progress merge with `git commit --no-edit`.",
-        "Do not push, rebase, or switch branches.",
+        "Do not push, rebase, or switch branches. Cake will retry the deterministic landing.",
       ].join("\n"),
     });
   }

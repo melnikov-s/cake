@@ -52,6 +52,7 @@ export interface MessageComposerStoreProps {
   operations: SessionOperationCoordinatorStore;
   operationOwner: string;
   newSessionRequest?(): { path: string; configuration?: ChatConfiguration } | undefined;
+  prepareNewSession?(): Promise<boolean>;
 }
 
 /** Owns attachments, the local prompt queue, optimistic immediate prompts, and prompt delivery. */
@@ -284,6 +285,11 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     }
     const sessionId = this.props.sessionId();
     if (!sessionId) return;
+    if (
+      this.props.newSessionRequest?.() &&
+      !(await (this.props.prepareNewSession?.() ?? Promise.resolve(true)))
+    )
+      return;
     const explicitAttachments = this.attachments.filter(
       (attachment) => attachment.kind !== "annotation",
     );

@@ -36,6 +36,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
   newSessionRequest(): { path: string; configuration?: ChatConfiguration } | undefined;
+  prepareNewSession(): Promise<boolean>;
   settings?(): AppearanceSettingsStore | undefined;
 }
 
@@ -184,6 +185,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       operations: this.props.operations,
       operationOwner: this.composerOwner,
       newSessionRequest: this.props.newSessionRequest,
+      prepareNewSession: this.props.prepareNewSession,
     });
   }
 

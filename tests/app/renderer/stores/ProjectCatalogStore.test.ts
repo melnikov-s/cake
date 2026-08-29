@@ -89,7 +89,13 @@ describe("ProjectCatalogStore managed worktrees", () => {
     const projects = mount(createStore(ProjectCatalogStore, { sessions }));
 
     // Before any listing exists, the association can be noted at creation time.
-    sessions.noteManagedWorktree("/repo/.cake-worktrees/repo-abc", "/repo");
+    sessions.noteManagedWorktree({
+      projectPath: "/repo",
+      worktreePath: "/repo/.cake-worktrees/repo-abc",
+      branch: "agent/repo-abc",
+      baseBranch: "main",
+      createdAt: new Date(0).toISOString(),
+    });
     projects.applyApplicationState({
       schemaVersion: 1,
       resolvedSessionIds: [],

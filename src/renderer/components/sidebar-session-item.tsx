@@ -7,7 +7,16 @@ import type { SidebarStore } from "../stores/SidebarStore";
 
 export interface SidebarSessionItemProps {
   store: SidebarStore;
-  session: { id: string; title: string; modified: string };
+  session: {
+    id: string;
+    title: string;
+    modified: string;
+    managedWorktree?: {
+      branch: string;
+      baseBranch: string;
+      parentWorktreePath?: string;
+    };
+  };
   selected: boolean;
   resolved: boolean;
   activity?: "running" | "unread";
@@ -43,7 +52,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
     <div
       data-session-id={session.id}
       className={cn(
-        "session-item group relative flex h-7.5 w-full items-center rounded-md text-xs select-none transition-colors",
+        "session-item group relative flex min-h-11 w-full items-center rounded-md py-1 text-xs select-none transition-colors",
         selected
           ? "active bg-sidebar-active text-foreground font-semibold shadow-[inset_3px_0_0_var(--accent)]"
           : "text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
@@ -68,7 +77,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
         <div className="flex h-full w-full min-w-0 items-center justify-between">
           <button
             type="button"
-            className="session-row flex min-w-0 flex-1 items-center h-full pl-2 pr-1 text-left bg-transparent border-0 cursor-pointer text-inherit"
+            className="session-row flex min-w-0 flex-1 flex-col items-start justify-center gap-0.5 self-stretch bg-transparent py-1 pl-2 pr-1 text-left text-inherit"
             aria-current={selected ? "page" : undefined}
             onClick={() => onOpen(session.id)}
             onContextMenu={(event) => {
@@ -80,11 +89,22 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                 });
             }}
           >
-            <span className="session-title min-w-0 flex-1 truncate text-left" title={session.title}>
+            <span className="session-title w-full min-w-0 truncate text-left" title={session.title}>
               {session.title}
             </span>
+            {session.managedWorktree && (
+              <span className="flex max-w-full items-center gap-1 rounded bg-muted/70 px-1.5 py-0.5 text-[10px] font-normal leading-none text-muted-foreground">
+                <span className="truncate">
+                  {session.managedWorktree.branch.replace(/^agent\//, "")}
+                </span>
+                <span aria-hidden="true">→</span>
+                <span className="truncate">
+                  {session.managedWorktree.baseBranch.replace(/^agent\//, "")}
+                </span>
+              </span>
+            )}
           </button>
-          <div className="session-meta relative w-14 shrink-0 flex items-center justify-center h-full">
+          <div className="session-meta relative flex h-full w-14 shrink-0 items-center justify-center">
             {activity ? (
               <i
                 className={cn(

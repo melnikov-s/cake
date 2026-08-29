@@ -11,12 +11,12 @@ const status: WorktreeStatus = {
     baseBranch: "main",
     createdAt: new Date(0).toISOString(),
   },
-  mainBranch: "main",
+  targetBranch: "main",
   dirtyCount: 0,
   aheadCount: 1,
   merged: false,
-  canonicalDirty: false,
-  canonicalOnBaseBranch: true,
+  targetDirty: false,
+  targetOnBranch: true,
   merging: false,
 };
 
@@ -35,6 +35,8 @@ function createTestStore(
 ) {
   const client = {
     getWorktreeStatus,
+    getWorkspaceGitStatus: vi.fn(async ({ workspacePath }) => ({ workspacePath, dirtyCount: 0 })),
+    commitWorkspace: vi.fn(async () => ({ commit: "commit" })),
     landWorktree: vi.fn(async () => ({ outcome: "landed" as const })),
     discardWorktree: vi.fn(async () => undefined),
     submit: vi.fn(async () => undefined),
@@ -44,8 +46,10 @@ function createTestStore(
       client,
       workspacePath: () => "/project-worktree",
       sessionId: () => "session-1",
+      sessionTitle: () => "Test session",
       isStreaming: () => false,
       onLanded: vi.fn(),
+      onResolveWorkspace: vi.fn(),
     }),
   );
   return { store, client };

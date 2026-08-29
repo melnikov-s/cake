@@ -1,4 +1,4 @@
-import { Store, applySnapshot, child, createStore, observable } from "r-state-tree";
+import { Store, applySnapshot, child, createStore, observable, updateStore } from "r-state-tree";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type {
   ChatConfiguration,
@@ -36,6 +36,7 @@ export interface SessionRegistryStoreProps {
   newSessionRequest?(
     sessionId: string,
   ): { path: string; configuration?: ChatConfiguration } | undefined;
+  prepareNewSession?(sessionId: string): Promise<boolean>;
   settings?(): AppearanceSettingsStore | undefined;
 }
 
@@ -83,6 +84,8 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         modelPresets: () => this.props.modelPresets?.() ?? [],
         openModelPresetSettings: () => this.props.openModelPresetSettings?.(),
         newSessionRequest: () => this.props.newSessionRequest?.(target.sessionId),
+        prepareNewSession: () =>
+          this.props.prepareNewSession?.(target.sessionId) ?? Promise.resolve(true),
         settings: () => this.props.settings?.(),
       }),
     );
@@ -177,6 +180,25 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
 
   isTemporarySession(sessionId: string) {
     return this.temporarySessionIds.has(sessionId);
+  }
+
+  relocateTemporarySession(sessionId: string, workspacePath: string) {
+    if (!this.temporarySessionIds.has(sessionId))
+      throw new Error("Only an unsent session can choose another worktree.");
+    const session = this.findSession(sessionId);
+    const index = this.targets.findIndex((target) => target.sessionId === sessionId);
+    if (!session || index < 0) throw new Error("Cake could not find that draft session.");
+    const previousPath = session.workspacePath;
+    if (previousPath === workspacePath) return;
+    const existingDraft = this.pendingNewSessionIdsByWorkspace[workspacePath];
+    if (existingDraft && existingDraft !== sessionId)
+      throw new Error("That worktree already has an unsent draft session.");
+    if (this.pendingNewSessionIdsByWorkspace[previousPath] === sessionId)
+      delete this.pendingNewSessionIdsByWorkspace[previousPath];
+    this.pendingNewSessionIdsByWorkspace[workspacePath] = sessionId;
+    this.sessionWorkspacePaths.set(sessionId, workspacePath);
+    this.targets.splice(index, 1, { sessionId, workspacePath });
+    updateStore(session, { ...session.props, workspacePath });
   }
 
   pendingConfiguration(sessionId: string) {

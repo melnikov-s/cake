@@ -1,41 +1,93 @@
-import { Store } from "r-state-tree";
+import { Store, observable } from "r-state-tree";
+import type { WorktreeRecord } from "../../ipc/worktree-contract";
 import type { DesktopClient } from "../desktop-client";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
+
+export type WorktreeDraftChoice =
+  | { kind: "current" }
+  | { kind: "new"; baseWorktreePath?: string }
+  | { kind: "reuse"; worktreePath: string };
 
 export interface WorktreeCreationStoreProps {
   client: Pick<DesktopClient, "createWorktree">;
   operations: SessionOperationCoordinatorStore;
   catalog: SessionCatalogStore;
-  openCreatedWorktree(worktreePath: string, projectPath: string): Promise<void> | void;
+  relocateTemporarySession(sessionId: string, workspacePath: string): void;
   reportError(error: unknown): void;
 }
 
-/** Owns worktree-session confirmation and managed-worktree creation. */
+/** Owns draft-only worktree selection and first-send checkout preparation. */
 export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
-  promptPath: string | undefined;
+  private readonly choicesBySession: Record<string, WorktreeDraftChoice> = observable({});
+  preparingSessionId: string | undefined;
 
-  request(path: string | undefined) {
-    if (path) this.promptPath = path;
+  choice(sessionId: string): WorktreeDraftChoice {
+    return this.choicesBySession[sessionId] ?? { kind: "current" };
   }
 
-  cancel() {
-    this.promptPath = undefined;
+  select(sessionId: string, choice: WorktreeDraftChoice) {
+    if (this.preparingSessionId === sessionId) return;
+    this.choicesBySession[sessionId] = choice;
   }
 
-  async confirm() {
-    const path = this.promptPath;
-    this.promptPath = undefined;
-    if (!path || this.signal.aborted) return;
+  clear(sessionId: string) {
+    delete this.choicesBySession[sessionId];
+  }
+
+  /** Managed worktrees with an active or historical session, de-duplicated by checkout path. */
+  candidates(projectPath: string): WorktreeRecord[] {
+    const records = new Map<string, WorktreeRecord>();
+    for (const session of this.props.catalog.projectSessions(projectPath)) {
+      const record = this.props.catalog.managedWorktree(session.workspacePath);
+      if (record && (record.state ?? "active") === "active")
+        records.set(record.worktreePath, record);
+    }
+    return [...records.values()].sort((left, right) =>
+      right.createdAt.localeCompare(left.createdAt),
+    );
+  }
+
+  /**
+   * Repeated calls are ignored while checkout preparation is active. A failure
+   * leaves the draft and its selection intact so the user can retry or choose again.
+   */
+  async prepare(sessionId: string, projectPath: string): Promise<boolean> {
+    const choice = this.choice(sessionId);
+    if (choice.kind === "current") return true;
+    if (this.preparingSessionId) return false;
+    this.preparingSessionId = sessionId;
     const operationId = this.props.operations.start("project-workbench");
     try {
-      const record = await this.props.client.createWorktree({ operationId, path });
-      if (this.signal.aborted) return;
-      this.props.catalog.noteManagedWorktree(record.worktreePath, record.projectPath);
-      await this.props.openCreatedWorktree(record.worktreePath, record.projectPath);
+      let workspacePath: string;
+      if (choice.kind === "reuse") {
+        const record = this.props.catalog.managedWorktree(choice.worktreePath);
+        if (
+          !record ||
+          (record.state ?? "active") !== "active" ||
+          record.projectPath !== projectPath
+        )
+          throw new Error("That worktree is no longer available.");
+        workspacePath = record.worktreePath;
+      } else {
+        const record = await this.props.client.createWorktree({
+          operationId,
+          path: projectPath,
+          baseWorktreePath: choice.baseWorktreePath,
+        });
+        if (this.signal.aborted) return false;
+        this.props.catalog.noteManagedWorktree(record);
+        workspacePath = record.worktreePath;
+      }
+      if (this.signal.aborted) return false;
+      this.props.relocateTemporarySession(sessionId, workspacePath);
+      this.choicesBySession[sessionId] = { kind: "reuse", worktreePath: workspacePath };
+      return true;
     } catch (error) {
       if (!this.signal.aborted) this.props.reportError(error);
+      return false;
     } finally {
+      if (!this.signal.aborted) this.preparingSessionId = undefined;
       this.props.operations.finish(operationId);
     }
   }

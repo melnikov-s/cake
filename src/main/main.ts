@@ -332,7 +332,9 @@ async function resolveSessionWorkspacePath(sessionId: string) {
 }
 
 async function requireWorktreeRecord(worktreePath: string) {
-  const record = (await worktrees.records()).find((entry) => entry.worktreePath === worktreePath);
+  const record = (await worktrees.records()).find(
+    (entry) => entry.worktreePath === worktreePath && (entry.state ?? "active") === "active",
+  );
   if (!record) throw new Error("Cake could not find that worktree");
   return record;
 }
@@ -1491,6 +1493,7 @@ async function handleCakeRequest(
                 resolved: resolvedSessionIds.has(session.id),
                 workspacePath: record.worktreePath,
                 projectPath: project.path,
+                managedWorktree: record,
                 workspaceName: project.name,
               };
             });
@@ -1645,7 +1648,7 @@ async function handleCakeRequest(
   if (request.type === "create-worktree") {
     if (!allowedProjectPaths.has(request.path))
       throw new Error("Project path was not selected by the user");
-    const record = await worktrees.create(request.path);
+    const record = await worktrees.create(request.path, request.baseWorktreePath);
     allowedProjectPaths.add(record.worktreePath);
     if (applicationModel.isProjectTrusted(record.projectPath))
       applicationModel.trustProject(record.worktreePath);
@@ -1659,6 +1662,22 @@ async function handleCakeRequest(
     return desktopResponseSchema.parse({
       type: "worktree-status-loaded",
       status: await worktrees.status(request.workspacePath),
+    });
+  }
+  if (request.type === "get-workspace-git-status") {
+    if (!allowedProjectPaths.has(request.workspacePath))
+      throw new Error("Project path was not selected by the user");
+    return desktopResponseSchema.parse({
+      type: "workspace-git-status-loaded",
+      status: await worktrees.workspaceStatus(request.workspacePath),
+    });
+  }
+  if (request.type === "commit-workspace") {
+    if (!allowedProjectPaths.has(request.workspacePath))
+      throw new Error("Project path was not selected by the user");
+    return desktopResponseSchema.parse({
+      type: "workspace-committed",
+      result: { commit: await worktrees.commit(request.workspacePath, request.message) },
     });
   }
   if (request.type === "land-worktree") {

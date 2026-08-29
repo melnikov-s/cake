@@ -26,7 +26,7 @@ import { IdeWorkspace } from "@/components/ide-workspace";
 import { SettingsPage } from "@/components/settings-page";
 import { PanelResizeHandle } from "@/components/panel-resize-handle";
 import { ToastHost } from "@/components/toast-host";
-import { WorktreeChip } from "@/components/worktree-chip";
+import { WorktreePill } from "@/components/worktree-pill";
 import { WorkLogControls } from "@/components/work-log-controls";
 import { Sidebar } from "@/components/sidebar";
 import { ProjectSessionPluginRail } from "@/components/project-session-plugin-rail";
@@ -392,17 +392,6 @@ export const App = observer(function App() {
               createPortal(
                 <>
                   <div className="header-pane-actions">
-                    <WorktreeChip
-                      store={store.worktreeStore}
-                      currentProjectPath={store.projectPath}
-                      onCreateWorktree={(projectPath) => {
-                        store.worktreeCreationStore.request(projectPath);
-                      }}
-                      onFinished={(projectPath) => {
-                        void root.createSession(projectPath);
-                      }}
-                      notify={root.toastStore.show}
-                    />
                     <button
                       className="header-pane-toggle"
                       type="button"
@@ -471,6 +460,19 @@ export const App = observer(function App() {
                 }
                 error={chatError ? { message: chatError, details: chatErrorDetails } : undefined}
                 composerContent={<Slot name="project-session.composer.before" />}
+                composerHeader={
+                  <WorktreePill
+                    creation={store.worktreeCreationStore}
+                    actions={store.worktreeStore}
+                    sessionId={session.sessionId}
+                    projectPath={
+                      root.sessionCatalogStore.projectOfManagedWorktree(session.workspacePath) ??
+                      session.workspacePath
+                    }
+                    draft={store.sessionRegistry.isTemporarySession(session.sessionId)}
+                    onConfigured={() => session.composerStore.requestFocus()}
+                  />
+                }
                 pluginActions={<Slot name="project-session.composer.actions" />}
                 status={
                   <>
@@ -529,36 +531,6 @@ export const App = observer(function App() {
                 </ConfirmationAction>
                 <ConfirmationAction onClick={() => void store.resolveProjectTrust(true)}>
                   Trust and open
-                </ConfirmationAction>
-              </ConfirmationActions>
-            </ConfirmationRequest>
-          </Confirmation>
-        </div>
-      )}
-      {store.worktreeCreationStore.promptPath && (
-        <div className="dialog-backdrop">
-          <Confirmation
-            state="requested"
-            role="dialog"
-            aria-labelledby="create-worktree-title"
-            aria-describedby="create-worktree-description"
-          >
-            <ConfirmationRequest>
-              <ConfirmationTitle id="create-worktree-title">Create a worktree?</ConfirmationTitle>
-              <ConfirmationDescription id="create-worktree-description">
-                Cake creates an isolated checkout in the background and this new session works
-                there. Landing merges your commits back into {store.projectName} and removes it. The
-                session stays part of this project.
-              </ConfirmationDescription>
-              <ConfirmationActions>
-                <ConfirmationAction
-                  variant="outline"
-                  onClick={() => store.worktreeCreationStore.cancel()}
-                >
-                  Cancel
-                </ConfirmationAction>
-                <ConfirmationAction onClick={() => void store.worktreeCreationStore.confirm()}>
-                  Create worktree
                 </ConfirmationAction>
               </ConfirmationActions>
             </ConfirmationRequest>

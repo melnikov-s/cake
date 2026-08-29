@@ -20,7 +20,13 @@ import type { ArtifactRecord } from "../ipc/artifact-contract";
 import type { ReviewAnchor, ReviewThread } from "../ipc/review-contract";
 import type { SourceLocation } from "../ipc/source-location";
 import type { EditorAnnotationSnapshot } from "../ipc/editor-annotation";
-import type { WorktreeLandOutcome, WorktreeRecord, WorktreeStatus } from "../ipc/worktree-contract";
+import type {
+  WorkspaceCommit,
+  WorkspaceGitStatus,
+  WorktreeLandOutcome,
+  WorktreeRecord,
+  WorktreeStatus,
+} from "../ipc/worktree-contract";
 import type { CustomizationState, PluginDiagnostic, PluginStatus } from "../plugin/plugin-contract";
 import type {
   CompiledInlineWidget,
@@ -388,8 +394,18 @@ export interface DesktopClient {
     sessionId?: string;
     configuration?: ChatConfiguration;
   }): Promise<void>;
-  createWorktree(input: { operationId: string; path: string }): Promise<WorktreeRecord>;
+  createWorktree(input: {
+    operationId: string;
+    path: string;
+    baseWorktreePath?: string;
+  }): Promise<WorktreeRecord>;
   getWorktreeStatus(input: { workspacePath: string }): Promise<WorktreeStatus | undefined>;
+  getWorkspaceGitStatus(input: { workspacePath: string }): Promise<WorkspaceGitStatus>;
+  commitWorkspace(input: {
+    operationId: string;
+    workspacePath: string;
+    message: string;
+  }): Promise<WorkspaceCommit>;
   landWorktree(input: {
     operationId: string;
     workspacePath: string;
@@ -1133,6 +1149,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         type: "create-worktree",
         requestId: input.operationId,
         path: input.path,
+        baseWorktreePath: input.baseWorktreePath,
       });
       if (response.type !== "worktree-created")
         throw new Error("Cake could not create the worktree");
@@ -1143,6 +1160,23 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       if (response.type !== "worktree-status-loaded")
         throw new Error("Cake returned an invalid worktree status");
       return response.status;
+    },
+    async getWorkspaceGitStatus(input) {
+      const response = await bridge.request({ type: "get-workspace-git-status", ...input });
+      if (response.type !== "workspace-git-status-loaded")
+        throw new Error("Cake returned an invalid workspace Git status");
+      return response.status;
+    },
+    async commitWorkspace(input) {
+      const response = await bridge.request({
+        type: "commit-workspace",
+        requestId: input.operationId,
+        workspacePath: input.workspacePath,
+        message: input.message,
+      });
+      if (response.type !== "workspace-committed")
+        throw new Error("Cake could not commit the workspace");
+      return response.result;
     },
     async landWorktree(input) {
       const response = await bridge.request({

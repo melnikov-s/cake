@@ -14,8 +14,13 @@ export const worktreeRecordSchema = z.object({
   /** Absolute path of the worktree checkout; doubles as the session workspace path. */
   worktreePath: z.string().min(1).max(4_096),
   branch: z.string().min(1).max(512),
-  /** The branch the worktree was branched from and merges back into. */
+  /** The branch this worktree was branched from and lands back into. */
   baseBranch: z.string().min(1).max(512),
+  /** The managed parent checkout for a stacked worktree. Omitted when targeting the project checkout. */
+  parentWorktreePath: z.string().min(1).max(4_096).optional(),
+  /** Exact commit used to create this checkout. */
+  baseCommit: z.string().min(1).max(256).optional(),
+  state: z.enum(["active", "landed", "discarded", "missing"]).optional(),
   createdAt: z.string().datetime(),
 });
 
@@ -23,22 +28,35 @@ export type WorktreeRecord = z.infer<typeof worktreeRecordSchema>;
 
 export const worktreeStatusSchema = z.object({
   record: worktreeRecordSchema,
-  mainBranch: z.string().min(1).max(512),
+  targetBranch: z.string().min(1).max(512),
   /** Uncommitted or untracked files in the worktree. */
   dirtyCount: z.number().int().nonnegative(),
   /** Commits on the worktree branch that are not reachable from the base branch. */
   aheadCount: z.number().int().nonnegative(),
   /** True when the branch tip is already contained in the base branch. */
   merged: z.boolean(),
-  /** True when the canonical checkout has uncommitted changes. */
-  canonicalDirty: z.boolean(),
-  /** False when the canonical checkout currently has a branch other than the base checked out. */
-  canonicalOnBaseBranch: z.boolean(),
+  /** True when the checkout receiving this worktree has uncommitted changes. */
+  targetDirty: z.boolean(),
+  /** False when the receiving checkout has another branch checked out. */
+  targetOnBranch: z.boolean(),
   /** True while a conflicted merge is in progress inside the worktree awaiting resolution. */
   merging: z.boolean(),
 });
 
 export type WorktreeStatus = z.infer<typeof worktreeStatusSchema>;
+
+export const workspaceGitStatusSchema = z.object({
+  workspacePath: z.string().min(1).max(4_096),
+  dirtyCount: z.number().int().nonnegative(),
+});
+
+export type WorkspaceGitStatus = z.infer<typeof workspaceGitStatusSchema>;
+
+export const workspaceCommitSchema = z.object({
+  commit: z.string().min(1).max(256),
+});
+
+export type WorkspaceCommit = z.infer<typeof workspaceCommitSchema>;
 
 export const worktreeLandOutcomeSchema = z.discriminatedUnion("outcome", [
   z.object({

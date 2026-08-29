@@ -82,6 +82,7 @@ export const Chat = observer(function Chat({
   error,
   status,
   composerContent,
+  composerHeader,
   pluginActions,
   className = "",
   embedded = false,
@@ -94,6 +95,7 @@ export const Chat = observer(function Chat({
   error?: { message: string; details?: string; title?: string };
   status?: ReactNode;
   composerContent?: ReactNode;
+  composerHeader?: ReactNode;
   pluginActions?: ReactNode;
   className?: string;
   embedded?: boolean;
@@ -180,6 +182,7 @@ export const Chat = observer(function Chat({
       <ChatComposer
         className={embedded ? "chat-embedded-workbench-composer" : undefined}
         configuration={store.configuration}
+        header={composerHeader}
         onSubmit={(event) => {
           event.preventDefault();
           void submit();

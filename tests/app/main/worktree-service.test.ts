@@ -114,7 +114,9 @@ describe("WorktreeService", () => {
     expect(landedCommits.length).toBe(2);
     expect(existsSync(record.worktreePath)).toBe(false);
     await expect(git(repo, "rev-parse", "--verify", record.branch)).rejects.toThrow();
-    await expect(worktrees.records()).resolves.toEqual([]);
+    await expect(worktrees.records()).resolves.toEqual([
+      expect.objectContaining({ worktreePath: record.worktreePath, state: "landed" }),
+    ]);
     expect(await service().status(record.worktreePath)).toBeUndefined();
   });
 
@@ -142,7 +144,7 @@ describe("WorktreeService", () => {
 
     await writeFile(join(repo, "dirty.ts"), "x\n");
     await expect(worktrees.land(record.worktreePath, { autoResolve: true })).rejects.toThrow(
-      /project checkout has uncommitted changes/i,
+      /landing target has uncommitted changes/i,
     );
     await rm(join(repo, "dirty.ts"));
   });
@@ -218,7 +220,9 @@ describe("WorktreeService", () => {
     await expect(git(repo, "rev-parse", "--verify", record.branch)).resolves.toMatchObject({
       stdout: expect.any(String),
     });
-    await expect(worktrees.records()).resolves.toEqual([]);
+    await expect(worktrees.records()).resolves.toEqual([
+      expect.objectContaining({ worktreePath: record.worktreePath, state: "discarded" }),
+    ]);
   });
 
   it("allows multiple concurrent worktrees per repository", async () => {
@@ -251,24 +255,55 @@ describe("WorktreeService", () => {
 
     const forked = await worktrees.createBranchOff(first.worktreePath);
     expect(forked.projectPath).toBe(first.projectPath);
-    expect(forked.baseBranch).toBe(first.baseBranch);
+    expect(forked.baseBranch).toBe(first.branch);
+    expect(forked.parentWorktreePath).toBe(first.worktreePath);
     expect(forked.branch).not.toBe(first.branch);
     // The branch-off starts at the source worktree's tip, so its file state matches.
     expect(existsSync(join(forked.worktreePath, "feature.ts"))).toBe(true);
 
     await expect(worktrees.records()).resolves.toHaveLength(2);
     const status = await worktrees.status(forked.worktreePath);
-    expect(status).toMatchObject({ aheadCount: 1, dirtyCount: 0 });
+    expect(status).toMatchObject({ aheadCount: 0, dirtyCount: 0 });
   });
 
-  it("drops records for worktree directories deleted outside Cake", async () => {
+  it("lands a stacked child into its parent worktree before the parent lands to main", async () => {
+    const repo = await repository();
+    const worktrees = service();
+    const parent = await worktrees.create(repo);
+    await writeFile(join(parent.worktreePath, "parent.ts"), "parent\n");
+    await commitAll(parent.worktreePath, "parent");
+    const child = await worktrees.create(repo, parent.worktreePath);
+    await writeFile(join(child.worktreePath, "child.ts"), "child\n");
+    await commitAll(child.worktreePath, "child");
+
+    await expect(worktrees.land(parent.worktreePath, { autoResolve: true })).rejects.toThrow(
+      /active child worktrees/i,
+    );
+    await expect(worktrees.land(child.worktreePath, { autoResolve: true })).resolves.toMatchObject({
+      outcome: "landed",
+    });
+    expect(existsSync(join(parent.worktreePath, "child.ts"))).toBe(true);
+    expect(existsSync(join(repo, "child.ts"))).toBe(false);
+
+    await expect(worktrees.land(parent.worktreePath, { autoResolve: true })).resolves.toMatchObject(
+      {
+        outcome: "landed",
+      },
+    );
+    expect(existsSync(join(repo, "parent.ts"))).toBe(true);
+    expect(existsSync(join(repo, "child.ts"))).toBe(true);
+  });
+
+  it("marks worktree directories deleted outside Cake as missing", async () => {
     const repo = await repository();
     const worktrees = service();
     const record = await worktrees.create(repo);
     await rm(record.worktreePath, { recursive: true, force: true });
 
     await expect(worktrees.status(record.worktreePath)).resolves.toBeUndefined();
-    await expect(worktrees.records()).resolves.toEqual([]);
+    await expect(worktrees.records()).resolves.toEqual([
+      expect.objectContaining({ worktreePath: record.worktreePath, state: "missing" }),
+    ]);
     // Git's stale worktree metadata is reconciled so new worktrees keep working.
     const next = await worktrees.create(repo);
     expect(existsSync(join(next.worktreePath, "README.md"))).toBe(true);

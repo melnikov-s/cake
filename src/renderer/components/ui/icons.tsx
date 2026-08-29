@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
-import cakeIconMarkup from "../../../assets/cake-icon.svg?raw";
+import rawCakeIconMarkup from "../../../assets/cake-icon.svg?raw";
+
+const cakeIconMarkup = rawCakeIconMarkup.replace(/>\s+</g, "><").trim();
 
 function Icon({
   children,

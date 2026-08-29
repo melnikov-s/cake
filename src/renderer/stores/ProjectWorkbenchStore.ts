@@ -117,9 +117,17 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       workspacePath: () =>
         this.selectedSessionId ? (this.session?.workspacePath ?? this.projectPath) : undefined,
       sessionId: () => this.selectedSessionId,
+      sessionTitle: () => this.sessionTitle,
       isStreaming: () => this.activeSession?.isStreaming ?? false,
-      onLanded: (projectPath) => {
-        void this.props.startFreshSessionInProject(projectPath);
+      onLanded: async (workspacePath, projectPath) => {
+        await this.resolveWorkspaceSessions(workspacePath);
+        await this.props.startFreshSessionInProject(projectPath);
+      },
+      onResolveWorkspace: async (workspacePath) => {
+        const projectPath =
+          this.props.catalog.projectOfManagedWorktree(workspacePath) ?? workspacePath;
+        await this.resolveWorkspaceSessions(workspacePath);
+        await this.props.startFreshSessionInProject(projectPath);
       },
     });
   }
@@ -167,10 +175,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       client: this.props.worktreeCreationClient,
       operations: this.props.operations,
       catalog: this.props.catalog,
-      openCreatedWorktree: async (worktreePath, projectPath) => {
-        const sessionId = crypto.randomUUID();
-        if (projectPath === this.projectPath) this.showTemporarySession(worktreePath, sessionId);
-        else await this.inspectPath(worktreePath, true, sessionId);
+      relocateTemporarySession: (sessionId, workspacePath) => {
+        this.sessionRegistry.relocateTemporarySession(sessionId, workspacePath);
+        if (this.selectedSessionId === sessionId) this.projectPath = workspacePath;
       },
       reportError: (error) => this.setError(error),
     });
@@ -365,6 +372,22 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       configuration:
         this.sessionRegistry.pendingConfiguration(sessionId) ?? this.props.defaultConfiguration?.(),
     };
+  }
+
+  async prepareNewSession(sessionId: string) {
+    const session = this.sessionRegistry.findSession(sessionId);
+    if (!session || !this.sessionRegistry.isTemporarySession(sessionId)) return true;
+    const projectPath =
+      this.props.catalog.projectOfManagedWorktree(session.workspacePath) ?? session.workspacePath;
+    return this.worktreeCreationStore.prepare(sessionId, projectPath);
+  }
+
+  private async resolveWorkspaceSessions(workspacePath: string) {
+    const sessionIds = this.props.catalog.sessions
+      .filter((session) => session.workspacePath === workspacePath && !session.resolved)
+      .map((session) => session.id);
+    if (sessionIds.length === 0) return;
+    await this.sessionManagementStore.resolveSessionsById(sessionIds, true);
   }
 
   private closeEmbeddedEditor() {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { worktreeRecordSchema } from "./worktree-contract";
 import { artifactRecordSchema } from "./artifact-contract";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { sourceLocationSchema } from "./source-location";
@@ -330,6 +331,7 @@ export const globalSessionSummarySchema = sessionSummarySchema.extend({
   workspaceName: ipcProjectionString(512).pipe(z.string().min(1)),
   /** Set when the session works inside a managed worktree belonging to this project. */
   projectPath: z.string().min(1).max(4_096).optional(),
+  managedWorktree: worktreeRecordSchema.optional(),
 });
 
 const sessionTreeEntrySchema = z.object({

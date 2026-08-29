@@ -37,6 +37,7 @@ export class WorktreeService {
   private readonly writer = new AtomicFileWriter();
   private allRecords: WorktreeRecord[] = [];
   private loaded = false;
+  private readonly repositoryOperationTails = new Map<string, Promise<void>>();
   private readonly storagePath: string;
 
   constructor(storagePath: string) {
@@ -52,24 +53,45 @@ export class WorktreeService {
    * Creates another managed worktree for the repository. Projects may have any
    * number of concurrent worktrees; each is an isolated checkout and branch.
    */
-  async create(projectPath: string): Promise<WorktreeRecord> {
+  async create(projectPath: string, baseWorktreePath?: string): Promise<WorktreeRecord> {
     await this.load();
     const root = await realpath(await repositoryRoot(projectPath));
-    const baseBranch = await defaultBranch(root);
+    return this.withRepositoryLock(root, () => this.createRecord(root, baseWorktreePath));
+  }
+
+  private async createRecord(root: string, baseWorktreePath?: string): Promise<WorktreeRecord> {
+    const parent = baseWorktreePath
+      ? this.allRecords.find(
+          (entry) =>
+            (entry.state ?? "active") === "active" &&
+            resolveNormalized(entry.worktreePath) === resolveNormalized(baseWorktreePath),
+        )
+      : undefined;
+    if (baseWorktreePath && (!parent || parent.projectPath !== root))
+      throw new Error("Cake could not find that base worktree");
+    if (parent && !existsSync(parent.worktreePath))
+      throw new Error("The base worktree no longer exists");
+    if (parent && (await dirtyFileCount(parent.worktreePath)) > 0)
+      throw new Error("Commit the base worktree before creating a child worktree.");
+
+    const baseBranch = parent?.branch ?? (await defaultBranch(root));
+    const startPoint = parent?.branch ?? baseBranch;
+    const baseCommit = (await git(root, "rev-parse", startPoint)).trim();
     const slug = slugify(basename(root));
     const id = `${Date.now().toString(36)}${Math.random().toString(16).slice(2, 6)}`;
     const branch = `agent/${slug}-${id}`;
     const worktreesDir = join(dirname(root), `.${slug}-worktrees`);
     const worktreePath = join(worktreesDir, `${slug}-${id}`);
     await mkdir(worktreesDir, { recursive: true });
-    const hasRemoteBase = await revParseExists(root, `origin/${baseBranch}^{commit}`);
-    const startPoint = hasRemoteBase ? `origin/${baseBranch}` : baseBranch;
-    await git(root, "worktree", "add", "-b", branch, worktreePath, startPoint);
+    await git(root, "worktree", "add", "-b", branch, worktreePath, baseCommit);
     const record: WorktreeRecord = {
       projectPath: root,
       worktreePath,
       branch,
       baseBranch,
+      parentWorktreePath: parent?.worktreePath,
+      baseCommit,
+      state: "active",
       createdAt: new Date().toISOString(),
     };
     this.allRecords = [...this.allRecords, record];
@@ -83,30 +105,30 @@ export class WorktreeService {
     const record = this.allRecords.find(
       (entry) => resolveNormalized(entry.worktreePath) === normalized,
     );
-    if (!record) return undefined;
+    if (!record || (record.state ?? "active") !== "active") return undefined;
     if (!existsSync(record.worktreePath)) {
-      // The directory was removed outside Cake; reconcile Git metadata lazily.
+      // Preserve the historical checkout association so its transcripts remain discoverable.
       await git(record.projectPath, "worktree", "prune").catch(() => undefined);
-      await this.removeRecord(record);
+      await this.closeRecord(record, "missing");
       return undefined;
     }
-    const [dirtyCount, mainBranch, aheadCount, merged] = await Promise.all([
+    const targetPath = record.parentWorktreePath ?? record.projectPath;
+    if (!existsSync(targetPath)) throw new Error("The worktree landing target no longer exists");
+    const [dirtyCount, aheadCount, merged, targetDirty, targetBranch] = await Promise.all([
       dirtyFileCount(record.worktreePath),
-      this.resolveMainBranch(record),
       revListCount(record.worktreePath, `${record.baseBranch}..HEAD`),
       isAncestor(record.worktreePath, "HEAD", record.baseBranch),
+      dirtyFileCount(targetPath).then((count) => count > 0),
+      gitWithFallback(targetPath, ["rev-parse", "--abbrev-ref", "HEAD"]),
     ]);
-    const canonicalDirty = (await dirtyFileCount(record.projectPath)) > 0;
     return worktreeStatusSchema.parse({
       record,
-      mainBranch,
+      targetBranch: record.baseBranch,
       dirtyCount,
       aheadCount,
       merged,
-      canonicalDirty,
-      canonicalOnBaseBranch:
-        (await gitWithFallback(record.projectPath, ["rev-parse", "--abbrev-ref", "HEAD"])) ===
-        mainBranch,
+      targetDirty,
+      targetOnBranch: targetBranch === record.baseBranch,
       merging: await revParseExists(record.worktreePath, "MERGE_HEAD"),
     });
   }
@@ -121,48 +143,54 @@ export class WorktreeService {
     await this.load();
     const normalized = resolveNormalized(worktreePath);
     const record = this.allRecords.find(
-      (entry) => resolveNormalized(entry.worktreePath) === normalized,
+      (entry) =>
+        (entry.state ?? "active") === "active" &&
+        resolveNormalized(entry.worktreePath) === normalized,
     );
-    if (!record) throw new Error("Cake could not find that worktree");
+    if (!record) throw new Error("Cake could not find that active worktree");
+    return this.withRepositoryLock(record.projectPath, () => this.landRecord(record, options));
+  }
+
+  private async landRecord(
+    record: WorktreeRecord,
+    options: LandOptions,
+  ): Promise<WorktreeLandOutcome> {
     if (!existsSync(record.worktreePath)) {
-      await this.removeRecord(record);
+      await this.closeRecord(record, "missing");
       throw new Error("The worktree no longer exists on disk");
     }
     if ((await dirtyFileCount(record.worktreePath)) > 0)
       throw new Error("The worktree has uncommitted changes. Commit or discard them first.");
-    const mainBranch = await this.resolveMainBranch(record);
-    if ((await git(record.projectPath, "rev-parse", "--abbrev-ref", "HEAD")).trim() !== mainBranch)
-      throw new Error(
-        `Switch the project checkout back to "${mainBranch}" before landing this worktree.`,
-      );
-    if ((await dirtyFileCount(record.projectPath)) > 0)
-      throw new Error(
-        "The project checkout has uncommitted changes that would block the merge. Commit or stash them first.",
-      );
+    const targetPath = record.parentWorktreePath ?? record.projectPath;
+    if (!existsSync(targetPath)) throw new Error("The worktree landing target no longer exists");
+    if ((await git(targetPath, "rev-parse", "--abbrev-ref", "HEAD")).trim() !== record.baseBranch)
+      throw new Error(`Switch the landing target back to "${record.baseBranch}" first.`);
+    if ((await dirtyFileCount(targetPath)) > 0)
+      throw new Error("The landing target has uncommitted changes. Commit or stash them first.");
+    const activeChildren = this.allRecords.filter(
+      (entry) =>
+        (entry.state ?? "active") === "active" &&
+        entry.parentWorktreePath === record.worktreePath &&
+        existsSync(entry.worktreePath),
+    );
+    if (activeChildren.length > 0)
+      throw new Error("Land or discard this worktree's active child worktrees first.");
 
     const aheadCount = await revListCount(record.worktreePath, `${record.baseBranch}..HEAD`);
     if (aheadCount === 0) {
-      // Nothing to merge; the branch may already be contained in the base.
-      await this.cleanup(record, { keepBranch: false });
+      await this.cleanup(record, { keepBranch: false, state: "landed" });
       return { outcome: "landed" };
     }
 
-    const conflictedFiles = await dryRunConflicts(record.projectPath, mainBranch, record.branch);
+    const conflictedFiles = await dryRunConflicts(targetPath, record.baseBranch, record.branch);
     if (conflictedFiles === null || conflictedFiles.length > 0) {
-      if (!options.autoResolve)
-        return {
-          outcome: "conflicts",
-          files: conflictedFiles ?? [],
-        };
-      // Start a real conflicted merge inside the worktree so the session agent
-      // can resolve it with full task context. Landing is retried once resolved.
+      if (!options.autoResolve) return { outcome: "conflicts", files: conflictedFiles ?? [] };
       try {
-        await git(record.worktreePath, "merge", "--no-ff", "--no-edit", mainBranch);
+        await git(record.worktreePath, "merge", "--no-ff", "--no-edit", record.baseBranch);
       } catch {
         // A non-zero exit with MERGE_HEAD present is the expected conflict path.
       }
       if (!(await revParseExists(record.worktreePath, "MERGE_HEAD"))) {
-        // Git auto-merged cleanly (conflict prediction was unavailable); land directly.
         const commit = await this.mergeAndCleanup(record, options.message);
         return { outcome: "landed", commit };
       }
@@ -179,39 +207,70 @@ export class WorktreeService {
    */
   async createBranchOff(worktreePath: string): Promise<WorktreeRecord> {
     await this.load();
-    const normalized = resolveNormalized(worktreePath);
     const source = this.allRecords.find(
-      (entry) => resolveNormalized(entry.worktreePath) === normalized,
+      (entry) =>
+        (entry.state ?? "active") === "active" &&
+        resolveNormalized(entry.worktreePath) === resolveNormalized(worktreePath),
     );
     if (!source) throw new Error("Cake could not find that worktree");
-    if (!existsSync(source.worktreePath)) throw new Error("The source worktree no longer exists");
-    const slug = slugify(basename(source.projectPath));
-    const id = `${Date.now().toString(36)}${Math.random().toString(16).slice(2, 6)}`;
-    const branch = `agent/${slug}-${id}`;
-    const worktreesDir = join(dirname(source.projectPath), `.${slug}-worktrees`);
-    const newPath = join(worktreesDir, `${slug}-${id}`);
-    await mkdir(worktreesDir, { recursive: true });
-    await git(source.projectPath, "worktree", "add", "-b", branch, newPath, source.branch);
-    const record: WorktreeRecord = {
-      projectPath: source.projectPath,
-      worktreePath: newPath,
-      branch,
-      baseBranch: source.baseBranch,
-      createdAt: new Date().toISOString(),
-    };
-    this.allRecords = [...this.allRecords, record];
-    await this.persist();
-    return record;
+    return this.create(source.projectPath, source.worktreePath);
+  }
+
+  async commit(workspacePath: string, message: string): Promise<string> {
+    await this.load();
+    const record = this.allRecords.find(
+      (entry) =>
+        (entry.state ?? "active") === "active" &&
+        resolveNormalized(entry.worktreePath) === resolveNormalized(workspacePath),
+    );
+    const projectPath =
+      record?.projectPath ?? (await realpath(await repositoryRoot(workspacePath)));
+    return this.withRepositoryLock(projectPath, async () => {
+      if ((await dirtyFileCount(workspacePath)) === 0)
+        throw new Error("There are no changes to commit.");
+      await git(workspacePath, "add", "--all");
+      await git(workspacePath, "commit", "-m", message.trim() || "Commit Cake session changes");
+      return (await git(workspacePath, "rev-parse", "HEAD")).trim();
+    });
+  }
+
+  async workspaceStatus(workspacePath: string) {
+    return { workspacePath, dirtyCount: await dirtyFileCount(workspacePath) };
   }
 
   async discard(worktreePath: string, keepBranch: boolean): Promise<void> {
     await this.load();
     const normalized = resolveNormalized(worktreePath);
     const record = this.allRecords.find(
-      (entry) => resolveNormalized(entry.worktreePath) === normalized,
+      (entry) =>
+        (entry.state ?? "active") === "active" &&
+        resolveNormalized(entry.worktreePath) === normalized,
     );
     if (!record) throw new Error("Cake could not find that worktree");
-    await this.cleanup(record, { keepBranch });
+    await this.withRepositoryLock(record.projectPath, () =>
+      this.cleanup(record, { keepBranch, state: "discarded" }),
+    );
+  }
+
+  private async withRepositoryLock<T>(
+    projectPath: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const prior = this.repositoryOperationTails.get(projectPath) ?? Promise.resolve();
+    let release!: () => void;
+    const slot = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tail = prior.catch(() => undefined).then(() => slot);
+    this.repositoryOperationTails.set(projectPath, tail);
+    await prior.catch(() => undefined);
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.repositoryOperationTails.get(projectPath) === tail)
+        this.repositoryOperationTails.delete(projectPath);
+    }
   }
 
   private async mergeAndCleanup(
@@ -221,20 +280,26 @@ export class WorktreeService {
     const aheadCount = await revListCount(record.worktreePath, `${record.baseBranch}..HEAD`);
     let commit: string | undefined;
     if (aheadCount > 0) {
-      await git(record.projectPath, "merge", "--squash", record.branch);
+      const targetPath = record.parentWorktreePath ?? record.projectPath;
+      await git(targetPath, "merge", "--squash", record.branch);
       await git(
-        record.projectPath,
+        targetPath,
         "commit",
         "-m",
         message?.trim() || `Merge worktree branch '${record.branch}'`,
       );
-      commit = (await git(record.projectPath, "rev-parse", "HEAD")).trim();
+      commit = (
+        await git(record.parentWorktreePath ?? record.projectPath, "rev-parse", "HEAD")
+      ).trim();
     }
-    await this.cleanup(record, { keepBranch: false });
+    await this.cleanup(record, { keepBranch: false, state: "landed" });
     return commit;
   }
 
-  private async cleanup(record: WorktreeRecord, options: { keepBranch: boolean }) {
+  private async cleanup(
+    record: WorktreeRecord,
+    options: { keepBranch: boolean; state: "landed" | "discarded" },
+  ) {
     if (existsSync(record.worktreePath)) {
       try {
         await git(record.projectPath, "worktree", "remove", "--force", record.worktreePath);
@@ -245,11 +310,12 @@ export class WorktreeService {
     await git(record.projectPath, "worktree", "prune").catch(() => undefined);
     if (!options.keepBranch)
       await git(record.projectPath, "branch", "-D", record.branch).catch(() => undefined);
-    await this.removeRecord(record);
+    await this.closeRecord(record, options.state);
   }
 
-  private async removeRecord(record: WorktreeRecord) {
-    this.allRecords = this.allRecords.filter((entry) => entry !== record);
+  private async closeRecord(record: WorktreeRecord, state: "landed" | "discarded" | "missing") {
+    const index = this.allRecords.indexOf(record);
+    if (index >= 0) this.allRecords = this.allRecords.with(index, { ...record, state });
     await this.persist();
   }
 
@@ -267,23 +333,6 @@ export class WorktreeService {
     } catch {
       this.allRecords = [];
     }
-  }
-
-  private async resolveMainBranch(record: WorktreeRecord): Promise<string> {
-    try {
-      const symbolic = await git(
-        record.projectPath,
-        "symbolic-ref",
-        "-q",
-        "--short",
-        "refs/remotes/origin/HEAD",
-      );
-      const remote = symbolic.trim().replace(/^origin\//, "");
-      if (remote) return remote;
-    } catch {
-      // No remote HEAD; fall through to the local default.
-    }
-    return record.baseBranch;
   }
 }
 

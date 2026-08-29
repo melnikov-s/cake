@@ -1,5 +1,6 @@
 import { Store, observable } from "r-state-tree";
 import type { GlobalSessionSummary, SessionSnapshot } from "../../ipc/session-contract";
+import type { WorktreeRecord } from "../../ipc/worktree-contract";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 
 /** The single renderer-owned catalog of Pi session summaries. */
@@ -8,17 +9,21 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
   private indexedById = new Map<string, GlobalSessionSummary>();
   private indexedByProject = new Map<string, GlobalSessionSummary[]>();
   private resolvedSessionIds = new Set<string>();
-  /** Managed worktree workspaces mapped to their parent project path. */
-  private readonly managedWorktreeProjects = observable(new Map<string, string>());
+  /** Managed worktree workspaces mapped to their durable Git metadata. */
+  private readonly managedWorktrees = observable(new Map<string, WorktreeRecord>());
 
-  /** Registers the parent project of a managed worktree workspace ahead of any listing. */
-  noteManagedWorktree(workspacePath: string, projectPath: string) {
-    this.managedWorktreeProjects.set(workspacePath, projectPath);
+  /** Registers a managed worktree ahead of its first Pi session listing. */
+  noteManagedWorktree(record: WorktreeRecord) {
+    this.managedWorktrees.set(record.worktreePath, record);
+  }
+
+  managedWorktree(workspacePath: string) {
+    return this.managedWorktrees.get(workspacePath);
   }
 
   /** The parent project of a managed worktree workspace, if it is one. */
   projectOfManagedWorktree(workspacePath: string) {
-    return this.managedWorktreeProjects.get(workspacePath);
+    return this.managedWorktrees.get(workspacePath)?.projectPath;
   }
 
   find(sessionId: string) {
@@ -58,8 +63,11 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
     const otherSessions = this.sessions.filter(
       (session) => session.workspacePath !== workspacePath,
     );
-    const workspaceSessions = sessions.map((session) => ({
+    const managedWorktree = this.managedWorktrees.get(workspacePath);
+    const workspaceSessions: GlobalSessionSummary[] = sessions.map((session) => ({
       ...session,
+      managedWorktree,
+      projectPath: managedWorktree?.projectPath,
       resolved:
         this.resolvedSessionIds.has(session.id) ||
         prior.get(session.id)?.resolved === true ||
@@ -130,8 +138,8 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
       const projectSessions = byProject.get(projectKey) ?? [];
       projectSessions.push(session);
       byProject.set(projectKey, projectSessions);
-      if (session.projectPath)
-        this.managedWorktreeProjects.set(session.workspacePath, session.projectPath);
+      if (session.managedWorktree)
+        this.managedWorktrees.set(session.workspacePath, session.managedWorktree);
     }
     this.indexedById = byId;
     this.indexedByProject = byProject;
