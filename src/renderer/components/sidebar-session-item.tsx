@@ -57,7 +57,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
       className={cn(
         "session-item group relative flex min-h-11 w-full items-center rounded-md py-1 text-xs select-none transition-colors",
         selected
-          ? "active bg-sidebar-active text-foreground font-semibold shadow-[inset_3px_0_0_var(--accent)]"
+          ? "active bg-sidebar-active text-primary font-semibold shadow-[inset_3px_0_0_var(--primary)]"
           : "text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
         canResolve && "can-resolve",
         selected && canResolve && "has-session-action",
@@ -96,7 +96,12 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
               {session.title}
             </span>
             {branch && (
-              <span className="mt-1.5 flex max-w-full items-center gap-1.5 text-[10px] font-normal leading-none text-muted-foreground/80">
+              <span
+                className={cn(
+                  "mt-1.5 flex max-w-full items-center gap-1.5 text-[10px] font-normal leading-none",
+                  selected ? "text-primary/80" : "text-muted-foreground/80",
+                )}
+              >
                 <PullRequestIcon />
                 <span className="truncate">{branch}</span>
                 {session.managedWorktree && (
@@ -115,7 +120,11 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
               <i
                 className={cn(
                   "session-status size-2 rounded-full shrink-0",
-                  activity === "running" && "session-status-running bg-accent animate-pulse",
+                  activity === "running" &&
+                    cn(
+                      "session-status-running animate-pulse",
+                      selected ? "bg-primary" : "bg-accent",
+                    ),
                   activity === "unread" &&
                     "session-status-unread bg-emerald-500 ring-2 ring-emerald-500/20",
                 )}
@@ -140,10 +149,10 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                 {canResolve && (
                   <IconButton
                     className={cn(
-                      "session-resolve-action size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover transition-opacity",
+                      "session-resolve-action size-6 flex items-center justify-center rounded transition-opacity",
                       selected
-                        ? "opacity-100"
-                        : "absolute inset-0 m-auto opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+                        ? "text-primary/80 opacity-100 hover:bg-primary/10 hover:text-primary"
+                        : "absolute inset-0 m-auto text-muted-foreground opacity-0 hover:bg-sidebar-hover hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100",
                     )}
                     tooltip={resolved ? "Restore" : "Resolve"}
                     ariaLabel={`${resolved ? "Restore" : "Resolve"} ${session.title}`}
