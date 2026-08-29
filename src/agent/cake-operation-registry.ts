@@ -66,6 +66,7 @@ const cakeTopics = [
   { name: "subagents", summary: "Delegate explicitly requested work." },
   { name: "notifications", summary: "Notify the user." },
   { name: "customizations", summary: "Inspect or modify Cake plugins and scenes." },
+  { name: "worktrees", summary: "Complete an active worktree landing workflow." },
 ] as const satisfies readonly CakeTopicDefinition[];
 
 function schemaJson(schema: z.ZodType) {

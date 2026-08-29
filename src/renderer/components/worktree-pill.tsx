@@ -152,12 +152,23 @@ export const WorktreePill = observer(function WorktreePill({
   const target = status.targetBranch.replace(/^agent\//, "");
   const branch = status.record.branch.replace(/^agent\//, "");
   const dirty = status.dirtyCount > 0;
+  const merging = actions.phase !== "idle" && actions.phase !== "discarding";
   const mergeLabel =
     actions.phase === "landing"
       ? "Merging…"
-      : actions.phase === "resolving"
-        ? "Resolving conflicts…"
-        : "Merge & resolve";
+      : actions.phase === "proposing"
+        ? "Preparing message…"
+        : actions.phase === "resolving"
+          ? "Resolving conflicts…"
+          : "Merge";
+
+  const squash = () => {
+    if (dirty) {
+      setConfirmation("dirty-merge");
+      return;
+    }
+    run(actions.land({ strategy: "squash" }));
+  };
 
   return (
     <div className="flex flex-col gap-1 px-3 pt-2">
@@ -193,7 +204,7 @@ export const WorktreePill = observer(function WorktreePill({
                   <ConfirmationTitle>Commit changes before merging</ConfirmationTitle>
                   <ConfirmationDescription>
                     This worktree has uncommitted changes. Ask the agent to commit them, then merge
-                    and resolve the session.
+                    into {target}.
                   </ConfirmationDescription>
                   <ConfirmationActions>
                     <ConfirmationAction onClick={() => setConfirmation(undefined)}>
@@ -204,6 +215,40 @@ export const WorktreePill = observer(function WorktreePill({
               </Confirmation>
             </PopoverContent>
           </Popover>
+        )}
+        {status.aheadCount > 1 && !merging && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            className="h-7 shrink-0 rounded-full px-2.5 text-xs font-medium text-muted-foreground shadow-none"
+            onClick={squash}
+          >
+            Squash…
+          </Button>
+        )}
+        {actions.stalled && (
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 shrink-0 rounded-full px-2.5 text-xs font-medium text-muted-foreground shadow-none"
+              onClick={() => run(actions.retryLanding())}
+            >
+              Retry
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 shrink-0 rounded-full px-2.5 text-xs font-medium text-muted-foreground shadow-none"
+              onClick={() => actions.cancelLanding()}
+            >
+              Dismiss
+            </Button>
+          </>
         )}
         <Popover
           open={confirmation === "discard"}

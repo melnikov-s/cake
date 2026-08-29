@@ -28,6 +28,7 @@ import {
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
 import type { SourceLocation } from "../ipc/source-location";
 import type { SessionUsage, UiPart, UtilityModel } from "../ipc/session-contract";
+import type { WorktreeLandingCoordinator } from "../ipc/worktree-contract";
 import { subagentActivitySchema } from "../ipc/subagent-activity-contract";
 import type { JsonValue } from "../ipc/json-contract";
 import { jsonValueSchema } from "../ipc/json-contract";
@@ -149,6 +150,7 @@ export interface PiWorkspaceDriverOptions {
   openInEditor?: (location: SourceLocation, signal: AbortSignal) => Promise<SourceLocation>;
   isTrusted?: () => boolean;
   utilityModel?: () => UtilityModel | undefined;
+  worktreeLanding?: WorktreeLandingCoordinator;
   fastMode?(sessionId: string): boolean;
   setFastMode?(sessionId: string, enabled: boolean): Promise<void>;
   sessionResolved?(sessionId: string): boolean;
@@ -179,6 +181,7 @@ export class PiWorkspaceDriver {
   private readonly openInEditor: PiWorkspaceDriverOptions["openInEditor"];
   private readonly isTrusted: () => boolean;
   private readonly utilityModel: () => UtilityModel | undefined;
+  private readonly worktreeLanding: WorktreeLandingCoordinator | undefined;
   private readonly fastMode: (sessionId: string) => boolean;
   private readonly setFastMode: (sessionId: string, enabled: boolean) => Promise<void>;
   private readonly sessionResolved: (sessionId: string) => boolean;
@@ -226,6 +229,7 @@ export class PiWorkspaceDriver {
     this.openInEditor = options.openInEditor;
     this.isTrusted = options.isTrusted ?? (() => false);
     this.utilityModel = options.utilityModel ?? (() => undefined);
+    this.worktreeLanding = options.worktreeLanding;
     this.fastMode = options.fastMode ?? (() => false);
     this.setFastMode = options.setFastMode ?? (async () => undefined);
     this.sessionResolved = options.sessionResolved ?? (() => false);
@@ -914,6 +918,16 @@ export class PiWorkspaceDriver {
             this.reviewRepository.reviewContextPath!(this.workspacePath, activeSessionId)
         : undefined,
       utilityModel: this.utilityModel,
+      worktreeLandingControl:
+        policy?.auxiliary || !this.worktreeLanding
+          ? undefined
+          : {
+              proposeSquashMessage: (message) =>
+                this.worktreeLanding!.proposeSquashMessage({
+                  workspacePath: this.workspacePath,
+                  ...message,
+                }),
+            },
       vscodeControl:
         policy?.auxiliary || !this.openInEditor ? undefined : { open: this.openInEditor },
       currentSessionControl: {

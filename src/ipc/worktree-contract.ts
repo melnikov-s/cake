@@ -21,6 +21,8 @@ export const worktreeRecordSchema = z.object({
   /** Exact commit used to create this checkout. */
   baseCommit: z.string().min(1).max(256).optional(),
   state: z.enum(["active", "landed", "discarded", "missing"]).optional(),
+  /** Strategy of a landing that is paused inside this worktree awaiting the session agent. */
+  pendingStrategy: z.enum(["preserve", "squash"]).optional(),
   createdAt: z.string().datetime(),
 });
 
@@ -41,24 +43,55 @@ export const worktreeStatusSchema = z.object({
   targetOnBranch: z.boolean(),
   /** True while a conflicted merge is in progress inside the worktree awaiting resolution. */
   merging: z.boolean(),
+  /** True while a rebase is in progress inside the worktree awaiting resolution. */
+  rebasing: z.boolean(),
+  /** True when the session agent proposed a squash message for the current branch tip. */
+  squashMessageReady: z.boolean(),
 });
 
 export type WorktreeStatus = z.infer<typeof worktreeStatusSchema>;
 
+/**
+ * How the worktree branch reaches its target.
+ *
+ * - `preserve` replays the worktree commits onto the target branch one by one
+ *   and needs no model involvement.
+ * - `squash` combines the worktree into one target commit. Without an explicit
+ *   `message`, the session agent proposes the commit message first.
+ */
+export const worktreeLandRequestSchema = z.discriminatedUnion("strategy", [
+  z.object({ strategy: z.literal("preserve") }),
+  z.object({
+    strategy: z.literal("squash"),
+    message: z.string().min(1).max(6_000).optional(),
+  }),
+]);
+
+export type WorktreeLandRequest = z.infer<typeof worktreeLandRequestSchema>;
+
+/** Resolves the pending squash-message request for the calling worktree workspace. */
+export interface WorktreeLandingCoordinator {
+  proposeSquashMessage(input: {
+    workspacePath: string;
+    subject: string;
+    body?: string;
+  }): Promise<void>;
+}
+
 export const worktreeLandOutcomeSchema = z.discriminatedUnion("outcome", [
   z.object({
     outcome: z.literal("landed"),
-    /** The squash-merge commit on the base branch, when commits were merged. */
+    /** The commit created on the target branch, when commits were merged. */
     commit: z.string().max(256).optional(),
   }),
   z.object({
-    outcome: z.literal("conflicts"),
+    /** A conflicted rebase or merge was started in the worktree for the session agent to resolve. */
+    outcome: z.literal("resolving"),
     files: ipcProjectionArray(z.string().max(4_096), 10_000),
   }),
   z.object({
-    /** A conflicted merge was started in the worktree for the session agent to resolve. */
-    outcome: z.literal("resolving"),
-    files: ipcProjectionArray(z.string().max(4_096), 10_000),
+    /** The session agent must propose a squash commit message before landing continues. */
+    outcome: z.literal("proposal"),
   }),
 ]);
 

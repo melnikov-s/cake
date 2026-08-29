@@ -50,6 +50,7 @@ import {
 } from "./session-contract";
 import {
   worktreeLandOutcomeSchema,
+  worktreeLandRequestSchema,
   worktreeRecordSchema,
   worktreeStatusSchema,
 } from "./worktree-contract";
@@ -614,8 +615,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     type: z.literal("land-worktree"),
     requestId: z.uuid(),
     workspacePath: z.string().max(4_096),
-    message: z.string().min(1).max(512).optional(),
-    autoResolve: z.boolean().default(false),
+    request: worktreeLandRequestSchema,
   }),
   z.object({
     type: z.literal("discard-worktree"),

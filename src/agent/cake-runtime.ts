@@ -50,6 +50,10 @@ import { createCakeArtifactExtension } from "./artifact-extension";
 import { createCakeArtifactOperations } from "./cake-artifact-operations";
 import { createCakeVscodeOperations, type VscodeControl } from "./cake-vscode-operations";
 import {
+  createCakeWorktreeOperations,
+  type WorktreeLandingControl,
+} from "./cake-worktree-operations";
+import {
   CakeOperationRegistry,
   cakeToolDescription,
   cakeToolEnvelopeSchema,
@@ -234,6 +238,7 @@ export interface CakeRuntimeOptions {
     setResolved(resolved: boolean): Promise<void>;
   };
   vscodeControl?: VscodeControl;
+  worktreeLandingControl?: WorktreeLandingControl;
   globalControl?: {
     tools: readonly GlobalControlTool[];
     recoveryContext?: string;
@@ -777,6 +782,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
                   generateInlineWidget: options.generateInlineWidget,
                 }),
                 ...(options.vscodeControl ? createCakeVscodeOperations(options.vscodeControl) : []),
+                ...(options.worktreeLandingControl
+                  ? createCakeWorktreeOperations(options.worktreeLandingControl)
+                  : []),
                 ...(options.agentControl
                   ? createAgentControlOperations(
                       options.agentControl,
@@ -827,6 +835,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
                   generateInlineWidget: options.generateInlineWidget,
                 }),
                 ...(options.vscodeControl ? createCakeVscodeOperations(options.vscodeControl) : []),
+                ...(options.worktreeLandingControl
+                  ? createCakeWorktreeOperations(options.worktreeLandingControl)
+                  : []),
                 ...(options.agentControl
                   ? createAgentControlOperations(
                       options.agentControl,

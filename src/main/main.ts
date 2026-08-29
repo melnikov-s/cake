@@ -474,6 +474,7 @@ function launchPi(path: string) {
     pluginResources: pluginAgentResources,
     isTrusted: () => applicationModel.isProjectTrusted(path),
     utilityModel: () => applicationModel.utilityModel,
+    worktreeLanding: worktrees,
     fastMode: (sessionId) => applicationModel.hasSessionFastMode(sessionId),
     setFastMode: async (sessionId, enabled) => {
       applicationModel.setSessionFastMode(sessionId, enabled);
@@ -1666,10 +1667,7 @@ async function handleCakeRequest(
   }
   if (request.type === "land-worktree") {
     await requireWorktreeRecord(request.workspacePath);
-    const result = await worktrees.land(request.workspacePath, {
-      message: request.message,
-      autoResolve: request.autoResolve,
-    });
+    const result = await worktrees.land(request.workspacePath, { request: request.request });
     return desktopResponseSchema.parse({
       type: "worktree-landed",
       requestId: request.requestId,

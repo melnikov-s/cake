@@ -20,7 +20,12 @@ import type { ArtifactRecord } from "../ipc/artifact-contract";
 import type { ReviewAnchor, ReviewThread } from "../ipc/review-contract";
 import type { SourceLocation } from "../ipc/source-location";
 import type { EditorAnnotationSnapshot } from "../ipc/editor-annotation";
-import type { WorktreeLandOutcome, WorktreeRecord, WorktreeStatus } from "../ipc/worktree-contract";
+import type {
+  WorktreeLandOutcome,
+  WorktreeLandRequest,
+  WorktreeRecord,
+  WorktreeStatus,
+} from "../ipc/worktree-contract";
 import type { CustomizationState, PluginDiagnostic, PluginStatus } from "../plugin/plugin-contract";
 import type {
   CompiledInlineWidget,
@@ -397,8 +402,7 @@ export interface DesktopClient {
   landWorktree(input: {
     operationId: string;
     workspacePath: string;
-    message?: string;
-    autoResolve: boolean;
+    request: WorktreeLandRequest;
   }): Promise<WorktreeLandOutcome>;
   discardWorktree(input: {
     operationId: string;
@@ -1154,8 +1158,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         type: "land-worktree",
         requestId: input.operationId,
         workspacePath: input.workspacePath,
-        message: input.message,
-        autoResolve: input.autoResolve,
+        request: input.request,
       });
       if (response.type !== "worktree-landed")
         throw new Error("Cake received an unexpected worktree landing response");
