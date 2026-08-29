@@ -26,7 +26,6 @@ import {
 } from "../ipc/session-contract";
 import type { SourceLocation } from "../ipc/source-location";
 import {
-  cakeWorkspaceSessionDirectory,
   findSessionFile,
   forkWorkspaceSession,
   inspectWorkspace,
@@ -1647,11 +1646,9 @@ async function handleCakeRequest(
     allowedProjectPaths.add(branchOff.worktreePath);
     if (applicationModel.isProjectTrusted(branchOff.projectPath))
       applicationModel.trustProject(branchOff.worktreePath);
-    const forked = forkWorkspaceSession(
-      sourceFile,
-      branchOff.worktreePath,
-      cakeWorkspaceSessionDirectory(branchOff.worktreePath, cakePaths.piSessions),
-    );
+    // forkWorkspaceSession encodes the workspace session directory itself; passing
+    // a pre-encoded directory would nest the fork one level below where readers look.
+    const forked = forkWorkspaceSession(sourceFile, branchOff.worktreePath, cakePaths.piSessions);
     rememberSessionLocation(branchOff.worktreePath, forked.sessionId);
     if (request.resolveSource)
       await setProjectSessionResolution(request.sessionId, true, request.workspacePath);

@@ -80,6 +80,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   private activeOpenExpectsEmpty = false;
   error: string | undefined;
   errorDetails: string | undefined;
+  /** Session context the current error belongs to; context-free errors are undefined. */
+  private errorSessionId: string | undefined;
   private openRevision = 0;
   private projectPickerRevision = 0;
   private reopenAfterAgentRestart = false;
@@ -289,6 +291,19 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const described = describeError(error, context);
     this.error = described.message;
     this.errorDetails = described.details;
+    this.errorSessionId = this.selectedSessionId;
+  }
+
+  /**
+   * The workbench error as seen from one session context: an error raised while a
+   * session was displayed belongs to that session only, and context-free errors
+   * (project picking, startup) surface only where no session is displayed.
+   */
+  contextError(
+    sessionId: string | undefined,
+  ): { message: string; details: string | undefined } | undefined {
+    if (!this.error || this.errorSessionId !== sessionId) return undefined;
+    return { message: this.error, details: this.errorDetails };
   }
 
   /** Repeated picker requests are latest-wins. */
@@ -852,6 +867,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       }
       this.error = event.message;
       this.errorDetails = event.details ?? event.message;
+      this.errorSessionId = this.selectedSessionId;
     }
   }
 }

@@ -93,15 +93,17 @@ export const ForkSessionDialog = observer(function ForkSessionDialog({
                 </span>
               </label>
             )}
-            <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm">
-              <input
-                className="accent-primary"
-                type="checkbox"
-                checked={prompt.resolveParent}
-                onChange={(event) => store.setResolveParent(event.target.checked)}
-              />
-              Resolve the parent conversation after forking
-            </label>
+            {prompt.destination === "new-worktree" && (
+              <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  className="accent-primary"
+                  type="checkbox"
+                  checked={prompt.resolveParent}
+                  onChange={(event) => store.setResolveParent(event.target.checked)}
+                />
+                Resolve the parent conversation after forking
+              </label>
+            )}
             <ConfirmationActions>
               <ConfirmationAction
                 type="button"

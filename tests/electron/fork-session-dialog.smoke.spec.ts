@@ -1,12 +1,26 @@
+import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { promisify } from "node:util";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/agent/session-discovery";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
+const execFileAsync = promisify(execFile);
 
-test("configures and cancels a session fork dialog", async () => {
+async function seedGitRepository(project: string) {
+  const git = async (...args: string[]) => execFileAsync("git", args, { cwd: project });
+  await git("init", "-b", "main");
+  await git("config", "user.email", "cake@example.test");
+  await git("config", "user.name", "Cake Test");
+  await writeFile(join(project, "README.md"), "base\n");
+  await git("add", "-A");
+  await git("commit", "-m", "base");
+}
+
+test("forks a session into a new worktree and opens the fork", async () => {
+  test.setTimeout(120_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-fork-dialog-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -19,6 +33,7 @@ test("configures and cancels a session fork dialog", async () => {
     mkdir(project, { recursive: true }),
     mkdir(sessionDirectory, { recursive: true }),
   ]);
+  await seedGitRepository(project);
   await writeFile(
     join(userData, "window-state.json"),
     JSON.stringify({
@@ -114,6 +129,7 @@ test("configures and cancels a session fork dialog", async () => {
     await expect(dialog).toBeVisible();
     await expect(dialog.getByLabel("Use the existing worktree")).toBeChecked();
     await expect(dialog.getByLabel("Worktree name")).toHaveCount(0);
+    await expect(dialog.getByLabel("Resolve the parent conversation after forking")).toHaveCount(0);
 
     await dialog.getByLabel("Create a new worktree").check();
     const name = dialog.getByLabel("Worktree name");
@@ -124,9 +140,23 @@ test("configures and cancels a session fork dialog", async () => {
     await expect(name).toHaveValue("focused-fix");
     await dialog.getByLabel("Resolve the parent conversation after forking").check();
 
-    await page.keyboard.press("Escape");
+    await dialog.getByRole("button", { name: "Fork conversation" }).click();
     await expect(dialog).toHaveCount(0);
-    await expect(fork).toBeVisible();
+    // The forked conversation opens in its new worktree (the worktree pill shows its
+    // branch) instead of failing with "Cake could not find that session". The forked
+    // transcript carries the parent's content.
+    await expect(page.getByText("focused-fix").first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Here is the plan.")).toBeVisible();
+
+    // Preview hydration happens before the workspace runtime finishes opening. Wait
+    // until the composer can submit so a late session-open failure cannot race this check.
+    const composer = page.getByRole("combobox", { name: "Message" });
+    await expect(composer).toBeVisible();
+    await composer.fill("Continue in the fork");
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveValue("Continue in the fork");
+    await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
+    await expect(page.getByText("Cake could not find that session")).toHaveCount(0);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

@@ -493,6 +493,26 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("only allows resolving the parent for a new-worktree fork", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+    await openSnapshot(store, desktop);
+
+    const continuation = store.sessionContinuationStore;
+    continuation.forkAt("assistant-entry");
+    continuation.setResolveParent(true);
+    expect(continuation.prompt?.resolveParent).toBe(false);
+
+    continuation.selectDestination("new-worktree");
+    continuation.setResolveParent(true);
+    expect(continuation.prompt?.resolveParent).toBe(true);
+
+    continuation.selectDestination("existing");
+    expect(continuation.prompt?.resolveParent).toBe(false);
+    root[Symbol.dispose]();
+  });
+
   it("forks into a named worktree and optionally resolves the parent", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
@@ -683,6 +703,38 @@ describe("ProjectWorkbenchStore", () => {
     expect(store.error).toContain("duplicate ids detected after snapshot was loaded");
     expect(store.errorDetails).toContain("r-state-tree");
     expect(store.errorDetails).toContain("Context:\nDesktop event: session-snapshot-received");
+    root[Symbol.dispose]();
+  });
+
+  it("shows workbench errors only in the session context they occurred in", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+
+    await openSnapshot(store, desktop);
+    store.setError(new Error("Fork failed"));
+    expect(store.contextError("session-1")?.message).toBe("Fork failed");
+    expect(store.contextError(undefined)).toBeUndefined();
+    expect(store.contextError("session-2")).toBeUndefined();
+
+    // Switching the displayed session without running a workbench operation must
+    // not carry the error into the other session.
+    store.selectedSessionId = "session-2";
+    expect(store.contextError("session-2")).toBeUndefined();
+    expect(store.contextError("session-1")?.message).toBe("Fork failed");
+    root[Symbol.dispose]();
+  });
+
+  it("surfaces context-free errors only while no session is displayed", async () => {
+    const desktop = createDesktopClient();
+    const { root, store } = mountTestStore(desktop.client);
+    await flush();
+
+    store.setError("Choosing a project folder failed");
+    expect(store.contextError(undefined)?.message).toBe("Choosing a project folder failed");
+
+    await openSnapshot(store, desktop);
+    expect(store.contextError("session-1")).toBeUndefined();
     root[Symbol.dispose]();
   });
 

@@ -61,9 +61,10 @@ export const App = observer(function App() {
     globalChat && shell.selection.kind === "cake-chat" && shell.selection.sessionId
       ? globalChat.findSession(shell.selection.sessionId)
       : undefined;
+  const workbenchError = store.contextError(session?.sessionId);
   const chatError =
     persistence.error ??
-    store.error ??
+    workbenchError?.message ??
     composer?.error ??
     reviews.error ??
     chatConfiguration?.error ??
@@ -71,8 +72,8 @@ export const App = observer(function App() {
     artifactInteractions?.error;
   const chatErrorDetails = persistence.error
     ? persistence.errorDetails
-    : store.error
-      ? store.errorDetails
+    : workbenchError
+      ? workbenchError.details
       : composer?.error
         ? composer.errorDetails
         : reviews.error

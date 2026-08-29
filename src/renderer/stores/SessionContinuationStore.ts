@@ -54,7 +54,12 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
   }
 
   selectDestination(destination: ForkSessionPrompt["destination"]) {
-    if (this.prompt) this.prompt = { ...this.prompt, destination };
+    if (this.prompt)
+      this.prompt = {
+        ...this.prompt,
+        destination,
+        resolveParent: destination === "new-worktree" && this.prompt.resolveParent,
+      };
   }
 
   setWorktreeName(worktreeName: string) {
@@ -62,7 +67,8 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
   }
 
   setResolveParent(resolveParent: boolean) {
-    if (this.prompt) this.prompt = { ...this.prompt, resolveParent };
+    if (this.prompt?.destination === "new-worktree")
+      this.prompt = { ...this.prompt, resolveParent };
   }
 
   cancelPrompt() {
