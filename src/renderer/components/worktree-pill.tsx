@@ -103,9 +103,9 @@ export const WorktreePill = observer(function WorktreePill({
             )}
           >
             <PullRequestIcon />
-            <span>
+            <span className="max-w-56 truncate">
               {selectedExisting
-                ? selectedExisting.branch.replace(/^agent\//, "")
+                ? `${selectedExisting.sessionTitle} · ${selectedExisting.branch.replace(/^agent\//, "")}`
                 : "Existing worktree"}
             </span>
             <ChevronDownIcon size={12} />
@@ -132,11 +132,12 @@ export const WorktreePill = observer(function WorktreePill({
                 >
                   <span className="flex w-4 justify-center">{selected && <CheckIcon />}</span>
                   <PullRequestIcon />
-                  <span className="min-w-0 flex-1 truncate text-left">
-                    {record.branch.replace(/^agent\//, "")}
-                  </span>
-                  <span className="shrink-0 text-[10px] text-muted-foreground">
-                    → {record.baseBranch.replace(/^agent\//, "")}
+                  <span className="flex min-w-0 flex-1 flex-col text-left">
+                    <span className="truncate">{record.sessionTitle}</span>
+                    <span className="truncate text-[10px] text-muted-foreground">
+                      {record.branch.replace(/^agent\//, "")} →{" "}
+                      {record.baseBranch.replace(/^agent\//, "")}
+                    </span>
                   </span>
                 </Button>
               );

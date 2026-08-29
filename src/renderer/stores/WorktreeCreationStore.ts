@@ -9,6 +9,8 @@ export type WorktreeDraftChoice =
   | { kind: "new"; baseWorktreePath?: string }
   | { kind: "reuse"; worktreePath: string };
 
+export type ExistingWorktreeCandidate = WorktreeRecord & { sessionTitle: string };
+
 export interface WorktreeCreationStoreProps {
   client: Pick<DesktopClient, "createWorktree">;
   operations: SessionOperationCoordinatorStore;
@@ -35,13 +37,13 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
     delete this.choicesBySession[sessionId];
   }
 
-  /** Managed worktrees with an active or historical session, de-duplicated by checkout path. */
-  candidates(projectPath: string): WorktreeRecord[] {
-    const records = new Map<string, WorktreeRecord>();
+  /** Active managed worktrees, paired with their most recently active session. */
+  candidates(projectPath: string): ExistingWorktreeCandidate[] {
+    const records = new Map<string, ExistingWorktreeCandidate>();
     for (const session of this.props.catalog.projectSessions(projectPath)) {
       const record = this.props.catalog.managedWorktree(session.workspacePath);
-      if (record && (record.state ?? "active") === "active")
-        records.set(record.worktreePath, record);
+      if (record && (record.state ?? "active") === "active" && !records.has(record.worktreePath))
+        records.set(record.worktreePath, { ...record, sessionTitle: session.title });
     }
     return [...records.values()].sort((left, right) =>
       right.createdAt.localeCompare(left.createdAt),
