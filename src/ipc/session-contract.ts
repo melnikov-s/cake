@@ -531,7 +531,18 @@ export const windowViewStateSchema = z.object({
   workLogViewMode: workLogViewModeSchema.default("auto"),
   workLogsExpansion: workLogsExpansionSchema.default("collapsed"),
   draftsBySession: z.record(z.string(), z.string().max(262_144)).default({}),
-  newSessionDraftsByProject: z.record(z.string(), z.string().max(262_144)).default({}),
+  pendingProjectSessions: z
+    .array(
+      z.object({
+        sessionId: z.string().min(1).max(256),
+        workspacePath: z.string().min(1).max(4_096),
+        draft: z.string().max(262_144),
+        configuration: chatConfigurationSchema.optional(),
+        name: z.string().min(1).max(512).optional(),
+      }),
+    )
+    .max(1_000)
+    .default([]),
   pendingCakeChat: z
     .object({
       sessionId: z.string().min(1).max(256),

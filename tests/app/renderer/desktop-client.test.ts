@@ -39,7 +39,7 @@ function createBridge() {
           workLogViewMode: "auto",
           workLogsExpansion: "collapsed",
           draftsBySession: {},
-          newSessionDraftsByProject: {},
+          pendingProjectSessions: [],
         },
       };
     if (input.type === "list-sessions")

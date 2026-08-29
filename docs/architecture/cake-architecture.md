@@ -228,9 +228,12 @@ The window Store hierarchy mirrors the product surfaces:
   state and lifetime; the workbench does not re-export one-for-one child APIs.
 - The root-scoped `SessionRegistryStore` preserves one keyed
   `ProjectSessionStore` for every loaded project-session ID so background
-  project events and navigation share session identity. The workspace path
-  remains routing/storage context for the Pi runtime, not part of session
-  identity. Cake Chat never enters this registry.
+  project events and navigation share session identity. Multiple unsent project
+  sessions may coexist in the same workspace; each keeps its own identity, draft,
+  and configuration and appears in the session catalog before Pi creates its
+  runtime on the first prompt. The workspace path remains routing/storage context
+  for the Pi runtime, not part of session identity. Cake Chat never enters this
+  registry.
 - Each `ProjectSessionStore` owns that session's activity, `Session`,
   message composer, chat configuration, artifacts, and message comments. Its
   `ChatStore` is the common conversation-facing state boundary: it presents the

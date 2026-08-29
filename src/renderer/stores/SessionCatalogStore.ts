@@ -97,6 +97,36 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
     this.rebuildIndexes();
   }
 
+  upsertPending(sessionId: string, workspacePath: string, workspaceName: string) {
+    const now = new Date().toISOString();
+    const existing = this.indexedById.get(sessionId);
+    const managedWorktree = this.managedWorktrees.get(workspacePath);
+    const summary: GlobalSessionSummary = {
+      id: sessionId,
+      title: existing?.title ?? "New chat",
+      created: existing?.created ?? now,
+      modified: now,
+      messageCount: 0,
+      resolved: false,
+      workspacePath,
+      workspaceName,
+      managedWorktree,
+      projectPath: managedWorktree?.projectPath,
+    };
+    const next = this.sessions.filter((session) => session.id !== sessionId);
+    next.push(summary);
+    this.sessions.splice(0, this.sessions.length, ...next);
+    this.sortBySidebarOrder();
+    this.rebuildIndexes();
+  }
+
+  remove(sessionId: string) {
+    const index = this.sessions.findIndex((session) => session.id === sessionId);
+    if (index < 0) return;
+    this.sessions.splice(index, 1);
+    this.rebuildIndexes();
+  }
+
   rename(sessionId: string, title: string) {
     const index = this.sessions.findIndex((session) => session.id === sessionId);
     if (index < 0) return undefined;

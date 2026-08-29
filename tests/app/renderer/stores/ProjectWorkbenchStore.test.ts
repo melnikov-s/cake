@@ -129,7 +129,7 @@ function createDesktopClient(restoredPath?: string) {
       workLogViewMode: "auto" as const,
       workLogsExpansion: "collapsed" as const,
       draftsBySession: {},
-      newSessionDraftsByProject: {},
+      pendingProjectSessions: [],
     })),
     saveWindowState: vi.fn(async () => undefined),
     loadApplicationState: vi.fn(async () => ({
@@ -854,7 +854,7 @@ describe("ProjectWorkbenchStore", () => {
       workLogViewMode: "auto" as const,
       workLogsExpansion: "collapsed" as const,
       draftsBySession: {},
-      newSessionDraftsByProject: {},
+      pendingProjectSessions: [],
     }));
     desktop.client.listSessions = vi.fn(async () => ({
       sessions: [
@@ -884,7 +884,7 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("replaces a selected empty session that Pi never persisted", async () => {
+  it("restores a selected pending session without opening a Pi runtime", async () => {
     const desktop = createDesktopClient();
     desktop.client.loadWindowState = vi.fn(async () => ({
       projectPath: "/project",
@@ -895,19 +895,18 @@ describe("ProjectWorkbenchStore", () => {
       workLogViewMode: "auto" as const,
       workLogsExpansion: "collapsed" as const,
       draftsBySession: { "unpersisted-session": "" },
-      newSessionDraftsByProject: { "/project": "restored temporary draft" },
+      pendingProjectSessions: [
+        {
+          sessionId: "unpersisted-session",
+          workspacePath: "/project",
+          draft: "restored temporary draft",
+        },
+      ],
     }));
     const { root, store } = mountTestStore(desktop.client);
     await flush();
 
-    const inspectOperationId = store.activeOperations.at(-1)!;
-    desktop.emit({
-      type: "workspace-inspected",
-      operationId: inspectOperationId,
-      path: "/project",
-      trustRequired: false,
-    });
-
+    expect(desktop.client.inspectWorkspace).not.toHaveBeenCalled();
     expect(desktop.client.openWorkspace).not.toHaveBeenCalled();
     expect(store.activeSession?.workspacePath).toBe("/project");
     expect(store.activeSession?.chatStore.draft).toBe("restored temporary draft");
@@ -2160,7 +2159,6 @@ describe("ProjectWorkbenchStore", () => {
     store.activeSession!.chatStore.setDraft("Hello");
     await store.activeSession!.composerStore.submit();
 
-    expect(store.sessionRegistry.pendingNewSessionId("/project")).toBeUndefined();
     expect(store.sessionRegistry.isTemporarySession(startedSessionId)).toBe(false);
 
     const pendingSnapshot = {
@@ -2191,34 +2189,42 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("restores the pending new-session draft for each project", async () => {
+  it("keeps multiple pending sessions in one workspace", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop);
 
     await store.startNewSession("/project");
-    const projectTemporarySessionId = store.activeSession!.sessionId;
-    store.activeSession!.chatStore.setDraft("draft for project");
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(
-      vi.mocked(desktop.client.saveWindowState).mock.calls.at(-1)?.[0].newSessionDraftsByProject,
-    ).toEqual({ "/project": "draft for project" });
-
-    await store.startNewSession("/other");
-    const inspectId = store.activeOperations.at(-1)!;
-    desktop.emit({
-      type: "workspace-inspected",
-      operationId: inspectId,
-      path: "/other",
-      trustRequired: false,
-    });
-    store.activeSession!.chatStore.setDraft("draft for other");
+    const firstSessionId = store.activeSession!.sessionId;
+    store.activeSession!.chatStore.setDraft("first draft");
 
     await store.startNewSession("/project");
+    const secondSessionId = store.activeSession!.sessionId;
+    store.activeSession!.chatStore.setDraft("second draft");
 
-    expect(store.activeSession?.sessionId).toBe(projectTemporarySessionId);
-    expect(store.activeSession?.chatStore.draft).toBe("draft for project");
+    expect(secondSessionId).not.toBe(firstSessionId);
+    expect(root.sessionCatalogStore.find(firstSessionId)?.title).toBe("New chat");
+    expect(root.sessionCatalogStore.find(secondSessionId)?.title).toBe("New chat");
+
+    await store.openSession(firstSessionId);
+    expect(store.activeSession?.sessionId).toBe(firstSessionId);
+    expect(store.activeSession?.chatStore.draft).toBe("first draft");
+    expect(desktop.client.openWorkspace).toHaveBeenCalledTimes(1);
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(
+      vi.mocked(desktop.client.saveWindowState).mock.calls.at(-1)?.[0].pendingProjectSessions,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sessionId: firstSessionId, draft: "first draft" }),
+        expect.objectContaining({ sessionId: secondSessionId, draft: "second draft" }),
+      ]),
+    );
+
+    await expect(
+      store.createSession("/project", "Started immediately", "Investigate this"),
+    ).resolves.toEqual(expect.any(String));
     root[Symbol.dispose]();
   });
 
@@ -2338,7 +2344,7 @@ describe("ProjectWorkbenchStore", () => {
       workLogViewMode: "auto" as const,
       workLogsExpansion: "collapsed" as const,
       draftsBySession: {},
-      newSessionDraftsByProject: {},
+      pendingProjectSessions: [],
     }));
     desktop.client.registerProject = vi.fn(async () => applicationState);
     const { root, store } = mountTestStore(desktop.client);

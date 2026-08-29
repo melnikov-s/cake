@@ -33,7 +33,6 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
   error: string | undefined;
   errorDetails: string | undefined;
   private restoredDraft = "";
-  private restoredNewSessionDraftsByProject: Record<string, string> = {};
   private persistTimer: ReturnType<typeof setTimeout> | undefined;
   private hydration: Promise<void> | undefined;
   private saveQueue: Promise<void> = Promise.resolve();
@@ -72,17 +71,10 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
     session: ProjectSessionStore,
     previousSessionId?: string,
     restartDraft?: string,
-    newSession = false,
   ) {
-    const restoredProjectDraft = newSession
-      ? this.restoredNewSessionDraftsByProject[session.workspacePath]
-      : undefined;
     if (restartDraft !== undefined) session.chatStore.setDraft(restartDraft);
-    else if (restoredProjectDraft !== undefined && !session.chatStore.draft)
-      session.chatStore.setDraft(restoredProjectDraft);
     else if (!previousSessionId && !session.chatStore.draft)
       session.chatStore.setDraft(this.restoredDraft);
-    if (newSession) delete this.restoredNewSessionDraftsByProject[session.workspacePath];
     this.restoredDraft = "";
   }
 
@@ -96,6 +88,8 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
       if (this.signal.aborted) return;
       this.props.sessions.replace(sessionIndex.sessions);
       this.props.projects.applyApplicationState(application);
+      for (const pending of state.pendingProjectSessions)
+        this.props.registry.restorePendingNewSession(pending);
       this.props.globalChat().applyApplicationState(application);
       this.props.settings().applyApplicationState(application);
       this.props.projects.restoreRecentPaths(state.recentProjectPaths);
@@ -106,7 +100,6 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
       });
       this.props.settings().modelPresets.restoreLastUsed(state.lastChatConfiguration);
       this.restoredDraft = state.draft;
-      this.restoredNewSessionDraftsByProject = { ...state.newSessionDraftsByProject };
       if (state.pendingCakeChat)
         this.props.globalChat().restorePendingSession(state.pendingCakeChat);
 
@@ -138,7 +131,7 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
       this.hydrated = true;
       const projectRestore = this.props
         .workbench()
-        .restoreSelection(projectState, sessionIndex.sessions);
+        .restoreSelection(projectState, this.props.sessions.sessions);
       if (activeConversation?.kind === "cake-chat") {
         await Promise.all([
           projectRestore,
@@ -169,10 +162,7 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
       draftsBySession: Object.fromEntries(
         this.props.registry.sessions.map((session) => [session.sessionId, session.chatStore.draft]),
       ),
-      newSessionDraftsByProject: {
-        ...this.restoredNewSessionDraftsByProject,
-        ...this.props.registry.pendingNewSessionDrafts(),
-      },
+      pendingProjectSessions: this.props.registry.pendingNewSessions(),
       pendingCakeChat: this.props.globalChat().pendingSessionState(),
       lastChatConfiguration: this.props.settings().modelPresets.lastUsedConfiguration,
     };

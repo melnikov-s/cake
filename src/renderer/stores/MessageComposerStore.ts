@@ -472,7 +472,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         this.finishOperation(operationId);
         return false;
       }
-      if (newSession) this.props.sessionRegistry.markNewSessionStarted(newSession.path, sessionId);
+      if (newSession) this.props.sessionRegistry.markNewSessionStarted(sessionId);
       return true;
     } catch (error) {
       if (this.signal.aborted) {

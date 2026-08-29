@@ -257,6 +257,12 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const projectPath = selectedSession?.workspacePath ?? state.projectPath;
     this.projectPath = projectPath;
     if (!projectPath) return;
+    if (
+      state.selectedSessionId &&
+      this.sessionRegistry.isTemporarySession(state.selectedSessionId) &&
+      this.showCachedSession(state.selectedSessionId)
+    )
+      return;
     await this.inspectPath(
       projectPath,
       Boolean(state.selectedSessionId && !selectedSession),
@@ -344,21 +350,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       await this.chooseProject();
       return;
     }
-    // Pi does not list an empty session until its first prompt. Keep one pending
-    // session per project so returning through the project + action reopens its draft.
-    const pending = this.sessionRegistry.pendingNewSession(path);
-    if (pending) {
-      if (path === this.projectPath && pending.sessionId === this.session?.sessionId) {
-        pending.composerStore.requestFocus();
-        return;
-      }
-      if (this.sessionRegistry.isTemporarySession(pending.sessionId)) {
-        this.showCachedSession(pending.sessionId);
-        return;
-      }
-      await this.openSession(pending.sessionId);
-      return;
-    }
     const sessionId = crypto.randomUUID();
     if (path === this.projectPath) this.showTemporarySession(path, sessionId);
     else await this.inspectPath(path, true, sessionId);
@@ -377,8 +368,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   /** Creates, names, and starts a session in a workspace Cake has already authorized. */
   async createSession(path: string, name: string, initialPrompt: string) {
-    if (this.sessionRegistry.pendingNewSession(path))
-      throw new Error("That workspace already has an unsent draft session.");
     const sessionId = crypto.randomUUID();
     this.showTemporarySession(path, sessionId);
     this.sessionRegistry.setPendingName(sessionId, name);
@@ -411,7 +400,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   private showTemporarySession(path: string, sessionId: string) {
     this.pendingOpen = undefined;
     const session = this.sessionRegistry.prepareNewSession(path, sessionId);
-    this.props.persistence().applySessionRestore(session, this.selectedSessionId, undefined, true);
+    this.props.persistence().applySessionRestore(session, this.selectedSessionId);
     this.closeEmbeddedEditor();
     this.projectPath = path;
     this.selectedSessionId = sessionId;
@@ -439,6 +428,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (workspacePath === this.projectPath && sessionId === this.session?.sessionId) return;
     const sameWorkspace = workspacePath === this.projectPath;
     const cached = this.showCachedSession(sessionId);
+    if (cached && this.sessionRegistry.isTemporarySession(sessionId)) return;
     if (!cached) void this.loadSessionPreview(sessionId);
     if (sameWorkspace) await this.openPath(workspacePath, false, sessionId);
     else await this.inspectPath(workspacePath, false, sessionId);
@@ -614,10 +604,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return this.activeOpenTarget?.sessionId === sessionId;
   }
 
-  isOpeningNewSession(operationId: string) {
-    return this.activeOpenOperationId === operationId && this.activeOpenTarget?.newSession === true;
-  }
-
   async restartPi() {
     if (!this.projectPath) return;
     try {
@@ -644,18 +630,13 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     snapshot: SessionSnapshot,
     previousSessionId?: string,
     focusComposer = false,
-    newSession = false,
   ) {
     const restartDraft = this.draftAfterAgentRestart;
     this.projectPath = snapshot.workspacePath;
     this.selectedSessionId = snapshot.sessionId;
     const activeSession = this.sessionRegistry.ensure(snapshot.sessionId);
-    if (newSession)
-      this.sessionRegistry.rememberNewSession(snapshot.workspacePath, snapshot.sessionId);
     this.markSessionRead(snapshot.sessionId);
-    this.props
-      .persistence()
-      .applySessionRestore(activeSession, previousSessionId, restartDraft, newSession);
+    this.props.persistence().applySessionRestore(activeSession, previousSessionId, restartDraft);
     this.draftAfterAgentRestart = undefined;
     if (previousSessionId !== undefined) this.extensionUi.clear();
     this.extensionUi.applyState(snapshot.extensionUi);
@@ -689,10 +670,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         this.activeOpenTarget.sessionId &&
         this.activeOpenTarget.sessionId !== event.snapshot.sessionId
       ) {
-        this.sessionRegistry.discardNewSession(
-          this.activeOpenTarget.path,
-          this.activeOpenTarget.sessionId,
-        );
+        this.sessionRegistry.discardNewSession(this.activeOpenTarget.sessionId);
       }
       if (this.activeOpenExpectsEmpty && event.snapshot.parts.length > 0) {
         this.activeOpenOperationId = undefined;

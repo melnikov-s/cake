@@ -322,7 +322,7 @@ describe("process IPC", () => {
       workLogViewMode: "auto",
       workLogsExpansion: "collapsed",
       draftsBySession: {},
-      newSessionDraftsByProject: {},
+      pendingProjectSessions: [],
     });
   });
 

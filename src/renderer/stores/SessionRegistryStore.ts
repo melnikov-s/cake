@@ -43,11 +43,8 @@ export interface SessionRegistryStoreProps {
 /** Owns the keyed collection of loaded per-session Store instances for a window. */
 export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   readonly targets: SessionTarget[] = observable([]);
-  // Keep one unsent draft per workspace so returning through the new-session action
-  // restores it. Once its first prompt is accepted, it is no longer a pending draft.
-  private readonly pendingNewSessionIdsByWorkspace: Record<string, string> = observable({});
   // Pi may take time to include a newly started session in its disk-backed listing.
-  // Retain all such sessions independently from the one unsent draft per workspace.
+  // Retain all such sessions independently from unsent renderer-owned sessions.
   private readonly unlistedNewSessionIds: Set<string> = observable(new Set<string>());
   // A deferred new session has no runtime yet, so configuration changes are kept
   // locally and delivered with the first prompt instead of runtime commands.
@@ -114,41 +111,16 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     return session;
   }
 
-  pendingNewSessionId(workspacePath: string) {
-    return this.pendingNewSessionIdsByWorkspace[workspacePath];
-  }
-
-  pendingNewSession(workspacePath: string) {
-    const sessionId = this.pendingNewSessionId(workspacePath);
-    if (!sessionId) return undefined;
-    const session = this.findSession(sessionId);
-    if (session) return session;
-    delete this.pendingNewSessionIdsByWorkspace[workspacePath];
-    return undefined;
-  }
-
-  rememberNewSession(workspacePath: string, sessionId: string) {
-    const current = this.pendingNewSessionIdsByWorkspace[workspacePath];
-    if (current && current !== sessionId) return;
-    this.pendingNewSessionIdsByWorkspace[workspacePath] = sessionId;
-  }
-
-  markNewSessionStarted(workspacePath: string, sessionId: string) {
-    const wasDeferred =
-      this.temporarySessionIds.has(sessionId) ||
-      this.pendingNewSessionIdsByWorkspace[workspacePath] === sessionId;
-    if (!wasDeferred) return;
-    this.temporarySessionIds.delete(sessionId);
+  markNewSessionStarted(sessionId: string) {
+    if (!this.temporarySessionIds.delete(sessionId)) return;
     delete this.pendingConfigurationsBySession[sessionId];
     delete this.pendingNamesBySession[sessionId];
-    if (this.pendingNewSessionIdsByWorkspace[workspacePath] === sessionId)
-      delete this.pendingNewSessionIdsByWorkspace[workspacePath];
     this.unlistedNewSessionIds.add(sessionId);
     this.props.persist();
   }
 
   retainedNewSessionIds(workspacePath: string) {
-    return [...this.unlistedNewSessionIds].filter(
+    return [...this.temporarySessionIds, ...this.unlistedNewSessionIds].filter(
       (sessionId) => this.sessionWorkspacePaths.get(sessionId) === workspacePath,
     );
   }
@@ -176,7 +148,11 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     }
     session.markHydrated();
     this.temporarySessionIds.add(sessionId);
-    this.rememberNewSession(workspacePath, sessionId);
+    this.props.catalog?.upsertPending(
+      sessionId,
+      workspacePath,
+      this.props.projectName(workspacePath),
+    );
     return session;
   }
 
@@ -192,15 +168,14 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     if (!session || index < 0) throw new Error("Cake could not find that draft session.");
     const previousPath = session.workspacePath;
     if (previousPath === workspacePath) return;
-    const existingDraft = this.pendingNewSessionIdsByWorkspace[workspacePath];
-    if (existingDraft && existingDraft !== sessionId)
-      throw new Error("That worktree already has an unsent draft session.");
-    if (this.pendingNewSessionIdsByWorkspace[previousPath] === sessionId)
-      delete this.pendingNewSessionIdsByWorkspace[previousPath];
-    this.pendingNewSessionIdsByWorkspace[workspacePath] = sessionId;
     this.sessionWorkspacePaths.set(sessionId, workspacePath);
     this.targets.splice(index, 1, { sessionId, workspacePath });
     updateStore(session, { ...session.props, workspacePath });
+    this.props.catalog?.upsertPending(
+      sessionId,
+      workspacePath,
+      this.props.projectName(workspacePath),
+    );
   }
 
   pendingConfiguration(sessionId: string) {
@@ -221,9 +196,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     this.pendingConfigurationsBySession[sessionId] = configuration;
   }
 
-  discardNewSession(workspacePath: string, sessionId: string) {
-    if (this.pendingNewSessionIdsByWorkspace[workspacePath] === sessionId)
-      delete this.pendingNewSessionIdsByWorkspace[workspacePath];
+  discardNewSession(sessionId: string) {
     const index = this.targets.findIndex((target) => target.sessionId === sessionId);
     if (index >= 0) this.targets.splice(index, 1);
     this.sessionsById.delete(sessionId);
@@ -235,21 +208,43 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     this.pendingPartsBySession.delete(sessionId);
     this.pendingStreamingBySession.delete(sessionId);
     this.pendingArtifactsBySession.delete(sessionId);
+    this.props.catalog?.remove(sessionId);
   }
 
-  pendingNewSessionDrafts() {
-    const drafts: Record<string, string> = {};
-    for (const workspacePath of Object.keys(this.pendingNewSessionIdsByWorkspace)) {
-      const session = this.pendingNewSession(workspacePath);
-      if (session) drafts[workspacePath] = session.chatStore.draft;
-    }
-    return drafts;
+  pendingNewSessions() {
+    return [...this.temporarySessionIds].flatMap((sessionId) => {
+      const session = this.findSession(sessionId);
+      if (!session) return [];
+      return [
+        {
+          sessionId,
+          workspacePath: session.workspacePath,
+          draft: session.chatStore.draft,
+          configuration: this.pendingConfiguration(sessionId),
+          name: this.pendingName(sessionId),
+        },
+      ];
+    });
+  }
+
+  restorePendingNewSession(state: {
+    sessionId: string;
+    workspacePath: string;
+    draft: string;
+    configuration?: ChatConfiguration;
+    name?: string;
+  }) {
+    const session = this.prepareNewSession(state.workspacePath, state.sessionId);
+    session.chatStore.setDraft(state.draft);
+    if (state.configuration) this.setPendingConfiguration(state.sessionId, state.configuration);
+    if (state.name) this.setPendingName(state.sessionId, state.name);
+    return session;
   }
 
   upsert(snapshot: SessionSnapshot) {
     this.rememberSessionLocation(snapshot.sessionId, snapshot.workspacePath);
     if (this.temporarySessionIds.has(snapshot.sessionId))
-      this.markNewSessionStarted(snapshot.workspacePath, snapshot.sessionId);
+      this.markNewSessionStarted(snapshot.sessionId);
     else {
       this.temporarySessionIds.delete(snapshot.sessionId);
       delete this.pendingConfigurationsBySession[snapshot.sessionId];
