@@ -656,8 +656,8 @@ describe("Sidebar projects", () => {
     expect(container.textContent).not.toContain("Resolved");
   });
 
-  it("removes the active lane labels and collapses the resolved lane", () => {
-    let resolvedLaneExpanded = true;
+  it("collapses the resolved lane by default and expands it on request", () => {
+    let resolvedLaneExpanded = false;
     const toggleResolvedLane = vi.fn(() => {
       resolvedLaneExpanded = !resolvedLaneExpanded;
     });
@@ -691,17 +691,17 @@ describe("Sidebar projects", () => {
 
     expect(container.textContent).not.toContain("Active");
     expect(container.textContent).not.toContain("Cake Chats");
-    const toggle = container.querySelector<HTMLButtonElement>('[aria-label="Collapse Resolved"]')!;
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(container.querySelector("#resolved-lane-content")).not.toBeNull();
+    const toggle = container.querySelector<HTMLButtonElement>('[aria-label="Expand Resolved"]')!;
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector("#resolved-lane-content")).toBeNull();
 
     act(() => toggle.click());
     expect(toggleResolvedLane).toHaveBeenCalledOnce();
     act(() => root.render(<Sidebar {...props()} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
     expect(
-      container.querySelector('[aria-label="Expand Resolved"]')?.getAttribute("aria-expanded"),
-    ).toBe("false");
-    expect(container.querySelector("#resolved-lane-content")).toBeNull();
+      container.querySelector('[aria-label="Collapse Resolved"]')?.getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(container.querySelector("#resolved-lane-content")).not.toBeNull();
   });
 
   it("moves the selected project session through resolve and restore actions", () => {

@@ -23,7 +23,7 @@ export interface SidebarStoreProps {
 export class SidebarStore extends Store<SidebarStoreProps> {
   limitsByProject: Record<string, number> = observable({});
   collapsedGroups: Record<string, boolean> = observable({});
-  resolvedLaneExpanded = true;
+  resolvedLaneExpanded = false;
   now = Date.now();
 
   constructor(props: SidebarStore["props"]) {
