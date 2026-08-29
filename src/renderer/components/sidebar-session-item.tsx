@@ -57,7 +57,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
       className={cn(
         "session-item group relative flex min-h-11 w-full items-center rounded-md py-1 text-xs select-none transition-colors",
         selected
-          ? "active bg-sidebar-active text-primary font-semibold shadow-[inset_3px_0_0_var(--primary)]"
+          ? "active bg-sidebar-active text-primary font-semibold"
           : "text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
         canResolve && "can-resolve",
         selected && canResolve && "has-session-action",
