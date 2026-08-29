@@ -117,7 +117,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       workspacePath: () =>
         this.selectedSessionId ? (this.session?.workspacePath ?? this.projectPath) : undefined,
       sessionId: () => this.selectedSessionId,
-      sessionTitle: () => this.sessionTitle,
       isStreaming: () => this.activeSession?.isStreaming ?? false,
       onLanded: async (workspacePath, projectPath) => {
         await this.resolveWorkspaceSessions(workspacePath);

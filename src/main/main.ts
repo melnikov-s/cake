@@ -1664,22 +1664,6 @@ async function handleCakeRequest(
       status: await worktrees.status(request.workspacePath),
     });
   }
-  if (request.type === "get-workspace-git-status") {
-    if (!allowedProjectPaths.has(request.workspacePath))
-      throw new Error("Project path was not selected by the user");
-    return desktopResponseSchema.parse({
-      type: "workspace-git-status-loaded",
-      status: await worktrees.workspaceStatus(request.workspacePath),
-    });
-  }
-  if (request.type === "commit-workspace") {
-    if (!allowedProjectPaths.has(request.workspacePath))
-      throw new Error("Project path was not selected by the user");
-    return desktopResponseSchema.parse({
-      type: "workspace-committed",
-      result: { commit: await worktrees.commit(request.workspacePath, request.message) },
-    });
-  }
   if (request.type === "land-worktree") {
     await requireWorktreeRecord(request.workspacePath);
     const result = await worktrees.land(request.workspacePath, {

@@ -69,6 +69,14 @@ export const BranchIcon = () => (
     <path d="M4 5.3v5.4M12 6.8c0 2.5-2.5 3.2-5.5 3.6" stroke="currentColor" strokeWidth="1.4" />
   </svg>
 );
+export const PullRequestIcon = () => (
+  <Icon size={14} strokeWidth={1.8}>
+    <circle cx="6" cy="5" r="2" />
+    <circle cx="18" cy="19" r="2" />
+    <path d="M6 7v10M18 17v-5a4 4 0 0 0-4-4h-3" />
+    <path d="m13 5-3 3 3 3" />
+  </Icon>
+);
 export const ChatIcon = ({ size = 16 }: { size?: number }) => (
   <Icon size={size}>
     <path d="M20 15a3 3 0 0 1-3 3H8l-5 3 1.7-5.1A7 7 0 0 1 4 13V8a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3z" />

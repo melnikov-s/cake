@@ -66,17 +66,12 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
     await page.getByRole("button", { name: "New chat in project", exact: true }).click();
     const composer = page.getByLabel("Message");
     await expect(composer).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByRole("button", { name: "Choose worktree" })).toBeVisible({
-      timeout: 5_000,
-    });
-    await page.getByRole("button", { name: "Choose worktree" }).click();
-    await expect(page.getByRole("button", { name: /New worktree from main/ })).toBeVisible({
-      timeout: 5_000,
-    });
-    await page.getByRole("button", { name: /New worktree from main/ }).click();
-    await expect(page.getByRole("button", { name: "Choose worktree" })).toContainText(
-      "New worktree from main",
-    );
+    const newWorktree = page.getByRole("button", { name: "New worktree" });
+    await expect(newWorktree).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("button", { name: "Current checkout" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Choose existing worktree" })).toBeDisabled();
+    await newWorktree.click();
+    await expect(newWorktree).toHaveAttribute("aria-pressed", "true");
     await expect(composer).toBeFocused();
     await composer.pressSequentially("Build this in isolation");
     await expect(composer).toHaveValue("Build this in isolation");

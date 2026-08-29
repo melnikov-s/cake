@@ -6,28 +6,18 @@ import type { WorktreeLandOutcome, WorktreeStatus } from "../../ipc/worktree-con
 const POLL_INTERVAL_MS = 5_000;
 
 export interface WorktreeStoreProps {
-  client: Pick<
-    DesktopClient,
-    | "getWorkspaceGitStatus"
-    | "getWorktreeStatus"
-    | "commitWorkspace"
-    | "landWorktree"
-    | "discardWorktree"
-    | "submit"
-  >;
+  client: Pick<DesktopClient, "getWorktreeStatus" | "landWorktree" | "discardWorktree" | "submit">;
   workspacePath(): string | undefined;
   sessionId(): string | undefined;
-  sessionTitle(): string;
   isStreaming(): boolean;
   onLanded(workspacePath: string, projectPath: string): Promise<void> | void;
   onResolveWorkspace(workspacePath: string): Promise<void> | void;
 }
 
-/** Owns Git status, commit, landing, conflict resolution, and cleanup for the selected session. */
+/** Owns worktree status, deterministic landing, conflict resolution, and cleanup. */
 export class WorktreeStore extends Store<WorktreeStoreProps> {
   status: WorktreeStatus | undefined;
-  workspaceDirtyCount = 0;
-  phase: "idle" | "committing" | "landing" | "resolving" | "discarding" = "idle";
+  phase: "idle" | "landing" | "resolving" | "discarding" = "idle";
   error: string | undefined;
 
   private autoRetryLanding = false;
@@ -56,22 +46,6 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     return this.phase !== "idle";
   }
 
-  get isWorktree() {
-    return this.status !== undefined;
-  }
-
-  get canLand() {
-    return (
-      this.status !== undefined &&
-      !this.isBusy &&
-      !this.props.isStreaming() &&
-      this.status.dirtyCount === 0 &&
-      (this.status.aheadCount > 0 || this.status.merged) &&
-      !this.status.targetDirty &&
-      this.status.targetOnBranch
-    );
-  }
-
   async refresh() {
     if (this.refreshing || this.signal.aborted) return;
     const workspacePath = this.props.workspacePath();
@@ -79,19 +53,14 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     if (workspacePath !== this.observedWorkspacePath) {
       this.observedWorkspacePath = workspacePath;
       this.status = undefined;
-      this.workspaceDirtyCount = 0;
       this.phase = "idle";
       this.autoRetryLanding = false;
     }
     this.refreshing = true;
     try {
-      const [status, gitStatus] = await Promise.all([
-        this.props.client.getWorktreeStatus({ workspacePath }),
-        this.props.client.getWorkspaceGitStatus({ workspacePath }),
-      ]);
+      const status = await this.props.client.getWorktreeStatus({ workspacePath });
       if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return;
       this.status = status;
-      this.workspaceDirtyCount = gitStatus.dirtyCount;
       if (!status) {
         this.phase = "idle";
         return;
@@ -101,33 +70,6 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       // Transient Git or transport failures surface through the next poll.
     } finally {
       if (!this.signal.aborted) this.refreshing = false;
-    }
-  }
-
-  async commit(options: { resolve?: boolean; land?: boolean } = {}) {
-    const workspacePath = this.requiredWorkspacePath();
-    if (this.isBusy) throw new Error("A Git operation is already in progress.");
-    if (this.props.isStreaming()) throw new Error("Wait for the current reply to finish first.");
-    this.phase = "committing";
-    this.error = undefined;
-    try {
-      await this.props.client.commitWorkspace({
-        operationId: crypto.randomUUID(),
-        workspacePath,
-        message: this.props.sessionTitle().trim() || "Commit Cake session changes",
-      });
-      if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return;
-      await this.refreshAfterOperation(workspacePath);
-      if (options.land && this.status) {
-        this.phase = "idle";
-        await this.land();
-      } else {
-        this.phase = "idle";
-        if (options.resolve) await this.props.onResolveWorkspace(workspacePath);
-      }
-    } catch (error) {
-      this.fail(error);
-      throw error;
     }
   }
 
@@ -154,7 +96,6 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
         const projectPath = this.status?.record.projectPath;
         this.phase = "idle";
         this.status = undefined;
-        this.workspaceDirtyCount = 0;
         if (projectPath) await this.props.onLanded(workspacePath, projectPath);
       }
       return outcome;
@@ -177,23 +118,12 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       });
       if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return;
       this.status = undefined;
-      this.workspaceDirtyCount = 0;
       this.phase = "idle";
       if (resolve) await this.props.onResolveWorkspace(workspacePath);
     } catch (error) {
       this.fail(error);
       throw error;
     }
-  }
-
-  private async refreshAfterOperation(workspacePath: string) {
-    const [status, gitStatus] = await Promise.all([
-      this.props.client.getWorktreeStatus({ workspacePath }),
-      this.props.client.getWorkspaceGitStatus({ workspacePath }),
-    ]);
-    if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return;
-    this.status = status;
-    this.workspaceDirtyCount = gitStatus.dirtyCount;
   }
 
   private fail(error: unknown) {

@@ -2,8 +2,16 @@ import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { WorktreeCreationStore } from "../stores/WorktreeCreationStore";
 import type { WorktreeStore } from "../stores/WorktreeStore";
+import {
+  Confirmation,
+  ConfirmationAction,
+  ConfirmationActions,
+  ConfirmationDescription,
+  ConfirmationRequest,
+  ConfirmationTitle,
+} from "./ai-elements/confirmation";
 import { Button } from "./ui/button";
-import { BranchIcon, CheckIcon, ChevronDownIcon } from "./ui/icons";
+import { BranchIcon, CheckIcon, ChevronDownIcon, FolderIcon, PullRequestIcon } from "./ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { cn } from "@/lib/utils";
 
@@ -16,7 +24,9 @@ export interface WorktreePillProps {
   onConfigured(): void;
 }
 
-/** Draft location selector that becomes the locked session's contextual Git action pill. */
+type ConfirmationKind = "dirty-merge" | "discard";
+
+/** Horizontal checkout choices for drafts and deterministic worktree actions for running sessions. */
 export const WorktreePill = observer(function WorktreePill({
   creation,
   actions,
@@ -25,258 +35,221 @@ export const WorktreePill = observer(function WorktreePill({
   draft,
   onConfigured,
 }: WorktreePillProps) {
-  const [open, setOpen] = useState(false);
-  const [discardRequest, setDiscardRequest] = useState<
-    { keepBranch: boolean; resolve: boolean } | undefined
-  >();
+  const [existingOpen, setExistingOpen] = useState(false);
+  const [confirmation, setConfirmation] = useState<ConfirmationKind>();
   const choice = creation.choice(sessionId);
   const candidates = creation.candidates(projectPath);
   const status = actions.status;
-  const busy = actions.isBusy;
-
-  if (!draft && !status && actions.workspaceDirtyCount === 0) return null;
-
-  const selectedRecord =
-    choice.kind === "reuse"
-      ? candidates.find((record) => record.worktreePath === choice.worktreePath)
-      : choice.kind === "new" && choice.baseWorktreePath
-        ? candidates.find((record) => record.worktreePath === choice.baseWorktreePath)
-        : undefined;
-  const draftLabel =
-    choice.kind === "current"
-      ? "Current checkout"
-      : choice.kind === "reuse"
-        ? `Reuse ${selectedRecord?.branch.replace(/^agent\//, "") ?? "worktree"}`
-        : choice.baseWorktreePath
-          ? `New from ${selectedRecord?.branch.replace(/^agent\//, "") ?? "worktree"}`
-          : "New worktree from main";
-  const actionLabel =
-    actions.phase === "committing"
-      ? "Committing…"
-      : actions.phase === "landing"
-        ? "Merging…"
-        : actions.phase === "resolving"
-          ? "Resolving conflicts…"
-          : actions.phase === "discarding"
-            ? "Deleting worktree…"
-            : actions.workspaceDirtyCount > 0
-              ? "Commit"
-              : status && status.aheadCount > 0
-                ? `Merge into ${status.targetBranch.replace(/^agent\//, "")}`
-                : "Empty worktree";
+  const busy = actions.isBusy || creation.preparingSessionId === sessionId;
 
   const choose = (next: Parameters<WorktreeCreationStore["select"]>[1]) => {
     creation.select(sessionId, next);
-    setOpen(false);
+    setExistingOpen(false);
     queueMicrotask(onConfigured);
   };
   const run = (operation: Promise<unknown>) => {
-    setOpen(false);
-    setDiscardRequest(undefined);
+    setConfirmation(undefined);
     void operation.catch(() => undefined);
   };
 
-  return (
-    <div className="flex px-3 pt-2">
-      <Popover
-        open={open}
-        onOpenChange={(nextOpen) => {
-          setOpen(nextOpen);
-          if (!nextOpen) setDiscardRequest(undefined);
-        }}
-      >
-        <PopoverTrigger
+  if (draft) {
+    const selectedExisting =
+      choice.kind === "reuse"
+        ? candidates.find((record) => record.worktreePath === choice.worktreePath)
+        : undefined;
+    return (
+      <div className="flex min-w-0 items-center gap-1 overflow-x-auto px-3 pt-2 text-xs">
+        <Button
+          type="button"
           variant="ghost"
           size="sm"
-          disabled={busy || creation.preparingSessionId === sessionId}
+          disabled={busy}
+          aria-pressed={choice.kind === "current"}
           className={cn(
-            "h-7 gap-1.5 rounded-full border border-border/70 bg-muted/40 px-2.5 text-xs font-medium text-muted-foreground shadow-none hover:bg-muted hover:text-foreground",
-            actions.phase === "resolving" &&
-              "border-amber-500/40 text-amber-600 dark:text-amber-400",
+            "h-7 shrink-0 gap-1.5 rounded-full px-2.5 text-xs font-medium text-muted-foreground shadow-none",
+            choice.kind === "current" && "bg-muted text-foreground",
           )}
-          aria-label={draft ? "Choose worktree" : "Git actions"}
+          onClick={() => choose({ kind: "current" })}
+        >
+          <FolderIcon />
+          Current checkout
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={busy}
+          aria-pressed={choice.kind === "new"}
+          className={cn(
+            "h-7 shrink-0 gap-1.5 rounded-full px-2.5 text-xs font-medium text-muted-foreground shadow-none",
+            choice.kind === "new" && "bg-muted text-foreground",
+          )}
+          onClick={() => choose({ kind: "new" })}
         >
           <BranchIcon />
-          <span>{draft ? draftLabel : actionLabel}</span>
-          {!busy && <ChevronDownIcon size={12} />}
-        </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          side="top"
-          className="w-80 rounded-xl border bg-background p-2 shadow-lg"
+          New worktree
+        </Button>
+        <Popover open={existingOpen} onOpenChange={setExistingOpen}>
+          <PopoverTrigger
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={busy || candidates.length === 0}
+            aria-label="Choose existing worktree"
+            aria-haspopup="menu"
+            className={cn(
+              "h-7 shrink-0 gap-1.5 rounded-full px-2.5 text-xs font-medium text-muted-foreground shadow-none",
+              choice.kind === "reuse" && "bg-muted text-foreground",
+            )}
+          >
+            <PullRequestIcon />
+            <span>
+              {selectedExisting
+                ? selectedExisting.branch.replace(/^agent\//, "")
+                : "Existing worktree"}
+            </span>
+            <ChevronDownIcon size={12} />
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            side="top"
+            role="menu"
+            aria-label="Existing worktrees"
+            className="!max-h-72 !w-72 !rounded-lg !border-border !bg-popover !p-1 !shadow-xl"
+          >
+            {candidates.map((record) => {
+              const selected =
+                choice.kind === "reuse" && choice.worktreePath === record.worktreePath;
+              return (
+                <Button
+                  key={record.worktreePath}
+                  type="button"
+                  variant="ghost"
+                  role="menuitemradio"
+                  aria-checked={selected}
+                  className="h-8 w-full justify-start gap-2 rounded-md px-2 text-xs font-normal"
+                  onClick={() => choose({ kind: "reuse", worktreePath: record.worktreePath })}
+                >
+                  <span className="flex w-4 justify-center">{selected && <CheckIcon />}</span>
+                  <PullRequestIcon />
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {record.branch.replace(/^agent\//, "")}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-muted-foreground">
+                    → {record.baseBranch.replace(/^agent\//, "")}
+                  </span>
+                </Button>
+              );
+            })}
+          </PopoverContent>
+        </Popover>
+      </div>
+    );
+  }
+
+  if (!status) return null;
+
+  const target = status.targetBranch.replace(/^agent\//, "");
+  const branch = status.record.branch.replace(/^agent\//, "");
+  const dirty = status.dirtyCount > 0;
+  const mergeLabel =
+    actions.phase === "landing"
+      ? "Merging…"
+      : actions.phase === "resolving"
+        ? "Resolving conflicts…"
+        : "Merge & resolve";
+
+  return (
+    <div className="flex flex-col gap-1 px-3 pt-2">
+      <div className="flex min-w-0 items-center gap-1 overflow-x-auto text-xs">
+        <span className="flex h-7 min-w-0 shrink items-center gap-1.5 rounded-full bg-muted px-2.5 font-medium text-muted-foreground">
+          <PullRequestIcon />
+          <span className="truncate">{branch}</span>
+          <span aria-hidden="true">→</span>
+          <span className="truncate">{target}</span>
+        </span>
+        {status.aheadCount > 0 && (
+          <Popover
+            open={confirmation === "dirty-merge"}
+            onOpenChange={(open) => setConfirmation(open ? "dirty-merge" : undefined)}
+          >
+            <PopoverTrigger
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              className="h-7 shrink-0 rounded-full px-2.5 text-xs font-medium text-muted-foreground shadow-none"
+              onClick={(event) => {
+                if (dirty) return;
+                event.preventDefault();
+                run(actions.land());
+              }}
+            >
+              {mergeLabel}
+            </PopoverTrigger>
+            <PopoverContent align="start" side="top" className="!w-80 !p-0">
+              <Confirmation state="requested" className="border-0 shadow-none">
+                <ConfirmationRequest>
+                  <ConfirmationTitle>Commit changes before merging</ConfirmationTitle>
+                  <ConfirmationDescription>
+                    This worktree has uncommitted changes. Ask the agent to commit them, then merge
+                    and resolve the session.
+                  </ConfirmationDescription>
+                  <ConfirmationActions>
+                    <ConfirmationAction onClick={() => setConfirmation(undefined)}>
+                      Got it
+                    </ConfirmationAction>
+                  </ConfirmationActions>
+                </ConfirmationRequest>
+              </Confirmation>
+            </PopoverContent>
+          </Popover>
+        )}
+        <Popover
+          open={confirmation === "discard"}
+          onOpenChange={(open) => setConfirmation(open ? "discard" : undefined)}
         >
-          {draft ? (
-            <div className="flex flex-col gap-1">
-              <p className="px-2 py-1 text-xs font-semibold text-muted-foreground">Work in</p>
-              <Button
-                variant="ghost"
-                className="h-auto justify-start gap-3 px-2 py-2 text-left"
-                onClick={() => choose({ kind: "current" })}
-              >
-                <span className="w-4">{choice.kind === "current" && <CheckIcon />}</span>
-                <span className="flex flex-col items-start">
-                  <span>Current checkout</span>
-                  <span className="text-xs font-normal text-muted-foreground">
-                    Work directly in main
-                  </span>
-                </span>
-              </Button>
-              <Button
-                variant="ghost"
-                className="h-auto justify-start gap-3 px-2 py-2 text-left"
-                onClick={() => choose({ kind: "new" })}
-              >
-                <span className="w-4">
-                  {choice.kind === "new" && !choice.baseWorktreePath && <CheckIcon />}
-                </span>
-                <span className="flex flex-col items-start">
-                  <span>New worktree from main</span>
-                  <span className="text-xs font-normal text-muted-foreground">
-                    Create an isolated checkout on first send
-                  </span>
-                </span>
-              </Button>
-              {candidates.length > 0 && (
-                <>
-                  <p className="mt-1 border-t px-2 pt-2 text-xs font-semibold text-muted-foreground">
-                    Existing worktrees
-                  </p>
-                  {candidates.map((record) => {
-                    const name = record.branch.replace(/^agent\//, "");
-                    return (
-                      <div
-                        key={record.worktreePath}
-                        className="rounded-lg border border-transparent hover:border-border"
-                      >
-                        <Button
-                          variant="ghost"
-                          className="h-auto w-full justify-start gap-3 px-2 py-2 text-left"
-                          onClick={() =>
-                            choose({ kind: "reuse", worktreePath: record.worktreePath })
-                          }
-                        >
-                          <span className="w-4">
-                            {choice.kind === "reuse" &&
-                              choice.worktreePath === record.worktreePath && <CheckIcon />}
-                          </span>
-                          <span className="min-w-0 flex-1 truncate">Reuse {name}</span>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          className="h-auto w-full justify-start gap-3 px-2 py-1.5 text-left text-xs text-muted-foreground"
-                          onClick={() =>
-                            choose({ kind: "new", baseWorktreePath: record.worktreePath })
-                          }
-                        >
-                          <span className="w-4">
-                            {choice.kind === "new" &&
-                              choice.baseWorktreePath === record.worktreePath && <CheckIcon />}
-                          </span>
-                          <span>New isolated worktree from {name}</span>
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-            </div>
-          ) : discardRequest ? (
-            <div className="flex flex-col gap-3 p-1">
-              <div>
-                <p className="text-sm font-semibold">Discard this worktree?</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  The checkout will be deleted. Uncommitted changes will be lost.
-                </p>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={() => setDiscardRequest(undefined)}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() =>
-                    run(actions.discard(discardRequest.keepBranch, discardRequest.resolve))
-                  }
-                >
-                  Discard
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-1">
-              {actions.workspaceDirtyCount > 0 ? (
-                <>
-                  <Button
-                    variant="ghost"
-                    className="justify-start"
-                    onClick={() => run(actions.commit())}
+          <PopoverTrigger
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            className="h-7 shrink-0 rounded-full px-2.5 text-xs font-medium text-destructive shadow-none hover:bg-destructive/10 hover:text-destructive"
+          >
+            {actions.phase === "discarding" ? "Discarding…" : "Discard & resolve"}
+          </PopoverTrigger>
+          <PopoverContent align="start" side="top" className="!w-80 !p-0">
+            <Confirmation state="requested" className="border-0 shadow-none">
+              <ConfirmationRequest>
+                <ConfirmationTitle>Discard this worktree?</ConfirmationTitle>
+                <ConfirmationDescription>
+                  The worktree and its branch will be deleted, all unmerged work will be lost, and
+                  its sessions will be resolved.
+                </ConfirmationDescription>
+                <ConfirmationActions>
+                  <ConfirmationAction variant="outline" onClick={() => setConfirmation(undefined)}>
+                    Cancel
+                  </ConfirmationAction>
+                  <ConfirmationAction
+                    variant="destructive"
+                    onClick={() => run(actions.discard(false, true))}
                   >
-                    Commit
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="justify-start"
-                    onClick={() => run(actions.commit({ resolve: true }))}
-                  >
-                    Commit &amp; resolve session
-                  </Button>
-                  {status && (
-                    <Button
-                      variant="ghost"
-                      className="justify-start"
-                      onClick={() => run(actions.commit({ land: true }))}
-                    >
-                      Commit &amp; merge into {status.targetBranch.replace(/^agent\//, "")}
-                    </Button>
-                  )}
-                </>
-              ) : status && status.aheadCount > 0 ? (
-                <Button
-                  variant="ghost"
-                  className="justify-start"
-                  disabled={!actions.canLand}
-                  onClick={() => run(actions.land())}
-                >
-                  Merge locally into {status.targetBranch.replace(/^agent\//, "")}
-                </Button>
-              ) : status ? (
-                <Button
-                  variant="destructive"
-                  className="justify-start"
-                  onClick={() => setDiscardRequest({ keepBranch: false, resolve: true })}
-                >
-                  Delete empty worktree &amp; resolve
-                </Button>
-              ) : null}
-              {status && (status.dirtyCount > 0 || status.aheadCount > 0) && (
-                <Button
-                  variant="ghost"
-                  className="justify-start text-destructive hover:text-destructive"
-                  onClick={() =>
-                    setDiscardRequest({
-                      keepBranch: status.aheadCount > 0 && !status.merged,
-                      resolve: false,
-                    })
-                  }
-                >
-                  Discard worktree…
-                </Button>
-              )}
-              {actions.error && (
-                <p className="px-2 py-1 text-xs text-destructive">{actions.error}</p>
-              )}
-              {status && (status.targetDirty || !status.targetOnBranch) && (
-                <p className="px-2 py-1 text-xs text-amber-600 dark:text-amber-400">
-                  {status.targetDirty
-                    ? "Commit or stash changes in the landing target first."
-                    : `Switch the landing target to ${status.targetBranch} first.`}
-                </p>
-              )}
-            </div>
-          )}
-        </PopoverContent>
-      </Popover>
+                    Discard & resolve
+                  </ConfirmationAction>
+                </ConfirmationActions>
+              </ConfirmationRequest>
+            </Confirmation>
+          </PopoverContent>
+        </Popover>
+      </div>
+      {actions.error && <p className="px-2 text-xs text-destructive">{actions.error}</p>}
+      {(status.targetDirty || !status.targetOnBranch) && (
+        <p className="px-2 text-xs text-amber-600 dark:text-amber-400">
+          {status.targetDirty
+            ? "Commit or stash changes in the merge target first."
+            : `Switch the merge target to ${status.targetBranch} first.`}
+        </p>
+      )}
     </div>
   );
 });

@@ -45,19 +45,6 @@ export const worktreeStatusSchema = z.object({
 
 export type WorktreeStatus = z.infer<typeof worktreeStatusSchema>;
 
-export const workspaceGitStatusSchema = z.object({
-  workspacePath: z.string().min(1).max(4_096),
-  dirtyCount: z.number().int().nonnegative(),
-});
-
-export type WorkspaceGitStatus = z.infer<typeof workspaceGitStatusSchema>;
-
-export const workspaceCommitSchema = z.object({
-  commit: z.string().min(1).max(256),
-});
-
-export type WorkspaceCommit = z.infer<typeof workspaceCommitSchema>;
-
 export const worktreeLandOutcomeSchema = z.discriminatedUnion("outcome", [
   z.object({
     outcome: z.literal("landed"),

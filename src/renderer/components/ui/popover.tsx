@@ -65,7 +65,11 @@ export function Popover({
   return <PopoverContext.Provider value={value}>{children}</PopoverContext.Provider>;
 }
 
-export function PopoverTrigger({ onClick, ...props }: ButtonProps) {
+export function PopoverTrigger({
+  onClick,
+  "aria-haspopup": ariaHasPopup = "dialog",
+  ...props
+}: ButtonProps) {
   const { contentId, open, setOpen, triggerRef } = usePopoverContext("PopoverTrigger");
   return (
     <Button
@@ -73,7 +77,7 @@ export function PopoverTrigger({ onClick, ...props }: ButtonProps) {
       ref={triggerRef}
       aria-controls={contentId}
       aria-expanded={open}
-      aria-haspopup="dialog"
+      aria-haspopup={ariaHasPopup}
       onClick={(event) => {
         onClick?.(event);
         if (!event.defaultPrevented) setOpen(!open);

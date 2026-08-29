@@ -35,8 +35,6 @@ function createTestStore(
 ) {
   const client = {
     getWorktreeStatus,
-    getWorkspaceGitStatus: vi.fn(async ({ workspacePath }) => ({ workspacePath, dirtyCount: 0 })),
-    commitWorkspace: vi.fn(async () => ({ commit: "commit" })),
     landWorktree: vi.fn(async () => ({ outcome: "landed" as const })),
     discardWorktree: vi.fn(async () => undefined),
     submit: vi.fn(async () => undefined),

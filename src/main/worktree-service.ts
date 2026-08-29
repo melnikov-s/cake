@@ -216,28 +216,6 @@ export class WorktreeService {
     return this.create(source.projectPath, source.worktreePath);
   }
 
-  async commit(workspacePath: string, message: string): Promise<string> {
-    await this.load();
-    const record = this.allRecords.find(
-      (entry) =>
-        (entry.state ?? "active") === "active" &&
-        resolveNormalized(entry.worktreePath) === resolveNormalized(workspacePath),
-    );
-    const projectPath =
-      record?.projectPath ?? (await realpath(await repositoryRoot(workspacePath)));
-    return this.withRepositoryLock(projectPath, async () => {
-      if ((await dirtyFileCount(workspacePath)) === 0)
-        throw new Error("There are no changes to commit.");
-      await git(workspacePath, "add", "--all");
-      await git(workspacePath, "commit", "-m", message.trim() || "Commit Cake session changes");
-      return (await git(workspacePath, "rev-parse", "HEAD")).trim();
-    });
-  }
-
-  async workspaceStatus(workspacePath: string) {
-    return { workspacePath, dirtyCount: await dirtyFileCount(workspacePath) };
-  }
-
   async discard(worktreePath: string, keepBranch: boolean): Promise<void> {
     await this.load();
     const normalized = resolveNormalized(worktreePath);

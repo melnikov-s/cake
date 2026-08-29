@@ -2,7 +2,7 @@ import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "../lib/utils";
 import { IconButton } from "./ui/icon-button";
-import { ResolveIcon, RestoreIcon } from "./ui/icons";
+import { PullRequestIcon, ResolveIcon, RestoreIcon } from "./ui/icons";
 import type { SidebarStore } from "../stores/SidebarStore";
 
 export interface SidebarSessionItemProps {
@@ -77,7 +77,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
         <div className="flex h-full w-full min-w-0 items-center justify-between">
           <button
             type="button"
-            className="session-row flex min-w-0 flex-1 flex-col items-start justify-center gap-0.5 self-stretch bg-transparent py-1 pl-2 pr-1 text-left text-inherit"
+            className="session-row flex min-w-0 flex-1 flex-col items-start justify-center self-stretch bg-transparent py-1 pl-2 pr-1 text-left text-inherit"
             aria-current={selected ? "page" : undefined}
             onClick={() => onOpen(session.id)}
             onContextMenu={(event) => {
@@ -93,7 +93,8 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
               {session.title}
             </span>
             {session.managedWorktree && (
-              <span className="flex max-w-full items-center gap-1 rounded bg-muted/70 px-1.5 py-0.5 text-[10px] font-normal leading-none text-muted-foreground">
+              <span className="mt-1.5 flex max-w-full items-center gap-1.5 text-[10px] font-normal leading-none text-muted-foreground/80">
+                <PullRequestIcon />
                 <span className="truncate">
                   {session.managedWorktree.branch.replace(/^agent\//, "")}
                 </span>

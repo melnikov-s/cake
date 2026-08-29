@@ -233,8 +233,6 @@ function createDesktopClient(restoredPath?: string) {
       createdAt: new Date().toISOString(),
     })),
     getWorktreeStatus: vi.fn(async () => undefined),
-    getWorkspaceGitStatus: vi.fn(async ({ workspacePath }) => ({ workspacePath, dirtyCount: 0 })),
-    commitWorkspace: vi.fn(async () => ({ commit: "commit" })),
     landWorktree: vi.fn(async () => ({ outcome: "landed" as const })),
     discardWorktree: vi.fn(async () => undefined),
     forkWorktreeSession: vi.fn(async () => ({ sessionId: "forked", workspacePath: "/tmp/forked" })),

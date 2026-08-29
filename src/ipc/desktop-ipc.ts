@@ -49,8 +49,6 @@ import {
   windowViewStateSchema,
 } from "./session-contract";
 import {
-  workspaceCommitSchema,
-  workspaceGitStatusSchema,
   worktreeLandOutcomeSchema,
   worktreeRecordSchema,
   worktreeStatusSchema,
@@ -612,13 +610,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     baseWorktreePath: z.string().min(1).max(4_096).optional(),
   }),
   z.object({ type: z.literal("get-worktree-status"), workspacePath: z.string().max(4_096) }),
-  z.object({ type: z.literal("get-workspace-git-status"), workspacePath: z.string().max(4_096) }),
-  z.object({
-    type: z.literal("commit-workspace"),
-    requestId: z.uuid(),
-    workspacePath: z.string().max(4_096),
-    message: z.string().min(1).max(512),
-  }),
   z.object({
     type: z.literal("land-worktree"),
     requestId: z.uuid(),
@@ -908,8 +899,6 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
     type: z.literal("worktree-status-loaded"),
     status: worktreeStatusSchema.optional(),
   }),
-  z.object({ type: z.literal("workspace-git-status-loaded"), status: workspaceGitStatusSchema }),
-  z.object({ type: z.literal("workspace-committed"), result: workspaceCommitSchema }),
   z.object({
     type: z.literal("worktree-landed"),
     requestId: z.uuid(),
