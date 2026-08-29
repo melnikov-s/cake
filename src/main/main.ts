@@ -1,4 +1,4 @@
-import { readFile, realpath, stat } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import {
@@ -43,6 +43,7 @@ import {
 import { rewordSelectionWithProjectContext } from "../agent/rewording-agent";
 import { Application } from "../models/Application";
 import { shouldAllowNavigation } from "./navigation-policy";
+import { resolveRewordingWorkspace } from "./rewording-workspace";
 import {
   PiWorkspaceDriver,
   describeOperationError,
@@ -830,17 +831,6 @@ async function resolveWorkspaceEditorTarget(workspacePath: string, requestedPath
   return { workspace, target: ensureInsideWorkspace(target) };
 }
 
-/** Resolves a renderer-supplied rewording workspace to a real directory, or undefined. */
-async function rewordProjectDirectory(workspacePath: string | undefined) {
-  if (!workspacePath || !isAbsolute(workspacePath)) return undefined;
-  try {
-    const resolved = await realpath(workspacePath);
-    return (await stat(resolved)).isDirectory() ? resolved : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 async function chooseAttachments(window: BrowserWindow): Promise<Attachment[]> {
   const result = await dialog.showOpenDialog(window, {
     properties: ["openFile", "multiSelections"],
@@ -974,7 +964,11 @@ async function handleCakeRequest(
     const controllers = composerRewordControllers.get(event.sender.id) ?? new Set();
     controllers.add(controller);
     composerRewordControllers.set(event.sender.id, controllers);
-    const workspacePath = await rewordProjectDirectory(request.workspacePath);
+    const workspacePath = await resolveRewordingWorkspace({
+      requestedWorkspace: request.workspacePath,
+      activeWorkspace: windowWorkspaces.get(event.sender.id),
+      allowedWorkspacePaths: allowedProjectPaths,
+    });
     const signal = AbortSignal.any([
       controller.signal,
       AbortSignal.timeout(workspacePath ? 60_000 : 30_000),

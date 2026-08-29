@@ -5,7 +5,9 @@ import {
   createAgentSession,
   type AgentSession,
   type SessionManager,
+  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { canonicalPathIsInsideRoot } from "./workspace-paths";
 import type {
   SessionSnapshot,
   ThinkingLevel,
@@ -37,6 +39,9 @@ export interface IsolatedSessionOptions {
   cancellationMessage: string;
   tools?: string[];
   noTools?: "all";
+  customTools?: ToolDefinition[];
+  /** Restricts loaded skill and context-file resources to this canonical directory. */
+  resourceRoot?: string;
   /** Loads the project skill catalog into the session context. */
   includeSkills?: boolean;
   /** Loads project instruction files such as AGENTS.md into the session context. */
@@ -93,6 +98,10 @@ function textFromContent(content: unknown) {
     .join("\n");
 }
 
+function resourcePathIsInside(root: string, resourcePath: string) {
+  return canonicalPathIsInsideRoot(root, resourcePath);
+}
+
 /** Run one deliberately resource-restricted Pi sidecar session. */
 export async function runIsolatedSession(
   options: IsolatedSessionOptions,
@@ -105,6 +114,7 @@ export async function runIsolatedSession(
     modelsPath: `${options.agentDir}/models.json`,
     modelsStorePath: `${options.agentDir}/models-cache.json`,
   });
+  const resourceRoot = options.resourceRoot;
   const resourceLoader = new DefaultResourceLoader({
     cwd: options.cwd,
     agentDir: options.agentDir,
@@ -115,6 +125,21 @@ export async function runIsolatedSession(
     noThemes: true,
     noContextFiles: !options.includeContextFiles,
     systemPrompt: options.systemPrompt,
+    skillsOverride: resourceRoot
+      ? (current) => ({
+          ...current,
+          skills: current.skills.filter((skill) =>
+            resourcePathIsInside(resourceRoot, skill.filePath),
+          ),
+        })
+      : undefined,
+    agentsFilesOverride: resourceRoot
+      ? (current) => ({
+          agentsFiles: current.agentsFiles.filter((file) =>
+            resourcePathIsInside(resourceRoot, file.path),
+          ),
+        })
+      : undefined,
   });
   await resourceLoader.reload({ resolveProjectTrust: async () => options.projectTrusted });
   const agentSessionOptions = {
@@ -124,6 +149,7 @@ export async function runIsolatedSession(
     resourceLoader,
     settingsManager,
     sessionManager: options.sessionManager,
+    customTools: options.customTools,
   };
   const optionsWithTools = options.tools
     ? { ...agentSessionOptions, tools: options.tools }
