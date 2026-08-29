@@ -24,6 +24,7 @@ interface SlashCommandComboboxProps extends Omit<
   suggestFiles?(prefix: string): Promise<FileSuggestion[]>;
   onValueChange(value: string): void;
   onSubmit(value?: string): void | Promise<void>;
+  onEscape?(): void;
 }
 
 interface FileMention {
@@ -84,6 +85,7 @@ export function SlashCommandCombobox({
   suggestFiles,
   onValueChange,
   onSubmit,
+  onEscape,
   ...inputProps
 }: SlashCommandComboboxProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -239,6 +241,10 @@ export function SlashCommandCombobox({
       event.preventDefault();
       if (menuKind === "files") setDismissedMention(fileMention?.key);
       else setDismissedValue(inputValue);
+    } else if (event.key === "Escape" && onEscape) {
+      event.preventDefault();
+      event.stopPropagation();
+      onEscape();
     } else if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       void restoreFocusAfterSubmit(inputValue);

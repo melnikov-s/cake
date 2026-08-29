@@ -133,7 +133,9 @@ test("429 polling keeps the stop control available", async () => {
     await expect(composer).toHaveValue("");
     await expect(stop).toBeVisible();
     await expect(stop).toBeEnabled();
-    await stop.click();
+    await composer.click();
+    await expect(composer).toBeFocused();
+    await composer.press("Escape");
     await expect(page.getByText(/Next retry in/)).toBeHidden({ timeout: 15_000 });
   } finally {
     await application.close();

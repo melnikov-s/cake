@@ -219,6 +219,7 @@ export const Chat = observer(function Chat({
               void store.addPastedImages(images);
             }}
             onSubmit={(value) => submit(value)}
+            onEscape={store.canStop ? () => void store.abort() : undefined}
           />
         }
         toolbarLeading={

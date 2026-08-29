@@ -310,6 +310,108 @@ describe("Chat", () => {
     expect(store.draft).toBe("");
   });
 
+  it("stops active work when Escape is pressed in the focused composer", () => {
+    const abort = vi.fn(async () => undefined);
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "escape-stop-chat",
+        parts: () => [],
+        streaming: () => true,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Message Cake",
+        inputLabel: () => "Message",
+        canSubmit: () => false,
+        submit: async () => false,
+        abort,
+      }),
+    );
+
+    act(() => root.render(<Chat store={store!} />));
+
+    const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
+    input.focus();
+    const escape = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => input.dispatchEvent(escape));
+
+    expect(input).toBe(document.activeElement);
+    expect(escape.defaultPrevented).toBe(true);
+    expect(abort).toHaveBeenCalledOnce();
+  });
+
+  it("uses Escape to dismiss composer menus and image previews without stopping", () => {
+    const abort = vi.fn(async () => undefined);
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "escape-dismiss-chat",
+        parts: () => [],
+        streaming: () => true,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [
+          {
+            name: "model",
+            description: "Choose a model",
+            source: "builtin" as const,
+            sourceInfo: {
+              path: "builtin:model",
+              source: "Pi",
+              scope: "temporary" as const,
+              origin: "top-level" as const,
+            },
+          },
+        ],
+        placeholder: () => "Message Cake",
+        inputLabel: () => "Message",
+        canSubmit: () => false,
+        submit: async () => false,
+        abort,
+        attachments: () => [
+          { kind: "image", name: "preview.png", mimeType: "image/png", data: "aW1hZ2U=" },
+        ],
+      }),
+    );
+
+    act(() => root.render(<Chat store={store!} />));
+
+    const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
+        input,
+        "/",
+      );
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(container.querySelector('[role="listbox"]')).not.toBeNull();
+    act(() =>
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+      ),
+    );
+    expect(container.querySelector('[role="listbox"]')).toBeNull();
+    expect(abort).not.toHaveBeenCalled();
+
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="View preview.png enlarged"]')!
+        .click(),
+    );
+    const dialog = container.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(dialog).not.toBeNull();
+    act(() =>
+      dialog.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+      ),
+    );
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(abort).not.toHaveBeenCalled();
+  });
+
   it("attaches clipboard images pasted into the composer", async () => {
     const addPastedImages = vi.fn(async () => undefined);
     store = mount(
