@@ -13,6 +13,7 @@ import {
 import { Button } from "./ui/button";
 import { BranchIcon, CheckIcon, ChevronDownIcon, FolderIcon, PullRequestIcon } from "./ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { WorktreeStatusIcon } from "./worktree-status-icon";
 import { cn } from "@/lib/utils";
 
 export interface WorktreePillProps {
@@ -167,7 +168,7 @@ export const WorktreePill = observer(function WorktreePill({
       <div className="mx-4 -mb-5 flex flex-col gap-1 rounded-t-[1.75rem] border border-b-0 border-border/70 bg-card/70 px-5 pt-3.5 pb-8">
         <div className="flex min-w-0 items-center gap-2 overflow-x-auto text-sm">
           <span className="flex h-8 min-w-0 shrink items-center gap-2 px-2.5 text-foreground">
-            <PullRequestIcon />
+            <WorktreeStatusIcon state={status.record.state} className="shrink-0" />
             <span className="truncate">{branch}</span>
             <span aria-hidden="true">→</span>
             <span className="truncate">{target}</span>

@@ -188,6 +188,9 @@ test("shows only resolve after a worktree is merged and removes the checkout", a
     await expect(page.getByRole("button", { name: "Resolve", exact: true })).toBeVisible({
       timeout: 20_000,
     });
+    const composerWorktreeIcon = page.locator('.workbench-composer [data-worktree-state="landed"]');
+    await expect(composerWorktreeIcon).toHaveAttribute("aria-label", "Merged worktree");
+    await expect(composerWorktreeIcon).toHaveClass(/text-worktree-merged/);
     await expect(page.getByRole("button", { name: "Discard", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Discard & resolve", exact: true })).toHaveCount(
       0,
@@ -197,6 +200,7 @@ test("shows only resolve after a worktree is merged and removes the checkout", a
     await page.getByRole("button", { name: "Resolve", exact: true }).click();
     await expect(page.getByRole("button", { name: "Current checkout", exact: true })).toBeVisible();
     await expect.poll(() => existsSync(worktreePath)).toBe(false);
+    await page.getByRole("button", { name: "Expand Resolved" }).click();
     const restore = page.locator(".resolved-lane .session-resolve-action");
     await expect(restore).toHaveAttribute("aria-label", /^Restore /);
     await restore.click();

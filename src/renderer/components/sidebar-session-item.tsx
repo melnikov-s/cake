@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { observer } from "r-state-tree/react";
+import type { WorktreeRecord } from "../../ipc/worktree-contract";
 import { cn } from "../lib/utils";
 import { IconButton } from "./ui/icon-button";
 import { PullRequestIcon, ResolveIcon, RestoreIcon } from "./ui/icons";
 import type { SidebarStore } from "../stores/SidebarStore";
+import { WorktreeStatusIcon } from "./worktree-status-icon";
 
 export interface SidebarSessionItemProps {
   store: SidebarStore;
@@ -12,12 +14,10 @@ export interface SidebarSessionItemProps {
     title: string;
     modified: string;
     draft?: boolean;
-    managedWorktree?: {
-      branch: string;
-      baseBranch: string;
-      parentWorktreePath?: string;
-      state?: "active" | "landed" | "discarded" | "missing";
-    };
+    managedWorktree?: Pick<
+      WorktreeRecord,
+      "branch" | "baseBranch" | "parentWorktreePath" | "state"
+    >;
   };
   selected: boolean;
   resolved: boolean;
@@ -53,14 +53,6 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   const branch = session.managedWorktree?.branch.replace(/^agent\//, "") ?? defaultBranch;
   const baseBranch = session.managedWorktree?.baseBranch.replace(/^agent\//, "");
   const showBaseBranch = baseBranch !== undefined && baseBranch !== "main";
-  const worktreeState = session.managedWorktree?.state ?? "active";
-  const worktreeStatus = session.managedWorktree
-    ? worktreeState === "landed"
-      ? "Merged worktree"
-      : worktreeState === "active"
-        ? "Open worktree"
-        : undefined
-    : undefined;
   const commitRename = () => {
     const value = renamingValue;
     setRenamingValue(null);
@@ -139,19 +131,14 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
               >
                 {branch && (
                   <>
-                    <span
-                      className={cn(
-                        "shrink-0",
-                        worktreeStatus === "Open worktree" && "text-worktree-open",
-                        worktreeStatus === "Merged worktree" && "text-worktree-merged",
-                      )}
-                      data-worktree-state={session.managedWorktree ? worktreeState : undefined}
-                      role={worktreeStatus ? "img" : undefined}
-                      aria-label={worktreeStatus}
-                      title={worktreeStatus}
-                    >
+                    {session.managedWorktree ? (
+                      <WorktreeStatusIcon
+                        state={session.managedWorktree.state}
+                        className="shrink-0"
+                      />
+                    ) : (
                       <PullRequestIcon />
-                    </span>
+                    )}
                     <span className="truncate">{branch}</span>
                     {showBaseBranch && (
                       <>
