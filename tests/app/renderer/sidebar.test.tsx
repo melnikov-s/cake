@@ -278,6 +278,51 @@ describe("Sidebar projects", () => {
     expect(container.querySelector(".session-row")?.textContent).not.toContain("→main");
   });
 
+  it("uses GitHub-style open and merged colors only for managed worktrees", () => {
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [
+        {
+          id: "open",
+          title: "Open worktree",
+          modified: "2026-08-16T12:00:00.000Z",
+          managedWorktree: { branch: "agent/open", baseBranch: "main", state: "active" },
+        },
+        {
+          id: "merged",
+          title: "Merged worktree",
+          modified: "2026-08-16T11:00:00.000Z",
+          managedWorktree: { branch: "agent/merged", baseBranch: "main", state: "landed" },
+        },
+        {
+          id: "main",
+          title: "Main checkout",
+          modified: "2026-08-16T10:00:00.000Z",
+        },
+      ],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      sessionActivityTime: vi.fn(() => "Today"),
+      nameFromPath: () => "cake",
+      showMoreSessions: vi.fn(),
+      renameSession: vi.fn(),
+    } as unknown as ProjectWorkbenchStore;
+
+    act(() =>
+      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
+    );
+
+    const openIcon = container.querySelector('[data-worktree-state="active"]');
+    const mergedIcon = container.querySelector('[data-worktree-state="landed"]');
+    const mainIcon = container.querySelector('[data-session-id="main"] [role="img"]');
+    expect(openIcon?.classList.contains("text-worktree-open")).toBe(true);
+    expect(openIcon?.getAttribute("aria-label")).toBe("Open worktree");
+    expect(mergedIcon?.classList.contains("text-worktree-merged")).toBe(true);
+    expect(mergedIcon?.getAttribute("aria-label")).toBe("Merged worktree");
+    expect(mainIcon).toBeNull();
+  });
+
   it("does not surface sidecar chat work as parent-session badges", () => {
     const store = {
       recentProjectPaths: ["/work/cake"],

@@ -16,6 +16,7 @@ export interface SidebarSessionItemProps {
       branch: string;
       baseBranch: string;
       parentWorktreePath?: string;
+      state?: "active" | "landed" | "discarded" | "missing";
     };
   };
   selected: boolean;
@@ -52,6 +53,14 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   const branch = session.managedWorktree?.branch.replace(/^agent\//, "") ?? defaultBranch;
   const baseBranch = session.managedWorktree?.baseBranch.replace(/^agent\//, "");
   const showBaseBranch = baseBranch !== undefined && baseBranch !== "main";
+  const worktreeState = session.managedWorktree?.state ?? "active";
+  const worktreeStatus = session.managedWorktree
+    ? worktreeState === "landed"
+      ? "Merged worktree"
+      : worktreeState === "active"
+        ? "Open worktree"
+        : undefined
+    : undefined;
   const commitRename = () => {
     const value = renamingValue;
     setRenamingValue(null);
@@ -130,7 +139,19 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
               >
                 {branch && (
                   <>
-                    <PullRequestIcon />
+                    <span
+                      className={cn(
+                        "shrink-0",
+                        worktreeStatus === "Open worktree" && "text-worktree-open",
+                        worktreeStatus === "Merged worktree" && "text-worktree-merged",
+                      )}
+                      data-worktree-state={session.managedWorktree ? worktreeState : undefined}
+                      role={worktreeStatus ? "img" : undefined}
+                      aria-label={worktreeStatus}
+                      title={worktreeStatus}
+                    >
+                      <PullRequestIcon />
+                    </span>
                     <span className="truncate">{branch}</span>
                     {showBaseBranch && (
                       <>

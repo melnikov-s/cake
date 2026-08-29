@@ -13,9 +13,21 @@ export class SessionCatalogStore extends Store<Record<string, never>> {
   /** Managed worktree workspaces mapped to their durable Git metadata. */
   private readonly managedWorktrees = observable(new Map<string, WorktreeRecord>());
 
-  /** Registers a managed worktree ahead of its first Pi session listing. */
+  /** Registers current managed-worktree metadata and projects it into every matching session. */
   noteManagedWorktree(record: WorktreeRecord) {
     this.managedWorktrees.set(record.worktreePath, record);
+    let changed = false;
+    for (let index = 0; index < this.sessions.length; index += 1) {
+      const session = this.sessions[index]!;
+      if (session.workspacePath !== record.worktreePath) continue;
+      this.sessions.splice(index, 1, {
+        ...session,
+        managedWorktree: record,
+        projectPath: record.projectPath,
+      });
+      changed = true;
+    }
+    if (changed) this.rebuildIndexes();
   }
 
   managedWorktree(workspacePath: string) {

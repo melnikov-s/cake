@@ -89,6 +89,32 @@ describe("SessionCatalogStore", () => {
     store[Symbol.dispose]();
   });
 
+  it("projects durable worktree landing state into existing session summaries", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    const activeWorktree = {
+      projectPath: "/project",
+      worktreePath: "/project-worktree",
+      branch: "agent/feature",
+      baseBranch: "main",
+      state: "active" as const,
+      createdAt: "2026-08-16T12:00:00.000Z",
+    };
+    store.replace([
+      {
+        ...summary("worktree-session", "2026-08-16T12:00:00.000Z"),
+        workspacePath: activeWorktree.worktreePath,
+        managedWorktree: activeWorktree,
+        projectPath: activeWorktree.projectPath,
+      },
+    ]);
+
+    store.noteManagedWorktree({ ...activeWorktree, state: "landed" });
+
+    expect(store.find("worktree-session")?.managedWorktree?.state).toBe("landed");
+    expect(store.managedWorktree(activeWorktree.worktreePath)?.state).toBe("landed");
+    store[Symbol.dispose]();
+  });
+
   it("indexes sessions by ID and project without duplicating session records", () => {
     const store = mount(createStore(SessionCatalogStore));
     store.replace([
