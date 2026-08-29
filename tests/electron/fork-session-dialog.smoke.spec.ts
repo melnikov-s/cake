@@ -147,6 +147,10 @@ test("forks a session into a new worktree and opens the fork", async () => {
     // transcript carries the parent's content.
     await expect(page.getByText("focused-fix").first()).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText("Here is the plan.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Start new chat in project" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Start new chat in focused-fix" })).toHaveCount(
+      0,
+    );
 
     // Preview hydration happens before the workspace runtime finishes opening. Wait
     // until the composer can submit so a late session-open failure cannot race this check.

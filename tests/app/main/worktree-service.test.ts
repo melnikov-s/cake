@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -59,12 +59,26 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
   it("creates a managed worktree outside the repository on an agent branch", async () => {
     const repo = await repository();
     const record = await service().create(repo);
-    expect(record.projectPath).toBe(await realpath(repo));
+    expect(record.projectPath).toBe(repo);
     expect(record.branch).toMatch(/^agent\//);
     expect(record.baseBranch).toBe("main");
     expect(record.worktreePath).toContain(".cake-worktree-repo");
     expect(record.worktreePath.startsWith(repo)).toBe(false);
     expect(existsSync(join(record.worktreePath, "README.md"))).toBe(true);
+  });
+
+  it("preserves the registered project path when Git resolves through a filesystem alias", async () => {
+    const repo = await repository();
+    const aliasRoot = await mkdtemp(join(tmpdir(), "cake-worktree-alias-"));
+    directories.push(aliasRoot);
+    const alias = join(aliasRoot, "project");
+    await symlink(repo, alias);
+    const worktrees = service();
+
+    const record = await worktrees.create(alias, undefined, "aliased-project");
+
+    expect(record.projectPath).toBe(alias);
+    await worktrees.discard(record.worktreePath, false);
   });
 
   it("uses an explicit worktree name for its branch and checkout", async () => {

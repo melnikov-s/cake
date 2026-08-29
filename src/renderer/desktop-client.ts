@@ -441,14 +441,14 @@ export interface DesktopClient {
     workspacePath: string;
     keepBranch: boolean;
   }): Promise<void>;
-  forkSessionToWorktree(input: {
+  forkSessionToWorkspace(input: {
     operationId: string;
     sessionId: string;
     entryId: string;
-    workspacePath: string;
-    worktreeName: string;
+    sourceWorkspacePath: string;
+    destinationWorkspacePath: string;
     resolveSource: boolean;
-  }): Promise<{ sessionId: string; workspacePath: string }>;
+  }): Promise<{ sessionId: string }>;
   steerSubagent(input: { parentSessionId: string; handleId: string; text: string }): Promise<void>;
   abortSubagent(input: { parentSessionId: string; handleId: string }): Promise<void>;
   submit(input: {
@@ -1283,19 +1283,19 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         workspacePath: input.workspacePath,
         keepBranch: input.keepBranch,
       }),
-    async forkSessionToWorktree(input) {
+    async forkSessionToWorkspace(input) {
       const response = await bridge.request({
-        type: "fork-session-to-worktree",
+        type: "fork-session-to-workspace",
         requestId: input.operationId,
         sessionId: input.sessionId,
         entryId: input.entryId,
-        workspacePath: input.workspacePath,
-        worktreeName: input.worktreeName,
+        sourceWorkspacePath: input.sourceWorkspacePath,
+        destinationWorkspacePath: input.destinationWorkspacePath,
         resolveSource: input.resolveSource,
       });
-      if (response.type !== "session-forked-to-worktree")
-        throw new Error("Cake could not fork the session into a new worktree");
-      return { sessionId: response.sessionId, workspacePath: response.workspacePath };
+      if (response.type !== "session-forked-to-workspace")
+        throw new Error("Cake could not fork the session into the selected workspace");
+      return { sessionId: response.sessionId };
     },
     steerSubagent: (input) =>
       accept(bridge, {

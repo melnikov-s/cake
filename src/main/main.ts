@@ -1771,35 +1771,34 @@ async function handleCakeRequest(
     ).flat();
     return desktopResponseSchema.parse({ type: "sessions-listed", sessions, reviewThreads });
   }
-  if (request.type === "fork-session-to-worktree") {
+  if (request.type === "fork-session-to-workspace") {
+    const records = await worktrees.records();
+    const destination = records.find(
+      (entry) =>
+        (entry.state ?? "active") === "active" &&
+        resolve(entry.worktreePath) === resolve(request.destinationWorkspacePath),
+    );
+    if (!destination) throw new Error("Cake could not find the destination worktree");
+    const sourceWorktree = records.find(
+      (entry) => resolve(entry.worktreePath) === resolve(request.sourceWorkspacePath),
+    );
+    const sourceProjectPath = sourceWorktree?.projectPath ?? request.sourceWorkspacePath;
+    if (resolve(sourceProjectPath) !== resolve(destination.projectPath))
+      throw new Error("The session and destination worktree belong to different projects");
     const sourceFile = await findSessionFile(
-      request.workspacePath,
+      request.sourceWorkspacePath,
       request.sessionId,
       cakePaths.piSessions,
     );
     if (!sourceFile) throw new Error("Cake could not find the session to fork");
-    const record = (await worktrees.records()).find(
-      (entry) =>
-        (entry.state ?? "active") === "active" &&
-        resolve(entry.worktreePath) === resolve(request.workspacePath),
-    );
-    const branchOff = record
-      ? await worktrees.createBranchOff(request.workspacePath, request.worktreeName)
-      : await worktrees.create(request.workspacePath, undefined, request.worktreeName);
-    allowedProjectPaths.add(branchOff.worktreePath);
-    if (applicationModel.isProjectTrusted(branchOff.projectPath))
-      applicationModel.trustProject(branchOff.worktreePath);
-    // forkWorkspaceSession encodes the workspace session directory itself; passing
-    // a pre-encoded directory would nest the fork one level below where readers look.
-    const forked = forkWorkspaceSession(sourceFile, branchOff.worktreePath, cakePaths.piSessions);
-    rememberSessionLocation(branchOff.worktreePath, forked.sessionId);
+    const forked = forkWorkspaceSession(sourceFile, destination.worktreePath, cakePaths.piSessions);
+    rememberSessionLocation(destination.worktreePath, forked.sessionId);
     if (request.resolveSource)
-      await setProjectSessionResolution(request.sessionId, true, request.workspacePath);
+      await setProjectSessionResolution(request.sessionId, true, request.sourceWorkspacePath);
     return desktopResponseSchema.parse({
-      type: "session-forked-to-worktree",
+      type: "session-forked-to-workspace",
       requestId: request.requestId,
       sessionId: forked.sessionId,
-      workspacePath: branchOff.worktreePath,
     });
   }
   if (request.type === "register-project") {

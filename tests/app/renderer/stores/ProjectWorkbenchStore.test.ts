@@ -274,9 +274,8 @@ function createDesktopClient(restoredPath?: string) {
     getWorktreeStatus: vi.fn(async () => undefined),
     landWorktree: vi.fn(async () => ({ outcome: "landed" as const })),
     discardWorktree: vi.fn(async () => undefined),
-    forkSessionToWorktree: vi.fn(async () => ({
+    forkSessionToWorkspace: vi.fn(async () => ({
       sessionId: "forked",
-      workspacePath: "/tmp/forked",
     })),
     getEmbeddedEditorState: vi.fn(async () => ({ status: "missing" as const })),
     installEmbeddedEditor: vi.fn(async () => undefined),
@@ -588,11 +587,18 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("forks into a named worktree and optionally resolves the parent", async () => {
+  it("creates a fork worktree through the shared workflow and keeps the parent project identity", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop);
+    vi.mocked(desktop.client.createWorktree).mockResolvedValueOnce({
+      projectPath: "/project",
+      worktreePath: "/project-worktrees/focused-fix",
+      branch: "agent/focused-fix",
+      baseBranch: "main",
+      createdAt: "2026-08-01T00:00:00.000Z",
+    });
 
     store.sessionContinuationStore.forkAt("assistant-entry");
     store.sessionContinuationStore.selectDestination("new-worktree");
@@ -600,14 +606,40 @@ describe("ProjectWorkbenchStore", () => {
     store.sessionContinuationStore.setResolveParent(true);
     await store.sessionContinuationStore.confirmPrompt();
 
-    expect(desktop.client.forkSessionToWorktree).toHaveBeenCalledWith({
+    expect(desktop.client.createWorktree).toHaveBeenCalledWith({
+      operationId: expect.any(String),
+      path: "/project",
+      baseWorktreePath: undefined,
+      worktreeName: "focused-fix",
+    });
+    expect(desktop.client.forkSessionToWorkspace).toHaveBeenCalledWith({
       operationId: expect.any(String),
       sessionId: "session-1",
       entryId: "assistant-entry",
-      workspacePath: "/project",
-      worktreeName: "focused-fix",
+      sourceWorkspacePath: "/project",
+      destinationWorkspacePath: "/project-worktrees/focused-fix",
       resolveSource: true,
     });
+    expect(
+      root.sessionCatalogStore.projectOfManagedWorktree("/project-worktrees/focused-fix"),
+    ).toBe("/project");
+
+    root.sessionRegistry.hydratePreview({
+      workspacePath: "/project-worktrees/focused-fix",
+      sessionId: "forked",
+      sessionFile: "/sessions/forked.jsonl",
+      parts: [],
+    });
+    store.applySessionSnapshot({
+      ...snapshot,
+      workspacePath: "/project-worktrees/focused-fix",
+      sessionId: "forked",
+      sessionFile: "/sessions/forked.jsonl",
+    });
+    expect(root.projectCatalogStore.recentProjectPaths).toContain("/project");
+    expect(root.projectCatalogStore.recentProjectPaths).not.toContain(
+      "/project-worktrees/focused-fix",
+    );
     root[Symbol.dispose]();
   });
 

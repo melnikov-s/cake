@@ -75,14 +75,16 @@ export class WorktreeService implements WorktreeLandingCoordinator {
     worktreeName?: string,
   ): Promise<WorktreeRecord> {
     await this.load();
+    const registeredProjectPath = resolveNormalized(projectPath);
     const root = await realpath(await repositoryRoot(projectPath));
     return this.withRepositoryLock(root, () =>
-      this.createRecord(root, baseWorktreePath, worktreeName),
+      this.createRecord(root, registeredProjectPath, baseWorktreePath, worktreeName),
     );
   }
 
   private async createRecord(
     root: string,
+    registeredProjectPath: string,
     baseWorktreePath?: string,
     worktreeName?: string,
   ): Promise<WorktreeRecord> {
@@ -93,7 +95,7 @@ export class WorktreeService implements WorktreeLandingCoordinator {
             resolveNormalized(entry.worktreePath) === resolveNormalized(baseWorktreePath),
         )
       : undefined;
-    if (baseWorktreePath && (!parent || parent.projectPath !== root))
+    if (baseWorktreePath && (!parent || parent.projectPath !== registeredProjectPath))
       throw new Error("Cake could not find that base worktree");
     if (parent && !existsSync(parent.worktreePath))
       throw new Error("The base worktree no longer exists");
@@ -114,7 +116,7 @@ export class WorktreeService implements WorktreeLandingCoordinator {
     await mkdir(worktreesDir, { recursive: true });
     await git(root, "worktree", "add", "-b", branch, worktreePath, baseCommit);
     const record: WorktreeRecord = {
-      projectPath: root,
+      projectPath: registeredProjectPath,
       worktreePath,
       branch,
       baseBranch,

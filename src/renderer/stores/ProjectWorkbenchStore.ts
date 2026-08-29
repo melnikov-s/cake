@@ -141,6 +141,15 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       client: this.props.sessionContinuationClient,
       operations: this.props.operations,
       registry: this.sessionRegistry,
+      createWorktree: async (workspacePath, name) => {
+        const projectPath =
+          this.props.catalog.projectOfManagedWorktree(workspacePath) ?? workspacePath;
+        const record = await this.worktreeCreationStore.create(projectPath, {
+          name,
+          baseWorktreePath: projectPath === workspacePath ? undefined : workspacePath,
+        });
+        return record.worktreePath;
+      },
       sessionContext: () => this.sessionContext(),
       sessionTitle: () => this.sessionTitle,
       closeCommandPane: () => this.commandPaneStore.close(),
@@ -678,7 +687,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       snapshot.sessions,
       this.sessionRegistry.retainedNewSessionIds(snapshot.workspacePath),
     );
-    this.props.projects.recordOpened(snapshot.workspacePath);
+    this.props.projects.recordOpened(
+      this.props.catalog.projectOfManagedWorktree(snapshot.workspacePath) ?? snapshot.workspacePath,
+    );
     this.props.persistence().schedule();
     void this.reviews.loadThreads(snapshot.sessionId);
     if (focusComposer) activeSession.composerStore.requestFocus();

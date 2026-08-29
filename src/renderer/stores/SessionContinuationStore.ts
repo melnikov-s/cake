@@ -7,10 +7,11 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 export interface SessionContinuationStoreProps {
   client: Pick<
     DesktopClient,
-    "forkSession" | "forkSessionToWorktree" | "handoffSession" | "loadSession"
+    "forkSession" | "forkSessionToWorkspace" | "handoffSession" | "loadSession"
   >;
   operations: SessionOperationCoordinatorStore;
   registry: SessionRegistryStore;
+  createWorktree(workspacePath: string, name: string): Promise<string>;
   sessionContext(): { sessionId: string; workspacePath: string } | undefined;
   sessionTitle(): string;
   closeCommandPane(): void;
@@ -86,14 +87,20 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
       await this.dispatchFork(prompt.sessionId, prompt.entryId, prompt.resolveParent);
       return;
     }
-    const operationId = this.props.operations.start("project-workbench");
+    let operationId: string | undefined;
     try {
-      const result = await this.props.client.forkSessionToWorktree({
+      const destinationWorkspacePath = await this.props.createWorktree(
+        prompt.workspacePath,
+        worktreeName,
+      );
+      if (this.signal.aborted) return;
+      operationId = this.props.operations.start("project-workbench");
+      const result = await this.props.client.forkSessionToWorkspace({
         operationId,
         sessionId: prompt.sessionId,
         entryId: prompt.entryId,
-        workspacePath: prompt.workspacePath,
-        worktreeName,
+        sourceWorkspacePath: prompt.workspacePath,
+        destinationWorkspacePath,
         resolveSource: prompt.resolveParent,
       });
       if (this.signal.aborted) return;
@@ -104,7 +111,7 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
     } catch (error) {
       if (!this.signal.aborted) this.props.reportError(error);
     } finally {
-      this.props.operations.finish(operationId);
+      if (operationId) this.props.operations.finish(operationId);
     }
   }
 

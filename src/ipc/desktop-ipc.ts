@@ -678,12 +678,12 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     keepBranch: z.boolean().default(false),
   }),
   z.object({
-    type: z.literal("fork-session-to-worktree"),
+    type: z.literal("fork-session-to-workspace"),
     requestId: z.uuid(),
     sessionId: z.string().min(1).max(256),
     entryId: z.string().max(256),
-    workspacePath: z.string().min(1).max(4_096),
-    worktreeName: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/),
+    sourceWorkspacePath: z.string().min(1).max(4_096),
+    destinationWorkspacePath: z.string().min(1).max(4_096),
     resolveSource: z.boolean().default(false),
   }),
   z.object({
@@ -989,10 +989,9 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
     result: worktreeLandOutcomeSchema,
   }),
   z.object({
-    type: z.literal("session-forked-to-worktree"),
+    type: z.literal("session-forked-to-workspace"),
     requestId: z.uuid(),
     sessionId: z.string().min(1).max(256),
-    workspacePath: z.string().min(1).max(4_096),
   }),
   z.object({ type: z.literal("accepted"), requestId: z.uuid() }),
   z.object({ type: z.literal("ui-response-accepted"), uiRequestId: z.uuid() }),
