@@ -94,6 +94,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               }
               resolved={resolved}
               activity={store.sessionActivity(session.id)}
+              defaultBranch="main"
               onOpen={onOpenSession}
               onRename={(sessionId, name) =>
                 void chat.sessionManagementStore.renameSession(sessionId, name)

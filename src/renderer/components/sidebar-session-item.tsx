@@ -20,6 +20,7 @@ export interface SidebarSessionItemProps {
   selected: boolean;
   resolved: boolean;
   activity?: "running" | "unread";
+  defaultBranch?: string;
   onOpen(sessionId: string): void;
   onRename(sessionId: string, name: string): void;
   onResolve(sessionId: string, resolved: boolean): void;
@@ -32,6 +33,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   selected,
   resolved,
   activity,
+  defaultBranch,
   onOpen,
   onRename,
   onResolve,
@@ -41,6 +43,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   const unread = activity === "unread";
   const canResolve = !running && !unread;
   const activityLabel = running ? "Running" : "Ready, unread";
+  const branch = session.managedWorktree?.branch.replace(/^agent\//, "") ?? defaultBranch;
   const commitRename = () => {
     const value = renamingValue;
     setRenamingValue(null);
@@ -92,16 +95,18 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
             <span className="session-title w-full min-w-0 truncate text-left" title={session.title}>
               {session.title}
             </span>
-            {session.managedWorktree && (
+            {branch && (
               <span className="mt-1.5 flex max-w-full items-center gap-1.5 text-[10px] font-normal leading-none text-muted-foreground/80">
                 <PullRequestIcon />
-                <span className="truncate">
-                  {session.managedWorktree.branch.replace(/^agent\//, "")}
-                </span>
-                <span aria-hidden="true">→</span>
-                <span className="truncate">
-                  {session.managedWorktree.baseBranch.replace(/^agent\//, "")}
-                </span>
+                <span className="truncate">{branch}</span>
+                {session.managedWorktree && (
+                  <>
+                    <span aria-hidden="true">→</span>
+                    <span className="truncate">
+                      {session.managedWorktree.baseBranch.replace(/^agent\//, "")}
+                    </span>
+                  </>
+                )}
               </span>
             )}
           </button>

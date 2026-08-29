@@ -571,6 +571,12 @@ describe("Sidebar projects", () => {
     expect(container.querySelector('[data-session-id="project-session"]')?.classList).not.toContain(
       "active",
     );
+    expect(container.querySelector('[data-session-id="project-session"]')?.textContent).toContain(
+      "main",
+    );
+    expect(container.querySelector('[data-session-id="cake-session"]')?.textContent).not.toContain(
+      "main",
+    );
 
     act(() =>
       root.render(
