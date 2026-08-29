@@ -420,7 +420,15 @@ describe("Sidebar projects", () => {
       recentProjectPaths: ["/work/empty"],
       projects: [{ path: "/work/empty", name: "Empty" }],
       projectSessions: (_path: string, resolved = false) =>
-        resolved ? [{ id: "resolved-project", title: "Finished work" }] : [],
+        resolved
+          ? [
+              {
+                id: "resolved-project",
+                title: "Finished work",
+                managedWorktree: { branch: "agent/resolved-feature", baseBranch: "main" },
+              },
+            ]
+          : [],
       sessionLimit: vi.fn(() => 8),
       sessionActivity: vi.fn(),
       sessionActivityTime: vi.fn(() => "Today"),
@@ -459,6 +467,9 @@ describe("Sidebar projects", () => {
     );
     expect(resolvedCakeGroup?.querySelector(".project-label")?.textContent).toBe("Cake Chat");
     expect(resolvedCakeGroup?.textContent).toContain("Finished Cake Chat");
+    expect(
+      container.querySelector('[data-session-id="resolved-project"] .session-row')?.textContent,
+    ).toContain("resolved-feature");
 
     const emptyProject = container.querySelector<HTMLElement>(
       ".project-group:not(.cake-chat-sessions)",
