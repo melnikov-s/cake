@@ -161,8 +161,12 @@ test("restores a session's virtualized transcript position after leaving and swi
     await expect(transcript).toBeVisible({ timeout: 20_000 });
     await expect(firstSession).toHaveClass(/active/);
     await expect
-      .poll(() => transcript.evaluate((element) => element.scrollTop))
-      .toBeGreaterThan(3_000);
+      .poll(() =>
+        transcript.evaluate(
+          (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+        ),
+      )
+      .toBeLessThanOrEqual(1);
 
     const composer = page.getByRole("combobox", { name: "Message" });
     await composer.fill(Array.from({ length: 30 }, (_, index) => `Line ${index + 1}`).join("\n"));

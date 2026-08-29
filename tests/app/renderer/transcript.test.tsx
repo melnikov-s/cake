@@ -311,7 +311,7 @@ describe("Transcript scrolling", () => {
     container.remove();
   });
 
-  it("starts a loaded session at the final transcript item", () => {
+  it("defaults a loaded session with no scroll target to the very bottom", () => {
     const parts: UiPart[] = [
       { id: "assistant-1", kind: "text", role: "assistant", text: "First", status: "complete" },
       { id: "assistant-2", kind: "text", role: "assistant", text: "Latest", status: "complete" },
@@ -320,6 +320,7 @@ describe("Transcript scrolling", () => {
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts)} />));
 
     expect(virtualizedProps.current?.initialTopMostItemIndex).toEqual({ index: 1, align: "end" });
+    expect(scrollToIndex).toHaveBeenCalledWith({ index: 1, align: "end", behavior: "auto" });
     const followOutput = virtualizedProps.current?.followOutput as (
       isAtBottom: boolean,
     ) => "auto" | false;

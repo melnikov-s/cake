@@ -120,6 +120,8 @@ export const ChatTranscript = observer(function ChatTranscript({
           : item.id === messageNavigationRequest.messageId,
       )
     : -1;
+  const hasOpeningScrollTarget =
+    restoredScrollState !== undefined || messageNavigationItemIndex >= 0;
   useEffect(() => {
     if (!messageNavigationRequest || messageNavigationItemIndex < 0) return;
     followOutputRef.current = false;
@@ -132,6 +134,12 @@ export const ChatTranscript = observer(function ChatTranscript({
       ?.querySelector<HTMLElement>(`[data-transcript-item-index="${messageNavigationItemIndex}"]`)
       ?.scrollIntoView({ block: "center" });
   }, [messageNavigationItemIndex, messageNavigationRequest]);
+  useEffect(() => {
+    if (hasOpeningScrollTarget) return;
+    scrollToLatest();
+    const frame = requestAnimationFrame(scrollToLatest);
+    return () => cancelAnimationFrame(frame);
+  }, [hasOpeningScrollTarget, scrollToLatest]);
   useEffect(() => {
     const previous = latestUserRef.current;
     latestUserRef.current = { storeId: store.id, partId: latestUserPartId };
@@ -366,7 +374,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         data={items}
         computeItemKey={(_index, item) => item.id}
         initialTopMostItemIndex={
-          restoredScrollState === undefined ? { index: items.length - 1, align: "end" } : undefined
+          hasOpeningScrollTarget ? undefined : { index: items.length - 1, align: "end" }
         }
         restoreStateFrom={restoredScrollState}
         followOutput={followStreamingOutput}
