@@ -208,7 +208,7 @@ export class WorktreeService implements WorktreeLandingCoordinator {
     if (!existsSync(targetPath)) throw new Error("The worktree landing target no longer exists");
     if ((await git(targetPath, "rev-parse", "--abbrev-ref", "HEAD")).trim() !== record.baseBranch)
       throw new Error(`Switch the landing target back to "${record.baseBranch}" first.`);
-    if ((await dirtyFileCount(targetPath)) > 0)
+    if ((await dirtyFileCount(targetPath)) > 0 && !options.request.allowDirtyTarget)
       throw new Error("The landing target has uncommitted changes. Commit or stash them first.");
     const activeChildren = this.allRecords.filter(
       (entry) =>

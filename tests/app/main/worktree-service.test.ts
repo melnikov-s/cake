@@ -284,6 +284,23 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     await rm(join(repo, "dirty.ts"));
   });
 
+  it("lands after the user confirms a dirty target and preserves its changes", async () => {
+    const repo = await repository();
+    const worktrees = service();
+    const record = await worktrees.create(repo);
+    await writeFile(join(record.worktreePath, "feature.ts"), "feature\n");
+    await commitAll(record.worktreePath, "feature");
+    await writeFile(join(repo, "in-progress.ts"), "target change\n");
+
+    await expect(
+      worktrees.land(record.worktreePath, {
+        request: { strategy: "preserve", allowDirtyTarget: true },
+      }),
+    ).resolves.toMatchObject({ outcome: "landed" });
+    await expect(readFile(join(repo, "feature.ts"), "utf8")).resolves.toBe("feature\n");
+    await expect(readFile(join(repo, "in-progress.ts"), "utf8")).resolves.toBe("target change\n");
+  });
+
   it("refuses to land while the canonical checkout is on another branch", async () => {
     const repo = await repository();
     const worktrees = service();

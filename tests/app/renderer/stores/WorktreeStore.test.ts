@@ -123,6 +123,25 @@ describe("WorktreeStore", () => {
     store[Symbol.dispose]();
   });
 
+  it("preserves dirty-target confirmation while a landing pauses and retries", async () => {
+    const dirtyTargetStatus = { ...status, targetDirty: true };
+    const { store, client } = createTestStore(vi.fn(async () => dirtyTargetStatus));
+    client.landWorktree
+      .mockResolvedValueOnce({ outcome: "resolving", files: ["shared.txt"] })
+      .mockResolvedValueOnce({ outcome: "landed", commit: "abc" });
+    await vi.waitFor(() => expect(store.status).toEqual(dirtyTargetStatus));
+
+    await store.land({ strategy: "preserve", allowDirtyTarget: true });
+    await store.refresh();
+
+    expect(client.landWorktree).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        request: { strategy: "preserve", allowDirtyTarget: true },
+      }),
+    );
+    store[Symbol.dispose]();
+  });
+
   it("delegates preserve conflict resolution to the session", async () => {
     const { store, client } = createTestStore();
     client.landWorktree.mockResolvedValueOnce({ outcome: "resolving", files: ["shared.txt"] });

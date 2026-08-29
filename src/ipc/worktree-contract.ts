@@ -60,10 +60,16 @@ export type WorktreeStatus = z.infer<typeof worktreeStatusSchema>;
  *   `message`, the session agent proposes the commit message first.
  */
 export const worktreeLandRequestSchema = z.discriminatedUnion("strategy", [
-  z.object({ strategy: z.literal("preserve") }),
+  z.object({
+    strategy: z.literal("preserve"),
+    /** Set only after the user confirms the target checkout warning. */
+    allowDirtyTarget: z.literal(true).optional(),
+  }),
   z.object({
     strategy: z.literal("squash"),
     message: z.string().min(1).max(6_000).optional(),
+    /** Set only after the user confirms the target checkout warning. */
+    allowDirtyTarget: z.literal(true).optional(),
   }),
 ]);
 
