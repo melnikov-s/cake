@@ -44,6 +44,8 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   const canResolve = !running && !unread;
   const activityLabel = running ? "Running" : "Ready, unread";
   const branch = session.managedWorktree?.branch.replace(/^agent\//, "") ?? defaultBranch;
+  const baseBranch = session.managedWorktree?.baseBranch.replace(/^agent\//, "");
+  const showBaseBranch = baseBranch !== undefined && baseBranch !== "main";
   const commitRename = () => {
     const value = renamingValue;
     setRenamingValue(null);
@@ -95,21 +97,35 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
             <span className="session-title w-full min-w-0 truncate text-left" title={session.title}>
               {session.title}
             </span>
-            {branch && (
+            {(branch || !activity) && (
               <span
                 className={cn(
-                  "mt-1.5 flex max-w-full items-center gap-1.5 text-[10px] font-normal leading-none",
+                  "mt-1.5 flex w-full min-w-0 items-center gap-1.5 text-[10px] font-normal leading-none",
                   selected ? "text-primary/80" : "text-muted-foreground/80",
                 )}
               >
-                <PullRequestIcon />
-                <span className="truncate">{branch}</span>
-                {session.managedWorktree && (
+                {branch && (
                   <>
-                    <span aria-hidden="true">→</span>
-                    <span className="truncate">
-                      {session.managedWorktree.baseBranch.replace(/^agent\//, "")}
-                    </span>
+                    <PullRequestIcon />
+                    <span className="truncate">{branch}</span>
+                    {showBaseBranch && (
+                      <>
+                        <span aria-hidden="true">→</span>
+                        <span className="truncate">{baseBranch}</span>
+                      </>
+                    )}
+                  </>
+                )}
+                {!activity && (
+                  <>
+                    {branch && <span aria-hidden="true">·</span>}
+                    <time
+                      className="session-time shrink-0 whitespace-nowrap text-[10px] tabular-nums text-muted-foreground"
+                      dateTime={session.modified}
+                      title={new Date(session.modified).toLocaleString()}
+                    >
+                      {store.sessionActivityTime(session.modified)}
+                    </time>
                   </>
                 )}
               </span>
@@ -134,18 +150,6 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
               />
             ) : (
               <>
-                {!selected && (
-                  <time
-                    className={cn(
-                      "session-time text-[10px] text-muted-foreground tabular-nums text-center whitespace-nowrap transition-opacity",
-                      canResolve && "session-time-replaceable group-hover:opacity-0",
-                    )}
-                    dateTime={session.modified}
-                    title={new Date(session.modified).toLocaleString()}
-                  >
-                    {store.sessionActivityTime(session.modified)}
-                  </time>
-                )}
                 {canResolve && (
                   <IconButton
                     className={cn(

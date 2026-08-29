@@ -245,7 +245,14 @@ describe("Sidebar projects", () => {
     const store = {
       recentProjectPaths: ["/work/cake"],
       projects: [{ path: "/work/cake", name: "Cake" }],
-      projectSessions: () => [{ id: "session-1", title, modified }],
+      projectSessions: () => [
+        {
+          id: "session-1",
+          title,
+          modified,
+          managedWorktree: { branch: "agent/feature", baseBranch: "main" },
+        },
+      ],
       sessionLimit: () => 8,
       sessionActivity: vi.fn(),
       sessionActivityTime: vi.fn(() => "20 min ago"),
@@ -264,6 +271,8 @@ describe("Sidebar projects", () => {
     expect(container.querySelector(".session-title")?.textContent).toBe(title);
     expect(container.querySelector(".session-time")?.textContent).toBe("20 min ago");
     expect(container.querySelector(".session-time")?.getAttribute("datetime")).toBe(modified);
+    expect(container.querySelector(".session-row")?.textContent).toContain("feature·20 min ago");
+    expect(container.querySelector(".session-row")?.textContent).not.toContain("→main");
   });
 
   it("does not surface sidecar chat work as parent-session badges", () => {
@@ -726,7 +735,7 @@ describe("Sidebar projects", () => {
       '[aria-label="Resolve Current work"]',
     )!;
     expect(resolve).not.toBeNull();
-    expect(container.querySelector('[data-session-id="active"] .session-time')).toBeNull();
+    expect(container.querySelector('[data-session-id="active"] .session-time')).not.toBeNull();
     act(() => resolve.click());
     expect(setSessionResolved).toHaveBeenCalledWith("active", true);
 
@@ -802,7 +811,7 @@ describe("Sidebar projects", () => {
     )!;
     expect(otherResolve).not.toBeNull();
     expect(container.querySelector('[data-session-id="other"] .session-time')).not.toBeNull();
-    expect(container.querySelector('[data-session-id="selected"] .session-time')).toBeNull();
+    expect(container.querySelector('[data-session-id="selected"] .session-time')).not.toBeNull();
 
     act(() => {
       otherResolve.dispatchEvent(new MouseEvent("click", { bubbles: true }));

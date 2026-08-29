@@ -91,7 +91,7 @@ test("resolves and restores the selected project session in the desktop sidebar"
       .locator(".session-item.active")
       .filter({ has: page.locator(".session-resolve-action") });
     await expect(selectedSession).toHaveCount(1);
-    await expect(selectedSession.locator(".session-time")).toHaveCount(0);
+    await expect(selectedSession.locator(".session-time")).toHaveCount(1);
     await selectedSession.locator(".session-resolve-action").click();
 
     await expect(page.locator(".resolved-lane")).toBeVisible();
