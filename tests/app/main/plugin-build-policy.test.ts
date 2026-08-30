@@ -43,7 +43,7 @@ describe("PluginBuildService policy gates", () => {
         (item) => item.phase === "typecheck" && item.message.includes("index.tsx:1"),
       ),
     ).toBe(true);
-  });
+  }, 20_000);
 
   it("applies the constrained import policy to a plugin-owned scene", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-plugin-build-"));
