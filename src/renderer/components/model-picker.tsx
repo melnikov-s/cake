@@ -87,10 +87,12 @@ export function ModelPicker({
   const configureBackRef = useRef<HTMLButtonElement>(null);
 
   const allModels = useMemo(() => groups.flatMap((group) => group.models), [groups]);
-  const selectedModel = useMemo(() =>
-    value?.provider && value?.modelId
-      ? allModels.find((model) => model.provider === value.provider && model.id === value.modelId)
-      : undefined,
+  const selectedModel = useMemo(
+    () =>
+      value?.provider && value?.modelId
+        ? allModels.find((model) => model.provider === value.provider && model.id === value.modelId)
+        : undefined,
+    [allModels, value?.provider, value?.modelId],
   );
 
   const normalizedQuery = query.trim().toLocaleLowerCase();

@@ -192,7 +192,9 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
   updateAnnotation(id: string, update: Partial<Omit<Annotation, "id">>) {
     const index = this.annotations.findIndex((annotation) => annotation.id === id);
     if (index >= 0) {
-      this.annotations.splice(index, 1, { ...this.annotations[index], ...update });
+      const annotation = this.annotations[index];
+      if (!annotation) return;
+      this.annotations.splice(index, 1, { ...annotation, ...update });
       this.props.persist();
     }
   }

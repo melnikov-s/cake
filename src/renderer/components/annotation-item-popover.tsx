@@ -151,7 +151,7 @@ export const AnnotationItemPopover = observer(function AnnotationItemPopover({
           <div className="flex items-center justify-end gap-1">
             <IconButton
               type="button"
-              size="sm"
+              className="size-7"
               tooltip="Cancel"
               ariaLabel="Cancel editing"
               onClick={() => {
@@ -163,8 +163,7 @@ export const AnnotationItemPopover = observer(function AnnotationItemPopover({
             </IconButton>
             <IconButton
               type="submit"
-              variant="primary"
-              size="sm"
+              className="size-7 bg-primary text-primary-foreground hover:bg-primary/90"
               tooltip="Save annotation"
               ariaLabel="Save annotation"
             >
@@ -181,7 +180,7 @@ export const AnnotationItemPopover = observer(function AnnotationItemPopover({
           </div>
           <div className="flex items-center justify-end gap-1 border-t border-border/60 pt-1.5">
             <IconButton
-              size="sm"
+              className="size-7"
               tooltip="Edit annotation"
               ariaLabel="Edit annotation"
               onClick={() => setIsEditing(true)}
@@ -189,7 +188,7 @@ export const AnnotationItemPopover = observer(function AnnotationItemPopover({
               <EditIcon />
             </IconButton>
             <IconButton
-              size="sm"
+              className="size-7"
               tooltip="Delete annotation"
               ariaLabel="Delete annotation"
               onClick={() => {

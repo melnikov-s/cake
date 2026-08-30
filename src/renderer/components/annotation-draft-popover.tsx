@@ -127,8 +127,7 @@ export function AnnotationDraftPopover({
         />
         <IconButton
           type="submit"
-          variant="primary"
-          size="sm"
+          className="size-7 bg-primary text-primary-foreground hover:bg-primary/90"
           tooltip="Add annotation"
           ariaLabel="Add annotation"
         >
