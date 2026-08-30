@@ -164,8 +164,16 @@ describe("ChatStore loading timer", () => {
 });
 
 describe("ChatStore changed-files expansion", () => {
-  it("applies defaults only when churning changes so manual expansion remains available", () => {
+  it("starts collapsed, preserves user expansion, and collapses when streaming starts again", () => {
     const store = createChatStore(() => Promise.resolve(true));
+    expect(store.changedFilesOpen).toBe(false);
+
+    store.syncChangedFilesOpen(false);
+    expect(store.changedFilesOpen).toBe(false);
+
+    store.setChangedFilesOpen(true);
+    store.syncChangedFilesOpen(false);
+    expect(store.changedFilesOpen).toBe(true);
 
     store.syncChangedFilesOpen(true);
     expect(store.changedFilesOpen).toBe(false);
@@ -177,8 +185,7 @@ describe("ChatStore changed-files expansion", () => {
     store.syncChangedFilesOpen(false);
     expect(store.changedFilesOpen).toBe(true);
 
-    store.setChangedFilesOpen(false);
-    store.syncChangedFilesOpen(false);
+    store.syncChangedFilesOpen(true);
     expect(store.changedFilesOpen).toBe(false);
     store[Symbol.dispose]();
   });

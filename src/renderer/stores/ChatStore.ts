@@ -95,7 +95,7 @@ export class ChatStore extends Store<ChatStoreProps> {
   readonly workLogTimers = observable(new Map<string, WorkLogTimerState>());
   transcriptScrollState: StateSnapshot | undefined;
   messageNavigationRequest: MessageNavigationRequest | undefined;
-  changedFilesOpen = true;
+  changedFilesOpen = false;
   private messageNavigationRevision = 0;
   private draftRevision = 0;
   private workLogTickNow = 0;
@@ -349,11 +349,11 @@ export class ChatStore extends Store<ChatStoreProps> {
     this.changedFilesOpen = open;
   }
 
-  /** Applies the default changed-files visibility only when churning changes. */
+  /** Collapses changed files when a new period of file-change churn begins. */
   syncChangedFilesOpen(churning: boolean) {
     if (this.changedFilesChurning === churning) return;
     this.changedFilesChurning = churning;
-    this.changedFilesOpen = !churning;
+    if (churning) this.changedFilesOpen = false;
   }
 
   get workLogViewMode(): WorkLogViewMode {
