@@ -150,6 +150,7 @@ function Transcript({
     };
   const workLogState = workLogStateRef.current;
   const changedFilesStateRef = useRef(observable({ open: true }));
+  const changedFilesChurningRef = useRef<boolean | undefined>(undefined);
   const transcriptScrollStatesRef = useRef(
     new Map<
       string,
@@ -216,6 +217,11 @@ function Transcript({
     },
     setChangedFilesOpen(open: boolean) {
       changedFilesStateRef.current.open = open;
+    },
+    syncChangedFilesOpen(churning: boolean) {
+      if (changedFilesChurningRef.current === churning) return;
+      changedFilesChurningRef.current = churning;
+      changedFilesStateRef.current.open = !churning;
     },
     annotations: annotations ?? [],
     canAnnotate: Boolean(addAnnotation),
@@ -913,7 +919,7 @@ describe("Transcript scrolling", () => {
     expect(summary.querySelector("ul")).toBeNull();
   });
 
-  it("temporarily collapses changed files and places them before Churning while work is active", () => {
+  it("collapses changed files by default while work is active but keeps them expandable", () => {
     const parts: UiPart[] = [
       {
         id: "tool-edit",
@@ -942,15 +948,28 @@ describe("Transcript scrolling", () => {
 
     const changedFiles = container.querySelector<HTMLElement>('[aria-label="Changed Files"]')!;
     const loading = container.querySelector<HTMLElement>('[data-slot="loading-state"]')!;
-    expect(changedFiles.querySelector("button")?.getAttribute("aria-expanded")).toBe("false");
-    expect(changedFiles.querySelector("button")?.hasAttribute("disabled")).toBe(true);
+    const trigger = changedFiles.querySelector<HTMLButtonElement>("button")!;
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(trigger.hasAttribute("disabled")).toBe(false);
     expect(changedFiles.compareDocumentPosition(loading) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
 
     act(() => render(false));
-    expect(changedFiles.querySelector("button")?.getAttribute("aria-expanded")).toBe("true");
-    expect(changedFiles.querySelector("button")?.hasAttribute("disabled")).toBe(false);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(trigger.hasAttribute("disabled")).toBe(false);
+
+    act(() => render(true));
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(trigger.hasAttribute("disabled")).toBe(false);
+
+    act(() => trigger.click());
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(changedFiles.querySelector("ul")).not.toBeNull();
+
+    act(() => render(false));
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(trigger.hasAttribute("disabled")).toBe(false);
   });
 
   it("switches an expanded work log between auto, diff, and log view modes", () => {

@@ -10,14 +10,12 @@ export function ChangedFiles({
   parts,
   workspacePath,
   open,
-  loading = false,
   onOpenChange,
   onOpenFile,
 }: {
   parts: readonly UiPart[];
   workspacePath?: string;
   open: boolean;
-  loading?: boolean;
   onOpenChange(open: boolean): void;
   onOpenFile?(path: string): void;
 }) {
@@ -33,7 +31,6 @@ export function ChangedFiles({
       <DisclosureTrigger
         className="px-3.5 py-2.5 hover:bg-muted/50"
         open={open}
-        disabled={loading}
         title="Changed Files"
         subtitle={`${changes.length} ${changes.length === 1 ? "file" : "files"}`}
         showChevron={false}

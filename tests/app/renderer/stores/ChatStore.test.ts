@@ -163,6 +163,27 @@ describe("ChatStore loading timer", () => {
   });
 });
 
+describe("ChatStore changed-files expansion", () => {
+  it("applies defaults only when churning changes so manual expansion remains available", () => {
+    const store = createChatStore(() => Promise.resolve(true));
+
+    store.syncChangedFilesOpen(true);
+    expect(store.changedFilesOpen).toBe(false);
+
+    store.setChangedFilesOpen(true);
+    store.syncChangedFilesOpen(true);
+    expect(store.changedFilesOpen).toBe(true);
+
+    store.syncChangedFilesOpen(false);
+    expect(store.changedFilesOpen).toBe(true);
+
+    store.setChangedFilesOpen(false);
+    store.syncChangedFilesOpen(false);
+    expect(store.changedFilesOpen).toBe(false);
+    store[Symbol.dispose]();
+  });
+});
+
 describe("ChatStore work-log view mode and expansion", () => {
   it("manages local workLogViewMode and cycles auto -> diff -> log -> auto", () => {
     const store = createChatStore(() => Promise.resolve(true));

@@ -100,6 +100,7 @@ export class ChatStore extends Store<ChatStoreProps> {
   private draftRevision = 0;
   private workLogTickNow = 0;
   private workLogTickInterval: ReturnType<typeof setInterval> | undefined;
+  private changedFilesChurning: boolean | undefined;
 
   constructor(props: ChatStore["props"]) {
     super(props);
@@ -346,6 +347,13 @@ export class ChatStore extends Store<ChatStoreProps> {
 
   setChangedFilesOpen(open: boolean) {
     this.changedFilesOpen = open;
+  }
+
+  /** Applies the default changed-files visibility only when churning changes. */
+  syncChangedFilesOpen(churning: boolean) {
+    if (this.changedFilesChurning === churning) return;
+    this.changedFilesChurning = churning;
+    this.changedFilesOpen = !churning;
   }
 
   get workLogViewMode(): WorkLogViewMode {

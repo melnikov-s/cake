@@ -82,6 +82,9 @@ export const ChatTranscript = observer(function ChatTranscript({
     store.submitting,
     Boolean(behavior.waitingForUser || behavior.artifacts?.interaction.request),
   );
+  useLayoutEffect(() => {
+    store.syncChangedFilesOpen(showAssistantLoading);
+  }, [showAssistantLoading, store]);
   const items: TranscriptItem[] = [
     ...groupTranscriptParts(visibleParts),
     ...(workLogChanges(store.parts).length > 0
@@ -323,8 +326,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     <ChangedFiles
       parts={store.parts}
       workspacePath={behavior.workspacePath}
-      open={!showAssistantLoading && store.changedFilesOpen}
-      loading={showAssistantLoading}
+      open={store.changedFilesOpen}
       onOpenChange={(open) => store.setChangedFilesOpen(open)}
       onOpenFile={
         behavior.openSourceLocation
