@@ -79,14 +79,14 @@ Before implementing renderer UI:
 
 ### Tailwind and styling
 
-- Tailwind utilities are the default and authoritative styling mechanism for
+- Tailwind utilities and shared UI primitives are the sole styling mechanism for
   renderer components.
-- Do not add product-specific or component-specific selectors to
+- Do not add product-specific, layout, or component-specific CSS classes to
   `src/renderer/styles.css`. Do not create component stylesheets, CSS modules,
   CSS-in-JS, or inline styles for static presentation.
-- `styles.css` is limited to Tailwind directives, theme variables and mappings,
-  base element rules, keyframes, third-party integration selectors, and
-  browser or Electron behavior that Tailwind cannot express.
+- `styles.css` is strictly restricted to Tailwind directives, theme variables and
+  mappings, base element rules, keyframes, third-party integration selectors (such
+  as Shiki syntax tokens), and browser or Electron behavior that Tailwind cannot express.
 - Dynamic geometry may use a narrowly typed React style object, preferably to
   set CSS custom properties. It must not encode static colors, spacing,
   typography, borders, shadows, or other ordinary presentation.
@@ -95,9 +95,6 @@ Before implementing renderer UI:
 - Reuse existing semantic theme tokens. A new semantic color requires light
   and dark variables plus an `@theme inline` mapping. Do not hard-code product
   colors in components.
-- Existing semantic CSS classes are migration debt. Do not copy them when
-  creating or changing a feature; migrate the touched presentation to Tailwind
-  when practical.
 
 ### Components and controls
 
