@@ -254,19 +254,15 @@ test("opens a released subagent in a read-only popup chat", async () => {
     await expect(subagent).not.toContainText(
       "The loop opened a bakery because it knew how to roll.",
     );
+    const openSubagentChat = subagent.getByRole("button", { name: "Open worker subagent chat" });
+    await expect(openSubagentChat).toHaveCount(1);
 
-    await subagent.getByRole("button", { name: "Open worker subagent chat" }).click();
+    await openSubagentChat.click();
     const popup = page.getByRole("dialog", { name: "worker subagent" });
     await expect(popup).toContainText("Released");
     await expect(popup).toContainText("The loop opened a bakery because it knew how to roll.");
     await expect(popup.locator("textarea")).toHaveCount(0);
     await popup.getByRole("button", { name: "Close worker subagent" }).click();
-
-    const status = page.getByRole("button", { name: "0 subagents running" });
-    await expect(status).toBeVisible();
-    await status.click();
-    const activeList = page.getByRole("dialog", { name: "Active subagents" });
-    await expect(activeList).toContainText("No subagents are running.");
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
@@ -363,6 +359,10 @@ test("never restores an interrupted subagent as running", async () => {
     await expect(subagent).toHaveCount(1);
     await expect(subagent).toHaveAttribute("data-status", "released");
     await expect(subagent).toContainText("Released");
+    await expect(subagent.getByRole("button", { name: "Open worker subagent chat" })).toHaveCount(
+      1,
+    );
+    await expect(log.locator(".animate-pulse")).toHaveCount(0);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

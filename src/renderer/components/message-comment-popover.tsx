@@ -4,15 +4,18 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
 import { observer } from "r-state-tree/react";
-import { IconButton } from "@/components/ui/icon-button";
-import { CloseIcon } from "@/components/ui/icons";
+import type { FloatingWindowGeometry } from "@/components/ui/floating-window";
+import {
+  clampFloatingWindowGeometry,
+  FloatingWindow,
+  FLOATING_WINDOW_MARGIN,
+  maximizedFloatingWindowGeometry,
+} from "@/components/ui/floating-window";
 import type { ReviewThread } from "../../models/ReviewThread";
 import type { ChatStore } from "../stores/ChatStore";
 import type { MessageCommentsStore } from "../stores/MessageCommentsStore";
@@ -24,57 +27,95 @@ export interface MessageCommentAnchorRect {
   left: number;
 }
 
+/** Gap between the anchor and the popup surface. */
+const ANCHOR_GAP = 10;
+/** Default popup width (26rem), clamped to the viewport. */
+const PANEL_DEFAULT_WIDTH = 416;
+/** Content-sized popups never grow past 34rem (or the viewport). */
+const PANEL_AUTO_HEIGHT_CLASS = "max-h-[min(34rem,calc(100vh-24px))]";
+
 function anchorRect(anchor: HTMLElement | MessageCommentAnchorRect) {
   return anchor instanceof HTMLElement ? anchor.getBoundingClientRect() : anchor;
 }
 
-function useAnchoredPosition(anchor: HTMLElement | MessageCommentAnchorRect) {
+/** Initial placement beside the anchor, preferring the right side. */
+function initialPanelGeometry(
+  anchor: HTMLElement | MessageCommentAnchorRect,
+): FloatingWindowGeometry {
+  const rect = anchorRect(anchor);
+  const width = Math.min(PANEL_DEFAULT_WIDTH, window.innerWidth - FLOATING_WINDOW_MARGIN * 2);
+  const rightSide = rect.right + ANCHOR_GAP;
+  const leftSide = rect.left - width - ANCHOR_GAP;
+  const left =
+    rightSide + width <= window.innerWidth - FLOATING_WINDOW_MARGIN
+      ? rightSide
+      : leftSide >= FLOATING_WINDOW_MARGIN
+        ? leftSide
+        : Math.min(
+            Math.max(FLOATING_WINDOW_MARGIN, rect.left),
+            Math.max(FLOATING_WINDOW_MARGIN, window.innerWidth - width - FLOATING_WINDOW_MARGIN),
+          );
+  const top = Math.min(
+    Math.max(FLOATING_WINDOW_MARGIN, rect.top - 14),
+    Math.max(FLOATING_WINDOW_MARGIN, window.innerHeight - FLOATING_WINDOW_MARGIN),
+  );
+  return { left, top, width, height: "auto" };
+}
+
+interface PanelState {
+  geometry: FloatingWindowGeometry;
+  maximized: boolean;
+  restore: FloatingWindowGeometry | null;
+}
+
+/**
+ * Anchored popup placement with free resizing and a maximized mode. Once the
+ * user moves or resizes the panel it stops following the anchor; window
+ * resizes only clamp it back into view.
+ */
+function useAnchoredPanel(anchor: HTMLElement | MessageCommentAnchorRect) {
   const surfaceRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<CSSProperties>({ visibility: "hidden" });
   const movedRef = useRef(false);
-  const clamp = useCallback((left: number, top: number) => {
-    const surface = surfaceRef.current?.getBoundingClientRect();
-    const padding = 12;
-    return {
-      left: Math.min(
-        Math.max(padding, left),
-        Math.max(padding, window.innerWidth - (surface?.width ?? 380) - padding),
-      ),
-      top: Math.min(
-        Math.max(padding, top),
-        Math.max(padding, window.innerHeight - (surface?.height ?? 360) - padding),
-      ),
-    };
-  }, []);
+  const [panel, setPanel] = useState<PanelState>(() => ({
+    geometry: initialPanelGeometry(anchor),
+    maximized: false,
+    restore: null,
+  }));
+
   const update = useCallback(() => {
-    if (movedRef.current) {
+    setPanel((current) => {
+      if (current.maximized) return { ...current, geometry: maximizedFloatingWindowGeometry() };
+      if (movedRef.current) {
+        const measuredAutoHeight = surfaceRef.current?.getBoundingClientRect().height;
+        return {
+          ...current,
+          geometry: clampFloatingWindowGeometry(current.geometry, measuredAutoHeight),
+        };
+      }
+      const rect = anchorRect(anchor);
       const surface = surfaceRef.current?.getBoundingClientRect();
-      if (surface) setPosition(clamp(surface.left, surface.top));
-      return;
-    }
-    const rect = anchorRect(anchor);
-    const surface = surfaceRef.current?.getBoundingClientRect();
-    const width = surface?.width || 380;
-    const height = surface?.height || 360;
-    const padding = 12;
-    const gap = 10;
-    const rightSide = rect.right + gap;
-    const leftSide = rect.left - width - gap;
-    const left =
-      rightSide + width <= window.innerWidth - padding
-        ? rightSide
-        : leftSide >= padding
-          ? leftSide
-          : Math.min(
-              Math.max(padding, rect.left),
-              Math.max(padding, window.innerWidth - width - padding),
-            );
-    const top = Math.min(
-      Math.max(padding, rect.top - 14),
-      Math.max(padding, window.innerHeight - height - padding),
-    );
-    setPosition({ left, top });
-  }, [anchor, clamp]);
+      const { width } = current.geometry;
+      const height =
+        current.geometry.height === "auto" ? (surface?.height ?? 360) : current.geometry.height;
+      const left =
+        rect.right + ANCHOR_GAP + width <= window.innerWidth - FLOATING_WINDOW_MARGIN
+          ? rect.right + ANCHOR_GAP
+          : rect.left - width - ANCHOR_GAP >= FLOATING_WINDOW_MARGIN
+            ? rect.left - width - ANCHOR_GAP
+            : Math.min(
+                Math.max(FLOATING_WINDOW_MARGIN, rect.left),
+                Math.max(
+                  FLOATING_WINDOW_MARGIN,
+                  window.innerWidth - width - FLOATING_WINDOW_MARGIN,
+                ),
+              );
+      const top = Math.min(
+        Math.max(FLOATING_WINDOW_MARGIN, rect.top - 14),
+        Math.max(FLOATING_WINDOW_MARGIN, window.innerHeight - height - FLOATING_WINDOW_MARGIN),
+      );
+      return { ...current, geometry: { ...current.geometry, left, top } };
+    });
+  }, [anchor]);
 
   useLayoutEffect(update, [update]);
   useEffect(() => {
@@ -89,54 +130,46 @@ function useAnchoredPosition(anchor: HTMLElement | MessageCommentAnchorRect) {
   useEffect(() => {
     const surface = surfaceRef.current;
     if (!surface || !("ResizeObserver" in globalThis)) return;
-    const observer = new globalThis.ResizeObserver(() => {
-      const rect = surface.getBoundingClientRect();
+    const resizeObserver = new globalThis.ResizeObserver(() => {
       movedRef.current = true;
-      setPosition(clamp(rect.left, rect.top));
+      update();
     });
-    observer.observe(surface);
-    return () => observer.disconnect();
-  }, [clamp]);
+    resizeObserver.observe(surface);
+    return () => resizeObserver.disconnect();
+  }, [update]);
 
-  const startDrag = useCallback(
-    (event: ReactPointerEvent<HTMLElement>) => {
-      if (event.button !== 0 || (event.target instanceof Element && event.target.closest("button")))
-        return;
-      const surface = surfaceRef.current;
-      if (!surface) return;
-      const rect = surface.getBoundingClientRect();
-      const origin = {
-        pointerX: event.clientX,
-        pointerY: event.clientY,
-        left: rect.left,
-        top: rect.top,
-      };
-      movedRef.current = true;
-      event.currentTarget.setPointerCapture(event.pointerId);
-      const move = (moveEvent: PointerEvent) =>
-        setPosition(
-          clamp(
-            origin.left + moveEvent.clientX - origin.pointerX,
-            origin.top + moveEvent.clientY - origin.pointerY,
-          ),
-        );
-      const stop = () => {
-        document.removeEventListener("pointermove", move);
-        document.removeEventListener("pointerup", stop);
-        document.removeEventListener("pointercancel", stop);
-      };
-      document.addEventListener("pointermove", move);
-      document.addEventListener("pointerup", stop);
-      document.addEventListener("pointercancel", stop);
-      event.preventDefault();
-    },
-    [clamp],
-  );
+  const handleGeometryChange = useCallback((geometry: FloatingWindowGeometry) => {
+    movedRef.current = true;
+    setPanel((current) => ({ ...current, geometry }));
+  }, []);
 
-  return { surfaceRef, position, startDrag };
+  const toggleMaximize = useCallback(() => {
+    setPanel((current) => {
+      if (current.maximized) {
+        return {
+          ...current,
+          maximized: false,
+          geometry: current.restore
+            ? clampFloatingWindowGeometry(current.restore)
+            : current.geometry,
+        };
+      }
+      return {
+        geometry: maximizedFloatingWindowGeometry(),
+        maximized: true,
+        restore: current.geometry,
+      };
+    });
+  }, []);
+
+  return { surfaceRef, panel, handleGeometryChange, toggleMaximize };
 }
 
-function useDismissablePopover(surfaceRef: RefObject<HTMLDivElement | null>, onClose: () => void) {
+function useDismissablePanel(
+  surfaceRef: RefObject<HTMLDivElement | null>,
+  onClose: () => void,
+  onEscape: () => void,
+) {
   useEffect(() => {
     const previouslyFocused =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -144,7 +177,7 @@ function useDismissablePopover(surfaceRef: RefObject<HTMLDivElement | null>, onC
       if (!(event.target instanceof Node) || !surfaceRef.current?.contains(event.target)) onClose();
     };
     const keydown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") onEscape();
     };
     document.addEventListener("pointerdown", dismiss);
     document.addEventListener("keydown", keydown);
@@ -153,9 +186,15 @@ function useDismissablePopover(surfaceRef: RefObject<HTMLDivElement | null>, onC
       document.removeEventListener("keydown", keydown);
       if (previouslyFocused?.isConnected) previouslyFocused.focus();
     };
-  }, [onClose, surfaceRef]);
+  }, [onClose, onEscape, surfaceRef]);
 }
 
+/**
+ * The authoritative popup chat window: anchored to a message or control,
+ * freely resizable via its edges and corners, maximizable to fill the window
+ * by double-clicking the header or using the green traffic light, and closed
+ * via the red traffic light, Escape, or clicking outside.
+ */
 export function ChatPopover({
   anchor,
   title,
@@ -169,30 +208,22 @@ export function ChatPopover({
   onClose(): void;
   children: ReactNode;
 }) {
-  const { surfaceRef, position, startDrag } = useAnchoredPosition(anchor);
-  useDismissablePopover(surfaceRef, onClose);
+  const { surfaceRef, panel, handleGeometryChange, toggleMaximize } = useAnchoredPanel(anchor);
+  useDismissablePanel(surfaceRef, onClose, panel.maximized ? toggleMaximize : onClose);
   return createPortal(
-    <div
-      ref={surfaceRef}
-      className="fixed z-50 flex max-h-[min(34rem,calc(100vh-24px))] w-[min(26rem,calc(100vw-24px))] flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl"
-      style={position}
-      role="dialog"
-      aria-label={title}
+    <FloatingWindow
+      surfaceRef={surfaceRef}
+      geometry={panel.geometry}
+      maximized={panel.maximized}
+      title={title}
+      eyebrow={eyebrow}
+      autoHeightClassName={PANEL_AUTO_HEIGHT_CLASS}
+      onClose={onClose}
+      onToggleMaximize={toggleMaximize}
+      onGeometryChange={handleGeometryChange}
     >
-      <header
-        className="flex cursor-grab select-none items-center justify-between border-b border-border bg-muted/70 px-3 py-2 active:cursor-grabbing"
-        onPointerDown={startDrag}
-      >
-        <div>
-          <span className="block text-xs font-medium text-muted-foreground">{eyebrow}</span>
-          <strong className="block text-xs font-semibold text-foreground">{title}</strong>
-        </div>
-        <IconButton tooltip={`Close ${title.toLowerCase()}`} onClick={onClose}>
-          <CloseIcon size={16} strokeWidth={1.9} />
-        </IconButton>
-      </header>
       {children}
-    </div>,
+    </FloatingWindow>,
     document.body,
   );
 }

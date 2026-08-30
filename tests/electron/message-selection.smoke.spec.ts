@@ -169,18 +169,20 @@ test("selects rendered TypeScript and opens a continuous, resizable selection ch
 
     const dialog = page.getByRole("dialog", { name: "Chat about this" });
     const input = page.getByLabel("Message about selected text");
-    await expect(dialog).toBeVisible();
-    await expect(dialog.locator(".transcript .user-message").first()).toHaveText(
-      "UtilityModePreferences",
+    const userMessages = dialog.locator(
+      'article[data-slot="message"]:has([data-slot="message-label"]:has-text("You"))',
     );
-    await expect(dialog.locator(".transcript article > div:first-child").first()).toHaveText("You");
+    await expect(dialog).toBeVisible();
+    await expect(userMessages.first()).toContainText("UtilityModePreferences");
+    await expect(userMessages.first().locator('[data-slot="message-label"]')).toHaveText("You");
     await expect(dialog.locator(".chat-layout-compact")).toBeVisible();
     await expect(input).toBeFocused();
     await input.pressSequentially("Why is this interface shaped this way?");
     await expect(input).toHaveValue("Why is this interface shaped this way?");
     await expect(dialog.getByRole("button", { name: "Send" })).toBeEnabled();
 
-    const dimensions = await dialog.evaluate((element) => {
+    // Default popup: fixed 26rem width, content-sized height capped at 34rem.
+    const defaultGeometry = await dialog.evaluate((element) => {
       const dialogRect = element.getBoundingClientRect();
       const composerRect = element.querySelector(".workbench-composer")?.getBoundingClientRect();
       return {
@@ -189,22 +191,96 @@ test("selects rendered TypeScript and opens a continuous, resizable selection ch
         bottomSpace: composerRect
           ? dialogRect.bottom - composerRect.bottom
           : Number.POSITIVE_INFINITY,
-        resize: getComputedStyle(element).resize,
       };
     });
-    expect(dimensions.width).toBe(520);
-    expect(dimensions.height).toBe(520);
-    expect(dimensions.bottomSpace).toBeLessThanOrEqual(14);
-    expect(dimensions.resize).toBe("both");
+    expect(defaultGeometry.width).toBe(416);
+    expect(defaultGeometry.height).toBeLessThanOrEqual(544);
+    expect(defaultGeometry.bottomSpace).toBeLessThanOrEqual(14);
 
     await dialog.getByRole("button", { name: "Send" }).click();
     await expect(dialog).toBeVisible();
     await expect(dialog.locator(".chat-embedded-workbench-composer")).toBeVisible();
     await expect(input).toBeVisible();
-    await expect(dialog.locator(".transcript .user-message")).toHaveCount(2);
-    await expect(dialog.locator(".transcript .user-message").nth(1)).toHaveText(
-      "Why is this interface shaped this way?",
+    await expect(userMessages).toHaveCount(2);
+    await expect(userMessages.nth(1)).toContainText("Why is this interface shaped this way?");
+
+    // Resize freely: drag the east edge narrower, then the south edge shorter.
+    const eastBox = await dialog.boundingBox();
+    if (!eastBox) throw new Error("Expected the selection chat dialog to have a bounding box");
+    await page.mouse.move(eastBox.x + eastBox.width - 4, eastBox.y + eastBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(eastBox.x + eastBox.width - 84, eastBox.y + eastBox.height / 2, {
+      steps: 6,
+    });
+    await page.mouse.up();
+    const narrowed = await dialog.evaluate((element) => element.getBoundingClientRect().width);
+    expect(Math.round(narrowed)).toBe(Math.round(eastBox.width) - 80);
+
+    const southBox = await dialog.boundingBox();
+    if (!southBox) throw new Error("Expected the selection chat dialog to have a bounding box");
+    await page.mouse.move(southBox.x + southBox.width / 2, southBox.y + southBox.height - 4);
+    await page.mouse.down();
+    await page.mouse.move(southBox.x + southBox.width / 2, southBox.y + southBox.height - 64, {
+      steps: 6,
+    });
+    await page.mouse.up();
+    const resizedGeometry = await dialog.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { width: Math.round(rect.width), height: Math.round(rect.height) };
+    });
+    expect(resizedGeometry.width).toBe(Math.round(eastBox.width) - 80);
+    expect(resizedGeometry.height).toBe(Math.round(southBox.height) - 60);
+
+    const dragHeader = async () => {
+      const headerBox = await dialog.locator("header").boundingBox();
+      if (!headerBox) throw new Error("Expected the selection chat dialog to have a header");
+      await page.mouse.dblclick(
+        headerBox.x + headerBox.width / 2,
+        headerBox.y + headerBox.height / 2,
+      );
+    };
+
+    // Double-click the header to maximize; double-click again to restore.
+    await dragHeader();
+    const maximizedGeometry = await dialog.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+      };
+    });
+    expect(maximizedGeometry.left).toBe(0);
+    expect(maximizedGeometry.top).toBe(0);
+    expect(maximizedGeometry.width).toBe(maximizedGeometry.innerWidth);
+    expect(maximizedGeometry.height).toBe(maximizedGeometry.innerHeight);
+
+    await dragHeader();
+    const restoredGeometry = await dialog.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { width: Math.round(rect.width), height: Math.round(rect.height) };
+    });
+    expect(restoredGeometry).toEqual(resizedGeometry);
+
+    // The green traffic light maximizes and restores; red closes back to the
+    // underlying conversation.
+    await dialog.getByRole("button", { name: "Maximize chat about this" }).click();
+    const lightMaximized = await dialog.evaluate(
+      (element) => element.getBoundingClientRect().width === window.innerWidth,
     );
+    expect(lightMaximized).toBe(true);
+    await dialog.getByRole("button", { name: "Restore chat about this" }).click();
+    const lightRestored = await dialog.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { width: Math.round(rect.width), height: Math.round(rect.height) };
+    });
+    expect(lightRestored).toEqual(resizedGeometry);
+    await dialog.getByRole("button", { name: "Close chat about this" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

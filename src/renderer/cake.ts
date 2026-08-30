@@ -33,6 +33,13 @@ export {
   EmptyStateTitle,
   type EmptyStateProps,
 } from "./components/ui/empty-state";
+export {
+  FloatingWindow,
+  clampFloatingWindowGeometry,
+  maximizedFloatingWindowGeometry,
+  type FloatingWindowGeometry,
+  type FloatingWindowProps,
+} from "./components/ui/floating-window";
 export { IconButton, type IconButtonProps } from "./components/ui/icon-button";
 export { Input, type InputProps } from "./components/ui/input";
 export { LoadingState, type LoadingStateVariant } from "./components/ui/loading-state";
@@ -56,6 +63,7 @@ export { StatusDot, type StatusDotProps } from "./components/ui/status-dot";
 export { Switch, type SwitchProps } from "./components/ui/switch";
 export { Textarea, type TextareaProps } from "./components/ui/textarea";
 export { TerminalView, type TerminalViewProps } from "./components/ui/terminal-view";
+export { TrafficLights, type TrafficLightsProps } from "./components/ui/traffic-lights";
 export { cn } from "./lib/utils";
 export { RootStore } from "./stores/RootStore";
 export { App as DefaultScene } from "./app";

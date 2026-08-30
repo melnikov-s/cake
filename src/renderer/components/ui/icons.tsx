@@ -51,9 +51,14 @@ export const PlusIcon = () => (
     <path d="M12 5v14M5 12h14" />
   </Icon>
 );
-export const ExpandIcon = () => (
-  <Icon size={15}>
+export const ExpandIcon = ({ size = 15, strokeWidth }: { size?: number; strokeWidth?: number }) => (
+  <Icon size={size} strokeWidth={strokeWidth}>
     <path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5" />
+  </Icon>
+);
+export const ShrinkIcon = ({ size = 15, strokeWidth }: { size?: number; strokeWidth?: number }) => (
+  <Icon size={size} strokeWidth={strokeWidth}>
+    <path d="M14 4h6v6M20 4l-6.5 6.5M10 20H4v-6M4 20l6.5-6.5" />
   </Icon>
 );
 export const LightningIcon = () => (
