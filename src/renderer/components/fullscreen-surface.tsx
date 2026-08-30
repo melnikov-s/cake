@@ -41,6 +41,7 @@ export function FullscreenSurface({
   onClose(): void;
   title: string;
 }) {
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
   const surfaceId = useRef(crypto.randomUUID()).current;
@@ -93,7 +94,15 @@ export function FullscreenSurface({
     document.body.style.overflow = "hidden";
     closeButton.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCloseRef.current();
+      if (event.key !== "Escape") return;
+      // Fullscreen surfaces sit directly below the shared overlay band, so
+      // nested layers (diagram/table fullscreen, image preview, dialogs) stack
+      // above and handle Escape themselves. Only dismiss when this surface owns
+      // the viewport center, i.e. nothing is stacked above. Environments without
+      // layout (unit tests) are treated as topmost.
+      const topmost = document.elementFromPoint?.(window.innerWidth / 2, window.innerHeight / 2);
+      if (topmost && surfaceRef.current && !surfaceRef.current.contains(topmost)) return;
+      onCloseRef.current();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => {
@@ -106,8 +115,12 @@ export function FullscreenSurface({
   if (!registered) return null;
 
   return createPortal(
+    // z-45 keeps the surface above all workbench content while staying below
+    // the shared z-50 overlay band, so overlays opened from within this surface
+    // (e.g. a Mermaid diagram's own fullscreen view) stack on top of it.
     <div
-      className="fixed inset-0 z-60 flex flex-col bg-background text-foreground animate-in fade-in duration-150"
+      ref={surfaceRef}
+      className="fixed inset-0 z-45 flex flex-col bg-background text-foreground animate-in fade-in duration-150"
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
