@@ -318,7 +318,6 @@ export function ModelPicker({
             <>
               <header className="flex items-center justify-between px-0.5">
                 <strong className="text-xs font-semibold text-foreground">Choose model</strong>
-                <span className="font-mono text-[10px] text-muted-foreground">ESC</span>
               </header>
               <div className="relative">
                 <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground">
