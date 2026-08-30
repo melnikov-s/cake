@@ -1,12 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { observer } from "r-state-tree/react";
-import type { ModelPreset, ThinkingLevel } from "../../ipc/session-contract";
-import type { ModelGroup } from "./model-combobox";
-import { ModelCombobox } from "./model-combobox";
-import { ThinkingLevelSelect } from "./thinking-level-select";
+import type { ModelPreset } from "../../ipc/session-contract";
+import type { ModelGroup } from "./model-picker";
+import { ModelPicker } from "./model-picker";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Switch } from "./ui/switch";
 import type { ModelPresetSettingsStore } from "../stores/ModelPresetSettingsStore";
 
 const emptyDraft = (): Omit<ModelPreset, "id"> => ({
@@ -47,10 +45,6 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
     setEditingId(undefined);
   };
   const modelValue = draft.provider && draft.modelId ? `${draft.provider}/${draft.modelId}` : "";
-  const selectedModel = groups
-    .flatMap((group) => group.models)
-    .find((model) => `${model.provider}/${model.id}` === modelValue);
-  const fastModeAvailable = selectedModel?.fastMode ?? false;
 
   return (
     <section className="border-t border-border py-5" aria-labelledby="model-presets-title">
@@ -148,46 +142,31 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
             />
           </label>
           <div className="flex items-center justify-between gap-6 text-sm">
-            <span className="text-xs font-medium text-foreground">Model</span>
-            <ModelCombobox
+            <span className="text-xs font-medium text-foreground">Model & reasoning</span>
+            <ModelPicker
               ariaLabel="Preset model"
+              placeholder="Choose model & reasoning"
               groups={groups}
-              value={modelValue}
-              variant="settings"
-              onSelect={(value) => {
-                const separator = value.indexOf("/");
-                const model = groups
-                  .flatMap((group) => group.models)
-                  .find((candidate) => `${candidate.provider}/${candidate.id}` === value);
+              showFastMode
+              value={
+                draft.provider && draft.modelId
+                  ? {
+                      provider: draft.provider,
+                      modelId: draft.modelId,
+                      thinkingLevel: draft.thinkingLevel,
+                      fastMode: draft.fastMode,
+                    }
+                  : undefined
+              }
+              onSelect={({ provider, modelId, thinkingLevel, fastMode }) => {
                 setDraft({
                   ...draft,
-                  provider: value.slice(0, separator),
-                  modelId: value.slice(separator + 1),
-                  thinkingLevel: model?.availableThinkingLevels.includes(draft.thinkingLevel)
-                    ? draft.thinkingLevel
-                    : (model?.availableThinkingLevels[0] ?? "off"),
-                  fastMode: model?.fastMode ? draft.fastMode : false,
+                  provider,
+                  modelId,
+                  thinkingLevel,
+                  fastMode,
                 });
               }}
-            />
-          </div>
-          <label className="flex items-center justify-between gap-6 text-sm">
-            <span className="text-xs font-medium text-foreground">Reasoning</span>
-            <ThinkingLevelSelect
-              ariaLabel="Preset reasoning"
-              value={draft.thinkingLevel}
-              levels={selectedModel?.availableThinkingLevels ?? []}
-              disabled={!selectedModel}
-              variant="settings"
-              onSelect={(thinkingLevel: ThinkingLevel) => setDraft({ ...draft, thinkingLevel })}
-            />
-          </label>
-          <div className="flex items-center justify-between gap-6 text-sm">
-            <span className="text-xs font-medium text-foreground">Fast mode</span>
-            <Switch
-              checked={draft.fastMode}
-              disabled={!fastModeAvailable}
-              onCheckedChange={(checked) => setDraft({ ...draft, fastMode: checked })}
             />
           </div>
           <div className="flex justify-end gap-2 border-t border-border pt-3">

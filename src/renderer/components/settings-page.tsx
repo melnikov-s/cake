@@ -4,9 +4,8 @@ import { Badge } from "./ui/badge";
 import { Callout } from "./ui/callout";
 import { Select } from "./ui/select";
 import { ChatConfigurationSelector } from "./chat-configuration-selector";
-import { ModelCombobox } from "./model-combobox";
+import { ModelPicker } from "./model-picker";
 import { ModelPresetSettings } from "./model-preset-settings";
-import { ThinkingLevelSelect } from "./thinking-level-select";
 import { PluginSettings } from "./plugin-settings";
 import { SettingsLinesField } from "./settings/settings-lines-field";
 import { SettingsPackagesField } from "./settings/settings-packages-field";
@@ -43,16 +42,6 @@ export const SettingsPage = observer(function SettingsPage({
   const error = settings.error ?? configuration?.error ?? store.error;
   const providerGroups = configuration?.modelsByProvider ?? [];
   const utilityModel = utility.model;
-  const utilityModelValue = utilityModel ? `${utilityModel.provider}/${utilityModel.modelId}` : "";
-  const defaultModelValue =
-    pi?.defaultProvider && pi.defaultModel ? `${pi.defaultProvider}/${pi.defaultModel}` : "";
-  const availableModels = providerGroups.flatMap((group) => group.models);
-  const defaultModel = availableModels.find(
-    (model) => `${model.provider}/${model.id}` === defaultModelValue,
-  );
-  const selectedUtilityModel = availableModels.find(
-    (model) => `${model.provider}/${model.id}` === utilityModelValue,
-  );
   return (
     <div className="mx-auto max-w-4xl px-6 py-8 pb-16">
       <div className="mb-8">
@@ -132,48 +121,39 @@ export const SettingsPage = observer(function SettingsPage({
           </Badge>
         </header>
         {pi ? (
-          <div className="grid gap-4">
-            <div className="flex items-center justify-between gap-6 text-sm">
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <strong className="text-xs font-medium text-foreground">Model</strong>
-                <small className="text-[11px] text-muted-foreground">
-                  Used when a plugin requests the default profile.
-                </small>
-              </span>
-              <ModelCombobox
-                ariaLabel="Default agent model"
-                groups={configuration?.connectedModelsByProvider ?? []}
-                value={defaultModelValue}
-                onSelect={(value) => {
-                  const separator = value.indexOf("/");
-                  if (separator > 0)
-                    void providers.setPiSetting({
-                      key: "defaultModel",
-                      provider: value.slice(0, separator),
-                      modelId: value.slice(separator + 1),
-                    });
-                }}
-                variant="settings"
-              />
-            </div>
-            <label className="flex items-center justify-between gap-6 text-sm">
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <strong className="text-xs font-medium text-foreground">Reasoning</strong>
-                <small className="text-[11px] text-muted-foreground">
-                  The reasoning effort attached to Pi’s default profile.
-                </small>
-              </span>
-              <ThinkingLevelSelect
-                ariaLabel="Default agent thinking level"
-                value={pi.defaultThinkingLevel ?? "off"}
-                levels={defaultModel?.availableThinkingLevels ?? []}
-                disabled={!defaultModel}
-                variant="settings"
-                onSelect={(value) =>
-                  void providers.setPiSetting({ key: "defaultThinkingLevel", value })
-                }
-              />
-            </label>
+          <div className="flex items-center justify-between gap-6 text-sm">
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <strong className="text-xs font-medium text-foreground">Model & reasoning</strong>
+              <small className="text-[11px] text-muted-foreground">
+                The default model and reasoning profile for new project chats and plugin agents.
+              </small>
+            </span>
+            <ModelPicker
+              ariaLabel="Default agent model"
+              placeholder="Choose default model"
+              groups={configuration?.connectedModelsByProvider ?? []}
+              value={
+                pi.defaultProvider && pi.defaultModel
+                  ? {
+                      provider: pi.defaultProvider,
+                      modelId: pi.defaultModel,
+                      thinkingLevel: pi.defaultThinkingLevel,
+                    }
+                  : undefined
+              }
+              showFastMode={false}
+              onSelect={({ provider, modelId, thinkingLevel }) => {
+                void providers.setPiSetting({
+                  key: "defaultModel",
+                  provider,
+                  modelId,
+                });
+                void providers.setPiSetting({
+                  key: "defaultThinkingLevel",
+                  value: thinkingLevel,
+                });
+              }}
+            />
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">Open a chat to load Pi’s defaults.</p>
@@ -194,62 +174,35 @@ export const SettingsPage = observer(function SettingsPage({
             Cake
           </Badge>
         </header>
-        <div className="grid gap-4">
-          <div className="flex items-center justify-between gap-6 text-sm">
-            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <strong className="text-xs font-medium text-foreground">Model</strong>
-              <small className="text-[11px] text-muted-foreground">
-                When unset, Cake makes no utility calls and session lists use the truncated first
-                message.
-              </small>
-            </span>
-            <div className="flex items-center gap-2">
-              <ModelCombobox
-                ariaLabel="Utility model"
-                groups={providerGroups}
-                value={utilityModelValue}
-                onSelect={(value) => {
-                  const model = availableModels.find(
-                    (candidate) => `${candidate.provider}/${candidate.id}` === value,
-                  );
-                  const thinkingLevel = model?.availableThinkingLevels.includes(
-                    utilityModel?.thinkingLevel ?? "off",
-                  )
-                    ? (utilityModel?.thinkingLevel ?? "off")
-                    : model?.availableThinkingLevels[0];
-                  void utility.select(value, thinkingLevel);
-                }}
-                variant="settings"
-              />
-              {utilityModel && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  type="button"
-                  disabled={utility.saving}
-                  onClick={() => void utility.clear()}
-                >
-                  Clear
-                </Button>
-              )}
-            </div>
-          </div>
-          <label className="flex items-center justify-between gap-6 text-sm">
-            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <strong className="text-xs font-medium text-foreground">Reasoning</strong>
-              <small className="text-[11px] text-muted-foreground">
-                The reasoning effort sent with utility requests.
-              </small>
-            </span>
-            <ThinkingLevelSelect
-              ariaLabel="Utility model thinking level"
-              value={utilityModel?.thinkingLevel ?? "off"}
-              levels={selectedUtilityModel?.availableThinkingLevels ?? []}
-              disabled={!utilityModel || !selectedUtilityModel || utility.saving}
-              variant="settings"
-              onSelect={(level) => void utility.selectThinkingLevel(level)}
-            />
-          </label>
+        <div className="flex items-center justify-between gap-6 text-sm">
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <strong className="text-xs font-medium text-foreground">Model & reasoning</strong>
+            <small className="text-[11px] text-muted-foreground">
+              When unset, Cake makes no utility calls and session lists use the truncated first
+              message.
+            </small>
+          </span>
+          <ModelPicker
+            ariaLabel="Utility model"
+            placeholder="No utility model"
+            allowClear
+            showFastMode={false}
+            groups={providerGroups}
+            value={
+              utilityModel
+                ? {
+                    provider: utilityModel.provider,
+                    modelId: utilityModel.modelId,
+                    thinkingLevel: utilityModel.thinkingLevel,
+                  }
+                : undefined
+            }
+            disabled={utility.saving}
+            onClear={() => void utility.clear()}
+            onSelect={({ provider, modelId, thinkingLevel }) => {
+              void utility.select(`${provider}/${modelId}`, thinkingLevel);
+            }}
+          />
         </div>
       </section>
 
