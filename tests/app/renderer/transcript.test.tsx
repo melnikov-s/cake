@@ -648,6 +648,79 @@ describe("Transcript scrolling", () => {
     expect(container.querySelector(".loading-state")).toBeNull();
   });
 
+  it("keeps the transcript following a streaming work log as its stable item grows", () => {
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        return { top: this.hasAttribute("data-response-start") ? 100 : 0 } as DOMRect;
+      });
+    const user: UiPart = {
+      id: "user-1",
+      kind: "text",
+      role: "user",
+      text: "Inspect the project",
+      status: "complete",
+    };
+    const first: UiPart = {
+      id: "reasoning-1",
+      kind: "reasoning",
+      text: "First thought",
+      status: "streaming",
+    };
+    const second: UiPart = {
+      id: "tool-1",
+      kind: "tool",
+      name: "read",
+      input: "file",
+      state: "running",
+    };
+
+    act(() =>
+      root.render(<TestTranscript sessionId="session-1" store={storeWith([user, first], true)} />),
+    );
+    scrollToIndex.mockClear();
+
+    act(() =>
+      root.render(
+        <TestTranscript sessionId="session-1" store={storeWith([user, first, second], true)} />,
+      ),
+    );
+
+    expect(scrollToIndex).toHaveBeenCalledWith({ index: 2, align: "end", behavior: "auto" });
+    rectSpy.mockRestore();
+  });
+
+  it("does not follow streaming work-log growth after the user scrolls away", () => {
+    const first: UiPart = {
+      id: "reasoning-1",
+      kind: "reasoning",
+      text: "First thought",
+      status: "streaming",
+    };
+    const second: UiPart = {
+      id: "tool-1",
+      kind: "tool",
+      name: "read",
+      input: "file",
+      state: "running",
+    };
+
+    act(() =>
+      root.render(<TestTranscript sessionId="session-1" store={storeWith([first], true)} />),
+    );
+    const transcript = container.querySelector<HTMLElement>(".transcript")!;
+    act(() => transcript.dispatchEvent(new WheelEvent("wheel", { bubbles: true })));
+    scrollToIndex.mockClear();
+
+    act(() =>
+      root.render(
+        <TestTranscript sessionId="session-1" store={storeWith([first, second], true)} />,
+      ),
+    );
+
+    expect(scrollToIndex).not.toHaveBeenCalled();
+  });
+
   it("keeps the streaming work log scrolled to its latest entry", () => {
     const first: UiPart = {
       id: "reasoning-1",

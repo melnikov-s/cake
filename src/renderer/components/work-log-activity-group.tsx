@@ -104,8 +104,16 @@ export const ActivityGroup = observer(function ActivityGroup({
     </div>
   );
   useLayoutEffect(() => {
-    if (!isStreaming || !open || !logRef.current || !logIsAtBottomRef.current) return;
-    logRef.current.scrollTop = logRef.current.scrollHeight;
+    if (!isStreaming) return;
+    const followLatestContent = () => {
+      if (open && logRef.current && logIsAtBottomRef.current)
+        logRef.current.scrollTop = logRef.current.scrollHeight;
+    };
+    followLatestContent();
+    // Nested virtualization and streamed Markdown can settle after layout effects.
+    // Follow once more after that layout so the inner container sees the final size.
+    const frame = requestAnimationFrame(followLatestContent);
+    return () => cancelAnimationFrame(frame);
   }, [activityVersion, isStreaming, open]);
   if (tools === 0 && !reasoningHasContent)
     return (

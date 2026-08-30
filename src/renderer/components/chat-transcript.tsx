@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
 import {
@@ -77,6 +85,11 @@ export const ChatTranscript = observer(function ChatTranscript({
     ...groupTranscriptParts(visibleParts),
     ...(showAssistantLoading ? [{ kind: "loading-state" as const, id: "loading-state" }] : []),
   ];
+  const streamingWorkLogVersion = store.streaming
+    ? JSON.stringify(
+        visibleParts.filter((part) => part.kind === "reasoning" || part.kind === "tool"),
+      )
+    : "";
   const latestUserPartIndex = visibleParts.findLastIndex(
     (part) =>
       (part.kind === "text" && part.role === "user") ||
@@ -204,8 +217,8 @@ export const ChatTranscript = observer(function ChatTranscript({
       if (pendingScrollState) store.setTranscriptScrollState(pendingScrollState);
     };
   }, [store]);
-  const followStreamingOutput = useCallback((isAtBottom: boolean) => {
-    if (!isAtBottom || !followOutputRef.current) return false;
+  const responseHasRoomToFollow = useCallback(() => {
+    if (!followOutputRef.current) return false;
     const scroller = virtualScrollerRef.current;
     const responseStart = scroller?.querySelector<HTMLElement>("[data-response-start]");
     if (
@@ -216,8 +229,27 @@ export const ChatTranscript = observer(function ChatTranscript({
       followOutputRef.current = false;
       return false;
     }
-    return "auto" as const;
+    return true;
   }, []);
+  const followStreamingOutput = useCallback(
+    (isAtBottom: boolean) => {
+      if (!isAtBottom || !responseHasRoomToFollow()) return false;
+      return "auto" as const;
+    },
+    [responseHasRoomToFollow],
+  );
+  const followStreamingWorkLog = useCallback(() => {
+    // A work log grows inside one stable virtual item, so Virtuoso's ordinary
+    // item-count-driven followOutput path does not consistently run for it.
+    if (!responseHasRoomToFollow()) return;
+    scrollToLatest();
+  }, [responseHasRoomToFollow, scrollToLatest]);
+  useLayoutEffect(() => {
+    if (!streamingWorkLogVersion) return;
+    followStreamingWorkLog();
+    const frame = requestAnimationFrame(followStreamingWorkLog);
+    return () => cancelAnimationFrame(frame);
+  }, [followStreamingWorkLog, streamingWorkLogVersion]);
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "o") {
