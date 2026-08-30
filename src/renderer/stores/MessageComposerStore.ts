@@ -255,7 +255,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       const attachments = this.submissionAttachments();
       const sessionId = this.props.sessionId();
       if (!sessionId) return;
-      this.props.sessionRegistry.updateDraftSession(sessionId, text, attachments);
+      await this.props.sessionRegistry.updateDraftSession(sessionId, text, attachments);
       this.clearComposer();
       this.editingDraftSession = false;
       return;
@@ -379,7 +379,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     const text = this.props.draft().trim();
     const attachments = this.submissionAttachments();
     if (!text && attachments.length === 0) return false;
-    this.props.sessionRegistry.createDraftSession(sessionId, text, attachments);
+    await this.props.sessionRegistry.createDraftSession(sessionId, text, attachments);
     this.clearComposer();
     if (text && this.props.client.generateSessionTitle)
       void this.props.client

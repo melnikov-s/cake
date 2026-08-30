@@ -29,6 +29,7 @@ export interface SessionRegistryStoreProps {
   isActive(sessionId: string): boolean;
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
   persist(): void;
+  persistNow(): Promise<void>;
   projectName(workspacePath: string): string;
   abort(): Promise<void>;
   renameSession(sessionId: string, name: string): Promise<void>;
@@ -204,7 +205,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     return this.draftSessionsById[sessionId];
   }
 
-  createDraftSession(sessionId: string, text: string, attachments: Attachment[]) {
+  async createDraftSession(sessionId: string, text: string, attachments: Attachment[]) {
     if (!this.temporarySessionIds.has(sessionId))
       throw new Error("Only a new session can be saved as a draft");
     this.draftSessionsById[sessionId] = {
@@ -220,10 +221,10 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
       this.props.projectName(session.workspacePath),
       { draft: true },
     );
-    this.props.persist();
+    await this.props.persistNow();
   }
 
-  updateDraftSession(sessionId: string, text: string, attachments: Attachment[]) {
+  async updateDraftSession(sessionId: string, text: string, attachments: Attachment[]) {
     const current = this.draftSessionsById[sessionId];
     if (!current) throw new Error("Cake could not find that draft session");
     this.draftSessionsById[sessionId] = {
@@ -231,7 +232,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
       attachments: attachments.map((attachment) => ({ ...attachment })),
       resolved: current.resolved,
     };
-    this.props.persist();
+    await this.props.persistNow();
   }
 
   activateDraftSession(sessionId: string) {

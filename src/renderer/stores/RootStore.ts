@@ -299,6 +299,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       isActive: (sessionId) => this.projectWorkbenchStore.isActiveSession(sessionId),
       openCommandPane: (pane) => this.projectWorkbenchStore.commandPaneStore.open(pane),
       persist: () => this.windowPersistence.schedule(),
+      persistNow: () => this.windowPersistence.flush(),
       projectName: (workspacePath) => this.projectCatalogStore.nameForPath(workspacePath),
       abort: () => this.projectWorkbenchStore.abort(),
       renameSession: (sessionId, name) =>

@@ -56,15 +56,16 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
     if (this.persistTimer) clearTimeout(this.persistTimer);
     this.persistTimer = setTimeout(() => {
       this.persistTimer = undefined;
-      const state = this.viewState();
-      this.saveQueue = this.saveQueue
-        .then(async () => {
-          if (!this.signal.aborted) await this.props.client.saveWindowState(state);
-        })
-        .catch((error) => {
-          if (!this.signal.aborted) this.setError(error);
-        });
+      void this.enqueueSave();
     }, 180);
+  }
+
+  /** Immediately commits the latest view state before a UI action can claim durable success. */
+  flush() {
+    if (!this.hydrated) return this.hydration ?? Promise.resolve();
+    if (this.persistTimer) clearTimeout(this.persistTimer);
+    this.persistTimer = undefined;
+    return this.enqueueSave();
   }
 
   applySessionRestore(
@@ -166,6 +167,18 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
       pendingCakeChat: this.props.globalChat().pendingSessionState(),
       lastChatConfiguration: this.props.settings().modelPresets.lastUsedConfiguration,
     };
+  }
+
+  private enqueueSave() {
+    const state = this.viewState();
+    this.saveQueue = this.saveQueue
+      .then(async () => {
+        if (!this.signal.aborted) await this.props.client.saveWindowState(state);
+      })
+      .catch((error) => {
+        if (!this.signal.aborted) this.setError(error);
+      });
+    return this.saveQueue;
   }
 
   private setError(error: unknown) {

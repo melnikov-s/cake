@@ -1169,6 +1169,50 @@ describe("ProjectWorkbenchStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("restores multiple saved drafts into the sidebar while another session is selected", async () => {
+    const desktop = createDesktopClient("/project");
+    desktop.client.loadWindowState = vi.fn(async () => ({
+      projectPath: "/project",
+      selectedSessionId: "session-1",
+      recentProjectPaths: ["/project"],
+      draft: "",
+      theme: "system" as const,
+      workLogViewMode: "auto" as const,
+      workLogsExpansion: "collapsed" as const,
+      draftsBySession: {},
+      pendingProjectSessions: [
+        {
+          sessionId: "draft-1",
+          workspacePath: "/project",
+          draft: "",
+          name: "First saved draft",
+          draftSession: true,
+          stagedPrompt: { text: "First prompt", attachments: [] },
+        },
+        {
+          sessionId: "draft-2",
+          workspacePath: "/project",
+          draft: "",
+          name: "Second saved draft",
+          draftSession: true,
+          stagedPrompt: { text: "Second prompt", attachments: [] },
+        },
+      ],
+    }));
+    const { root } = mountTestStore(desktop.client);
+    await flush();
+
+    expect(root.sidebarStore.projectSessions("/project")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "draft-1", title: "First saved draft", draft: true }),
+        expect.objectContaining({ id: "draft-2", title: "Second saved draft", draft: true }),
+      ]),
+    );
+    expect(root.sessionRegistry.draftSessionPrompt("draft-1")?.text).toBe("First prompt");
+    expect(root.sessionRegistry.draftSessionPrompt("draft-2")?.text).toBe("Second prompt");
+    root[Symbol.dispose]();
+  });
+
   it("gates project resources on trust and applies the authoritative snapshot", async () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
@@ -2565,6 +2609,17 @@ describe("ProjectWorkbenchStore", () => {
     session.chatStore.setDraft("Investigate the flaky tests");
 
     await expect(session.composerStore.createDraftSession()).resolves.toBe(true);
+    expect(desktop.client.saveWindowState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pendingProjectSessions: expect.arrayContaining([
+          expect.objectContaining({
+            sessionId: session.sessionId,
+            draftSession: true,
+            stagedPrompt: expect.objectContaining({ text: "Investigate the flaky tests" }),
+          }),
+        ]),
+      }),
+    );
     await vi.waitFor(() =>
       expect(root.sessionCatalogStore.find(session.sessionId)).toMatchObject({
         title: "Investigate flaky tests",
