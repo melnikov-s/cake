@@ -8,6 +8,7 @@ import { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
 import { SidebarStore } from "./SidebarStore";
 import { ReviewsStore } from "./ReviewsStore";
 import { SettingsStore } from "./SettingsStore";
+import type { ModelPresetSettingsStoreInstance } from "./ModelPresetSettingsStore";
 import { ExtensionUiStore } from "./ExtensionUiStore";
 import { AppControlBridge } from "../app-control-bridge";
 import { GlobalChatStore } from "./GlobalChatStore";
@@ -24,7 +25,10 @@ import { ToastStore } from "./ToastStore";
 import { TerminalStore, type TerminalTarget } from "./TerminalStore";
 import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
 
-export class RootStore extends Store<{ client: DesktopClient }> {
+export class RootStore extends Store<{
+  client: DesktopClient;
+  modelPresets: ModelPresetSettingsStoreInstance;
+}> {
   readonly appControl: AppControlBridge;
   private readonly pendingProjectPartUpdates = new Map<string, Map<string, UiPart>>();
   private projectPartFlushFrame: number | undefined;
@@ -423,6 +427,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       client: this.client,
       sessionContext: () => this.projectWorkbenchStore.sessionContext(),
       operations: this.sessionOperationCoordinator,
+      modelPresets: this.props.modelPresets,
     });
   }
 

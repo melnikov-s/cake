@@ -1,14 +1,19 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { Effect, Layer, Stream } from "effect";
+import { mount } from "effect-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { jsonValueSchema } from "../../../../src/ipc/json-contract";
+import { CakeIpcClient, type CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
+import type { ModelPresetProjection } from "../../../../src/domain/modelPresets";
 import type { SessionPreview, SessionSnapshot } from "../../../../src/ipc/session-contract";
 import type { WorktreeStatus } from "../../../../src/ipc/worktree-contract";
 import { type CakePluginSession, usePluginSession } from "../../../../src/renderer/cake";
 import type { DesktopClient, DesktopClientEvent } from "../../../../src/renderer/desktop-client";
 import { mountRootStore } from "../../../../src/renderer/mount-root-store";
 import type { ProjectWorkbenchStore } from "../../../../src/renderer/stores/ProjectWorkbenchStore";
+import { ModelPresetSettingsStoreFactory } from "../../../../src/renderer/stores/ModelPresetSettingsStore";
 
 const snapshot: SessionSnapshot = {
   workspacePath: "/project",
@@ -152,16 +157,6 @@ function createDesktopClient(restoredPath?: string) {
       unreadSessionIds: [],
       trustedProjectPaths: [],
       utilityModel: model,
-    })),
-    listModelPresets: vi.fn(async () => ({ presets: [] })),
-    createModelPreset: vi.fn(async (preset) => ({
-      presets: [{ ...preset, id: crypto.randomUUID() }],
-    })),
-    updateModelPreset: vi.fn(async (preset) => ({ presets: [preset] })),
-    removeModelPreset: vi.fn(async () => ({ presets: [] })),
-    setDefaultModelPreset: vi.fn(async (defaultPresetId) => ({
-      presets: [],
-      defaultPresetId,
     })),
     listSessions: vi.fn(async () => ({ sessions: [], reviewThreads: [] })),
     listCakeChatSessions: vi.fn(async () => []),
@@ -318,10 +313,89 @@ async function flush() {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-function mountTestStore(client: DesktopClient) {
-  const root = mountRootStore(client);
+const modelPresetHandles: Array<{ dispose: Effect.Effect<void> }> = [];
+
+function mountTestStore(
+  client: DesktopClient,
+  initialModelPresets: ModelPresetProjection = { presets: [] },
+) {
+  let modelPresets = initialModelPresets;
+  const effectClient = CakeIpcClient.of({
+    application: {
+      getHomeDirectory: () => Effect.succeed("/home/user"),
+      getState: () => Effect.die("not used"),
+    },
+    models: {
+      list: () =>
+        Effect.promise(() => client.listModels()).pipe(
+          Effect.map((models) =>
+            models.map(({ availableThinkingLevels, available, ...model }) => ({
+              ...model,
+              fastMode: model.fastMode ?? false,
+              supportedThinkingLevels: [...availableThinkingLevels],
+              input: [...model.input],
+              authTypes: [...model.authTypes],
+              available: available !== false,
+            })),
+          ),
+        ),
+    },
+    modelPresets: {
+      list: () => Effect.succeed(modelPresets),
+      create: (input) => {
+        modelPresets = {
+          ...modelPresets,
+          presets: [...modelPresets.presets, { ...input, id: crypto.randomUUID() }],
+        };
+        return Effect.succeed(modelPresets);
+      },
+      update: (input) => {
+        modelPresets = {
+          ...modelPresets,
+          presets: modelPresets.presets.map((preset) => (preset.id === input.id ? input : preset)),
+        };
+        return Effect.succeed(modelPresets);
+      },
+      remove: (id) => {
+        modelPresets = {
+          presets: modelPresets.presets.filter((preset) => preset.id !== id),
+          defaultPresetId:
+            modelPresets.defaultPresetId === id ? undefined : modelPresets.defaultPresetId,
+        };
+        return Effect.succeed(modelPresets);
+      },
+      setDefault: (id) => {
+        modelPresets = { ...modelPresets, defaultPresetId: id };
+        return Effect.succeed(modelPresets);
+      },
+      resolve: () => Effect.die("not used"),
+    },
+    foundation: {
+      typedFailure: () => Effect.void,
+      stream: () => Stream.empty,
+      delay: () => Effect.void,
+      activeRequests: () => Effect.succeed({ delays: 0, streams: 0 }),
+    },
+  } satisfies CakeIpcClientService);
+  const modelPresetHandle = Effect.runSync(
+    mount(ModelPresetSettingsStoreFactory, {
+      catalog: [],
+      loading: true,
+      saving: false,
+      sectionRequestRevision: 0,
+      revision: 0,
+    }).pipe(Effect.provide(Layer.succeed(CakeIpcClient)(effectClient))),
+  );
+  modelPresetHandles.push(modelPresetHandle);
+  const root = mountRootStore(client, modelPresetHandle.instance);
   return { root, store: root.projectWorkbenchStore };
 }
+
+afterEach(async () => {
+  await Promise.all(
+    modelPresetHandles.splice(0).map((handle) => Effect.runPromise(handle.dispose)),
+  );
+});
 
 async function openSnapshot(
   store: ProjectWorkbenchStore,
@@ -1266,12 +1340,11 @@ describe("ProjectWorkbenchStore", () => {
       thinkingLevel: "high" as const,
       fastMode: true,
     };
-    vi.mocked(desktop.client.listModelPresets).mockResolvedValue({
+    const { root, store } = mountTestStore(desktop.client, {
       presets: [preset],
       defaultPresetId: preset.id,
     });
-    const { root, store } = mountTestStore(desktop.client);
-    await root.settingsStore.modelPresets.hydrate();
+    await Effect.runPromise(root.settingsStore.modelPresets.awaitHydrated());
     await flush();
     await openSnapshot(store, desktop);
 

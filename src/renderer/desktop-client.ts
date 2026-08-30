@@ -11,7 +11,6 @@ import type {
   SessionSummary,
   PiSettingUpdate,
   ThinkingLevel,
-  ModelPreset,
   UtilityModel,
   ExtensionUiEvent,
   UiPart,
@@ -314,26 +313,6 @@ export interface DesktopClient {
     snapshot: EditorAnnotationSnapshot,
   ): Promise<void>;
   setUtilityModel(model: UtilityModel | undefined): Promise<ApplicationState>;
-  listModelPresets(): Promise<{
-    presets: readonly ModelPreset[];
-    defaultPresetId?: string;
-  }>;
-  createModelPreset(preset: Omit<ModelPreset, "id">): Promise<{
-    presets: readonly ModelPreset[];
-    defaultPresetId?: string;
-  }>;
-  updateModelPreset(preset: ModelPreset): Promise<{
-    presets: readonly ModelPreset[];
-    defaultPresetId?: string;
-  }>;
-  removeModelPreset(id: string): Promise<{
-    presets: readonly ModelPreset[];
-    defaultPresetId?: string;
-  }>;
-  setDefaultModelPreset(id?: string): Promise<{
-    presets: readonly ModelPreset[];
-    defaultPresetId?: string;
-  }>;
   listSessions(): Promise<{ sessions: GlobalSessionSummary[]; reviewThreads: ReviewThread[] }>;
   listCakeChatSessions(): Promise<SessionSummary[]>;
   loadCakeChatSession(sessionId: string): Promise<SessionPreview | undefined>;
@@ -732,7 +711,7 @@ async function accept(
 
 export function createDesktopClient(
   bridge: CakeDesktopBridge,
-  rpcClient: Pick<CakeIpcPromiseClient, "application" | "models" | "modelPresets">,
+  rpcClient: Pick<CakeIpcPromiseClient, "application" | "models">,
 ): DesktopClient {
   return {
     async chooseProject() {
@@ -1088,21 +1067,6 @@ export function createDesktopClient(
       if (response.type !== "application-state-updated")
         throw new Error("Cake could not update the utility model");
       return response.state;
-    },
-    listModelPresets() {
-      return rpcClient.modelPresets.list();
-    },
-    createModelPreset(preset) {
-      return rpcClient.modelPresets.create(preset);
-    },
-    updateModelPreset(preset) {
-      return rpcClient.modelPresets.update(preset);
-    },
-    removeModelPreset(id) {
-      return rpcClient.modelPresets.remove(id);
-    },
-    setDefaultModelPreset(id) {
-      return rpcClient.modelPresets.setDefault(id);
     },
     async listSessions() {
       const response = await bridge.request({ type: "list-sessions" });

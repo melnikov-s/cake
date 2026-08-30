@@ -1,9 +1,7 @@
-import { Context, Effect, Layer, ManagedRuntime, Stream } from "effect";
+import { Context, Effect, Layer, Stream, type ManagedRuntime } from "effect";
 import { RpcClient } from "effect/unstable/rpc";
 import type { RpcClientError } from "effect/unstable/rpc";
 import { CakeRpc, type FoundationFailure } from "../protocol/CakeRpc";
-import { makeElectronRpcClientProtocol } from "../transport/ElectronRpcClientProtocol";
-import type { ElectronRpcTransport } from "../transport/ElectronRpcTransport";
 import type { RendererApplicationState } from "../../domain/application-data";
 import type {
   DefaultModelPresetNotFoundError,
@@ -42,7 +40,7 @@ type ModelPresetResolutionError =
   | PiModelCatalogError
   | TransportError;
 
-interface CakeIpcClientService {
+export interface CakeIpcClientService {
   readonly application: {
     readonly getHomeDirectory: () => Effect.Effect<string, TransportError>;
     readonly getState: () => Effect.Effect<RendererApplicationState, TransportError>;
@@ -81,11 +79,11 @@ interface CakeIpcClientService {
   };
 }
 
-class CakeIpcClient extends Context.Service<CakeIpcClient, CakeIpcClientService>()(
+export class CakeIpcClient extends Context.Service<CakeIpcClient, CakeIpcClientService>()(
   "cake/ipc/client/CakeIpcClient",
 ) {}
 
-const CakeIpcClientLive = Layer.effect(
+export const CakeIpcClientLive = Layer.effect(
   CakeIpcClient,
   Effect.gen(function* () {
     const client = yield* RpcClient.make(CakeRpc, { flatten: true, spanPrefix: "CakeIpcClient" });
@@ -145,14 +143,6 @@ export interface CakeIpcPromiseClient {
   readonly models: {
     readonly list: () => Promise<ReadonlyArray<PiModel>>;
   };
-  readonly modelPresets: {
-    readonly list: () => Promise<ModelPresetProjection>;
-    readonly create: (input: ModelPresetCreateInput) => Promise<ModelPresetProjection>;
-    readonly update: (input: ModelPresetUpdateInput) => Promise<ModelPresetProjection>;
-    readonly remove: (id: string) => Promise<ModelPresetProjection>;
-    readonly setDefault: (id?: string) => Promise<ModelPresetProjection>;
-    readonly resolve: (id: string) => Promise<ModelSelection>;
-  };
   readonly foundation: {
     readonly typedFailure: () => Promise<void>;
     readonly stream: (input: {
@@ -162,12 +152,11 @@ export interface CakeIpcPromiseClient {
     readonly delay: (durationMs: number, signal?: AbortSignal) => Promise<void>;
     readonly activeRequests: () => Promise<{ readonly delays: number; readonly streams: number }>;
   };
-  readonly dispose: () => Promise<void>;
 }
 
-export function makeCakeIpcPromiseClient(transport: ElectronRpcTransport): CakeIpcPromiseClient {
-  const live = CakeIpcClientLive.pipe(Layer.provide(makeElectronRpcClientProtocol(transport)));
-  const runtime = ManagedRuntime.make(live);
+export type CakeIpcRuntime = ManagedRuntime.ManagedRuntime<CakeIpcClient, never>;
+
+export function makeCakeIpcPromiseClient(runtime: CakeIpcRuntime): CakeIpcPromiseClient {
   const run = <A, E>(effect: Effect.Effect<A, E, CakeIpcClient>, signal?: AbortSignal) =>
     runtime.runPromise(effect, signal ? { signal } : undefined);
   const withClient = <A, E>(
@@ -182,14 +171,6 @@ export function makeCakeIpcPromiseClient(transport: ElectronRpcTransport): CakeI
     models: {
       list: () => run(withClient((client) => client.models.list())),
     },
-    modelPresets: {
-      list: () => run(withClient((client) => client.modelPresets.list())),
-      create: (input) => run(withClient((client) => client.modelPresets.create(input))),
-      update: (input) => run(withClient((client) => client.modelPresets.update(input))),
-      remove: (id) => run(withClient((client) => client.modelPresets.remove(id))),
-      setDefault: (id) => run(withClient((client) => client.modelPresets.setDefault(id))),
-      resolve: (id) => run(withClient((client) => client.modelPresets.resolve(id))),
-    },
     foundation: {
       typedFailure: () => run(withClient((client) => client.foundation.typedFailure())),
       stream: (input) =>
@@ -201,6 +182,5 @@ export function makeCakeIpcPromiseClient(transport: ElectronRpcTransport): CakeI
         ),
       activeRequests: () => run(withClient((client) => client.foundation.activeRequests())),
     },
-    dispose: () => runtime.dispose(),
   };
 }

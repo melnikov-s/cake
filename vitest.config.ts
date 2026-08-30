@@ -3,6 +3,7 @@ import { defineConfig } from "vitest/config";
 import QuietReporter from "./scripts/vitest-quiet-reporter";
 
 export default defineConfig({
+  esbuild: { jsx: "automatic" },
   resolve: {
     alias: {
       "@": resolve(import.meta.dirname, "src/renderer"),

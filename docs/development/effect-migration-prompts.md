@@ -27,8 +27,9 @@ Every prompt below incorporates these requirements:
    ownership; the installed package decides APIs; the local skill decides
    Effect coding conventions within those boundaries.
 2. For renderer state work, also read
-   `/Users/user/dev/effect-state-tree/README.md`, its
-   `skills/effect-state-tree/SKILL.md`, and every linked reference completely.
+   `/Users/user/dev/effect-state-tree/README.md`, Cake's vendored
+   `.agents/skills/effect-state-tree/SKILL.md`, and every linked reference
+   completely.
 3. Verify repository state, prior-phase completion, and local package state.
    Never infer completion from this runbook.
 4. State the authority, owner, lifetime, persistence boundary, and concurrency

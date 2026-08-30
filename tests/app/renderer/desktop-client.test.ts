@@ -5,7 +5,6 @@ import type {
   DesktopRequest,
   DesktopResponse,
 } from "../../../src/ipc/desktop-ipc";
-import type { ModelPreset } from "../../../src/ipc/session-contract";
 import { createDesktopClient } from "../../../src/renderer/desktop-client";
 
 function createBridge() {
@@ -108,18 +107,6 @@ function createBridge() {
       },
       models: {
         list: async () => [],
-      },
-      modelPresets: {
-        list: async () => ({ presets: [] }),
-        create: async (preset: Omit<ModelPreset, "id">) => ({
-          presets: [{ ...preset, id: crypto.randomUUID() }],
-        }),
-        update: async (preset: ModelPreset) => ({ presets: [preset] }),
-        remove: async () => ({ presets: [] }),
-        setDefault: async (defaultPresetId?: string) => ({ presets: [], defaultPresetId }),
-        resolve: async () => {
-          throw new Error("not mocked");
-        },
       },
     },
     request,

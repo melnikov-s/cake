@@ -31,8 +31,9 @@ state, and development boundaries behind these principles.
   `docs/development/effect-migration.md`.
 - Before implementing or changing renderer behavior that introduces, reads,
   writes, persists, or coordinates application state, read the local
-  effect-state-tree package's `README.md`, `skills/effect-state-tree/SKILL.md`,
-  and every reference it routes to before editing.
+  effect-state-tree package's `README.md`, Cake's vendored
+  `.agents/skills/effect-state-tree/SKILL.md`, and every reference it routes to
+  before editing.
 - For plugins, scenes, widgets, or plugin recovery, read the available
   `cake-plugin-authoring` skill before editing.
 - Custom Renderer is a future, unimplemented design and is explicitly outside

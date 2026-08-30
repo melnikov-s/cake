@@ -1,13 +1,15 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { observer } from "r-state-tree/react";
-import type { ModelPreset } from "../../ipc/session-contract";
+import { observer, useStore } from "effect-state-tree/react";
+import type { ModelPresetUpdateInput as ModelPreset } from "../../ipc/protocol/modelPresets";
 import { ModelPicker, reasoningLabel } from "./model-picker";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import type {
-  ModelPresetResolutionStatus,
+import { Callout } from "./ui/callout";
+import { LoadingState } from "./ui/loading-state";
+import {
   ModelPresetSettingsStore,
+  type ModelPresetResolutionStatus,
 } from "../stores/ModelPresetSettingsStore";
 
 const emptyDraft = (): Omit<ModelPreset, "id"> => ({
@@ -27,21 +29,18 @@ const unresolvedLabel = (status: ModelPresetResolutionStatus) => {
   return undefined;
 };
 
-export const ModelPresetSettings = observer(function ModelPresetSettings({
-  settings,
-}: {
-  settings: ModelPresetSettingsStore;
-}) {
+export const ModelPresetSettings = observer(function ModelPresetSettings() {
+  const settings = useStore(ModelPresetSettingsStore);
   const groups = settings.modelsByProvider;
   const [editingId, setEditingId] = useState<string | "new" | undefined>();
   const [draft, setDraft] = useState(emptyDraft);
 
   useEffect(() => {
-    if (!settings.sectionRequestRevision) return;
+    if (!settings.sectionRequestRevision.value) return;
     requestAnimationFrame(() =>
       document.getElementById("model-presets-title")?.scrollIntoView({ behavior: "smooth" }),
     );
-  }, [settings.sectionRequestRevision]);
+  }, [settings.sectionRequestRevision.value]);
 
   const begin = (preset?: ModelPreset) => {
     setEditingId(preset?.id ?? "new");
@@ -73,8 +72,15 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
           New preset
         </Button>
       </header>
+      {settings.error.value && (
+        <Callout variant="error" className="mb-3">
+          <strong>Model Preset operation failed</strong>
+          <span className="text-xs">{settings.error.value}</span>
+        </Callout>
+      )}
       <div className="grid gap-3">
-        {settings.presets.length === 0 && !editingId && (
+        {settings.loading.value && <LoadingState label="Loading Model Presets" variant="Dots" />}
+        {!settings.loading.value && settings.presets.length === 0 && !editingId && (
           <p className="text-xs text-muted-foreground">
             No presets yet. Create one for your preferred setup.
           </p>
@@ -195,7 +201,7 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
             <Button
               size="sm"
               type="submit"
-              disabled={!draft.name.trim() || !modelValue || settings.saving}
+              disabled={!draft.name.trim() || !modelValue || settings.saving.value}
             >
               Save preset
             </Button>

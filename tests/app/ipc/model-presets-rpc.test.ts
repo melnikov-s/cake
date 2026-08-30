@@ -1,13 +1,14 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import {
   ModelPresetCreateInput,
   ModelPresetProjection,
   ModelPresetUpdateInput,
 } from "../../../src/domain/modelPresets";
-import { makeCakeIpcPromiseClient } from "../../../src/ipc/client/CakeIpcClient";
+import { CakeIpcClient } from "../../../src/ipc/client/CakeIpcClient";
 import { desktopRequestSchema } from "../../../src/ipc/desktop-ipc";
 import { ModelSelection } from "../../../src/services/pi/model-data";
+import { makeRendererRuntime } from "../../../src/renderer/RendererLive";
 
 const preset = {
   id: "00000000-0000-4000-8000-000000000001",
@@ -72,13 +73,14 @@ describe("Model Preset Effect RPC contract", () => {
     ).toThrow();
   });
 
-  it("exposes generated clients grouped by models and modelPresets", async () => {
-    const client = makeCakeIpcPromiseClient({
+  it("exposes generated Effect clients grouped by models and modelPresets", async () => {
+    const runtime = makeRendererRuntime({
       send() {},
       subscribe() {
         return () => {};
       },
     });
+    const client = await runtime.runPromise(Effect.service(CakeIpcClient));
     expect(Object.keys(client.models)).toEqual(["list"]);
     expect(Object.keys(client.modelPresets)).toEqual([
       "list",
@@ -88,7 +90,7 @@ describe("Model Preset Effect RPC contract", () => {
       "setDefault",
       "resolve",
     ]);
-    await client.dispose();
+    await runtime.dispose();
   });
 
   it("has no legacy bulk preset or session-less model-list request", () => {
