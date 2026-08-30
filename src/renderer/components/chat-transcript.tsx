@@ -8,6 +8,7 @@ import {
 } from "@/components/ai-elements/conversation";
 import { AnnotationDraftPopover } from "@/components/annotation-draft-popover";
 import { LoadingState } from "@/components/ui/loading-state";
+import { TouchedFiles } from "@/components/touched-files";
 import {
   MessageCommentDraftPopover,
   type MessageCommentAnchorRect,
@@ -282,6 +283,14 @@ export const ChatTranscript = observer(function ChatTranscript({
     document.addEventListener("contextmenu", handler);
     return () => document.removeEventListener("contextmenu", handler);
   }, [behavior.showSelectionContextMenu, messageComments, openSelectionDraft, store]);
+  const touchedFiles = (
+    <TouchedFiles
+      parts={store.parts}
+      workspacePath={behavior.workspacePath}
+      open={store.touchedFilesOpen}
+      onOpenChange={(open) => store.setTouchedFilesOpen(open)}
+    />
+  );
   const selectionOverlays = (
     <>
       {draftAnchor && messageComments && (
@@ -350,6 +359,7 @@ export const ChatTranscript = observer(function ChatTranscript({
                 details={error.details}
               />
             )}
+            {touchedFiles}
           </Conversation>
         </div>
       </>
@@ -373,6 +383,7 @@ export const ChatTranscript = observer(function ChatTranscript({
                   details={error.details}
                 />
               )}
+              {touchedFiles}
             </div>
           </TranscriptList>
         </div>
@@ -405,6 +416,7 @@ export const ChatTranscript = observer(function ChatTranscript({
                   details={error.details}
                 />
               )}
+              {touchedFiles}
             </div>
           ),
         }}

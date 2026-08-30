@@ -102,6 +102,7 @@ function Transcript({
   errorTitle,
   messageNavigationRequest,
   addAnnotation,
+  virtualized = true,
 }: {
   parts: UiPart[];
   sessionId: string;
@@ -119,6 +120,7 @@ function Transcript({
   errorTitle?: string;
   messageNavigationRequest?: { messageId: string; revision: number };
   addAnnotation?(annotation: Parameters<ChatStore["addAnnotation"]>[0]): void;
+  virtualized?: boolean;
 }) {
   const {
     workLogViewMode = "auto",
@@ -141,6 +143,7 @@ function Transcript({
       groups: observable(new Map()),
     };
   const workLogState = workLogStateRef.current;
+  const touchedFilesStateRef = useRef(observable({ open: true }));
   const transcriptScrollStatesRef = useRef(
     new Map<
       string,
@@ -202,6 +205,12 @@ function Transcript({
       return transcriptScrollStatesRef.current.get(sessionId);
     },
     messageNavigationRequest,
+    get touchedFilesOpen() {
+      return touchedFilesStateRef.current.open;
+    },
+    setTouchedFilesOpen(open: boolean) {
+      touchedFilesStateRef.current.open = open;
+    },
     canAnnotate: Boolean(addAnnotation),
     addAnnotation,
     setTranscriptScrollState(
@@ -224,6 +233,7 @@ function Transcript({
       empty={empty}
       footer={footer}
       error={error ? { message: error, details: errorDetails, title: errorTitle } : undefined}
+      virtualized={virtualized}
       renderChat={(nestedStore) => <Chat store={nestedStore} embedded compact />}
     />
   );
@@ -751,6 +761,66 @@ describe("Transcript scrolling", () => {
     expect(log.open).toBe(true);
     expect(toolToggle.getAttribute("aria-expanded")).toBe("true");
     expect(log.querySelector(':scope > summary span[class*="bg-success"]')).not.toBeNull();
+  });
+
+  it("summarizes touched files at the conversation end and collapses the list", () => {
+    const parts: UiPart[] = [
+      {
+        id: "tool-edit-1",
+        kind: "tool",
+        name: "edit",
+        input: JSON.stringify({
+          path: "/workspace/src/app.ts",
+          edits: [{ oldText: "old", newText: "fresh" }],
+        }),
+        filePath: "/workspace/src/app.ts",
+        state: "success",
+      },
+      {
+        id: "tool-edit-2",
+        kind: "tool",
+        name: "edit",
+        input: JSON.stringify({
+          path: "/workspace/src/app.ts",
+          edits: [{ oldText: "stale", newText: "current" }],
+        }),
+        filePath: "/workspace/src/app.ts",
+        state: "success",
+      },
+      {
+        id: "tool-write",
+        kind: "tool",
+        name: "write",
+        input: JSON.stringify({
+          path: "/workspace/src/new.ts",
+          content: "first\nsecond",
+        }),
+        filePath: "/workspace/src/new.ts",
+        state: "success",
+      },
+    ];
+
+    act(() =>
+      root.render(
+        <Transcript
+          parts={parts}
+          sessionId="session-1"
+          isStreaming={false}
+          behavior={{ workspacePath: "/workspace" }}
+          virtualized={false}
+        />,
+      ),
+    );
+
+    const summary = container.querySelector<HTMLElement>('[aria-label="Touched files"]')!;
+    const trigger = summary.querySelector<HTMLButtonElement>("button")!;
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(summary.textContent).toContain("src/app.ts+2−2");
+    expect(summary.textContent).toContain("src/new.ts+2−0");
+
+    act(() => trigger.click());
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(summary.querySelector("ul")).toBeNull();
   });
 
   it("switches an expanded work log between auto, diff, and log view modes", () => {

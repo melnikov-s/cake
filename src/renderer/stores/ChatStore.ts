@@ -92,6 +92,7 @@ export class ChatStore extends Store<ChatStoreProps> {
   readonly workLogTimers = observable(new Map<string, WorkLogTimerState>());
   transcriptScrollState: StateSnapshot | undefined;
   messageNavigationRequest: MessageNavigationRequest | undefined;
+  touchedFilesOpen = true;
   private messageNavigationRevision = 0;
   private draftRevision = 0;
   private workLogTickNow = 0;
@@ -338,6 +339,10 @@ export class ChatStore extends Store<ChatStoreProps> {
       messageId,
       revision: ++this.messageNavigationRevision,
     };
+  }
+
+  setTouchedFilesOpen(open: boolean) {
+    this.touchedFilesOpen = open;
   }
 
   get workLogViewMode(): WorkLogViewMode {
