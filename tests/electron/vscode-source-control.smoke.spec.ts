@@ -13,7 +13,7 @@ async function git(cwd: string, ...args: string[]) {
   await execFileAsync("git", args, { cwd });
 }
 
-test("the Changes action opens VS Code Source Control", async () => {
+test("workspace changes use Source Control and historical changed files fall back to the file", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-vscode-source-control-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -71,6 +71,53 @@ test("the Changes action opens VS Code Source Control", async () => {
           timestamp: 0,
         },
       },
+      {
+        type: "message",
+        id: "assistant-tools",
+        parentId: "user-1",
+        timestamp,
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "edit-app",
+              name: "edit",
+              arguments: {
+                path: "src/app.ts",
+                edits: [{ oldText: "export const value = 0;", newText: "export const value = 1;" }],
+              },
+            },
+          ],
+          api: "anthropic-messages",
+          provider: "anthropic",
+          model: "fixture",
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          },
+          stopReason: "toolUse",
+          timestamp: 1,
+        },
+      },
+      {
+        type: "message",
+        id: "tool-result",
+        parentId: "assistant-tools",
+        timestamp,
+        message: {
+          role: "toolResult",
+          toolCallId: "edit-app",
+          toolName: "edit",
+          content: [{ type: "text", text: "Successfully replaced text in src/app.ts" }],
+          isError: false,
+          timestamp: 2,
+        },
+      },
     ]
       .map((entry) => JSON.stringify(entry))
       .join("\n") + "\n",
@@ -89,6 +136,17 @@ test("the Changes action opens VS Code Source Control", async () => {
 
   try {
     const page = await application.firstWindow();
+    const activeVsCodeTab = () =>
+      application.evaluate(async ({ webContents }) => {
+        for (const contents of webContents.getAllWebContents()) {
+          if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
+          const activeTab = await contents.executeJavaScript(
+            `document.querySelector(".tab.active")?.textContent?.trim()`,
+          );
+          if (activeTab) return activeTab;
+        }
+        return undefined;
+      });
     const changes = page.getByRole("button", { name: "Open workspace changes in VS Code" });
     await expect(changes).toBeVisible({ timeout: 20_000 });
     await changes.click();
@@ -110,6 +168,34 @@ test("the Changes action opens VS Code Source Control", async () => {
         { timeout: 20_000 },
       )
       .toBe(true);
+
+    await application.evaluate(
+      ({ BrowserWindow }, event) => {
+        for (const window of BrowserWindow.getAllWindows())
+          window.webContents.send("cake:event", event);
+      },
+      { type: "embedded-editor-back-to-agent", workspacePath: project },
+    );
+    await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeHidden();
+
+    await page.getByTitle("Open src/app.ts in VS Code Changes").click();
+    await expect.poll(activeVsCodeTab, { timeout: 20_000 }).toMatch(/app\.ts.+/);
+
+    await application.evaluate(
+      ({ BrowserWindow }, event) => {
+        for (const window of BrowserWindow.getAllWindows())
+          window.webContents.send("cake:event", event);
+      },
+      { type: "embedded-editor-back-to-agent", workspacePath: project },
+    );
+    await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeHidden();
+
+    await git(project, "add", ".");
+    await git(project, "commit", "-m", "Commit agent change");
+    await page.getByTitle("Open src/app.ts in VS Code Changes").click();
+
+    await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
+    await expect.poll(activeVsCodeTab, { timeout: 20_000 }).toBe("app.ts");
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

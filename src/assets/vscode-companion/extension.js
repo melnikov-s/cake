@@ -188,6 +188,31 @@ async function openSourceControl(vscode) {
   await vscode.commands.executeCommand("workbench.view.scm");
 }
 
+async function hasGitChange(vscode, targetUri) {
+  try {
+    const extension = vscode.extensions.getExtension("vscode.git");
+    if (!extension) return false;
+    const exports = extension.isActive ? extension.exports : await extension.activate();
+    const api = exports?.getAPI?.(1);
+    if (!api) return false;
+    await Promise.allSettled(api.repositories.map((repository) => repository.status()));
+    const targetPath = path.resolve(targetUri.fsPath);
+    return api.repositories.some((repository) => {
+      const state = repository.state;
+      return [
+        ...(state.workingTreeChanges || []),
+        ...(state.indexChanges || []),
+        ...(state.mergeChanges || []),
+      ].some((change) => {
+        const changeUri = change.uri || change.resourceUri;
+        return changeUri?.scheme === "file" && path.resolve(changeUri.fsPath) === targetPath;
+      });
+    });
+  } catch {
+    return false;
+  }
+}
+
 async function setTheme(vscode, payload) {
   const themeLabel = payload.theme === "dark" ? "Cake Dark" : "Cake Light";
   await vscode.workspace
@@ -255,7 +280,7 @@ function activate(context) {
     const target = path.resolve(WORKSPACE || context.extensionPath, relativePath);
     if (!workspaceRelative(target)) throw new Error("The source location is outside the workspace");
     const targetUri = vscode.Uri.file(target);
-    if (payload.view === "changes") {
+    if (payload.view === "changes" && (await hasGitChange(vscode, targetUri))) {
       await openSourceControl(vscode);
       try {
         await vscode.commands.executeCommand("git.openChange", targetUri);
