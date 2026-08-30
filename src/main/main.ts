@@ -1782,11 +1782,6 @@ async function handleCakeRequest(
     if (path) allowedProjectPaths.add(path);
     return desktopResponseSchema.parse({ type: "project-chosen", path });
   }
-  if (request.type === "get-home-directory") {
-    const path = homedir();
-    allowedProjectPaths.add(path);
-    return desktopResponseSchema.parse({ type: "home-directory", path });
-  }
   if (request.type === "choose-attachments")
     return desktopResponseSchema.parse({
       type: "attachments-chosen",
@@ -2350,6 +2345,13 @@ function stopApplicationCapabilities() {
 
 launchMainApplication({
   application: app,
+  rpcOperations: {
+    getHomeDirectory() {
+      const path = homedir();
+      allowedProjectPaths.add(path);
+      return path;
+    },
+  },
   start: startApplicationCapabilities,
   stop: stopApplicationCapabilities,
 });

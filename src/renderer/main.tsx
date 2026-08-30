@@ -7,6 +7,7 @@ import { RendererErrorBoundary } from "./components/renderer-error-boundary";
 import { CustomizationRecovery } from "./components/customization-recovery";
 import { LoadingState } from "./components/ui/loading-state";
 import { MarkdownLinkProvider } from "./components/ai-elements/markdown";
+import { makeCakeIpcPromiseClient } from "../ipc/client/CakeIpcClient";
 import { createDesktopClient } from "./desktop-client";
 import { installStaleAssetRecovery } from "./stale-asset-recovery";
 import { mountRootStore } from "./mount-root-store";
@@ -45,7 +46,11 @@ if (!window.cake) {
     </main>,
   );
 } else {
-  const rootStore = mountRootStore(createDesktopClient(window.cake));
+  const cakeIpc = makeCakeIpcPromiseClient(window.cake.rpc);
+  window.addEventListener("pagehide", () => {
+    void cakeIpc.dispose();
+  });
+  const rootStore = mountRootStore(createDesktopClient(window.cake, cakeIpc));
   const reportLinkError = (error: unknown) =>
     rootStore.toastStore.show({
       tone: "error",

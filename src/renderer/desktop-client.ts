@@ -1,4 +1,5 @@
 import type { CakeDesktopBridge, DesktopEvent } from "../ipc/desktop-ipc";
+import type { CakeIpcPromiseClient } from "../ipc/client/CakeIpcClient";
 import type {
   Attachment,
   ApplicationState,
@@ -713,7 +714,10 @@ async function accept(
     throw new Error("Cake received a mismatched operation response");
 }
 
-export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
+export function createDesktopClient(
+  bridge: CakeDesktopBridge,
+  rpcClient: Pick<CakeIpcPromiseClient, "application">,
+): DesktopClient {
   return {
     async chooseProject() {
       const response = await bridge.request({ type: "choose-project" });
@@ -772,11 +776,8 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         throw new Error("Cake received an invalid model catalog response");
       return response.models;
     },
-    async getHomeDirectory() {
-      const response = await bridge.request({ type: "get-home-directory" });
-      if (response.type !== "home-directory")
-        throw new Error("Cake could not resolve the home directory");
-      return response.path;
+    getHomeDirectory() {
+      return rpcClient.application.getHomeDirectory();
     },
     async openTerminal(input) {
       const requestId = crypto.randomUUID();

@@ -45,7 +45,6 @@ function createBridge() {
           trustedProjectPaths: [],
         },
       };
-    if (input.type === "get-home-directory") return { type: "home-directory", path: "/home/user" };
     if (input.type === "choose-attachments") return { type: "attachments-chosen", attachments: [] };
     if (input.type === "suggest-files")
       return {
@@ -79,6 +78,12 @@ function createBridge() {
     return { type: "window-state-saved" };
   });
   const bridge: CakeDesktopBridge = {
+    rpc: {
+      send() {},
+      subscribe() {
+        return () => {};
+      },
+    },
     request,
     subscribe(next) {
       listener = next;
@@ -87,13 +92,18 @@ function createBridge() {
       };
     },
   };
-  return { bridge, request, emit: (event: DesktopEvent) => listener?.(event) };
+  return {
+    bridge,
+    rpcClient: { application: { getHomeDirectory: async () => "/home/user" } },
+    request,
+    emit: (event: DesktopEvent) => listener?.(event),
+  };
 }
 
 describe("desktop client", () => {
   it("maps intent methods to validated bridge requests", async () => {
     const desktop = createBridge();
-    const client = createDesktopClient(desktop.bridge);
+    const client = createDesktopClient(desktop.bridge, desktop.rpcClient);
     const operationId = crypto.randomUUID();
 
     expect(await client.chooseProject()).toBe("/project");
@@ -362,7 +372,7 @@ describe("desktop client", () => {
 
   it("projects transport events into Cake application events", () => {
     const desktop = createBridge();
-    const client = createDesktopClient(desktop.bridge);
+    const client = createDesktopClient(desktop.bridge, desktop.rpcClient);
     const listener = vi.fn();
     client.subscribe(listener);
     const requestId = crypto.randomUUID();

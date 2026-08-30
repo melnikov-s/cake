@@ -50,7 +50,12 @@ export default defineConfig({
     plugins: [react(), tailwindcss()],
     worker: { format: "es" },
     build: {
-      rollupOptions: { input: resolve(import.meta.dirname, "src/renderer/index.html") },
+      rollupOptions: {
+        input: {
+          index: resolve(import.meta.dirname, "src/renderer/index.html"),
+          "rpc-test-harness": resolve(import.meta.dirname, "src/renderer/rpc-test-harness.html"),
+        },
+      },
     },
   },
 });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ElectronRpcTransport } from "./transport/ElectronRpcTransport";
 import { artifactRecordSchema } from "./artifact-contract";
 import { reviewAnchorSchema, reviewThreadSchema } from "./review-contract";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
@@ -323,7 +324,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     y: z.number().int().min(-1_000_000).max(1_000_000),
     resolvedWorktreeCount: z.number().int().nonnegative().max(500),
   }),
-  z.object({ type: z.literal("get-home-directory") }),
   z.object({
     type: z.literal("open-terminal"),
     requestId: z.uuid(),
@@ -961,7 +961,6 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
     message: ipcProjectionString(4_096).optional(),
     customPath: z.string().max(4_096).optional(),
   }),
-  z.object({ type: z.literal("home-directory"), path: z.string().max(4_096) }),
   z.object({
     type: z.literal("terminal-opened"),
     requestId: z.uuid(),
@@ -1075,6 +1074,7 @@ export type DesktopRequest = z.infer<typeof desktopRequestSchema>;
 export type DesktopResponse = z.infer<typeof desktopResponseSchema>;
 
 export interface CakeDesktopBridge {
+  readonly rpc: ElectronRpcTransport;
   request(input: DesktopRequest): Promise<DesktopResponse>;
   subscribe(listener: (event: DesktopEvent) => void): () => void;
 }
