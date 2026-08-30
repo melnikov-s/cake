@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
-import { describe, it } from "vitest";
+import { describe } from "vitest";
 import {
   forgetProjectSessions,
   reconcileResolvedSessions,
@@ -19,21 +20,25 @@ import {
 } from "../../../src/domain/application";
 import { defaultApplicationState } from "../../../src/domain/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
-
-const itEffect = (name: string, body: () => Effect.Effect<void, unknown>) =>
-  it(name, () => Effect.runPromise(body()));
+import {
+  ApplicationStorage,
+  ApplicationWriteError,
+} from "../../../src/services/storage/ApplicationStorage";
 
 const makeLayer = (options?: { failSave?: boolean }) => {
   let persisted = defaultApplicationState();
   const storage = ApplicationStorage.of({
-    load: Effect.succeed({ state: persisted, source: "current" as const }),
-    save: (state) =>
-      options?.failSave
-        ? Effect.fail({ _tag: "TestSaveFailure" } as never)
-        : Effect.sync(() => {
-            persisted = state;
-          }),
+    load: Effect.fn("ApplicationStorage.Test.load")(() =>
+      Effect.succeed({ state: persisted, source: "current" as const }),
+    ),
+    save: Effect.fn("ApplicationStorage.Test.save")(function* (state) {
+      if (options?.failSave)
+        return yield* new ApplicationWriteError({
+          stage: "write",
+          message: "injected save failure",
+        });
+      persisted = state;
+    }),
   });
   return {
     layer: ApplicationState.layer.pipe(Layer.provide(Layer.succeed(ApplicationStorage)(storage))),
@@ -47,21 +52,25 @@ const run = <A, E>(effect: Effect.Effect<A, E, ApplicationState>) => {
 };
 
 describe("Application domain", () => {
-  itEffect("creates, touches, renames, and removes Projects with trust revocation", () =>
+  it.effect("creates, touches, renames, and removes Projects with trust revocation", () =>
     run(
       Effect.gen(function* () {
         const created = yield* upsertProject("/work/cake", "cake");
         assert.equal(created.projects.length, 1);
-        const addedAt = created.projects[0]!.addedAt;
+        const createdProject = created.projects[0];
+        assert.ok(createdProject);
+        const addedAt = createdProject.addedAt;
         const touched = yield* touchProject("/work/cake", "2025-01-01T00:00:00.000Z");
         assert.equal(touched.projects.length, 1);
-        assert.equal(touched.projects[0]!.addedAt, addedAt);
-        assert.equal(touched.projects[0]!.lastOpenedAt, "2025-01-01T00:00:00.000Z");
+        const touchedProject = touched.projects[0];
+        assert.ok(touchedProject);
+        assert.equal(touchedProject.addedAt, addedAt);
+        assert.equal(touchedProject.lastOpenedAt, "2025-01-01T00:00:00.000Z");
         yield* trustProject("/work/cake");
         yield* revokeProjectTrust("/work/cake");
         yield* trustProject("/work/cake");
         const renamed = yield* renameProject("/work/cake", "  Cake desktop  ");
-        assert.equal(renamed.projects[0]!.name, "Cake desktop");
+        assert.equal(renamed.projects[0]?.name, "Cake desktop");
         const removed = yield* removeProject("/work/cake");
         assert.deepEqual(removed.projects, []);
         assert.deepEqual(removed.trustedProjectPaths, []);
@@ -69,7 +78,7 @@ describe("Application domain", () => {
     ),
   );
 
-  itEffect("enforces the Project registry bound", () =>
+  it.effect("enforces the Project registry bound", () =>
     run(
       Effect.gen(function* () {
         for (let index = 0; index < 200; index++)
@@ -80,7 +89,7 @@ describe("Application domain", () => {
     ),
   );
 
-  itEffect("deduplicates trust and enforces its bound", () =>
+  it.effect("deduplicates trust and enforces its bound", () =>
     run(
       Effect.gen(function* () {
         yield* trustProject("/work/cake");
@@ -93,7 +102,7 @@ describe("Application domain", () => {
     ),
   );
 
-  itEffect("preserves resolved, unread, Cake Chat, Fast mode, and forget interactions", () =>
+  it.effect("preserves resolved, unread, Cake Chat, Fast mode, and forget interactions", () =>
     run(
       Effect.gen(function* () {
         yield* setSessionUnread("session-1", true);
@@ -110,7 +119,7 @@ describe("Application domain", () => {
     ),
   );
 
-  itEffect("updates Utility Model and normalizes VS Code path", () =>
+  it.effect("updates Utility Model and normalizes VS Code path", () =>
     run(
       Effect.gen(function* () {
         const utility = yield* setUtilityModel({
@@ -127,7 +136,7 @@ describe("Application domain", () => {
     ),
   );
 
-  itEffect("reconciles archived Project and Cake Chat sessions", () =>
+  it.effect("reconciles archived Project and Cake Chat sessions", () =>
     run(
       Effect.gen(function* () {
         const state = yield* reconcileResolvedSessions(
@@ -140,13 +149,13 @@ describe("Application domain", () => {
     ),
   );
 
-  itEffect("does not publish a mutation when persistence fails", () => {
+  it.effect("does not publish a mutation when persistence fails", () => {
     const test = makeLayer({ failSave: true });
     return Effect.gen(function* () {
       const owner = yield* ApplicationState;
-      const before = yield* owner.current;
+      const before = yield* owner.current();
       yield* Effect.flip(setSessionUnread("session-1", true));
-      const after = yield* owner.current;
+      const after = yield* owner.current();
       assert.deepEqual(after, before);
       assert.deepEqual(test.persisted(), before);
     }).pipe(Effect.provide(test.layer));

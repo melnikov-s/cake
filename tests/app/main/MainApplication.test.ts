@@ -1,6 +1,8 @@
 import { EventEmitter } from "node:events";
+import type { Event } from "electron";
+import { it } from "@effect/vitest";
 import { Effect, Exit, Fiber } from "effect";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, vi } from "vitest";
 import { MainApplication, type MainApplicationOptions } from "../../../src/main/MainApplication";
 
 class TestApplication extends EventEmitter {
@@ -12,8 +14,24 @@ class TestApplication extends EventEmitter {
     this.ready = ready;
   }
 
+  override on(eventName: "before-quit", listener: (event: Event) => void): this;
+  override on(eventName: "window-all-closed", listener: () => void): this;
+  override on(
+    eventName: "before-quit" | "window-all-closed",
+    listener: ((event: Event) => void) | (() => void),
+  ): this {
+    super.on(eventName, listener);
+    this.emit(`listener:${eventName}`);
+    return this;
+  }
+
   whenReady() {
     return this.ready;
+  }
+
+  waitForListener(eventName: string) {
+    if (this.listenerCount(eventName) > 0) return Promise.resolve();
+    return new Promise<void>((resolve) => this.once(`listener:${eventName}`, resolve));
   }
 
   requestQuit() {
@@ -28,7 +46,7 @@ function options(
   overrides: Partial<MainApplicationOptions> = {},
 ): MainApplicationOptions {
   return {
-    application: application as unknown as MainApplicationOptions["application"],
+    application,
     start: vi.fn(async () => {}),
     stop: vi.fn(),
     platform: "linux",
@@ -37,62 +55,71 @@ function options(
 }
 
 describe("MainApplication", () => {
-  it("starts after Electron is ready and stops on a quit request", async () => {
-    const application = new TestApplication();
-    const start = vi.fn(async () => {});
-    const stop = vi.fn();
-    const running = Effect.runPromise(MainApplication(options(application, { start, stop })));
+  it.effect("starts after Electron is ready and stops on a quit request", () =>
+    Effect.gen(function* () {
+      const application = new TestApplication();
+      const start = vi.fn(async () => {});
+      const stop = vi.fn();
+      const fiber = yield* Effect.forkChild(MainApplication(options(application, { start, stop })));
 
-    await vi.waitFor(() => expect(start).toHaveBeenCalledOnce());
-    const event = application.requestQuit();
-    await running;
+      yield* Effect.promise(() => application.waitForListener("before-quit"));
+      const event = application.requestQuit();
+      yield* Fiber.join(fiber);
 
-    expect(event.preventDefault).toHaveBeenCalledOnce();
-    expect(stop).toHaveBeenCalledOnce();
-    expect(application.listenerCount("before-quit")).toBe(0);
-  });
+      expect(start).toHaveBeenCalledOnce();
+      expect(event.preventDefault).toHaveBeenCalledOnce();
+      expect(stop).toHaveBeenCalledOnce();
+      expect(application.listenerCount("before-quit")).toBe(0);
+    }),
+  );
 
-  it("delegates non-macOS window closure to Electron quit", async () => {
-    const application = new TestApplication();
-    const running = Effect.runPromise(MainApplication(options(application)));
+  it.effect("delegates non-macOS window closure to Electron quit", () =>
+    Effect.gen(function* () {
+      const application = new TestApplication();
+      const fiber = yield* Effect.forkChild(MainApplication(options(application)));
 
-    await vi.waitFor(() => expect(application.listenerCount("window-all-closed")).toBe(1));
-    application.emit("window-all-closed");
-    await running;
+      yield* Effect.promise(() => application.waitForListener("window-all-closed"));
+      application.emit("window-all-closed");
+      yield* Fiber.join(fiber);
 
-    expect(application.quit).toHaveBeenCalledOnce();
-  });
+      expect(application.quit).toHaveBeenCalledOnce();
+    }),
+  );
 
-  it("runs finalization when the application Scope is interrupted", async () => {
-    const application = new TestApplication(new Promise(() => {}));
-    const stop = vi.fn();
-    const fiber = Effect.runFork(MainApplication(options(application, { stop })));
+  it.effect("runs finalization when the application Scope is interrupted", () =>
+    Effect.gen(function* () {
+      const application = new TestApplication(new Promise(() => {}));
+      const stop = vi.fn();
+      const fiber = yield* Effect.forkChild(MainApplication(options(application, { stop })));
 
-    await vi.waitFor(() => expect(application.listenerCount("before-quit")).toBe(1));
-    await Effect.runPromise(Fiber.interrupt(fiber));
+      yield* Effect.promise(() => application.waitForListener("before-quit"));
+      yield* Fiber.interrupt(fiber);
 
-    expect(stop).toHaveBeenCalledOnce();
-    expect(application.listenerCount("before-quit")).toBe(0);
-    expect(application.listenerCount("window-all-closed")).toBe(0);
-  });
+      expect(stop).toHaveBeenCalledOnce();
+      expect(application.listenerCount("before-quit")).toBe(0);
+      expect(application.listenerCount("window-all-closed")).toBe(0);
+    }),
+  );
 
-  it("reports a failed bootstrap and still finalizes", async () => {
-    const application = new TestApplication();
-    const failure = new Error("bootstrap failed");
-    const stop = vi.fn();
-    const reportDefect = vi.fn();
-    const exit = await Effect.runPromiseExit(
-      MainApplication(
-        options(application, {
-          start: vi.fn(async () => Promise.reject(failure)),
-          stop,
-          reportDefect,
-        }),
-      ),
-    );
+  it.effect("reports a failed bootstrap and still finalizes", () =>
+    Effect.gen(function* () {
+      const application = new TestApplication();
+      const failure = new Error("bootstrap failed");
+      const stop = vi.fn();
+      const reportDefect = vi.fn();
+      const exit = yield* Effect.exit(
+        MainApplication(
+          options(application, {
+            start: vi.fn(async () => Promise.reject(failure)),
+            stop,
+            reportDefect,
+          }),
+        ),
+      );
 
-    expect(Exit.isFailure(exit)).toBe(true);
-    expect(reportDefect).toHaveBeenCalledOnce();
-    expect(stop).toHaveBeenCalledOnce();
-  });
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(reportDefect).toHaveBeenCalledOnce();
+      expect(stop).toHaveBeenCalledOnce();
+    }),
+  );
 });

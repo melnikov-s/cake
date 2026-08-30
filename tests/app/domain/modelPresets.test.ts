@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
-import { Effect, Layer, SynchronizedRef } from "effect";
-import { describe, it } from "vitest";
+import { it } from "@effect/vitest";
+import { Effect, Fiber, Layer, SynchronizedRef } from "effect";
+import { TestClock } from "effect/testing";
+import { describe } from "vitest";
 import {
   create,
   list,
@@ -51,38 +53,42 @@ const makeTestLayer = (options?: {
   let activeSaves = 0;
   let maximumActiveSaves = 0;
   const storage = ApplicationStorage.of({
-    load: Effect.succeed({ state: persisted, source: "current" as const }),
-    save: (state) =>
-      options?.failSave
-        ? Effect.fail(
-            new ApplicationWriteError({ stage: "write", message: "injected save failure" }),
-          )
-        : Effect.acquireUseRelease(
-            Effect.sync(() => {
-              activeSaves += 1;
-              maximumActiveSaves = Math.max(maximumActiveSaves, activeSaves);
-            }),
-            () =>
-              Effect.sleep(options?.saveDelayMs ?? 0).pipe(
-                Effect.tap(() =>
-                  Effect.sync(() => {
-                    persisted = state;
-                  }),
-                ),
-              ),
-            () =>
+    load: Effect.fn("ApplicationStorage.Test.load")(() =>
+      Effect.succeed({ state: persisted, source: "current" as const }),
+    ),
+    save: Effect.fn("ApplicationStorage.Test.save")(function* (state) {
+      if (options?.failSave)
+        return yield* new ApplicationWriteError({
+          stage: "write",
+          message: "injected save failure",
+        });
+      yield* Effect.acquireUseRelease(
+        Effect.sync(() => {
+          activeSaves += 1;
+          maximumActiveSaves = Math.max(maximumActiveSaves, activeSaves);
+        }),
+        () =>
+          Effect.sleep(options?.saveDelayMs ?? 0).pipe(
+            Effect.tap(() =>
               Effect.sync(() => {
-                activeSaves -= 1;
+                persisted = state;
               }),
+            ),
           ),
+        () =>
+          Effect.sync(() => {
+            activeSaves -= 1;
+          }),
+      );
+    }),
   });
   const applicationLayer = ApplicationState.layer.pipe(
     Layer.provide(Layer.succeed(ApplicationStorage)(storage)),
   );
   const modelsLayer = makePiModelsLayer({
-    loadCatalog: async () => [model],
-    refreshCatalog: async () => undefined,
-    complete: async () => "",
+    loadCatalog: () => Effect.succeed([model]),
+    refreshCatalog: () => Effect.void,
+    complete: () => Effect.succeed(""),
   });
   return {
     layer: Layer.merge(applicationLayer, modelsLayer),
@@ -99,7 +105,7 @@ const run = <A, E>(
   return {
     test,
     effect: Effect.gen(function* () {
-      yield* (yield* ApplicationState).initialize;
+      yield* (yield* ApplicationState).initialize();
       return yield* effect;
     }).pipe(Effect.provide(test.layer)),
   };
@@ -107,29 +113,32 @@ const run = <A, E>(
 
 const createOne = Effect.gen(function* () {
   yield* create(input());
-  return (yield* list()).presets[0]!;
+  const preset = (yield* list()).presets[0];
+  assert.ok(preset);
+  return preset;
 });
 
 describe("Model Presets domain", () => {
-  it("lists empty and populated presets and creates main-owned IDs", async () => {
+  it.effect("lists empty and populated presets and creates main-owned IDs", () => {
     const { effect } = run(
       Effect.gen(function* () {
         assert.deepEqual(yield* list(), { presets: [], defaultPresetId: undefined });
         const created = yield* create(input());
         assert.equal(created.presets.length, 1);
-        assert.match(created.presets[0]!.id, /^[0-9a-f-]{36}$/);
-        assert.equal(created.presets[0]!.name, "Deep review");
-        return created.presets[0]!.id;
+        const preset = created.presets[0];
+        assert.ok(preset);
+        assert.match(preset.id, /^[0-9a-f-]{36}$/);
+        assert.equal(preset.name, "Deep review");
       }),
     );
-    assert.ok(await Effect.runPromise(effect));
+    return effect;
   });
 
-  it("trims names and rejects empty or overlong names", async () => {
+  it.effect("trims names and rejects empty or overlong names", () => {
     const { effect } = run(
       Effect.gen(function* () {
         const trimmed = yield* create(input("  Review  "));
-        assert.equal(trimmed.presets[0]!.name, "Review");
+        assert.equal(trimmed.presets[0]?.name, "Review");
         assert.equal((yield* Effect.flip(create(input("   "))))._tag, "ModelPresetValidationError");
         assert.equal(
           (yield* Effect.flip(create(input("x".repeat(81)))))._tag,
@@ -137,16 +146,16 @@ describe("Model Presets domain", () => {
         );
       }),
     );
-    await Effect.runPromise(effect);
+    return effect;
   });
 
-  it("updates presets, preserves the default reference, and rejects missing IDs", async () => {
+  it.effect("updates presets, preserves the default reference, and rejects missing IDs", () => {
     const { effect } = run(
       Effect.gen(function* () {
         const preset = yield* createOne;
         yield* setDefault(preset.id);
         const changed = yield* update({ ...preset, name: "Updated" });
-        assert.equal(changed.presets[0]!.name, "Updated");
+        assert.equal(changed.presets[0]?.name, "Updated");
         assert.equal(changed.defaultPresetId, preset.id);
         const missing = yield* Effect.flip(
           update({ ...preset, id: "00000000-0000-4000-8000-000000000099" }),
@@ -154,10 +163,10 @@ describe("Model Presets domain", () => {
         assert.equal(missing._tag, "ModelPresetNotFoundError");
       }),
     );
-    await Effect.runPromise(effect);
+    return effect;
   });
 
-  it("removes presets and clears the current default", async () => {
+  it.effect("removes presets and clears the current default", () => {
     const { effect } = run(
       Effect.gen(function* () {
         const preset = yield* createOne;
@@ -168,10 +177,10 @@ describe("Model Presets domain", () => {
         });
       }),
     );
-    await Effect.runPromise(effect);
+    return effect;
   });
 
-  it("sets, clears, and rejects an unknown default", async () => {
+  it.effect("sets, clears, and rejects an unknown default", () => {
     const { effect } = run(
       Effect.gen(function* () {
         const preset = yield* createOne;
@@ -181,44 +190,46 @@ describe("Model Presets domain", () => {
         assert.equal(error._tag, "DefaultModelPresetNotFoundError");
       }),
     );
-    await Effect.runPromise(effect);
+    return effect;
   });
 
-  it("rejects duplicate IDs and the 100-preset limit", async () => {
-    const duplicate = {
-      ...input(),
-      id: "00000000-0000-4000-8000-000000000001",
-    };
-    const duplicateState = {
-      ...defaultApplicationState(),
-      modelPresets: [duplicate, duplicate],
-    } as ApplicationStateValue;
-    const stateRef = await Effect.runPromise(SynchronizedRef.make(duplicateState));
-    const duplicateOwner = ApplicationState.of({
-      initialize: Effect.succeed(duplicateState),
-      current: SynchronizedRef.get(stateRef),
-      unsafeCurrent: () => SynchronizedRef.getUnsafe(stateRef),
-      transact: (transition) => SynchronizedRef.updateAndGetEffect(stateRef, transition),
-    });
-    const duplicateError = await Effect.runPromise(
-      Effect.flip(update({ ...duplicate, name: "Changed" })).pipe(
+  it.effect("rejects duplicate IDs and the 100-preset limit", () =>
+    Effect.gen(function* () {
+      const duplicate = {
+        ...input(),
+        id: "00000000-0000-4000-8000-000000000001",
+      };
+      const duplicateState = {
+        ...defaultApplicationState(),
+        modelPresets: [duplicate, duplicate],
+      } satisfies ApplicationStateValue;
+      const stateRef = yield* SynchronizedRef.make<ApplicationStateValue>(duplicateState);
+      const duplicateOwner = ApplicationState.of({
+        initialize: Effect.fn("ApplicationState.Test.initialize")(() =>
+          Effect.succeed(duplicateState),
+        ),
+        current: Effect.fn("ApplicationState.Test.current")(() => SynchronizedRef.get(stateRef)),
+        unsafeCurrent: () => SynchronizedRef.getUnsafe(stateRef),
+        transact: (transition) => SynchronizedRef.updateAndGetEffect(stateRef, transition),
+      });
+      const duplicateError = yield* Effect.flip(update({ ...duplicate, name: "Changed" })).pipe(
         Effect.provide(Layer.succeed(ApplicationState)(duplicateOwner)),
-      ),
-    );
-    assert.equal(duplicateError._tag, "DuplicateModelPresetIdError");
+      );
+      assert.equal(duplicateError._tag, "DuplicateModelPresetIdError");
 
-    const fullState: ApplicationStateValue = {
-      ...defaultApplicationState(),
-      modelPresets: Array.from({ length: 100 }, (_, index) => ({
-        ...input(`Preset ${index}`),
-        id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
-      })),
-    };
-    const { effect } = run(Effect.flip(create(input("Overflow"))), { initial: fullState });
-    assert.equal((await Effect.runPromise(effect))._tag, "ModelPresetLimitError");
-  });
+      const fullState: ApplicationStateValue = {
+        ...defaultApplicationState(),
+        modelPresets: Array.from({ length: 100 }, (_, index) => ({
+          ...input(`Preset ${index}`),
+          id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        })),
+      };
+      const { effect } = run(Effect.flip(create(input("Overflow"))), { initial: fullState });
+      assert.equal((yield* effect)._tag, "ModelPresetLimitError");
+    }),
+  );
 
-  it("persists unresolved presets and resolves exact available presets", async () => {
+  it.effect("persists unresolved presets and resolves exact available presets", () => {
     const { test, effect } = run(
       Effect.gen(function* () {
         const known = yield* createOne;
@@ -229,36 +240,43 @@ describe("Model Presets domain", () => {
           fastMode: known.fastMode,
         });
         const unknownState = yield* create({ ...input("Unavailable"), modelId: "missing" });
-        const unknown = unknownState.presets.find((preset) => preset.modelId === "missing")!;
+        const unknown = unknownState.presets.find((preset) => preset.modelId === "missing");
+        assert.ok(unknown);
         assert.equal((yield* Effect.flip(resolve(unknown.id)))._tag, "UnknownPiModelError");
         return unknown;
       }),
     );
-    const unknown = await Effect.runPromise(effect);
-    assert.ok(test.persisted().modelPresets.some((preset) => preset.id === unknown.id));
+    return Effect.gen(function* () {
+      const unknown = yield* effect;
+      assert.ok(test.persisted().modelPresets.some((preset) => preset.id === unknown.id));
+    });
   });
 
-  it("does not publish a failed persistence mutation", async () => {
+  it.effect("does not publish a failed persistence mutation", () => {
     const { effect } = run(
       Effect.gen(function* () {
         const owner = yield* ApplicationState;
-        const before = yield* owner.current;
+        const before = yield* owner.current();
         assert.equal((yield* Effect.flip(create(input())))._tag, "ApplicationWriteError");
-        assert.deepEqual(yield* owner.current, before);
+        assert.deepEqual(yield* owner.current(), before);
       }),
       { failSave: true },
     );
-    await Effect.runPromise(effect);
+    return effect;
   });
 
-  it("serializes concurrent mutations", async () => {
+  it.effect("serializes concurrent mutations", () => {
     const { test, effect } = run(
       Effect.all([create(input("One")), create(input("Two"))], { concurrency: "unbounded" }),
       { saveDelayMs: 10 },
     );
-    const states = await Effect.runPromise(effect);
-    assert.equal(states.at(-1)!.presets.length, 2);
-    assert.equal(test.persisted().modelPresets.length, 2);
-    assert.equal(test.maximumActiveSaves(), 1);
+    return Effect.gen(function* () {
+      const fiber = yield* Effect.forkChild(effect);
+      yield* TestClock.adjust(20);
+      const states = yield* Fiber.join(fiber);
+      assert.equal(states.at(-1)?.presets.length, 2);
+      assert.equal(test.persisted().modelPresets.length, 2);
+      assert.equal(test.maximumActiveSaves(), 1);
+    });
   });
 });

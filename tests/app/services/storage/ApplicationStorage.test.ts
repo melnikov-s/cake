@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
+import { it } from "@effect/vitest";
+import { describe } from "vitest";
 import { Deferred, Effect, Fiber, FileSystem, Layer, Path, PlatformError, Schema } from "effect";
 import {
   APPLICATION_DOCUMENT_NAME,
@@ -17,6 +18,7 @@ interface FakeFileSystemControls {
   readonly files: Map<string, string>;
   readonly temporaryFiles: () => ReadonlyArray<string>;
   readonly releaseWrites: Deferred.Deferred<void>;
+  readonly writeStarted: Deferred.Deferred<void>;
   blockWrites: boolean;
   interruptWrite: boolean;
   failRead: boolean;
@@ -40,6 +42,7 @@ const makeFakeFileSystem = Effect.fn("makeFakeFileSystem")(function* (
     files: new Map(Object.entries(initial ?? {})),
     temporaryFiles: () => [...controls.files.keys()].filter((path) => path.endsWith(".tmp")),
     releaseWrites: yield* Deferred.make<void>(),
+    writeStarted: yield* Deferred.make<void>(),
     blockWrites: false,
     interruptWrite: false,
     failRead: false,
@@ -68,8 +71,15 @@ const makeFakeFileSystem = Effect.fn("makeFakeFileSystem")(function* (
         () => {
           if (controls.failWrite) return Effect.fail(failure("writeFileString"));
           controls.files.set(path, content);
-          if (controls.interruptWrite) return Effect.never;
-          return controls.blockWrites ? Deferred.await(controls.releaseWrites) : Effect.void;
+          return Deferred.succeed(controls.writeStarted, undefined).pipe(
+            Effect.andThen(
+              controls.interruptWrite
+                ? Effect.never
+                : controls.blockWrites
+                  ? Deferred.await(controls.releaseWrites)
+                  : Effect.void,
+            ),
+          );
         },
         () =>
           Effect.sync(() => {
@@ -123,53 +133,48 @@ const withStorage = <A, E>(
     }).pipe(Effect.provide(layer));
   });
 
-const itEffect = (name: string, body: () => Effect.Effect<void, unknown>) =>
-  it(name, () => Effect.runPromise(body()));
-
-const waitFor = Effect.fn("waitFor")(function* (predicate: () => boolean) {
-  while (!predicate()) yield* Effect.yieldNow;
-});
-
 describe("ApplicationStorage", () => {
-  itEffect("uses explicit defaults for a missing file", () =>
+  it.effect("uses explicit defaults for a missing file", () =>
     withStorage({}, (storage) =>
       Effect.gen(function* () {
-        const loaded = yield* storage.load;
+        const loaded = yield* storage.load();
         assert.strictEqual(loaded.source, "missing");
         assert.deepStrictEqual(loaded.state, current);
       }),
     ),
   );
 
-  itEffect("returns a typed read failure", () =>
+  it.effect("returns a typed read failure", () =>
     withStorage({ [documentPath]: "unreadable" }, (storage, controls) =>
       Effect.gen(function* () {
         controls.failRead = true;
-        const error = yield* Effect.flip(storage.load);
+        const error = yield* Effect.flip(storage.load());
         assert.equal(error._tag, "ApplicationReadError");
       }),
     ),
   );
 
-  itEffect("loads a current version envelope", () =>
+  it.effect("loads a current version envelope", () =>
     withStorage({ [documentPath]: JSON.stringify({ version: 1, data: current }) }, (storage) =>
       Effect.gen(function* () {
-        const loaded = yield* storage.load;
+        const loaded = yield* storage.load();
         assert.strictEqual(loaded.source, "current");
         assert.deepStrictEqual(loaded.state, current);
       }),
     ),
   );
 
-  itEffect("migrates recognized legacy and version-zero documents", () =>
+  it.effect("migrates recognized legacy and version-zero documents", () =>
     Effect.gen(function* () {
       for (const input of [legacy, { version: 0, data: legacy }]) {
         yield* withStorage({ [documentPath]: JSON.stringify(input) }, (storage, controls) =>
           Effect.gen(function* () {
-            const loaded = yield* storage.load;
+            const loaded = yield* storage.load();
             assert.strictEqual(loaded.source, "migrated");
             assert.deepStrictEqual(loaded.state.resolvedSessionIds, ["session-1"]);
-            const persisted = JSON.parse(controls.files.get(documentPath)!);
+            const persistedText = controls.files.get(documentPath);
+            assert.ok(persistedText);
+            const persisted = JSON.parse(persistedText);
             assert.strictEqual(persisted.version, 1);
             assert.ok(!("schemaVersion" in persisted.data));
           }),
@@ -178,7 +183,7 @@ describe("ApplicationStorage", () => {
     }),
   );
 
-  itEffect("returns typed failures for malformed, future, and invalid documents", () =>
+  it.effect("returns typed failures for malformed, future, and invalid documents", () =>
     Effect.gen(function* () {
       const cases = [
         ["{", ApplicationMalformedDocumentError],
@@ -196,7 +201,7 @@ describe("ApplicationStorage", () => {
       for (const [content, ErrorSchema] of cases) {
         yield* withStorage({ [documentPath]: content }, (storage) =>
           Effect.gen(function* () {
-            const error = yield* Effect.flip(storage.load);
+            const error = yield* Effect.flip(storage.load());
             assert.ok(Schema.is(ErrorSchema)(error));
           }),
         );
@@ -204,7 +209,7 @@ describe("ApplicationStorage", () => {
     }),
   );
 
-  itEffect(
+  it.effect(
     "keeps the previous file and cleans temporary files after write and rename failure",
     () =>
       Effect.gen(function* () {
@@ -225,12 +230,13 @@ describe("ApplicationStorage", () => {
       }),
   );
 
-  itEffect("cleans a temporary file when an in-progress write is interrupted", () =>
+  it.effect("cleans a temporary file when an in-progress write is interrupted", () =>
     withStorage({ [documentPath]: "previous" }, (storage, controls) =>
       Effect.gen(function* () {
         controls.interruptWrite = true;
         const fiber = yield* Effect.forkChild(storage.save(current));
-        yield* waitFor(() => controls.temporaryFiles().length === 1);
+        yield* Deferred.await(controls.writeStarted);
+        assert.strictEqual(controls.temporaryFiles().length, 1);
         yield* Fiber.interrupt(fiber);
         assert.strictEqual(controls.files.get(documentPath), "previous");
         assert.deepStrictEqual(controls.temporaryFiles(), []);
@@ -238,12 +244,13 @@ describe("ApplicationStorage", () => {
     ),
   );
 
-  itEffect("serializes concurrent writes", () =>
+  it.effect("serializes concurrent writes", () =>
     withStorage({}, (storage, controls) =>
       Effect.gen(function* () {
         controls.blockWrites = true;
         const first = yield* Effect.forkChild(storage.save(current));
-        yield* waitFor(() => controls.activeWrites === 1);
+        yield* Deferred.await(controls.writeStarted);
+        assert.strictEqual(controls.activeWrites, 1);
         const second = yield* Effect.forkChild(storage.save(current));
         yield* Effect.yieldNow;
         assert.strictEqual(controls.activeWrites, 1);

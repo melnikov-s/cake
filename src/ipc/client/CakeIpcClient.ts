@@ -91,25 +91,47 @@ const CakeIpcClientLive = Layer.effect(
     const client = yield* RpcClient.make(CakeRpc, { flatten: true, spanPrefix: "CakeIpcClient" });
     return CakeIpcClient.of({
       application: {
-        getHomeDirectory: () => client("application.getHomeDirectory", undefined),
-        getState: () => client("application.getState", undefined),
+        getHomeDirectory: Effect.fn("CakeIpcClient.application.getHomeDirectory")(() =>
+          client("application.getHomeDirectory", undefined),
+        ),
+        getState: Effect.fn("CakeIpcClient.application.getState")(() =>
+          client("application.getState", undefined),
+        ),
       },
       models: {
-        list: () => client("models.list", undefined),
+        list: Effect.fn("CakeIpcClient.models.list")(() => client("models.list", undefined)),
       },
       modelPresets: {
-        list: () => client("modelPresets.list", undefined),
-        create: (input) => client("modelPresets.create", input),
-        update: (input) => client("modelPresets.update", input),
-        remove: (id) => client("modelPresets.remove", { id }),
-        setDefault: (id) => client("modelPresets.setDefault", { id }),
-        resolve: (id) => client("modelPresets.resolve", { id }),
+        list: Effect.fn("CakeIpcClient.modelPresets.list")(() =>
+          client("modelPresets.list", undefined),
+        ),
+        create: Effect.fn("CakeIpcClient.modelPresets.create")((input) =>
+          client("modelPresets.create", input),
+        ),
+        update: Effect.fn("CakeIpcClient.modelPresets.update")((input) =>
+          client("modelPresets.update", input),
+        ),
+        remove: Effect.fn("CakeIpcClient.modelPresets.remove")((id) =>
+          client("modelPresets.remove", { id }),
+        ),
+        setDefault: Effect.fn("CakeIpcClient.modelPresets.setDefault")((id) =>
+          client("modelPresets.setDefault", { id }),
+        ),
+        resolve: Effect.fn("CakeIpcClient.modelPresets.resolve")((id) =>
+          client("modelPresets.resolve", { id }),
+        ),
       },
       foundation: {
-        typedFailure: () => client("foundation.typedFailure", undefined),
+        typedFailure: Effect.fn("CakeIpcClient.foundation.typedFailure")(() =>
+          client("foundation.typedFailure", undefined),
+        ),
         stream: (input) => client("foundation.stream", input),
-        delay: (input) => client("foundation.delay", input),
-        activeRequests: () => client("foundation.activeRequests", undefined),
+        delay: Effect.fn("CakeIpcClient.foundation.delay")((input) =>
+          client("foundation.delay", input),
+        ),
+        activeRequests: Effect.fn("CakeIpcClient.foundation.activeRequests")(() =>
+          client("foundation.activeRequests", undefined),
+        ),
       },
     });
   }),

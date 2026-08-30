@@ -7,13 +7,13 @@ const nonEmptyBoundedString = (maximum: number) =>
 export const PiAgentResourceContext = Schema.Struct({
   workingDirectory: nonEmptyBoundedString(8_192),
   projectTrusted: Schema.Boolean,
-  additionalSkillPaths: Schema.optional(
+  additionalSkillPaths: Schema.optionalKey(
     Schema.Array(nonEmptyBoundedString(8_192)).check(Schema.isMaxLength(256)),
   ),
-  additionalPromptTemplatePaths: Schema.optional(
+  additionalPromptTemplatePaths: Schema.optionalKey(
     Schema.Array(nonEmptyBoundedString(8_192)).check(Schema.isMaxLength(256)),
   ),
-  additionalExtensionPaths: Schema.optional(
+  additionalExtensionPaths: Schema.optionalKey(
     Schema.Array(nonEmptyBoundedString(8_192)).check(Schema.isMaxLength(256)),
   ),
 });
@@ -36,7 +36,7 @@ const PiAgentPromptTemplate = Schema.Struct({
   kind: Schema.Literal("prompt"),
   name: nonEmptyBoundedString(256),
   description: boundedString(8_192),
-  argumentHint: Schema.optional(boundedString(2_048)),
+  argumentHint: Schema.optionalKey(boundedString(2_048)),
   path: nonEmptyBoundedString(8_192),
   ...ResourceSource.fields,
 });
@@ -53,7 +53,7 @@ const PiAgentPackageSource = Schema.Struct({
   kind: Schema.Literal("package"),
   source: nonEmptyBoundedString(8_192),
   scope: Schema.Literals(["user", "project"]),
-  installedPath: Schema.optional(nonEmptyBoundedString(8_192)),
+  installedPath: Schema.optionalKey(nonEmptyBoundedString(8_192)),
   enabled: Schema.Boolean,
 });
 
@@ -62,7 +62,7 @@ const PiAgentResourceDiagnostic = Schema.Struct({
   severity: Schema.Literals(["warning", "error"]),
   source: Schema.Literals(["extension", "skill", "prompt"]),
   message: boundedString(32_000),
-  path: Schema.optional(boundedString(8_192)),
+  path: Schema.optionalKey(boundedString(8_192)),
 });
 
 export const PiAgentResourcesSnapshot = Schema.Struct({
@@ -81,5 +81,7 @@ export class PiAgentResourcesError extends Schema.TaggedError<PiAgentResourcesEr
   },
 ) {}
 
-export type PiAgentResourceContext = typeof PiAgentResourceContext.Type;
-export type PiAgentResourcesSnapshot = typeof PiAgentResourcesSnapshot.Type;
+export interface PiAgentResourceContext extends Schema.Schema.Type<typeof PiAgentResourceContext> {}
+export interface PiAgentResourcesSnapshot extends Schema.Schema.Type<
+  typeof PiAgentResourcesSnapshot
+> {}

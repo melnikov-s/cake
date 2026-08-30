@@ -47,6 +47,7 @@ import {
   type CakeArtifactV1,
 } from "../ipc/artifact-contract";
 import type { TSchema } from "@earendil-works/pi-ai";
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import {
   applyFastModePayload,
   FastModePayload,
@@ -1066,7 +1067,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   await session.bindExtensions({ mode: "rpc", uiContext: extensionUi });
 
   const modelOptions = async () =>
-    (await projectModelCatalog(modelRuntime)).map(
+    (await projectModelCatalog(modelRuntime, getSupportedThinkingLevels)).map(
       ({ supportedThinkingLevels, input, authTypes, ...model }) => ({
         ...model,
         availableThinkingLevels: [...supportedThinkingLevels],

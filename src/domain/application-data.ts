@@ -42,8 +42,8 @@ const RendererApplicationFields = {
   unreadSessionIds: SessionIds,
   trustedProjectPaths: boundedArray(boundedString(4_096), 200).check(Schema.isUnique()),
   fastModeSessionIds: SessionIds,
-  utilityModel: Schema.optional(UtilityModel),
-  vscodeServerPath: Schema.optional(boundedString(4_096)),
+  utilityModel: Schema.optionalKey(UtilityModel),
+  vscodeServerPath: Schema.optionalKey(boundedString(4_096)),
 };
 
 /** Broad renderer projection. Model Presets hydrate through their focused RPC group. */
@@ -53,7 +53,7 @@ export const RendererApplicationState = Schema.Struct(RendererApplicationFields)
 export const ApplicationState = Schema.Struct({
   ...RendererApplicationFields,
   modelPresets: boundedArray(ModelPreset, 100),
-  defaultModelPresetId: Schema.optional(Schema.String.check(Schema.isUUID(4))),
+  defaultModelPresetId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
 }).check(
   Schema.makeFilter(
     (state) => {
@@ -69,11 +69,13 @@ export const ApplicationState = Schema.Struct({
   ),
 );
 
-export type ApplicationState = typeof ApplicationState.Type;
-export type RendererApplicationState = typeof RendererApplicationState.Type;
-export type ProjectRecord = typeof ProjectRecord.Type;
-export type UtilityModel = typeof UtilityModel.Type;
-export type ModelPreset = typeof ModelPreset.Type;
+export interface ApplicationState extends Schema.Schema.Type<typeof ApplicationState> {}
+export interface RendererApplicationState extends Schema.Schema.Type<
+  typeof RendererApplicationState
+> {}
+export interface ProjectRecord extends Schema.Schema.Type<typeof ProjectRecord> {}
+export interface UtilityModel extends Schema.Schema.Type<typeof UtilityModel> {}
+export interface ModelPreset extends Schema.Schema.Type<typeof ModelPreset> {}
 
 export const defaultApplicationState = (): ApplicationState => ({
   projects: [],

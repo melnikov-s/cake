@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Schema } from "effect";
 import {
   BoundedCompletionInput,
   ModelSelection,
+  PiModel,
   PiModelCatalogError,
   PiModelCompletionError,
   UnauthenticatedPiModelError,
@@ -11,14 +12,13 @@ import {
   UnsupportedThinkingLevelError,
   type BoundedCompletionInput as BoundedCompletionInputValue,
   type ModelSelection as ModelSelectionValue,
-  type PiModel,
   type PiModelResolutionError,
 } from "./model-data";
 
 export interface PiModelsAdapter {
-  readonly loadCatalog: (signal: AbortSignal) => Promise<ReadonlyArray<PiModel>>;
-  readonly refreshCatalog: (signal: AbortSignal) => Promise<void>;
-  readonly complete: (input: BoundedCompletionInputValue, signal: AbortSignal) => Promise<string>;
+  readonly loadCatalog: () => Effect.Effect<unknown, unknown>;
+  readonly refreshCatalog: () => Effect.Effect<void, unknown>;
+  readonly complete: (input: BoundedCompletionInputValue) => Effect.Effect<string, unknown>;
 }
 
 export class PiModels extends Context.Service<
@@ -42,19 +42,29 @@ const messageOf = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
 
 export const makePiModels = (adapter: PiModelsAdapter): PiModels["Service"] => {
-  const list = Effect.fn("PiModels.list")(() =>
-    Effect.tryPromise({
-      try: (signal) => adapter.loadCatalog(signal),
-      catch: (cause) => new PiModelCatalogError({ operation: "load", message: messageOf(cause) }),
-    }),
-  );
+  const list = Effect.fn("PiModels.list")(function* () {
+    const catalog = yield* adapter
+      .loadCatalog()
+      .pipe(
+        Effect.mapError(
+          (cause) => new PiModelCatalogError({ operation: "load", message: messageOf(cause) }),
+        ),
+      );
+    return yield* Schema.decodeUnknownEffect(Schema.Array(PiModel))(catalog).pipe(
+      Effect.mapError(
+        (cause) => new PiModelCatalogError({ operation: "load", message: cause.message }),
+      ),
+    );
+  });
 
   const refreshCatalog = Effect.fn("PiModels.refreshCatalog")(() =>
-    Effect.tryPromise({
-      try: (signal) => adapter.refreshCatalog(signal),
-      catch: (cause) =>
-        new PiModelCatalogError({ operation: "refresh", message: messageOf(cause) }),
-    }),
+    adapter
+      .refreshCatalog()
+      .pipe(
+        Effect.mapError(
+          (cause) => new PiModelCatalogError({ operation: "refresh", message: messageOf(cause) }),
+        ),
+      ),
   );
 
   const resolve = Effect.fn("PiModels.resolve")(function* (selection: ModelSelectionValue) {
@@ -106,10 +116,8 @@ export const makePiModels = (adapter: PiModelsAdapter): PiModels["Service"] => {
       Effect.mapError((cause) => new PiModelCompletionError({ message: cause.message })),
     );
     yield* resolve(decoded.selection);
-    const text = yield* Effect.tryPromise({
-      try: (signal) => adapter.complete(decoded, signal),
-      catch: (cause) => new PiModelCompletionError({ message: messageOf(cause) }),
-    }).pipe(
+    const text = yield* adapter.complete(decoded).pipe(
+      Effect.mapError((cause) => new PiModelCompletionError({ message: messageOf(cause) })),
       Effect.timeout(decoded.timeoutMs),
       Effect.mapError((cause) =>
         cause instanceof PiModelCompletionError

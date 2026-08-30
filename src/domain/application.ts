@@ -13,10 +13,11 @@ class ApplicationPolicyError extends Schema.TaggedError<ApplicationPolicyError>(
 
 const unique = (values: ReadonlyArray<string>): ReadonlyArray<string> => [...new Set(values)];
 
-const validate = (state: ApplicationState) =>
+const validate = Effect.fn("Application.validate")((state: ApplicationState) =>
   Schema.decodeUnknownEffect(ApplicationStateSchema)(state).pipe(
     Effect.mapError((cause) => new ApplicationPolicyError({ message: cause.message })),
-  );
+  ),
+);
 
 const update = Effect.fn("Application.update")(function* (
   transition: (current: ApplicationState) => ApplicationState,
@@ -27,12 +28,12 @@ const update = Effect.fn("Application.update")(function* (
 
 export const initialize = Effect.fn("Application.initialize")(function* () {
   const owner = yield* ApplicationStateOwner;
-  return yield* owner.initialize;
+  return yield* owner.initialize();
 });
 
 export const getState = Effect.fn("Application.getState")(function* () {
   const owner = yield* ApplicationStateOwner;
-  return yield* owner.current;
+  return yield* owner.current();
 });
 
 export const upsertProject = Effect.fn("Application.upsertProject")(function* (
@@ -118,16 +119,26 @@ export const revokeProjectTrust = Effect.fn("Application.revokeProjectTrust")(fu
 export const setUtilityModel = Effect.fn("Application.setUtilityModel")(function* (
   model: UtilityModel | undefined,
 ) {
-  return yield* update((current) => ({ ...current, utilityModel: model }));
+  return yield* update((current) => {
+    const withoutUtilityModel = { ...current };
+    Reflect.deleteProperty(withoutUtilityModel, "utilityModel");
+    return model === undefined
+      ? withoutUtilityModel
+      : { ...withoutUtilityModel, utilityModel: model };
+  });
 });
 
 export const setVscodeServerPath = Effect.fn("Application.setVscodeServerPath")(function* (
   path: string | undefined,
 ) {
-  return yield* update((current) => ({
-    ...current,
-    vscodeServerPath: path?.trim() || undefined,
-  }));
+  return yield* update((current) => {
+    const withoutVscodeServerPath = { ...current };
+    Reflect.deleteProperty(withoutVscodeServerPath, "vscodeServerPath");
+    const normalized = path?.trim();
+    return normalized
+      ? { ...withoutVscodeServerPath, vscodeServerPath: normalized }
+      : withoutVscodeServerPath;
+  });
 });
 
 export const setSessionFastMode = Effect.fn("Application.setSessionFastMode")(function* (

@@ -43,7 +43,7 @@ describe("ApplicationStorage filesystem integration", () => {
     const loaded = await Effect.runPromise(
       Effect.gen(function* () {
         const storage = yield* ApplicationStorage;
-        return yield* storage.load;
+        return yield* storage.load();
       }).pipe(Effect.provide(live)),
     );
 

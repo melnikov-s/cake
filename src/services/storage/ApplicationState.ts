@@ -13,8 +13,8 @@ import {
 export class ApplicationState extends Context.Service<
   ApplicationState,
   {
-    readonly initialize: Effect.Effect<ApplicationStateValue, ApplicationStorageError>;
-    readonly current: Effect.Effect<ApplicationStateValue>;
+    readonly initialize: () => Effect.Effect<ApplicationStateValue, ApplicationStorageError>;
+    readonly current: () => Effect.Effect<ApplicationStateValue>;
     readonly unsafeCurrent: () => ApplicationStateValue;
     readonly transact: <E>(
       transition: (current: ApplicationStateValue) => Effect.Effect<ApplicationStateValue, E>,
@@ -27,9 +27,14 @@ export class ApplicationState extends Context.Service<
       const storage = yield* ApplicationStorage;
       const state = yield* SynchronizedRef.make(defaultApplicationState());
 
-      const initialize = storage.load.pipe(
-        Effect.flatMap((loaded) => SynchronizedRef.setAndGet(state, loaded.state)),
-      );
+      // Main owns this process-lifetime projection. ApplicationStorage is the
+      // persistence authority; SynchronizedRef serializes publication after a
+      // successful write, and transact serializes concurrent mutations.
+      const initialize = Effect.fn("ApplicationState.initialize")(function* () {
+        const loaded = yield* storage.load();
+        return yield* SynchronizedRef.setAndGet(state, loaded.state);
+      });
+      const current = Effect.fn("ApplicationState.current")(() => SynchronizedRef.get(state));
       const transact = Effect.fn("ApplicationState.transact")(
         <E>(
           transition: (current: ApplicationStateValue) => Effect.Effect<ApplicationStateValue, E>,
@@ -43,7 +48,7 @@ export class ApplicationState extends Context.Service<
 
       return ApplicationState.of({
         initialize,
-        current: SynchronizedRef.get(state),
+        current,
         unsafeCurrent: () => SynchronizedRef.getUnsafe(state),
         transact,
       });

@@ -20,6 +20,7 @@ export const ModelPresetUpdateInput = ModelPreset;
 
 export const ModelPresetProjection = Schema.Struct({
   presets: Schema.Array(ModelPreset).check(Schema.isMaxLength(100)),
+  // Projection constructors always include this key; undefined means no default.
   defaultPresetId: Schema.optional(Schema.String.check(Schema.isUUID(4))),
 }).check(
   Schema.makeFilter(
@@ -59,9 +60,9 @@ export class ModelPresetLimitError extends Schema.TaggedError<ModelPresetLimitEr
   { limit: Schema.Int },
 ) {}
 
-export type ModelPresetCreateInput = typeof ModelPresetCreateInput.Type;
-export type ModelPresetUpdateInput = typeof ModelPresetUpdateInput.Type;
-export type ModelPresetProjection = typeof ModelPresetProjection.Type;
+export interface ModelPresetCreateInput extends Schema.Schema.Type<typeof ModelPresetCreateInput> {}
+export interface ModelPresetUpdateInput extends Schema.Schema.Type<typeof ModelPresetUpdateInput> {}
+export interface ModelPresetProjection extends Schema.Schema.Type<typeof ModelPresetProjection> {}
 
 type ModelPresetDomainError =
   | ModelPresetValidationError
@@ -84,17 +85,19 @@ const duplicateId = (presets: ReadonlyArray<ModelPresetValue>): string | undefin
   return undefined;
 };
 
-const ensureIntegrity = (state: ApplicationState) => {
+const ensureIntegrity = Effect.fn("ModelPresets.ensureIntegrity")(function* (
+  state: ApplicationState,
+) {
   const duplicate = duplicateId(state.modelPresets);
-  return duplicate
-    ? Effect.fail(new DuplicateModelPresetIdError({ id: duplicate }))
-    : Effect.succeed(state);
-};
+  if (duplicate) return yield* new DuplicateModelPresetIdError({ id: duplicate });
+  return state;
+});
 
-const decodePreset = (value: ModelPresetValue) =>
+const decodePreset = Effect.fn("ModelPresets.decodePreset")((value: ModelPresetValue) =>
   Schema.decodeUnknownEffect(ModelPreset)(value).pipe(
     Effect.mapError((cause) => new ModelPresetValidationError({ message: cause.message })),
-  );
+  ),
+);
 
 const transact = Effect.fn("ModelPresets.transact")(function* (
   transition: (
@@ -110,7 +113,7 @@ const transact = Effect.fn("ModelPresets.transact")(function* (
 
 export const list = Effect.fn("ModelPresets.list")(function* () {
   const owner = yield* ApplicationStateOwner;
-  return project(yield* owner.current);
+  return project(yield* owner.current());
 });
 
 export const create = Effect.fn("ModelPresets.create")(function* (input: ModelPresetCreateInput) {
@@ -147,12 +150,16 @@ export const remove = Effect.fn("ModelPresets.remove")(function* (id: string) {
   return yield* transact((current) => {
     if (!current.modelPresets.some((preset) => preset.id === id))
       return Effect.fail(new ModelPresetNotFoundError({ id }));
-    return Effect.succeed({
-      ...current,
+    const { defaultModelPresetId, ...withoutDefault } = current;
+    const next = {
+      ...withoutDefault,
       modelPresets: current.modelPresets.filter((preset) => preset.id !== id),
-      defaultModelPresetId:
-        current.defaultModelPresetId === id ? undefined : current.defaultModelPresetId,
-    });
+    };
+    return Effect.succeed(
+      defaultModelPresetId === id || defaultModelPresetId === undefined
+        ? next
+        : { ...next, defaultModelPresetId },
+    );
   });
 });
 
@@ -160,7 +167,11 @@ export const setDefault = Effect.fn("ModelPresets.setDefault")(function* (id: st
   return yield* transact((current) => {
     if (id !== undefined && !current.modelPresets.some((preset) => preset.id === id))
       return Effect.fail(new DefaultModelPresetNotFoundError({ id }));
-    return Effect.succeed({ ...current, defaultModelPresetId: id });
+    const withoutDefault = { ...current };
+    Reflect.deleteProperty(withoutDefault, "defaultModelPresetId");
+    return Effect.succeed(
+      id === undefined ? withoutDefault : { ...withoutDefault, defaultModelPresetId: id },
+    );
   });
 });
 

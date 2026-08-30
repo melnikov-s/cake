@@ -8,10 +8,7 @@ import {
 } from "./agent-resource-data";
 
 export interface PiAgentResourcesAdapter {
-  readonly load: (
-    context: PiAgentResourceContextValue,
-    signal: AbortSignal,
-  ) => Promise<PiAgentResourcesSnapshotValue>;
+  readonly load: (context: PiAgentResourceContextValue) => Effect.Effect<unknown, unknown>;
 }
 
 export class PiAgentResources extends Context.Service<
@@ -39,10 +36,13 @@ export const makePiAgentResources = (
     const decodedContext = yield* Schema.decodeUnknownEffect(PiAgentResourceContext)(context).pipe(
       Effect.mapError((cause) => new PiAgentResourcesError({ operation, message: cause.message })),
     );
-    const snapshot = yield* Effect.tryPromise({
-      try: (signal) => adapter.load(decodedContext, signal),
-      catch: (cause) => new PiAgentResourcesError({ operation, message: messageOf(cause) }),
-    });
+    const snapshot = yield* adapter
+      .load(decodedContext)
+      .pipe(
+        Effect.mapError(
+          (cause) => new PiAgentResourcesError({ operation, message: messageOf(cause) }),
+        ),
+      );
     return yield* Schema.decodeUnknownEffect(PiAgentResourcesSnapshot)(snapshot).pipe(
       Effect.mapError((cause) => new PiAgentResourcesError({ operation, message: cause.message })),
     );

@@ -1,4 +1,4 @@
-import { Effect, Layer, Option, Queue } from "effect";
+import { Effect, Layer, Option, Queue, Result } from "effect";
 import { ipcMain, webContents, type IpcMainEvent } from "electron";
 import { RpcServer } from "effect/unstable/rpc";
 import type { FromClientEncoded } from "effect/unstable/rpc/RpcMessage";
@@ -39,13 +39,12 @@ export const ElectronRpcServerProtocolLive = Layer.effect(
 
     const onRequest = (event: IpcMainEvent, input: unknown) => {
       const connectionId = event.sender.id;
-      let message: FromClientEncoded;
-      try {
-        message = parseRendererRpcMessage(input);
-      } catch (error) {
-        console.error("[cake.rpc] Rejected malformed renderer transport message", error);
+      const decoded = parseRendererRpcMessage(input);
+      if (Result.isFailure(decoded)) {
+        console.error("[cake.rpc] Rejected malformed renderer transport message", decoded.failure);
         return;
       }
+      const message = decoded.success;
       connectionIds.add(connectionId);
       if (!watchedConnections.has(connectionId)) {
         watchedConnections.add(connectionId);

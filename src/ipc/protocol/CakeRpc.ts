@@ -84,6 +84,7 @@ export const CakeRpc = RpcGroup.make(
     error: ModelPresetMutationError,
   }),
   Rpc.make("modelPresets.setDefault", {
+    // The command always carries id; explicit undefined clears the default.
     payload: { id: Schema.optional(Schema.String.check(Schema.isUUID(4))) },
     success: ModelPresetProjection,
     error: ModelPresetMutationError,

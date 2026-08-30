@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
-import { Effect } from "effect";
-import { describe, it } from "vitest";
+import { it } from "@effect/vitest";
+import { Cache, Deferred, Effect, Fiber, Ref } from "effect";
+import { describe, it as vitestIt } from "vitest";
 import {
   makePiModelsLayer,
   PiModels,
   type PiModelsAdapter,
 } from "../../../../src/services/pi/PiModels";
 import type { PiModel } from "../../../../src/services/pi/model-data";
-import { projectModelCatalog } from "../../../../src/services/pi/live/PiModelsLive";
+import {
+  makeSessionlessRuntimeCache,
+  projectModelCatalog,
+} from "../../../../src/services/pi/live/PiModelsLive";
 
 const model = (overrides: Partial<PiModel> = {}): PiModel => ({
   provider: "openai-codex",
@@ -35,9 +39,9 @@ const selection = {
 
 const run = <A, E>(models: ReadonlyArray<PiModel>, effect: Effect.Effect<A, E, PiModels>) => {
   const adapter: PiModelsAdapter = {
-    loadCatalog: async () => models,
-    refreshCatalog: async () => undefined,
-    complete: async () => "completed response",
+    loadCatalog: () => Effect.succeed(models),
+    refreshCatalog: () => Effect.void,
+    complete: () => Effect.succeed("completed response"),
   };
   return effect.pipe(Effect.provide(makePiModelsLayer(adapter)));
 };
@@ -55,28 +59,30 @@ const resolveError = (models: ReadonlyArray<PiModel>, input = selection) =>
   Effect.flip(resolve(models, input));
 
 describe("PiModels", () => {
-  it("projects the controlled Pi provider catalog", async () => {
-    const projected = await projectModelCatalog({
-      getProviders: () => [
-        {
-          id: "openai-codex",
-          name: "OpenAI Codex",
-          auth: { oauth: {} },
-          getModels: () => [
-            {
-              id: "gpt-5.6-sol",
-              name: "GPT-5.6 Sol",
-              reasoning: true,
-              input: ["text", "image"],
-              api: "openai-codex-responses",
-            },
-          ],
-        },
-      ],
-      checkAuth: async () => ({ type: "oauth", source: "OAuth" }),
-      getAvailable: async () => [{ id: "gpt-5.6-sol" }],
-      getProviderAuthStatus: () => ({ configured: true, source: "stored", label: "OAuth" }),
-    } as never);
+  vitestIt("projects the controlled Pi provider catalog", async () => {
+    const projected = await projectModelCatalog(
+      {
+        getProviders: () => [
+          {
+            id: "openai-codex",
+            name: "OpenAI Codex",
+            auth: { oauth: {} },
+            getModels: () => [
+              {
+                id: "gpt-5.6-sol",
+                name: "GPT-5.6 Sol",
+                reasoning: true,
+                input: ["text", "image"],
+              },
+            ],
+          },
+        ],
+        checkAuth: async () => ({ source: "OAuth" }),
+        getAvailable: async () => [{ id: "gpt-5.6-sol" }],
+        getProviderAuthStatus: () => ({ source: "stored", label: "OAuth" }),
+      },
+      () => ["off", "low", "high"],
+    );
     assert.deepEqual(projected[0], {
       ...projected[0],
       provider: "openai-codex",
@@ -91,111 +97,148 @@ describe("PiModels", () => {
     });
   });
 
-  it("projects provider/model identity, authentication, thinking levels, and Fast support", async () => {
-    const catalog = await Effect.runPromise(
-      run(
-        [model()],
+  it.effect("shares successful runtime acquisition and immediately evicts failures", () =>
+    Effect.gen(function* () {
+      const attempts = yield* Ref.make(0);
+      const release = yield* Deferred.make<void>();
+      const runtime = { id: "runtime" };
+      const cache = yield* makeSessionlessRuntimeCache(
         Effect.gen(function* () {
-          return yield* (yield* PiModels).list();
+          const attempt = yield* Ref.getAndUpdate(attempts, (count) => count + 1);
+          if (attempt === 0) return yield* Effect.fail("initialization failed" as const);
+          yield* Deferred.await(release);
+          return runtime;
         }),
-      ),
-    );
-    assert.deepEqual(catalog, [model()]);
-  });
+      );
 
-  it("resolves only the exact authenticated and available selection", async () => {
-    assert.deepEqual(await Effect.runPromise(resolve([model()])), selection);
-    const error = await Effect.runPromise(
-      resolveError([model(), model({ provider: "other", id: "fallback" })], {
+      assert.equal(yield* Effect.flip(Cache.get(cache, "runtime")), "initialization failed");
+      const first = yield* Effect.forkChild(Cache.get(cache, "runtime"));
+      const second = yield* Effect.forkChild(Cache.get(cache, "runtime"));
+      yield* Deferred.succeed(release, undefined);
+      assert.equal(yield* Fiber.join(first), runtime);
+      assert.equal(yield* Fiber.join(second), runtime);
+      assert.equal(yield* Ref.get(attempts), 2);
+      assert.equal(yield* Cache.get(cache, "runtime"), runtime);
+      assert.equal(yield* Ref.get(attempts), 2);
+    }),
+  );
+
+  it.effect(
+    "projects provider/model identity, authentication, thinking levels, and Fast support",
+    () =>
+      Effect.gen(function* () {
+        const catalog = yield* run(
+          [model()],
+          Effect.gen(function* () {
+            return yield* (yield* PiModels).list();
+          }),
+        );
+        assert.deepEqual(catalog, [model()]);
+      }),
+  );
+
+  it.effect("resolves only the exact authenticated and available selection", () =>
+    Effect.gen(function* () {
+      assert.deepEqual(yield* resolve([model()]), selection);
+      const error = yield* resolveError([model(), model({ provider: "other", id: "fallback" })], {
         ...selection,
         modelId: "missing",
-      }),
-    );
-    assert.equal(error._tag, "UnknownPiModelError");
-    assert.equal(error.modelId, "missing");
-  });
+      });
+      assert.equal(error._tag, "UnknownPiModelError");
+      assert.equal(error.modelId, "missing");
+    }),
+  );
 
-  it("distinguishes unauthenticated and unavailable models", async () => {
-    assert.equal(
-      (await Effect.runPromise(resolveError([model({ authenticated: false })])))._tag,
-      "UnauthenticatedPiModelError",
-    );
-    assert.equal(
-      (await Effect.runPromise(resolveError([model({ available: false })])))._tag,
-      "UnavailablePiModelError",
-    );
-  });
+  it.effect("distinguishes unauthenticated and unavailable models", () =>
+    Effect.gen(function* () {
+      assert.equal(
+        (yield* resolveError([model({ authenticated: false })]))._tag,
+        "UnauthenticatedPiModelError",
+      );
+      assert.equal(
+        (yield* resolveError([model({ available: false })]))._tag,
+        "UnavailablePiModelError",
+      );
+    }),
+  );
 
-  it("rejects unsupported thinking levels and Fast mode", async () => {
-    assert.equal(
-      (await Effect.runPromise(resolveError([model({ supportedThinkingLevels: ["off", "low"] })])))
-        ._tag,
-      "UnsupportedThinkingLevelError",
-    );
-    assert.equal(
-      (await Effect.runPromise(resolveError([model({ fastMode: false })])))._tag,
-      "UnsupportedFastModeError",
-    );
-  });
+  it.effect("rejects unsupported thinking levels and Fast mode", () =>
+    Effect.gen(function* () {
+      assert.equal(
+        (yield* resolveError([model({ supportedThinkingLevels: ["off", "low"] })]))._tag,
+        "UnsupportedThinkingLevelError",
+      );
+      assert.equal(
+        (yield* resolveError([model({ fastMode: false })]))._tag,
+        "UnsupportedFastModeError",
+      );
+    }),
+  );
 
-  it("reports catalog loading failures", async () => {
+  it.effect("rejects malformed catalog projections at the Pi boundary", () => {
     const layer = makePiModelsLayer({
-      loadCatalog: async () => {
-        throw new Error("catalog unavailable");
-      },
-      refreshCatalog: async () => undefined,
-      complete: async () => "",
+      loadCatalog: () => Effect.succeed([{ id: "missing-required-fields" }]),
+      refreshCatalog: () => Effect.void,
+      complete: () => Effect.succeed(""),
     });
-    const error = await Effect.runPromise(
-      Effect.gen(function* () {
-        return yield* Effect.flip((yield* PiModels).list());
-      }).pipe(Effect.provide(layer)),
-    );
-    assert.equal(error._tag, "PiModelCatalogError");
-    assert.equal(error.operation, "load");
+    return Effect.gen(function* () {
+      const error = yield* Effect.flip((yield* PiModels).list());
+      assert.equal(error._tag, "PiModelCatalogError");
+      assert.match(error.message, /provider/);
+    }).pipe(Effect.provide(layer));
   });
 
-  it("runs bounded completion with the exact resolved selection", async () => {
+  it.effect("reports catalog loading failures", () => {
+    const layer = makePiModelsLayer({
+      loadCatalog: () => Effect.fail(new Error("catalog unavailable")),
+      refreshCatalog: () => Effect.void,
+      complete: () => Effect.succeed(""),
+    });
+    return Effect.gen(function* () {
+      const error = yield* Effect.flip((yield* PiModels).list());
+      assert.equal(error._tag, "PiModelCatalogError");
+      assert.equal(error.operation, "load");
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("runs bounded completion with the exact resolved selection", () => {
     let received: Parameters<PiModelsAdapter["complete"]>[0] | undefined;
     const layer = makePiModelsLayer({
-      loadCatalog: async () => [model()],
-      refreshCatalog: async () => undefined,
-      complete: async (input) => {
-        received = input;
-        return "response beyond bound";
-      },
+      loadCatalog: () => Effect.succeed([model()]),
+      refreshCatalog: () => Effect.void,
+      complete: (input) =>
+        Effect.sync(() => {
+          received = input;
+          return "response beyond bound";
+        }),
     });
-    const result = await Effect.runPromise(
-      Effect.gen(function* () {
-        return yield* (yield* PiModels).complete({
-          selection,
-          instructions: "Return a title",
-          context: "context",
-          maximumOutputCharacters: 8,
-          timeoutMs: 1_000,
-        });
-      }).pipe(Effect.provide(layer)),
-    );
-    assert.equal(result, "response");
-    assert.deepEqual(received?.selection, selection);
+    return Effect.gen(function* () {
+      const result = yield* (yield* PiModels).complete({
+        selection,
+        instructions: "Return a title",
+        context: "context",
+        maximumOutputCharacters: 8,
+        timeoutMs: 1_000,
+      });
+      assert.equal(result, "response");
+      assert.deepEqual(received?.selection, selection);
+    }).pipe(Effect.provide(layer));
   });
 
-  it("interrupts the provider request when bounded completion is cancelled", async () => {
-    let providerSignal: AbortSignal | undefined;
-    const layer = makePiModelsLayer({
-      loadCatalog: async () => [model()],
-      refreshCatalog: async () => undefined,
-      complete: async (_input, signal) => {
-        providerSignal = signal;
-        await new Promise<void>((_resolve, reject) => {
-          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-        });
-        return "unreachable";
-      },
-    });
-    const controller = new AbortController();
-    const running = Effect.runPromise(
-      Effect.gen(function* () {
+  it.effect("interrupts the provider request when bounded completion is cancelled", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const interrupted = yield* Deferred.make<void>();
+      const layer = makePiModelsLayer({
+        loadCatalog: () => Effect.succeed([model()]),
+        refreshCatalog: () => Effect.void,
+        complete: () =>
+          Deferred.succeed(started, undefined).pipe(
+            Effect.andThen(Effect.never),
+            Effect.onInterrupt(() => Deferred.succeed(interrupted, undefined)),
+          ),
+      });
+      const operation = Effect.gen(function* () {
         return yield* (yield* PiModels).complete({
           selection,
           instructions: "Return a title",
@@ -203,38 +246,32 @@ describe("PiModels", () => {
           maximumOutputCharacters: 80,
           timeoutMs: 1_000,
         });
-      }).pipe(Effect.provide(layer)),
-      { signal: controller.signal },
-    );
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    controller.abort();
+      }).pipe(Effect.provide(layer));
+      const fiber = yield* Effect.forkChild(operation);
+      yield* Deferred.await(started);
+      yield* Fiber.interrupt(fiber);
+      yield* Deferred.await(interrupted);
+    }),
+  );
 
-    await assert.rejects(running);
-    assert.equal(providerSignal?.aborted, true);
-  });
-
-  it("returns a typed bounded-completion failure", async () => {
+  it.effect("returns a typed bounded-completion failure", () => {
     const layer = makePiModelsLayer({
-      loadCatalog: async () => [model()],
-      refreshCatalog: async () => undefined,
-      complete: async () => {
-        throw new Error("provider failed");
-      },
+      loadCatalog: () => Effect.succeed([model()]),
+      refreshCatalog: () => Effect.void,
+      complete: () => Effect.fail(new Error("provider failed")),
     });
-    const error = await Effect.runPromise(
-      Effect.gen(function* () {
-        return yield* Effect.flip(
-          (yield* PiModels).complete({
-            selection,
-            instructions: "Return a title",
-            context: "context",
-            maximumOutputCharacters: 80,
-            timeoutMs: 1_000,
-          }),
-        );
-      }).pipe(Effect.provide(layer)),
-    );
-    assert.equal(error._tag, "PiModelCompletionError");
-    assert.match(error.message, /provider failed/);
+    return Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        (yield* PiModels).complete({
+          selection,
+          instructions: "Return a title",
+          context: "context",
+          maximumOutputCharacters: 80,
+          timeoutMs: 1_000,
+        }),
+      );
+      assert.equal(error._tag, "PiModelCompletionError");
+      assert.match(error.message, /provider failed/);
+    }).pipe(Effect.provide(layer));
   });
 });

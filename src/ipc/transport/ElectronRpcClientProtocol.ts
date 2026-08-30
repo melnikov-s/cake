@@ -1,4 +1,4 @@
-import { Effect, Layer, Queue } from "effect";
+import { Effect, Layer, Queue, Result } from "effect";
 import { RpcClient, RpcClientError } from "effect/unstable/rpc";
 import { parseMainRpcMessage, type ElectronRpcTransport } from "./ElectronRpcTransport";
 
@@ -11,7 +11,13 @@ export const makeElectronRpcClientProtocol = (transport: ElectronRpcTransport) =
         yield* Effect.acquireRelease(
           Effect.sync(() =>
             transport.subscribe((message) => {
-              Queue.offerUnsafe(incoming, parseMainRpcMessage(message));
+              const decoded = parseMainRpcMessage(message);
+              if (Result.isSuccess(decoded)) Queue.offerUnsafe(incoming, decoded.success);
+              else
+                console.error(
+                  "[cake.rpc] Rejected malformed main transport message",
+                  decoded.failure,
+                );
             }),
           ),
           (unsubscribe) => Effect.sync(unsubscribe),

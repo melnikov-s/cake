@@ -56,15 +56,17 @@ export type ApplicationStorageError =
   | ApplicationEncodeError
   | ApplicationWriteError;
 
-export interface ApplicationLoadResult {
-  readonly state: ApplicationStateValue;
-  readonly source: "missing" | "current" | "migrated";
-}
+export const ApplicationLoadResult = Schema.Struct({
+  state: ApplicationState,
+  source: Schema.Literals(["missing", "current", "migrated"]),
+});
+
+export interface ApplicationLoadResult extends Schema.Schema.Type<typeof ApplicationLoadResult> {}
 
 export class ApplicationStorage extends Context.Service<
   ApplicationStorage,
   {
-    readonly load: Effect.Effect<ApplicationLoadResult, ApplicationStorageError>;
+    readonly load: () => Effect.Effect<ApplicationLoadResult, ApplicationStorageError>;
     readonly save: (
       state: ApplicationStateValue,
     ) => Effect.Effect<void, ApplicationEncodeError | ApplicationWriteError>;
@@ -112,18 +114,22 @@ const migrateVersionZero = Effect.fn("ApplicationStorage.migrateVersionZero")((
     ? legacy.defaultModelPresetId
     : undefined;
   const vscodeServerPath = legacy.vscodeServerPath?.trim() || undefined;
-  return Effect.succeed({
+  const base: ApplicationStateValue = {
     projects,
     resolvedSessionIds: dedupe(legacy.resolvedSessionIds ?? []),
     resolvedCakeChatSessionIds: dedupe(legacy.resolvedCakeChatSessionIds ?? []),
     unreadSessionIds: dedupe(legacy.unreadSessionIds ?? []),
     trustedProjectPaths: dedupe(legacy.trustedProjectPaths ?? []),
     fastModeSessionIds: dedupe(legacy.fastModeSessionIds ?? []),
-    utilityModel: legacy.utilityModel,
     modelPresets,
-    defaultModelPresetId,
-    vscodeServerPath,
-  } satisfies ApplicationStateValue);
+  };
+  const withUtility =
+    legacy.utilityModel === undefined ? base : { ...base, utilityModel: legacy.utilityModel };
+  const withDefault =
+    defaultModelPresetId === undefined ? withUtility : { ...withUtility, defaultModelPresetId };
+  return Effect.succeed(
+    vscodeServerPath === undefined ? withDefault : { ...withDefault, vscodeServerPath },
+  );
 });
 
 const writeError = (stage: AtomicFileStage, cause: unknown) =>
@@ -229,9 +235,15 @@ export const makeApplicationStorageLive = (userDataDirectory: string) =>
         return { state, source: migrated ? ("migrated" as const) : ("current" as const) };
       });
 
-      return ApplicationStorage.of({
-        load: lock.withPermits(1)(loadUnlocked()),
-        save: (state) => lock.withPermits(1)(saveUnlocked(state)),
+      const load = Effect.fn("ApplicationStorage.loadSerialized")(function* () {
+        return yield* lock.withPermits(1)(loadUnlocked());
       });
+      const save = Effect.fn("ApplicationStorage.saveSerialized")(function* (
+        state: ApplicationStateValue,
+      ) {
+        return yield* lock.withPermits(1)(saveUnlocked(state));
+      });
+
+      return ApplicationStorage.of({ load, save });
     }),
   );

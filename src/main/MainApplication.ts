@@ -1,4 +1,4 @@
-import type { App, Event } from "electron";
+import type { Event } from "electron";
 import { Deferred, Effect } from "effect";
 import type * as Cause from "effect/Cause";
 
@@ -9,12 +9,22 @@ export interface MainApplicationHooks {
   readonly reportDefect?: (cause: Cause.Cause<unknown>) => void;
 }
 
-export interface MainApplicationOptions extends MainApplicationHooks {
-  readonly application: Pick<App, "on" | "removeListener" | "quit" | "whenReady">;
+interface MainApplicationElectron {
+  on(event: "before-quit", listener: (event: Event) => void): void;
+  on(event: "window-all-closed", listener: () => void): void;
+  removeListener(event: "before-quit", listener: (event: Event) => void): void;
+  removeListener(event: "window-all-closed", listener: () => void): void;
+  quit(): void;
+  whenReady(): Promise<void>;
 }
 
-const fromHook = (hook: () => void | Promise<void>) =>
-  Effect.promise(() => Promise.resolve(hook()));
+export interface MainApplicationOptions extends MainApplicationHooks {
+  readonly application: MainApplicationElectron;
+}
+
+const fromHook = Effect.fn("MainApplication.fromHook")((hook: () => void | Promise<void>) =>
+  Effect.promise(() => Promise.resolve(hook())),
+);
 
 /**
  * Owns Electron's process lifecycle. Electron remains the authority for quit

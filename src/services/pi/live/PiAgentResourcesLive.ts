@@ -3,7 +3,7 @@ import {
   DefaultResourceLoader,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { Layer } from "effect";
+import { Effect, Layer } from "effect";
 import { makePiAgentResources, PiAgentResources } from "../PiAgentResources";
 import type { PiAgentResourceContext, PiAgentResourcesSnapshot } from "../agent-resource-data";
 
@@ -114,6 +114,11 @@ export async function discoverPiAgentResources(
 export const makePiAgentResourcesLive = (agentDirectory: string) =>
   Layer.succeed(PiAgentResources)(
     makePiAgentResources({
-      load: (context, signal) => discoverPiAgentResources(agentDirectory, context, signal),
+      load: Effect.fn("PiAgentResourcesLive.load")((context) =>
+        Effect.tryPromise({
+          try: (signal) => discoverPiAgentResources(agentDirectory, context, signal),
+          catch: (cause) => cause,
+        }),
+      ),
     }),
   );

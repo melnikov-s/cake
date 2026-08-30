@@ -30,7 +30,7 @@ export const PiModel = Schema.Struct({
   ),
   authenticated: Schema.Boolean,
   available: Schema.Boolean,
-  authSource: Schema.optional(
+  authSource: Schema.optionalKey(
     Schema.Literals([
       "stored",
       "runtime",
@@ -40,7 +40,7 @@ export const PiModel = Schema.Struct({
       "models_json_command",
     ]),
   ),
-  authLabel: Schema.optional(Schema.String.check(Schema.isMaxLength(512))),
+  authLabel: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(512))),
   authTypes: Schema.Array(Schema.Literals(["api_key", "oauth"])).check(
     Schema.isMaxLength(2),
     Schema.isUnique(),
@@ -106,9 +106,9 @@ export class PiModelCompletionError extends Schema.TaggedError<PiModelCompletion
 ) {}
 
 export type ThinkingLevel = typeof ThinkingLevel.Type;
-export type PiModel = typeof PiModel.Type;
-export type ModelSelection = typeof ModelSelection.Type;
-export type BoundedCompletionInput = typeof BoundedCompletionInput.Type;
+export interface PiModel extends Schema.Schema.Type<typeof PiModel> {}
+export interface ModelSelection extends Schema.Schema.Type<typeof ModelSelection> {}
+export interface BoundedCompletionInput extends Schema.Schema.Type<typeof BoundedCompletionInput> {}
 export type PiModelResolutionError =
   | UnknownPiModelError
   | UnauthenticatedPiModelError

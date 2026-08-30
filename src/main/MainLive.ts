@@ -16,16 +16,17 @@ const makeMainLive = (
   rpcOperations: CakeIpcServerOperations,
   piAgentDirectory: string,
 ) => {
-  const applicationLive = ApplicationState.layer.pipe(
-    Layer.provideMerge(makeApplicationStorageLive(application.getPath("userData"))),
-    Layer.provideMerge(BootstrapLive),
+  const storageLive = makeApplicationStorageLive(application.getPath("userData")).pipe(
+    Layer.provide(BootstrapLive),
   );
+  const applicationLive = ApplicationState.layer.pipe(Layer.provide(storageLive));
   const servicesLive = Layer.mergeAll(
     applicationLive,
     makePiModelsLive(piAgentDirectory),
     makePiAgentResourcesLive(piAgentDirectory),
   );
-  return makeCakeIpcServerLive(rpcOperations).pipe(Layer.provideMerge(servicesLive));
+  const serverLive = makeCakeIpcServerLive(rpcOperations).pipe(Layer.provide(servicesLive));
+  return Layer.merge(servicesLive, serverLive);
 };
 
 export interface LaunchMainApplicationOptions extends Omit<MainApplicationHooks, "start"> {

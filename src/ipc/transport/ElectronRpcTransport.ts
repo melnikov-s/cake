@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Result, Schema } from "effect";
 import type { FromClientEncoded, FromServerEncoded } from "effect/unstable/rpc/RpcMessage";
 
 const requestId = Schema.Union([Schema.String, Schema.Number]);
@@ -10,10 +10,10 @@ const request = Schema.Struct({
   tag: Schema.String,
   payload: Schema.Unknown,
   headers,
-  isNotification: Schema.optional(Schema.Literal(true)),
-  traceId: Schema.optional(Schema.String),
-  spanId: Schema.optional(Schema.String),
-  sampled: Schema.optional(Schema.Boolean),
+  isNotification: Schema.optionalKey(Schema.Literal(true)),
+  traceId: Schema.optionalKey(Schema.String),
+  spanId: Schema.optionalKey(Schema.String),
+  sampled: Schema.optionalKey(Schema.Boolean),
 });
 
 const FromRendererRpcMessage = Schema.Union([
@@ -35,20 +35,28 @@ const FromMainRpcMessage = Schema.Union([
   Schema.Struct({ _tag: Schema.Literal("Pong") }),
 ]);
 
-const decodeRendererMessage = Schema.decodeUnknownSync(FromRendererRpcMessage);
-const decodeMainMessage = Schema.decodeUnknownSync(FromMainRpcMessage);
+const decodeRendererMessage = Schema.decodeUnknownResult(FromRendererRpcMessage);
+const decodeMainMessage = Schema.decodeUnknownResult(FromMainRpcMessage);
 
-export const parseRendererRpcMessage = (input: unknown): FromClientEncoded => {
-  // SAFETY: the shared Effect Schema decodes every field in the RPC transport envelope.
-  return decodeRendererMessage(input) as FromClientEncoded;
-};
+export const parseRendererRpcMessage = (input: unknown) =>
+  decodeRendererMessage(input).pipe(
+    Result.map((message) => {
+      // SAFETY: Effect's internal RpcMessage types do not export Schemas; the
+      // mirror Schema above has validated every encoded client field.
+      return message as FromClientEncoded;
+    }),
+  );
 
-export const parseMainRpcMessage = (input: unknown): FromServerEncoded => {
-  // SAFETY: the shared Effect Schema decodes every field in the RPC transport envelope.
-  return decodeMainMessage(input) as FromServerEncoded;
-};
+export const parseMainRpcMessage = (input: unknown) =>
+  decodeMainMessage(input).pipe(
+    Result.map((message) => {
+      // SAFETY: Effect's internal RpcMessage types do not export Schemas; the
+      // mirror Schema above has validated every encoded server field.
+      return message as FromServerEncoded;
+    }),
+  );
 
 export interface ElectronRpcTransport {
   readonly send: (message: FromClientEncoded) => void;
-  readonly subscribe: (listener: (message: FromServerEncoded) => void) => () => void;
+  readonly subscribe: (listener: (message: unknown) => void) => () => void;
 }
