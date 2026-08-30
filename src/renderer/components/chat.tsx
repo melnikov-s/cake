@@ -48,7 +48,7 @@ const Usage = observer(function Usage({ store }: { store: ChatStore }) {
     : "Context usage unavailable";
   return (
     <div
-      className="mr-1 flex items-center gap-1.5 font-mono text-[10px] whitespace-nowrap text-muted-foreground tabular-nums max-[820px]:hidden"
+      className="flex shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-2 py-1 font-mono text-[11px] text-muted-foreground tabular-nums select-none hover:bg-muted/70 hover:text-foreground transition-colors cursor-default"
       aria-label={`${contextLabel}; ${contextTokenSummary}`}
       title={`${contextTitle} · ${usage.tokens.total.toLocaleString()} billed tokens`}
       tabIndex={0}
@@ -61,30 +61,32 @@ const Usage = observer(function Usage({ store }: { store: ChatStore }) {
       }}
       onBlur={hide}
     >
-      <svg className="size-[30px] overflow-visible" viewBox="0 0 36 36" aria-hidden="true">
+      <svg className="size-3.5 shrink-0 overflow-visible" viewBox="0 0 16 16" aria-hidden="true">
         <circle
-          className="fill-none stroke-muted-foreground/20 [stroke-width:2.25]"
-          cx="18"
-          cy="18"
-          r="15.5"
+          className="fill-none stroke-muted-foreground/30 [stroke-width:2]"
+          cx="8"
+          cy="8"
+          r="6"
           pathLength="100"
         />
         <circle
-          className="fill-none stroke-muted-foreground [stroke-width:2.25] [stroke-linecap:round] -rotate-90 origin-center"
-          cx="18"
-          cy="18"
-          r="15.5"
+          className="fill-none stroke-foreground/80 [stroke-width:2] [stroke-linecap:round] -rotate-90 origin-center"
+          cx="8"
+          cy="8"
+          r="6"
           pathLength="100"
           strokeDasharray={`${Math.min(100, percent ?? 0)} 100`}
         />
-        <text
-          className="fill-current text-[8px] font-semibold [dominant-baseline:central] [text-anchor:middle]"
-          x="18"
-          y="18"
-        >
-          {percent === undefined ? "—" : `${percent}%`}
-        </text>
       </svg>
+      <span className="font-semibold text-foreground max-[540px]:hidden">
+        {percent === undefined ? "—" : `${percent}%`}
+      </span>
+      {context && (
+        <span className="text-muted-foreground/60 max-[640px]:hidden">
+          ·{" "}
+          {`${formatCompactTokenCount(context.tokens)}/${formatCompactTokenCount(context.contextWindow)}`}
+        </span>
+      )}
       {anchor && <TooltipBubble label={contextTokenSummary} anchor={anchor} placement="above" />}
     </div>
   );
@@ -332,12 +334,6 @@ export const Chat = observer(function Chat({
                 <PaperclipIcon />
               </IconButton>
             )}
-          </>
-        }
-        toolbarActions={
-          <>
-            <Usage store={store} />
-            {pluginActions}
             {store.supportsUserMessageMarkdown && (
               <IconButton
                 tooltip={
@@ -352,6 +348,15 @@ export const Chat = observer(function Chat({
                 <MarkdownIcon />
               </IconButton>
             )}
+            {(store.canAttach || store.supportsUserMessageMarkdown) && store.configuration && (
+              <div className="mx-0.5 h-4 w-px bg-border/60" aria-hidden="true" />
+            )}
+          </>
+        }
+        toolbarActions={
+          <>
+            <Usage store={store} />
+            {pluginActions}
             {(() => {
               const hasInput =
                 store.draft.trim().length > 0 ||

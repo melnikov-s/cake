@@ -50,7 +50,7 @@ export interface ModelPickerProps {
 
 type ConfigurationView = "current" | "models" | "configure";
 
-function reasoningLabel(level?: ThinkingLevel) {
+export function reasoningLabel(level?: ThinkingLevel) {
   if (!level || level === "off") return "Off";
   return `${level.charAt(0).toUpperCase()}${level.slice(1)}`;
 }
@@ -87,12 +87,10 @@ export function ModelPicker({
   const configureBackRef = useRef<HTMLButtonElement>(null);
 
   const allModels = useMemo(() => groups.flatMap((group) => group.models), [groups]);
-  const selectedModel = useMemo(
-    () =>
-      value?.provider && value?.modelId
-        ? allModels.find((model) => model.provider === value.provider && model.id === value.modelId)
-        : undefined,
-    [allModels, value?.provider, value?.modelId],
+  const selectedModel = useMemo(() =>
+    value?.provider && value?.modelId
+      ? allModels.find((model) => model.provider === value.provider && model.id === value.modelId)
+      : undefined,
   );
 
   const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -124,9 +122,10 @@ export function ModelPicker({
   const displayThinking = value?.thinkingLevel ?? activePreset?.thinkingLevel;
   const displayFast = value?.fastMode ?? Boolean(activePreset?.fastMode);
   const hasValue = Boolean(value?.provider && value?.modelId);
-  const summary = hasValue
-    ? `${reasoningLabel(displayThinking)} reasoning${showFastMode && displayFast ? " · Fast" : ""}`
-    : placeholder;
+  const thinkingText =
+    hasValue && displayThinking && displayThinking !== "off"
+      ? reasoningLabel(displayThinking)
+      : undefined;
 
   useEffect(() => {
     if (!open) return;
@@ -194,18 +193,25 @@ export function ModelPicker({
         size="sm"
         disabled={disabled}
         className={cn(
-          "flex max-w-[320px] min-w-0 items-center justify-between gap-2 rounded-xl px-2.5 py-1.5 text-left text-muted-foreground hover:bg-muted/70 hover:text-foreground transition",
+          "inline-flex max-w-[320px] min-w-0 items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-xs font-medium text-foreground hover:bg-muted/70 hover:text-foreground transition-colors",
           className,
         )}
         aria-label={ariaLabel}
       >
-        <span className="flex min-w-0 flex-1 flex-col leading-tight">
-          <strong className="truncate text-xs font-semibold text-foreground">{activeName}</strong>
-          <small className="truncate font-mono text-[10px] text-muted-foreground">{summary}</small>
+        <span className="flex min-w-0 items-center gap-1">
+          <span className="truncate font-semibold text-foreground">{activeName}</span>
+          {thinkingText && (
+            <span className="shrink-0 text-muted-foreground max-[520px]:hidden">
+              · {thinkingText}
+            </span>
+          )}
+          {showFastMode && displayFast && (
+            <span className="shrink-0 text-muted-foreground max-[580px]:hidden">· Fast</span>
+          )}
         </span>
         <div className="flex shrink-0 items-center gap-1 text-muted-foreground">
           {triggerTrailing}
-          <ChevronDownIcon size={13} />
+          <ChevronDownIcon size={12} />
         </div>
       </PopoverTrigger>
       <PopoverContent

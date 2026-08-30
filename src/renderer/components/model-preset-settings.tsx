@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { observer } from "r-state-tree/react";
 import type { ModelPreset } from "../../ipc/session-contract";
 import type { ModelGroup } from "./model-picker";
-import { ModelPicker } from "./model-picker";
+import { ModelPicker, reasoningLabel } from "./model-picker";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import type { ModelPresetSettingsStore } from "../stores/ModelPresetSettingsStore";
@@ -76,7 +76,7 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
             <div>
               <strong className="block text-xs font-semibold text-foreground">{preset.name}</strong>
               <small className="block font-mono text-[10px] text-muted-foreground">
-                {preset.provider}/{preset.modelId} · {preset.thinkingLevel} reasoning
+                {preset.provider}/{preset.modelId} · {reasoningLabel(preset.thinkingLevel)}
                 {preset.fastMode ? " · Fast" : ""}
               </small>
             </div>

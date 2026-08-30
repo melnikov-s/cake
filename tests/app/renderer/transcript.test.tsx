@@ -1852,7 +1852,7 @@ describe("Transcript scrolling", () => {
     expect(chat?.querySelector("form")).not.toBeNull();
     expect(chat?.querySelector('[aria-label="Model configuration"]')?.textContent).toContain("GPT");
     expect(chat?.querySelector('[aria-label="Model configuration"]')?.textContent).toContain(
-      "Medium reasoning",
+      "Medium",
     );
 
     const titlebar = chat!.querySelector<HTMLElement>("header")!;

@@ -82,7 +82,7 @@ describe("ModelPicker", () => {
 
     const trigger = container.querySelector<HTMLButtonElement>("button")!;
     expect(trigger.textContent).toContain("GPT-5");
-    expect(trigger.textContent).toContain("Medium reasoning");
+    expect(trigger.textContent).toContain("Medium");
 
     act(() => trigger.click());
     expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
