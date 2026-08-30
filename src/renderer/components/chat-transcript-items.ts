@@ -4,6 +4,7 @@ export type TranscriptItem =
   | UiPart
   | { kind: "activity-group"; id: string; parts: UiPart[] }
   | { kind: "source-group"; id: string; parts: Extract<UiPart, { kind: "source" }>[] }
+  | { kind: "changed-files"; id: string }
   | { kind: "loading-state"; id: string };
 
 export function errorNoticeFollowsUser(items: TranscriptItem[], index: number) {

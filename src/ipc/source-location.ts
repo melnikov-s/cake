@@ -17,6 +17,8 @@ export const sourceRangeSchema = z.object({
 
 export const sourceLocationSchema = z.object({
   path: z.string().trim().min(1).max(8_192),
+  /** Prefer VS Code's native working-tree diff when opening this file. */
+  view: z.literal("changes").optional(),
   range: sourceRangeSchema.optional(),
   symbol: z.string().trim().min(1).max(1_024).optional(),
   documentVersion: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),

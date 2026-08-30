@@ -15,12 +15,13 @@ import {
   type VirtualizedConversationHandle,
 } from "@/components/ai-elements/conversation";
 import { AnnotationDraftPopover } from "@/components/annotation-draft-popover";
+import { ChangedFiles } from "@/components/changed-files";
 import { LoadingState } from "@/components/ui/loading-state";
-import { TouchedFiles } from "@/components/touched-files";
 import {
   MessageCommentDraftPopover,
   type MessageCommentAnchorRect,
 } from "@/components/message-comment-popover";
+import { workLogChanges } from "../../utils/turn-diff";
 import type { ChatStore } from "../stores/ChatStore";
 import {
   ActivityGroup,
@@ -83,6 +84,9 @@ export const ChatTranscript = observer(function ChatTranscript({
   );
   const items: TranscriptItem[] = [
     ...groupTranscriptParts(visibleParts),
+    ...(workLogChanges(store.parts).length > 0
+      ? [{ kind: "changed-files" as const, id: "changed-files" }]
+      : []),
     ...(showAssistantLoading ? [{ kind: "loading-state" as const, id: "loading-state" }] : []),
   ];
   const streamingWorkLogVersion = store.streaming
@@ -315,12 +319,18 @@ export const ChatTranscript = observer(function ChatTranscript({
     document.addEventListener("contextmenu", handler);
     return () => document.removeEventListener("contextmenu", handler);
   }, [behavior.showSelectionContextMenu, messageComments, openSelectionDraft, store]);
-  const touchedFiles = (
-    <TouchedFiles
+  const changedFiles = (
+    <ChangedFiles
       parts={store.parts}
       workspacePath={behavior.workspacePath}
-      open={store.touchedFilesOpen}
-      onOpenChange={(open) => store.setTouchedFilesOpen(open)}
+      open={!showAssistantLoading && store.changedFilesOpen}
+      loading={showAssistantLoading}
+      onOpenChange={(open) => store.setChangedFilesOpen(open)}
+      onOpenFile={
+        behavior.openSourceLocation
+          ? (path) => behavior.openSourceLocation?.({ path, view: "changes" })
+          : undefined
+      }
     />
   );
   const selectionOverlays = (
@@ -366,6 +376,8 @@ export const ChatTranscript = observer(function ChatTranscript({
             <TranscriptPart key={part.id} part={part} behavior={transcriptBehavior} />
           ))}
         </div>
+      ) : item.kind === "changed-files" ? (
+        changedFiles
       ) : item.kind === "loading-state" ? (
         <LoadingState startedAt={store.loadingStartedAt} />
       ) : item.kind === "review-run" ? (
@@ -391,7 +403,6 @@ export const ChatTranscript = observer(function ChatTranscript({
                 details={error.details}
               />
             )}
-            {touchedFiles}
           </Conversation>
         </div>
       </>
@@ -406,7 +417,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         >
           <TranscriptList>
             {items.map(renderItem)}
-            <div className="mx-auto w-full max-w-[51rem] px-6 pb-[var(--composer-dock-height,210px)] max-[620px]:px-4 in-[.chat-layout-compact]:px-3 in-[.chat-layout-compact]:pb-2 in-[.chat-layout-compact]:min-h-0">
+            <div className="mx-auto w-full max-w-[51rem] px-6 pb-[calc(var(--composer-dock-height,210px)+2rem)] max-[620px]:px-4 in-[.chat-layout-compact]:px-3 in-[.chat-layout-compact]:pb-2 in-[.chat-layout-compact]:min-h-0">
               {footer}
               {error?.message && (
                 <ErrorNotice
@@ -415,7 +426,6 @@ export const ChatTranscript = observer(function ChatTranscript({
                   details={error.details}
                 />
               )}
-              {touchedFiles}
             </div>
           </TranscriptList>
         </div>
@@ -439,7 +449,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         components={{
           List: TranscriptList,
           Footer: () => (
-            <div className="mx-auto w-full max-w-[51rem] px-6 pb-[var(--composer-dock-height,210px)] max-[620px]:px-4 in-[.chat-layout-compact]:px-3 in-[.chat-layout-compact]:pb-2 in-[.chat-layout-compact]:min-h-0">
+            <div className="mx-auto w-full max-w-[51rem] px-6 pb-[calc(var(--composer-dock-height,210px)+2rem)] max-[620px]:px-4 in-[.chat-layout-compact]:px-3 in-[.chat-layout-compact]:pb-2 in-[.chat-layout-compact]:min-h-0">
               {footer}
               {error?.message && (
                 <ErrorNotice
@@ -448,7 +458,6 @@ export const ChatTranscript = observer(function ChatTranscript({
                   details={error.details}
                 />
               )}
-              {touchedFiles}
             </div>
           ),
         }}

@@ -5,7 +5,7 @@ import React, { act, forwardRef, useEffect, useImperativeHandle, useRef } from "
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore, mount, observable } from "r-state-tree";
-import type { UiPart } from "../../../src/ipc/session-contract";
+import type { Annotation, UiPart } from "../../../src/ipc/session-contract";
 
 const { scrollToIndex, virtualizedLifecycle, virtualizedProps } = vi.hoisted(() => ({
   scrollToIndex: vi.fn(),
@@ -149,7 +149,7 @@ function Transcript({
       groups: observable(new Map()),
     };
   const workLogState = workLogStateRef.current;
-  const touchedFilesStateRef = useRef(observable({ open: true }));
+  const changedFilesStateRef = useRef(observable({ open: true }));
   const transcriptScrollStatesRef = useRef(
     new Map<
       string,
@@ -211,11 +211,11 @@ function Transcript({
       return transcriptScrollStatesRef.current.get(sessionId);
     },
     messageNavigationRequest,
-    get touchedFilesOpen() {
-      return touchedFilesStateRef.current.open;
+    get changedFilesOpen() {
+      return changedFilesStateRef.current.open;
     },
-    setTouchedFilesOpen(open: boolean) {
-      touchedFilesStateRef.current.open = open;
+    setChangedFilesOpen(open: boolean) {
+      changedFilesStateRef.current.open = open;
     },
     annotations: annotations ?? [],
     canAnnotate: Boolean(addAnnotation),
@@ -845,7 +845,7 @@ describe("Transcript scrolling", () => {
     expect(log.querySelector(':scope > summary span[class*="bg-success"]')).not.toBeNull();
   });
 
-  it("summarizes touched files at the conversation end and collapses the list", () => {
+  it("summarizes changed files at the conversation end and collapses the list", () => {
     const parts: UiPart[] = [
       {
         id: "tool-edit-1",
@@ -882,27 +882,75 @@ describe("Transcript scrolling", () => {
       },
     ];
 
+    const openSourceLocation = vi.fn();
     act(() =>
       root.render(
         <Transcript
           parts={parts}
           sessionId="session-1"
           isStreaming={false}
-          behavior={{ workspacePath: "/workspace" }}
+          behavior={{ workspacePath: "/workspace", openSourceLocation }}
           virtualized={false}
         />,
       ),
     );
 
-    const summary = container.querySelector<HTMLElement>('[aria-label="Touched files"]')!;
+    const summary = container.querySelector<HTMLElement>('[aria-label="Changed Files"]')!;
     const trigger = summary.querySelector<HTMLButtonElement>("button")!;
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     expect(summary.textContent).toContain("src/app.ts+2−2");
     expect(summary.textContent).toContain("src/new.ts+2−0");
 
+    act(() =>
+      summary
+        .querySelector<HTMLButtonElement>('[title="Open src/app.ts in VS Code Changes"]')!
+        .click(),
+    );
+    expect(openSourceLocation).toHaveBeenCalledWith({ path: "src/app.ts", view: "changes" });
+
     act(() => trigger.click());
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(summary.querySelector("ul")).toBeNull();
+  });
+
+  it("temporarily collapses changed files and places them before Churning while work is active", () => {
+    const parts: UiPart[] = [
+      {
+        id: "tool-edit",
+        kind: "tool",
+        name: "edit",
+        input: JSON.stringify({
+          path: "/workspace/src/app.ts",
+          edits: [{ oldText: "old", newText: "fresh" }],
+        }),
+        filePath: "/workspace/src/app.ts",
+        state: "success",
+      },
+    ];
+
+    const render = (isStreaming: boolean) =>
+      root.render(
+        <Transcript
+          parts={parts}
+          sessionId="session-1"
+          isStreaming={isStreaming}
+          behavior={{ workspacePath: "/workspace" }}
+          virtualized={false}
+        />,
+      );
+    act(() => render(true));
+
+    const changedFiles = container.querySelector<HTMLElement>('[aria-label="Changed Files"]')!;
+    const loading = container.querySelector<HTMLElement>('[data-slot="loading-state"]')!;
+    expect(changedFiles.querySelector("button")?.getAttribute("aria-expanded")).toBe("false");
+    expect(changedFiles.querySelector("button")?.hasAttribute("disabled")).toBe(true);
+    expect(changedFiles.compareDocumentPosition(loading) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+
+    act(() => render(false));
+    expect(changedFiles.querySelector("button")?.getAttribute("aria-expanded")).toBe("true");
+    expect(changedFiles.querySelector("button")?.hasAttribute("disabled")).toBe(false);
   });
 
   it("switches an expanded work log between auto, diff, and log view modes", () => {

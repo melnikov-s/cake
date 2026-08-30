@@ -254,7 +254,18 @@ function activate(context) {
     if (!relativePath) throw new Error("A file path is required");
     const target = path.resolve(WORKSPACE || context.extensionPath, relativePath);
     if (!workspaceRelative(target)) throw new Error("The source location is outside the workspace");
-    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(target));
+    const targetUri = vscode.Uri.file(target);
+    if (payload.view === "changes") {
+      await openSourceControl(vscode);
+      try {
+        await vscode.commands.executeCommand("git.openChange", targetUri);
+        return;
+      } catch {
+        // Deleted, untracked, or non-Git files may not have a native change editor.
+        // Fall through to the ordinary source document when the file still exists.
+      }
+    }
+    const document = await vscode.workspace.openTextDocument(targetUri);
     if (Number.isInteger(payload.documentVersion) && payload.documentVersion !== document.version)
       void vscode.window.showWarningMessage(
         `This Cake source location was created for version ${payload.documentVersion}; the open document is version ${document.version}.`,
