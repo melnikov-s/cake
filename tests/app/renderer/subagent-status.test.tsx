@@ -103,7 +103,7 @@ describe("SubagentStatus", () => {
     act(() => {
       store.receive({ type: "subagent-activity-removed", parentSessionId: "parent", handleId });
     });
-    expect(container.querySelector('button[aria-label="0 subagents running"]')).not.toBeNull();
+    expect(container.querySelector('button[aria-label="1 subagents running"]')).toBeNull();
     expect(
       document.body.querySelector('[role="dialog"][aria-label="reviewer subagent"]'),
     ).not.toBeNull();

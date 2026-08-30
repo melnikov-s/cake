@@ -2,6 +2,7 @@ import { useRef, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
 import type { ChatStore } from "../stores/ChatStore";
+import { cn } from "@/lib/utils";
 import { ChatPopover } from "./message-comment-popover";
 import { Button } from "./ui/button";
 import { ChatIcon } from "./ui/icons";
@@ -25,32 +26,33 @@ export const SubagentStatus = observer(function SubagentStatus({
   const count = activeRuns.length;
 
   return (
-    <div ref={anchorRef} className="pointer-events-auto mb-1.5 flex min-w-0 justify-end">
-      <Popover open={listOpen} onOpenChange={setListOpen}>
-        <PopoverTrigger
-          className="h-7 gap-2 rounded-full bg-card/95 px-2.5 font-mono text-[10px] shadow-sm"
-          size="sm"
-          variant="outline"
-          aria-label={`${count} subagents running`}
-        >
-          <StatusDot status={count > 0 ? "running" : "ready"} />
-          {count} subagents running
-        </PopoverTrigger>
-        <PopoverContent
-          align="end"
-          className="w-[min(24rem,calc(100vw-24px))] p-2"
-          side="top"
-          aria-label="Active subagents"
-        >
-          <div className="mb-1 flex items-center gap-2 px-2 py-1">
-            <ChatIcon size={14} />
-            <strong className="font-mono text-[10px] uppercase tracking-wider">
-              Active subagents
-            </strong>
-          </div>
-          {activeRuns.length === 0 ? (
-            <p className="px-2 py-3 text-xs text-muted-foreground">No subagents are running.</p>
-          ) : (
+    <div
+      ref={anchorRef}
+      className={cn("pointer-events-auto flex min-w-0 justify-end", count > 0 && "mb-1.5")}
+    >
+      {count > 0 && (
+        <Popover open={listOpen} onOpenChange={setListOpen}>
+          <PopoverTrigger
+            className="h-7 gap-2 rounded-full bg-card/95 px-2.5 font-mono text-[10px] shadow-sm"
+            size="sm"
+            variant="outline"
+            aria-label={`${count} subagents running`}
+          >
+            <StatusDot status="running" />
+            {count} subagents running
+          </PopoverTrigger>
+          <PopoverContent
+            align="end"
+            className="w-[min(24rem,calc(100vw-24px))] p-2"
+            side="top"
+            aria-label="Active subagents"
+          >
+            <div className="mb-1 flex items-center gap-2 px-2 py-1">
+              <ChatIcon size={14} />
+              <strong className="font-mono text-[10px] uppercase tracking-wider">
+                Active subagents
+              </strong>
+            </div>
             <div className="grid gap-1">
               {activeRuns.map((run) => (
                 <Button
@@ -72,9 +74,9 @@ export const SubagentStatus = observer(function SubagentStatus({
                 </Button>
               ))}
             </div>
-          )}
-        </PopoverContent>
-      </Popover>
+          </PopoverContent>
+        </Popover>
+      )}
 
       {selectedRun && selectedChat && anchorRef.current && (
         <ChatPopover
