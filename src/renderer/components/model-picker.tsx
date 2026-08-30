@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import type { ModelOption, ModelPreset, ThinkingLevel } from "../../ipc/session-contract";
 import { FastModeToggle } from "./fast-mode-toggle";
-import { ChevronDownIcon } from "./ui/icons";
+import { ChevronDownIcon, SearchIcon } from "./ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
@@ -194,7 +194,7 @@ export function ModelPicker({
         size="sm"
         disabled={disabled}
         className={cn(
-          "flex max-w-[320px] min-w-0 items-center justify-between gap-2 rounded-lg px-2.5 py-1 text-left text-muted-foreground hover:bg-muted hover:text-foreground",
+          "flex max-w-[320px] min-w-0 items-center justify-between gap-2 rounded-xl px-2.5 py-1.5 text-left text-muted-foreground hover:bg-muted/70 hover:text-foreground transition",
           className,
         )}
         aria-label={ariaLabel}
@@ -211,10 +211,10 @@ export function ModelPicker({
       <PopoverContent
         side="top"
         align="start"
-        className="w-[360px] max-w-[calc(100vw-24px)] overflow-hidden rounded-xl border border-border bg-card p-0 shadow-2xl"
+        className="w-[360px] max-w-[calc(100vw-24px)] overflow-hidden rounded-2xl border border-border bg-card p-0 shadow-2xl"
         aria-label={ariaLabel}
       >
-        <div className="p-3" key={view}>
+        <div className="p-3.5 space-y-3" key={view}>
           {view === "current" && hasValue && (
             <>
               <header className="mb-3 flex items-start justify-between gap-2">
@@ -232,9 +232,9 @@ export function ModelPicker({
                   type="button"
                   onClick={showModels}
                   disabled={disabled}
-                  className="h-auto p-0 text-xs text-accent hover:underline hover:bg-transparent"
+                  className="h-auto p-0 text-xs text-accent hover:underline hover:bg-transparent flex items-center gap-0.5"
                 >
-                  Change model
+                  <span>Change model</span>
                   <span aria-hidden="true">›</span>
                 </Button>
               </header>
@@ -316,60 +316,90 @@ export function ModelPicker({
 
           {view === "models" && (
             <>
-              <header className="mb-2.5 flex items-center justify-between">
+              <header className="flex items-center justify-between px-0.5">
                 <strong className="text-xs font-semibold text-foreground">Choose model</strong>
+                <span className="font-mono text-[10px] text-muted-foreground">ESC</span>
               </header>
-              <Input
-                ref={searchRef}
-                autoFocus
-                className="mb-2 h-8 text-xs"
-                aria-label="Search presets and models"
-                placeholder="Search presets and models…"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
+              <div className="relative">
+                <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground">
+                  <SearchIcon size={13} />
+                </span>
+                <Input
+                  ref={searchRef}
+                  autoFocus
+                  className="h-8 pl-8 pr-3 text-xs bg-muted/40 border-border focus:border-accent/60"
+                  aria-label="Search presets and models"
+                  placeholder="Search presets and models…"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+              </div>
               <div className="max-h-60 space-y-3 overflow-y-auto pr-1 text-xs">
                 {filteredPresets.length > 0 && (
                   <section aria-label="Model presets" className="space-y-1">
-                    <h3 className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    <h3 className="px-1 font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                       Presets
                     </h3>
-                    {filteredPresets.map((preset) => (
-                      <NavItem
-                        key={preset.id}
-                        disabled={disabled}
-                        label={preset.name}
-                        description={`${preset.provider}/${preset.modelId}`}
-                        onClick={() => {
-                          close();
-                          if (onSelectPreset) onSelectPreset(preset);
-                          else
-                            onSelect({
-                              provider: preset.provider,
-                              modelId: preset.modelId,
-                              thinkingLevel: preset.thinkingLevel,
-                              fastMode: preset.fastMode,
-                            });
-                        }}
-                        trailing={
-                          <div className="flex shrink-0 items-center gap-1 font-mono text-[10px]">
-                            <Badge variant="outline" className="text-[10px]">
-                              {reasoningLabel(preset.thinkingLevel)}
-                            </Badge>
-                            {preset.fastMode && (
-                              <Badge variant="accent" className="text-[10px]">
-                                Fast
+                    {filteredPresets.map((preset) => {
+                      const isActive =
+                        activePreset?.id === preset.id ||
+                        (!activePreset &&
+                          value?.provider === preset.provider &&
+                          value?.modelId === preset.modelId &&
+                          value?.thinkingLevel === preset.thinkingLevel &&
+                          Boolean(value?.fastMode) === Boolean(preset.fastMode));
+                      return (
+                        <NavItem
+                          key={preset.id}
+                          active={isActive}
+                          disabled={disabled}
+                          label={
+                            <span className="flex items-center gap-1.5 font-semibold">
+                              {isActive && (
+                                <span
+                                  className="size-1.5 rounded-full bg-accent"
+                                  aria-hidden="true"
+                                />
+                              )}
+                              {preset.name}
+                            </span>
+                          }
+                          description={`${preset.provider}/${preset.modelId}`}
+                          onClick={() => {
+                            close();
+                            if (onSelectPreset) onSelectPreset(preset);
+                            else
+                              onSelect({
+                                provider: preset.provider,
+                                modelId: preset.modelId,
+                                thinkingLevel: preset.thinkingLevel,
+                                fastMode: preset.fastMode,
+                              });
+                          }}
+                          trailing={
+                            <div className="flex shrink-0 items-center gap-1 font-mono text-[10px]">
+                              <Badge variant="outline" className="text-[10px] font-medium">
+                                {reasoningLabel(preset.thinkingLevel)}
                               </Badge>
-                            )}
-                          </div>
-                        }
-                      />
-                    ))}
+                              {preset.fastMode && (
+                                <Badge variant="accent" className="text-[10px] font-semibold">
+                                  Fast
+                                </Badge>
+                              )}
+                            </div>
+                          }
+                        />
+                      );
+                    })}
                   </section>
                 )}
                 {filteredGroups.map((group) => (
-                  <section aria-label={group.name} key={group.id} className="space-y-1">
-                    <h3 className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <section
+                    aria-label={group.name}
+                    key={group.id}
+                    className="space-y-1 pt-1.5 border-t border-border first:border-t-0 first:pt-0"
+                  >
+                    <h3 className="px-1 font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                       {group.name}
                     </h3>
                     {group.models.map((model) => (
@@ -379,7 +409,11 @@ export function ModelPicker({
                         label={model.name}
                         description={model.id}
                         onClick={() => configureModel(model)}
-                        trailing={<span aria-hidden="true">›</span>}
+                        trailing={
+                          <span aria-hidden="true" className="text-muted-foreground">
+                            ›
+                          </span>
+                        }
                       />
                     ))}
                   </section>
@@ -391,24 +425,27 @@ export function ModelPicker({
                 )}
               </div>
               {openPresetSettings && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mt-2 h-auto w-full text-center text-[11px] text-accent hover:underline hover:bg-transparent"
-                  type="button"
-                  onClick={() => {
-                    close();
-                    openPresetSettings();
-                  }}
-                >
-                  Manage model presets in Settings
-                </Button>
+                <div className="pt-2 border-t border-border">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto w-full justify-between text-[11px] text-accent hover:underline hover:bg-transparent px-1 py-1"
+                    type="button"
+                    onClick={() => {
+                      close();
+                      openPresetSettings();
+                    }}
+                  >
+                    <span>Manage model presets in Settings</span>
+                    <span aria-hidden="true">→</span>
+                  </Button>
+                </div>
               )}
               {allowClear && onClear && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="mt-2 h-auto w-full text-center text-[11px] text-muted-foreground hover:underline hover:bg-transparent"
+                  className="mt-1 h-auto w-full text-center text-[11px] text-muted-foreground hover:underline hover:bg-transparent"
                   type="button"
                   onClick={() => {
                     close();

@@ -259,3 +259,9 @@ export const WorkLogFullyExpandedIcon = () => (
     <path d="m7 7 5 5 5-5M7 13l5 5 5-5" />
   </Icon>
 );
+export const SearchIcon = ({ size = 14, className }: { size?: number; className?: string }) => (
+  <Icon size={size} className={className}>
+    <circle cx="11" cy="11" r="8" />
+    <path d="m21 21-4.3-4.3" />
+  </Icon>
+);
