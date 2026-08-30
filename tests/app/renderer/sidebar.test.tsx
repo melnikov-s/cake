@@ -287,7 +287,7 @@ describe("Sidebar projects", () => {
     expect(container.querySelector(".session-row")?.textContent).not.toContain("→main");
   });
 
-  it("uses GitHub-style open and merged colors only for managed worktrees", () => {
+  it("uses worktree status icons for managed worktrees and a branch icon for main", () => {
     const store = {
       recentProjectPaths: ["/work/cake"],
       projects: [{ path: "/work/cake", name: "Cake" }],
@@ -324,12 +324,15 @@ describe("Sidebar projects", () => {
 
     const openIcon = container.querySelector('[data-worktree-state="active"]');
     const mergedIcon = container.querySelector('[data-worktree-state="landed"]');
-    const mainIcon = container.querySelector('[data-session-id="main"] [role="img"]');
+    const mainStatusIcon = container.querySelector('[data-session-id="main"] [role="img"]');
+    const mainBranchIcon = container.querySelector('[data-session-id="main"] svg');
     expect(openIcon?.classList.contains("text-worktree-open")).toBe(true);
     expect(openIcon?.getAttribute("aria-label")).toBe("Open worktree");
     expect(mergedIcon?.classList.contains("text-worktree-merged")).toBe(true);
     expect(mergedIcon?.getAttribute("aria-label")).toBe("Merged worktree");
-    expect(mainIcon).toBeNull();
+    expect(mainStatusIcon).toBeNull();
+    expect(mainBranchIcon?.querySelectorAll("circle")).toHaveLength(3);
+    expect(openIcon?.querySelectorAll("circle")).toHaveLength(2);
   });
 
   it("does not surface sidecar chat work as parent-session badges", () => {

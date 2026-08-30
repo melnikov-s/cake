@@ -5,7 +5,7 @@ import { cn } from "../lib/utils";
 import { Badge } from "./ui/badge";
 import { IconButton } from "./ui/icon-button";
 import { NavItem } from "./ui/nav-item";
-import { PullRequestIcon, ResolveIcon, RestoreIcon } from "./ui/icons";
+import { BranchIcon, ResolveIcon, RestoreIcon } from "./ui/icons";
 import type { SidebarStore } from "../stores/SidebarStore";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
 
@@ -134,7 +134,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                         className="shrink-0"
                       />
                     ) : (
-                      <PullRequestIcon />
+                      <BranchIcon />
                     )}
                     <span className="truncate">{branch}</span>
                     {showBaseBranch && (
