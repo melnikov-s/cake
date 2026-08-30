@@ -12,7 +12,17 @@ import {
 } from "./ai-elements/confirmation";
 import { Button } from "./ui/button";
 import { DialogBackdrop } from "./ui/dialog";
-import { BranchIcon, CheckIcon, ChevronDownIcon, FolderIcon, PullRequestIcon } from "./ui/icons";
+import {
+  BranchIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  CloseIcon,
+  FolderIcon,
+  PullRequestIcon,
+  RemoveIcon,
+  ResolveIcon,
+  RestoreIcon,
+} from "./ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { WorktreePillAction } from "./worktree-pill-action";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
@@ -61,7 +71,7 @@ export const WorktreePill = observer(function WorktreePill({
         ? candidates.find((record) => record.worktreePath === choice.worktreePath)
         : undefined;
     return (
-      <div className="mx-4 -mb-5 flex min-w-0 items-center gap-2 overflow-x-auto rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3.5 pb-8 text-sm">
+      <div className="mx-4 -mb-5 flex min-w-0 items-center gap-1 overflow-x-auto rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3 pb-8 text-xs">
         <Button
           type="button"
           variant="ghost"
@@ -69,13 +79,13 @@ export const WorktreePill = observer(function WorktreePill({
           disabled={busy}
           aria-pressed={choice.kind === "current"}
           className={cn(
-            "h-8 shrink-0 gap-2 rounded-lg px-2.5 text-sm font-normal text-foreground shadow-none",
+            "flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs font-normal text-muted-foreground shadow-none hover:bg-muted hover:text-foreground",
             choice.kind === "current" && "bg-muted text-foreground",
           )}
           onClick={() => choose({ kind: "current" })}
         >
           <FolderIcon />
-          Current checkout
+          <span>Current checkout</span>
         </Button>
         <Button
           type="button"
@@ -84,13 +94,13 @@ export const WorktreePill = observer(function WorktreePill({
           disabled={busy}
           aria-pressed={choice.kind === "new"}
           className={cn(
-            "h-8 shrink-0 gap-2 rounded-lg px-2.5 text-sm font-normal text-foreground shadow-none",
+            "flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs font-normal text-muted-foreground shadow-none hover:bg-muted hover:text-foreground",
             choice.kind === "new" && "bg-muted text-foreground",
           )}
           onClick={() => choose({ kind: "new" })}
         >
           <BranchIcon />
-          New worktree
+          <span>New worktree</span>
         </Button>
         <Popover open={existingOpen} onOpenChange={setExistingOpen}>
           <PopoverTrigger
@@ -101,7 +111,7 @@ export const WorktreePill = observer(function WorktreePill({
             aria-label="Choose existing worktree"
             aria-haspopup="menu"
             className={cn(
-              "h-8 shrink-0 gap-2 rounded-lg px-2.5 text-sm font-normal text-foreground shadow-none",
+              "flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs font-normal text-muted-foreground shadow-none hover:bg-muted hover:text-foreground",
               choice.kind === "reuse" && "bg-muted text-foreground",
             )}
           >
@@ -153,7 +163,6 @@ export const WorktreePill = observer(function WorktreePill({
 
   if (!status) return null;
 
-  const target = status.targetBranch.replace(/^agent\//, "");
   const branch = status.record.branch.replace(/^agent\//, "");
   const landed = status.record.state === "landed";
   const hasUncommittedChanges = status.dirtyCount > 0;
@@ -183,105 +192,111 @@ export const WorktreePill = observer(function WorktreePill({
 
   return (
     <>
-      <div className="mx-4 -mb-5 flex flex-col gap-1 rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3.5 pb-8">
-        <div className="flex min-w-0 items-center gap-2 overflow-x-auto text-sm">
-          <span className="flex h-8 min-w-0 shrink items-center gap-2 px-2.5 text-foreground">
+      <div className="mx-4 -mb-5 flex flex-col gap-1 rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3 pb-8">
+        <div className="flex min-w-0 items-center justify-between gap-2 overflow-x-auto text-xs">
+          <span className="flex h-7.5 min-w-0 shrink items-center gap-1.5 px-2 text-xs font-normal text-foreground">
             <WorktreeStatusIcon state={status.record.state} className="shrink-0" />
-            <span className="truncate">{branch}</span>
-            <span aria-hidden="true">→</span>
-            <span className="truncate">{target}</span>
+            <span className="truncate max-w-56">{branch}</span>
           </span>
-          {!landed && (
-            <>
+          <div className="flex min-w-0 shrink-0 items-center gap-1">
+            {!landed && (
+              <>
+                <WorktreePillAction
+                  icon={<CheckIcon />}
+                  disabledReason={mergeDisabledReason}
+                  onClick={() => {
+                    if (status.targetDirty) {
+                      setConfirmation("dirty-target");
+                      return;
+                    }
+                    run(actions.commitAndMerge());
+                  }}
+                >
+                  {mergeLabel}
+                </WorktreePillAction>
+                <WorktreePillAction
+                  icon={<ResolveIcon />}
+                  disabledReason={mergeDisabledReason}
+                  onClick={() => {
+                    if (status.targetDirty) {
+                      setConfirmation("dirty-target-resolve");
+                      return;
+                    }
+                    run(actions.commitAndMerge(false, true));
+                  }}
+                >
+                  {mergeAndResolveLabel}
+                </WorktreePillAction>
+              </>
+            )}
+            {landed && (
               <WorktreePillAction
-                disabledReason={mergeDisabledReason}
-                onClick={() => {
-                  if (status.targetDirty) {
-                    setConfirmation("dirty-target");
-                    return;
-                  }
-                  run(actions.commitAndMerge());
-                }}
-              >
-                {mergeLabel}
-              </WorktreePillAction>
-              <WorktreePillAction
-                disabledReason={mergeDisabledReason}
-                onClick={() => {
-                  if (status.targetDirty) {
-                    setConfirmation("dirty-target-resolve");
-                    return;
-                  }
-                  run(actions.commitAndMerge(false, true));
-                }}
-              >
-                {mergeAndResolveLabel}
-              </WorktreePillAction>
-            </>
-          )}
-          {landed && (
-            <WorktreePillAction
-              disabledReason={operationDisabledReason}
-              onClick={() => run(actions.resolve())}
-            >
-              {actions.phase === "resolving-session" ? "Resolving…" : "Resolve"}
-            </WorktreePillAction>
-          )}
-          {actions.stalled && (
-            <>
-              <WorktreePillAction
-                disabledReason={sessionDisabledReason}
-                onClick={() => run(actions.retryLanding())}
-              >
-                Retry
-              </WorktreePillAction>
-              <WorktreePillAction
-                disabledReason={sessionDisabledReason}
-                onClick={() => actions.cancelLanding()}
-              >
-                Dismiss
-              </WorktreePillAction>
-            </>
-          )}
-          {!landed && (
-            <Popover
-              open={confirmation === "discard-resolve"}
-              onOpenChange={(open) => setConfirmation(open ? "discard-resolve" : undefined)}
-            >
-              <WorktreePillAction
-                popoverTrigger
-                tone="destructive"
+                icon={<ResolveIcon />}
                 disabledReason={operationDisabledReason}
+                onClick={() => run(actions.resolve())}
               >
-                {actions.phase === "discarding" ? "Discarding…" : "Discard & resolve"}
+                {actions.phase === "resolving-session" ? "Resolving…" : "Resolve"}
               </WorktreePillAction>
-              <PopoverContent align="start" side="top" className="!w-80 !p-0">
-                <Confirmation state="requested" className="border-0 shadow-none">
-                  <ConfirmationRequest>
-                    <ConfirmationTitle>Discard this worktree?</ConfirmationTitle>
-                    <ConfirmationDescription>
-                      The worktree and its branch will be deleted, all unmerged work will be lost,
-                      and its sessions will be resolved.
-                    </ConfirmationDescription>
-                    <ConfirmationActions>
-                      <ConfirmationAction
-                        variant="outline"
-                        onClick={() => setConfirmation(undefined)}
-                      >
-                        Cancel
-                      </ConfirmationAction>
-                      <ConfirmationAction
-                        variant="destructive"
-                        onClick={() => run(actions.discard(false, true))}
-                      >
-                        Discard & resolve
-                      </ConfirmationAction>
-                    </ConfirmationActions>
-                  </ConfirmationRequest>
-                </Confirmation>
-              </PopoverContent>
-            </Popover>
-          )}
+            )}
+            {actions.stalled && (
+              <>
+                <WorktreePillAction
+                  icon={<RestoreIcon />}
+                  disabledReason={sessionDisabledReason}
+                  onClick={() => run(actions.retryLanding())}
+                >
+                  Retry
+                </WorktreePillAction>
+                <WorktreePillAction
+                  icon={<CloseIcon size={14} />}
+                  disabledReason={sessionDisabledReason}
+                  onClick={() => actions.cancelLanding()}
+                >
+                  Dismiss
+                </WorktreePillAction>
+              </>
+            )}
+            {!landed && (
+              <Popover
+                open={confirmation === "discard-resolve"}
+                onOpenChange={(open) => setConfirmation(open ? "discard-resolve" : undefined)}
+              >
+                <WorktreePillAction
+                  popoverTrigger
+                  icon={<RemoveIcon />}
+                  tone="destructive"
+                  disabledReason={operationDisabledReason}
+                >
+                  {actions.phase === "discarding" ? "Discarding…" : "Discard & resolve"}
+                </WorktreePillAction>
+                <PopoverContent align="end" side="top" className="!w-80 !p-0">
+                  <Confirmation state="requested" className="border-0 shadow-none">
+                    <ConfirmationRequest>
+                      <ConfirmationTitle>Discard this worktree?</ConfirmationTitle>
+                      <ConfirmationDescription>
+                        The worktree and its branch will be deleted, all unmerged work will be lost,
+                        and its sessions will be resolved.
+                      </ConfirmationDescription>
+                      <ConfirmationActions>
+                        <ConfirmationAction
+                          variant="outline"
+                          onClick={() => setConfirmation(undefined)}
+                        >
+                          Cancel
+                        </ConfirmationAction>
+                        <ConfirmationAction
+                          variant="destructive"
+                          onClick={() => run(actions.discard(false, true))}
+                        >
+                          Discard & resolve
+                        </ConfirmationAction>
+                      </ConfirmationActions>
+                    </ConfirmationRequest>
+                  </Confirmation>
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
         </div>
         {actions.error && <p className="px-2 text-xs text-destructive">{actions.error}</p>}
         {(status.targetDirty || !status.targetOnBranch) && (
