@@ -1589,6 +1589,7 @@ async function handleCakeRequest(
       request.entryId,
       request.text,
       request.attachments,
+      request.renderUserMessageAsMarkdown,
     );
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }

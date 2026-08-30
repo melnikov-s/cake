@@ -31,7 +31,7 @@ export interface ChatStoreProps {
   createDraft?(): Promise<boolean>;
   canCreateDraft?(): boolean;
   activateDraft?(): Promise<boolean>;
-  editLastUserMessage?(entryId: string): void;
+  editLastUserMessage?(entryId: string): boolean | undefined;
   isDraftSession?(): boolean;
   editingMessage?(): boolean;
   abort?(): Promise<void>;
@@ -455,7 +455,8 @@ export class ChatStore extends Store<ChatStoreProps> {
     return this.props.activateDraft?.() ?? Promise.resolve(false);
   }
   editLastUserMessage(entryId: string) {
-    this.props.editLastUserMessage?.(entryId);
+    const renderAsMarkdown = this.props.editLastUserMessage?.(entryId);
+    if (renderAsMarkdown !== undefined) this.renderUserMessageAsMarkdown = renderAsMarkdown;
   }
   abort() {
     return this.props.abort?.() ?? Promise.resolve();

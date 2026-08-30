@@ -348,6 +348,7 @@ export interface DesktopClient {
     entryId: string;
     text: string;
     attachments: Attachment[];
+    renderUserMessageAsMarkdown: boolean;
   }): Promise<void>;
   abortGlobalChat(input: { operationId: string; sessionId: string }): Promise<void>;
   compactGlobalChat(input: {
@@ -477,6 +478,7 @@ export interface DesktopClient {
     entryId: string;
     text: string;
     attachments: Attachment[];
+    renderUserMessageAsMarkdown: boolean;
   }): Promise<void>;
   abort(input: { operationId: string; sessionId: string }): Promise<void>;
   compactSession(input: {
@@ -1082,6 +1084,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         entryId: input.entryId,
         text: input.text,
         attachments: input.attachments,
+        renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
       }),
     abortGlobalChat: (input) =>
       accept(bridge, {
@@ -1339,6 +1342,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         entryId: input.entryId,
         text: input.text,
         attachments: input.attachments,
+        renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
       }),
     submitReviewThread: (input) =>
       accept(bridge, {

@@ -102,6 +102,20 @@ describe("ChatStore user message Markdown", () => {
     });
     store[Symbol.dispose]();
   });
+
+  it("restores the edited message's Markdown mode", () => {
+    const editLastUserMessage = vi.fn(() => true);
+    const store = createChatStore(() => Promise.resolve(true), {
+      supportsUserMessageMarkdown: () => true,
+      editLastUserMessage,
+    });
+
+    store.editLastUserMessage("user-entry");
+
+    expect(editLastUserMessage).toHaveBeenCalledWith("user-entry");
+    expect(store.renderUserMessageAsMarkdown).toBe(true);
+    store[Symbol.dispose]();
+  });
 });
 
 describe("ChatStore message navigation", () => {

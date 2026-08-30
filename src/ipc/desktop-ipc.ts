@@ -545,6 +545,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     entryId: z.string().min(1).max(256),
     text: z.string().max(262_144),
     attachments: z.array(attachmentSchema).max(20),
+    renderUserMessageAsMarkdown: z.boolean(),
   }),
   z.object({
     type: z.literal("abort-global-chat"),
@@ -757,6 +758,7 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     entryId: z.string().min(1).max(256),
     text: z.string().max(262_144),
     attachments: z.array(attachmentSchema).max(20),
+    renderUserMessageAsMarkdown: z.boolean(),
   }),
   z.object({
     type: z.literal("submit-review-thread"),

@@ -45,6 +45,8 @@
   --sidebar-hover: oklch(0.89 0.025 237);
   --sidebar-active: oklch(0.855 0.035 237);
   --composer: oklch(0.985 0.004 250);
+  --user-message: oklch(0.91 0.014 245);
+  --user-message-foreground: oklch(0.22 0.012 252);
   --worktree-open: #1a7f37;
   --worktree-merged: #8250df;
   --shadow: 220 28% 20%;
@@ -77,6 +79,8 @@
   --sidebar-hover: oklch(0.28 0.027 236);
   --sidebar-active: oklch(0.34 0.03 236);
   --composer: oklch(0.235 0.011 250);
+  --user-message: oklch(0.285 0.024 242);
+  --user-message-foreground: oklch(0.91 0.008 250);
   --worktree-open: #3fb950;
   --worktree-merged: #a371f7;
   --shadow: 220 50% 3%;
@@ -110,6 +114,8 @@
     --sidebar-hover: oklch(0.28 0.027 236);
     --sidebar-active: oklch(0.34 0.03 236);
     --composer: oklch(0.235 0.011 250);
+    --user-message: oklch(0.285 0.024 242);
+    --user-message-foreground: oklch(0.91 0.008 250);
     --worktree-open: #3fb950;
     --worktree-merged: #a371f7;
     --shadow: 220 50% 3%;
@@ -141,6 +147,8 @@
   --color-sidebar-hover: var(--sidebar-hover);
   --color-sidebar-active: var(--sidebar-active);
   --color-composer: var(--composer);
+  --color-user-message: var(--user-message);
+  --color-user-message-foreground: var(--user-message-foreground);
   --color-worktree-open: var(--worktree-open);
   --color-worktree-merged: var(--worktree-merged);
   --radius-sm: calc(var(--radius) - 0.2rem);

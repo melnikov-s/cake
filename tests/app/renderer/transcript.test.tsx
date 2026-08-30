@@ -342,6 +342,8 @@ describe("Transcript scrolling", () => {
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts)} />));
 
     const message = container.querySelector<HTMLElement>('[data-slot="message-content"]')!;
+    expect(message.className).toContain("bg-user-message");
+    expect(message.className).toContain("text-user-message-foreground");
     expect(message.textContent).toBe("# Not a heading\n**Not bold**");
     expect(message.classList.contains("whitespace-pre-wrap")).toBe(true);
     expect(message.querySelector("h1, strong")).toBeNull();

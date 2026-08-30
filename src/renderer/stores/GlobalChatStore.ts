@@ -63,6 +63,7 @@ export interface GlobalChatPort {
     entryId: string;
     text: string;
     attachments: Attachment[];
+    renderUserMessageAsMarkdown: boolean;
   }): Promise<void>;
   abort(input: { operationId: string; sessionId: string }): Promise<void>;
   compact(input: { operationId: string; sessionId: string; instructions?: string }): Promise<void>;

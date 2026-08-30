@@ -116,11 +116,12 @@ describe("PiWorkspaceDriver", () => {
       entryId: "user-entry",
       text: "Edited message",
       attachments: [],
+      renderUserMessageAsMarkdown: true,
     });
     await vi.waitFor(() =>
       expect(events).toContainEqual({ type: "complete", requestId: editRequestId }),
     );
-    expect(runtime.editMessage).toHaveBeenCalledWith("user-entry", "Edited message", []);
+    expect(runtime.editMessage).toHaveBeenCalledWith("user-entry", "Edited message", [], true);
     driver[Symbol.dispose]();
   });
 

@@ -569,7 +569,12 @@ export interface CakeRuntime {
     attachments: Attachment[],
     renderUserMessageAsMarkdown?: boolean,
   ): Promise<void>;
-  editMessage?(entryId: string, text: string, attachments: Attachment[]): Promise<void>;
+  editMessage?(
+    entryId: string,
+    text: string,
+    attachments: Attachment[],
+    renderUserMessageAsMarkdown: boolean,
+  ): Promise<void>;
   compact(instructions?: string): Promise<void>;
   abort(): Promise<void>;
   setModel(provider: string, modelId: string): Promise<void>;
@@ -1929,7 +1934,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         }
       }
     },
-    async editMessage(entryId, text, attachments) {
+    async editMessage(entryId, text, attachments, renderUserMessageAsMarkdown) {
       if (disposed) throw new Error("The Cake runtime has been disposed");
       if (session.isStreaming || session.isCompacting)
         throw new Error("Wait for the current response to finish before editing a message");
@@ -1946,7 +1951,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       await emitSnapshot();
       const content = promptText(text, attachments);
       const images = imageContent(attachments);
-      await withResponseRetries(() => session.prompt(content, { images, source: "interactive" }));
+      await deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
+        withResponseRetries(() => session.prompt(content, { images, source: "interactive" })),
+      );
     },
     abort: () => {
       userAbortRequested = true;

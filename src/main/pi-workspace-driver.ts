@@ -389,7 +389,12 @@ export class PiWorkspaceDriver {
         } else if (command.type === "edit-session-message") {
           if (!runtime.editMessage)
             throw new Error("This Pi runtime does not support message editing");
-          await runtime.editMessage(command.entryId, command.text, command.attachments);
+          await runtime.editMessage(
+            command.entryId,
+            command.text,
+            command.attachments,
+            command.renderUserMessageAsMarkdown,
+          );
           this.emit({ type: "session-snapshot", snapshot: await runtime.snapshot() });
         } else if (command.type === "compact-session") {
           await runtime.compact(command.instructions);

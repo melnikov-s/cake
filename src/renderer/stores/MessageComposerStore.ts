@@ -345,7 +345,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       const entryId = this.editingEntryId;
       this.editingEntryId = undefined;
       this.clearComposer();
-      await this.deliverEdit(entryId, text, attachments, sessionId);
+      await this.deliverEdit(entryId, text, attachments, sessionId, renderUserMessageAsMarkdown);
       return;
     }
     if (deliveryOverride === undefined && this.props.isStreaming()) {
@@ -417,7 +417,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       this.restoreAttachments(staged.attachments);
       this.editingDraftSession = true;
       this.requestFocus();
-      return;
+      return false;
     }
     const parts = this.props.canonicalParts();
     const userPart = parts.find(
@@ -445,6 +445,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     this.restoreAttachments(this.attachmentsFromParts(turnParts));
     this.editingEntryId = entryId;
     this.requestFocus();
+    return userPart.kind === "text" && userPart.renderAs === "markdown";
   }
 
   removeQueuedPrompt(id: string) {
@@ -551,9 +552,17 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     text: string,
     attachments: Attachment[],
     sessionId: string,
+    renderUserMessageAsMarkdown: boolean,
   ) {
     const operationId = this.props.operations.start(this.props.operationOwner);
-    this.addPendingUserMessage(operationId, sessionId, text, attachments, "prompt", false);
+    this.addPendingUserMessage(
+      operationId,
+      sessionId,
+      text,
+      attachments,
+      "prompt",
+      renderUserMessageAsMarkdown,
+    );
     try {
       if (!this.props.client.editSessionMessage)
         throw new Error("This Cake client does not support message editing");
@@ -563,6 +572,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         entryId,
         text,
         attachments,
+        renderUserMessageAsMarkdown,
       });
       return true;
     } catch (error) {

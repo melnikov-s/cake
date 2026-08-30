@@ -332,6 +332,12 @@ export const Chat = observer(function Chat({
                 <PaperclipIcon />
               </IconButton>
             )}
+          </>
+        }
+        toolbarActions={
+          <>
+            <Usage store={store} />
+            {pluginActions}
             {store.supportsUserMessageMarkdown && (
               <IconButton
                 tooltip={
@@ -346,12 +352,6 @@ export const Chat = observer(function Chat({
                 <MarkdownIcon />
               </IconButton>
             )}
-          </>
-        }
-        toolbarActions={
-          <>
-            <Usage store={store} />
-            {pluginActions}
             {(() => {
               const hasInput =
                 store.draft.trim().length > 0 ||

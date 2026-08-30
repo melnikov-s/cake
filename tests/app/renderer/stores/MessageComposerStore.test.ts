@@ -205,6 +205,7 @@ describe("MessageComposerStore message editing", () => {
         entryId: "user-entry",
         text: "Original request",
         status: "complete",
+        renderAs: "markdown",
       },
       {
         id: "user-image",
@@ -229,14 +230,14 @@ describe("MessageComposerStore message editing", () => {
       streaming: () => false,
     });
 
-    harness.store.beginEditMessage("user-entry");
+    expect(harness.store.beginEditMessage("user-entry")).toBe(true);
     expect(harness.getDraft()).toBe("Original request");
     expect(harness.store.attachments).toEqual([
       expect.objectContaining({ kind: "image", name: "diagram.png", data: "aW1hZ2U=" }),
     ]);
 
     harness.setDraft("Edited request");
-    await harness.store.submit();
+    await harness.store.submit(undefined, true);
 
     expect(editSessionMessage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -246,6 +247,7 @@ describe("MessageComposerStore message editing", () => {
         attachments: [
           expect.objectContaining({ kind: "image", name: "diagram.png", data: "aW1hZ2U=" }),
         ],
+        renderUserMessageAsMarkdown: true,
       }),
     );
     harness.dispose();

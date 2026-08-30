@@ -91,11 +91,12 @@ export class GlobalChatDriver {
     entryId: string,
     text: string,
     attachments: Attachment[],
+    renderUserMessageAsMarkdown: boolean,
   ) {
     void this.run(requestId, async () => {
       const runtime = await this.ensureRuntime(false, sessionId);
       if (!runtime.editMessage) throw new Error("This Pi runtime does not support message editing");
-      await runtime.editMessage(entryId, text, attachments);
+      await runtime.editMessage(entryId, text, attachments, renderUserMessageAsMarkdown);
     });
   }
 

@@ -127,6 +127,7 @@ describe("Chat", () => {
     // While streaming, the send icon becomes a stop icon and submits are hidden.
     expect(container.querySelector<HTMLButtonElement>('[aria-label="Send"]')).toBeNull();
     const stop = container.querySelector<HTMLButtonElement>('[aria-label="Stop"]')!;
+    expect(markdown.nextElementSibling).toBe(stop);
     await act(async () => stop.click());
     expect(abort).toHaveBeenCalled();
     expect(submit).not.toHaveBeenCalled();

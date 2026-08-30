@@ -168,6 +168,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
           entryId,
           text,
           attachments,
+          renderUserMessageAsMarkdown,
         });
         return true;
       } catch (error) {
@@ -294,7 +295,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       this.chatStore.setDraft(staged.text);
       this.attachments.splice(0, this.attachments.length, ...staged.attachments);
       this.editingDraftSession = true;
-      return;
+      return false;
     }
     const userPart = this.model.uiParts.find(
       (part) =>
@@ -330,6 +331,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     );
     this.attachments.splice(0, this.attachments.length, ...images);
     this.editingEntryId = entryId;
+    return userPart.kind === "text" && userPart.renderAs === "markdown";
   }
 
   async addPastedImages(files: readonly File[]) {
