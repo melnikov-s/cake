@@ -27,7 +27,7 @@ import {
 } from "../agent/subagent-contract";
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
 import type { SourceLocation } from "../ipc/source-location";
-import type { SessionUsage, UiPart, UtilityModel } from "../ipc/session-contract";
+import type { ModelPreset, SessionUsage, UiPart, UtilityModel } from "../ipc/session-contract";
 import type { WorktreeLandingCoordinator } from "../ipc/worktree-contract";
 import { subagentActivitySchema } from "../ipc/subagent-activity-contract";
 import type { JsonValue } from "../ipc/json-contract";
@@ -153,6 +153,7 @@ export interface PiWorkspaceDriverOptions {
   openInEditor?: (location: SourceLocation, signal: AbortSignal) => Promise<SourceLocation>;
   isTrusted?: () => boolean;
   utilityModel?: () => UtilityModel | undefined;
+  modelPresets?: () => readonly Pick<ModelPreset, "name" | "modelId">[];
   worktreeLanding?: WorktreeLandingCoordinator;
   fastMode?(sessionId: string): boolean;
   setFastMode?(sessionId: string, enabled: boolean): Promise<void>;
@@ -184,6 +185,7 @@ export class PiWorkspaceDriver {
   private readonly openInEditor: PiWorkspaceDriverOptions["openInEditor"];
   private readonly isTrusted: () => boolean;
   private readonly utilityModel: () => UtilityModel | undefined;
+  private readonly modelPresets: PiWorkspaceDriverOptions["modelPresets"];
   private readonly worktreeLanding: WorktreeLandingCoordinator | undefined;
   private readonly fastMode: (sessionId: string) => boolean;
   private readonly setFastMode: (sessionId: string, enabled: boolean) => Promise<void>;
@@ -232,6 +234,7 @@ export class PiWorkspaceDriver {
     this.openInEditor = options.openInEditor;
     this.isTrusted = options.isTrusted ?? (() => false);
     this.utilityModel = options.utilityModel ?? (() => undefined);
+    this.modelPresets = options.modelPresets;
     this.worktreeLanding = options.worktreeLanding;
     this.fastMode = options.fastMode ?? (() => false);
     this.setFastMode = options.setFastMode ?? (async () => undefined);
@@ -935,6 +938,7 @@ export class PiWorkspaceDriver {
             this.reviewRepository.reviewContextPath!(this.workspacePath, activeSessionId)
         : undefined,
       utilityModel: this.utilityModel,
+      modelPresets: this.modelPresets,
       worktreeLandingControl:
         policy?.auxiliary || !this.worktreeLanding
           ? undefined

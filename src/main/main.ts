@@ -207,6 +207,7 @@ const globalChatDriver = new GlobalChatDriver({
   agentDir: cakePaths.piAgent,
   sessionDir: cakePaths.piGlobalChatSessions,
   resolvedSessionDir: cakePaths.piGlobalChatResolvedSessions,
+  modelPresets: () => applicationModel.modelPresets.map(({ name, modelId }) => ({ name, modelId })),
   recoveryContext: () => {
     const state = pluginActivation.snapshot();
     if (!state.recoveryRequired && state.diagnostics.length === 0) return undefined;
@@ -598,6 +599,8 @@ function launchPi(path: string) {
     pluginResources: pluginAgentResources,
     isTrusted: () => applicationModel.isProjectTrusted(path),
     utilityModel: () => applicationModel.utilityModel,
+    modelPresets: () =>
+      applicationModel.modelPresets.map(({ name, modelId }) => ({ name, modelId })),
     worktreeLanding: worktrees,
     fastMode: (sessionId) => applicationModel.hasSessionFastMode(sessionId),
     setFastMode: async (sessionId, enabled) => {

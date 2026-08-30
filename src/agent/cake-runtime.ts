@@ -22,6 +22,7 @@ import type {
   ResourceDiagnostic,
   SessionSnapshot,
   ThinkingLevel,
+  ModelPreset,
   ToolOutputContent,
   UiPart,
   UtilityModel,
@@ -49,6 +50,7 @@ import { applyFastModePayload, supportsFastMode, type FastModeModel } from "./fa
 import { listModelOptions } from "./model-catalog";
 import { createCakeArtifactExtension } from "./artifact-extension";
 import { createCakeArtifactOperations } from "./cake-artifact-operations";
+import { createCakeModelOperations } from "./cake-model-operations";
 import { createCakeVscodeOperations, type VscodeControl } from "./cake-vscode-operations";
 import {
   createCakeWorktreeOperations,
@@ -119,7 +121,7 @@ import {
 } from "./session-projection";
 
 export const piRuntimeVersion = "0.84.0" as const;
-const cakeMediumSystemPrompt = `You are Cake’s agent in a browser-based desktop app, not a terminal. Use \`cake subagents\` only for user-requested delegation or parallel work.
+const cakeMediumSystemPrompt = `You are Cake’s agent in a browser-based desktop app, not a terminal. Use \`cake subagents\` only for user-requested delegation or parallel work. Call \`cake models.list\` to see configured model preset names and model IDs.
 
 Link another Cake session as \`[<title, truncated to 80 characters>](cake://session/<session-id>)\`; never show a bare session ID as the label.`;
 
@@ -143,7 +145,7 @@ Choose the shortest authoritative source instead of exploring broadly:
 - Current selection, registered projects, and bounded recent/running/unread sessions: request the \`app\` topic, then call \`app.state\`.
 - Live session status or any session mutation: use the Cake gateway's \`sessions\` operations.
 - Historical session lookup, titles, dates, counts, transcript recall, or attribution: search the transcript filesystem described below.
-- Current Cake model presets and default preset: read \`~/Library/Application Support/cake/application.json\` and inspect \`modelPresets\` and \`defaultModelPresetId\`. Treat preset IDs as application metadata; when creating a session, pass the preset's exact \`provider\`, \`modelId\`, \`thinkingLevel\`, and \`fastMode\` using the schema returned by the \`sessions\` topic.
+- Configured Cake model presets: call \`models.list\` through the Cake gateway.
 - Pi's default model settings: read \`~/.cake/pi/settings.json\`.
 - Available provider/model catalog: search \`~/.cake/pi/models-cache.json\`. Do not infer availability from old transcripts.
 - Current agent identity when needed: inspect \`PI_PROVIDER\`, \`PI_MODEL\`, \`PI_REASONING_LEVEL\`, \`PI_SESSION_ID\`, and \`PI_SESSION_FILE\`.
@@ -184,6 +186,7 @@ The \`cake\` tool provides capabilities that cannot be reproduced through shell 
 - \`session\`: inspect, rename, resolve, measure, or change the model of the calling Cake Chat session.
 - \`sessions\`: list, inspect, open, create, message, stop, resolve, or restore explicitly targeted sessions. Use \`prompt\` for a new turn, \`follow-up\` to queue after current work, and \`steer\` to redirect a running turn when those delivery modes are offered.
 - \`context\`: inspect context use or compact the current conversation.
+- \`models\`: list configured model preset names and model IDs.
 - \`customizations\`: inspect, author, validate, activate, disable, or repair plugins and scenes.
 - \`requests\`: collect structured information or confirmation from the user; normal conversation is better for one simple question.
 - \`widgets\`: present a disposable interactive or highly visual explanation when Markdown is insufficient.
@@ -267,6 +270,7 @@ export interface CakeRuntimeOptions {
   openExternal?(url: string): Promise<void>;
   reviewContextPath?(sessionId: string): string;
   utilityModel?(): UtilityModel | undefined;
+  modelPresets?(): readonly Pick<ModelPreset, "name" | "modelId">[];
   fastMode?: {
     get(): boolean;
     set(enabled: boolean): Promise<void>;
@@ -855,6 +859,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
               filterRuntimeOperations([
                 ...localOperations(),
                 ...createGlobalControlOperations(globalControl),
+                ...(options.modelPresets ? createCakeModelOperations(options.modelPresets) : []),
                 ...createCakeArtifactOperations(pi, {
                   persistArtifact,
                   requestArtifact,
@@ -909,6 +914,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
             createCakeGatewayExtension((pi) =>
               filterRuntimeOperations([
                 ...localOperations(),
+                ...(options.modelPresets ? createCakeModelOperations(options.modelPresets) : []),
                 ...createCakeArtifactOperations(pi, {
                   persistArtifact,
                   requestArtifact,

@@ -7,7 +7,7 @@ import {
 } from "../agent/cake-runtime";
 import type { DesktopEvent } from "../ipc/desktop-ipc";
 import type { JsonValue } from "../ipc/json-contract";
-import type { Attachment, ChatConfiguration } from "../ipc/session-contract";
+import type { Attachment, ChatConfiguration, ModelPreset } from "../ipc/session-contract";
 import { describeOperationError } from "./pi-workspace-driver";
 
 interface PendingControlRequest {
@@ -25,6 +25,7 @@ export interface GlobalChatDriverOptions {
   resolvedSessionDir?: string;
   emit(event: DesktopEvent): void;
   recoveryContext?(): string | undefined;
+  modelPresets?(): readonly Pick<ModelPreset, "name" | "modelId">[];
   fastMode?(sessionId: string): boolean;
   setFastMode?(sessionId: string, enabled: boolean): Promise<void>;
   sessionResolved?(sessionId: string): boolean;
@@ -267,6 +268,7 @@ export class GlobalChatDriver {
           await this.options.setFastMode?.(targetSessionId, enabled);
         },
       },
+      modelPresets: this.options.modelPresets,
       globalControl: {
         tools: this.tools,
         recoveryContext: this.options.recoveryContext?.(),

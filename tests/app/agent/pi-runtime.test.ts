@@ -105,6 +105,7 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(systemPrompt).toContain("Mermaid diagrams directly in the transcript");
     expect(systemPrompt).toContain("Call `cake widgets`");
     expect(systemPrompt).toContain("Call `cake requests`");
+    expect(systemPrompt).toContain("Call `cake models.list`");
     expect(systemPrompt).toContain("Use `cake subagents` only for user-requested delegation");
     expect(systemPrompt).toContain("PowerPoint presentations, PDFs, spreadsheets");
     expect(systemPrompt).toContain("use Markdown links with absolute paths so Cake can open them");
@@ -1592,8 +1593,8 @@ describe("S1 Pi runtime", () => {
     expect(context?.systemPrompt).toContain("Unlike a project session");
     expect(context?.systemPrompt).toContain("Cake is Pi expressed as a desktop application");
     expect(context?.systemPrompt).toContain("Fast source-of-truth map");
-    expect(context?.systemPrompt).toContain("~/Library/Application Support/cake/application.json");
-    expect(context?.systemPrompt).toContain("modelPresets");
+    expect(context?.systemPrompt).toContain("Call `cake models.list`");
+    expect(context?.systemPrompt).toContain("call `models.list` through the Cake gateway");
     expect(context?.systemPrompt).toContain("~/.cake/pi/models-cache.json");
     expect(context?.systemPrompt).toContain("PI_SESSION_FILE");
     expect(context?.systemPrompt).toContain("/handoffandresolve");
