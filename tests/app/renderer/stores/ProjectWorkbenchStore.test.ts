@@ -153,14 +153,15 @@ function createDesktopClient(restoredPath?: string) {
       trustedProjectPaths: [],
       utilityModel: model,
     })),
-    setModelPresets: vi.fn(async (modelPresets, defaultModelPresetId) => ({
-      projects: [],
-      resolvedSessionIds: [],
-      resolvedCakeChatSessionIds: [],
-      unreadSessionIds: [],
-      trustedProjectPaths: [],
-      modelPresets: [...modelPresets],
-      defaultModelPresetId,
+    listModelPresets: vi.fn(async () => ({ presets: [] })),
+    createModelPreset: vi.fn(async (preset) => ({
+      presets: [{ ...preset, id: crypto.randomUUID() }],
+    })),
+    updateModelPreset: vi.fn(async (preset) => ({ presets: [preset] })),
+    removeModelPreset: vi.fn(async () => ({ presets: [] })),
+    setDefaultModelPreset: vi.fn(async (defaultPresetId) => ({
+      presets: [],
+      defaultPresetId,
     })),
     listSessions: vi.fn(async () => ({ sessions: [], reviewThreads: [] })),
     listCakeChatSessions: vi.fn(async () => []),
@@ -1257,9 +1258,6 @@ describe("ProjectWorkbenchStore", () => {
 
   it("applies the default model preset when creating a conversation", async () => {
     const desktop = createDesktopClient();
-    const { root, store } = mountTestStore(desktop.client);
-    await flush();
-    await openSnapshot(store, desktop);
     const preset = {
       id: "00000000-0000-4000-8000-000000000001",
       name: "Deep review",
@@ -1268,15 +1266,14 @@ describe("ProjectWorkbenchStore", () => {
       thinkingLevel: "high" as const,
       fastMode: true,
     };
-    root.settingsStore.applyApplicationState({
-      projects: [],
-      resolvedSessionIds: [],
-      resolvedCakeChatSessionIds: [],
-      unreadSessionIds: [],
-      trustedProjectPaths: [],
-      modelPresets: [preset],
-      defaultModelPresetId: preset.id,
+    vi.mocked(desktop.client.listModelPresets).mockResolvedValue({
+      presets: [preset],
+      defaultPresetId: preset.id,
     });
+    const { root, store } = mountTestStore(desktop.client);
+    await root.settingsStore.modelPresets.hydrate();
+    await flush();
+    await openSnapshot(store, desktop);
 
     await store.startNewSession();
     store.activeSession!.chatStore.setDraft("Start with this preset");

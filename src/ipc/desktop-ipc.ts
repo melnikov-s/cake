@@ -37,8 +37,6 @@ import {
   fileSuggestionSchema,
   globalSessionSummarySchema,
   chatConfigurationSchema,
-  modelOptionSchema,
-  modelPresetSchema,
   piSettingUpdateSchema,
   sessionPreviewSchema,
   sessionSnapshotSchema,
@@ -547,11 +545,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("load-window-state") }),
   z.object({ type: z.literal("save-window-state"), state: windowViewStateSchema }),
   z.object({ type: z.literal("set-utility-model"), model: utilityModelSchema.optional() }),
-  z.object({
-    type: z.literal("set-model-presets"),
-    presets: z.array(modelPresetSchema).max(100),
-    defaultPresetId: z.uuid().optional(),
-  }),
   z.object({ type: z.literal("list-sessions") }),
   z.object({ type: z.literal("list-cake-chat-sessions") }),
   z.object({ type: z.literal("load-cake-chat-session"), sessionId: z.string().min(1).max(256) }),
@@ -857,7 +850,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     requestId: z.uuid(),
     sessionId: z.string().max(256),
   }),
-  z.object({ type: z.literal("list-models"), requestId: z.uuid() }),
   z.object({
     type: z.literal("login"),
     requestId: z.uuid(),
@@ -948,11 +940,6 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("project-context-menu-closed"),
     action: z.enum(["remove-project", "delete-resolved-worktrees"]).optional(),
-  }),
-  z.object({
-    type: z.literal("models-listed"),
-    requestId: z.uuid(),
-    models: ipcProjectionArray(modelOptionSchema, 2_000),
   }),
   z.object({
     type: z.literal("embedded-editor-state-loaded"),

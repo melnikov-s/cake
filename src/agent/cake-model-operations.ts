@@ -4,7 +4,10 @@ import type { CakeOperationDefinition } from "./cake-operation-registry";
 
 /** Exposes only the preset lookup fields an agent needs to name a model. */
 export function createCakeModelOperations(
-  listPresets: () => readonly Pick<ModelPreset, "name" | "modelId">[],
+  readPresets: () => {
+    readonly presets: readonly Pick<ModelPreset, "id" | "name" | "modelId">[];
+    readonly defaultPresetId?: string;
+  },
 ): CakeOperationDefinition[] {
   return [
     {
@@ -14,9 +17,16 @@ export function createCakeModelOperations(
       inputSchema: z.object({}).strict(),
       examples: [{}],
       result: "Configured presets containing only name and modelId.",
-      execute: async () => ({
-        presets: listPresets().map(({ name, modelId }) => ({ name, modelId })),
-      }),
+      execute: async () => {
+        const state = readPresets();
+        return {
+          presets: state.presets.map(({ id, name, modelId }) => ({
+            name,
+            modelId,
+            default: id === state.defaultPresetId,
+          })),
+        };
+      },
     },
   ];
 }

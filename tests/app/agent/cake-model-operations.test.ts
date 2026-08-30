@@ -3,12 +3,23 @@ import { CakeOperationRegistry } from "../../../src/agent/cake-operation-registr
 import { createCakeModelOperations } from "../../../src/agent/cake-model-operations";
 
 describe("Cake model operations", () => {
-  it("lists only preset names and model IDs", async () => {
+  it("lists only preset names, model IDs, and the current default", async () => {
     const operations = new CakeOperationRegistry(
-      createCakeModelOperations(() => [
-        { name: "Sol", modelId: "gpt-5.6-sol" },
-        { name: "Luna", modelId: "gpt-5.6-luna" },
-      ]),
+      createCakeModelOperations(() => ({
+        presets: [
+          {
+            id: "00000000-0000-4000-8000-000000000001",
+            name: "Sol",
+            modelId: "gpt-5.6-sol",
+          },
+          {
+            id: "00000000-0000-4000-8000-000000000002",
+            name: "Luna",
+            modelId: "gpt-5.6-luna",
+          },
+        ],
+        defaultPresetId: "00000000-0000-4000-8000-000000000001",
+      })),
     );
 
     const result = await operations.invoke(
@@ -23,8 +34,8 @@ describe("Cake model operations", () => {
     expect(result.details).toMatchObject({
       result: {
         presets: [
-          { name: "Sol", modelId: "gpt-5.6-sol" },
-          { name: "Luna", modelId: "gpt-5.6-luna" },
+          { name: "Sol", modelId: "gpt-5.6-sol", default: true },
+          { name: "Luna", modelId: "gpt-5.6-luna", default: false },
         ],
       },
     });

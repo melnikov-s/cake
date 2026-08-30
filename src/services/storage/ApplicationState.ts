@@ -3,7 +3,12 @@ import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
 } from "../../domain/application-data";
-import { ApplicationStorage, type ApplicationStorageError } from "./ApplicationStorage";
+import {
+  ApplicationStorage,
+  type ApplicationEncodeError,
+  type ApplicationStorageError,
+  type ApplicationWriteError,
+} from "./ApplicationStorage";
 
 export class ApplicationState extends Context.Service<
   ApplicationState,
@@ -13,7 +18,7 @@ export class ApplicationState extends Context.Service<
     readonly unsafeCurrent: () => ApplicationStateValue;
     readonly transact: <E>(
       transition: (current: ApplicationStateValue) => Effect.Effect<ApplicationStateValue, E>,
-    ) => Effect.Effect<ApplicationStateValue, ApplicationStorageError | E>;
+    ) => Effect.Effect<ApplicationStateValue, ApplicationEncodeError | ApplicationWriteError | E>;
   }
 >()("cake/services/storage/ApplicationState") {
   static readonly layer = Layer.effect(

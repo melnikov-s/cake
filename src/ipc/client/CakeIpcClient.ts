@@ -4,28 +4,79 @@ import type { RpcClientError } from "effect/unstable/rpc";
 import { CakeRpc, type FoundationFailure } from "../protocol/CakeRpc";
 import { makeElectronRpcClientProtocol } from "../transport/ElectronRpcClientProtocol";
 import type { ElectronRpcTransport } from "../transport/ElectronRpcTransport";
-import type { ApplicationState } from "../../domain/application-data";
+import type { RendererApplicationState } from "../../domain/application-data";
+import type {
+  DefaultModelPresetNotFoundError,
+  DuplicateModelPresetIdError,
+  ModelPresetCreateInput,
+  ModelPresetLimitError,
+  ModelPresetNotFoundError,
+  ModelPresetProjection,
+  ModelPresetUpdateInput,
+  ModelPresetValidationError,
+} from "../../domain/modelPresets";
+import type {
+  ModelSelection,
+  PiModel,
+  PiModelCatalogError,
+  PiModelResolutionError,
+} from "../../services/pi/model-data";
+import type {
+  ApplicationEncodeError,
+  ApplicationWriteError,
+} from "../../services/storage/ApplicationStorage";
+
+type TransportError = RpcClientError.RpcClientError;
+type ModelPresetMutationError =
+  | ModelPresetValidationError
+  | ModelPresetNotFoundError
+  | DefaultModelPresetNotFoundError
+  | DuplicateModelPresetIdError
+  | ModelPresetLimitError
+  | ApplicationEncodeError
+  | ApplicationWriteError
+  | TransportError;
+type ModelPresetResolutionError =
+  | ModelPresetNotFoundError
+  | PiModelResolutionError
+  | PiModelCatalogError
+  | TransportError;
 
 interface CakeIpcClientService {
   readonly application: {
-    readonly getHomeDirectory: () => Effect.Effect<string, RpcClientError.RpcClientError>;
-    readonly getState: () => Effect.Effect<ApplicationState, RpcClientError.RpcClientError>;
+    readonly getHomeDirectory: () => Effect.Effect<string, TransportError>;
+    readonly getState: () => Effect.Effect<RendererApplicationState, TransportError>;
+  };
+  readonly models: {
+    readonly list: () => Effect.Effect<
+      ReadonlyArray<PiModel>,
+      PiModelCatalogError | TransportError
+    >;
+  };
+  readonly modelPresets: {
+    readonly list: () => Effect.Effect<ModelPresetProjection, TransportError>;
+    readonly create: (
+      input: ModelPresetCreateInput,
+    ) => Effect.Effect<ModelPresetProjection, ModelPresetMutationError>;
+    readonly update: (
+      input: ModelPresetUpdateInput,
+    ) => Effect.Effect<ModelPresetProjection, ModelPresetMutationError>;
+    readonly remove: (id: string) => Effect.Effect<ModelPresetProjection, ModelPresetMutationError>;
+    readonly setDefault: (
+      id?: string,
+    ) => Effect.Effect<ModelPresetProjection, ModelPresetMutationError>;
+    readonly resolve: (id: string) => Effect.Effect<ModelSelection, ModelPresetResolutionError>;
   };
   readonly foundation: {
-    readonly typedFailure: () => Effect.Effect<
-      void,
-      FoundationFailure | RpcClientError.RpcClientError
-    >;
+    readonly typedFailure: () => Effect.Effect<void, FoundationFailure | TransportError>;
     readonly stream: (input: {
       readonly count: number;
       readonly intervalMs: number;
-    }) => Stream.Stream<number, RpcClientError.RpcClientError>;
-    readonly delay: (input: {
-      readonly durationMs: number;
-    }) => Effect.Effect<void, RpcClientError.RpcClientError>;
+    }) => Stream.Stream<number, TransportError>;
+    readonly delay: (input: { readonly durationMs: number }) => Effect.Effect<void, TransportError>;
     readonly activeRequests: () => Effect.Effect<
       { readonly delays: number; readonly streams: number },
-      RpcClientError.RpcClientError
+      TransportError
     >;
   };
 }
@@ -43,6 +94,17 @@ const CakeIpcClientLive = Layer.effect(
         getHomeDirectory: () => client("application.getHomeDirectory", undefined),
         getState: () => client("application.getState", undefined),
       },
+      models: {
+        list: () => client("models.list", undefined),
+      },
+      modelPresets: {
+        list: () => client("modelPresets.list", undefined),
+        create: (input) => client("modelPresets.create", input),
+        update: (input) => client("modelPresets.update", input),
+        remove: (id) => client("modelPresets.remove", { id }),
+        setDefault: (id) => client("modelPresets.setDefault", { id }),
+        resolve: (id) => client("modelPresets.resolve", { id }),
+      },
       foundation: {
         typedFailure: () => client("foundation.typedFailure", undefined),
         stream: (input) => client("foundation.stream", input),
@@ -56,7 +118,18 @@ const CakeIpcClientLive = Layer.effect(
 export interface CakeIpcPromiseClient {
   readonly application: {
     readonly getHomeDirectory: () => Promise<string>;
-    readonly getState: () => Promise<ApplicationState>;
+    readonly getState: () => Promise<RendererApplicationState>;
+  };
+  readonly models: {
+    readonly list: () => Promise<ReadonlyArray<PiModel>>;
+  };
+  readonly modelPresets: {
+    readonly list: () => Promise<ModelPresetProjection>;
+    readonly create: (input: ModelPresetCreateInput) => Promise<ModelPresetProjection>;
+    readonly update: (input: ModelPresetUpdateInput) => Promise<ModelPresetProjection>;
+    readonly remove: (id: string) => Promise<ModelPresetProjection>;
+    readonly setDefault: (id?: string) => Promise<ModelPresetProjection>;
+    readonly resolve: (id: string) => Promise<ModelSelection>;
   };
   readonly foundation: {
     readonly typedFailure: () => Promise<void>;
@@ -83,6 +156,17 @@ export function makeCakeIpcPromiseClient(transport: ElectronRpcTransport): CakeI
     application: {
       getHomeDirectory: () => run(withClient((client) => client.application.getHomeDirectory())),
       getState: () => run(withClient((client) => client.application.getState())),
+    },
+    models: {
+      list: () => run(withClient((client) => client.models.list())),
+    },
+    modelPresets: {
+      list: () => run(withClient((client) => client.modelPresets.list())),
+      create: (input) => run(withClient((client) => client.modelPresets.create(input))),
+      update: (input) => run(withClient((client) => client.modelPresets.update(input))),
+      remove: (id) => run(withClient((client) => client.modelPresets.remove(id))),
+      setDefault: (id) => run(withClient((client) => client.modelPresets.setDefault(id))),
+      resolve: (id) => run(withClient((client) => client.modelPresets.resolve(id))),
     },
     foundation: {
       typedFailure: () => run(withClient((client) => client.foundation.typedFailure())),

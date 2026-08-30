@@ -85,6 +85,7 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
         this.props.client.loadWindowState(),
         this.props.client.loadApplicationState(),
         this.props.client.listSessions(),
+        this.props.settings().modelPresets.hydrate(),
       ]);
       if (this.signal.aborted) return;
       this.props.sessions.replace(sessionIndex.sessions);

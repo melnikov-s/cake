@@ -2,7 +2,6 @@ import { DateTime, Effect, Schema } from "effect";
 import {
   ApplicationState as ApplicationStateSchema,
   type ApplicationState,
-  type ModelPreset,
   type UtilityModel,
 } from "./application-data";
 import { ApplicationState as ApplicationStateOwner } from "../services/storage/ApplicationState";
@@ -120,19 +119,6 @@ export const setUtilityModel = Effect.fn("Application.setUtilityModel")(function
   model: UtilityModel | undefined,
 ) {
   return yield* update((current) => ({ ...current, utilityModel: model }));
-});
-
-export const setModelPresets = Effect.fn("Application.setModelPresets")(function* (
-  presets: ReadonlyArray<ModelPreset>,
-  defaultPresetId?: string,
-) {
-  return yield* update((current) => ({
-    ...current,
-    modelPresets: [...presets],
-    defaultModelPresetId: presets.some((preset) => preset.id === defaultPresetId)
-      ? defaultPresetId
-      : undefined,
-  }));
 });
 
 export const setVscodeServerPath = Effect.fn("Application.setVscodeServerPath")(function* (

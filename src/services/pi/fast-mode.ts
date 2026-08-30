@@ -1,4 +1,8 @@
+import { Schema } from "effect";
+
 export const CODEX_FAST_MODE_SERVICE_TIER = "priority" as const;
+export const FastModePayload = Schema.Record(Schema.String, Schema.Unknown);
+export type FastModePayload = typeof FastModePayload.Type;
 
 /**
  * Codex's model catalog advertises Fast as a model-level service tier. Keep this
@@ -25,11 +29,10 @@ export function supportsFastMode(model: FastModeModel | undefined) {
 }
 
 export function applyFastModePayload(
-  payload: unknown,
+  payload: FastModePayload,
   model: FastModeModel | undefined,
   enabled: boolean,
 ) {
   if (!enabled || !supportsFastMode(model)) return payload;
-  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return payload;
   return { ...payload, service_tier: CODEX_FAST_MODE_SERVICE_TIER };
 }

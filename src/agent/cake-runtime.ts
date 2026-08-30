@@ -11,6 +11,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { Option, Schema } from "effect";
 import { z } from "zod";
 import type {
   Attachment,
@@ -46,8 +47,13 @@ import {
   type CakeArtifactV1,
 } from "../ipc/artifact-contract";
 import type { TSchema } from "@earendil-works/pi-ai";
-import { applyFastModePayload, supportsFastMode, type FastModeModel } from "./fast-mode";
-import { listModelOptions } from "./model-catalog";
+import {
+  applyFastModePayload,
+  FastModePayload,
+  supportsFastMode,
+  type FastModeModel,
+} from "../services/pi/fast-mode";
+import { projectModelCatalog } from "../services/pi/live/PiModelsLive";
 import { createCakeArtifactExtension } from "./artifact-extension";
 import { createCakeArtifactOperations } from "./cake-artifact-operations";
 import { createCakeModelOperations } from "./cake-model-operations";
@@ -270,7 +276,10 @@ export interface CakeRuntimeOptions {
   openExternal?(url: string): Promise<void>;
   reviewContextPath?(sessionId: string): string;
   utilityModel?(): UtilityModel | undefined;
-  modelPresets?(): readonly Pick<ModelPreset, "name" | "modelId">[];
+  modelPresets?(): {
+    readonly presets: readonly Pick<ModelPreset, "id" | "name" | "modelId">[];
+    readonly defaultPresetId?: string;
+  };
   fastMode?: {
     get(): boolean;
     set(enabled: boolean): Promise<void>;
@@ -357,9 +366,12 @@ function retryNotice(event: ResponseRetryNotice): Extract<UiPart, { kind: "notic
 
 function createFastModeExtension(isEnabled: () => boolean): InlineExtension {
   return (pi) => {
-    pi.on("before_provider_request", (event, context) =>
-      applyFastModePayload(event.payload, context.model, isEnabled()),
-    );
+    pi.on("before_provider_request", (event, context) => {
+      const payload = Schema.decodeUnknownOption(FastModePayload)(event.payload);
+      return Option.isSome(payload)
+        ? applyFastModePayload(payload.value, context.model, isEnabled())
+        : event.payload;
+    });
   };
 }
 
@@ -1049,7 +1061,15 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   });
   await session.bindExtensions({ mode: "rpc", uiContext: extensionUi });
 
-  const modelOptions = () => listModelOptions(modelRuntime);
+  const modelOptions = async () =>
+    (await projectModelCatalog(modelRuntime)).map(
+      ({ supportedThinkingLevels, input, authTypes, ...model }) => ({
+        ...model,
+        availableThinkingLevels: [...supportedThinkingLevels],
+        input: [...input],
+        authTypes: [...authTypes],
+      }),
+    );
 
   // Reads the live command catalog straight from Pi's current extension runner,
   // session prompt templates, and loaded skills. Deliberately not routed through

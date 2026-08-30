@@ -314,10 +314,26 @@ export interface DesktopClient {
     snapshot: EditorAnnotationSnapshot,
   ): Promise<void>;
   setUtilityModel(model: UtilityModel | undefined): Promise<ApplicationState>;
-  setModelPresets(
-    presets: readonly ModelPreset[],
-    defaultPresetId?: string,
-  ): Promise<ApplicationState>;
+  listModelPresets(): Promise<{
+    presets: readonly ModelPreset[];
+    defaultPresetId?: string;
+  }>;
+  createModelPreset(preset: Omit<ModelPreset, "id">): Promise<{
+    presets: readonly ModelPreset[];
+    defaultPresetId?: string;
+  }>;
+  updateModelPreset(preset: ModelPreset): Promise<{
+    presets: readonly ModelPreset[];
+    defaultPresetId?: string;
+  }>;
+  removeModelPreset(id: string): Promise<{
+    presets: readonly ModelPreset[];
+    defaultPresetId?: string;
+  }>;
+  setDefaultModelPreset(id?: string): Promise<{
+    presets: readonly ModelPreset[];
+    defaultPresetId?: string;
+  }>;
   listSessions(): Promise<{ sessions: GlobalSessionSummary[]; reviewThreads: ReviewThread[] }>;
   listCakeChatSessions(): Promise<SessionSummary[]>;
   loadCakeChatSession(sessionId: string): Promise<SessionPreview | undefined>;
@@ -716,7 +732,7 @@ async function accept(
 
 export function createDesktopClient(
   bridge: CakeDesktopBridge,
-  rpcClient: Pick<CakeIpcPromiseClient, "application">,
+  rpcClient: Pick<CakeIpcPromiseClient, "application" | "models" | "modelPresets">,
 ): DesktopClient {
   return {
     async chooseProject() {
@@ -770,11 +786,13 @@ export function createDesktopClient(
       return response.action;
     },
     async listModels() {
-      const requestId = crypto.randomUUID();
-      const response = await bridge.request({ type: "list-models", requestId });
-      if (response.type !== "models-listed" || response.requestId !== requestId)
-        throw new Error("Cake received an invalid model catalog response");
-      return response.models;
+      const models = await rpcClient.models.list();
+      return models.map(({ supportedThinkingLevels, input, authTypes, ...model }) => ({
+        ...model,
+        availableThinkingLevels: [...supportedThinkingLevels],
+        input: [...input],
+        authTypes: [...authTypes],
+      }));
     },
     getHomeDirectory() {
       return rpcClient.application.getHomeDirectory();
@@ -1071,15 +1089,20 @@ export function createDesktopClient(
         throw new Error("Cake could not update the utility model");
       return response.state;
     },
-    async setModelPresets(presets, defaultPresetId) {
-      const response = await bridge.request({
-        type: "set-model-presets",
-        presets: [...presets],
-        defaultPresetId,
-      });
-      if (response.type !== "application-state-updated")
-        throw new Error("Cake could not update model presets");
-      return response.state;
+    listModelPresets() {
+      return rpcClient.modelPresets.list();
+    },
+    createModelPreset(preset) {
+      return rpcClient.modelPresets.create(preset);
+    },
+    updateModelPreset(preset) {
+      return rpcClient.modelPresets.update(preset);
+    },
+    removeModelPreset(id) {
+      return rpcClient.modelPresets.remove(id);
+    },
+    setDefaultModelPreset(id) {
+      return rpcClient.modelPresets.setDefault(id);
     },
     async listSessions() {
       const response = await bridge.request({ type: "list-sessions" });

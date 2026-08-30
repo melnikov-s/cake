@@ -1,6 +1,8 @@
 import { Duration, Effect, Layer, Stream } from "effect";
 import { RpcServer } from "effect/unstable/rpc";
 import { getState } from "../../domain/application";
+import * as modelPresets from "../../domain/modelPresets";
+import { PiModels } from "../../services/pi/PiModels";
 import { CakeRpc, FoundationFailure } from "../protocol/CakeRpc";
 import {
   RendererConnection,
@@ -25,6 +27,13 @@ export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
         return yield* Effect.promise(() => Promise.resolve(operations.getHomeDirectory()));
       }),
     "application.getState": () => getState(),
+    "models.list": () => Effect.flatMap(PiModels, (models) => models.list()),
+    "modelPresets.list": () => modelPresets.list(),
+    "modelPresets.create": (input) => modelPresets.create(input),
+    "modelPresets.update": (input) => modelPresets.update(input),
+    "modelPresets.remove": ({ id }) => modelPresets.remove(id),
+    "modelPresets.setDefault": ({ id }) => modelPresets.setDefault(id),
+    "modelPresets.resolve": ({ id }) => modelPresets.resolve(id),
     "foundation.typedFailure": () =>
       Effect.fail(new FoundationFailure({ message: "Schema-decoded foundation failure" })),
     "foundation.stream": ({ count, intervalMs }) =>

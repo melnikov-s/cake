@@ -48,7 +48,14 @@ const snapshot: SessionSnapshot = {
   tree: [],
 };
 
-function createTestStore() {
+function createTestStore(options?: {
+  defaultConfiguration?: () => {
+    provider: string;
+    modelId: string;
+    thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+    fastMode: boolean;
+  };
+}) {
   const port = {
     listSessions: vi.fn(async () => [
       {
@@ -116,6 +123,7 @@ function createTestStore() {
   const store = mount(
     createStore(GlobalChatStore, {
       port,
+      defaultConfiguration: options?.defaultConfiguration,
       tools: () => [
         {
           command: "app.state",
@@ -258,6 +266,26 @@ describe("GlobalChatStore", () => {
           name: "Deferred title",
           tools: expect.any(Array),
         }),
+      }),
+    );
+    store[Symbol.dispose]();
+  });
+
+  it("uses the Model Preset default for a pending Cake Chat", async () => {
+    const configuration = {
+      provider: "openai-codex",
+      modelId: "gpt-5.6-sol",
+      thinkingLevel: "high" as const,
+      fastMode: true,
+    };
+    const { store, port } = createTestStore({ defaultConfiguration: () => configuration });
+    await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
+    await store.startNewSession();
+    store.activeSession!.chatStore.setDraft("Use the default preset");
+    await store.activeSession!.chatStore.submit();
+    expect(port.prompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        newSession: expect.objectContaining({ configuration }),
       }),
     );
     store[Symbol.dispose]();

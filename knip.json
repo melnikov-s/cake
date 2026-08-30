@@ -9,6 +9,6 @@
     "src/plugin/backend-api.ts"
   ],
   "ignoreDependencies": ["@vitest/coverage-v8", "effect-state-tree", "vscode"],
-  "ignoreFiles": ["src/models/ModelPreset.ts", "src/models/Project.ts"],
+  "ignoreFiles": ["src/models/Project.ts"],
   "ignoreExportsUsedInFile": false
 }

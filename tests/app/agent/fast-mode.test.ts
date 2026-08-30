@@ -3,7 +3,7 @@ import {
   CODEX_FAST_MODE_SERVICE_TIER,
   applyFastModePayload,
   supportsFastMode,
-} from "../../../src/agent/fast-mode";
+} from "../../../src/services/pi/fast-mode";
 
 describe("Codex Fast mode", () => {
   it("matches the current Codex model-level capability", () => {

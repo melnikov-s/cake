@@ -1,34 +1,80 @@
 import { Store, observable } from "r-state-tree";
-import type { ApplicationState, ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
+import type { ChatConfiguration, ModelOption, ModelPreset } from "../../ipc/session-contract";
 import type { DesktopClient } from "../desktop-client";
 import { describeError } from "../error-details";
 
-export interface ModelPresetSettingsStoreProps {
-  client: Pick<DesktopClient, "setModelPresets">;
+interface ModelPresetProjection {
+  readonly presets: readonly ModelPreset[];
+  readonly defaultPresetId?: string;
 }
 
+export interface ModelPresetSettingsStoreProps {
+  client: Pick<
+    DesktopClient,
+    | "listModels"
+    | "listModelPresets"
+    | "createModelPreset"
+    | "updateModelPreset"
+    | "removeModelPreset"
+    | "setDefaultModelPreset"
+  >;
+}
+
+export type ModelPresetResolutionStatus =
+  | "available"
+  | "unknown"
+  | "unauthenticated"
+  | "unavailable"
+  | "unsupported-thinking-level"
+  | "unsupported-fast-mode";
+
 /**
- * Owns the model-preset collection, the default new-session configuration
- * (default preset, else the last used chat configuration), and the serial save queue.
+ * Owns the one renderer model-preset collection, default new-session
+ * configuration, and serialized optimistic semantic command queue.
  */
 export class ModelPresetSettingsStore extends Store<ModelPresetSettingsStoreProps> {
   readonly presets: ModelPreset[] = observable([]);
+  readonly catalogModels: ModelOption[] = observable([]);
   defaultPresetId: string | undefined;
   lastUsedConfiguration: ChatConfiguration | undefined;
+  loading = true;
   saving = false;
   sectionRequestRevision = 0;
   error: string | undefined;
   errorDetails: string | undefined;
-  private saveRevision = 0;
-  private saveQueue: Promise<unknown> = Promise.resolve();
+  private commandRevision = 0;
+  private commandQueue: Promise<unknown> = Promise.resolve();
+  private hydration: Promise<void> | undefined;
   private persistedPresets: ModelPreset[] = [];
   private persistedDefaultPresetId: string | undefined;
+  private readonly authoritativeIds = new Map<string, string>();
 
-  applyApplicationState(state: ApplicationState) {
-    if (this.saving) return;
-    this.persistedPresets = (state.modelPresets ?? []).map((preset) => ({ ...preset }));
-    this.persistedDefaultPresetId = state.defaultModelPresetId;
-    this.restorePersisted();
+  hydrate() {
+    this.hydration ??= this.performHydration();
+    return this.hydration;
+  }
+
+  get modelsByProvider() {
+    const groups = new Map<string, { name: string; models: ModelOption[] }>();
+    for (const model of this.catalogModels) {
+      const group = groups.get(model.provider) ?? { name: model.providerName, models: [] };
+      group.models.push(model);
+      groups.set(model.provider, group);
+    }
+    return [...groups.entries()].map(([id, group]) => ({ id, ...group }));
+  }
+
+  resolutionStatus(preset: ModelPreset): ModelPresetResolutionStatus {
+    const model = this.catalogModels.find(
+      (candidate) => candidate.provider === preset.provider && candidate.id === preset.modelId,
+    );
+    if (!model) return "unknown";
+    if (!model.authenticated) return "unauthenticated";
+    if (model.available === false) return "unavailable";
+    if (!model.availableThinkingLevels.includes(preset.thinkingLevel))
+      return "unsupported-thinking-level";
+    if (preset.fastMode && !model.fastMode) return "unsupported-fast-mode";
+    return "available";
   }
 
   get defaultConfiguration() {
@@ -66,16 +112,30 @@ export class ModelPresetSettingsStore extends Store<ModelPresetSettingsStoreProp
   }
 
   createPreset(preset: Omit<ModelPreset, "id">) {
-    return this.save(
-      [...this.presets, { ...preset, id: crypto.randomUUID() }],
+    const optimisticId = crypto.randomUUID();
+    const revision = this.beginOptimistic(
+      [...this.presets, { ...preset, id: optimisticId }],
       this.defaultPresetId,
     );
+    return this.enqueue(revision, async () => {
+      const knownIds = new Set(this.persistedPresets.map((candidate) => candidate.id));
+      const state = await this.props.client.createModelPreset(preset);
+      const created = state.presets.find((candidate) => !knownIds.has(candidate.id));
+      if (created) this.authoritativeIds.set(optimisticId, created.id);
+      return state;
+    });
   }
 
   updatePreset(preset: ModelPreset) {
-    return this.save(
-      this.presets.map((current) => (current.id === preset.id ? preset : current)),
+    const revision = this.beginOptimistic(
+      this.presets.map((current) => (current.id === preset.id ? { ...preset } : current)),
       this.defaultPresetId,
+    );
+    return this.enqueue(revision, () =>
+      this.props.client.updateModelPreset({
+        ...preset,
+        id: this.resolveAuthoritativeId(preset.id),
+      }),
     );
   }
 
@@ -86,45 +146,78 @@ export class ModelPresetSettingsStore extends Store<ModelPresetSettingsStoreProp
   }
 
   deletePreset(id: string) {
-    return this.save(
+    const revision = this.beginOptimistic(
       this.presets.filter((preset) => preset.id !== id),
       this.defaultPresetId === id ? undefined : this.defaultPresetId,
+    );
+    return this.enqueue(revision, () =>
+      this.props.client.removeModelPreset(this.resolveAuthoritativeId(id)),
     );
   }
 
   setDefaultPreset(id: string | undefined) {
-    return this.save(this.presets, id);
+    const revision = this.beginOptimistic(this.presets, id);
+    return this.enqueue(revision, () =>
+      this.props.client.setDefaultModelPreset(
+        id === undefined ? undefined : this.resolveAuthoritativeId(id),
+      ),
+    );
   }
 
-  private save(presets: readonly ModelPreset[], defaultPresetId: string | undefined) {
-    const revision = ++this.saveRevision;
-    const optimistic = presets.map((preset) => ({ ...preset }));
-    this.presets.splice(0, this.presets.length, ...optimistic);
+  private async performHydration() {
+    const [presets, models] = await Promise.allSettled([
+      this.props.client.listModelPresets(),
+      this.props.client.listModels(),
+    ]);
+    if (this.signal.aborted) return;
+    if (presets.status === "fulfilled") {
+      this.acceptAuthoritative(presets.value);
+      this.restorePersisted();
+    } else this.setError(presets.reason);
+    if (models.status === "fulfilled")
+      this.catalogModels.splice(0, this.catalogModels.length, ...models.value);
+    else if (presets.status === "fulfilled") this.setError(models.reason);
+    this.loading = false;
+  }
+
+  private beginOptimistic(presets: readonly ModelPreset[], defaultPresetId: string | undefined) {
+    const revision = ++this.commandRevision;
+    this.presets.splice(0, this.presets.length, ...presets.map((preset) => ({ ...preset })));
     this.defaultPresetId = defaultPresetId;
     this.saving = true;
     this.error = undefined;
     this.errorDetails = undefined;
-    const save = this.saveQueue
+    return revision;
+  }
+
+  private enqueue(revision: number, command: () => Promise<ModelPresetProjection>) {
+    const pending = this.commandQueue
       .catch(() => undefined)
-      .then(() => this.props.client.setModelPresets(optimistic, defaultPresetId))
+      .then(command)
       .then((state) => {
         if (this.signal.aborted) return;
-        this.persistedPresets = (state.modelPresets ?? []).map((preset) => ({ ...preset }));
-        this.persistedDefaultPresetId = state.defaultModelPresetId;
-        if (revision === this.saveRevision) this.restorePersisted();
+        this.acceptAuthoritative(state);
+        if (revision === this.commandRevision) this.restorePersisted();
       })
       .catch((error) => {
-        if (this.signal.aborted || revision !== this.saveRevision) return;
+        if (this.signal.aborted || revision !== this.commandRevision) return;
         this.restorePersisted();
-        const described = describeError(error);
-        this.error = described.message;
-        this.errorDetails = described.details;
+        this.setError(error);
       })
       .finally(() => {
-        if (!this.signal.aborted && revision === this.saveRevision) this.saving = false;
+        if (!this.signal.aborted && revision === this.commandRevision) this.saving = false;
       });
-    this.saveQueue = save;
-    return save;
+    this.commandQueue = pending;
+    return pending;
+  }
+
+  private acceptAuthoritative(state: ModelPresetProjection) {
+    this.persistedPresets = state.presets.map((preset) => ({ ...preset }));
+    this.persistedDefaultPresetId = state.defaultPresetId;
+  }
+
+  private resolveAuthoritativeId(id: string) {
+    return this.authoritativeIds.get(id) ?? id;
   }
 
   private restorePersisted() {
@@ -134,5 +227,11 @@ export class ModelPresetSettingsStore extends Store<ModelPresetSettingsStoreProp
       ...this.persistedPresets.map((preset) => ({ ...preset })),
     );
     this.defaultPresetId = this.persistedDefaultPresetId;
+  }
+
+  private setError(error: unknown) {
+    const described = describeError(error);
+    this.error = described.message;
+    this.errorDetails = described.details;
   }
 }

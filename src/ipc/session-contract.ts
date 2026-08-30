@@ -24,7 +24,7 @@ export const utilityModelSchema = z.object({
   thinkingLevel: thinkingLevelSchema,
 });
 
-export const modelPresetSchema = z.object({
+const modelPresetSchema = z.object({
   id: z.uuid(),
   name: z.string().trim().min(1).max(80),
   provider: z.string().min(1).max(256),
@@ -286,7 +286,7 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-export const modelOptionSchema = z.object({
+const modelOptionSchema = z.object({
   provider: z.string().max(256),
   providerName: ipcProjectionString(512),
   id: z.string().max(512),
@@ -296,6 +296,7 @@ export const modelOptionSchema = z.object({
   fastMode: z.boolean().optional(),
   input: ipcProjectionArray(z.enum(["text", "image"]), 2),
   authenticated: z.boolean(),
+  available: z.boolean().optional(),
   authSource: z
     .enum([
       "stored",
@@ -519,8 +520,6 @@ export const applicationStateSchema = z.object({
   trustedProjectPaths: z.array(z.string().max(4_096)).max(200).readonly().default([]),
   fastModeSessionIds: z.array(z.string().max(256)).max(10_000).readonly().optional(),
   utilityModel: utilityModelSchema.optional(),
-  modelPresets: z.array(modelPresetSchema).max(100).readonly().optional(),
-  defaultModelPresetId: z.uuid().optional(),
   vscodeServerPath: z.string().max(4_096).optional(),
 });
 

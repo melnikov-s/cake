@@ -1,11 +1,14 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { observer } from "r-state-tree/react";
 import type { ModelPreset } from "../../ipc/session-contract";
-import type { ModelGroup } from "./model-picker";
 import { ModelPicker, reasoningLabel } from "./model-picker";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import type { ModelPresetSettingsStore } from "../stores/ModelPresetSettingsStore";
+import type {
+  ModelPresetResolutionStatus,
+  ModelPresetSettingsStore,
+} from "../stores/ModelPresetSettingsStore";
 
 const emptyDraft = (): Omit<ModelPreset, "id"> => ({
   name: "",
@@ -15,13 +18,21 @@ const emptyDraft = (): Omit<ModelPreset, "id"> => ({
   fastMode: false,
 });
 
+const unresolvedLabel = (status: ModelPresetResolutionStatus) => {
+  if (status === "unknown") return "Model unavailable";
+  if (status === "unauthenticated") return "Authentication required";
+  if (status === "unavailable") return "Model unavailable";
+  if (status === "unsupported-thinking-level") return "Thinking level unavailable";
+  if (status === "unsupported-fast-mode") return "Fast mode unavailable";
+  return undefined;
+};
+
 export const ModelPresetSettings = observer(function ModelPresetSettings({
   settings,
-  groups,
 }: {
   settings: ModelPresetSettingsStore;
-  groups: ModelGroup[];
 }) {
+  const groups = settings.modelsByProvider;
   const [editingId, setEditingId] = useState<string | "new" | undefined>();
   const [draft, setDraft] = useState(emptyDraft);
 
@@ -54,7 +65,7 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
             Model Presets
           </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Save a model, reasoning level, and Fast mode as one reusable configuration. New sessions
+            Save a model, thinking level, and Fast mode as one reusable configuration. New sessions
             use the default preset, or your last selected model when no default is set.
           </p>
         </div>
@@ -68,52 +79,60 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
             No presets yet. Create one for your preferred setup.
           </p>
         )}
-        {settings.presets.map((preset) => (
-          <article
-            key={preset.id}
-            className="flex items-center justify-between gap-4 rounded-xl border border-border bg-muted/50 p-3"
-          >
-            <div>
-              <strong className="block text-xs font-semibold text-foreground">{preset.name}</strong>
-              <small className="block font-mono text-[10px] text-muted-foreground">
-                {preset.provider}/{preset.modelId} · {reasoningLabel(preset.thinkingLevel)}
-                {preset.fastMode ? " · Fast" : ""}
-              </small>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <label
-                title="Use for new conversations"
-                className="flex items-center gap-1.5 cursor-pointer text-muted-foreground hover:text-foreground"
-              >
-                <input
-                  type="radio"
-                  className="accent-primary"
-                  name="default-model-preset"
-                  checked={settings.defaultPresetId === preset.id}
-                  onChange={() => void settings.setDefaultPreset(preset.id)}
-                />{" "}
-                Default
-              </label>
-              <Button variant="ghost" size="sm" onClick={() => begin(preset)}>
-                Edit
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => void settings.duplicatePreset(preset.id)}
-              >
-                Duplicate
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => void settings.deletePreset(preset.id)}
-              >
-                Delete
-              </Button>
-            </div>
-          </article>
-        ))}
+        {settings.presets.map((preset) => {
+          const status = settings.resolutionStatus(preset);
+          const unavailable = unresolvedLabel(status);
+          const isDefault = settings.defaultPresetId === preset.id;
+          return (
+            <article
+              key={preset.id}
+              className="flex items-center justify-between gap-4 rounded-xl border border-border bg-muted/50 p-3"
+            >
+              <div>
+                <strong className="block text-xs font-semibold text-foreground">
+                  {preset.name}
+                </strong>
+                <small className="block font-mono text-[10px] text-muted-foreground">
+                  {preset.provider}/{preset.modelId} · {reasoningLabel(preset.thinkingLevel)}
+                  {preset.fastMode ? " · Fast" : ""}
+                </small>
+                {unavailable && (
+                  <Badge variant="destructive" size="xs" className="mt-1">
+                    {unavailable}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <Button
+                  variant={isDefault ? "outline" : "ghost"}
+                  size="sm"
+                  aria-pressed={isDefault}
+                  title="Use for new conversations"
+                  onClick={() => void settings.setDefaultPreset(preset.id)}
+                >
+                  {isDefault ? "Default" : "Set default"}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => begin(preset)}>
+                  Edit
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void settings.duplicatePreset(preset.id)}
+                >
+                  Duplicate
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void settings.deletePreset(preset.id)}
+                >
+                  Delete
+                </Button>
+              </div>
+            </article>
+          );
+        })}
         {settings.defaultPresetId && (
           <Button
             variant="ghost"
@@ -142,10 +161,10 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
             />
           </label>
           <div className="flex items-center justify-between gap-6 text-sm">
-            <span className="text-xs font-medium text-foreground">Model & reasoning</span>
+            <span className="text-xs font-medium text-foreground">Model & thinking</span>
             <ModelPicker
               ariaLabel="Preset model"
-              placeholder="Choose model & reasoning"
+              placeholder="Choose model & thinking"
               groups={groups}
               showFastMode
               value={

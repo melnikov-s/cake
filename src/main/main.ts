@@ -1,6 +1,7 @@
 import { readFile, realpath } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
+import { Effect } from "effect";
 import {
   app,
   BrowserWindow,
@@ -36,7 +37,7 @@ import {
   suggestProjectFiles,
 } from "../agent/session-discovery";
 import { loadReviewSessionProjection, runInlineWidgetRepair } from "../agent/sidecar-runtime";
-import { listAgentCatalogModels, refreshAgentCatalogModels } from "../agent/model-catalog";
+import { PiModels } from "../services/pi/PiModels";
 import {
   createUtilityModelRuntime,
   generateSessionTitle,
@@ -50,7 +51,6 @@ import {
   removeProject,
   renameProject,
   setCakeChatSessionResolved,
-  setModelPresets,
   setSessionFastMode,
   setSessionUnread,
   setSessionsResolved,
@@ -87,7 +87,7 @@ import {
 } from "./inline-widget-protocol";
 import { PluginAgentHost, resolveAgentModel } from "./plugin-agent-host";
 import { TerminalManager } from "./terminal-manager";
-import { launchMainApplication, runMainApplicationEffect } from "./MainLive";
+import { launchMainApplication, runMainEffect } from "./MainLive";
 import cakeIconPath from "../assets/cake.png?asset";
 import annotationMenuIconPath from "../assets/menu-annotation.png?asset";
 import chatMenuIconPath from "../assets/menu-chat.png?asset";
@@ -145,6 +145,13 @@ function applicationState() {
 const isProjectTrusted = (path: string) => applicationState().trustedProjectPaths.includes(path);
 const hasSessionFastMode = (sessionId: string) =>
   applicationState().fastModeSessionIds.includes(sessionId);
+const modelPresetAgentProjection = () => {
+  const state = applicationState();
+  return {
+    presets: state.modelPresets.map(({ id, name, modelId }) => ({ id, name, modelId })),
+    defaultPresetId: state.defaultModelPresetId,
+  };
+};
 
 function clearPendingTrustRequests(webContentsId: number) {
   for (const key of pendingTrustRequests.keys())
@@ -226,7 +233,7 @@ const globalChatDriver = new GlobalChatDriver({
   agentDir: cakePaths.piAgent,
   sessionDir: cakePaths.piGlobalChatSessions,
   resolvedSessionDir: cakePaths.piGlobalChatResolvedSessions,
-  modelPresets: () => applicationModel.modelPresets.map(({ name, modelId }) => ({ name, modelId })),
+  modelPresets: modelPresetAgentProjection,
   recoveryContext: () => {
     const state = pluginActivation.snapshot();
     if (!state.recoveryRequired && state.diagnostics.length === 0) return undefined;
@@ -243,7 +250,7 @@ const globalChatDriver = new GlobalChatDriver({
   },
   fastMode: hasSessionFastMode,
   setFastMode: (sessionId, enabled) =>
-    runMainApplicationEffect(setSessionFastMode(sessionId, enabled)).then(() => undefined),
+    runMainEffect(setSessionFastMode(sessionId, enabled)).then(() => undefined),
   sessionResolved: (sessionId) => applicationState().resolvedCakeChatSessionIds.includes(sessionId),
   setSessionResolved: (sessionId, resolved) => setCakeChatSessionResolution(sessionId, resolved),
   emit: (event) => {
@@ -313,7 +320,7 @@ async function setCakeChatSessionResolution(sessionId: string, resolved: boolean
       direct: true,
     });
   }
-  const state = await runMainApplicationEffect(setCakeChatSessionResolved(sessionId, resolved));
+  const state = await runMainEffect(setCakeChatSessionResolved(sessionId, resolved));
   broadcast({ type: "application-state-changed", state });
 }
 
@@ -336,7 +343,7 @@ async function setProjectSessionResolution(
     if (restoredWorktree) {
       allowedProjectPaths.add(restoredWorktree.worktreePath);
       if (isProjectTrusted(restoredWorktree.projectPath))
-        await runMainApplicationEffect(trustProject(restoredWorktree.worktreePath));
+        await runMainEffect(trustProject(restoredWorktree.worktreePath));
     }
     await sessionArchive.restore(sessionId, {
       cwd: workspacePath,
@@ -344,7 +351,7 @@ async function setProjectSessionResolution(
       resolvedRoot: cakePaths.piResolvedSessions,
     });
   }
-  const state = await runMainApplicationEffect(setSessionsResolved([sessionId], resolved));
+  const state = await runMainEffect(setSessionsResolved([sessionId], resolved));
   broadcast({ type: "application-state-changed", state });
 }
 
@@ -357,7 +364,7 @@ async function deleteCakeChatSession(sessionId: string) {
     resolvedRoot: cakePaths.piGlobalChatResolvedSessions,
     direct: true,
   });
-  const state = await runMainApplicationEffect(setCakeChatSessionResolved(sessionId, false));
+  const state = await runMainEffect(setCakeChatSessionResolved(sessionId, false));
   broadcast({ type: "application-state-changed", state });
 }
 
@@ -375,7 +382,7 @@ async function deleteProjectSession(sessionId: string) {
     resolvedRoot: cakePaths.piResolvedSessions,
   });
   forgetProjectSession(sessionId);
-  const state = await runMainApplicationEffect(forgetProjectSessions([sessionId]));
+  const state = await runMainEffect(forgetProjectSessions([sessionId]));
   broadcast({ type: "application-state-changed", state });
 }
 
@@ -416,7 +423,7 @@ async function deleteProjectSessions(projectPath: string, records: readonly Work
     }
   }
   if (forgottenSessionIds.length > 0)
-    await runMainApplicationEffect(forgetProjectSessions(forgottenSessionIds));
+    await runMainEffect(forgetProjectSessions(forgottenSessionIds));
 }
 
 async function restoreCakeChatSessionForUse(sessionId: string) {
@@ -511,9 +518,7 @@ async function reconcileApplicationSessions() {
     [...state.resolvedCakeChatSessionIds].sort().join("\n") !==
       [...cakeChatSessionIds].sort().join("\n");
   if (changed)
-    await runMainApplicationEffect(
-      reconcileResolvedSessions(projectSessionIds, cakeChatSessionIds),
-    );
+    await runMainEffect(reconcileResolvedSessions(projectSessionIds, cakeChatSessionIds));
 }
 
 function statePath() {
@@ -598,12 +603,11 @@ function launchPi(path: string) {
     pluginResources: pluginAgentResources,
     isTrusted: () => isProjectTrusted(path),
     utilityModel: () => applicationState().utilityModel,
-    modelPresets: () =>
-      applicationState().modelPresets.map(({ name, modelId }) => ({ name, modelId })),
+    modelPresets: modelPresetAgentProjection,
     worktreeLanding: worktrees,
     fastMode: hasSessionFastMode,
     setFastMode: (sessionId, enabled) =>
-      runMainApplicationEffect(setSessionFastMode(sessionId, enabled)).then(() => undefined),
+      runMainEffect(setSessionFastMode(sessionId, enabled)).then(() => undefined),
     sessionResolved: (sessionId) => applicationState().resolvedSessionIds.includes(sessionId),
     setSessionResolved: (sessionId, resolved) =>
       setProjectSessionResolution(sessionId, resolved, path),
@@ -639,7 +643,7 @@ function dispatchToPi(path: string, command: PiWorkspaceCommand) {
 function refreshModelsEverywhere(requestId: string) {
   void (async () => {
     try {
-      await refreshAgentCatalogModels(cakePaths.piAgent);
+      await runMainEffect(Effect.flatMap(PiModels, (models) => models.refreshCatalog()));
       await Promise.all([
         ...[...piHosts.values()].map((host) => host.driver.refreshModels()),
         globalChatDriver.refreshModels(),
@@ -1278,14 +1282,12 @@ async function handleCakeRequest(
     return desktopResponseSchema.parse({ type: "session-context-menu-closed", action });
   }
   if (request.type === "set-session-unread") {
-    const state = await runMainApplicationEffect(
-      setSessionUnread(request.sessionId, request.unread),
-    );
+    const state = await runMainEffect(setSessionUnread(request.sessionId, request.unread));
     broadcast({ type: "application-state-changed", state });
     return desktopResponseSchema.parse({ type: "application-state-updated", state });
   }
   if (request.type === "set-vscode-server-path") {
-    const state = await runMainApplicationEffect(setVscodeServerPath(request.path));
+    const state = await runMainEffect(setVscodeServerPath(request.path));
     await vscodeEditor.refreshStatus();
     return desktopResponseSchema.parse({ type: "application-state-updated", state });
   }
@@ -1824,13 +1826,7 @@ async function handleCakeRequest(
     return desktopResponseSchema.parse({ type: "window-state-saved" });
   }
   if (request.type === "set-utility-model") {
-    const state = await runMainApplicationEffect(setUtilityModel(request.model));
-    return desktopResponseSchema.parse({ type: "application-state-updated", state });
-  }
-  if (request.type === "set-model-presets") {
-    const state = await runMainApplicationEffect(
-      setModelPresets(request.presets, request.defaultPresetId),
-    );
+    const state = await runMainEffect(setUtilityModel(request.model));
     return desktopResponseSchema.parse({ type: "application-state-updated", state });
   }
   if (request.type === "list-cake-chat-sessions") {
@@ -1964,7 +1960,7 @@ async function handleCakeRequest(
         type: "application-state-updated",
         state: applicationState(),
       });
-    const state = await runMainApplicationEffect(upsertProject(request.path, request.name));
+    const state = await runMainEffect(upsertProject(request.path, request.name));
     for (const record of worktreeRecords)
       if (record.projectPath === request.path) allowedProjectPaths.add(record.worktreePath);
     return desktopResponseSchema.parse({ type: "application-state-updated", state });
@@ -1972,7 +1968,7 @@ async function handleCakeRequest(
   if (request.type === "rename-project") {
     if (!allowedProjectPaths.has(request.path))
       throw new Error("Project path was not selected by the user");
-    const state = await runMainApplicationEffect(renameProject(request.path, request.name));
+    const state = await runMainEffect(renameProject(request.path, request.name));
     return desktopResponseSchema.parse({ type: "application-state-updated", state });
   }
   if (request.type === "remove-project") {
@@ -1999,7 +1995,7 @@ async function handleCakeRequest(
       if (projectWorkspacePaths.has(workspacePath)) sessionWorkspacePaths.delete(sessionId);
     for (const [webContentsId, workspacePath] of windowWorkspaces)
       if (projectWorkspacePaths.has(workspacePath)) windowWorkspaces.delete(webContentsId);
-    const state = await runMainApplicationEffect(removeProject(request.path));
+    const state = await runMainEffect(removeProject(request.path));
     return desktopResponseSchema.parse({ type: "application-state-updated", state });
   }
   if (request.type === "resolve-session") {
@@ -2072,7 +2068,7 @@ async function handleCakeRequest(
     if (pendingTrustRequests.get(key) !== request.path)
       throw new Error("Workspace trust request is no longer pending");
     pendingTrustRequests.delete(key);
-    if (request.approved) await runMainApplicationEffect(trustProject(request.path));
+    if (request.approved) await runMainEffect(trustProject(request.path));
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "create-worktree") {
@@ -2096,7 +2092,7 @@ async function handleCakeRequest(
     const record = await worktrees.create(request.path, request.baseWorktreePath, worktreeName);
     allowedProjectPaths.add(record.worktreePath);
     if (isProjectTrusted(record.projectPath))
-      await runMainApplicationEffect(trustProject(record.worktreePath));
+      await runMainEffect(trustProject(record.worktreePath));
     return desktopResponseSchema.parse({
       type: "worktree-created",
       requestId: request.requestId,
@@ -2139,15 +2135,6 @@ async function handleCakeRequest(
   if (request.type === "refresh-models") {
     void refreshModelsEverywhere(request.requestId);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
-  }
-  // The model catalog lives in the shared agent directory, not in any session,
-  // so unsent chats can list it without resolving a session workspace path.
-  if (request.type === "list-models") {
-    return desktopResponseSchema.parse({
-      type: "models-listed",
-      requestId: request.requestId,
-      models: await listAgentCatalogModels(cakePaths.piAgent),
-    });
   }
   const path =
     request.type === "open-workspace" || request.type === "inspect-workspace"
@@ -2308,6 +2295,7 @@ function stopApplicationCapabilities() {
 
 launchMainApplication({
   application: app,
+  piAgentDirectory: cakePaths.piAgent,
   rpcOperations: {
     getHomeDirectory() {
       const path = homedir();

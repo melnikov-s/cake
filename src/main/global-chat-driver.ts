@@ -25,7 +25,10 @@ export interface GlobalChatDriverOptions {
   resolvedSessionDir?: string;
   emit(event: DesktopEvent): void;
   recoveryContext?(): string | undefined;
-  modelPresets?(): readonly Pick<ModelPreset, "name" | "modelId">[];
+  modelPresets?(): {
+    readonly presets: readonly Pick<ModelPreset, "id" | "name" | "modelId">[];
+    readonly defaultPresetId?: string;
+  };
   fastMode?(sessionId: string): boolean;
   setFastMode?(sessionId: string, enabled: boolean): Promise<void>;
   sessionResolved?(sessionId: string): boolean;

@@ -22,7 +22,7 @@ export default tseslint.config(
   },
   {
     files: ["src/**/*.{ts,tsx}"],
-    ignores: ["src/agent/**/*.ts"],
+    ignores: ["src/agent/**/*.ts", "src/services/pi/**/*.ts"],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -30,7 +30,8 @@ export default tseslint.config(
           paths: [
             {
               name: "@earendil-works/pi-coding-agent",
-              message: "Only src/agent adapter modules may import Pi.",
+              message:
+                "Only the transitional src/agent adapters and src/services/pi may import Pi.",
             },
           ],
         },

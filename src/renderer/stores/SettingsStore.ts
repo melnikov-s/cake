@@ -16,7 +16,12 @@ export interface SettingsStoreProps {
     | "login"
     | "logout"
     | "setUtilityModel"
-    | "setModelPresets"
+    | "listModels"
+    | "listModelPresets"
+    | "createModelPreset"
+    | "updateModelPreset"
+    | "removeModelPreset"
+    | "setDefaultModelPreset"
   >;
   sessionContext(): { sessionId: string } | undefined;
   operations: SessionOperationCoordinatorStore;
@@ -54,7 +59,6 @@ export class SettingsStore extends Store<SettingsStoreProps> {
 
   applyApplicationState(state: ApplicationState) {
     this.utilityModel.applyApplicationState(state);
-    this.modelPresets.applyApplicationState(state);
   }
   receive(event: DesktopClientEvent) {
     this.providers.receive(event);

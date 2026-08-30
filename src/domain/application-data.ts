@@ -1,12 +1,11 @@
 import { Schema } from "effect";
+import { ThinkingLevel } from "../services/pi/model-data";
 
 const boundedString = (maximum: number) => Schema.String.check(Schema.isMaxLength(maximum));
 const nonEmptyBoundedString = (maximum: number) =>
   Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(maximum));
 const boundedArray = <S extends Schema.Top>(item: S, maximum: number) =>
   Schema.Array(item).check(Schema.isMaxLength(maximum));
-
-const ThinkingLevel = Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 
 export const UtilityModel = Schema.Struct({
   provider: nonEmptyBoundedString(256),
@@ -36,8 +35,7 @@ export const ProjectRecord = Schema.Struct({
 
 const SessionIds = boundedArray(boundedString(256), 10_000).check(Schema.isUnique());
 
-/** Current main-owned Application value. Storage envelope versioning is separate. */
-export const ApplicationState = Schema.Struct({
+const RendererApplicationFields = {
   projects: boundedArray(ProjectRecord, 200),
   resolvedSessionIds: SessionIds,
   resolvedCakeChatSessionIds: SessionIds,
@@ -45,9 +43,17 @@ export const ApplicationState = Schema.Struct({
   trustedProjectPaths: boundedArray(boundedString(4_096), 200).check(Schema.isUnique()),
   fastModeSessionIds: SessionIds,
   utilityModel: Schema.optional(UtilityModel),
+  vscodeServerPath: Schema.optional(boundedString(4_096)),
+};
+
+/** Broad renderer projection. Model Presets hydrate through their focused RPC group. */
+export const RendererApplicationState = Schema.Struct(RendererApplicationFields);
+
+/** Current main-owned Application value. Storage envelope versioning is separate. */
+export const ApplicationState = Schema.Struct({
+  ...RendererApplicationFields,
   modelPresets: boundedArray(ModelPreset, 100),
   defaultModelPresetId: Schema.optional(Schema.String.check(Schema.isUUID(4))),
-  vscodeServerPath: Schema.optional(boundedString(4_096)),
 }).check(
   Schema.makeFilter(
     (state) => {
@@ -64,6 +70,7 @@ export const ApplicationState = Schema.Struct({
 );
 
 export type ApplicationState = typeof ApplicationState.Type;
+export type RendererApplicationState = typeof RendererApplicationState.Type;
 export type ProjectRecord = typeof ProjectRecord.Type;
 export type UtilityModel = typeof UtilityModel.Type;
 export type ModelPreset = typeof ModelPreset.Type;

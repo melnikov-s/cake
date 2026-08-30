@@ -7,7 +7,6 @@ import {
   removeProject,
   renameProject,
   setCakeChatSessionResolved,
-  setModelPresets,
   setSessionFastMode,
   setSessionUnread,
   setSessionsResolved,
@@ -45,15 +44,6 @@ const makeLayer = (options?: { failSave?: boolean }) => {
 const run = <A, E>(effect: Effect.Effect<A, E, ApplicationState>) => {
   const test = makeLayer();
   return effect.pipe(Effect.provide(test.layer));
-};
-
-const preset = {
-  id: "00000000-0000-4000-8000-000000000001",
-  name: "Deep review",
-  provider: "openai",
-  modelId: "gpt-5.6",
-  thinkingLevel: "high" as const,
-  fastMode: true,
 };
 
 describe("Application domain", () => {
@@ -120,34 +110,19 @@ describe("Application domain", () => {
     ),
   );
 
-  itEffect(
-    "updates Utility Model, validates Model Preset defaults, and normalizes VS Code path",
-    () =>
-      run(
-        Effect.gen(function* () {
-          const utility = yield* setUtilityModel({
-            provider: "openai",
-            modelId: "gpt-5-mini",
-            thinkingLevel: "low",
-          });
-          assert.equal(utility.utilityModel?.modelId, "gpt-5-mini");
-          const presets = yield* setModelPresets([preset], preset.id);
-          assert.equal(presets.defaultModelPresetId, preset.id);
-          const noDefault = yield* setModelPresets([], preset.id);
-          assert.equal(noDefault.defaultModelPresetId, undefined);
-          const editor = yield* setVscodeServerPath("  /opt/code-server  ");
-          assert.equal(editor.vscodeServerPath, "/opt/code-server");
-          const cleared = yield* setVscodeServerPath("   ");
-          assert.equal(cleared.vscodeServerPath, undefined);
-        }),
-      ),
-  );
-
-  itEffect("rejects duplicate Model Preset IDs", () =>
+  itEffect("updates Utility Model and normalizes VS Code path", () =>
     run(
       Effect.gen(function* () {
-        const error = yield* Effect.flip(setModelPresets([preset, preset], preset.id));
-        assert.equal(error._tag, "ApplicationPolicyError");
+        const utility = yield* setUtilityModel({
+          provider: "openai",
+          modelId: "gpt-5-mini",
+          thinkingLevel: "low",
+        });
+        assert.equal(utility.utilityModel?.modelId, "gpt-5-mini");
+        const editor = yield* setVscodeServerPath("  /opt/code-server  ");
+        assert.equal(editor.vscodeServerPath, "/opt/code-server");
+        const cleared = yield* setVscodeServerPath("   ");
+        assert.equal(cleared.vscodeServerPath, undefined);
       }),
     ),
   );

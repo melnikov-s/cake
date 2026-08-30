@@ -6,7 +6,7 @@ import {
   type CakeRuntimeEvent,
   type RuntimeUiRequest,
 } from "../agent/cake-runtime";
-import { supportsFastMode } from "../agent/fast-mode";
+import { supportsFastMode } from "../services/pi/fast-mode";
 import { forkWorkspaceSession, loadPiChangelog } from "../agent/session-discovery";
 import {
   runInlineWidgetGeneration,
@@ -153,7 +153,10 @@ export interface PiWorkspaceDriverOptions {
   openInEditor?: (location: SourceLocation, signal: AbortSignal) => Promise<SourceLocation>;
   isTrusted?: () => boolean;
   utilityModel?: () => UtilityModel | undefined;
-  modelPresets?: () => readonly Pick<ModelPreset, "name" | "modelId">[];
+  modelPresets?: () => {
+    readonly presets: readonly Pick<ModelPreset, "id" | "name" | "modelId">[];
+    readonly defaultPresetId?: string;
+  };
   worktreeLanding?: WorktreeLandingCoordinator;
   fastMode?(sessionId: string): boolean;
   setFastMode?(sessionId: string, enabled: boolean): Promise<void>;
