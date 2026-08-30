@@ -328,6 +328,25 @@ describe("Transcript scrolling", () => {
     expect(followOutput(false)).toBe(false);
   });
 
+  it("lays consecutive sources out together in a wrapping horizontal group", () => {
+    const parts: UiPart[] = [
+      { id: "source-1", kind: "source", title: "github.com", url: "https://github.com/one" },
+      { id: "source-2", kind: "source", title: "example.com", url: "https://example.com" },
+      { id: "source-3", kind: "source", title: "docs.dev", url: "https://docs.dev" },
+    ];
+
+    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts)} />));
+
+    const group = container.querySelector<HTMLElement>('[data-slot="source-group"]')!;
+    expect(group.className).toContain("flex-wrap");
+    expect(Array.from(group.querySelectorAll("a"), (source) => source.textContent)).toEqual([
+      "github.com",
+      "example.com",
+      "docs.dev",
+    ]);
+    expect(virtualizedProps.current?.data as Array<{ kind: string }>).toHaveLength(1);
+  });
+
   it("renders user input as plain text with its original line breaks", () => {
     const parts: UiPart[] = [
       {

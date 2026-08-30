@@ -87,7 +87,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   const firstResponsePartId =
     latestUserPartIndex >= 0 ? visibleParts[latestUserPartIndex + 1]?.id : undefined;
   const responseStartItemId = items.find((item) =>
-    item.kind === "activity-group"
+    item.kind === "activity-group" || item.kind === "source-group"
       ? item.parts.some((part) => part.id === firstResponsePartId)
       : item.id === firstResponsePartId,
   )?.id;
@@ -116,7 +116,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   const messageNavigationRequest = store.messageNavigationRequest;
   const messageNavigationItemIndex = messageNavigationRequest
     ? items.findIndex((item) =>
-        item.kind === "activity-group"
+        item.kind === "activity-group" || item.kind === "source-group"
           ? item.parts.some((part) => part.id === messageNavigationRequest.messageId)
           : item.id === messageNavigationRequest.messageId,
       )
@@ -319,6 +319,12 @@ export const ChatTranscript = observer(function ChatTranscript({
           behavior={transcriptBehavior}
           isStreaming={store.streaming}
         />
+      ) : item.kind === "source-group" ? (
+        <div className="flex flex-wrap items-center gap-2" data-slot="source-group">
+          {item.parts.map((part) => (
+            <TranscriptPart key={part.id} part={part} behavior={transcriptBehavior} />
+          ))}
+        </div>
       ) : item.kind === "loading-state" ? (
         <LoadingState startedAt={store.loadingStartedAt} />
       ) : item.kind === "review-run" ? (
