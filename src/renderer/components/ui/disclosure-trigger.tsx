@@ -3,13 +3,10 @@ import { cn } from "@/lib/utils";
 import { ChevronIcon } from "./icons";
 import { StatusDot, type StatusDotProps } from "./status-dot";
 
-export interface DisclosureTriggerProps extends Omit<
-  ButtonHTMLAttributes<HTMLButtonElement>,
-  "title"
-> {
+export interface DisclosureTriggerProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   open?: boolean;
   status?: StatusDotProps["status"];
-  title: ReactNode;
+  title: string;
   subtitle?: ReactNode;
   badge?: ReactNode;
   trailing?: ReactNode;
@@ -40,6 +37,7 @@ export const DisclosureTrigger = forwardRef<HTMLButtonElement, DisclosureTrigger
         type={type}
         disabled={disabled}
         aria-expanded={open}
+        title={title}
         className={cn(
           "flex w-full min-w-0 items-center justify-between gap-2 text-left font-mono text-xs font-semibold text-foreground transition-colors select-none",
           disabled ? "opacity-40 cursor-default" : "cursor-pointer",

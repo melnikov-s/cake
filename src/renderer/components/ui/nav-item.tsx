@@ -1,7 +1,7 @@
-import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
+import { forwardRef, type HTMLAttributes, type MouseEventHandler, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-export interface NavItemProps extends HTMLAttributes<HTMLDivElement> {
+export interface NavItemProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick"> {
   icon?: ReactNode;
   label: ReactNode;
   description?: ReactNode;
@@ -9,6 +9,7 @@ export interface NavItemProps extends HTMLAttributes<HTMLDivElement> {
   trailing?: ReactNode;
   active?: boolean;
   disabled?: boolean;
+  onClick?: MouseEventHandler<HTMLButtonElement>;
 }
 
 export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem(

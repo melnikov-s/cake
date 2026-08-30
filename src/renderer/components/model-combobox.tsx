@@ -179,7 +179,7 @@ export function ModelCombobox({
         <ChevronDownIcon size={14} />
       </span>
       {open && (
-        <div className="absolute top-[calc(100%+4px)] left-0 z-50 w-full min-w-[260px] overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-xl">
+        <div className="absolute top-[calc(100%+4px)] left-0 z-50 w-full min-w-[260px] overflow-hidden rounded-xl border border-border bg-card text-foreground shadow-2xl">
           <div
             className="max-h-60 overflow-y-auto p-1 text-xs"
             id={listboxId}

@@ -3,6 +3,7 @@ import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Callout } from "./ui/callout";
 import { Select } from "./ui/select";
+import { ChatConfigurationSelector } from "./chat-configuration-selector";
 import { ModelCombobox } from "./model-combobox";
 import { ModelPresetSettings } from "./model-preset-settings";
 import { ThinkingLevelSelect } from "./thinking-level-select";
@@ -32,7 +33,6 @@ export const SettingsPage = observer(function SettingsPage({
   customization: CustomizationStore;
   onViewStateChange(): void;
 }) {
-  const selectedModel = store.session?.model;
   const pi = store.session?.piSettings;
   const authNotice = store.activeSession?.canonicalParts.find(
     (part) => part.kind === "notice" && part.id === "auth-status",
@@ -98,50 +98,15 @@ export const SettingsPage = observer(function SettingsPage({
             </p>
           </div>
         </header>
-        {store.session ? (
-          <div className="grid gap-4">
-            <div className="flex items-center justify-between gap-6 text-sm">
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <strong className="text-xs font-medium text-foreground">Model</strong>
-                <small className="text-[11px] text-muted-foreground">
-                  The model Pi uses for its next response.
-                </small>
-              </span>
-              <ModelCombobox
-                ariaLabel="Settings model"
-                groups={configuration?.connectedModelsByProvider ?? []}
-                value={selectedModel ? `${selectedModel.provider}/${selectedModel.id}` : ""}
-                onSelect={(value) => void configuration?.selectModel(value)}
-                variant="settings"
-              />
-            </div>
-            <label className="flex items-center justify-between gap-6 text-sm">
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <strong className="text-xs font-medium text-foreground">Reasoning</strong>
-                <small className="text-[11px] text-muted-foreground">
-                  Controls how much time Pi spends thinking.
-                </small>
-              </span>
-              <ThinkingLevelSelect
-                ariaLabel="Settings thinking level"
-                value={store.session.thinkingLevel}
-                levels={store.session.availableThinkingLevels}
-                onSelect={(level) => void configuration?.selectThinkingLevel(level)}
-                variant="settings"
-              />
-            </label>
-            {store.session.fastModeAvailable && (
-              <SettingsToggle
-                label="Fast mode"
-                description="Use Codex priority processing for supported models."
-                checked={configuration?.fastMode ?? store.session.fastMode}
-                disabled={
-                  store.session.streaming || (configuration?.activeOperations.length ?? 0) > 0
-                }
-                instant
-                onChange={(enabled) => void configuration?.selectFastMode(enabled)}
-              />
-            )}
+        {store.session && configuration ? (
+          <div className="flex items-center justify-between gap-6 text-sm">
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <strong className="text-xs font-medium text-foreground">Model configuration</strong>
+              <small className="text-[11px] text-muted-foreground">
+                The model, reasoning effort, and priority mode for this chat.
+              </small>
+            </span>
+            <ChatConfigurationSelector configuration={configuration} />
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">

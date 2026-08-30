@@ -60,7 +60,7 @@ export function TooltipBubble({
     <span
       ref={bubbleRef}
       role="tooltip"
-      className="cake-tooltip"
+      className="pointer-events-none fixed z-[1000] max-w-[280px] overflow-hidden truncate whitespace-nowrap rounded-md bg-primary px-2 py-1 text-[11px] font-medium leading-tight text-primary-foreground shadow-md select-none"
       style={position ? { top: position.top, left: position.left } : { visibility: "hidden" }}
     >
       {label}

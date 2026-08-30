@@ -40,6 +40,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
         className,
       )}
       aria-label={ariaLabel ?? tooltip}
+      title={tooltip}
       {...props}
       onMouseEnter={(event) => {
         show(event.currentTarget);

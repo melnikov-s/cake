@@ -175,7 +175,10 @@ export function PopoverContent({
       id={contentId}
       ref={contentRef}
       role={props.role ?? "dialog"}
-      className={cn("cake-popover-content", className)}
+      className={cn(
+        "fixed z-50 max-h-[calc(100vh-16px)] max-w-[calc(100vw-16px)] overflow-auto rounded-xl border border-border bg-card p-3 text-foreground shadow-2xl",
+        className,
+      )}
       style={{
         ...style,
         left: position.left,
