@@ -14,6 +14,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { CloseIcon, TerminalIcon } from "@/components/ui/icons";
 import { ResizeHandle } from "@/components/ui/resize-handle";
 import { TerminalView } from "@/components/ui/terminal-view";
+import { terminalToggleAcceleratorHint } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import type { TerminalStore } from "../stores/TerminalStore";
 
@@ -53,7 +54,9 @@ export const QuakeTerminal = observer(function QuakeTerminal({ store }: { store:
               {target.kind === "project" ? target.workspacePath : "~"}
             </span>
           )}
-          <span className="font-mono text-[10px] text-muted-foreground">⌘~</span>
+          <span className="font-mono text-[10px] text-muted-foreground">
+            {terminalToggleAcceleratorHint}
+          </span>
           <IconButton tooltip="Hide terminal" onClick={() => store.hide()}>
             <CloseIcon size={16} />
           </IconButton>

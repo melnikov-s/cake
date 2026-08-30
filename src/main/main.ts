@@ -659,6 +659,10 @@ function refreshModelsEverywhere(requestId: string) {
 }
 
 function configureApplicationBranding() {
+  const windowMenuTail: Electron.MenuItemConstructorOptions[] =
+    process.platform === "darwin"
+      ? [{ type: "separator" }, { role: "front" }]
+      : [{ role: "close" }];
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       {
@@ -691,7 +695,29 @@ function configureApplicationBranding() {
             },
           ]
         : []),
-      { role: "windowMenu" },
+      // An explicit Window menu (not the `windowMenu` role) lets Cake own ⌘`:
+      // macOS reserves that key equivalent for the system-added "Cycle Through
+      // Windows" items of a windows menu, consuming it before it can reach the
+      // renderer. A menu item with the same accelerator is matched first.
+      {
+        label: "Window",
+        submenu: [
+          { role: "minimize" },
+          { role: "zoom" },
+          { type: "separator" },
+          {
+            label: "Toggle Terminal",
+            accelerator: "CommandOrControl+`",
+            click: () => {
+              const focused = BrowserWindow.getFocusedWindow();
+              const target =
+                focused && windows.has(focused.id) ? focused : [...windows.values()].at(-1);
+              if (target) sendTo(target.webContents, { type: "terminal-toggle-requested" });
+            },
+          },
+          ...windowMenuTail,
+        ],
+      },
     ]),
   );
 

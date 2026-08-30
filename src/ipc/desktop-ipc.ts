@@ -218,6 +218,7 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     terminalId: z.uuid(),
     exitCode: z.number().int(),
   }),
+  z.object({ type: z.literal("terminal-toggle-requested") }),
   z.object({
     type: z.literal("embedded-editor-state"),
     status: z.enum(["missing", "downloading", "starting", "ready", "failed"]),

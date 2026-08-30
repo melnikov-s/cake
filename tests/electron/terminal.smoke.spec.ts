@@ -80,9 +80,24 @@ test("Quake terminal runs a shell and only warns on resolution for a running pro
   try {
     const page = await application.firstWindow();
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
-    await page.getByRole("button", { name: "Terminal (⌘~)" }).click();
+
+    // ⌘` is owned by the Window menu's Toggle Terminal item: macOS consumes the
+    // key equivalent for system window cycling before it could reach the
+    // renderer, so the menu item is the single mechanism that drives the toggle.
+    const toggleTerminalViaMenu = () =>
+      application.evaluate(({ Menu }) => {
+        const item = Menu.getApplicationMenu()
+          ?.items.flatMap((entry) => entry.submenu?.items ?? [])
+          .find((entry) => entry.label === "Toggle Terminal");
+        if (!item) throw new Error("Toggle Terminal menu item missing");
+        if (!String(item.accelerator).includes("`"))
+          throw new Error("Toggle Terminal accelerator missing the backtick");
+        item.click({}, undefined);
+      });
 
     const panel = page.locator('section[aria-label="Terminal"]');
+    await expect(panel).toHaveAttribute("aria-hidden", "true");
+    await page.getByRole("button", { name: /^Terminal \(/ }).click();
     await expect(panel).toHaveAttribute("aria-hidden", "false");
     await expect(panel.locator(".xterm-screen")).toBeVisible();
     await panel.locator(".xterm-screen").click();
@@ -92,9 +107,9 @@ test("Quake terminal runs a shell and only warns on resolution for a running pro
       timeout: 10_000,
     });
 
-    await page.keyboard.press("Meta+Backquote");
+    await toggleTerminalViaMenu();
     await expect(panel).toHaveAttribute("aria-hidden", "true");
-    await page.keyboard.press("Meta+Backquote");
+    await toggleTerminalViaMenu();
     await expect(panel).toHaveAttribute("aria-hidden", "false");
     await expect(panel.locator(".xterm-rows")).toContainText("CAKE_TERMINAL_OK");
 

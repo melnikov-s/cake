@@ -699,6 +699,10 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       this.terminalStore.receive(event);
       return;
     }
+    if (event.type === "terminal-toggle-requested") {
+      void this.terminalStore.toggle();
+      return;
+    }
     if (event.type === "application-state-changed") {
       const activeProjectSessionId =
         this.appShellStore.activeConversation?.kind === "project-session"

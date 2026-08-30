@@ -40,6 +40,7 @@ import { UiDialog } from "@/components/ui-dialog";
 import { CommandPane } from "@/components/command-pane";
 import { Chat } from "@/components/chat";
 import { QuakeTerminal } from "@/components/quake-terminal";
+import { terminalToggleAcceleratorHint } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../ipc/source-location";
 import { toWorkspaceRelativePath } from "../utils/workspace-relative-path";
@@ -149,18 +150,6 @@ export const App = observer(function App() {
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [root]);
-
-  useEffect(() => {
-    const toggleTerminal = (event: globalThis.KeyboardEvent) => {
-      const mac = /Mac/.test(navigator.userAgent);
-      if (event.code !== "Backquote" || (mac ? !event.metaKey : !event.ctrlKey)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      void terminal.toggle();
-    };
-    window.addEventListener("keydown", toggleTerminal, true);
-    return () => window.removeEventListener("keydown", toggleTerminal, true);
-  }, [terminal]);
 
   useEffect(() => {
     const navigateSessionHistory = (event: globalThis.KeyboardEvent) => {
@@ -369,7 +358,7 @@ export const App = observer(function App() {
               ref={setSessionHeaderHost}
             />
             <IconButton
-              tooltip="Terminal (⌘~)"
+              tooltip={`Terminal (${terminalToggleAcceleratorHint})`}
               disabled={!terminal.available}
               aria-pressed={terminal.open}
               onClick={() => void terminal.toggle()}

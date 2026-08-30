@@ -148,6 +148,7 @@ export type DesktopClientEvent =
   | { type: "plugin-agent-event"; pluginId: string; snapshot: PluginAgentSnapshot }
   | { type: "terminal-data"; terminalId: string; data: string }
   | { type: "terminal-exited"; terminalId: string; exitCode: number }
+  | { type: "terminal-toggle-requested" }
   | { type: "embedded-editor-state-received"; status: EmbeddedEditorStatus; message?: string }
   | {
       type: "embedded-editor-location-opened";
@@ -679,7 +680,12 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
     };
   if (event.type === "customization-state-changed") return event;
   if (event.type === "application-state-changed" || event.type === "notification") return event;
-  if (event.type === "terminal-data" || event.type === "terminal-exited") return event;
+  if (
+    event.type === "terminal-data" ||
+    event.type === "terminal-exited" ||
+    event.type === "terminal-toggle-requested"
+  )
+    return event;
   if (event.type === "embedded-editor-state")
     return {
       type: "embedded-editor-state-received",
