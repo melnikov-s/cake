@@ -28,6 +28,16 @@ function runtime(nextSnapshot = snapshot): CakeRuntime {
     sessionId: nextSnapshot.sessionId,
     sessionFile: nextSnapshot.sessionFile,
     snapshot: vi.fn(async () => nextSnapshot),
+    currentConfiguration: vi.fn(() =>
+      nextSnapshot.model
+        ? {
+            provider: nextSnapshot.model.provider,
+            modelId: nextSnapshot.model.id,
+            thinkingLevel: nextSnapshot.thinkingLevel,
+            fastMode: Boolean(nextSnapshot.fastMode),
+          }
+        : undefined,
+    ),
     prompt: vi.fn(async () => undefined),
     compact: vi.fn(async () => undefined),
     abort: vi.fn(async () => undefined),
@@ -96,6 +106,8 @@ describe("GlobalChatDriver", () => {
       expect(events).toContainEqual({ type: "global-chat-operation-completed", requestId }),
     );
     expect(source.handoff).toHaveBeenCalledWith("assistant-entry");
+    expect(source.snapshot).not.toHaveBeenCalled();
+    expect(source.currentConfiguration).toHaveBeenCalledOnce();
     expect(target.applyConfiguration).toHaveBeenCalledWith({
       provider: "openai",
       modelId: "gpt-test",

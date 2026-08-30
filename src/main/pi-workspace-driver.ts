@@ -429,16 +429,10 @@ export class PiWorkspaceDriver {
           });
           if (command.resolveSource) await this.setSessionResolved(command.sessionId, true);
         } else if (command.type === "handoff-session") {
-          const source = await runtime.snapshot();
+          const configuration = runtime.currentConfiguration?.();
           const handedOff = await runtime.handoff(command.entryId);
           const next = await this.createRuntime(false, handedOff.sessionId, handedOff.sessionFile);
-          if (source.model)
-            await next.applyConfiguration({
-              provider: source.model.provider,
-              modelId: source.model.id,
-              thinkingLevel: source.thinkingLevel,
-              fastMode: Boolean(source.fastMode),
-            });
+          if (configuration) await next.applyConfiguration(configuration);
           this.emit({
             type: "session-snapshot",
             requestId: command.requestId,

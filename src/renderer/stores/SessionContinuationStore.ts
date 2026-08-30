@@ -4,6 +4,8 @@ import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
+const HANDOFF_TIMEOUT_MS = 30_000;
+
 export interface SessionContinuationStoreProps {
   client: Pick<
     DesktopClient,
@@ -17,6 +19,7 @@ export interface SessionContinuationStoreProps {
   closeCommandPane(): void;
   openSession(sessionId: string): Promise<void>;
   reportError(error: unknown): void;
+  handoffTimeoutMs?: number;
 }
 
 export interface ForkSessionPrompt {
@@ -32,12 +35,11 @@ export interface ForkSessionPrompt {
 export class SessionContinuationStore extends Store<SessionContinuationStoreProps> {
   prompt: ForkSessionPrompt | undefined;
   private activeOperationId: string | undefined;
+  private handoffTimeout: ReturnType<typeof setTimeout> | undefined;
 
   constructor(props: SessionContinuationStore["props"]) {
     super(props);
-    this.effect(() => () => {
-      if (this.activeOperationId) this.props.operations.finish(this.activeOperationId);
-    });
+    this.effect(() => () => this.clearActiveOperation());
   }
 
   /** Repeated fork requests are ignored while prompting or dispatch is active. */
@@ -117,10 +119,27 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
 
   async handoffAt(entryId: string, prompt?: string, resolveSource = false) {
     const context = this.props.sessionContext();
-    if (!context || this.signal.aborted || this.prompt || this.activeOperationId) return false;
+    if (this.signal.aborted) return false;
+    if (!context) {
+      this.props.reportError("There is no active session to hand off");
+      return false;
+    }
+    if (this.prompt) {
+      this.props.reportError("Cancel or finish the open fork before handing off this session");
+      return false;
+    }
+    if (this.activeOperationId) {
+      this.props.reportError("A session fork or handoff is already in progress");
+      return false;
+    }
     this.props.closeCommandPane();
     const operationId = this.props.operations.start("project-workbench");
     this.activeOperationId = operationId;
+    this.handoffTimeout = setTimeout(() => {
+      if (this.activeOperationId !== operationId) return;
+      this.clearActiveOperation();
+      this.props.reportError("Session handoff timed out. Please try again");
+    }, this.props.handoffTimeoutMs ?? HANDOFF_TIMEOUT_MS);
     try {
       await this.props.client.handoffSession({
         operationId,
@@ -131,9 +150,8 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
       });
       return true;
     } catch (error) {
-      if (this.signal.aborted) return false;
-      this.activeOperationId = undefined;
-      this.props.operations.finish(operationId);
+      if (this.signal.aborted || this.activeOperationId !== operationId) return false;
+      this.clearActiveOperation();
       this.props.reportError(error);
       return false;
     }
@@ -144,8 +162,7 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
   }
 
   reset() {
-    if (this.activeOperationId) this.props.operations.finish(this.activeOperationId);
-    this.activeOperationId = undefined;
+    this.clearActiveOperation();
     this.prompt = undefined;
   }
 
@@ -156,10 +173,16 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
       event.operationId !== this.activeOperationId
     )
       return false;
-    this.activeOperationId = undefined;
-    this.props.operations.finish(event.operationId);
+    this.clearActiveOperation();
     if (event.type === "operation-failed") this.props.reportError(event.message);
     return true;
+  }
+
+  private clearActiveOperation() {
+    if (this.handoffTimeout) clearTimeout(this.handoffTimeout);
+    this.handoffTimeout = undefined;
+    if (this.activeOperationId) this.props.operations.finish(this.activeOperationId);
+    this.activeOperationId = undefined;
   }
 
   private async dispatchFork(sessionId: string, entryId: string, resolveSource: boolean) {

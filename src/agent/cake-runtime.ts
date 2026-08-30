@@ -563,6 +563,8 @@ export interface CakeRuntime {
   getReviewParentContext?(): ReviewParentContext;
   recordReviewRun(run: ReviewRunEntry): void;
   snapshot(requestId?: string): Promise<SessionSnapshot>;
+  /** Returns the active model configuration without performing snapshot discovery or auth checks. */
+  currentConfiguration?(): ChatConfiguration | undefined;
   prompt(
     text: string,
     delivery: "prompt" | "steer" | "follow-up",
@@ -1961,6 +1963,15 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       removeRecoveryNotice();
       responseRetries.cancel();
       return session.abort();
+    },
+    currentConfiguration() {
+      if (!session.model) return undefined;
+      return {
+        provider: session.model.provider,
+        modelId: session.model.id,
+        thinkingLevel: session.thinkingLevel,
+        fastMode: fastModeEnabled(),
+      };
     },
     async setModel(provider, modelId) {
       const model = modelRuntime.getModel(provider, modelId);

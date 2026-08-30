@@ -1041,7 +1041,10 @@ describe("PiWorkspaceDriver", () => {
         ...snapshot,
         sessionId: "source",
         sessionFile: "/sessions/source.jsonl",
-        model: { provider: "openai", id: "gpt-test", name: "Test" },
+      })),
+      currentConfiguration: vi.fn(() => ({
+        provider: "openai",
+        modelId: "gpt-test",
         thinkingLevel: "high" as const,
         fastMode: true,
       })),
@@ -1092,6 +1095,7 @@ describe("PiWorkspaceDriver", () => {
       newSession: true,
     });
     await vi.waitFor(() => expect(events).toContainEqual({ type: "complete", requestId: openId }));
+    vi.mocked(source.snapshot).mockImplementation(() => new Promise(() => undefined));
 
     const handoffId = crypto.randomUUID();
     driver.dispatch({
@@ -1107,6 +1111,8 @@ describe("PiWorkspaceDriver", () => {
     );
 
     expect(source.handoff).toHaveBeenCalledWith("assistant-entry");
+    expect(source.snapshot).toHaveBeenCalledOnce();
+    expect(source.currentConfiguration).toHaveBeenCalledOnce();
     expect(target.applyConfiguration).toHaveBeenCalledWith({
       provider: "openai",
       modelId: "gpt-test",
