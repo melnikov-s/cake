@@ -43,11 +43,15 @@ state, and development boundaries behind these principles.
 
 This repository uses the Effect Typescript library.
 
-Before writing any Effect code, first read `node_modules/effect/AGENTS.md`
-**completely**, and follow the links in the file when required.
+Before writing or reviewing any Effect code, read
+`.agents/skills/effect-ts/SKILL.md`, every reference it routes to for the task,
+and `node_modules/effect/AGENTS.md` **completely**. Cake architecture decides
+ownership and process boundaries; the installed Effect package is the API
+authority; the local skill defines Cake's Effect coding conventions within
+those boundaries.
 
 If you need to learn more about particular Effect APIs and concepts that the
-guide doesn't cover, search through the source code in `node_modules/effect/src`.
+guides don't cover, search through the source code in `node_modules/effect/src`.
 
 ## Core ownership rules
 

@@ -17,11 +17,15 @@ migration.
 
 Every prompt below incorporates these requirements:
 
-1. Read `AGENTS.md`, `docs/architecture/cake-architecture.md`,
+1. Read `AGENTS.md`, `.agents/skills/effect-ts/SKILL.md`, every branch
+   reference that skill routes to for the packet, the complete installed
+   `node_modules/effect/AGENTS.md`, `docs/architecture/cake-architecture.md`,
    `docs/architecture/cake-vocabulary.md`,
    `docs/architecture/effect-architecture.md`, the focused architecture
    documents relevant to the packet, and
-   `docs/development/effect-migration.md` completely.
+   `docs/development/effect-migration.md` completely. Cake architecture decides
+   ownership; the installed package decides APIs; the local skill decides
+   Effect coding conventions within those boundaries.
 2. For renderer state work, also read
    `/Users/user/dev/effect-state-tree/README.md`, its
    `skills/effect-state-tree/SKILL.md`, and every linked reference completely.
@@ -29,19 +33,80 @@ Every prompt below incorporates these requirements:
    Never infer completion from this runbook.
 4. State the authority, owner, lifetime, persistence boundary, and concurrency
    policy of every state/resource changed.
-5. Work vertically and remove the replaced path in the same packet. Do not add
+5. Follow the local Effect conventions: function-valued named Service
+   operations, correct `optionalKey` versus explicit-`undefined` Schema
+   semantics, non-throwing validation at runtime boundaries, intentional Layer
+   composition, Effect-managed caching/concurrency/resources, typed recovery
+   that preserves interruption, and deterministic Effect tests.
+6. Work vertically and remove the replaced path in the same packet. Do not add
    permanent compatibility aliases, duplicate protocols, duplicate state
    owners, or a second Pi transcript/event authority.
-6. Preserve the renderer sandbox and main/preload/RPC privilege boundary.
-7. Keep Custom Renderer out of scope.
-8. Format, lint, typecheck, test, build, and run focused integration/Electron
+7. Preserve the renderer sandbox and main/preload/RPC privilege boundary.
+8. Keep Custom Renderer out of scope.
+9. Format, lint, typecheck, test, build, and run focused integration/Electron
    tests proportionate to the packet. Electron smoke tests execute `out/` and
    require a current build.
-9. Update the migration progress notes with what landed, what remains, and the
-   next exact entry point. Mark a phase complete only when all of its exit
-   criteria pass.
-10. Commit the completed packet with a focused message and leave the worktree
+10. Update the migration progress notes with what landed, what remains, and the
+    next exact entry point. Mark a phase complete only when all of its exit
+    criteria pass.
+11. Commit the completed packet with a focused message and leave the worktree
     clean. Preserve unrelated changes.
+
+## Effect conventions alignment gate
+
+Run this once against all Effect code landed so far before continuing the next
+migration packet. It is also the copyable prompt for a future conventions
+re-audit.
+
+```text
+Align Cake's existing Effect implementation with the repository's complete
+Effect best-practices skill before continuing feature migration. This is a
+conventions and correctness pass, not a product or architecture redesign.
+
+Read and follow the Common execution contract in
+`docs/development/effect-migration-prompts.md`. In particular, read
+`.agents/skills/effect-ts/SKILL.md`, every reference it routes to for the code
+under review, and `node_modules/effect/AGENTS.md` completely. Review the current
+migration progress and repository state rather than assuming which phases have
+landed.
+
+Scope:
+- Inventory every current Effect Service, Layer, Schema, domain operation,
+  runtime boundary, Stream, cache/resource registry, and Effect-focused test.
+- Make zero-argument Service operations function-valued and name public and
+  non-trivial internal operations with `Effect.fn`.
+- Correct `Schema.optionalKey` versus `Schema.optional` according to the actual
+  encoded storage/RPC contract. Use same-name interfaces for new or touched
+  Effect-owned records without creating unrelated schema churn.
+- Replace throwing or cast-based untrusted runtime decoding with effectful or
+  explicit non-throwing validation and typed boundary failures.
+- Replace hand-rolled memoization, pending-Promise deduplication, TTL maps,
+  Fiber registries, and repeated-work loops with the appropriate Effect
+  primitive while preserving exact lifetime, failure-caching, and concurrency
+  semantics.
+- Make Layer constructors, `provide`/`provideMerge`, acquisition, exposed
+  dependencies, and Scope ownership intentional and legible. Preserve exactly
+  one main ManagedRuntime and one renderer runtime per window.
+- Keep Cake business policy in free domain Effects and outside-world access in
+  Services. Do not convert domain modules into Context Services.
+- Audit broad catches, retries, timeouts, and fallbacks so expected errors stay
+  typed, interruption is preserved, retries are idempotent and bounded, and a
+  fallback catches only failures for which it is truthful.
+- Add `@effect/vitest` if required and migrate the Effect-focused tests touched
+  by this pass to `it.effect`, Test Layers, `TestClock`, and deterministic
+  synchronization. Do not rewrite unrelated React or Electron tests.
+- Remove non-null assertions, `as any`, and unchecked casts from the reviewed
+  Effect paths. A cast after complete Schema validation requires a documented,
+  narrow library-typing reason or should be removed.
+- Preserve Cake's authority model, process security boundary, Pi transcript
+  ownership, greenfield removal policy, and current product behavior.
+
+Verify format, lint, typecheck, unit tests, build, focused integration tests,
+and the Electron tests for every changed runtime boundary. Update
+`docs/development/effect-migration.md` with the conventions alignment result and
+the next exact migration entry point. Commit the alignment as its own focused
+packet and leave unrelated work untouched.
+```
 
 ## Packet 0 — Effect and effect-state-tree dependencies
 
@@ -58,8 +123,9 @@ Scope:
 - Ensure Cake and effect-state-tree resolve one Effect and one React instance.
 - Do not install `@effect/rpc`; later work uses `effect/unstable/rpc`.
 - Update the pnpm lockfile.
-- Prove Cake can import Effect, `effect-state-tree`, and
-  `effect-state-tree/react`. Add only a small foundation test if needed.
+- Verify the dependency graph resolves one Effect and React instance, then run
+  Cake's typecheck and production build without adding an import-only test. The
+  first real renderer slice supplies effect-state-tree behavioral coverage.
 - Add Vite deduplication only if resolution evidence requires it.
 - Run the local effect-state-tree typecheck/tests and Cake's proportional
   verification.
@@ -270,7 +336,9 @@ Read and follow the Common execution contract in
 handoff. Confirm Packet 5A has landed.
 
 Scope:
-- Implement list, inspect, and keyed scoped acquire.
+- Implement list, inspect, and keyed scoped acquire with the appropriate Effect
+  keyed-resource primitive. Do not hand-roll a mutable Map of runtimes,
+  pending Promises, or Fibers.
 - Define `PiSessionHandle` observation and operations: prompt, steer,
   follow-up, abort, commands, model/thinking configuration, compact, fork, and
   reload as required by existing behavior.
@@ -643,7 +711,8 @@ Scope:
 - Move Cake coordination policy to free domain Effects where multiple Services
   or business rules are involved.
 - Replace VS Code RPC operations and migrate the owning renderer Store.
-- Replace manual process registries with keyed scoped resources and finalizers.
+- Replace manual process registries with Effect-managed keyed scoped resources
+  and finalizers; do not recreate those registries behind a Service.
 - Remove superseded manager/handler paths.
 
 Test reuse, concurrent acquire, failed startup, health loss, final release,
