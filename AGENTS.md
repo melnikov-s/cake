@@ -9,11 +9,12 @@ and sessions and uses the web platform for interactions that a terminal cannot
 express well: rich transcripts, diffs, artifacts, forms, diagrams, media, and
 trusted user-authored React plugins.
 
-Cake is also a layer above any one Pi session. It presents the user's collection
-of projects and sessions, lets them move among and compare those sessions, and
-provides application-level workflows such as global chat. Global chat is a
-Pi-backed meta-session for reasoning about and navigating Cake as a whole; it is
-not a replacement transcript authority for project sessions.
+Cake is also a layer above any one Pi Session. It presents the user's
+collection of Projects and Cake Sessions, lets them move among and compare
+those sessions, and provides application-level workflows such as Cake Chat. A
+Cake Chat Session is a Pi-backed meta-session for reasoning about and navigating
+Cake as a whole; it is not a replacement transcript authority for Project
+Sessions.
 
 The conversation remains primary. Rich surfaces should appear because they help
 the current work, not because Cake is trying to become a general-purpose IDE.
@@ -23,11 +24,20 @@ state, and development boundaries behind these principles.
 
 ## Required reading
 
-- Read `docs/architecture/cake-architecture.md` before changing architecture or
-  feature ownership.
-- Before implementing or changing any renderer behavior that introduces, reads, writes, persists, or coordinates application state, read the available `r-state-tree` skill and the references it routes to before editing.
+- Read `docs/architecture/cake-architecture.md`,
+  `docs/architecture/cake-vocabulary.md`, and
+  `docs/architecture/effect-architecture.md` before changing architecture or
+  feature ownership. During the Effect migration, also read
+  `docs/development/effect-migration.md`.
+- Before implementing or changing renderer behavior that introduces, reads,
+  writes, persists, or coordinates application state, read the local
+  effect-state-tree package's `README.md`, `skills/effect-state-tree/SKILL.md`,
+  and every reference it routes to before editing.
 - For plugins, scenes, widgets, or plugin recovery, read the available
   `cake-plugin-authoring` skill before editing.
+- Custom Renderer is a future, unimplemented design and is explicitly outside
+  the Effect migration. Do not implement or prepare it speculatively while
+  carrying out `docs/development/effect-migration.md`.
 
 ## Core ownership rules
 
@@ -37,28 +47,35 @@ state, and development boundaries behind these principles.
   projections, window and workflow state, artifacts, reviews, plugin metadata,
   and other GUI-specific persistence. Never create a second Cake-owned copy of
   a Pi transcript.
-- `src/agent` is the Pi adapter layer. Other Cake modules use
-  Cake-owned contracts and intent-level operations rather than raw Pi objects.
+- `src/services/pi` is the target Pi Service boundary. During migration,
+  focused legacy adapters may remain in `src/agent`, but no new Pi integration
+  belongs there. Other Cake modules use Cake-owned values and domain operations
+  rather than raw Pi objects.
 - Electron main owns Pi runtimes, filesystem access, persistence, and native
   services. Preload exposes one narrow validated bridge. The sandboxed renderer
   owns React presentation and window-scoped Stores; it has no Node globals or
   raw Electron IPC.
 - Cross-process data is untrusted until parsed by the shared runtime schemas.
-- Global chat is an application-level Pi session. Keep it separate from project
-  session lists and use curated Cake control intents for application navigation
-  and coordination.
+- A Cake Chat Session is an application-level Cake Session backed by Pi. Keep
+  it separate from Project Session lists and use curated Cake control intents
+  for application navigation and coordination.
 - Model-presented artifacts are data and remain validated or sandboxed. A user
   plugin is executable, trusted renderer source only after explicit approval;
   it still receives no direct Node, Electron, credentials, raw IPC, or raw Pi
   access.
-- The immutable core shell, global chat, plugin diagnostics, and recovery UI
-  must be able to boot without evaluating user plugin code. A broken plugin must
-  be repairable or disableable without making Cake unusable.
+- The immutable core shell, Cake Chat, customization diagnostics, and recovery
+  UI must boot without evaluating user plugin code or, if implemented later,
+  Custom Renderer code. Broken user code must be repairable, disableable, or
+  reversible without making Cake unusable.
 
 ## Greenfield compatibility policy
 
 - Cake is a greenfield project. Unless the user explicitly requests it, do not preserve backward compatibility.
-- Remove replaced APIs and implementations outright. Do not add deprecated aliases, compatibility shims, transitional forwarding facades, legacy import paths, migrations, or fallback behavior for code being replaced.
+- Remove replaced APIs and implementations outright. Do not add deprecated
+  aliases, compatibility shims, transitional forwarding facades, legacy import
+  paths, or fallback behavior for code being replaced. Versioned migrations for
+  persisted user data are an explicit storage responsibility and are not API
+  compatibility shims.
 - Prefer updating every caller, test, and document in the same change over carrying an old interface forward.
 - Do not add tests solely to assert that a feature or DOM element removed outright is absent. Remove obsolete tests for removed features; test absence only when conditional or state-dependent absence is itself the behavior under contract.
 
@@ -73,9 +90,9 @@ Before implementing renderer UI:
 2. Identify the existing primitive, product component, Store, and Model that
    own the behavior. Existing one-off implementations are migration debt, not
    precedent.
-3. If the work touches application state, read the `r-state-tree` skill before
-   editing and classify every state value by authority, owner, lifetime,
-   persistence boundary, and concurrency policy.
+3. If the work touches application state, read the effect-state-tree package
+   guidance before editing and classify every state value by authority, owner,
+   lifetime, persistence boundary, and concurrency policy.
 
 ### Tailwind and styling
 
@@ -153,12 +170,20 @@ Before implementing renderer UI:
 
 Before adding state, identify its authority, cohesive owner, lifetime, persistence boundary, and concurrency policy. If the proposed owner cannot be described without saying "everything in this window" or listing unrelated surfaces, introduce or use a focused Store instead.
 
-## Strict model and Store organization
+## Strict Model and Store organization
 
-- Every r-state-tree model and every Store must live in its own file. Never colocate multiple models or Stores, or mix them with utilities or unrelated code.
-- All r-state-tree models must live under the source-root `/models` directory (`src/models/`), and that directory must contain nothing except r-state-tree model files. Model names and filenames must be PascalCase and must never end in `Model`.
-- All Stores must live under the source-root `/renderer/stores` directory (`src/renderer/stores/`), and that directory must contain nothing except Store files. Store names and filenames must be PascalCase and must end in `Store`.
-- Relocate utilities and other supporting code to `/utils` (`src/utils/`) or the appropriate domain directory; do not place them in `/models` or `/renderer/stores`.
+- Every effect-state-tree Model and Store lives in its own file. Never colocate
+  multiple Models or Stores or mix them with utilities or unrelated code.
+- Renderer projection Models live in `src/renderer/models/`, which contains only
+  effect-state-tree Model files. Model names and filenames are PascalCase and
+  never end in `Model`. Legacy r-state-tree files remain in `src/models/` only
+  until their vertical migration slice moves or replaces them.
+- Stores live in `src/renderer/stores/`, which contains only Store files. Store
+  names and filenames are PascalCase and end in `Store`.
+- Main-owned application/storage data is ordinary Effect Schema data and must
+  not be represented as a renderer Model.
+- Relocate utilities and supporting code to `src/utils/` or the appropriate
+  service/domain directory; do not place them in Model or Store directories.
 
 ## Verification
 

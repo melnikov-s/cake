@@ -1,46 +1,75 @@
-# S1 session and state contract
+# S1 Project Session and state contract
 
-Cake's project chat uses a project-aware, multi-session Pi runtime.
-The focused `src/agent` adapter modules remain the only ordinary application modules that
-imports Pi. It creates, resumes, or opens an explicit Pi session for the
-selected workspace and emits only the schemas in `src/ipc/session-contract.ts`.
+Cake's Project Session is a project-aware Cake Session backed by one Pi Session.
+`PiSessions` is the only ordinary Cake Service that operates Pi session
+runtimes. It creates, resumes, inspects, or opens an explicit Pi Session for the
+selected Working Directory and projects only Cake-owned values into Effect RPC.
 
 ## Authority and lifecycle
 
-| State                                                                                                                                                                                    | Authority                         | Lifetime and persistence                                                                           |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Transcript, tool results, model history, compaction                                                                                                                                      | Pi `SessionManager`               | Pi JSONL session; Cake only projects snapshots and deltas                                          |
-| Provider credentials                                                                                                                                                                     | Pi `ModelRuntime`                 | Pi auth storage; secret prompt values are never retained in Cake state or logs                     |
-| Active run, queued delivery, UI requests                                                                                                                                                 | Main-process Pi workspace runtime | One active session runtime; replaced with take-latest semantics when switching sessions            |
-| Transcript projection                                                                                                                                                                    | Renderer `Session` tree           | Window lifetime; `RootStore` applies validated desktop events                                      |
-| Composer workflow                                                                                                                                                                        | Renderer chat/composer Store      | Window lifetime; the focused Store owns drafts, submission policy, and pending composer operations |
-| Project history, trusted paths, per-session composer drafts, the single staged New Chat input and identity, explicit draft-session messages and attachments, theme, reasoning visibility | Cake main process                 | Atomic `window-state.json`, saved only after renderer hydration                                    |
-| Attachment selection                                                                                                                                                                     | Renderer workflow                 | Cleared after accepted submission; images are bounded by IPC schemas                               |
+| State                                                                             | Authority                       | Owner, lifetime, and persistence                           |
+| --------------------------------------------------------------------------------- | ------------------------------- | ---------------------------------------------------------- |
+| Transcript, tool results, model history, branches, compaction                     | Pi                              | Pi JSONL; Cake only projects snapshots and events          |
+| Provider credentials and Pi resource configuration                                | Pi                              | Pi storage; secrets never enter Cake documents or logs     |
+| Active turn, queued delivery, extension UI requests                               | Pi Session Runtime              | Scoped `PiSessions` handle; reconstructed when reopened    |
+| Cake Session kind, Project association, Working Directory, resolved/archive state | Cake domain                     | Cake-owned metadata and typed storage where durable        |
+| Transcript projection                                                             | Renderer Session/Message Models | Window lifetime; rebuilt from `CakeSessionUpdate`          |
+| Composer and renderer workflow                                                    | Focused renderer Stores         | Window lifetime; explicitly snapshotted drafts may persist |
+| Projects, trust, presets, staged chats, explicit drafts, theme/view settings      | Cake                            | Focused typed storage documents                            |
+| Attachments before accepted submission                                            | Renderer Store                  | Cleared after acceptance; bounded by RPC Schemas           |
 
-Renderer workflow Stores depend on the intent-level `DesktopClient`, not IPC
-envelopes. Each focused Store owns the concurrency and lifecycle policy for its
-workflow, including revisions or correlated operation IDs where needed.
-`RootStore` owns the desktop subscription and routes validated events without
-absorbing the workflows they affect. It is created with
-`mount(createStore(RootStore, ...))` and disposed on renderer `pagehide`.
+## Observation
+
+A Project Session subscription emits one coherent `CakeSessionSnapshot`
+followed by revision-ordered `CakeSessionEvent` values. The durable portion is
+reconstructed through Pi from JSONL, and the active runtime supplies live
+in-progress events. Cake does not tail JSONL or maintain a second transcript
+log.
+
+The renderer's owning Store consumes the Stream, batches related transitions,
+and updates reactive Models. Every event carries stable Cake/Pi Session
+identity, and Stores reject events for a stale target. Reconnect obtains a new
+authoritative snapshot.
+
+## Commands and concurrency
+
+Project Session commands execute as main-process domain operations through
+Effect RPC. Prompt returns an accepted Turn ID; lifecycle continues through the
+subscription. Turn delivery, steer, follow-up, abort, compaction, fork, rename,
+resolve, and restore retain explicit typed failures and cancellation.
+
+Per-session turn coordination is serialized or queued according to Pi and Cake
+policy. Switching renderer selection does not implicitly destroy a retained
+session runtime. Scope ownership and repeated-call policy are specified
+separately.
 
 ## Trust and security
 
-The main process only accepts project paths selected by the native directory
-dialog or restored from Cake's persisted window state. Before creating Pi
-services, the Pi adapter checks for trust-requiring project resources.
-The renderer must resolve that prompt before `DefaultResourceLoader.reload()`
-is allowed to load project-local executable resources. Approval is persisted by
-exact workspace path and reused for future sessions in that workspace.
+Main accepts Project paths selected through native capability or restored from
+validated Cake storage. Before `PiAgentResources` loads trusted project-local
+executable resources, the domain requires approval for the exact Working
+Directory and persists that Cake-owned trust decision.
 
-The renderer remains sandboxed and receives Cake-owned UI parts for text,
-reasoning, tools, sources, attachments, and notices. Raw Pi messages and AI SDK
-types do not cross IPC. Model output is rendered as React text; raw HTML is not
-parsed or injected.
+The renderer receives Cake-owned parts for text, reasoning, tools, sources,
+attachments, and notices. Raw Pi messages and AI SDK types never cross Effect
+RPC. Model output renders through Cake-owned safe surfaces; raw HTML is not
+inserted into Cake's DOM.
+
+## Renderer ownership
+
+`ProjectSessionStore` owns the Project Session's observation, current Session
+Model, composer, chat configuration, artifacts, discussion metadata, and
+renderer operation state. Its `ChatStore` supplies the authoritative shared
+`Chat` component. `RootStore` routes application-level Updates and coordinates
+selection without copying this state.
+
+Stores acquire `CakeIpcClient`; they do not import RPC definitions, main domain
+modules, or `PiSessions`. Store Scope owns subscriptions and operations.
 
 ## Verification boundary
 
-Deterministic tests cover Pi JSONL reopen, trust detection, schema rejection,
-Store hydration and stale-session filtering, source-owned components, and the
-real Electron process boundary. Live provider calls and native provider login
-flows remain opt-in because they require user credentials and may incur cost.
+Deterministic tests cover Pi JSONL reopen, complete active-branch projection,
+trust detection, Schema rejection, snapshot/event ordering, Store hydration,
+stale-session filtering, cancellation, and the real Electron RPC boundary.
+Provider-backed calls and native provider login remain opt-in because they may
+require credentials or incur cost.

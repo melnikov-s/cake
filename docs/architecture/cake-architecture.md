@@ -2,7 +2,10 @@
 
 This document describes the durable product and architecture of Cake. It is not
 a roadmap. Current source and focused contract documents provide implementation
-detail; this document explains how the pieces are meant to fit together.
+detail; this document explains how the pieces are meant to fit together. The
+canonical language is defined in [`cake-vocabulary.md`](./cake-vocabulary.md),
+and the normative runtime design is defined in
+[`effect-architecture.md`](./effect-architecture.md).
 
 ## Product identity
 
@@ -21,15 +24,16 @@ sandboxed artifacts, and trusted user-authored React interfaces.
 
 Cake operates at two related levels:
 
-1. A project conversation is a view and controller for one Pi session.
+1. A Project Session is Cake's view and controller for one project-associated
+   Pi Session.
 2. The Cake application is a view and controller for the user's collection of
-   projects and Pi sessions.
+   Projects and Cake Sessions.
 
 The second level is functionality that a single Pi terminal session does not
 provide. Cake can navigate across sessions, expose relationships and activity,
 and host application-level Cake Chat sessions. Cake Chat is Pi-backed, but its
 conversations are meta-sessions: they can reason about and navigate the application
-through curated Cake controls without absorbing the histories of project sessions.
+through curated Cake controls without absorbing the histories of Project Sessions.
 
 The conversation remains the center of the product. Files, reviews, artifacts,
 and plugin scenes support the work rather than turning Cake into a general-purpose
@@ -41,10 +45,10 @@ Every durable concept has one authority.
 
 | Concern                                                           | Authority                                                                 | Cake's role                                                                               |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Project-session transcripts, tool history, branching, compaction  | Pi session files and `SessionManager`                                     | Render validated snapshots and events in the GUI                                          |
+| Project Session transcripts, tool history, branching, compaction  | Pi Session files and `SessionManager`                                     | Render validated snapshots and events in the GUI                                          |
 | Models, providers, authentication, Pi settings and resources      | Pi                                                                        | Offer Cake controls through the Pi adapter                                                |
 | Utility-model selection                                           | Cake application preferences, referencing a Pi provider/model             | Run only explicitly configured, bounded background completions through Pi's model runtime |
-| Application-level Cake Chat transcripts                           | Their dedicated Pi sessions                                               | Present them as Cake-wide meta-sessions and route curated controls                        |
+| Application-level Cake Chat transcripts                           | Their dedicated Pi Sessions                                               | Present them as Cake-wide meta-sessions and route curated controls                        |
 | Projects, window selection and view state                         | Cake                                                                      | Persist application and window metadata without copying Pi history                        |
 | Resolved-session status                                           | Cake-managed active/archive transcript location                           | Keep resolved transcripts read-only and restore them before Pi opens them                 |
 | Reviews and inline discussions                                    | Cake workflow services, with Pi sidecar-session references where relevant | Persist anchors and workflow metadata without copying Pi transcripts                      |
@@ -67,7 +71,7 @@ runtime state: Cake overlays `queue_update` projections while messages wait and
 removes them when Pi consumes the corresponding user message into the branch.
 
 All inline threads—code reviews and assistant-message discussions—run as
-independent lightweight Pi sessions using the same runtime pipeline. Their
+independent lightweight Pi Sessions using the same runtime pipeline. Their
 anchors belong to Cake; their replies remain authoritative in the referenced Pi
 sidecar session. Before each reply, Cake regenerates a read-only Markdown
 projection of the parent session's current active branch. The sidecar receives
@@ -80,29 +84,35 @@ tools.
 
 ## Process boundaries
 
-Cake is one application package split by Electron privilege boundaries.
+Cake is one logical application split by Electron privilege boundaries. Main
+and each renderer window have separate process-local Effect runtimes joined by
+Effect RPC over a narrow Electron transport.
 
 ### Electron main
 
-Main owns native windows, filesystem and application persistence, Pi runtime
-lifecycle, privileged adapters, and validated request handling. Pi is embedded
-here behind Cake's adapter; Pi extensions share main-process authority and must
-not be described as sandboxed.
+Main owns native windows, filesystem and application persistence, Pi Session
+Runtime lifecycle, privileged Services, Cake domain operations, and the Effect
+RPC server. Pi is embedded behind the focused `PiSessions`, `PiModels`, and
+`PiAgentResources` Services. Pi Extensions share main-process authority and
+must not be described as sandboxed.
 
 ### Preload
 
-Preload exposes one narrow, typed `window.cake` bridge. It validates messages
-and does not expose `ipcRenderer` or general Electron capabilities.
+Preload exposes only the frozen transport needed by Effect RPC. It validates
+transport messages and does not expose `ipcRenderer`, Node, or general Electron
+capabilities. It contains no Cake business logic.
 
 ### Renderer
 
-The renderer is sandboxed and has no Node integration. It owns React views,
-window-local `r-state-tree` Stores, projections of authoritative data, and
-interaction state. Renderer workflows call intent-level Cake clients rather
-than constructing transport envelopes or importing privileged implementations.
+The renderer is sandboxed and has no Node integration. It owns React views, one
+window-local effect-state-tree, reactive projections, and renderer application
+state and logic. Its `CakeIpcClient` is one Effect Service grouped by semantic
+capability. Stores invoke that client and consume its Streams rather than
+constructing transport envelopes or importing privileged implementations.
 
-Every cross-process payload is parsed by shared Zod contracts at the receiving
-boundary. Raw Pi event and object shapes stop in the focused `src/agent` adapter modules.
+Every cross-process request, success, typed failure, and stream element is
+parsed by shared Effect Schemas at the receiving boundary. Raw Pi event and
+object shapes stop in `src/services/pi`.
 
 ## Utility model
 
@@ -140,15 +150,15 @@ authoritative for other transient errors.
 Pi agents receive one Cake-owned `cake` gateway. Its progressively disclosed
 `subagents.*` operations are backed by the same coordinator. Project agents use these tools only when
 the user explicitly requests subagents, delegation, or parallel agent work;
-tool availability alone is not authorization. Subagents are hidden, parent-owned
-workers, never project sessions: the tool contract cannot attach, fork, select
-visibility, or expose the backing Pi session identity. Handles are
+tool availability alone is not authorization. Subagent Sessions are hidden,
+parent-owned Cake Sessions, never Project Sessions: the tool contract cannot
+attach, fork, select visibility, or expose the backing Pi Session identity. Handles are
 parent-scoped and use isolated context. Every task chooses a capability profile:
 `scout`, `planner`, and `reviewer` receive only read/search tools, while `worker`
 receives the parent's non-delegation tools. Recursive delegation defaults to
 depth zero and is capped at one explicitly requested descendant level. Parallel
 delegation accepts at most eight tasks and runs at most four at once per
-workspace. A task acquires an active slot before Cake constructs its private Pi
+Working Directory. A task acquires an active slot before Cake constructs its private Pi
 runtime. Cake resolves and validates every requested model against the parent
 session before constructing any child; parallel batches preflight atomically.
 A task may request Fast mode only for a model advertised by Cake as supporting
@@ -163,7 +173,7 @@ coalesced from child part events rather than rebuilding full session snapshots.
 Cancellation reaches active child work. While a child turn is active, Cake may
 open its projected parts through the shared `Chat` component and route explicit
 user steer or abort intents through the parent-scoped handle; the renderer never
-receives or attaches to the private Pi session identity. One-shot handles release
+receives or attaches to the private Pi Session identity. One-shot handles release
 their private runtime automatically after capturing the result, at which point
 the same popup becomes a read-only projection reconstructed from the parent
 transcript. Multi-turn continuation requires `retain: true`. Closing a private
@@ -171,7 +181,7 @@ parent also releases its private descendants. Cake projects live child tool
 activity, usage, cost, and the final answer through the parent tool call rather
 than exposing a second transcript.
 
-Embedded VS Code's Source Control view is the workspace-change authority and
+Embedded VS Code's Source Control view is the Working Directory change authority and
 renders native Git diffs. Cake projects review annotations into VS Code without
 maintaining a second working-tree snapshot or diff browser. Historical per-turn
 diffs remain in Pi's authoritative conversation work logs.
@@ -192,7 +202,7 @@ eligible after its next interaction; already named sessions are never
 regenerated automatically.
 
 When the first prompt will create a managed worktree, Cake also attempts a
-bounded utility completion before creating the checkout or Pi session. The
+bounded utility completion before creating the checkout or Pi Session. The
 validated result is an exact three-part, lowercase, hyphenated branch slug and
 the first prompt remains optimistically visible while this preparation runs.
 Missing configuration, timeout, provider failure, or invalid output silently
@@ -205,10 +215,11 @@ not the owner of every workflow merely because its lifetime matches the window.
 Named product surfaces receive named Stores with cohesive behavior, lifecycle,
 async policy, and persistence responsibility.
 
-Models represent serializable domain projections. Stores own behavior and
-resources: subscriptions, timers, cancellation, concurrency, persistence
-coordination, and application intents. React keeps only truly local DOM, focus,
-measurement, hover, or isolated input state.
+Models are validated reactive projections of entities. Stores own renderer
+application state and logic: RPC subscriptions, timers, cancellation,
+concurrency, snapshot coordination, and application intents. Cake business
+logic lives in main-process domain Effect modules. React keeps only truly local
+DOM, focus, measurement, hover, or isolated input state.
 
 Parent Stores coordinate cross-Store behavior without copying child state or
 publishing one-for-one forwarding facades. Store providers are lookup scopes,
@@ -220,7 +231,7 @@ The window Store hierarchy mirrors the product surfaces:
 - `RootStore` composes the window, translates application intents, and routes
   desktop events to their authoritative Store.
 - `AppShellStore` owns the window's one mutually exclusive application
-  selection: a project session, a Cake Chat session, settings, or an empty
+  selection: a Project Session, a Cake Chat Session, settings, or an empty
   workbench. The visible surface and every active navigation treatment derive
   from that selection. `SidebarStore` owns navigation presentation and
   filtering; neither Store opens sessions directly.
@@ -248,16 +259,16 @@ The window Store hierarchy mirrors the product surfaces:
   unsent, unsaved project chat. It is staged renderer state, not a session: it does
   not enter the session catalog or navigation history, and repeatedly choosing New
   Chat reopens the same staged composer with its text, attachments, configuration,
-  and workspace intact. Cake persists that staged input continuously in window state.
-  The first submitted prompt promotes it to an ordinary Pi session. An explicitly
+  and Working Directory intact. Cake persists that staged input continuously in window state.
+  The first submitted prompt promotes it to an ordinary Pi Session. An explicitly
   saved draft is different: it becomes a cataloged pseudo-session, stages its initial
   message and attachments in Cake window state, projects them through the shared
   `Chat`, and carries draft and resolved presentation metadata until activation.
   Saving the staged chat as a draft also frees New Chat to create one new staged
   composer. Activation clears the draft state and uses the ordinary first-prompt
-  path; Pi remains the transcript authority once the session starts. The workspace
-  path remains routing/storage context for the Pi runtime, not part of session
-  identity. Cake Chat never enters this registry.
+  path; Pi remains the transcript authority once the session starts. The Working
+  Directory remains routing/storage context for the Pi runtime, not part of
+  session identity. Cake Chat never enters this registry.
 - Each `ProjectSessionStore` owns that session's activity, `Session`,
   message composer, chat configuration, managed-worktree status and actions,
   artifacts, and message comments. Its
@@ -270,7 +281,7 @@ The window Store hierarchy mirrors the product surfaces:
   scrolling, and composer. A surface may add contextual framing or capabilities
   through the shared component's explicit extension points, but it must not
   substitute a parallel transcript, message, input, or composer implementation.
-  React mounts the project session as the nearest provider around the active
+  React mounts the Project Session as the nearest provider around the active
   session surface.
 - The Cake Chat collection owns one keyed `CakeChatSessionStore` per loaded
   meta-session. Each session retains its own draft, attachments, configuration,
@@ -325,7 +336,7 @@ privileges.
 - Artifacts cross a versioned, bounded protocol. Markdown and structured kinds
   are validated; raw HTML runs in an isolated frame with restrictive policy.
 - Delegated inline widgets begin as compact `cake widgets.present` presentation briefs.
-  Generation and repair run in separate tool-less Pi sessions; generated source
+  Generation and repair run in separate tool-less Pi Sessions; generated source
   stays in Cake's artifact repository rather than the project-session context.
   Electron main compiles that source and runs it in a script-enabled,
   opaque-origin frame whose CSP blocks network and application access.
@@ -395,6 +406,14 @@ recovery on the next boot.
 
 ## Focused references
 
+- `docs/architecture/cake-vocabulary.md`: canonical domain and architecture
+  language.
+- `docs/architecture/effect-architecture.md`: Effect Services, domain, RPC,
+  Streams, Scopes, storage, renderer state, and source boundaries.
+- `docs/architecture/cake-custom-renderer.md`: future, unimplemented design for
+  user-owned renderer overlays; explicitly outside the Effect migration.
+- `docs/development/effect-migration.md`: temporary ordered implementation
+  handoff from the legacy architecture.
 - `docs/architecture/cake-plugins.md`: executable plugin, scene, build,
   activation, persistence, command, and recovery contract.
 - `docs/architecture/cake-storage.md`: persistent storage ownership.

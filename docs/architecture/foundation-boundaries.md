@@ -1,43 +1,48 @@
 # Foundation process boundaries
 
-This document records Cake's foundational runtime boundaries. It is
-intentionally small and evolves alongside the process-safe schemas in `src/ipc`.
+This document is the compact process-safety contract. The complete runtime
+design is in [`effect-architecture.md`](./effect-architecture.md).
 
-| Process  | Owns                                                                                                                | May import                                                                            | Must not expose                                                     |
-| -------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Renderer | React presentation, the preload-to-intent adapter, and a window-local `RootStore` tree of focused behavioral Stores | Cake protocol types only at the adapter boundary; Cake state elsewhere                | Node globals or raw Electron IPC                                    |
-| Preload  | Validation and the frozen `window.cake` API                                                                         | Electron IPC, Cake protocol schemas                                                   | `ipcRenderer` itself                                                |
-| Main     | Window lifecycle, persistence, Pi workspace runtimes, native services, and routing                                  | Electron, Cake IPC contracts, and Pi only through focused `src/agent` adapter modules | Privileged objects or raw Pi objects crossing into preload/renderer |
+| Process  | Owns                                                                                                                             | May import                                                                                 | Must not expose                                                                                       |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| Renderer | React, one window-local effect-state-tree, `CakeIpcClient`, reactive projections, renderer application state and logic           | Renderer Models/Stores/components, shared Effect RPC protocol, sandbox-safe libraries      | Node globals, raw Electron IPC, raw Pi/Git/filesystem objects, main domain or Service implementations |
+| Preload  | Frozen Electron transport for Effect RPC                                                                                         | Electron IPC and shared transport Schemas                                                  | `ipcRenderer`, arbitrary channels, business logic, privileged objects                                 |
+| Main     | `MainLive`, Electron lifecycle, Effect RPC server, Cake domain operations, outside-world Services, persistence, scoped resources | Electron, Effect Platform, shared RPC protocol, Pi packages only through `src/services/pi` | Privileged or raw external objects crossing into preload/renderer                                     |
 
-Every message is parsed with the shared Zod schemas at the receiving boundary.
-The protocol carries correlated Pi operations, Pi-extension UI requests and
-responses, normalized session events, and application persistence operations.
-Pi-specific event shapes are normalized inside
-the focused `src/agent` adapter modules; they do not leak into the IPC contracts.
+Cake is one logical application but not one in-memory Effect runtime. Main and
+each renderer window have separate heaps, runtimes, Layers, Scopes, and Fibers.
+Effect RPC connects them through shared Effect Schemas.
 
-The renderer's `desktop-client.ts` is the transport boundary. It translates the
-generic preload request/event bridge into `DesktopClient` intents and
-application events. Renderer workflow Stores depend only on that intent-level
-client and do not import protocol schemas, construct IPC command discriminants,
-or interpret transport response unions.
+```text
+renderer Store
+→ CakeIpcClient
+→ Effect RPC over preload/Electron transport
+→ CakeIpcServer
+→ Cake domain Effect operation
+→ outside-world Services
+```
 
-These are directories in one application package, not npm packages. The
-boundaries exist because Electron builds and privileges the processes
-differently; imports and validated IPC enforce them without a workspace layer.
+Every request, success, typed failure, and streaming element is decoded at the
+receiving boundary. Main rechecks trust, path, and permission policy; successful
+renderer decoding is never privilege authorization.
 
-State ownership in this slice:
+The renderer never executes Cake domain modules. It calls the grouped
+`CakeIpcClient`, consumes scoped Streams, and reduces Updates into
+renderer-owned Models. RPC handlers are thin adapters to main domain operations
+and contain no Cake business logic.
 
-- `RootStore` owns the preload subscription and routes validated events. Focused
-  child Stores own renderer workflows, operation identity, extension UI, and
-  other behavioral surfaces. Sharing a window lifetime is not a reason to put
-  unrelated state in one Store.
-- Main-process lifecycle is ordinary Electron code. Introduce a
-  main-process Store only when a concrete observable workflow benefits from
-  Store state, derived values, effects, or composition.
-- Main persists only Cake-owned application metadata. Pi remains authoritative
-  for Pi sessions and transcripts.
-- The renderer root is created with `mount(createStore(...))` and disposed by
-  its owning process lifecycle.
+State and lifetime ownership:
 
-The exact pinned Pi APIs covered by the adapter contract tests are recorded in
-[`pi-0.84-contract.md`](./pi-0.84-contract.md).
+- `RootStore` owns window composition and event routing, not every workflow.
+- Focused Stores own renderer workflows, subscriptions, operations, and
+  concurrency policy.
+- Effect Scope owns main resources, renderer connections, Store resources, and
+  operation cancellation.
+- Pi owns Pi Session transcripts and runtime facts. Cake only projects them.
+- Main persists Cake-owned facts through focused typed storage Services.
+- Closing a renderer connection interrupts its RPC requests and subscriptions;
+  it does not automatically destroy independently retained domain work.
+
+Preload remains intentionally mechanical. Adding a renderer capability means
+adding it to the shared Effect RPC protocol and a privileged main handler, not
+adding an ad hoc `window.cake` method.

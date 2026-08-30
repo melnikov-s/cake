@@ -1,8 +1,13 @@
 # Cake storage ownership
 
-Cake resolves its persistent home once through `src/main/cake-paths.ts`. The
-default is `~/.cake`; `CAKE_HOME` replaces that root for tests and alternate
-installations.
+Cake stores Cake-owned facts in versioned documents through focused Effect
+Services. Pi separately owns Pi Session files and credentials. Storage format,
+location, and migration never change authority.
+
+## Storage roots
+
+Cake resolves its persistent home once. The default is `~/.cake`; `CAKE_HOME`
+replaces that root for tests and alternate installations.
 
 ```text
 ~/.cake/
@@ -22,42 +27,153 @@ installations.
 │       └── resolved-sessions/
 ```
 
-Every production Pi adapter call receives `agentDir` and `sessionDir`
-explicitly. Workspace sessions create, continue, open, preview, and fork only
-beneath Pi's encoded per-workspace directories in `pi/sessions`. Resolving a
-settled session disposes its live runtime and atomically moves its transcript to
-the matching Cake-owned `resolved-sessions` archive; Pi receives only the active
-root. Restoring or messaging that session moves it back before Pi opens it.
-Cake lists and searches both roots, and archive location is the resolution
-authority. Review, inline-discussion and Cake Chat sessions have narrower roots
-under `pi/`, and direct session-file opens are validated against the relevant
-active Cake root. Pi still owns the session engine and JSONL format.
+Electron-platform documents and repositories may remain under
+`app.getPath("userData")`, with `CAKE_ELECTRON_USER_DATA` as the test override.
+`CakePaths` resolves these locations in main; renderer code never constructs
+storage paths.
 
-Code-review and transcript-comment anchors and submission metadata share the
-Cake review repository and one sidecar-session pattern. Their agent replies live
-only in Pi review sessions. Live parent transcript projections and the unified
-parent-readable thread index are disposable, rebuildable files beside that
-metadata; they are not transcript authorities.
+## Focused storage Services
 
-Window state persists the selected workspace and Pi session ID, never an
-absolute session filename. On reopen, Cake resolves that ID through Pi beneath
-the current Cake session root so changing storage roots cannot leave a second,
-stale location authority in renderer persistence. Pi does not write a new
-empty session's JSONL file until conversation content is flushed; if a saved
-selection was never persisted, hydration replaces it with a fresh empty chat.
+Cake does not expose a generic `get(key): unknown` persistence service. It uses
+focused Services such as:
 
-The Pi resource loader uses `pi/` for global settings, packages, extensions,
-skills, prompts, themes, models, and authentication. It may also load trusted
-project-local resources from the selected workspace. Cake injects its required
-artifact extensions and `cake-plugin-authoring` skill independently. Nothing is
-discovered from standalone `~/.pi/agent`.
+```text
+ApplicationStorage
+WindowStateStorage
+WorktreeStorage
+ReviewStorage
+ArtifactStorage
+PluginStorage
+SessionArchiveStorage
+```
 
-## Electron user data retained
+Each Service owns:
 
-Application and window snapshots, artifact payloads, and review annotations
-remain under Electron's `app.getPath("userData")`. Their location can be changed
-by `app.setPath()` (the test override is `CAKE_ELECTRON_USER_DATA`) and is tied
-to Electron's platform lifecycle. The application snapshot may store the user's
-exact utility-model provider, model identifier, and reasoning level; credentials
-remain in Pi's credential store, and no utility transcript is persisted. Review
-and Cake Chat Pi sessions live under the Cake Pi roots above.
+- the data it is permitted to store;
+- current Effect Schemas;
+- version envelope and sequential migrations;
+- file or repository layout;
+- atomic-write and concurrency behavior;
+- typed read, migration, and write failures.
+
+They may share internal `FileSystem`, path, JSON, content-addressing, locking,
+and atomic-write helpers. Domain operations use focused storage Services rather
+than those helpers.
+
+## Versioning and migration
+
+Every standalone stored document has an explicit envelope:
+
+```ts
+interface StoredDocument {
+  readonly version: number;
+  readonly data: unknown;
+}
+```
+
+Loading is:
+
+```text
+read file
+→ parse envelope
+→ migrate one version at a time
+→ decode the current Effect Schema
+→ return the current typed value
+```
+
+Saving is:
+
+```text
+current typed value
+→ encode through Effect Schema
+→ add current version
+→ write a temporary file
+→ atomically rename
+```
+
+A storage Service owns migration policy between stored versions. Domain code
+and renderer Stores receive only the current type. Unknown future versions and
+unmigratable documents produce typed failures and use the owning feature's
+explicit recovery policy; they are never silently reinterpreted.
+
+Versioned files are the default. Introduce a database only when a concrete
+capability needs cross-record queries, multi-entity transactions, indexing,
+high write concurrency, or scale that files cannot support.
+
+## Renderer snapshots
+
+Effect-state-tree snapshots serialize renderer-owned application state:
+
+```text
+Store.snapshot fields
+→ toSnapshot / onSnapshot
+→ CakeIpcClient.windowState
+→ WindowStateStorage
+→ versioned file
+```
+
+Typical persisted values include:
+
+- selected Project and Cake Session references;
+- sidebar, panel, and workbench state;
+- staged unsent chat and explicit drafts;
+- composer drafts and selected settings;
+- loaded-session references where needed for restoration.
+
+Do not persist:
+
+- Pi transcript or message projections;
+- Pi resource catalogs that can be reloaded;
+- live operation, loading, or streaming state;
+- Fibers, Scopes, Streams, subscriptions, timers, or handles;
+- terminal output or PTY resources.
+
+Hydration order is mandatory:
+
+1. main reads, migrates, and validates the stored document;
+2. the renderer applies the complete effect-state-tree snapshot;
+3. the owner selects an explicit fallback if application fails;
+4. Store autoruns activate after hydration;
+5. a scoped, debounced `onSnapshot` Stream persists future commits.
+
+Defaults must never overwrite a saved document before hydration. Applying a
+Store snapshot must not realize lazy child Stores.
+
+## Pi-owned storage
+
+Pi Session history remains authoritative in Pi JSONL. Every Pi Service call
+receives its roots and Working Directory explicitly. Cake accesses transcripts
+only through Pi APIs; it does not tail, parse as an application model, or write
+Pi JSONL directly.
+
+Project Sessions create, continue, inspect, and fork beneath Cake's configured
+Pi session roots. Resolving a settled session disposes its live runtime and
+atomically moves the transcript to the matching Cake-managed archive root;
+restoring or messaging it moves it back before Pi opens it. Archive location is
+Cake's resolution fact, while Pi remains the transcript-format and session
+engine authority.
+
+Discussion Sessions and Cake Chat Sessions use their narrower Pi roots. Cake
+stores review/message anchors and sidecar references, while sidecar replies
+remain only in their Pi Session files.
+
+Window state stores stable Cake/Pi identifiers and Working Directories, never
+absolute transcript filenames. Restart resolution asks Pi beneath the current
+configured root.
+
+Pi owns provider credentials and Pi resource settings. Cake storage may hold a
+Model Preset or Utility Model Preference referencing provider/model IDs, but it
+never stores provider secrets or utility-completion transcripts.
+
+## Artifact, review, plugin, and Custom Renderer storage
+
+Artifacts use bounded, versioned metadata and content-addressed payloads.
+Reviews store Cake-owned anchors and workflow metadata. Plugin storage is
+namespaced by stable plugin ID. If the separately scoped future Custom Renderer
+is implemented, its storage records immutable base revisions, user patches,
+semantic intent, diagnostics, activation history, and namespaced renderer
+snapshot state. That storage is not part of the Effect migration.
+
+Broken plugin or future Custom Renderer source, data, and diagnostics are preserved
+for repair. Recovery may disable or roll back executable code without deleting
+its evidence.

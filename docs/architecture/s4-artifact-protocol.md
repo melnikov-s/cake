@@ -1,9 +1,9 @@
 # S4 artifact protocol and ownership
 
 Cake's durable rich-output contract is `cake.artifact/v1`. The blocking input
-contract is `cake.request/v1`. Their shared Zod schemas validate Pi tool input,
-main-process persistence, preload IPC, renderer Models, interaction responses,
-and session pointers.
+contract is `cake.request/v1`. Their shared Effect Schemas validate Pi tool
+input, main-process persistence, Effect RPC, renderer Models, interaction
+responses, and Cake Session pointers.
 
 Unknown protocol versions, unknown kinds, and malformed payloads are hard
 failures. Cake is greenfield and does not reinterpret unsupported protocols as
@@ -22,7 +22,8 @@ Markdown or carry compatibility behavior for superseded contracts.
   a second Cake-owned transcript.
 - Renderer `Artifact` instances are disposable projections of validated
   repository records. Pending response ownership, cancellation, and routing
-  remain in a focused renderer artifact workflow Store and `PiWorkspaceDriver`.
+  remain in a focused renderer artifact workflow Store and the main artifact
+  domain operations above `PiSessions`.
 - Cake indexes the persisted Pi session reference in window state and records
   artifact session aliases when Pi materializes a new persistent session ID.
   Hydration combines validated Pi pointers with that Cake index, so artifacts
@@ -45,8 +46,8 @@ ordinary fields; custom code is for genuinely visual interactions.
 Only internal request artifacts may use request mode. A pending request has a
 unique request ID and exactly one terminal settlement. Values are checked in the
 renderer before transport and again at the Pi boundary. Invalid values keep the
-request open. User cancellation, Pi abort signals, session replacement,
-workspace-driver disposal, and loss of the last workspace window all settle it
+request open. User cancellation, Pi abort signals, Cake Session replacement, session-runtime
+Scope disposal, and loss of the final owning renderer connection all settle it
 as cancelled. Late or mismatched responses are ignored.
 
 The `/cake-artifacts` built-in diagnostic command exercises the same repository

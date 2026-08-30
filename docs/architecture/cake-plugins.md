@@ -66,7 +66,9 @@ function BranchButton() {
   const session = usePluginSession();
   return (
     <Button
-      onClick={() => void backend.call("currentBranch", { workspacePath: session.workspacePath })}
+      onClick={() =>
+        void backend.call("currentBranch", { workingDirectory: session.workingDirectory })
+      }
     >
       Branch
     </Button>
@@ -181,7 +183,9 @@ const exec = promisify(execFile);
 export default definePluginBackend({
   methods: {
     async currentBranch(input, { signal }) {
-      const cwd = String((input as { cwd?: string } | null)?.cwd ?? process.cwd());
+      const cwd = String(
+        (input as { workingDirectory?: string } | null)?.workingDirectory ?? process.cwd(),
+      );
       const { stdout } = await exec("git", ["branch", "--show-current"], { cwd, signal });
       return stdout.trim();
     },
@@ -195,7 +199,7 @@ read credentials available to Cake, and make network requests. Cake does not
 declare separate Git, filesystem, or network permissions.
 
 Each enabled backend gets a dedicated utility process. Calls and events cross a
-validated JSON protocol with bounded payloads. `usePluginBackend(pluginId)`
+bounded protocol validated with Effect Schema at Cake's process boundary. `usePluginBackend(pluginId)`
 returns `call(method, input, { signal? })` and `subscribe(name, listener)`.
 Cancellation aborts the backend method's signal. A backend crash is attributed
 to its plugin and selects immutable recovery; it cannot crash the Electron main
@@ -208,12 +212,12 @@ The version-matched `cake` module exports `DefaultScene`, `Slot`,
 adapters, approved Stores and components, and styling utilities. Workflow
 Stores remain internal. Components reading Cake state must use `observer`.
 
-`usePluginSession()` exposes the selected project session's `workspacePath`,
-Pi `sessionId`, and opaque `workspace` and `ref` values. Use the workspace path as
-an explicit input to backend Git/filesystem methods; never guess a repository from
-the backend process working directory. The hook is valid only in
+`usePluginSession()` exposes the selected Project Session's `workingDirectory`,
+Pi Session ID, and stable Cake Session reference. Pass the Working Directory
+explicitly to backend Git/filesystem methods; never guess a repository from the
+backend process working directory. The hook is valid only in
 `project-session.*` contributions or custom-scene branches that render while a
-project session is selected.
+Project Session is selected.
 
 Trusted contributions use three distinct execution paths. Use
 `usePluginBackend(pluginId)` for deterministic privileged Node work such as
@@ -222,7 +226,7 @@ network, filesystem, Git, and subprocess operations. Use
 host-selected session slice. Use `usePluginAgent()` for durable, multi-turn,
 tool-using Pi work that creates, attaches to, or forks a session. Inside a
 `project-session.*` contribution, omitted targets resolve to the selected
-session or workspace.
+Project Session or Working Directory.
 
 `usePluginSessionActivity()` exposes streaming state, a settled source
 revision, the branch leaf, and the last message ID. Derived widgets refresh on
@@ -284,6 +288,13 @@ pnpm build
 pnpm exec playwright test tests/electron/plugin-customization.smoke.spec.ts
 ```
 
-Enabled plugin skills, prompts, and Pi extensions are still discovered only
-from the Cake plugin root and passed explicitly to embedded Pi. They are
-separate from the unrestricted Node backend.
+Enabled plugin skills, prompts, and Pi Extensions are still discovered only
+from the Cake plugin root and passed explicitly to `PiAgentResources` and the
+applicable Pi Session Runtime. They are separate from the unrestricted Node
+backend.
+
+A possible future Custom Renderer would be a separate, more powerful
+customization tier. It has not been implemented and is not part of the Effect
+migration. Its proposed source replay, semantic rebase, health-gated activation,
+and immutable recovery contract is recorded in
+[`cake-custom-renderer.md`](./cake-custom-renderer.md).

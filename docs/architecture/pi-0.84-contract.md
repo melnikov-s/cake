@@ -1,7 +1,11 @@
-# Pi 0.84.0 adapter contract
+# Pi 0.84.0 Service contract
 
-Cake pins `@earendil-works/pi-coding-agent` 0.84.0. The adapter contract tests
-exercise these public APIs directly:
+Cake pins `@earendil-works/pi-coding-agent` 0.84.0. All ordinary application
+imports of Pi packages live beneath `src/services/pi`. `PiLive` provides
+`PiSessions`, `PiModels`, and `PiAgentResources`; Cake domain operations and RPC
+never expose raw Pi objects.
+
+The deterministic adapter contract exercises these public APIs directly:
 
 - `SettingsManager.inMemory()` and `SessionManager.inMemory()`;
 - `DefaultResourceLoader`, inline extension factories, and `reload()`;
@@ -9,33 +13,45 @@ exercise these public APIs directly:
 - `AgentSession.subscribe()`, `bindExtensions()`, `prompt()`, session identity,
   and `dispose()`;
 - the public mutable `Agent.streamFunction` plus Pi AI's
-  `createAssistantMessageEventStream()` for Cake's adapter-level, abort-aware
-  empty-429 retry wrapper;
+  `createAssistantMessageEventStream()` for Cake's abort-aware empty-429 retry
+  policy;
 - `ExtensionAPI.registerCommand()` and `sendMessage()`;
-- `ExtensionCommandContext.ui.confirm()` through a Cake-owned UI adapter;
+- `ExtensionCommandContext.ui.confirm()` through Cake's session-bound UI
+  adapter;
 - `message_update` text deltas and displayed custom `message_end` events at the
   Pi-to-Cake projection boundary.
 
-The foundation command is intentionally provider-free and deterministic. It
-proves session lifecycle, extension binding, interactive UI routing, and event
-normalization without requiring user credentials or making a model request.
-Provider-backed assistant streaming uses the same adapter in the real workspace
-session path. Live-provider acceptance remains opt-in because it requires user
-credentials and may incur cost.
+The foundation test is provider-free and deterministic. It proves scoped
+session lifecycle, extension binding, interactive UI routing, and event
+normalization without credentials or model cost. Provider-backed streaming uses
+the same `PiSessions` implementation in production and remains opt-in in tests.
 
-Only focused modules in `src/agent` import the Pi coding-agent package. Main,
-preload, and the renderer's desktop-client boundary communicate with Cake-owned
-types validated in `src/ipc`. The renderer boundary translates those DTOs into
-intent-level `DesktopClient` operations and application events consumed by
-focused renderer workflow Stores; those Stores do not depend on IPC types.
+## Service ownership
+
+- `PiSessions` owns list, inspect, keyed scoped runtime acquisition, session
+  operations, runtime commands, session-bound extensions, and observation.
+- `PiModels` owns catalog, authentication/availability projection, resolution,
+  and bounded non-session completion through Pi's model runtime.
+- `PiAgentResources` owns context-dependent skills, prompt templates,
+  configured extension sources, and discovery/load diagnostics.
+- Pure mapping modules beneath `src/services/pi` normalize Pi values into
+  Cake-owned Schemas.
+
+There is no separate `PiExtensions` Service. Extension execution is part of a
+live Pi Session Runtime, while discovery information belongs to
+`PiAgentResources`.
+
+Pi Session observation reconstructs durable state through Pi from JSONL and
+then emits live runtime events. Cake does not read or mutate JSONL directly.
+
+## Special commands
 
 Pi's `/changelog` is an interactive-mode command rather than an
-`AgentSession.prompt()` command. Cake handles it locally: the active workspace
-driver reads Pi's bundled `CHANGELOG.md` through the public `getPackageDir()`
-export, sends the markdown over validated IPC on demand, and renders it in the
-shared command pane. It is never added to the session transcript or sent to a
-model.
+`AgentSession.prompt()` command. `PiSessions` handles it as a local runtime
+command: it reads Pi's bundled `CHANGELOG.md` through public `getPackageDir()`,
+returns Markdown through the Cake-owned RPC projection, and never adds it to a
+Pi Session transcript or sends it to a model.
 
 The extension UI adapter supports Cake's documented primitive React surfaces.
 TUI-only methods fail with actionable compatibility diagnostics rather than
-reporting false success. See `s3-pi-compatibility.md` for the current contract.
+false success. See [`s3-pi-compatibility.md`](./s3-pi-compatibility.md).
