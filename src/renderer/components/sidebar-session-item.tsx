@@ -5,7 +5,7 @@ import { cn } from "../lib/utils";
 import { Badge } from "./ui/badge";
 import { IconButton } from "./ui/icon-button";
 import { NavItem } from "./ui/nav-item";
-import { BranchIcon, ResolveIcon, RestoreIcon } from "./ui/icons";
+import { ResolveIcon, RestoreIcon } from "./ui/icons";
 import type { SidebarStore } from "../stores/SidebarStore";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
 
@@ -24,7 +24,6 @@ export interface SidebarSessionItemProps {
   selected: boolean;
   resolved: boolean;
   activity?: "running" | "unread" | "error";
-  defaultBranch?: string;
   onOpen(sessionId: string): void;
   onRename(sessionId: string, name: string): void;
   onResolve(sessionId: string, resolved: boolean): void;
@@ -40,7 +39,6 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   selected,
   resolved,
   activity,
-  defaultBranch,
   onOpen,
   onRename,
   onResolve,
@@ -52,7 +50,9 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   const canResolve = !activity;
   const activityLabel =
     activity === "running" ? "Running" : activity === "error" ? "Error" : "Ready, unread";
-  const branch = session.managedWorktree?.branch.replace(/^agent\//, "") ?? defaultBranch;
+  const branch = session.draft
+    ? undefined
+    : session.managedWorktree?.branch.replace(/^agent\//, "");
   const baseBranch = session.managedWorktree?.baseBranch.replace(/^agent\//, "");
   const showBaseBranch = baseBranch !== undefined && baseBranch !== "main";
   const commitRename = () => {
@@ -128,14 +128,10 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
               >
                 {branch && (
                   <>
-                    {session.managedWorktree ? (
-                      <WorktreeStatusIcon
-                        state={session.managedWorktree.state}
-                        className="shrink-0"
-                      />
-                    ) : (
-                      <BranchIcon />
-                    )}
+                    <WorktreeStatusIcon
+                      state={session.managedWorktree!.state}
+                      className="shrink-0"
+                    />
                     <span className="truncate">{branch}</span>
                     {showBaseBranch && (
                       <>

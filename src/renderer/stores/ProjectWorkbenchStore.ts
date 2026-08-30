@@ -25,7 +25,11 @@ import {
   SessionContinuationStore,
   type SessionContinuationStoreProps,
 } from "./SessionContinuationStore";
-import { WorktreeCreationStore, type WorktreeCreationStoreProps } from "./WorktreeCreationStore";
+import {
+  WorktreeCreationStore,
+  type WorktreeCreationStoreProps,
+  type WorktreeDraftChoice,
+} from "./WorktreeCreationStore";
 
 export interface ProjectWorkbenchStoreProps {
   client: Pick<
@@ -426,6 +430,18 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       .chatStore.submit(initialPrompt, { renderUserMessageAsMarkdown });
     if (!submitted) throw new Error("Cake could not submit the new session's initial prompt.");
     return sessionId;
+  }
+
+  configureDraftActivation(sessionId: string, choice: WorktreeDraftChoice) {
+    this.worktreeCreationStore.select(sessionId, choice);
+  }
+
+  draftActivationCandidates(sessionId: string) {
+    const session = this.sessionRegistry.findSession(sessionId);
+    if (!session) return [];
+    const projectPath =
+      this.props.catalog.projectOfManagedWorktree(session.workspacePath) ?? session.workspacePath;
+    return this.worktreeCreationStore.candidates(projectPath);
   }
 
   async prepareNewSession(sessionId: string, firstUserMessage: string) {

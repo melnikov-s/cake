@@ -13,6 +13,7 @@ import type { ReviewsStore } from "./ReviewsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { describeError } from "../error-details";
 import { pastedImageAttachments } from "../pasted-image-attachments";
+import type { WorktreeDraftChoice } from "./WorktreeCreationStore";
 
 interface PendingUserMessage {
   operationId: string;
@@ -59,6 +60,7 @@ export interface MessageComposerStoreProps {
     | { path: string; configuration?: ChatConfiguration; name?: string }
     | undefined;
   prepareNewSession?(firstUserMessage: string): Promise<boolean>;
+  configureDraftActivation?(choice: WorktreeDraftChoice): void;
 }
 
 /** Owns attachments, the local prompt queue, optimistic immediate prompts, and prompt delivery. */
@@ -392,9 +394,10 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     return true;
   }
 
-  async activateDraftSession() {
+  async activateDraftSession(choice: WorktreeDraftChoice = { kind: "current" }) {
     const sessionId = this.props.sessionId();
     if (!sessionId) return false;
+    this.props.configureDraftActivation?.(choice);
     const staged = this.props.sessionRegistry.activateDraftSession(sessionId);
     if (!staged) return false;
     this.props.setDraft(staged.text);

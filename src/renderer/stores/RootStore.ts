@@ -315,6 +315,10 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       newSessionRequest: (sessionId) => this.projectWorkbenchStore.newSessionRequest(sessionId),
       prepareNewSession: (sessionId, firstUserMessage) =>
         this.projectWorkbenchStore.prepareNewSession(sessionId, firstUserMessage),
+      configureDraftActivation: (sessionId, choice) =>
+        this.projectWorkbenchStore.configureDraftActivation(sessionId, choice),
+      draftActivationCandidates: (sessionId) =>
+        this.projectWorkbenchStore.draftActivationCandidates(sessionId),
       worktreeClient: this.client,
       onWorktreeLanded: (record) => {
         this.sessionCatalogStore.noteManagedWorktree(record);

@@ -18,6 +18,7 @@ import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ProjectSessionStore, type SessionTarget } from "./ProjectSessionStore";
 import { toSessionPreviewSnapshot, toSessionSnapshot } from "../../utils/session-snapshot";
 import type { WorktreeStoreProps } from "./WorktreeStore";
+import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 
 export interface SessionRegistryStoreProps {
   client: DesktopClient;
@@ -40,6 +41,8 @@ export interface SessionRegistryStoreProps {
     sessionId: string,
   ): { path: string; configuration?: ChatConfiguration; name?: string } | undefined;
   prepareNewSession?(sessionId: string, firstUserMessage: string): Promise<boolean>;
+  configureDraftActivation?(sessionId: string, choice: WorktreeDraftChoice): void;
+  draftActivationCandidates?(sessionId: string): ExistingWorktreeCandidate[];
   worktreeClient: WorktreeStoreProps["client"];
   onWorktreeLanded: WorktreeStoreProps["onLanded"];
   onWorktreeDiscarded: WorktreeStoreProps["onDiscarded"];
@@ -98,6 +101,10 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         prepareNewSession: (firstUserMessage) =>
           this.props.prepareNewSession?.(target.sessionId, firstUserMessage) ??
           Promise.resolve(true),
+        configureDraftActivation: (choice) =>
+          this.props.configureDraftActivation?.(target.sessionId, choice),
+        draftActivationCandidates: () =>
+          this.props.draftActivationCandidates?.(target.sessionId) ?? [],
         worktreeClient: this.props.worktreeClient,
         onWorktreeLanded: this.props.onWorktreeLanded,
         onWorktreeDiscarded: this.props.onWorktreeDiscarded,
@@ -208,13 +215,16 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   async createDraftSession(sessionId: string, text: string, attachments: Attachment[]) {
     if (!this.temporarySessionIds.has(sessionId))
       throw new Error("Only a new session can be saved as a draft");
+    const session = this.findSession(sessionId)!;
+    const projectPath =
+      this.props.catalog?.projectOfManagedWorktree(session.workspacePath) ?? session.workspacePath;
+    this.relocateTemporarySession(sessionId, projectPath);
     this.draftSessionsById[sessionId] = {
       text,
       attachments: attachments.map((attachment) => ({ ...attachment })),
       resolved: false,
     };
     if (this.stagedSessionId === sessionId) this.stagedSessionId = undefined;
-    const session = this.findSession(sessionId)!;
     this.props.catalog?.upsertPending(
       sessionId,
       session.workspacePath,
@@ -357,9 +367,12 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     stagedPrompt?: { text: string; attachments: Attachment[] };
   }) {
     const shouldRestoreAsDraft = state.draftSession || this.stagedSessionId !== undefined;
+    const workspacePath = state.draftSession
+      ? (this.props.catalog?.projectOfManagedWorktree(state.workspacePath) ?? state.workspacePath)
+      : state.workspacePath;
     const session = shouldRestoreAsDraft
-      ? this.prepareNewSession(state.workspacePath, state.sessionId)
-      : this.prepareStagedSession(state.workspacePath, state.sessionId);
+      ? this.prepareNewSession(workspacePath, state.sessionId)
+      : this.prepareStagedSession(workspacePath, state.sessionId);
     session.chatStore.setDraft(state.draft);
     session.composerStore.restoreStagedAttachments(state.attachments ?? []);
     if (state.configuration) this.setPendingConfiguration(state.sessionId, state.configuration);
@@ -376,8 +389,8 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
       session.composerStore.restoreStagedAttachments([]);
       this.props.catalog?.upsertPending(
         state.sessionId,
-        state.workspacePath,
-        this.props.projectName(state.workspacePath),
+        workspacePath,
+        this.props.projectName(workspacePath),
         { draft: true, resolved: state.resolved },
       );
     }

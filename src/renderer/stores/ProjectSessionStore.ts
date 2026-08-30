@@ -14,6 +14,7 @@ import { ArtifactInteractionStore } from "./ArtifactInteractionStore";
 import { MessageCommentsStore } from "./MessageCommentsStore";
 import { SubagentActivityStore } from "./SubagentActivityStore";
 import { WorktreeStore, type WorktreeStoreProps } from "./WorktreeStore";
+import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 
 export interface SessionTarget {
   workspacePath: string;
@@ -40,6 +41,8 @@ export interface ProjectSessionStoreProps extends SessionTarget {
     | { path: string; configuration?: ChatConfiguration; name?: string }
     | undefined;
   prepareNewSession(firstUserMessage: string): Promise<boolean>;
+  configureDraftActivation(choice: WorktreeDraftChoice): void;
+  draftActivationCandidates(): ExistingWorktreeCandidate[];
   worktreeClient: WorktreeStoreProps["client"];
   onWorktreeLanded(record: Parameters<WorktreeStoreProps["onLanded"]>[0]): Promise<void> | void;
   onWorktreeDiscarded(
@@ -225,6 +228,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       operationOwner: this.composerOwner,
       newSessionRequest: this.props.newSessionRequest,
       prepareNewSession: (firstUserMessage) => this.props.prepareNewSession(firstUserMessage),
+      configureDraftActivation: (choice) => this.props.configureDraftActivation(choice),
     });
   }
 
@@ -279,7 +283,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       canCreateDraft: () =>
         this.props.registry.isTemporarySession(this.sessionId) &&
         !this.props.registry.isDraftSession(this.sessionId),
-      activateDraft: () => this.composerStore.activateDraftSession(),
+      activateDraft: (choice) => this.composerStore.activateDraftSession(choice),
+      draftActivationCandidates: this.props.draftActivationCandidates,
       editLastUserMessage: (entryId) =>
         this.composerStore.beginEditMessage(
           entryId,

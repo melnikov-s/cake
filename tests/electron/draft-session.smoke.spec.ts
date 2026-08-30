@@ -67,6 +67,10 @@ test("restores, edits, resolves, and activates a project draft session", async (
     const page = await application.firstWindow();
     await expect(page.getByText("Original plan", { exact: true })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText("Draft", { exact: true })).toBeVisible();
+    const draftSidebarItem = page.locator(`[data-session-id="${sessionId}"]`);
+    await expect(draftSidebarItem.getByText("main", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Current checkout" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "New worktree" })).toHaveCount(0);
     await page.getByRole("button", { name: "Resolve Planned work" }).click();
     await page.getByRole("button", { name: "Expand Resolved" }).click();
     await expect(page.getByRole("button", { name: "Restore Planned work" })).toBeVisible();
@@ -81,6 +85,7 @@ test("restores, edits, resolves, and activates a project draft session", async (
     await expect(page.getByText("Edited plan", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "Activate draft" }).click();
+    await page.getByRole("menuitem", { name: "Activate in current checkout" }).click();
     await expect(page.getByText("Draft", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Edited plan", { exact: true })).toBeVisible();
   } finally {

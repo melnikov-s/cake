@@ -11,6 +11,7 @@ import type {
 } from "../../ipc/session-contract";
 import type { QueuedPrompt } from "./MessageComposerStore";
 import type { ChatConfigurationStore } from "./ChatConfigurationStore";
+import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 
 export interface ChatStoreProps {
   id(): string;
@@ -30,7 +31,8 @@ export interface ChatStoreProps {
   supportsUserMessageMarkdown?(): boolean;
   createDraft?(): Promise<boolean>;
   canCreateDraft?(): boolean;
-  activateDraft?(): Promise<boolean>;
+  activateDraft?(choice?: WorktreeDraftChoice): Promise<boolean>;
+  draftActivationCandidates?(): ExistingWorktreeCandidate[];
   editLastUserMessage?(entryId: string): boolean | undefined;
   isDraftSession?(): boolean;
   editingMessage?(): boolean;
@@ -456,8 +458,11 @@ export class ChatStore extends Store<ChatStoreProps> {
   createDraft() {
     return this.props.createDraft?.() ?? Promise.resolve(false);
   }
-  activateDraft() {
-    return this.props.activateDraft?.() ?? Promise.resolve(false);
+  get draftActivationCandidates() {
+    return this.props.draftActivationCandidates?.();
+  }
+  activateDraft(choice?: WorktreeDraftChoice) {
+    return this.props.activateDraft?.(choice) ?? Promise.resolve(false);
   }
   editLastUserMessage(entryId: string) {
     const renderAsMarkdown = this.props.editLastUserMessage?.(entryId);

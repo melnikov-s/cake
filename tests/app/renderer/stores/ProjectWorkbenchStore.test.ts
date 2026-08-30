@@ -2600,6 +2600,14 @@ describe("ProjectWorkbenchStore", () => {
   it("stages, names, persists, edits, and activates a draft session", async () => {
     const desktop = createDesktopClient();
     desktop.client.generateSessionTitle = vi.fn(async () => "Investigate flaky tests");
+    vi.mocked(desktop.client.createWorktree).mockResolvedValueOnce({
+      projectPath: "/project",
+      worktreePath: "/project-worktree",
+      branch: "agent/project-worktree",
+      baseBranch: "main",
+      baseCommit: "base",
+      createdAt: new Date(0).toISOString(),
+    });
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop);
@@ -2627,6 +2635,8 @@ describe("ProjectWorkbenchStore", () => {
       }),
     );
     expect(session.chatStore.draft).toBe("");
+    expect(session.workspacePath).toBe("/project");
+    expect(desktop.client.createWorktree).not.toHaveBeenCalled();
     await store.sessionManagementStore.resolveSession(session.sessionId, true);
     expect(root.sessionCatalogStore.find(session.sessionId)?.resolved).toBe(true);
     await store.sessionManagementStore.resolveSession(session.sessionId, false);
@@ -2650,12 +2660,19 @@ describe("ProjectWorkbenchStore", () => {
       ]),
     );
 
-    await session.composerStore.activateDraftSession();
+    await session.composerStore.activateDraftSession({ kind: "new" });
     expect(root.sessionCatalogStore.find(session.sessionId)?.draft).toBe(false);
+    expect(desktop.client.createWorktree).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/project",
+        firstUserMessage: "Investigate only the Linux failures",
+      }),
+    );
     expect(desktop.client.submit).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: session.sessionId,
         text: "Investigate only the Linux failures",
+        newSession: expect.objectContaining({ path: "/project-worktree" }),
       }),
     );
     await new Promise((resolve) => setTimeout(resolve, 200));

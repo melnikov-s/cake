@@ -4,7 +4,7 @@ import { Reasoning } from "@/components/ai-elements/reasoning";
 import { Source } from "@/components/ai-elements/source";
 import { Tool, ToolRunTimer } from "@/components/ai-elements/tool";
 import { AnnotationSummary } from "@/components/annotation-summary";
-import { Button } from "@/components/ui/button";
+import { DraftActivationMenu } from "@/components/draft-activation-menu";
 import { IconButton } from "@/components/ui/icon-button";
 import { EditIcon } from "@/components/ui/icons";
 import { ArtifactHost } from "@/components/artifact-host";
@@ -46,11 +46,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         {part.entryId === behavior.store.lastEditableUserEntryId &&
           behavior.store.canEditLastUserMessage && (
             <div className="ml-auto flex items-center gap-2" aria-label="User actions">
-              {part.draft && (
-                <Button size="sm" onClick={() => void behavior.store.activateDraft()}>
-                  Activate draft
-                </Button>
-              )}
+              {part.draft && <DraftActivationMenu store={behavior.store} />}
               <IconButton
                 tooltip="Edit message"
                 ariaLabel="Edit latest prompt"

@@ -287,7 +287,7 @@ describe("Sidebar projects", () => {
     expect(container.querySelector(".session-row")?.textContent).not.toContain("→main");
   });
 
-  it("uses worktree status icons for managed worktrees and a branch icon for main", () => {
+  it("uses worktree status icons for managed worktrees without labeling the main checkout", () => {
     const store = {
       recentProjectPaths: ["/work/cake"],
       projects: [{ path: "/work/cake", name: "Cake" }],
@@ -325,13 +325,13 @@ describe("Sidebar projects", () => {
     const openIcon = container.querySelector('[data-worktree-state="active"]');
     const mergedIcon = container.querySelector('[data-worktree-state="landed"]');
     const mainStatusIcon = container.querySelector('[data-session-id="main"] [role="img"]');
-    const mainBranchIcon = container.querySelector('[data-session-id="main"] svg');
+    const mainSession = container.querySelector('[data-session-id="main"]');
     expect(openIcon?.classList.contains("text-worktree-open")).toBe(true);
     expect(openIcon?.getAttribute("aria-label")).toBe("Open worktree");
     expect(mergedIcon?.classList.contains("text-worktree-merged")).toBe(true);
     expect(mergedIcon?.getAttribute("aria-label")).toBe("Merged worktree");
     expect(mainStatusIcon).toBeNull();
-    expect(mainBranchIcon?.querySelectorAll("circle")).toHaveLength(3);
+    expect(mainSession?.textContent).not.toContain("main");
     expect(openIcon?.querySelectorAll("circle")).toHaveLength(2);
   });
 
@@ -730,9 +730,9 @@ describe("Sidebar projects", () => {
     expect(container.querySelector('[data-session-id="project-session"]')?.classList).not.toContain(
       "active",
     );
-    expect(container.querySelector('[data-session-id="project-session"]')?.textContent).toContain(
-      "main",
-    );
+    expect(
+      container.querySelector('[data-session-id="project-session"]')?.textContent,
+    ).not.toContain("main");
     expect(container.querySelector('[data-session-id="cake-session"]')?.textContent).not.toContain(
       "main",
     );

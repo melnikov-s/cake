@@ -526,7 +526,10 @@ export const App = observer(function App() {
                       root.sessionCatalogStore.projectOfManagedWorktree(session.workspacePath) ??
                       session.workspacePath
                     }
-                    draft={store.sessionRegistry.isTemporarySession(session.sessionId)}
+                    draft={
+                      store.sessionRegistry.isTemporarySession(session.sessionId) &&
+                      !store.sessionRegistry.isDraftSession(session.sessionId)
+                    }
                     onConfigured={() => session.composerStore.requestFocus()}
                   />
                 }
