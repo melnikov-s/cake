@@ -71,6 +71,10 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     return this.phase !== "idle";
   }
 
+  get isSessionRunning() {
+    return this.props.isStreaming();
+  }
+
   async refresh() {
     if (!this.props.enabled() || this.refreshing || this.signal.aborted) return;
     const workspacePath = this.props.workspacePath();

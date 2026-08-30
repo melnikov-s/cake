@@ -14,6 +14,7 @@ import { Button } from "./ui/button";
 import { DialogBackdrop } from "./ui/dialog";
 import { BranchIcon, CheckIcon, ChevronDownIcon, FolderIcon, PullRequestIcon } from "./ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { WorktreePillAction } from "./worktree-pill-action";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
 import { cn } from "@/lib/utils";
 
@@ -155,6 +156,17 @@ export const WorktreePill = observer(function WorktreePill({
   const target = status.targetBranch.replace(/^agent\//, "");
   const branch = status.record.branch.replace(/^agent\//, "");
   const landed = status.record.state === "landed";
+  const hasUncommittedChanges = status.dirtyCount > 0;
+  const hasCommits = status.aheadCount > 0;
+  const hasWorkToMerge = hasUncommittedChanges || hasCommits;
+  const sessionDisabledReason = actions.isSessionRunning
+    ? "Wait for the session to finish before using worktree actions."
+    : undefined;
+  const operationDisabledReason =
+    sessionDisabledReason ?? (busy ? "A worktree operation is already in progress." : undefined);
+  const mergeDisabledReason =
+    operationDisabledReason ??
+    (!hasWorkToMerge ? "There are no changes or commits to merge." : undefined);
   const mergeLabel =
     actions.phase === "committing"
       ? "Committing…"
@@ -162,7 +174,12 @@ export const WorktreePill = observer(function WorktreePill({
         ? "Merging…"
         : actions.phase === "resolving"
           ? "Resolving conflicts…"
-          : "Commit & merge";
+          : hasUncommittedChanges
+            ? "Commit & merge"
+            : "Merge";
+  const mergeAndResolveLabel = hasUncommittedChanges
+    ? "Commit & merge & resolve"
+    : "Merge & resolve";
 
   return (
     <>
@@ -174,14 +191,10 @@ export const WorktreePill = observer(function WorktreePill({
             <span aria-hidden="true">→</span>
             <span className="truncate">{target}</span>
           </span>
-          {!landed && (status.aheadCount > 0 || status.dirtyCount > 0) && (
+          {!landed && (
             <>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={busy}
-                className="h-8 shrink-0 rounded-lg px-2.5 text-sm font-normal text-foreground shadow-none"
+              <WorktreePillAction
+                disabledReason={mergeDisabledReason}
                 onClick={() => {
                   if (status.targetDirty) {
                     setConfirmation("dirty-target");
@@ -191,13 +204,9 @@ export const WorktreePill = observer(function WorktreePill({
                 }}
               >
                 {mergeLabel}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={busy}
-                className="h-8 shrink-0 rounded-lg px-2.5 text-sm font-normal text-foreground shadow-none"
+              </WorktreePillAction>
+              <WorktreePillAction
+                disabledReason={mergeDisabledReason}
                 onClick={() => {
                   if (status.targetDirty) {
                     setConfirmation("dirty-target-resolve");
@@ -206,42 +215,32 @@ export const WorktreePill = observer(function WorktreePill({
                   run(actions.commitAndMerge(false, true));
                 }}
               >
-                Commit & merge & resolve
-              </Button>
+                {mergeAndResolveLabel}
+              </WorktreePillAction>
             </>
           )}
           {landed && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={busy}
-              className="h-8 shrink-0 rounded-lg px-2.5 text-sm font-normal text-foreground shadow-none"
+            <WorktreePillAction
+              disabledReason={operationDisabledReason}
               onClick={() => run(actions.resolve())}
             >
               {actions.phase === "resolving-session" ? "Resolving…" : "Resolve"}
-            </Button>
+            </WorktreePillAction>
           )}
           {actions.stalled && (
             <>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 shrink-0 rounded-lg px-2.5 text-sm font-normal text-foreground shadow-none"
+              <WorktreePillAction
+                disabledReason={sessionDisabledReason}
                 onClick={() => run(actions.retryLanding())}
               >
                 Retry
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 shrink-0 rounded-lg px-2.5 text-sm font-normal text-foreground shadow-none"
+              </WorktreePillAction>
+              <WorktreePillAction
+                disabledReason={sessionDisabledReason}
                 onClick={() => actions.cancelLanding()}
               >
                 Dismiss
-              </Button>
+              </WorktreePillAction>
             </>
           )}
           {!landed && (
@@ -249,15 +248,13 @@ export const WorktreePill = observer(function WorktreePill({
               open={confirmation === "discard-resolve"}
               onOpenChange={(open) => setConfirmation(open ? "discard-resolve" : undefined)}
             >
-              <PopoverTrigger
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={busy}
-                className="h-8 shrink-0 rounded-lg px-2.5 text-sm font-normal text-destructive shadow-none hover:bg-destructive/10 hover:text-destructive"
+              <WorktreePillAction
+                popoverTrigger
+                tone="destructive"
+                disabledReason={operationDisabledReason}
               >
                 {actions.phase === "discarding" ? "Discarding…" : "Discard & resolve"}
-              </PopoverTrigger>
+              </WorktreePillAction>
               <PopoverContent align="start" side="top" className="!w-80 !p-0">
                 <Confirmation state="requested" className="border-0 shadow-none">
                   <ConfirmationRequest>
