@@ -38,13 +38,13 @@ import {
 } from "../agent/session-discovery";
 import { loadReviewSessionProjection, runInlineWidgetRepair } from "../agent/sidecar-runtime";
 import { PiModels } from "../services/pi/PiModels";
+import { rewordSelectionWithProjectContext } from "../agent/rewording-agent";
 import {
-  createUtilityModelRuntime,
   generateSessionTitle,
   generateWorktreeName,
   rewordSelection,
-} from "../agent/utility-model";
-import { rewordSelectionWithProjectContext } from "../agent/rewording-agent";
+  utilityModelSelection,
+} from "../domain/utilityWork";
 import {
   forgetProjectSessions,
   reconcileResolvedSessions,
@@ -264,8 +264,12 @@ const globalChatDriver = new GlobalChatDriver({
   },
 });
 const pluginAgents = new PluginAgentHost({
-  agentDir: cakePaths.piAgent,
   utilityModel: () => applicationState().utilityModel,
+  completeModel: (input, signal) =>
+    runMainEffect(
+      Effect.flatMap(PiModels, (models) => models.complete(input)),
+      signal,
+    ),
   driver: (workspacePath) => launchPi(workspacePath).driver,
   resolveSessionWorkspacePath,
   emit: sendTo,
@@ -603,6 +607,14 @@ function launchPi(path: string) {
     pluginResources: pluginAgentResources,
     isTrusted: () => isProjectTrusted(path),
     utilityModel: () => applicationState().utilityModel,
+    generateSessionTitle: ({ utilityModel, firstUserMessage, signal }) =>
+      runMainEffect(
+        generateSessionTitle({
+          selection: utilityModelSelection(utilityModel),
+          firstUserMessage,
+        }),
+        signal,
+      ),
     modelPresets: modelPresetAgentProjection,
     worktreeLanding: worktrees,
     fastMode: hasSessionFastMode,
@@ -1166,13 +1178,14 @@ async function handleCakeRequest(
             guidance: request.prompt,
             signal,
           })
-        : await rewordSelection({
-            modelRuntime: await createUtilityModelRuntime(cakePaths.piAgent, signal),
-            utilityModel,
-            selection: request.selection,
-            prompt: request.prompt,
+        : await runMainEffect(
+            rewordSelection({
+              selection: utilityModelSelection(utilityModel),
+              text: request.selection,
+              guidance: request.prompt,
+            }),
             signal,
-          });
+          );
       return desktopResponseSchema.parse({ type: "composer-selection-reworded", text });
     } finally {
       controllers.delete(controller);
@@ -1182,14 +1195,12 @@ async function handleCakeRequest(
   if (request.type === "generate-session-title") {
     const utilityModel = applicationState().utilityModel;
     if (!utilityModel) return desktopResponseSchema.parse({ type: "session-title-generated" });
-    const signal = AbortSignal.timeout(15_000);
-    const modelRuntime = await createUtilityModelRuntime(cakePaths.piAgent, signal);
-    const title = await generateSessionTitle({
-      modelRuntime,
-      utilityModel,
-      firstUserMessage: request.firstUserMessage,
-      signal,
-    });
+    const title = await runMainEffect(
+      generateSessionTitle({
+        selection: utilityModelSelection(utilityModel),
+        firstUserMessage: request.firstUserMessage,
+      }),
+    );
     return desktopResponseSchema.parse({ type: "session-title-generated", title });
   }
   if (request.type === "set-fullscreen-surface-open") {
@@ -2079,12 +2090,13 @@ async function handleCakeRequest(
     if (!worktreeName && request.firstUserMessage && utilityModel) {
       const signal = AbortSignal.timeout(15_000);
       try {
-        worktreeName = await generateWorktreeName({
-          modelRuntime: await createUtilityModelRuntime(cakePaths.piAgent, signal),
-          utilityModel,
-          firstUserMessage: request.firstUserMessage,
+        worktreeName = await runMainEffect(
+          generateWorktreeName({
+            selection: utilityModelSelection(utilityModel),
+            firstUserMessage: request.firstUserMessage,
+          }),
           signal,
-        });
+        );
       } catch {
         // Worktree naming is advisory. The service's random name remains the fallback.
       }

@@ -83,6 +83,61 @@ describe("plugin agent model resolution", () => {
     expect(resolveSessionRef(sessionRef("session-1"))).toBe("session-1");
   });
 
+  it("keeps plugin fallback policy observable and executes the resolved profile through PiModels", async () => {
+    const completeModel = vi.fn(async () => "summary");
+    const driver = {
+      agentSnapshot: vi.fn(async () => base),
+    } as unknown as PiWorkspaceDriver;
+    const host = new PluginAgentHost({
+      utilityModel: () => ({
+        provider: "utility",
+        modelId: "small",
+        thinkingLevel: "off",
+      }),
+      completeModel,
+      driver: () => driver,
+      resolveSessionWorkspacePath: async () => "/project",
+      emit: () => undefined,
+    });
+
+    const result = await host.complete(
+      "plugin.test",
+      {
+        model: { prefer: "utility" },
+        context: { kind: "session", selection: "last-message" },
+        instructions: "Summarize",
+        maximumOutputCharacters: 1_024,
+      },
+      sessionRef("session"),
+    );
+
+    expect(result).toMatchObject({
+      text: "summary",
+      resolvedModel: {
+        requested: "utility",
+        source: "utility",
+        provider: "utility",
+        modelId: "small",
+        thinkingLevel: "off",
+        fallbacks: [],
+      },
+    });
+    expect(completeModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selection: {
+          provider: "utility",
+          modelId: "small",
+          thinkingLevel: "off",
+          fastMode: false,
+        },
+        instructions: "Summarize",
+        maximumOutputCharacters: 1_024,
+        timeoutMs: 30_000,
+      }),
+      expect.any(AbortSignal),
+    );
+  });
+
   it("coalesces live part events without launching a full snapshot for every token", async () => {
     vi.useFakeTimers();
     let listener: ((event: CakeRuntimeEvent) => void) | undefined;
@@ -100,8 +155,8 @@ describe("plugin agent model resolution", () => {
     } as unknown as PiWorkspaceDriver;
     const emitted: unknown[] = [];
     const host = new PluginAgentHost({
-      agentDir: "/cake/pi",
       utilityModel: () => undefined,
+      completeModel: async () => "completed",
       driver: () => driver,
       resolveSessionWorkspacePath: async () => "/project",
       emit: (_owner, event) => emitted.push(event),

@@ -2,7 +2,9 @@ import type { App } from "electron";
 import { Cause, Effect, Exit, Layer, ManagedRuntime } from "effect";
 import { initialize } from "../domain/application";
 import { makeCakeIpcServerLive, type CakeIpcServerOperations } from "../ipc/server/CakeIpcServer";
+import type { PiAgentResources } from "../services/pi/PiAgentResources";
 import type { PiModels } from "../services/pi/PiModels";
+import { makePiAgentResourcesLive } from "../services/pi/live/PiAgentResourcesLive";
 import { makePiModelsLive } from "../services/pi/live/PiModelsLive";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import { makeApplicationStorageLive } from "../services/storage/ApplicationStorage";
@@ -18,7 +20,11 @@ const makeMainLive = (
     Layer.provideMerge(makeApplicationStorageLive(application.getPath("userData"))),
     Layer.provideMerge(BootstrapLive),
   );
-  const servicesLive = Layer.mergeAll(applicationLive, makePiModelsLive(piAgentDirectory));
+  const servicesLive = Layer.mergeAll(
+    applicationLive,
+    makePiModelsLive(piAgentDirectory),
+    makePiAgentResourcesLive(piAgentDirectory),
+  );
   return makeCakeIpcServerLive(rpcOperations).pipe(Layer.provideMerge(servicesLive));
 };
 
@@ -30,13 +36,18 @@ export interface LaunchMainApplicationOptions extends Omit<MainApplicationHooks,
 }
 
 let launched = false;
-type MainService = ApplicationState | PiModels;
-let runEffect: (<A, E>(effect: Effect.Effect<A, E, MainService>) => Promise<A>) | undefined;
+type MainService = ApplicationState | PiAgentResources | PiModels;
+let runEffect:
+  | (<A, E>(effect: Effect.Effect<A, E, MainService>, signal?: AbortSignal) => Promise<A>)
+  | undefined;
 
 /** Runs migrated main Effects on the one process-lifetime runtime. */
-export function runMainEffect<A, E>(effect: Effect.Effect<A, E, MainService>): Promise<A> {
+export function runMainEffect<A, E>(
+  effect: Effect.Effect<A, E, MainService>,
+  signal?: AbortSignal,
+): Promise<A> {
   if (!runEffect) throw new Error("Cake main runtime is not available");
-  return runEffect(effect);
+  return runEffect(effect, signal);
 }
 
 export function launchMainApplication(options: LaunchMainApplicationOptions): void {
@@ -47,7 +58,7 @@ export function launchMainApplication(options: LaunchMainApplicationOptions): vo
   const mainRuntime = ManagedRuntime.make(
     makeMainLive(options.application, options.rpcOperations, options.piAgentDirectory),
   );
-  runEffect = (effect) => mainRuntime.runPromise(effect);
+  runEffect = (effect, signal) => mainRuntime.runPromise(effect, { signal });
 
   const program = Effect.gen(function* () {
     const applicationState = yield* ApplicationState;

@@ -180,6 +180,39 @@ describe("PiModels", () => {
     assert.deepEqual(received?.selection, selection);
   });
 
+  it("interrupts the provider request when bounded completion is cancelled", async () => {
+    let providerSignal: AbortSignal | undefined;
+    const layer = makePiModelsLayer({
+      loadCatalog: async () => [model()],
+      refreshCatalog: async () => undefined,
+      complete: async (_input, signal) => {
+        providerSignal = signal;
+        await new Promise<void>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+        return "unreachable";
+      },
+    });
+    const controller = new AbortController();
+    const running = Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* (yield* PiModels).complete({
+          selection,
+          instructions: "Return a title",
+          context: "context",
+          maximumOutputCharacters: 80,
+          timeoutMs: 1_000,
+        });
+      }).pipe(Effect.provide(layer)),
+      { signal: controller.signal },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    controller.abort();
+
+    await assert.rejects(running);
+    assert.equal(providerSignal?.aborted, true);
+  });
+
   it("returns a typed bounded-completion failure", async () => {
     const layer = makePiModelsLayer({
       loadCatalog: async () => [model()],

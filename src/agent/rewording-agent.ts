@@ -1,7 +1,7 @@
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { UtilityModel } from "../ipc/session-contract";
 import { runIsolatedSession } from "./isolated-session-runner";
-import { dictationRewordingGuidance, REWORD_CHARACTER_LIMIT } from "./utility-model";
+import { dictationRewordingGuidance, REWORD_CHARACTER_LIMIT } from "../domain/utilityWork";
 import { createWorkspaceReadTools } from "./workspace-read-tools";
 
 interface RewordWithProjectContextOptions {

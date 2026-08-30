@@ -53,6 +53,7 @@ import {
   supportsFastMode,
   type FastModeModel,
 } from "../services/pi/fast-mode";
+import { compatibilityCatalog } from "../services/pi/live/PiCompatibilityProjection";
 import { projectModelCatalog } from "../services/pi/live/PiModelsLive";
 import { createCakeArtifactExtension } from "./artifact-extension";
 import { createCakeArtifactOperations } from "./cake-artifact-operations";
@@ -77,7 +78,7 @@ import {
   shouldAutoResumeInterruptedTurn,
   turnRecoveryPrompt,
 } from "./turn-recovery";
-import { compatibilityCatalog, createCakeExtensionUiContext } from "./extension-compatibility";
+import { createCakeExtensionUiContext } from "./extension-compatibility";
 import type {
   InlineWidgetGenerationRequest,
   InlineWidgetGenerationResult,
@@ -91,7 +92,6 @@ import {
   cakeWorkspaceSessionDirectory,
   listWorkspaceSessions,
 } from "./session-discovery";
-import { generateSessionTitle } from "./utility-model";
 import { createConversationHandoff } from "./session-handoff";
 import { detectGitWorktree, worktreeSystemPrompt } from "./worktree-system-prompt";
 import {
@@ -284,7 +284,11 @@ export interface CakeRuntimeOptions {
     get(): boolean;
     set(enabled: boolean): Promise<void>;
   };
-  generateSessionTitle?: typeof generateSessionTitle;
+  generateSessionTitle?(input: {
+    utilityModel: UtilityModel;
+    firstUserMessage: string;
+    signal?: AbortSignal;
+  }): Promise<string>;
   currentSessionControl?: {
     resolved(): boolean;
     setResolved(resolved: boolean): Promise<void>;
@@ -1025,7 +1029,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   let reloadInFlight: Promise<void> | undefined;
   let sessionNamingInFlight = false;
   const sessionNamingController = new AbortController();
-  const generateTitle = options.generateSessionTitle ?? generateSessionTitle;
+  const generateTitle = options.generateSessionTitle;
   const catalog = compatibilityCatalog(resourceLoader, settingsManager, options.cwd, agentDir);
   const extensionUiState: ExtensionUiState = { statuses: [] };
   const compatibilityDiagnosticKeys = new Set(
@@ -1333,7 +1337,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   async function nameSessionFromFirstMessage(currentUserMessage: string) {
     if (disposed || sessionNamingInFlight || session.sessionManager.getSessionName()) return;
     const utilityModel = options.utilityModel?.();
-    if (!utilityModel) return;
+    if (!utilityModel || !generateTitle) return;
     const firstUserMessage = session.sessionManager
       .getBranch()
       .flatMap((entry) => (entry.type === "message" ? [entry.message] : []))
@@ -1346,7 +1350,6 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     sessionNamingInFlight = true;
     try {
       const title = await generateTitle({
-        modelRuntime,
         utilityModel,
         firstUserMessage: userText,
         signal: AbortSignal.any([sessionNamingController.signal, AbortSignal.timeout(15_000)]),

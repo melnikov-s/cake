@@ -4,6 +4,7 @@ import {
   createCakeRuntime,
   type CakeRuntime,
   type CakeRuntimeEvent,
+  type CakeRuntimeOptions,
   type RuntimeUiRequest,
 } from "../agent/cake-runtime";
 import { supportsFastMode } from "../services/pi/fast-mode";
@@ -153,6 +154,7 @@ export interface PiWorkspaceDriverOptions {
   openInEditor?: (location: SourceLocation, signal: AbortSignal) => Promise<SourceLocation>;
   isTrusted?: () => boolean;
   utilityModel?: () => UtilityModel | undefined;
+  generateSessionTitle?: NonNullable<CakeRuntimeOptions["generateSessionTitle"]>;
   modelPresets?: () => {
     readonly presets: readonly Pick<ModelPreset, "id" | "name" | "modelId">[];
     readonly defaultPresetId?: string;
@@ -188,6 +190,7 @@ export class PiWorkspaceDriver {
   private readonly openInEditor: PiWorkspaceDriverOptions["openInEditor"];
   private readonly isTrusted: () => boolean;
   private readonly utilityModel: () => UtilityModel | undefined;
+  private readonly generateSessionTitle: PiWorkspaceDriverOptions["generateSessionTitle"];
   private readonly modelPresets: PiWorkspaceDriverOptions["modelPresets"];
   private readonly worktreeLanding: WorktreeLandingCoordinator | undefined;
   private readonly fastMode: (sessionId: string) => boolean;
@@ -237,6 +240,7 @@ export class PiWorkspaceDriver {
     this.openInEditor = options.openInEditor;
     this.isTrusted = options.isTrusted ?? (() => false);
     this.utilityModel = options.utilityModel ?? (() => undefined);
+    this.generateSessionTitle = options.generateSessionTitle;
     this.modelPresets = options.modelPresets;
     this.worktreeLanding = options.worktreeLanding;
     this.fastMode = options.fastMode ?? (() => false);
@@ -941,6 +945,7 @@ export class PiWorkspaceDriver {
             this.reviewRepository.reviewContextPath!(this.workspacePath, activeSessionId)
         : undefined,
       utilityModel: this.utilityModel,
+      generateSessionTitle: this.generateSessionTitle,
       modelPresets: this.modelPresets,
       worktreeLandingControl:
         policy?.auxiliary || !this.worktreeLanding

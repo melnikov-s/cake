@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { WebContents } from "electron";
 import { z } from "zod";
-import { createUtilityModelRuntime, runBoundedCompletion } from "../agent/utility-model";
+import type { BoundedCompletionInput } from "../services/pi/model-data";
 import type { CakeRuntimeEvent } from "../agent/cake-runtime";
 import {
   PLUGIN_COMPLETION_INPUT_MAX,
@@ -191,8 +191,8 @@ export class PluginAgentHost {
 
   constructor(
     private readonly options: {
-      agentDir: string;
       utilityModel(): UtilityModel | undefined;
+      completeModel(input: BoundedCompletionInput, signal?: AbortSignal): Promise<string>;
       driver(workspacePath: string): PiWorkspaceDriver;
       resolveSessionWorkspacePath(sessionId: string): Promise<string>;
       emit(owner: WebContents, event: DesktopEvent): void;
@@ -360,15 +360,21 @@ export class PluginAgentHost {
     const completionSignal = signal
       ? AbortSignal.any([signal, AbortSignal.timeout(30_000)])
       : AbortSignal.timeout(30_000);
-    const modelRuntime = await createUtilityModelRuntime(this.options.agentDir, completionSignal);
-    const text = await runBoundedCompletion({
-      modelRuntime,
-      model: resolvedModel,
-      instructions: request.instructions,
-      context: contextText(snapshot, request),
-      maximumOutputCharacters: request.maximumOutputCharacters,
-      signal: completionSignal,
-    });
+    const text = await this.options.completeModel(
+      {
+        selection: {
+          provider: resolvedModel.provider,
+          modelId: resolvedModel.modelId,
+          thinkingLevel: resolvedModel.thinkingLevel,
+          fastMode: false,
+        },
+        instructions: request.instructions,
+        context: contextText(snapshot, request),
+        maximumOutputCharacters: request.maximumOutputCharacters,
+        timeoutMs: 30_000,
+      },
+      completionSignal,
+    );
     const latest = await this.options.driver(target.workspacePath).agentSnapshot(target.sessionId);
     if (activity(latest).settledRevision !== sourceRevision)
       throw new Error("The session context changed while the plugin completion was running");
