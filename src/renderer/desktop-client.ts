@@ -146,6 +146,8 @@ export type DesktopClientEvent =
       message: string;
     }
   | { type: "plugin-agent-event"; pluginId: string; snapshot: PluginAgentSnapshot }
+  | { type: "terminal-data"; terminalId: string; data: string }
+  | { type: "terminal-exited"; terminalId: string; exitCode: number }
   | { type: "embedded-editor-state-received"; status: EmbeddedEditorStatus; message?: string }
   | {
       type: "embedded-editor-location-opened";
@@ -202,6 +204,16 @@ export interface DesktopClient {
   }): Promise<"remove-project" | "delete-resolved-worktrees" | undefined>;
   listModels(): Promise<ModelOption[]>;
   getHomeDirectory(): Promise<string>;
+  openTerminal?(input: {
+    target:
+      | { kind: "project"; sessionId: string; workspacePath: string }
+      | { kind: "cake-chat"; sessionId: string };
+    cols: number;
+    rows: number;
+  }): Promise<{ terminalId: string; shell: string }>;
+  writeTerminal?(terminalId: string, data: string): Promise<void>;
+  resizeTerminal?(terminalId: string, cols: number, rows: number): Promise<void>;
+  closeTerminal?(terminalId: string): Promise<void>;
   getCustomizationState(): Promise<CustomizationState>;
   getPluginAuthoringReference(): Promise<string>;
   listPluginFiles(): Promise<{ workingRevision: string; buildRevision: string; files: string[] }>;
@@ -666,6 +678,7 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
     };
   if (event.type === "customization-state-changed") return event;
   if (event.type === "application-state-changed" || event.type === "notification") return event;
+  if (event.type === "terminal-data" || event.type === "terminal-exited") return event;
   if (event.type === "embedded-editor-state")
     return {
       type: "embedded-editor-state-received",
@@ -757,6 +770,37 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       if (response.type !== "home-directory")
         throw new Error("Cake could not resolve the home directory");
       return response.path;
+    },
+    async openTerminal(input) {
+      const requestId = crypto.randomUUID();
+      const response = await bridge.request({ type: "open-terminal", requestId, ...input });
+      if (response.type !== "terminal-opened" || response.requestId !== requestId)
+        throw new Error("Cake could not open the terminal");
+      return { terminalId: response.terminalId, shell: response.shell };
+    },
+    async writeTerminal(terminalId, data) {
+      await accept(bridge, {
+        type: "write-terminal",
+        requestId: crypto.randomUUID(),
+        terminalId,
+        data,
+      });
+    },
+    async resizeTerminal(terminalId, cols, rows) {
+      await accept(bridge, {
+        type: "resize-terminal",
+        requestId: crypto.randomUUID(),
+        terminalId,
+        cols,
+        rows,
+      });
+    },
+    async closeTerminal(terminalId) {
+      await accept(bridge, {
+        type: "close-terminal",
+        requestId: crypto.randomUUID(),
+        terminalId,
+      });
     },
     async getCustomizationState() {
       const response = await bridge.request({ type: "get-customization-state" });

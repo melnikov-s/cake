@@ -55,6 +55,7 @@ export { Select, type SelectProps } from "./components/ui/select";
 export { StatusDot, type StatusDotProps } from "./components/ui/status-dot";
 export { Switch, type SwitchProps } from "./components/ui/switch";
 export { Textarea, type TextareaProps } from "./components/ui/textarea";
+export { TerminalView, type TerminalViewProps } from "./components/ui/terminal-view";
 export { cn } from "./lib/utils";
 export { RootStore } from "./stores/RootStore";
 export { App as DefaultScene } from "./app";

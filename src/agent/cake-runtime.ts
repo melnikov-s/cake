@@ -8,6 +8,7 @@ import {
   type InlineExtension,
   type SlashCommandInfo,
 } from "@earendil-works/pi-coding-agent";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -1929,6 +1930,39 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
         await runCompact(builtin.args || undefined);
         return;
       }
+      const shellPrefix = text.startsWith("!!") ? "!!" : text.startsWith("!") ? "!" : undefined;
+      const shellCommand = shellPrefix ? text.slice(shellPrefix.length).trim() : "";
+      if (shellPrefix && attachments.length === 0) {
+        if (!shellCommand) return;
+        const partId = `bash-${randomUUID()}`;
+        const excludeFromContext = shellPrefix === "!!";
+        let output = "";
+        const project = (state: "running" | "success" | "error") =>
+          options.onEvent({
+            type: "part-updated",
+            sessionId: cakeSessionId,
+            part: {
+              id: partId,
+              kind: "tool",
+              name: excludeFromContext ? "bash · hidden from context" : "bash",
+              input: shellCommand,
+              output: output.slice(-500_000),
+              state,
+            },
+          });
+        project("running");
+        const result = await session.executeBash(
+          shellCommand,
+          (chunk) => {
+            output += chunk;
+            project("running");
+          },
+          { excludeFromContext, id: partId },
+        );
+        project(result.exitCode === 0 && !result.cancelled ? "success" : "error");
+        await emitSnapshot();
+        return;
+      }
       if (!session.isStreaming && reloadCompleted < reloadRequested) await drainReloads();
       if (session.isCompacting) {
         // Pi rejects prompts during compaction. Hold the message with its
@@ -2001,6 +2035,10 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       turnRecoveryContinuations = 0;
       removeRecoveryNotice();
       responseRetries.cancel();
+      if (session.isBashRunning) {
+        session.abortBash();
+        return Promise.resolve();
+      }
       return session.abort();
     },
     currentConfiguration() {

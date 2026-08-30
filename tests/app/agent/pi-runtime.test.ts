@@ -115,6 +115,46 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(activeTools).toContain("cake");
   });
 
+  it("executes ! and !! commands without starting a model turn", async () => {
+    const directory = await createTemporaryDirectory();
+    const events: CakeRuntimeEvent[] = [];
+    const runtime = await createCakeRuntime({
+      cwd: directory,
+      agentDir: join(directory, "agent"),
+      sessionDir: join(directory, "sessions"),
+      trusted: false,
+      newSession: true,
+      requestUi: async () => undefined,
+      onEvent: (event) => events.push(event),
+    });
+    runtimes.push(runtime);
+
+    await runtime.prompt("!printf included", "prompt", []);
+    await runtime.prompt("!!printf hidden", "prompt", []);
+
+    const snapshot = await runtime.snapshot();
+    const bashParts = snapshot.parts.filter((part) => part.kind === "tool");
+    expect(bashParts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "bash", input: "printf included", output: "included" }),
+        expect.objectContaining({
+          name: "bash · hidden from context",
+          input: "printf hidden",
+          output: "hidden",
+        }),
+      ]),
+    );
+    expect(
+      events.some(
+        (event) =>
+          event.type === "part-updated" &&
+          event.part.kind === "tool" &&
+          event.part.input === "printf included" &&
+          event.part.state === "running",
+      ),
+    ).toBe(true);
+  });
+
   it("adds checkout-specific isolation guidance for linked worktrees", async () => {
     const repository = await createTemporaryDirectory();
     await execFileAsync("git", ["init", "--initial-branch=main"], { cwd: repository });

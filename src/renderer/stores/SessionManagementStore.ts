@@ -13,6 +13,7 @@ export interface SessionManagementStoreProps {
   operations: SessionOperationCoordinatorStore;
   catalog: SessionCatalogStore;
   registry: SessionRegistryStore;
+  prepareResolution?(sessionIds: readonly string[]): Promise<boolean>;
   applyApplicationState(state: ApplicationState): void;
   reportError(error: unknown): void;
 }
@@ -58,17 +59,22 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   }
 
   async resolveSession(sessionId: string, resolved: boolean) {
-    if (!this.props.catalog.find(sessionId) || this.signal.aborted) return;
-    if (this.props.registry.setDraftSessionResolved(sessionId, resolved)) return;
+    if (!this.props.catalog.find(sessionId) || this.signal.aborted) return false;
+    if (resolved && !(await (this.props.prepareResolution?.([sessionId]) ?? true))) return false;
+    if (this.signal.aborted) return false;
+    if (this.props.registry.setDraftSessionResolved(sessionId, resolved)) return true;
     if (resolved && this.props.registry.isTemporarySession(sessionId)) {
       this.props.registry.removeSession(sessionId);
-      return;
+      return true;
     }
     try {
       const state = await this.props.client.resolveSession(sessionId, resolved);
-      if (!this.signal.aborted) this.props.applyApplicationState(state);
+      if (this.signal.aborted) return false;
+      this.props.applyApplicationState(state);
+      return true;
     } catch (error) {
       if (!this.signal.aborted) this.props.reportError(error);
+      return false;
     }
   }
 
@@ -99,6 +105,8 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     resolved: boolean,
     workspacePath?: string,
   ) {
+    if (resolved && !(await (this.props.prepareResolution?.(sessionIds) ?? true))) return 0;
+    if (this.signal.aborted) return 0;
     const persistedIds: string[] = [];
     for (const sessionId of sessionIds) {
       if (!this.props.catalog.find(sessionId))

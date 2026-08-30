@@ -104,6 +104,7 @@ export interface GlobalChatStoreProps {
   openModelPresetSettings?(): void;
   settings?(): AppearanceSettingsStore | undefined;
   persist?(): void;
+  prepareSessionResolution?(sessionIds: readonly string[]): Promise<boolean>;
 }
 
 /** Owns the Cake Chat session collection, selection, and per-session Store instances. */
@@ -416,18 +417,20 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   }
 
   /** Resolution mutations are queued so an older response cannot overwrite newer application state. */
-  resolveSession(sessionId: string, resolved: boolean) {
+  async resolveSession(sessionId: string, resolved: boolean) {
+    if (resolved && !(await (this.props.prepareSessionResolution?.([sessionId]) ?? true))) return;
+    if (this.signal.aborted) return;
     if (this.isDraftSession(sessionId) && this.pendingDraftPrompt) {
       this.pendingDraftPrompt = { ...this.pendingDraftPrompt, resolved };
       this.updateSummary(sessionId, (summary) => ({ ...summary, resolved }));
       this.props.persist?.();
-      return Promise.resolve();
+      return;
     }
     if (resolved && this.isPendingSession(sessionId)) {
       this.discardPendingSession(sessionId);
-      return Promise.resolve();
+      return;
     }
-    return this.enqueueResolution([sessionId], resolved, false).then(() => undefined);
+    await this.enqueueResolution([sessionId], resolved, false);
   }
 
   async deleteSession(sessionId: string) {
@@ -448,8 +451,10 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     return this.resolvedSessionIds.includes(sessionId);
   }
 
-  resolveSessions(sessionIds: readonly string[], resolved: boolean) {
+  async resolveSessions(sessionIds: readonly string[], resolved: boolean) {
     const ids = [...sessionIds];
+    if (resolved && !(await (this.props.prepareSessionResolution?.(ids) ?? true))) return 0;
+    if (this.signal.aborted) return 0;
     const persistedIds = ids.filter((sessionId) => {
       if (this.isDraftSession(sessionId) && this.pendingDraftPrompt) {
         this.pendingDraftPrompt = { ...this.pendingDraftPrompt, resolved };
@@ -461,7 +466,8 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       this.discardPendingSession(sessionId);
       return false;
     });
-    return this.enqueueResolution(persistedIds, resolved, true).then(() => ids.length);
+    await this.enqueueResolution(persistedIds, resolved, true);
+    return ids.length;
   }
 
   private enqueueResolution(sessionIds: readonly string[], resolved: boolean, rethrow: boolean) {

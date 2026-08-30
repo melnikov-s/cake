@@ -375,6 +375,24 @@ function partsFromMessage(
   if (role === "custom" && Reflect.get(message, "customType") === "cake.subagent-completion")
     return [];
 
+  if (role === "bashExecution") {
+    const exitCode = Reflect.get(message, "exitCode");
+    const cancelled = Reflect.get(message, "cancelled") === true;
+    return [
+      {
+        id: `${baseId}-bash`,
+        kind: "tool",
+        name:
+          Reflect.get(message, "excludeFromContext") === true
+            ? "bash · hidden from context"
+            : "bash",
+        input: String(Reflect.get(message, "command") ?? ""),
+        output: String(Reflect.get(message, "output") ?? ""),
+        state: cancelled || (typeof exitCode === "number" && exitCode !== 0) ? "error" : "success",
+      },
+    ];
+  }
+
   if (role === "custom" && Reflect.get(message, "display") === true) {
     return [
       {

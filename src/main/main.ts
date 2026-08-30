@@ -11,6 +11,7 @@ import {
   nativeImage,
   nativeTheme,
   shell,
+  webContents,
   type WebContents,
 } from "electron";
 import {
@@ -70,6 +71,7 @@ import {
   registerInlineWidgetScheme,
 } from "./inline-widget-protocol";
 import { PluginAgentHost, resolveAgentModel } from "./plugin-agent-host";
+import { TerminalManager } from "./terminal-manager";
 import cakeIconPath from "../assets/cake.png?asset";
 import annotationMenuIconPath from "../assets/menu-annotation.png?asset";
 import chatMenuIconPath from "../assets/menu-chat.png?asset";
@@ -256,6 +258,17 @@ function broadcast(event: DesktopEvent) {
   for (const window of windows.values()) sendTo(window.webContents, event);
 }
 
+const terminals = new TerminalManager((event) => {
+  const target = webContents.fromId(event.ownerId);
+  if (!target) return;
+  sendTo(
+    target,
+    event.type === "data"
+      ? { type: "terminal-data", terminalId: event.terminalId, data: event.data }
+      : { type: "terminal-exited", terminalId: event.terminalId, exitCode: event.exitCode },
+  );
+});
+
 function closeFullscreenSurfaceForWindow(window: BrowserWindow) {
   const surfaceIds = fullscreenSurfaces.get(window.webContents.id);
   const surfaceId = surfaceIds ? Array.from(surfaceIds).at(-1) : undefined;
@@ -266,6 +279,7 @@ function closeFullscreenSurfaceForWindow(window: BrowserWindow) {
 
 async function setCakeChatSessionResolution(sessionId: string, resolved: boolean) {
   if (resolved) {
+    terminals.closeSession("cake-chat", sessionId);
     await globalChatDriver.releaseSessionForArchive(sessionId);
     await sessionArchive.resolve(sessionId, {
       cwd: homedir(),
@@ -293,6 +307,7 @@ async function setProjectSessionResolution(
 ) {
   const workspacePath = knownWorkspacePath ?? (await resolveSessionWorkspacePath(sessionId));
   if (resolved) {
+    terminals.closeSession("project", sessionId);
     await piHosts.get(workspacePath)?.driver.releaseSessionForArchive(sessionId);
     await sessionArchive.resolve(sessionId, {
       cwd: workspacePath,
@@ -819,6 +834,7 @@ function createWindow() {
     windows.delete(window.id);
     windowWorkspaces.delete(webContentsId);
     vscodeEditor.closeForWindow(webContentsId);
+    terminals.closeOwner(webContentsId);
     clearPendingTrustRequests(webContentsId);
     pluginAgents.disposeOwner(webContentsId);
     windowCustomizationRevisions.delete(webContentsId);
@@ -974,6 +990,36 @@ async function handleCakeRequest(
 ): Promise<DesktopResponse> {
   const request = desktopRequestSchema.parse(untrustedInput);
   const owner = BrowserWindow.fromWebContents(event.sender);
+  if (request.type === "open-terminal") {
+    if (request.target.kind === "project" && !allowedProjectPaths.has(request.target.workspacePath))
+      throw new Error("Project path was not selected by the user");
+    const cwd =
+      request.target.kind === "project" ? await realpath(request.target.workspacePath) : homedir();
+    const opened = terminals.open(
+      event.sender.id,
+      { kind: request.target.kind, sessionId: request.target.sessionId },
+      cwd,
+      request.cols,
+      request.rows,
+    );
+    return desktopResponseSchema.parse({
+      type: "terminal-opened",
+      requestId: request.requestId,
+      ...opened,
+    });
+  }
+  if (request.type === "write-terminal") {
+    terminals.write(event.sender.id, request.terminalId, request.data);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  if (request.type === "resize-terminal") {
+    terminals.resize(event.sender.id, request.terminalId, request.cols, request.rows);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
+  if (request.type === "close-terminal") {
+    terminals.close(event.sender.id, request.terminalId);
+    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
+  }
   if (request.type === "open-external-url") {
     const url = new URL(request.url);
     if (url.protocol !== "https:" && url.protocol !== "http:")
@@ -2263,6 +2309,7 @@ app.on("before-quit", () => {
   globalChatDriver[Symbol.dispose]();
   pluginBackends[Symbol.dispose]();
   vscodeEditor.disposeAll();
+  terminals.disposeAll();
   for (const host of piHosts.values()) host.driver[Symbol.dispose]();
   piHosts.clear();
   if (process.env.CAKE_ELECTRON_SMOKE === "1") setImmediate(() => app.exit(0));

@@ -21,6 +21,7 @@ import { AppControlOperationStore } from "./AppControlOperationStore";
 import { ProjectCatalogStore } from "./ProjectCatalogStore";
 import { WindowPersistenceCoordinatorStore } from "./WindowPersistenceCoordinatorStore";
 import { ToastStore } from "./ToastStore";
+import { TerminalStore, type TerminalTarget } from "./TerminalStore";
 import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
 
 export class RootStore extends Store<{ client: DesktopClient }> {
@@ -335,6 +336,31 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     });
   }
 
+  private activeTerminalTarget(): TerminalTarget | undefined {
+    const selection = this.appShellStore.selection;
+    if (selection.kind === "project-session") {
+      if (this.sessionCatalogStore.find(selection.sessionId)?.resolved) return undefined;
+      return {
+        kind: "project",
+        sessionId: selection.sessionId,
+        workspacePath: selection.workspacePath,
+      };
+    }
+    if (selection.kind === "cake-chat" && selection.sessionId) {
+      if (this.globalChatStore.isSessionResolved(selection.sessionId)) return undefined;
+      return { kind: "cake-chat", sessionId: selection.sessionId };
+    }
+    return undefined;
+  }
+
+  @child
+  get terminalStore(): TerminalStore {
+    return createStore(TerminalStore, {
+      client: this.client,
+      activeTarget: () => this.activeTerminalTarget(),
+    });
+  }
+
   @child
   get toastStore(): ToastStore {
     return createStore(ToastStore, {});
@@ -424,6 +450,10 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       embeddedEditorClient: this.client,
       sessionContinuationClient: this.client,
       sessionManagementClient: this.client,
+      prepareSessionResolution: (sessionIds) =>
+        this.terminalStore.prepareResolution(
+          sessionIds.map((sessionId) => ({ kind: "project", sessionId })),
+        ),
       worktreeCreationClient: this.client,
       sessionRegistry: this.sessionRegistry,
       operations: this.sessionOperationCoordinator,
@@ -494,6 +524,10 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       openModelPresetSettings: () => this.showModelPresetSettings(),
       settings: () => this.settingsStore.appearance,
       persist: () => this.windowPersistence.schedule(),
+      prepareSessionResolution: (sessionIds) =>
+        this.terminalStore.prepareResolution(
+          sessionIds.map((sessionId) => ({ kind: "cake-chat", sessionId })),
+        ),
     });
   }
 
@@ -661,6 +695,10 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       this.toastStore.show(event);
       return;
     }
+    if (event.type === "terminal-data" || event.type === "terminal-exited") {
+      this.terminalStore.receive(event);
+      return;
+    }
     if (event.type === "application-state-changed") {
       const activeProjectSessionId =
         this.appShellStore.activeConversation?.kind === "project-session"
@@ -679,6 +717,16 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       this.projectCatalogStore.applyApplicationState(event.state);
       this.globalChatStore.applyApplicationState(event.state);
       this.settingsStore.applyApplicationState(event.state);
+      this.terminalStore.discardResolvedSessions([
+        ...event.state.resolvedSessionIds.map((sessionId) => ({
+          kind: "project" as const,
+          sessionId,
+        })),
+        ...event.state.resolvedCakeChatSessionIds.map((sessionId) => ({
+          kind: "cake-chat" as const,
+          sessionId,
+        })),
+      ]);
       if (
         activeProjectSessionId &&
         activeProjectSessionWasResolved &&

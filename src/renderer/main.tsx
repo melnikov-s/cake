@@ -12,6 +12,7 @@ import { installStaleAssetRecovery } from "./stale-asset-recovery";
 import { mountRootStore } from "./mount-root-store";
 import "katex/dist/katex.min.css";
 import "streamdown/styles.css";
+import "@xterm/xterm/css/xterm.css";
 import "./styles.css";
 
 const root = createRoot(document.getElementById("root")!);

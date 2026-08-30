@@ -21,6 +21,7 @@ import {
   FolderIcon,
   SettingsIcon,
   SidebarIcon,
+  TerminalIcon,
   TreeIcon,
 } from "@/components/ui/icons";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -38,6 +39,7 @@ import { ArtifactsPanel } from "@/components/artifacts-panel";
 import { UiDialog } from "@/components/ui-dialog";
 import { CommandPane } from "@/components/command-pane";
 import { Chat } from "@/components/chat";
+import { QuakeTerminal } from "@/components/quake-terminal";
 import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../ipc/source-location";
 import { toWorkspaceRelativePath } from "../utils/workspace-relative-path";
@@ -58,6 +60,7 @@ export const App = observer(function App() {
   const extensionUi = root.extensionUiStore;
   const artifactInteractions = session?.artifactInteractionStore;
   const shell = root.appShellStore;
+  const terminal = root.terminalStore;
   const surface = shell.surface;
   const globalChat = surface === "global-chat" ? root.globalChatStore : undefined;
   const cakeChatSession =
@@ -148,6 +151,18 @@ export const App = observer(function App() {
   }, [root]);
 
   useEffect(() => {
+    const toggleTerminal = (event: globalThis.KeyboardEvent) => {
+      const mac = /Mac/.test(navigator.userAgent);
+      if (event.code !== "Backquote" || (mac ? !event.metaKey : !event.ctrlKey)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void terminal.toggle();
+    };
+    window.addEventListener("keydown", toggleTerminal, true);
+    return () => window.removeEventListener("keydown", toggleTerminal, true);
+  }, [terminal]);
+
+  useEffect(() => {
     const navigateSessionHistory = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented) return;
       const mac = /Mac/.test(navigator.userAgent);
@@ -224,15 +239,18 @@ export const App = observer(function App() {
     );
   if (store.embeddedEditorStore.visible && session && projectTranscriptBehavior)
     return (
-      <StoreProvider key={`${session.workspacePath}\u0000${session.sessionId}`} store={session}>
-        <IdeWorkspace
-          editor={store.embeddedEditorStore}
-          reviews={reviews}
-          projectChat={session.chatStore}
-          sessionTitle={store.sessionTitle}
-          transcriptBehavior={projectTranscriptBehavior}
-        />
-      </StoreProvider>
+      <>
+        <StoreProvider key={`${session.workspacePath}\u0000${session.sessionId}`} store={session}>
+          <IdeWorkspace
+            editor={store.embeddedEditorStore}
+            reviews={reviews}
+            projectChat={session.chatStore}
+            sessionTitle={store.sessionTitle}
+            transcriptBehavior={projectTranscriptBehavior}
+          />
+        </StoreProvider>
+        <QuakeTerminal store={terminal} />
+      </>
     );
   const shellStyle: CSSProperties & Record<"--sidebar-width" | "--right-pane-width", string> = {
     "--sidebar-width": `${Math.min(sidebarWidth, sidebarMax)}px`,
@@ -345,10 +363,20 @@ export const App = observer(function App() {
               </span>
             )}
           </div>
-          <div
-            className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]"
-            ref={setSessionHeaderHost}
-          />
+          <div className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]">
+            <div
+              className="flex min-w-0 shrink-0 items-center gap-1.5"
+              ref={setSessionHeaderHost}
+            />
+            <IconButton
+              tooltip="Terminal (⌘~)"
+              disabled={!terminal.available}
+              aria-pressed={terminal.open}
+              onClick={() => void terminal.toggle()}
+            >
+              <TerminalIcon />
+            </IconButton>
+          </div>
         </header>
         {surface === "settings" ? (
           <div className="h-full min-h-0 w-full overflow-y-auto [scrollbar-gutter:stable_both-edges]">
@@ -634,6 +662,7 @@ export const App = observer(function App() {
           </button>
         ))}
       </ToastHost>
+      <QuakeTerminal store={terminal} />
       {(store.piState === "failed" || store.piState === "stopped") && store.projectPath && (
         <div className="fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-xl border border-border bg-card p-2.5 px-3 text-xs shadow-lg">
           <span>Pi runtime stopped.</span>

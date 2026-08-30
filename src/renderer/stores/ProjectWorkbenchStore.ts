@@ -52,6 +52,7 @@ export interface ProjectWorkbenchStoreProps {
   embeddedEditorClient: EmbeddedEditorStoreProps["client"];
   sessionContinuationClient: SessionContinuationStoreProps["client"];
   sessionManagementClient: SessionManagementStoreProps["client"];
+  prepareSessionResolution?: SessionManagementStoreProps["prepareResolution"];
   worktreeCreationClient: WorktreeCreationStoreProps["client"];
   sessionRegistry: SessionRegistryStore;
   operations: SessionOperationCoordinatorStore;
@@ -142,6 +143,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       operations: this.props.operations,
       catalog: this.props.catalog,
       registry: this.sessionRegistry,
+      prepareResolution: this.props.prepareSessionResolution,
       applyApplicationState: (state) => this.applyApplicationState(state),
       reportError: (error) => this.setError(error),
     });
@@ -457,9 +459,12 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const sessionIds = this.props.catalog.sessions
       .filter((session) => session.workspacePath === workspacePath && !session.resolved)
       .map((session) => session.id);
-    if (sessionIds.length > 0)
-      await this.sessionManagementStore.resolveSessionsById(sessionIds, true, workspacePath);
-    await this.props.onWorktreeSessionsResolved(sessionIds, projectPath);
+    const resolvedCount =
+      sessionIds.length > 0
+        ? await this.sessionManagementStore.resolveSessionsById(sessionIds, true, workspacePath)
+        : 0;
+    if (resolvedCount === sessionIds.length)
+      await this.props.onWorktreeSessionsResolved(sessionIds, projectPath);
   }
 
   private closeEmbeddedEditor() {

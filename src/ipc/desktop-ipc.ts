@@ -209,6 +209,16 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     snapshot: pluginAgentSnapshotSchema,
   }),
   z.object({
+    type: z.literal("terminal-data"),
+    terminalId: z.uuid(),
+    data: ipcProjectionString(262_144),
+  }),
+  z.object({
+    type: z.literal("terminal-exited"),
+    terminalId: z.uuid(),
+    exitCode: z.number().int(),
+  }),
+  z.object({
     type: z.literal("embedded-editor-state"),
     status: z.enum(["missing", "downloading", "starting", "ready", "failed"]),
     message: ipcProjectionString(4_096).optional(),
@@ -313,6 +323,34 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     resolvedWorktreeCount: z.number().int().nonnegative().max(500),
   }),
   z.object({ type: z.literal("get-home-directory") }),
+  z.object({
+    type: z.literal("open-terminal"),
+    requestId: z.uuid(),
+    target: z.discriminatedUnion("kind", [
+      z.object({
+        kind: z.literal("project"),
+        sessionId: z.string().min(1).max(256),
+        workspacePath: z.string().min(1).max(4_096),
+      }),
+      z.object({ kind: z.literal("cake-chat"), sessionId: z.string().min(1).max(256) }),
+    ]),
+    cols: z.number().int().min(2).max(1_000),
+    rows: z.number().int().min(1).max(1_000),
+  }),
+  z.object({
+    type: z.literal("write-terminal"),
+    requestId: z.uuid(),
+    terminalId: z.uuid(),
+    data: z.string().max(262_144),
+  }),
+  z.object({
+    type: z.literal("resize-terminal"),
+    requestId: z.uuid(),
+    terminalId: z.uuid(),
+    cols: z.number().int().min(2).max(1_000),
+    rows: z.number().int().min(1).max(1_000),
+  }),
+  z.object({ type: z.literal("close-terminal"), requestId: z.uuid(), terminalId: z.uuid() }),
   z.object({ type: z.literal("set-vscode-server-path"), path: z.string().max(4_096).optional() }),
   z.object({ type: z.literal("get-embedded-editor-state") }),
   z.object({ type: z.literal("install-embedded-editor"), requestId: z.uuid() }),
@@ -918,6 +956,12 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
     customPath: z.string().max(4_096).optional(),
   }),
   z.object({ type: z.literal("home-directory"), path: z.string().max(4_096) }),
+  z.object({
+    type: z.literal("terminal-opened"),
+    requestId: z.uuid(),
+    terminalId: z.uuid(),
+    shell: z.string().min(1).max(256),
+  }),
   z.object({ type: z.literal("customization-state"), state: customizationStateSchema }),
   z.object({ type: z.literal("plugin-authoring-reference"), reference: z.string().max(1_000_000) }),
   z.object({
