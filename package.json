@@ -22,7 +22,8 @@
     "start:direct": "electron-vite preview",
     "build:start": "pnpm build && pnpm start",
     "test": "vitest run",
-    "test:electron": "pnpm build && playwright test",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:electron": "electron-vite build --logLevel warn && node scripts/prepare-authoring-snapshot.mjs && playwright test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

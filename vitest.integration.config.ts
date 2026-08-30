@@ -9,9 +9,9 @@ export default defineConfig({
     },
   },
   test: {
-    coverage: { reporter: ["text", "html"] },
-    include: ["tests/app/**/*.test.{ts,tsx}"],
+    include: ["tests/integration/**/*.test.{ts,tsx}"],
     setupFiles: ["./tests/setup.ts"],
     reporters: [new QuietReporter()],
+    testTimeout: 30_000,
   },
 });

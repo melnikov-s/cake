@@ -279,7 +279,7 @@ Focused host verification:
 
 ```sh
 pnpm typecheck
-pnpm exec vitest run tests/app/main/plugin-build-service.test.ts tests/app/renderer/plugin-runtime.test.ts
+pnpm exec vitest run tests/integration/plugin-build-service.test.ts tests/app/renderer/plugin-runtime.test.ts
 pnpm build
 pnpm exec playwright test tests/electron/plugin-customization.smoke.spec.ts
 ```

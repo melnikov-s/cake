@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { WorktreeService } from "../../../src/main/worktree-service";
+import { WorktreeService } from "../../src/main/worktree-service";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];

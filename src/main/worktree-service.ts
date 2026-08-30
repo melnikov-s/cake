@@ -18,6 +18,18 @@ import {
 const execFileAsync = promisify(execFile);
 const maxBuffer = 4_000_000;
 
+/**
+ * Runs one `git` invocation and resolves with stdout. The real runner shells
+ * out to the `git` binary; tests inject a fake to exercise the service's
+ * decision logic without process spawns.
+ */
+export type GitRunner = (cwd: string, args: string[]) => Promise<string>;
+
+const realGit: GitRunner = async (cwd, args) => {
+  const { stdout } = await execFileAsync("git", args.flat(), { cwd, maxBuffer });
+  return stdout;
+};
+
 const storageSchema = z.object({
   schemaVersion: z.literal(1).default(1),
   records: z.array(worktreeRecordSchema).max(500).default([]),
@@ -57,7 +69,10 @@ export class WorktreeService implements WorktreeLandingCoordinator {
   private readonly awaitingSquashProposals = new Set<string>();
   private readonly storagePath: string;
 
-  constructor(storagePath: string) {
+  constructor(
+    storagePath: string,
+    private readonly gitRunner: GitRunner = realGit,
+  ) {
     this.storagePath = storagePath;
   }
 
@@ -77,7 +92,7 @@ export class WorktreeService implements WorktreeLandingCoordinator {
   ): Promise<WorktreeRecord> {
     await this.load();
     const registeredProjectPath = resolveNormalized(projectPath);
-    const root = await realpath(await repositoryRoot(projectPath));
+    const root = await realpath(await this.repositoryRoot(projectPath));
     return this.withRepositoryLock(root, () =>
       this.createRecord(root, registeredProjectPath, baseWorktreePath, worktreeName),
     );
@@ -100,12 +115,12 @@ export class WorktreeService implements WorktreeLandingCoordinator {
       throw new Error("Cake could not find that base worktree");
     if (parent && !existsSync(parent.worktreePath))
       throw new Error("The base worktree no longer exists");
-    if (parent && (await dirtyFileCount(parent.worktreePath)) > 0)
+    if (parent && (await this.dirtyFileCount(parent.worktreePath)) > 0)
       throw new Error("Commit the base worktree before creating a child worktree.");
 
-    const baseBranch = parent?.branch ?? (await defaultBranch(root));
+    const baseBranch = parent?.branch ?? (await this.defaultBranch(root));
     const startPoint = parent?.branch ?? baseBranch;
-    const baseCommit = (await git(root, "rev-parse", startPoint)).trim();
+    const baseCommit = (await this.git(root, "rev-parse", startPoint)).trim();
     const slug = slugify(basename(root));
     const id = `${Date.now().toString(36)}${Math.random().toString(16).slice(2, 6)}`;
     const name = worktreeName ?? `${slug}-${id}`;
@@ -115,7 +130,7 @@ export class WorktreeService implements WorktreeLandingCoordinator {
     const worktreesDir = join(dirname(root), `.${slug}-worktrees`);
     const worktreePath = join(worktreesDir, name);
     await mkdir(worktreesDir, { recursive: true });
-    await git(root, "worktree", "add", "-b", branch, worktreePath, baseCommit);
+    await this.git(root, "worktree", "add", "-b", branch, worktreePath, baseCommit);
     const record: WorktreeRecord = {
       projectPath: registeredProjectPath,
       worktreePath,
@@ -140,7 +155,7 @@ export class WorktreeService implements WorktreeLandingCoordinator {
     if (!record || !["active", "landed"].includes(record.state ?? "active")) return undefined;
     if (!existsSync(record.worktreePath)) {
       // Preserve the historical checkout association so its transcripts remain discoverable.
-      await git(record.projectPath, "worktree", "prune").catch(() => undefined);
+      await this.git(record.projectPath, "worktree", "prune").catch(() => undefined);
       await this.closeRecord(record, "missing");
       return undefined;
     }
@@ -148,15 +163,15 @@ export class WorktreeService implements WorktreeLandingCoordinator {
     if (!existsSync(targetPath)) throw new Error("The worktree landing target no longer exists");
     const [dirtyCount, aheadCount, merged, targetDirty, targetBranch, merging, rebasing] =
       await Promise.all([
-        dirtyFileCount(record.worktreePath),
-        revListCount(record.worktreePath, `${record.baseBranch}..HEAD`),
+        this.dirtyFileCount(record.worktreePath),
+        this.revListCount(record.worktreePath, `${record.baseBranch}..HEAD`),
         record.state === "landed"
           ? Promise.resolve(true)
-          : isAncestor(record.worktreePath, "HEAD", record.baseBranch),
-        dirtyFileCount(targetPath).then((count) => count > 0),
-        gitWithFallback(targetPath, ["rev-parse", "--abbrev-ref", "HEAD"]),
-        revParseExists(record.worktreePath, "MERGE_HEAD"),
-        rebaseInProgress(record.worktreePath),
+          : this.isAncestor(record.worktreePath, "HEAD", record.baseBranch),
+        this.dirtyFileCount(targetPath).then((count) => count > 0),
+        this.gitWithFallback(targetPath, ["rev-parse", "--abbrev-ref", "HEAD"]),
+        this.revParseExists(record.worktreePath, "MERGE_HEAD"),
+        this.rebaseInProgress(record.worktreePath),
       ]);
     return worktreeStatusSchema.parse({
       record,
@@ -202,19 +217,21 @@ export class WorktreeService implements WorktreeLandingCoordinator {
     // A previous landing may have paused mid-rebase or mid-merge; the session
     // agent must finish that state before any new landing Git operations.
     if (
-      (await rebaseInProgress(record.worktreePath)) ||
-      (await revParseExists(record.worktreePath, "MERGE_HEAD"))
+      (await this.rebaseInProgress(record.worktreePath)) ||
+      (await this.revParseExists(record.worktreePath, "MERGE_HEAD"))
     ) {
       await this.rememberPendingLanding(record, options.request.strategy);
-      return { outcome: "resolving", files: await unmergedFiles(record.worktreePath) };
+      return { outcome: "resolving", files: await this.unmergedFiles(record.worktreePath) };
     }
-    if ((await dirtyFileCount(record.worktreePath)) > 0)
+    if ((await this.dirtyFileCount(record.worktreePath)) > 0)
       throw new Error("The worktree has uncommitted changes. Commit or discard them first.");
     const targetPath = record.parentWorktreePath ?? record.projectPath;
     if (!existsSync(targetPath)) throw new Error("The worktree landing target no longer exists");
-    if ((await git(targetPath, "rev-parse", "--abbrev-ref", "HEAD")).trim() !== record.baseBranch)
+    if (
+      (await this.git(targetPath, "rev-parse", "--abbrev-ref", "HEAD")).trim() !== record.baseBranch
+    )
       throw new Error(`Switch the landing target back to "${record.baseBranch}" first.`);
-    if ((await dirtyFileCount(targetPath)) > 0 && !options.request.allowDirtyTarget)
+    if ((await this.dirtyFileCount(targetPath)) > 0 && !options.request.allowDirtyTarget)
       throw new Error("The landing target has uncommitted changes. Commit or stash them first.");
     const activeChildren = this.allRecords.filter(
       (entry) =>
@@ -225,7 +242,7 @@ export class WorktreeService implements WorktreeLandingCoordinator {
     if (activeChildren.length > 0)
       throw new Error("Land or discard this worktree's active child worktrees first.");
 
-    const aheadCount = await revListCount(record.worktreePath, `${record.baseBranch}..HEAD`);
+    const aheadCount = await this.revListCount(record.worktreePath, `${record.baseBranch}..HEAD`);
     if (aheadCount === 0) {
       await this.closeRecord(record, "landed");
       return { outcome: "landed" };
@@ -246,8 +263,8 @@ export class WorktreeService implements WorktreeLandingCoordinator {
         return { outcome: "resolving", files: conflicts };
       }
       try {
-        await git(targetPath, "merge", "--ff-only", record.branch);
-        const commit = (await git(targetPath, "rev-parse", "HEAD")).trim();
+        await this.git(targetPath, "merge", "--ff-only", record.branch);
+        const commit = (await this.git(targetPath, "rev-parse", "HEAD")).trim();
         await this.closeRecord(record, "landed");
         return { outcome: "landed", commit };
       } catch (error) {
@@ -265,26 +282,30 @@ export class WorktreeService implements WorktreeLandingCoordinator {
     const targetPath = record.parentWorktreePath ?? record.projectPath;
     if (message) {
       // An explicit message is a proposal for the current worktree and target tips.
-      const head = (await git(record.worktreePath, "rev-parse", "HEAD")).trim();
-      const targetHead = (await git(targetPath, "rev-parse", "HEAD")).trim();
+      const head = (await this.git(record.worktreePath, "rev-parse", "HEAD")).trim();
+      const targetHead = (await this.git(targetPath, "rev-parse", "HEAD")).trim();
       this.squashProposals.set(normalized, { message, head, targetHead });
     }
     // Gate every target mutation on a fresh conflict prediction so a stale
     // proposal or a moved target can never leave the target checkout conflicted.
-    const conflictedFiles = await dryRunConflicts(targetPath, record.baseBranch, record.branch);
+    const conflictedFiles = await this.dryRunConflicts(
+      targetPath,
+      record.baseBranch,
+      record.branch,
+    );
     if (conflictedFiles === null || conflictedFiles.length > 0) {
       // Resolve the combined result once: merge the target into the worktree so
       // the agent resolves every conflict a squash would hit in one pass.
       try {
-        await git(record.worktreePath, "merge", "--no-ff", "--no-edit", record.baseBranch);
+        await this.git(record.worktreePath, "merge", "--no-ff", "--no-edit", record.baseBranch);
       } catch {
         // A non-zero exit with MERGE_HEAD present is the expected conflict path.
       }
-      if (await revParseExists(record.worktreePath, "MERGE_HEAD")) {
+      if (await this.revParseExists(record.worktreePath, "MERGE_HEAD")) {
         this.awaitingSquashProposals.add(normalized);
         return {
           outcome: "resolving",
-          files: conflictedFiles ?? (await unmergedFiles(record.worktreePath)),
+          files: conflictedFiles ?? (await this.unmergedFiles(record.worktreePath)),
         };
       }
     }
@@ -300,10 +321,11 @@ export class WorktreeService implements WorktreeLandingCoordinator {
   /** Returns unmerged files when the rebase stops on conflicts, or null when it completed. */
   private async rebaseOntoTarget(record: WorktreeRecord): Promise<string[] | null> {
     try {
-      await git(record.worktreePath, "rebase", record.baseBranch);
+      await this.git(record.worktreePath, "rebase", record.baseBranch);
       return null;
     } catch (error) {
-      if (await rebaseInProgress(record.worktreePath)) return unmergedFiles(record.worktreePath);
+      if (await this.rebaseInProgress(record.worktreePath))
+        return this.unmergedFiles(record.worktreePath);
       const detail = error instanceof Error ? error.message : "unknown Git failure";
       throw new Error(
         `Cake could not replay the worktree commits onto the target branch: ${detail}`,
@@ -332,15 +354,15 @@ export class WorktreeService implements WorktreeLandingCoordinator {
         resolveNormalized(entry.worktreePath) === normalized,
     );
     if (!record) throw new Error("Cake could not find an active worktree for this workspace");
-    if (await revParseExists(record.worktreePath, "MERGE_HEAD"))
+    if (await this.revParseExists(record.worktreePath, "MERGE_HEAD"))
       throw new Error("Complete the in-progress merge before proposing the squash message");
-    if (await rebaseInProgress(record.worktreePath))
+    if (await this.rebaseInProgress(record.worktreePath))
       throw new Error("Complete the in-progress rebase before proposing the squash message");
     if (!this.awaitingSquashProposals.delete(normalized))
       throw new Error("No worktree landing is waiting for a squash commit message");
-    const head = (await git(record.worktreePath, "rev-parse", "HEAD")).trim();
+    const head = (await this.git(record.worktreePath, "rev-parse", "HEAD")).trim();
     const targetHead = (
-      await git(record.parentWorktreePath ?? record.projectPath, "rev-parse", "HEAD")
+      await this.git(record.parentWorktreePath ?? record.projectPath, "rev-parse", "HEAD")
     ).trim();
     this.squashProposals.set(normalized, {
       message: input.body ? `${input.subject}\n\n${input.body}` : input.subject,
@@ -352,10 +374,10 @@ export class WorktreeService implements WorktreeLandingCoordinator {
   private async hasFreshSquashProposal(record: WorktreeRecord): Promise<boolean> {
     const proposal = this.squashProposals.get(resolveNormalized(record.worktreePath));
     if (!proposal) return false;
-    const head = (await git(record.worktreePath, "rev-parse", "HEAD")).trim();
+    const head = (await this.git(record.worktreePath, "rev-parse", "HEAD")).trim();
     if (proposal.head !== head) return false;
     const targetHead = (
-      await git(record.parentWorktreePath ?? record.projectPath, "rev-parse", "HEAD")
+      await this.git(record.parentWorktreePath ?? record.projectPath, "rev-parse", "HEAD")
     ).trim();
     return proposal.targetHead === targetHead;
   }
@@ -373,8 +395,8 @@ export class WorktreeService implements WorktreeLandingCoordinator {
     const proposal = this.squashProposals.get(normalized);
     if (!proposal) return undefined;
     this.squashProposals.delete(normalized);
-    const head = (await git(record.worktreePath, "rev-parse", "HEAD")).trim();
-    const targetHead = (await git(targetPath, "rev-parse", "HEAD")).trim();
+    const head = (await this.git(record.worktreePath, "rev-parse", "HEAD")).trim();
+    const targetHead = (await this.git(targetPath, "rev-parse", "HEAD")).trim();
     if (proposal.head !== head || proposal.targetHead !== targetHead) return undefined;
     return proposal.message;
   }
@@ -445,11 +467,11 @@ export class WorktreeService implements WorktreeLandingCoordinator {
         if (!existsSync(targetPath))
           throw new Error("The worktree restore target no longer exists");
         await mkdir(dirname(record.worktreePath), { recursive: true });
-        const branchExists = await revParseExists(
+        const branchExists = await this.revParseExists(
           record.projectPath,
           `refs/heads/${record.branch}`,
         );
-        await git(
+        await this.git(
           record.projectPath,
           "worktree",
           "add",
@@ -472,8 +494,8 @@ export class WorktreeService implements WorktreeLandingCoordinator {
   ): Promise<T> {
     const prior = this.repositoryOperationTails.get(projectPath) ?? Promise.resolve();
     let release!: () => void;
-    const slot = new Promise<void>((resolve) => {
-      release = resolve;
+    const slot = new Promise<void>((releaseResolve) => {
+      release = releaseResolve;
     });
     const tail = prior.catch(() => undefined).then(() => slot);
     this.repositoryOperationTails.set(projectPath, tail);
@@ -490,14 +512,14 @@ export class WorktreeService implements WorktreeLandingCoordinator {
   private async squashMergeAndMarkLanded(record: WorktreeRecord, message: string): Promise<string> {
     const targetPath = record.parentWorktreePath ?? record.projectPath;
     try {
-      await git(targetPath, "merge", "--squash", record.branch);
-      await git(targetPath, "commit", "-m", message);
+      await this.git(targetPath, "merge", "--squash", record.branch);
+      await this.git(targetPath, "commit", "-m", message);
     } catch (error) {
       // Never leave the user's checkout conflicted or half-staged by a failed squash.
-      await git(targetPath, "reset", "--merge").catch(() => undefined);
+      await this.git(targetPath, "reset", "--merge").catch(() => undefined);
       throw error;
     }
-    const commit = (await git(targetPath, "rev-parse", "HEAD")).trim();
+    const commit = (await this.git(targetPath, "rev-parse", "HEAD")).trim();
     await this.closeRecord(record, "landed");
     return commit;
   }
@@ -511,14 +533,14 @@ export class WorktreeService implements WorktreeLandingCoordinator {
     this.squashProposals.delete(normalized);
     if (existsSync(record.worktreePath)) {
       try {
-        await git(record.projectPath, "worktree", "remove", "--force", record.worktreePath);
+        await this.git(record.projectPath, "worktree", "remove", "--force", record.worktreePath);
       } catch {
         // The directory may already be gone; pruning below reconciles Git state either way.
       }
     }
-    await git(record.projectPath, "worktree", "prune").catch(() => undefined);
+    await this.git(record.projectPath, "worktree", "prune").catch(() => undefined);
     if (!options.keepBranch)
-      await git(record.projectPath, "branch", "-D", record.branch).catch(() => undefined);
+      await this.git(record.projectPath, "branch", "-D", record.branch).catch(() => undefined);
     await this.closeRecord(record, options.state);
   }
 
@@ -563,105 +585,106 @@ export class WorktreeService implements WorktreeLandingCoordinator {
       this.allRecords = [];
     }
   }
-}
 
-async function git(cwd: string, ...args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync("git", args.flat(), { cwd, maxBuffer });
-  return stdout;
-}
-
-async function gitWithFallback(cwd: string, args: string[]): Promise<string | undefined> {
-  try {
-    return (await git(cwd, ...args)).trim();
-  } catch {
-    return undefined;
+  private async git(cwd: string, ...args: string[]): Promise<string> {
+    return this.gitRunner(cwd, args.flat());
   }
-}
 
-async function repositoryRoot(path: string): Promise<string> {
-  try {
-    return (await git(path, "rev-parse", "--show-toplevel")).trim();
-  } catch {
-    throw new Error("Worktrees require a Git repository");
+  private async gitWithFallback(cwd: string, args: string[]): Promise<string | undefined> {
+    try {
+      return (await this.git(cwd, ...args)).trim();
+    } catch {
+      return undefined;
+    }
   }
-}
 
-/** Returns conflicting file names from a dry-run merge, or null when Git cannot predict it. */
-async function dryRunConflicts(
-  repoRoot: string,
-  baseBranch: string,
-  branch: string,
-): Promise<string[] | null> {
-  try {
-    await git(repoRoot, "merge-tree", "--write-tree", "--name-only", baseBranch, branch);
-    return [];
-  } catch (error) {
-    const stdout = error instanceof Error && "stdout" in error ? String(error.stdout) : "";
-    if (!stdout) return null;
-    const lines = stdout
+  private async repositoryRoot(path: string): Promise<string> {
+    try {
+      return (await this.git(path, "rev-parse", "--show-toplevel")).trim();
+    } catch {
+      throw new Error("Worktrees require a Git repository");
+    }
+  }
+
+  /** Returns conflicting file names from a dry-run merge, or null when Git cannot predict it. */
+  private async dryRunConflicts(
+    repoRoot: string,
+    baseBranch: string,
+    branch: string,
+  ): Promise<string[] | null> {
+    try {
+      await this.git(repoRoot, "merge-tree", "--write-tree", "--name-only", baseBranch, branch);
+      return [];
+    } catch (error) {
+      const stdout = error instanceof Error && "stdout" in error ? String(error.stdout) : "";
+      if (!stdout) return null;
+      const lines = stdout
+        .split("\n")
+        .slice(1)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      return lines;
+    }
+  }
+
+  /** Returns files with unresolved merge conflicts from the index. */
+  private async unmergedFiles(cwd: string): Promise<string[]> {
+    const output = await this.git(cwd, "diff", "--name-only", "--diff-filter=U");
+    return output
       .split("\n")
-      .slice(1)
       .map((line) => line.trim())
       .filter(Boolean);
-    return lines;
   }
-}
 
-/** Returns files with unresolved merge conflicts from the index. */
-async function unmergedFiles(cwd: string): Promise<string[]> {
-  const output = await git(cwd, "diff", "--name-only", "--diff-filter=U");
-  return output
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-async function rebaseInProgress(cwd: string): Promise<boolean> {
-  for (const marker of ["rebase-merge", "rebase-apply"]) {
-    const gitPath = (await gitWithFallback(cwd, ["rev-parse", "--git-path", marker]))?.trim();
-    if (gitPath && existsSync(resolve(cwd, gitPath))) return true;
-  }
-  return false;
-}
-
-async function revParseExists(cwd: string, ref: string): Promise<boolean> {
-  try {
-    await git(cwd, "rev-parse", "--verify", "-q", ref);
-    return true;
-  } catch {
+  private async rebaseInProgress(cwd: string): Promise<boolean> {
+    for (const marker of ["rebase-merge", "rebase-apply"]) {
+      const gitPath = (
+        await this.gitWithFallback(cwd, ["rev-parse", "--git-path", marker])
+      )?.trim();
+      if (gitPath && existsSync(resolve(cwd, gitPath))) return true;
+    }
     return false;
   }
-}
 
-async function revListCount(cwd: string, range: string): Promise<number> {
-  const output = await git(cwd, "rev-list", "--count", range);
-  return Number.parseInt(output.trim(), 10) || 0;
-}
-
-async function isAncestor(cwd: string, ancestor: string, descendant: string): Promise<boolean> {
-  try {
-    await git(cwd, "merge-base", "--is-ancestor", ancestor, descendant);
-    return true;
-  } catch {
-    return false;
+  private async revParseExists(cwd: string, ref: string): Promise<boolean> {
+    try {
+      await this.git(cwd, "rev-parse", "--verify", "-q", ref);
+      return true;
+    } catch {
+      return false;
+    }
   }
-}
 
-async function dirtyFileCount(cwd: string): Promise<number> {
-  const output = await git(cwd, "status", "--porcelain");
-  return output.split("\n").filter((line) => line.trim().length > 0).length;
-}
+  private async revListCount(cwd: string, range: string): Promise<number> {
+    const output = await this.git(cwd, "rev-list", "--count", range);
+    return Number.parseInt(output.trim(), 10) || 0;
+  }
 
-async function defaultBranch(repoRoot: string): Promise<string> {
-  const remoteHead = await gitWithFallback(repoRoot, [
-    "symbolic-ref",
-    "-q",
-    "--short",
-    "refs/remotes/origin/HEAD",
-  ]);
-  if (remoteHead) return remoteHead.replace(/^origin\//, "") || "main";
-  const current = await gitWithFallback(repoRoot, ["rev-parse", "--abbrev-ref", "HEAD"]);
-  return current && current !== "HEAD" ? current : "main";
+  private async isAncestor(cwd: string, ancestor: string, descendant: string): Promise<boolean> {
+    try {
+      await this.git(cwd, "merge-base", "--is-ancestor", ancestor, descendant);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async dirtyFileCount(cwd: string): Promise<number> {
+    const output = await this.git(cwd, "status", "--porcelain");
+    return output.split("\n").filter((line) => line.trim().length > 0).length;
+  }
+
+  private async defaultBranch(repoRoot: string): Promise<string> {
+    const remoteHead = await this.gitWithFallback(repoRoot, [
+      "symbolic-ref",
+      "-q",
+      "--short",
+      "refs/remotes/origin/HEAD",
+    ]);
+    if (remoteHead) return remoteHead.replace(/^origin\//, "") || "main";
+    const current = await this.gitWithFallback(repoRoot, ["rev-parse", "--abbrev-ref", "HEAD"]);
+    return current && current !== "HEAD" ? current : "main";
+  }
 }
 
 function slugify(value: string): string {

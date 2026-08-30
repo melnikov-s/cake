@@ -4,8 +4,8 @@ import { createServer, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TURN_RECOVERY_NOTICE_PART_ID } from "../../../src/agent/turn-recovery";
-import { createCakeRuntime, type CakeRuntime } from "../../../src/agent/cake-runtime";
+import { TURN_RECOVERY_NOTICE_PART_ID } from "../../src/agent/turn-recovery";
+import { createCakeRuntime, type CakeRuntime } from "../../src/agent/cake-runtime";
 
 const temporaryDirectories: string[] = [];
 const servers: Server[] = [];

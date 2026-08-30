@@ -308,6 +308,7 @@ export class PluginBuildService {
     try {
       await build({
         configFile: false,
+        logLevel: "silent",
         root: resolve(this.sourceRoot, "src/renderer"),
         base: "./",
         define: {
@@ -362,6 +363,7 @@ export class PluginBuildService {
           platform: "node",
           target: "node22",
           sourcemap: true,
+          logLevel: "silent",
           alias: { "cake/backend": resolve(this.sourceRoot, "src/plugin/backend-api.ts") },
         });
         backends.push({ pluginId: plugin.manifest.id, path });
