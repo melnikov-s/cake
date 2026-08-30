@@ -127,6 +127,11 @@ export const RemoveIcon = () => (
     <path d="M18 6 6 18M6 6l12 12" />
   </Icon>
 );
+export const TrashIcon = ({ size = 15 }: { size?: number } = {}) => (
+  <Icon size={size}>
+    <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+  </Icon>
+);
 export const BackIcon = () => (
   <Icon>
     <path d="m15 18-6-6 6-6" />

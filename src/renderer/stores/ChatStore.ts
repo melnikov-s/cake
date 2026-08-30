@@ -43,6 +43,7 @@ export interface ChatStoreProps {
   removeAttachment?(index: number): void;
   annotations?(): readonly Annotation[];
   addAnnotation?(annotation: Omit<Annotation, "id">): void;
+  updateAnnotation?(id: string, update: Partial<Omit<Annotation, "id">>): void;
   removeAnnotation?(id: string): void;
   suggestFiles?(prefix: string): Promise<FileSuggestion[]>;
   focusRequestRevision?(): number;
@@ -482,6 +483,9 @@ export class ChatStore extends Store<ChatStoreProps> {
   }
   addAnnotation(annotation: Omit<Annotation, "id">) {
     this.props.addAnnotation?.(annotation);
+  }
+  updateAnnotation(id: string, update: Partial<Omit<Annotation, "id">>) {
+    this.props.updateAnnotation?.(id, update);
   }
   removeAnnotation(id: string) {
     this.props.removeAnnotation?.(id);

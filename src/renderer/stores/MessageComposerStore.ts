@@ -189,6 +189,14 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     this.requestFocus();
   }
 
+  updateAnnotation(id: string, update: Partial<Omit<Annotation, "id">>) {
+    const index = this.annotations.findIndex((annotation) => annotation.id === id);
+    if (index >= 0) {
+      this.annotations.splice(index, 1, { ...this.annotations[index], ...update });
+      this.props.persist();
+    }
+  }
+
   removeAnnotation(id: string) {
     const index = this.annotations.findIndex((annotation) => annotation.id === id);
     if (index >= 0) {

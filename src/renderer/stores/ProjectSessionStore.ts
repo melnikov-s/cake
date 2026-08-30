@@ -300,6 +300,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       removeAttachment: (index) => this.composerStore.removeAttachment(index),
       annotations: () => this.composerStore.annotations,
       addAnnotation: (annotation) => this.composerStore.addAnnotation(annotation),
+      updateAnnotation: (id, update) => this.composerStore.updateAnnotation(id, update),
       removeAnnotation: (id) => this.composerStore.removeAnnotation(id),
       suggestFiles: (prefix) => this.composerStore.suggestFiles(prefix),
       focusRequestRevision: () => this.composerStore.focusRequestRevision,

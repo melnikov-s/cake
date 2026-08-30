@@ -101,7 +101,10 @@ function Transcript({
   errorDetails,
   errorTitle,
   messageNavigationRequest,
+  annotations,
   addAnnotation,
+  updateAnnotation,
+  removeAnnotation,
   virtualized = true,
 }: {
   parts: UiPart[];
@@ -119,7 +122,10 @@ function Transcript({
   errorDetails?: string;
   errorTitle?: string;
   messageNavigationRequest?: { messageId: string; revision: number };
+  annotations?: readonly Annotation[];
   addAnnotation?(annotation: Parameters<ChatStore["addAnnotation"]>[0]): void;
+  updateAnnotation?(id: string, update: Partial<Omit<Annotation, "id">>): void;
+  removeAnnotation?(id: string): void;
   virtualized?: boolean;
 }) {
   const {
@@ -211,8 +217,11 @@ function Transcript({
     setTouchedFilesOpen(open: boolean) {
       touchedFilesStateRef.current.open = open;
     },
+    annotations: annotations ?? [],
     canAnnotate: Boolean(addAnnotation),
     addAnnotation,
+    updateAnnotation,
+    removeAnnotation,
     setTranscriptScrollState(
       state:
         | {
@@ -1487,6 +1496,93 @@ describe("Transcript scrolling", () => {
       }),
     );
     expect(document.body.querySelector('[role="dialog"][aria-label="Add annotation"]')).toBeNull();
+  });
+
+  it("renders pinned annotation marker and opens details popover to edit or delete", () => {
+    const updateAnnotation = vi.fn();
+    const removeAnnotation = vi.fn();
+    const annotation = {
+      id: "annotation-1",
+      messageId: "assistant-annotation-view",
+      entryId: "entry-annotation-view",
+      selectedText: "important",
+      startOffset: 6,
+      endOffset: 15,
+      contextBefore: "Alpha ",
+      contextAfter: " detail.",
+      comment: "Initial note",
+    };
+
+    act(() =>
+      root.render(
+        <Transcript
+          parts={[
+            {
+              id: "assistant-annotation-view",
+              kind: "text",
+              role: "assistant",
+              entryId: "entry-annotation-view",
+              text: "Alpha important detail.",
+              status: "complete",
+            },
+          ]}
+          sessionId="session-1"
+          isStreaming={false}
+          annotations={[annotation]}
+          updateAnnotation={updateAnnotation}
+          removeAnnotation={removeAnnotation}
+          empty={<div />}
+        />,
+      ),
+    );
+
+    const markerButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="View annotation 1"]',
+    )!;
+    expect(markerButton).not.toBeNull();
+
+    // Click marker to open details popover
+    act(() => markerButton.click());
+
+    const detailsDialog = document.body.querySelector<HTMLElement>(
+      '[role="dialog"][aria-label="Annotation details"]',
+    )!;
+    expect(detailsDialog).not.toBeNull();
+    expect(detailsDialog.textContent).toContain("Initial note");
+
+    // Click Edit button
+    const editButton = detailsDialog.querySelector<HTMLButtonElement>(
+      'button[aria-label="Edit annotation"]',
+    )!;
+    act(() => editButton.click());
+
+    const editInput = detailsDialog.querySelector<HTMLTextAreaElement>(
+      '[aria-label="Edit annotation comment"]',
+    )!;
+    expect(editInput).not.toBeNull();
+
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
+        editInput,
+        "Updated note",
+      );
+      editInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    // Save changes
+    act(() => detailsDialog.querySelector<HTMLButtonElement>('button[type="submit"]')!.click());
+    expect(updateAnnotation).toHaveBeenCalledWith("annotation-1", {
+      comment: "Updated note",
+    });
+
+    // Test delete action
+    const deleteButton = detailsDialog.querySelector<HTMLButtonElement>(
+      'button[aria-label="Delete annotation"]',
+    );
+    if (deleteButton) {
+      act(() => deleteButton.click());
+      expect(removeAnnotation).toHaveBeenCalledWith("annotation-1");
+    }
   });
 
   it("keeps the native menu over editing surfaces and collapsed selections", () => {

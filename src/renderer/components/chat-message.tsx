@@ -19,6 +19,7 @@ import {
   MessageCommentThreadPopover,
   type MessageCommentAnchorRect,
 } from "@/components/message-comment-popover";
+import { AnnotationItemPopover } from "./annotation-item-popover";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { SourceLocation } from "../../ipc/source-location";
 import type { UiPart } from "../../ipc/session-contract";
@@ -282,12 +283,19 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
     id: string;
     anchor: HTMLElement | MessageCommentAnchorRect;
   }>();
+  const [openAnnotation, setOpenAnnotation] = useState<{
+    id: string;
+    anchor: HTMLElement | MessageCommentAnchorRect;
+  }>();
   const [markerPositions, setMarkerPositions] = useState<
     Record<string, { left: number; top: number }>
   >({});
   const messageRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const commentThreads = behavior.messageComments?.threadsForMessage(part.id) ?? [];
+  const draftAnnotations = behavior.store.annotations.filter(
+    (annotation) => annotation.messageId === part.id,
+  );
   const closeFullscreen = useCallback(() => setFullscreen(false), []);
   useEffect(() => {
     if (!copied) return;
@@ -307,7 +315,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
   useLayoutEffect(() => {
     const key = `${part.id}:${part.entryId ?? ""}`;
     const container = contentRef.current;
-    const ranges = container
+    const threadRanges = container
       ? commentThreads.flatMap((thread) => {
           const start = thread.anchor.startOffset;
           const end = thread.anchor.endOffset;
@@ -316,7 +324,16 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
           return range ? [range] : [];
         })
       : [];
-    messageHighlightRanges.set(key, ranges);
+    const annotationRanges = container
+      ? draftAnnotations.flatMap((annotation) => {
+          const start = annotation.startOffset;
+          const end = annotation.endOffset;
+          if (start === undefined || end === undefined) return [];
+          const range = rangeAtOffsets(container, start, end);
+          return range ? [range] : [];
+        })
+      : [];
+    messageHighlightRanges.set(key, [...threadRanges, ...annotationRanges]);
     refreshMessageHighlights();
     return () => {
       messageHighlightRanges.delete(key);
@@ -327,6 +344,9 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
     part.entryId,
     part.text,
     commentThreads.map((thread) => `${thread.id}:${thread.updatedAt}`).join("|"),
+    draftAnnotations
+      .map((a) => `${a.id}:${a.startOffset}:${a.endOffset}:${a.comment ?? ""}`)
+      .join("|"),
   ]);
 
   useLayoutEffect(() => {
@@ -352,6 +372,22 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
           top: rect.top - messageRect.top + rect.height / 2,
         };
       }
+      for (const annotation of draftAnnotations) {
+        const start = annotation.startOffset;
+        const end = annotation.endOffset;
+        if (start === undefined || end === undefined) continue;
+        const range = rangeAtOffsets(contentNode, start, end);
+        const rangeRects = range ? Array.from(range.getClientRects()) : [];
+        const rect = rangeRects.at(-1) ?? range?.getBoundingClientRect();
+        if (!rect) continue;
+        next[annotation.id] = {
+          left: Math.min(
+            Math.max(8, rect.right - messageRect.left + 7),
+            Math.max(8, messageRect.width - 30),
+          ),
+          top: rect.top - messageRect.top + rect.height / 2,
+        };
+      }
       setMarkerPositions(next);
     };
     update();
@@ -368,10 +404,14 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
     commentThreads
       .map((thread) => `${thread.id}:${thread.anchor.startOffset}:${thread.anchor.endOffset}`)
       .join("|"),
+    draftAnnotations.map((a) => `${a.id}:${a.startOffset}:${a.endOffset}`).join("|"),
   ]);
 
   const activeThread = openThread
     ? commentThreads.find((thread) => thread.id === openThread.id)
+    : undefined;
+  const activeAnnotation = openAnnotation
+    ? draftAnnotations.find((annotation) => annotation.id === openAnnotation.id)
     : undefined;
 
   return (
@@ -404,6 +444,23 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
             </IconButton>
           ),
       )}
+      {draftAnnotations.map(
+        (annotation, index) =>
+          markerPositions[annotation.id] && (
+            <IconButton
+              key={annotation.id}
+              className="absolute z-2 grid size-[27px] -translate-y-1/2 place-items-center rounded-full border border-accent/60 bg-card/90 text-foreground shadow-md hover:scale-105 hover:bg-accent/20 cursor-pointer"
+              style={markerPositions[annotation.id]}
+              tooltip={annotation.comment || annotation.selectedText}
+              ariaLabel={`View annotation ${index + 1}`}
+              onClick={(event) =>
+                setOpenAnnotation({ id: annotation.id, anchor: event.currentTarget })
+              }
+            >
+              <ChatIcon size={15} />
+            </IconButton>
+          ),
+      )}
       {activeThread && behavior.messageComments && (
         <MessageCommentThreadPopover
           anchor={openThread!.anchor}
@@ -411,6 +468,15 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
           store={behavior.messageComments}
           renderChat={behavior.renderChat}
           onClose={() => setOpenThread(undefined)}
+        />
+      )}
+      {activeAnnotation && (
+        <AnnotationItemPopover
+          anchor={openAnnotation!.anchor}
+          annotation={activeAnnotation}
+          onUpdate={(id, update) => behavior.store.updateAnnotation(id, update)}
+          onRemove={(id) => behavior.store.removeAnnotation(id)}
+          onClose={() => setOpenAnnotation(undefined)}
         />
       )}
       {part.status !== "streaming" && (

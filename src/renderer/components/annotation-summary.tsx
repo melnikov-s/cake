@@ -1,10 +1,11 @@
+import { observer } from "r-state-tree/react";
 import { AnnotationIcon, RemoveIcon } from "@/components/ui/icons";
 import { IconButton } from "@/components/ui/icon-button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { Annotation } from "../../ipc/session-contract";
 
-export function AnnotationSummary({
+export const AnnotationSummary = observer(function AnnotationSummary({
   annotations,
   onRemove,
   className,
@@ -66,4 +67,4 @@ export function AnnotationSummary({
       </PopoverContent>
     </Popover>
   );
-}
+});
