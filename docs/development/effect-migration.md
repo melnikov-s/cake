@@ -16,7 +16,9 @@ and is not required reading unless a change could accidentally weaken its future
 security boundary.
 
 This document is temporary and current-state-aware. Architecture documents say
-what Cake is; this document says how the repository becomes it. Do not preserve
+what Cake is; this document says how the repository becomes it. Copyable,
+bounded work-packet prompts are in
+[`effect-migration-prompts.md`](./effect-migration-prompts.md). Do not preserve
 a transitional API merely because it appears here.
 
 ## Required external reference
