@@ -1016,6 +1016,13 @@ async function handleCakeRequest(
     terminals.resize(event.sender.id, request.terminalId, request.cols, request.rows);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
+  if (request.type === "get-terminal-status") {
+    return desktopResponseSchema.parse({
+      type: "terminal-status",
+      requestId: request.requestId,
+      runningProgram: terminals.hasRunningProgram(event.sender.id, request.terminalId),
+    });
+  }
   if (request.type === "close-terminal") {
     terminals.close(event.sender.id, request.terminalId);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });

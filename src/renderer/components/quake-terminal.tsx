@@ -112,13 +112,13 @@ export const QuakeTerminal = observer(function QuakeTerminal({ store }: { store:
           >
             <ConfirmationRequest>
               <ConfirmationTitle id={resolutionTitleId}>
-                Resolve and stop{" "}
-                {store.resolutionRequest.terminalCount === 1 ? "terminal" : "terminals"}?
+                Resolve and stop running{" "}
+                {store.resolutionRequest.runningProgramCount === 1 ? "program" : "programs"}?
               </ConfirmationTitle>
               <ConfirmationDescription>
-                {store.resolutionRequest.terminalCount === 1
-                  ? "This session has a running terminal. Resolving it will stop the shell and any commands running inside it."
-                  : `${store.resolutionRequest.terminalCount} sessions have running terminals. Resolving them will stop their shells and any commands running inside them.`}
+                {store.resolutionRequest.runningProgramCount === 1
+                  ? "This session’s terminal has a running program. Resolving it will stop the program and close the shell."
+                  : `${store.resolutionRequest.runningProgramCount} sessions have running programs in their terminals. Resolving them will stop the programs and close the shells.`}
               </ConfirmationDescription>
               <ConfirmationActions>
                 <ConfirmationAction variant="outline" onClick={() => store.cancelResolution()}>

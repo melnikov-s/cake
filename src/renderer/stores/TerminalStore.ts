@@ -12,6 +12,7 @@ export interface TerminalClient {
   }): Promise<{ terminalId: string; shell: string }>;
   writeTerminal?(terminalId: string, data: string): Promise<void>;
   resizeTerminal?(terminalId: string, cols: number, rows: number): Promise<void>;
+  getTerminalStatus?(terminalId: string): Promise<{ runningProgram: boolean }>;
   closeTerminal?(terminalId: string): Promise<void>;
 }
 
@@ -36,7 +37,7 @@ export class TerminalStore extends Store<{
 }> {
   open = false;
   entries: TerminalEntry[] = [];
-  resolutionRequest: { terminalCount: number } | undefined;
+  resolutionRequest: { runningProgramCount: number } | undefined;
   private pendingResolution: PendingResolution | undefined;
   private readonly dataListeners = new Map<string, Set<(data: string) => void>>();
   private readonly bufferedData = new Map<string, string>();
@@ -198,16 +199,29 @@ export class TerminalStore extends Store<{
     };
   }
 
-  prepareResolution(targets: readonly Pick<TerminalTarget, "kind" | "sessionId">[]) {
+  async prepareResolution(targets: readonly Pick<TerminalTarget, "kind" | "sessionId">[]) {
     const targetKeys = new Set(targets.map((target) => `${target.kind}:${target.sessionId}`));
-    const keys = this.entries
-      .filter((entry) => entry.terminalId && targetKeys.has(entry.key))
-      .map((entry) => entry.key);
-    if (keys.length === 0) return Promise.resolve(true);
-    if (this.pendingResolution) return Promise.resolve(false);
+    const terminals = this.entries.flatMap((entry) =>
+      entry.terminalId && targetKeys.has(entry.key)
+        ? [{ key: entry.key, terminalId: entry.terminalId }]
+        : [],
+    );
+    if (terminals.length === 0) return true;
+    if (this.pendingResolution) return false;
+
+    const statuses = await Promise.allSettled(
+      terminals.map(({ terminalId }) => this.props.client.getTerminalStatus?.(terminalId)),
+    );
+    const keys = terminals.flatMap((terminal, index) => {
+      const status = statuses[index];
+      return status?.status === "fulfilled" && status.value?.runningProgram ? [terminal.key] : [];
+    });
+    if (keys.length === 0) return true;
+    if (this.pendingResolution) return false;
+
     return new Promise<boolean>((finish) => {
       this.pendingResolution = { keys, finish };
-      this.resolutionRequest = { terminalCount: keys.length };
+      this.resolutionRequest = { runningProgramCount: keys.length };
     });
   }
 

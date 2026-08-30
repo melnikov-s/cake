@@ -79,12 +79,13 @@ describe("TerminalStore", () => {
     expect(output).toEqual(["prompt> "]);
   });
 
-  it("requires confirmation and closes affected terminals before resolution", async () => {
+  it("requires confirmation and closes terminals with running programs before resolution", async () => {
     const closeTerminal = vi.fn(async () => undefined);
     const store = mount(
       createStore(TerminalStore, {
         client: {
           openTerminal: async () => ({ terminalId: crypto.randomUUID(), shell: "zsh" }),
+          getTerminalStatus: async () => ({ runningProgram: true }),
           closeTerminal,
         },
         activeTarget: () => projectTarget("one"),
@@ -94,11 +95,34 @@ describe("TerminalStore", () => {
     await store.toggle();
 
     const prepared = store.prepareResolution([{ kind: "project", sessionId: "one" }]);
-    expect(store.resolutionRequest).toEqual({ terminalCount: 1 });
+    await vi.waitFor(() => {
+      expect(store.resolutionRequest).toEqual({ runningProgramCount: 1 });
+    });
     await store.confirmResolution();
 
     await expect(prepared).resolves.toBe(true);
     expect(closeTerminal).toHaveBeenCalledOnce();
     expect(store.entries).toHaveLength(0);
+  });
+
+  it("resolves without confirmation when the terminal is waiting at its shell prompt", async () => {
+    const getTerminalStatus = vi.fn(async () => ({ runningProgram: false }));
+    const store = mount(
+      createStore(TerminalStore, {
+        client: {
+          openTerminal: async () => ({ terminalId: crypto.randomUUID(), shell: "zsh" }),
+          getTerminalStatus,
+        },
+        activeTarget: () => projectTarget("one"),
+      }),
+    );
+    stores.push(store);
+    await store.toggle();
+
+    await expect(store.prepareResolution([{ kind: "project", sessionId: "one" }])).resolves.toBe(
+      true,
+    );
+    expect(getTerminalStatus).toHaveBeenCalledWith(store.activeEntry?.terminalId);
+    expect(store.resolutionRequest).toBeUndefined();
   });
 });

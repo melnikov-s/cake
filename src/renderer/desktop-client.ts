@@ -213,6 +213,7 @@ export interface DesktopClient {
   }): Promise<{ terminalId: string; shell: string }>;
   writeTerminal?(terminalId: string, data: string): Promise<void>;
   resizeTerminal?(terminalId: string, cols: number, rows: number): Promise<void>;
+  getTerminalStatus?(terminalId: string): Promise<{ runningProgram: boolean }>;
   closeTerminal?(terminalId: string): Promise<void>;
   getCustomizationState(): Promise<CustomizationState>;
   getPluginAuthoringReference(): Promise<string>;
@@ -794,6 +795,17 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         cols,
         rows,
       });
+    },
+    async getTerminalStatus(terminalId) {
+      const requestId = crypto.randomUUID();
+      const response = await bridge.request({
+        type: "get-terminal-status",
+        requestId,
+        terminalId,
+      });
+      if (response.type !== "terminal-status" || response.requestId !== requestId)
+        throw new Error("Cake could not inspect the terminal");
+      return { runningProgram: response.runningProgram };
     },
     async closeTerminal(terminalId) {
       await accept(bridge, {

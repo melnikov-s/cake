@@ -13,6 +13,7 @@ interface TerminalProcess {
   ownerId: number;
   kind: TerminalSessionKind;
   sessionId: string;
+  shell: string;
   process: IPty;
 }
 
@@ -52,7 +53,12 @@ export class TerminalManager {
       cwd: cwd || homedir(),
       env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor" },
     });
-    this.terminals.set(terminalId, { ownerId, ...target, process: terminal });
+    this.terminals.set(terminalId, {
+      ownerId,
+      ...target,
+      shell: normalizeProcessName(shell),
+      process: terminal,
+    });
     terminal.onData((data) => {
       for (let offset = 0; offset < data.length; offset += 262_144)
         this.emit({
@@ -70,17 +76,22 @@ export class TerminalManager {
   }
 
   write(ownerId: number, terminalId: string, data: string) {
-    this.owned(ownerId, terminalId).write(data);
+    this.owned(ownerId, terminalId).process.write(data);
   }
 
   resize(ownerId: number, terminalId: string, cols: number, rows: number) {
-    this.owned(ownerId, terminalId).resize(cols, rows);
+    this.owned(ownerId, terminalId).process.resize(cols, rows);
+  }
+
+  hasRunningProgram(ownerId: number, terminalId: string) {
+    const terminal = this.owned(ownerId, terminalId);
+    return normalizeProcessName(terminal.process.process) !== terminal.shell;
   }
 
   close(ownerId: number, terminalId: string) {
     const terminal = this.owned(ownerId, terminalId);
     this.terminals.delete(terminalId);
-    terminal.kill();
+    terminal.process.kill();
   }
 
   closeSession(kind: TerminalSessionKind, sessionId: string) {
@@ -107,6 +118,12 @@ export class TerminalManager {
   private owned(ownerId: number, terminalId: string) {
     const terminal = this.terminals.get(terminalId);
     if (!terminal || terminal.ownerId !== ownerId) throw new Error("Terminal is unavailable");
-    return terminal.process;
+    return terminal;
   }
+}
+
+function normalizeProcessName(name: string) {
+  return basename(name.trim().replace(/^-/, ""))
+    .toLowerCase()
+    .replace(/\.exe$/, "");
 }

@@ -2,18 +2,29 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
+import { cakeWorkspaceSessionDirectory } from "../../src/agent/session-discovery";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("Quake terminal runs a shell and remains alive while hidden", async () => {
+test("Quake terminal runs a shell and only warns on resolution for a running program", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-terminal-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
-  await Promise.all([mkdir(userData, { recursive: true }), mkdir(project, { recursive: true })]);
+  const cakeHome = join(temporaryRoot, "cake-home");
+  const sessionId = "terminal-smoke-session";
+  const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
+  const timestamp = new Date(0).toISOString();
+  await Promise.all([
+    mkdir(userData, { recursive: true }),
+    mkdir(project, { recursive: true }),
+    mkdir(sessionDirectory, { recursive: true }),
+  ]);
   await writeFile(
     join(userData, "window-state.json"),
     JSON.stringify({
       projectPath: project,
+      selectedSessionId: sessionId,
+      activeConversation: { kind: "project-session", workspacePath: project, sessionId },
       recentProjectPaths: [project],
       draft: "",
       theme: "dark",
@@ -35,6 +46,25 @@ test("Quake terminal runs a shell and remains alive while hidden", async () => {
       trustedProjectPaths: [],
     }),
   );
+  await writeFile(
+    join(sessionDirectory, `${sessionId}.jsonl`),
+    [
+      { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+      {
+        type: "message",
+        id: "user-1",
+        parentId: null,
+        timestamp,
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Test the terminal" }],
+          timestamp: 0,
+        },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
+  );
 
   const application = await electron.launch({
     args: [repositoryRoot],
@@ -43,7 +73,7 @@ test("Quake terminal runs a shell and remains alive while hidden", async () => {
       ...process.env,
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: userData,
-      CAKE_HOME: join(temporaryRoot, "cake-home"),
+      CAKE_HOME: cakeHome,
     },
   });
 
@@ -67,6 +97,28 @@ test("Quake terminal runs a shell and remains alive while hidden", async () => {
     await page.keyboard.press("Meta+Backquote");
     await expect(panel).toHaveAttribute("aria-hidden", "false");
     await expect(panel.locator(".xterm-rows")).toContainText("CAKE_TERMINAL_OK");
+
+    await panel.locator(".xterm-screen").click();
+    await page.keyboard.type("sleep 60");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Meta+Backquote");
+    const resolveAction = page.locator(
+      `.session-item[data-session-id='${sessionId}'] .session-resolve-action`,
+    );
+    await resolveAction.click();
+    await expect(page.getByText("Resolve and stop running program?")).toBeVisible();
+    await page.getByRole("button", { name: "Cancel" }).click();
+
+    await page.keyboard.press("Meta+Backquote");
+    await panel.locator(".xterm-screen").click();
+    await page.keyboard.press("Control+C");
+    await page.keyboard.type("printf CAKE_TERMINAL_IDLE");
+    await page.keyboard.press("Enter");
+    await expect(panel.locator(".xterm-rows")).toContainText("CAKE_TERMINAL_IDLE");
+    await page.keyboard.press("Meta+Backquote");
+    await resolveAction.click();
+    await expect(page.getByText("Resolve and stop running program?")).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Expand Resolved" })).toBeVisible();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

@@ -350,6 +350,11 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     cols: z.number().int().min(2).max(1_000),
     rows: z.number().int().min(1).max(1_000),
   }),
+  z.object({
+    type: z.literal("get-terminal-status"),
+    requestId: z.uuid(),
+    terminalId: z.uuid(),
+  }),
   z.object({ type: z.literal("close-terminal"), requestId: z.uuid(), terminalId: z.uuid() }),
   z.object({ type: z.literal("set-vscode-server-path"), path: z.string().max(4_096).optional() }),
   z.object({ type: z.literal("get-embedded-editor-state") }),
@@ -961,6 +966,11 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
     requestId: z.uuid(),
     terminalId: z.uuid(),
     shell: z.string().min(1).max(256),
+  }),
+  z.object({
+    type: z.literal("terminal-status"),
+    requestId: z.uuid(),
+    runningProgram: z.boolean(),
   }),
   z.object({ type: z.literal("customization-state"), state: customizationStateSchema }),
   z.object({ type: z.literal("plugin-authoring-reference"), reference: z.string().max(1_000_000) }),
