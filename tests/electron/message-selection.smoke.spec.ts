@@ -152,6 +152,8 @@ test("selects rendered TypeScript and opens a continuous, resizable selection ch
         menu.popup = (options) => {
           const item = menu.items.find((candidate) => candidate.label === "Chat about this");
           if (!item?.click) throw new Error("Expected Chat about this menu item");
+          if (!item.icon || item.icon.isEmpty())
+            throw new Error("Expected Chat about this menu item to have an icon");
           item.click(item, options.window!, { triggeredByAccelerator: false });
         };
         return menu;

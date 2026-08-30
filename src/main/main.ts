@@ -71,6 +71,8 @@ import {
 } from "./inline-widget-protocol";
 import { PluginAgentHost, resolveAgentModel } from "./plugin-agent-host";
 import cakeIconPath from "../assets/cake.png?asset";
+import annotationMenuIconPath from "../assets/menu-annotation.png?asset";
+import chatMenuIconPath from "../assets/menu-chat.png?asset";
 // The manifest ships as a plain JSON module and is written out as the
 // extension's package.json at install time. The extension main ships as an
 // asset file so its `require(...)` calls are never inlined into this bundle
@@ -82,6 +84,20 @@ import cakeLightThemeSource from "../assets/vscode-companion/themes/cake-light-c
 import cakeDarkThemeSource from "../assets/vscode-companion/themes/cake-dark-color-theme.json?raw";
 
 app.setName("Cake");
+
+type IconMenuEntry = Omit<
+  Electron.MenuItemConstructorOptions,
+  "icon" | "label" | "role" | "type"
+> & {
+  label: string;
+  icon: string;
+};
+
+function iconMenuEntry({ icon: iconPath, ...entry }: IconMenuEntry) {
+  const icon = nativeImage.createFromPath(iconPath);
+  icon.setTemplateImage(true);
+  return { ...entry, icon } satisfies Electron.MenuItemConstructorOptions;
+}
 registerInlineWidgetScheme();
 
 interface PiHost {
@@ -980,9 +996,21 @@ async function handleCakeRequest(
         };
         const template: Electron.MenuItemConstructorOptions[] = [{ role: "copy" }];
         if (request.canAnnotate)
-          template.push({ label: "Add annotation", click: () => finish("add-annotation") });
+          template.push(
+            iconMenuEntry({
+              label: "Add annotation",
+              icon: annotationMenuIconPath,
+              click: () => finish("add-annotation"),
+            }),
+          );
         if (request.canChat)
-          template.push({ label: "Chat about this", click: () => finish("chat-about-selection") });
+          template.push(
+            iconMenuEntry({
+              label: "Chat about this",
+              icon: chatMenuIconPath,
+              click: () => finish("chat-about-selection"),
+            }),
+          );
         template.push({ role: "selectAll" });
         Menu.buildFromTemplate(template).popup({ window: owner, callback: () => finish() });
       },
