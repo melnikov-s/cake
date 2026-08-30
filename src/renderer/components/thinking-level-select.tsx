@@ -1,7 +1,9 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "@/lib/utils";
 import type { ThinkingLevel } from "../../ipc/session-contract";
+import { Button } from "./ui/button";
 import { ChevronDownIcon } from "./ui/icons";
+import { NavItem } from "./ui/nav-item";
 
 function thinkingLevelLabel(level: ThinkingLevel) {
   return level === "off"
@@ -109,11 +111,12 @@ export function ThinkingLevelSelect({
           setOpen(false);
       }}
     >
-      <button
+      <Button
         ref={triggerRef}
         type="button"
+        variant="outline"
         className={cn(
-          "flex h-8 w-full cursor-pointer items-center justify-between rounded-lg border border-border bg-input px-2.5 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+          "h-8 w-full justify-between px-2.5 text-xs font-normal",
           variant === "settings" && "h-9 text-sm",
         )}
         role="combobox"
@@ -129,7 +132,7 @@ export function ThinkingLevelSelect({
         <span className="pointer-events-none shrink-0 text-muted-foreground" aria-hidden="true">
           <ChevronDownIcon size={14} />
         </span>
-      </button>
+      </Button>
       {open && (
         <div className="absolute top-[calc(100%+4px)] left-0 z-50 w-full min-w-[200px] overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-xl">
           <div
@@ -143,30 +146,17 @@ export function ThinkingLevelSelect({
               {levels.map((level, index) => {
                 const selected = level === value;
                 return (
-                  <button
+                  <NavItem
                     id={optionId(index)}
-                    type="button"
                     role="option"
                     aria-selected={selected}
-                    className={cn(
-                      "flex w-full cursor-pointer items-center justify-between rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted/70",
-                      index === activeIndex && "bg-muted text-foreground",
-                    )}
+                    active={index === activeIndex}
                     key={level}
+                    label={thinkingLevelLabel(level)}
                     onMouseEnter={() => setActiveIndex(index)}
                     onClick={() => choose(level)}
-                  >
-                    <span>
-                      <strong className="font-medium text-foreground">
-                        {thinkingLevelLabel(level)}
-                      </strong>
-                    </span>
-                    {selected ? (
-                      <i className="font-mono text-accent not-italic" aria-hidden="true">
-                        ✓
-                      </i>
-                    ) : null}
-                  </button>
+                    trailing={selected ? <span className="font-mono text-accent">✓</span> : null}
+                  />
                 );
               })}
             </div>

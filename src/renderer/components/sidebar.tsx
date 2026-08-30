@@ -1,14 +1,8 @@
 import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
+import { DisclosureTrigger } from "./ui/disclosure-trigger";
 import { IconButton } from "./ui/icon-button";
-import {
-  BackIcon,
-  ChevronIcon,
-  FolderPlusIcon,
-  ForwardIcon,
-  SettingsIcon,
-  SidebarIcon,
-} from "./ui/icons";
+import { BackIcon, FolderPlusIcon, ForwardIcon, SettingsIcon, SidebarIcon } from "./ui/icons";
 import { SidebarCakeChatGroup } from "./sidebar-cake-chat-group";
 import { SidebarProjectGroup } from "./sidebar-project-group";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
@@ -128,24 +122,14 @@ export const Sidebar = observer(function Sidebar({
               className="flex items-center justify-between px-1.5 pt-2.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/90"
               id="resolved-lane-heading"
             >
-              <button
-                className="flex h-[27px] cursor-pointer items-center gap-1.5 px-1.5 text-inherit font-inherit tracking-inherit uppercase"
-                type="button"
-                aria-expanded={store.resolvedLaneExpanded}
+              <DisclosureTrigger
+                className="h-[27px] px-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/90 hover:text-foreground"
+                open={store.resolvedLaneExpanded}
                 aria-controls="resolved-lane-content"
                 aria-label={`${store.resolvedLaneExpanded ? "Collapse" : "Expand"} Resolved`}
                 onClick={() => store.toggleResolvedLane()}
-              >
-                <span
-                  className={cn(
-                    "grid size-3.5 place-items-center text-muted-foreground transition-transform duration-150",
-                    !store.resolvedLaneExpanded && "-rotate-90",
-                  )}
-                >
-                  <ChevronIcon />
-                </span>
-                <span>Resolved</span>
-              </button>
+                title="Resolved"
+              />
             </div>
             {store.resolvedLaneExpanded && (
               <div id="resolved-lane-content" className="mt-1">

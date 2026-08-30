@@ -1,4 +1,6 @@
 import type { SessionTreeEntry } from "../../ipc/session-contract";
+import { Button } from "./ui/button";
+import { NavItem } from "./ui/nav-item";
 
 interface SessionTreeRow {
   node: SessionTreeEntry;
@@ -81,37 +83,44 @@ export function SessionTree({
                 className="absolute -left-[1px] size-1 -translate-x-1/2 rounded-full bg-accent"
               />
             )}
-            <button
-              type="button"
-              className="flex min-w-0 max-w-full flex-1 items-baseline gap-2 rounded-md bg-transparent px-1.5 py-1 text-left text-muted-foreground hover:bg-muted hover:text-foreground"
+            <NavItem
+              className="flex-1"
+              active={node.active}
               title={
                 node.messageRole === "user"
                   ? "Resume from this message"
                   : "Resume from this response"
               }
               onClick={() => onNavigate(node.id)}
-            >
-              {node.messageRole && (
-                <span
-                  data-slot="session-tree-role"
-                  className={`w-18 shrink-0 font-mono text-[10px] text-right ${
-                    node.messageRole === "user" ? "text-accent" : "text-success"
-                  }`}
+              icon={
+                node.messageRole ? (
+                  <span
+                    data-slot="session-tree-role"
+                    className={`w-18 shrink-0 font-mono text-[10px] text-right ${
+                      node.messageRole === "user" ? "text-accent" : "text-success"
+                    }`}
+                  >
+                    {node.messageRole}
+                  </span>
+                ) : null
+              }
+              label={<span className="truncate">{node.label || node.preview}</span>}
+              trailing={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-1.5 py-0 text-xs text-muted-foreground opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+                  aria-label={`Fork from ${node.preview}`}
+                  title="Fork from here"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onFork(node.id);
+                  }}
                 >
-                  {node.messageRole}
-                </span>
-              )}
-              <span className="truncate">{node.label || node.preview}</span>
-            </button>
-            <button
-              type="button"
-              className="shrink-0 rounded-md bg-transparent px-1.5 py-1 text-xs text-muted-foreground opacity-0 group-hover/row:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100"
-              aria-label={`Fork from ${node.preview}`}
-              title="Fork from here"
-              onClick={() => onFork(node.id)}
-            >
-              Fork
-            </button>
+                  Fork
+                </Button>
+              }
+            />
           </div>
         </li>
       ))}

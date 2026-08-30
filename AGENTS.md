@@ -98,16 +98,24 @@ Before implementing renderer UI:
 
 ### Components and controls
 
+- Whenever introducing a visual or interactive pattern, it must be created as a
+  shared UI component in `src/renderer/components/ui/` and added to the component
+  catalog. Never build one-off, inline interactive elements or feature-local
+  substitute widgets.
+- Feature TSX files must **never** render raw interactive HTML elements directly
+  (e.g. `<button>`, `<input>`, `<select>`, `<textarea>`). All interactive
+  surfaces must compose authoritative components from `src/renderer/components/ui/`
+  (`Button`, `IconButton`, `NavItem`, `DisclosureTrigger`, `ActionCard`, `Chip`,
+  `Input`, `Select`, `Textarea`, `Switch`, `SegmentedControl`, `Badge`, `Card`,
+  `Callout`, `Dialog`, `Popover`, `EmptyState`, etc.).
+- Raw HTML interactive elements are strictly restricted to the internal
+  implementation of authoritative primitives in `src/renderer/components/ui/`.
 - Compose the closest existing primitive or product component before creating
   a component. Do not recreate an existing control, source viewer, syntax
   highlighter, layout primitive, or interaction under another name.
 - Do not create a feature-local button, input, select, textarea, dialog,
   popover, tooltip, toggle, loading treatment, code viewer, or source viewer
   when an authoritative component exists.
-- Raw interactive elements are allowed inside the implementation of an
-  authoritative shared primitive, or when the required native semantics cannot
-  be represented by an existing primitive. If a shared capability is missing,
-  extend the authoritative primitive and update all consumers that need it.
 - Add a component only when it has a genuinely distinct responsibility that
   cannot be expressed by composing or extending the existing component set.
 - A feature source file exports exactly one named React component.

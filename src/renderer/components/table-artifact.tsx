@@ -74,13 +74,15 @@ export function TableArtifact({
                   className="border-b border-border p-2.5 font-semibold text-foreground"
                   key={column.id}
                 >
-                  <button
-                    className="cursor-pointer font-inherit text-inherit"
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto p-0 font-semibold text-foreground hover:bg-transparent hover:underline"
                     onClick={() => chooseSort(column.id)}
                   >
                     {column.label}
                     {sort?.column === column.id ? (sort.direction === 1 ? " ↑" : " ↓") : ""}
-                  </button>
+                  </Button>
                 </th>
               ))}
             </tr>

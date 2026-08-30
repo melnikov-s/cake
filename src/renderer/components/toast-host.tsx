@@ -1,6 +1,7 @@
 import { observer } from "r-state-tree/react";
 import type { ReactNode } from "react";
 import type { ToastStore } from "../stores/ToastStore";
+import { Callout } from "./ui/callout";
 
 /**
  * Renders transient app-level toasts from the ToastStore, plus any extra
@@ -15,16 +16,19 @@ export const ToastHost = observer(function ToastHost({
 }) {
   if (store.toasts.length === 0 && !children) return null;
   return (
-    <div className="toast-stack" aria-live="polite">
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm" aria-live="polite">
       {store.toasts.map((toast) => (
-        <button
+        <Callout
           key={toast.id}
-          className={`notice notice-${toast.tone}`}
+          variant={
+            toast.tone === "error" ? "error" : toast.tone === "warning" ? "warning" : "default"
+          }
+          className="cursor-pointer shadow-lg"
           onClick={() => store.dismiss(toast.id)}
         >
           <strong>{toast.title}</strong>
           <span>{toast.message}</span>
-        </button>
+        </Callout>
       ))}
       {children}
     </div>

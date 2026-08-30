@@ -1,12 +1,11 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { observer } from "r-state-tree/react";
-import { cn } from "@/lib/utils";
 import { diffStats } from "@/components/ai-elements/diff-view";
 import { VirtualizedConversation } from "@/components/ai-elements/conversation";
 import { WorkLogDiff } from "@/components/ai-elements/work-log-diff";
-import { ChevronIcon } from "@/components/ui/icons";
 import { StatusDot } from "@/components/ui/status-dot";
 import { Badge } from "@/components/ui/badge";
+import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
 import { formatElapsed } from "@/components/ui/loading-state";
 import type { UiPart } from "../../ipc/session-contract";
 import { toolDiff, workLogChanges } from "../../utils/turn-diff";
@@ -149,28 +148,22 @@ export const ActivityGroup = observer(function ActivityGroup({
           {showDiff ? (
             <div>
               <div className="mb-2 overflow-hidden rounded-lg border border-border bg-card/60">
-                <button
-                  type="button"
-                  className="flex w-full cursor-pointer items-center justify-between gap-3 px-3 py-2 text-left font-mono text-xs text-foreground hover:bg-muted/50 transition-colors"
-                  aria-expanded={activityStripOpen}
+                <DisclosureTrigger
+                  className="px-3 py-2 hover:bg-muted/50"
+                  open={activityStripOpen}
                   onClick={() => setActivityStripOpen((val) => !val)}
-                >
-                  <span className="flex min-w-0 items-center gap-2">
+                  badge={
                     <Badge variant="outline" className="h-4 px-1 text-[9px] font-mono uppercase">
                       Activity
                     </Badge>
-                    <span>{activityStripLabel}</span>
-                  </span>
-                  <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                    <span>{activityStripOpen ? "Hide steps" : "View steps"}</span>
-                    <ChevronIcon
-                      className={cn(
-                        "transition-transform duration-150",
-                        activityStripOpen && "-rotate-90",
-                      )}
-                    />
-                  </span>
-                </button>
+                  }
+                  title={activityStripLabel}
+                  trailing={
+                    <span className="text-[11px] text-muted-foreground">
+                      {activityStripOpen ? "Hide steps" : "View steps"}
+                    </span>
+                  }
+                />
                 {activityStripOpen && logElement && (
                   <VirtualizedConversation
                     className="space-y-2 border-t border-border bg-muted/20 p-2.5"

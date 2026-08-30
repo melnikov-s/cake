@@ -2,6 +2,8 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 
 import { cn } from "@/lib/utils";
 import type { ModelOption } from "../../ipc/session-contract";
 import { ChevronDownIcon } from "./ui/icons";
+import { Input } from "./ui/input";
+import { NavItem } from "./ui/nav-item";
 
 export interface ModelGroup {
   id: string;
@@ -145,12 +147,9 @@ export function ModelCombobox({
         }
       }}
     >
-      <input
+      <Input
         ref={inputRef}
-        className={cn(
-          "h-8 w-full rounded-lg border border-border bg-input px-2.5 pr-7 text-xs text-foreground placeholder:text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          variant === "settings" && "h-9 text-sm",
-        )}
+        className={cn("h-8 w-full pr-7 text-xs", variant === "settings" && "h-9 text-sm")}
         role="combobox"
         aria-label={ariaLabel}
         aria-autocomplete="list"
@@ -199,34 +198,25 @@ export function ModelCombobox({
                     const index = optionIndex++;
                     const selected = modelValue(model) === value;
                     return (
-                      <button
+                      <NavItem
                         id={`${listboxId}-option-${index}`}
-                        type="button"
                         role="option"
                         aria-selected={selected}
-                        className={cn(
-                          "flex w-full cursor-pointer items-center justify-between rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted/70",
-                          index === activeIndex && "bg-muted text-foreground",
-                        )}
+                        active={index === activeIndex}
                         key={modelValue(model)}
                         onMouseEnter={() => setActiveIndex(index)}
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => choose(model)}
-                      >
-                        <span className="min-w-0 flex-1">
-                          <strong className="block truncate font-medium text-foreground">
-                            {model.name}
-                          </strong>
-                          <small className="block truncate font-mono text-[10px] text-muted-foreground">
-                            {model.id}
-                          </small>
-                        </span>
-                        {selected ? (
-                          <i className="font-mono text-accent not-italic" aria-hidden="true">
-                            ✓
-                          </i>
-                        ) : null}
-                      </button>
+                        label={model.name}
+                        description={model.id}
+                        trailing={
+                          selected ? (
+                            <i className="font-mono text-accent not-italic" aria-hidden="true">
+                              ✓
+                            </i>
+                          ) : null
+                        }
+                      />
                     );
                   })}
                 </div>

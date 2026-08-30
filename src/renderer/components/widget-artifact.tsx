@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { observer } from "r-state-tree/react";
 import { fencedCode, Markdown } from "@/components/ai-elements/markdown";
 import { FullscreenSurface } from "@/components/fullscreen-surface";
+import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
 import {
@@ -91,21 +92,25 @@ export const WidgetArtifact = observer(function WidgetArtifact({
                   : "Ready"}
         </span>
         <span className="ml-auto flex items-center gap-2">
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             type="button"
-            className="cursor-pointer text-accent hover:underline"
+            className="h-auto p-0 text-[11px] text-accent hover:underline hover:bg-transparent"
             onClick={() => setSourceOpen((open) => !open)}
           >
             {sourceOpen ? "Hide source" : "Source"}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
             type="button"
-            className="cursor-pointer text-accent hover:underline disabled:opacity-50"
+            className="h-auto p-0 text-[11px] text-accent hover:underline hover:bg-transparent"
             disabled={status === "repairing" || status === "building"}
             onClick={() => setRepairPromptOpen((open) => !open)}
           >
             {repairPromptOpen ? "Close" : "Repair"}
-          </button>
+          </Button>
         </span>
       </div>
       {repairPromptOpen && (

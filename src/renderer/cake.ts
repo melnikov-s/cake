@@ -5,6 +5,7 @@ import { cakeSlotNames, type CakeSlotName } from "../plugin/slot-contract";
 import { registerPluginDefinition } from "./plugin-runtime";
 
 export { observer, useOptionalStore, useStore } from "r-state-tree/react";
+export { ActionCard, type ActionCardProps } from "./components/ui/action-card";
 export { Badge, type BadgeProps } from "./components/ui/badge";
 export { Button, type ButtonProps } from "./components/ui/button";
 export { Callout, type CalloutProps } from "./components/ui/callout";
@@ -16,6 +17,7 @@ export {
   CardHeader,
   CardTitle,
 } from "./components/ui/card";
+export { Chip, type ChipProps } from "./components/ui/chip";
 export {
   DialogBackdrop,
   DialogContent,
@@ -24,6 +26,7 @@ export {
   DialogHeader,
   DialogTitle,
 } from "./components/ui/dialog";
+export { DisclosureTrigger, type DisclosureTriggerProps } from "./components/ui/disclosure-trigger";
 export {
   EmptyState,
   EmptyStateDescription,
@@ -33,6 +36,7 @@ export {
 export { IconButton, type IconButtonProps } from "./components/ui/icon-button";
 export { Input, type InputProps } from "./components/ui/input";
 export { LoadingState, type LoadingStateVariant } from "./components/ui/loading-state";
+export { NavItem, type NavItemProps } from "./components/ui/nav-item";
 export {
   Popover,
   PopoverContent,

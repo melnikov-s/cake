@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { DisclosureTrigger } from "../ui/disclosure-trigger";
 import { StatusDot } from "../ui/status-dot";
 
 export function Reasoning({
@@ -23,15 +24,13 @@ export function Reasoning({
     <div className="rounded-xl border border-border/80 bg-muted/45 px-4 py-3">
       {hasContent ? (
         <>
-          <button
-            type="button"
-            className="flex cursor-pointer items-center gap-2 text-left font-mono text-xs font-semibold text-foreground"
+          <DisclosureTrigger
+            title={label}
+            status={streaming ? "running" : "complete"}
             onClick={onToggle}
-            aria-expanded={open}
-          >
-            <StatusDot status={streaming ? "running" : "complete"} />
-            <span className="truncate">{label}</span>
-          </button>
+            open={open}
+            showChevron={false}
+          />
           {open && <div className="mt-3 text-sm leading-6 text-muted-foreground">{children}</div>}
         </>
       ) : (

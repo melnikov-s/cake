@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "../lib/utils";
+import { Button } from "./ui/button";
 import { ChevronIcon, FolderIcon, PlusIcon } from "./ui/icons";
 import { IconButton } from "./ui/icon-button";
 import { SidebarSessionItem } from "./sidebar-session-item";
@@ -61,9 +62,10 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
         >
           <ChevronIcon />
         </IconButton>
-        <button
+        <Button
           data-slot="project-label"
-          className="flex min-w-0 flex-1 items-center gap-2 h-7 px-1 rounded text-left text-xs font-medium text-inherit hover:text-foreground outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          variant="ghost"
+          className="h-7 min-w-0 flex-1 justify-start gap-2 px-1 text-xs font-medium text-inherit hover:text-foreground"
           type="button"
           aria-label={
             resolved
@@ -82,7 +84,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
         >
           <FolderIcon />
           <span className="truncate">{projects.nameForPath(path)}</span>
-        </button>
+        </Button>
         {!resolved && (
           <IconButton
             className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity"
@@ -120,13 +122,15 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
             />
           ))}
           {sessions.length > visibleSessions.length && (
-            <button
+            <Button
               type="button"
-              className="text-left text-[11px] text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-sidebar-hover transition-colors"
+              variant="ghost"
+              size="sm"
+              className="h-auto justify-start px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
               onClick={() => store.showMoreSessions(path, resolved)}
             >
               Show more
-            </button>
+            </Button>
           )}
         </div>
       )}

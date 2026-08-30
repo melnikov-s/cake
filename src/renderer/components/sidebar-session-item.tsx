@@ -2,7 +2,9 @@ import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { WorktreeRecord } from "../../ipc/worktree-contract";
 import { cn } from "../lib/utils";
+import { Badge } from "./ui/badge";
 import { IconButton } from "./ui/icon-button";
+import { NavItem } from "./ui/nav-item";
 import { PullRequestIcon, ResolveIcon, RestoreIcon } from "./ui/icons";
 import type { SidebarStore } from "../stores/SidebarStore";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
@@ -86,46 +88,41 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
           }}
         />
       ) : (
-        <div className="flex h-full w-full min-w-0 items-center justify-between">
-          <button
-            type="button"
-            className="session-row flex min-w-0 flex-1 flex-col items-start justify-center self-stretch bg-transparent py-1 pl-2 pr-1 text-left text-inherit"
-            aria-current={selected ? "page" : undefined}
-            onClick={() => onOpen(session.id)}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              void store
-                .showSessionContextMenu(
-                  session.id,
-                  event.clientX,
-                  event.clientY,
-                  resolved,
-                  onMarkUnread ? unread : undefined,
-                )
-                .then((action) => {
-                  if (action === "rename") setRenamingValue(session.title);
-                  else if (action === "mark-unread") onMarkUnread?.(session.id, true);
-                  else if (action === "resolve") onResolve(session.id, true);
-                  else if (action === "unresolve") onResolve(session.id, false);
-                  else if (action === "delete") onDelete(session.id);
-                });
-            }}
-          >
-            <span
-              className="session-title flex w-full min-w-0 items-center gap-1.5 text-left"
-              title={session.title}
-            >
-              <span className="min-w-0 truncate">{session.title}</span>
-              {session.draft && (
-                <span className="shrink-0 rounded-full border border-border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Draft
-                </span>
-              )}
-            </span>
-            {(branch || !activity) && (
+        <NavItem
+          className="session-row flex-1"
+          active={selected}
+          onClick={() => onOpen(session.id)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            void store
+              .showSessionContextMenu(
+                session.id,
+                event.clientX,
+                event.clientY,
+                resolved,
+                onMarkUnread ? unread : undefined,
+              )
+              .then((action) => {
+                if (action === "rename") setRenamingValue(session.title);
+                else if (action === "mark-unread") onMarkUnread?.(session.id, true);
+                else if (action === "resolve") onResolve(session.id, true);
+                else if (action === "unresolve") onResolve(session.id, false);
+                else if (action === "delete") onDelete(session.id);
+              });
+          }}
+          label={<span className="session-title min-w-0 truncate">{session.title}</span>}
+          badge={
+            session.draft && (
+              <Badge variant="outline" size="xs" className="font-semibold uppercase tracking-wide">
+                Draft
+              </Badge>
+            )
+          }
+          description={
+            (branch || !activity) && (
               <span
                 className={cn(
-                  "mt-1.5 flex w-full min-w-0 items-center gap-1.5 text-[10px] font-normal leading-none",
+                  "flex w-full min-w-0 items-center gap-1.5 text-[10px] font-normal leading-none",
                   selected ? "text-primary/80" : "text-muted-foreground/80",
                 )}
               >
@@ -161,30 +158,30 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                   </>
                 )}
               </span>
-            )}
-          </button>
-          <div className="session-meta relative flex h-full w-14 shrink-0 items-center justify-center">
-            {activity ? (
-              <i
-                className={cn(
-                  "session-status size-2 rounded-full shrink-0",
-                  activity === "running" &&
-                    cn(
-                      "session-status-running animate-pulse",
-                      selected ? "bg-primary" : "bg-accent",
-                    ),
-                  activity === "unread" &&
-                    "session-status-unread bg-emerald-500 ring-2 ring-emerald-500/20",
-                  activity === "error" &&
-                    "session-status-error bg-destructive ring-2 ring-destructive/20",
-                )}
-                role="img"
-                aria-label={activityLabel}
-                title={activityLabel}
-              />
-            ) : (
-              <>
-                {canResolve && (
+            )
+          }
+          trailing={
+            <div className="session-meta relative flex h-full w-14 shrink-0 items-center justify-center">
+              {activity ? (
+                <i
+                  className={cn(
+                    "session-status size-2 rounded-full shrink-0",
+                    activity === "running" &&
+                      cn(
+                        "session-status-running animate-pulse",
+                        selected ? "bg-primary" : "bg-accent",
+                      ),
+                    activity === "unread" &&
+                      "session-status-unread bg-emerald-500 ring-2 ring-emerald-500/20",
+                    activity === "error" &&
+                      "session-status-error bg-destructive ring-2 ring-destructive/20",
+                  )}
+                  role="img"
+                  aria-label={activityLabel}
+                  title={activityLabel}
+                />
+              ) : (
+                canResolve && (
                   <IconButton
                     className={cn(
                       "session-resolve-action size-6 flex items-center justify-center rounded transition-opacity",
@@ -201,11 +198,11 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                   >
                     {resolved ? <RestoreIcon /> : <ResolveIcon />}
                   </IconButton>
-                )}
-              </>
-            )}
-          </div>
-        </div>
+                )
+              )}
+            </div>
+          }
+        />
       )}
     </div>
   );

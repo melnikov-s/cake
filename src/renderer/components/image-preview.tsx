@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { CloseIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
@@ -50,16 +51,16 @@ export function ImagePreview({
 
   return (
     <>
-      <button
+      <Button
         ref={triggerButton}
-        type="button"
-        className="inline-block max-w-full cursor-zoom-in overflow-hidden rounded-lg leading-none outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        variant="ghost"
+        className="inline-block h-auto max-w-full cursor-zoom-in overflow-hidden p-0 rounded-lg leading-none hover:bg-transparent"
         aria-label={`View ${alt} enlarged`}
         title="View enlarged"
         onClick={() => setOpen(true)}
       >
         <img src={src} alt={alt} />
-      </button>
+      </Button>
       {open &&
         portalHost &&
         createPortal(

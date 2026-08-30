@@ -3,6 +3,7 @@ import type { GlobalChatStore } from "../stores/GlobalChatStore";
 import type { AppShellStore } from "../stores/AppShellStore";
 import type { SidebarStore } from "../stores/SidebarStore";
 import { cn } from "../lib/utils";
+import { Button } from "./ui/button";
 import { CakeIcon, ChevronIcon, PlusIcon } from "./ui/icons";
 import { IconButton } from "./ui/icon-button";
 import { SidebarSessionItem } from "./sidebar-session-item";
@@ -49,9 +50,10 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
         >
           <ChevronIcon />
         </IconButton>
-        <button
+        <Button
           data-slot="project-label"
-          className="flex min-w-0 flex-1 items-center gap-2 h-7 px-1 rounded text-left text-xs font-medium text-inherit hover:text-foreground outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          variant="ghost"
+          className="h-7 min-w-0 flex-1 justify-start gap-2 px-1 text-xs font-medium text-inherit hover:text-foreground"
           type="button"
           aria-label={
             collapsed ? `Expand Cake Chat${resolved ? " resolved" : ""}` : "New Cake Chat"
@@ -60,7 +62,7 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
         >
           <CakeIcon />
           <span className="truncate">Cake Chat</span>
-        </button>
+        </Button>
         {!resolved && (
           <IconButton
             className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity"

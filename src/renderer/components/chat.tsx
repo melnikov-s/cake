@@ -10,6 +10,7 @@ import { RewordPromptDialog } from "@/components/reword-prompt-dialog";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
 import { SourceAttachment } from "@/components/source-attachment";
 import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
 import { IconButton } from "@/components/ui/icon-button";
 import { MarkdownIcon, PaperclipIcon, SendIcon, StopIcon } from "@/components/ui/icons";
 import { Popover, PopoverContent } from "@/components/ui/popover";
@@ -486,14 +487,14 @@ export const Chat = observer(function Chat({
                   </IconButton>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-muted px-2 py-1 font-mono text-xs text-foreground hover:bg-muted/80"
+                <Chip
                   key={`${attachment.kind}-${attachment.name}-${index}`}
                   onClick={() => store.removeAttachment(index)}
+                  className="font-mono text-xs"
+                  trailing={<span>×</span>}
                 >
-                  @ {attachment.name} <span>×</span>
-                </button>
+                  @ {attachment.name}
+                </Chip>
               ),
             )}
           </div>

@@ -9,9 +9,9 @@ import {
   type KeyboardEvent,
 } from "react";
 import { flushSync } from "react-dom";
-import { cn } from "@/lib/utils";
 import type { FileSuggestion, SessionSnapshot } from "../../ipc/session-contract";
 import { ComposerInput } from "./ai-elements/composer";
+import { NavItem } from "./ui/nav-item";
 
 type SlashCommand = SessionSnapshot["commands"][number];
 
@@ -265,63 +265,47 @@ export function SlashCommandCombobox({
         >
           {menuKind === "files"
             ? fileResults.items.map((item, index) => (
-                <button
+                <NavItem
                   id={`${listboxId}-option-${index}`}
                   key={`${item.value}:${index}`}
-                  className={cn(
-                    "flex w-full cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 text-left text-xs transition-colors hover:bg-muted/70",
-                    index === selectedIndex && "bg-muted text-foreground",
-                  )}
-                  type="button"
+                  active={index === selectedIndex}
                   role="option"
                   aria-selected={index === selectedIndex}
                   onMouseEnter={() => setActiveIndex(index)}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => chooseFile(item)}
-                >
-                  <code className="font-mono text-[11px] font-semibold text-accent whitespace-nowrap">
-                    {item.label}
-                  </code>
-                  <span className="flex min-w-0 flex-col">
-                    <strong className="truncate font-medium text-foreground">
-                      {item.description ?? item.value.replace(/^@/, "")}
-                    </strong>
-                    <small className="truncate font-mono text-[10px] text-muted-foreground">
-                      {item.label.endsWith("/") ? "Folder" : "File"}
-                    </small>
-                  </span>
-                </button>
+                  icon={
+                    <code className="font-mono text-[11px] font-semibold text-accent whitespace-nowrap">
+                      {item.label}
+                    </code>
+                  }
+                  label={item.description ?? item.value.replace(/^@/, "")}
+                  description={item.label.endsWith("/") ? "Folder" : "File"}
+                />
               ))
             : filteredCommands.map((command, index) => (
-                <button
+                <NavItem
                   id={`${listboxId}-option-${index}`}
                   key={`${command.source}:${command.name}`}
-                  className={cn(
-                    "flex w-full cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 text-left text-xs transition-colors hover:bg-muted/70",
-                    index === selectedIndex && "bg-muted text-foreground",
-                  )}
-                  type="button"
+                  active={index === selectedIndex}
                   role="option"
                   aria-selected={index === selectedIndex}
                   onMouseEnter={() => setActiveIndex(index)}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => chooseCommand(command)}
-                >
-                  <code className="font-mono text-[11px] font-semibold text-accent whitespace-nowrap">
-                    /{command.name}
-                    {command.argumentHint ? ` ${command.argumentHint}` : ""}
-                  </code>
-                  <span className="flex min-w-0 flex-col">
-                    <strong className="truncate font-medium text-foreground">
-                      {command.description ?? command.name}
-                    </strong>
-                    <small className="truncate font-mono text-[10px] text-muted-foreground">
-                      {command.source === "builtin"
-                        ? "Pi CLI"
-                        : `${command.source} · ${command.sourceInfo.scope}`}
-                    </small>
-                  </span>
-                </button>
+                  icon={
+                    <code className="font-mono text-[11px] font-semibold text-accent whitespace-nowrap">
+                      /{command.name}
+                      {command.argumentHint ? ` ${command.argumentHint}` : ""}
+                    </code>
+                  }
+                  label={command.description ?? command.name}
+                  description={
+                    command.source === "builtin"
+                      ? "Pi CLI"
+                      : `${command.source} · ${command.sourceInfo.scope}`
+                  }
+                />
               ))}
         </div>
       )}

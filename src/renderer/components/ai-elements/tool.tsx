@@ -10,7 +10,7 @@ import { toolDiff } from "../../../utils/turn-diff";
 import { toolSourceRange } from "../../../utils/source-ranges";
 import { toWorkspaceRelativePath } from "../../../utils/workspace-relative-path";
 import { Button } from "../ui/button";
-import { StatusDot } from "../ui/status-dot";
+import { DisclosureTrigger } from "../ui/disclosure-trigger";
 import { formatElapsed } from "../ui/loading-state";
 import { DiffView } from "./diff-view";
 import { languageForSource } from "./code";
@@ -229,30 +229,25 @@ export function Tool({
     <div className="rounded-xl border border-border bg-muted/35 px-4 py-3">
       <div className="flex items-center justify-between gap-3 min-w-0">
         <div className="group/path flex min-w-0 flex-1 items-center">
-          <button
-            type="button"
-            className="flex items-center gap-2 min-w-0 cursor-pointer font-mono text-xs font-semibold text-foreground text-left"
+          <DisclosureTrigger
+            className="flex-1"
+            title={title}
+            showChevron={false}
+            status={
+              part.state === "running"
+                ? "running"
+                : part.state === "success"
+                  ? "complete"
+                  : part.state === "error" || part.state === "denied"
+                    ? "failed"
+                    : part.state === "interrupted"
+                      ? "interrupted"
+                      : "ready"
+            }
             onClick={toggleOpen}
-            aria-expanded={open}
+            open={open}
             disabled={!hasDetails}
-          >
-            <StatusDot
-              status={
-                part.state === "running"
-                  ? "running"
-                  : part.state === "success"
-                    ? "complete"
-                    : part.state === "error" || part.state === "denied"
-                      ? "failed"
-                      : part.state === "interrupted"
-                        ? "interrupted"
-                        : "ready"
-              }
-            />
-            <span className="truncate" title={title}>
-              {title}
-            </span>
-          </button>
+          />
           {path && onOpenSourceLocation ? (
             <Button
               variant="ghost"

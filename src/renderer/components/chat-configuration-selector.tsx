@@ -6,6 +6,8 @@ import { ChevronDownIcon } from "./ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
+import { IconButton } from "./ui/icon-button";
+import { NavItem } from "./ui/nav-item";
 import { Badge } from "./ui/badge";
 import { SegmentedControlGroup, SegmentedControlButton } from "./ui/segmented-control";
 import type { ChatConfigurationStore } from "../stores/ChatConfigurationStore";
@@ -152,15 +154,17 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
                     {selectedModel.id}
                   </small>
                 </span>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   type="button"
                   onClick={showModels}
                   disabled={disabled}
-                  className="flex shrink-0 items-center gap-1 text-xs text-accent hover:underline disabled:opacity-50"
+                  className="h-auto p-0 text-xs text-accent hover:underline hover:bg-transparent"
                 >
                   Change model
                   <span aria-hidden="true">›</span>
-                </button>
+                </Button>
               </header>
               <section className="mt-3 grid gap-1.5" aria-label="Reasoning effort">
                 <span>
@@ -213,16 +217,15 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
             <>
               <header className="mb-2.5 flex items-center gap-2">
                 {selectedModel && (
-                  <button
-                    type="button"
-                    aria-label="Back to current model"
-                    className="grid size-6 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                  <IconButton
+                    tooltip="Back to current model"
+                    className="size-6"
                     onClick={() => {
                       setView("current");
                     }}
                   >
                     <span aria-hidden="true">‹</span>
-                  </button>
+                  </IconButton>
                 )}
                 <strong className="text-xs font-semibold text-foreground">Choose model</strong>
               </header>
@@ -241,35 +244,28 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
                       Presets
                     </h3>
                     {presets.map((preset) => (
-                      <button
+                      <NavItem
                         key={preset.id}
-                        type="button"
                         disabled={disabled}
-                        className="flex w-full cursor-pointer items-center justify-between rounded-lg p-2 text-left hover:bg-muted/60 disabled:opacity-50"
+                        label={preset.name}
+                        description={`${preset.provider}/${preset.modelId}`}
                         onClick={() => {
                           close();
                           void configuration.selectPreset(preset);
                         }}
-                      >
-                        <span className="min-w-0 flex-1">
-                          <strong className="block truncate font-medium text-foreground">
-                            {preset.name}
-                          </strong>
-                          <small className="block truncate font-mono text-[10px] text-muted-foreground">
-                            {preset.provider}/{preset.modelId}
-                          </small>
-                        </span>
-                        <span className="flex shrink-0 items-center gap-1 font-mono text-[10px]">
-                          <Badge variant="outline" className="text-[10px]">
-                            {reasoningLabel(preset.thinkingLevel)}
-                          </Badge>
-                          {preset.fastMode && (
-                            <Badge variant="accent" className="text-[10px]">
-                              Fast
+                        trailing={
+                          <div className="flex shrink-0 items-center gap-1 font-mono text-[10px]">
+                            <Badge variant="outline" className="text-[10px]">
+                              {reasoningLabel(preset.thinkingLevel)}
                             </Badge>
-                          )}
-                        </span>
-                      </button>
+                            {preset.fastMode && (
+                              <Badge variant="accent" className="text-[10px]">
+                                Fast
+                              </Badge>
+                            )}
+                          </div>
+                        }
+                      />
                     ))}
                   </section>
                 )}
@@ -279,25 +275,14 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
                       {group.name}
                     </h3>
                     {group.models.map((model) => (
-                      <button
+                      <NavItem
                         key={modelValue(model)}
-                        type="button"
                         disabled={disabled}
-                        className="flex w-full cursor-pointer items-center justify-between rounded-lg p-2 text-left hover:bg-muted/60 disabled:opacity-50"
+                        label={model.name}
+                        description={model.id}
                         onClick={() => configureModel(model)}
-                      >
-                        <span className="min-w-0 flex-1">
-                          <strong className="block truncate font-medium text-foreground">
-                            {model.name}
-                          </strong>
-                          <small className="block truncate font-mono text-[10px] text-muted-foreground">
-                            {model.id}
-                          </small>
-                        </span>
-                        <span aria-hidden="true" className="text-muted-foreground">
-                          ›
-                        </span>
-                      </button>
+                        trailing={<span aria-hidden="true">›</span>}
+                      />
                     ))}
                   </section>
                 ))}
@@ -307,8 +292,10 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
                   </p>
                 )}
               </div>
-              <button
-                className="mt-2 block w-full text-center text-[11px] text-accent hover:underline"
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-2 h-auto w-full text-center text-[11px] text-accent hover:underline hover:bg-transparent"
                 type="button"
                 onClick={() => {
                   close();
@@ -316,22 +303,21 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
                 }}
               >
                 Manage model presets in Settings
-              </button>
+              </Button>
             </>
           )}
 
           {view === "configure" && draftModel && (
             <>
               <header className="mb-2.5 flex items-center gap-2">
-                <button
+                <IconButton
                   ref={configureBackRef}
-                  type="button"
-                  aria-label="Back to models"
-                  className="grid size-6 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                  tooltip="Back to models"
+                  className="size-6"
                   onClick={showModels}
                 >
                   <span aria-hidden="true">‹</span>
-                </button>
+                </IconButton>
                 <span className="min-w-0 flex-1">
                   <strong className="block truncate text-xs font-semibold text-foreground">
                     {draftModel.name}
