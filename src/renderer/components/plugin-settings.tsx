@@ -9,6 +9,10 @@ import {
   ConfirmationTitle,
 } from "@/components/ai-elements/confirmation";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
+import { DialogBackdrop } from "@/components/ui/dialog";
+import { StatusDot } from "@/components/ui/status-dot";
+import { Badge } from "@/components/ui/badge";
 import { usePluginSlotDiagnostics } from "@/plugin-runtime";
 import type { CustomizationStore } from "@/stores/CustomizationStore";
 
@@ -23,24 +27,30 @@ export const PluginSettings = observer(function PluginSettings({
 
   return (
     <>
-      <section className="settings-section" aria-labelledby="plugins-title">
-        <header>
+      <section className="border-t border-border py-5" aria-labelledby="plugins-title">
+        <header className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <h2 id="plugins-title">Plugins</h2>
-            <p>See installed plugins and control which customizations Cake loads.</p>
+            <h2 id="plugins-title" className="text-[15px] font-semibold text-foreground">
+              Plugins
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              See installed plugins and control which customizations Cake loads.
+            </p>
           </div>
-          <span className="settings-source">{enabledCount} enabled</span>
+          <Badge variant="outline" className="font-mono text-[10px] uppercase">
+            {enabledCount} enabled
+          </Badge>
         </header>
         {store.error && (
-          <div className="notice notice-error" role="alert">
+          <Callout variant="error" className="mb-3">
             <strong>Plugin operation failed</strong>
-            <span>{store.error}</span>
-          </div>
+            <span className="text-xs">{store.error}</span>
+          </Callout>
         )}
         {slotDiagnostics.length > 0 && (
-          <div className="notice notice-error" role="status">
+          <Callout variant="error" className="mb-3">
             <strong>Custom scene slot mismatch</strong>
-            <span>
+            <span className="text-xs">
               {slotDiagnostics
                 .map(
                   ({ name, outletCount }) =>
@@ -48,36 +58,43 @@ export const PluginSettings = observer(function PluginSettings({
                 )
                 .join("; ")}
             </span>
-          </div>
+          </Callout>
         )}
         {store.plugins.length === 0 ? (
-          <p className="settings-empty">No plugins are installed.</p>
+          <p className="text-xs text-muted-foreground">No plugins are installed.</p>
         ) : (
-          <div className="plugin-settings-list">
+          <div className="grid gap-3">
             {store.plugins.map((plugin) => (
-              <article className="plugin-settings-row" key={plugin.id}>
-                <div className="plugin-settings-identity">
-                  <span className={plugin.enabled ? "plugin-state enabled" : "plugin-state"}>
-                    <i />
-                    {plugin.enabled ? "Enabled" : "Disabled"}
-                  </span>
-                  <strong>{plugin.name}</strong>
-                  <small>Plugin ID: {plugin.id}</small>
-                  <small>Renderer: {plugin.renderer ?? "None"}</small>
-                  <small>Backend: {plugin.backend ?? "None"}</small>
-                  <small>
-                    Scene:{" "}
-                    {plugin.scene
-                      ? `${plugin.scene}${plugin.activeScene ? " · Active" : ""}`
-                      : "None"}
-                  </small>
+              <article
+                className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/50 p-3"
+                key={plugin.id}
+              >
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <StatusDot status={plugin.enabled ? "complete" : "pending"} />
+                    <span className="font-mono text-[11px] text-muted-foreground">
+                      {plugin.enabled ? "Enabled" : "Disabled"}
+                    </span>
+                    <strong className="text-xs font-semibold text-foreground">{plugin.name}</strong>
+                  </div>
+                  <div className="grid gap-0.5 font-mono text-[11px] text-muted-foreground">
+                    <small>Plugin ID: {plugin.id}</small>
+                    <small>Renderer: {plugin.renderer ?? "None"}</small>
+                    <small>Backend: {plugin.backend ?? "None"}</small>
+                    <small>
+                      Scene:{" "}
+                      {plugin.scene
+                        ? `${plugin.scene}${plugin.activeScene ? " · Active" : ""}`
+                        : "None"}
+                    </small>
+                  </div>
                   {plugin.diagnostics[0] && (
-                    <small className="plugin-diagnostic" role="status">
+                    <small className="block text-xs text-destructive" role="status">
                       {plugin.diagnostics[0].message}
                     </small>
                   )}
                 </div>
-                <div className="plugin-settings-actions">
+                <div className="flex shrink-0 items-center gap-2">
                   {plugin.scene && plugin.enabled && (
                     <Button
                       variant="outline"
@@ -114,7 +131,7 @@ export const PluginSettings = observer(function PluginSettings({
             ))}
           </div>
         )}
-        <p className="plugin-settings-note">
+        <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
           Enabled plugins are trusted local software. Renderer contributions load automatically. A
           plugin may optionally replace the whole scene, and its scene can still mount Cake slots.
           Backends may read or modify files, execute programs, and access the network. Changes take
@@ -122,7 +139,7 @@ export const PluginSettings = observer(function PluginSettings({
         </p>
       </section>
       {deleteTarget && (
-        <div className="dialog-backdrop">
+        <DialogBackdrop>
           <Confirmation
             state="requested"
             role="alertdialog"
@@ -152,7 +169,7 @@ export const PluginSettings = observer(function PluginSettings({
               </ConfirmationActions>
             </ConfirmationRequest>
           </Confirmation>
-        </div>
+        </DialogBackdrop>
       )}
     </>
   );

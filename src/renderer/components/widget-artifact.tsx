@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { observer } from "r-state-tree/react";
 import { fencedCode, Markdown } from "@/components/ai-elements/markdown";
 import { FullscreenSurface } from "@/components/fullscreen-surface";
+import { Callout } from "@/components/ui/callout";
 import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
 import {
   inlineWidgetMessageSchema,
@@ -54,10 +55,10 @@ export const WidgetArtifact = observer(function WidgetArtifact({
   }, [id, inlineWidgets, state?.compiled]);
   if (!inlineWidgets)
     return (
-      <div className="notice notice-error">
+      <Callout variant="error">
         <strong>Widget unavailable</strong>
-        <span>Cake could not access its widget compiler.</span>
-      </div>
+        <span className="text-xs">Cake could not access its widget compiler.</span>
+      </Callout>
     );
   const status = state?.status ?? "building";
   const submitRepair = (instructions: string) => {
@@ -70,13 +71,15 @@ export const WidgetArtifact = observer(function WidgetArtifact({
   };
   return (
     <section
-      className={`inline-widget inline-widget-${status}`}
+      className="flex flex-col overflow-hidden rounded-lg border border-border bg-card"
       aria-label={`Delegated ${artifact.payload.language} widget`}
     >
-      <div className="inline-widget-rail">
-        <span className="inline-widget-notch" aria-hidden="true" />
-        <span>Delegated {artifact.payload.language === "react" ? "React" : "HTML"} widget</span>
-        <span className="inline-widget-status">
+      <div className="flex items-center gap-2 border-b border-border bg-muted px-3 py-1.5 font-mono text-[11px]">
+        <span className="size-1.5 rounded-full bg-accent" aria-hidden="true" />
+        <span className="text-foreground">
+          Delegated {artifact.payload.language === "react" ? "React" : "HTML"} widget
+        </span>
+        <span className="text-muted-foreground">
           {status === "repairing"
             ? "Repairing…"
             : status === "building"
@@ -87,12 +90,17 @@ export const WidgetArtifact = observer(function WidgetArtifact({
                   ? "Repaired"
                   : "Ready"}
         </span>
-        <span className="inline-widget-actions">
-          <button type="button" onClick={() => setSourceOpen((open) => !open)}>
+        <span className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            className="cursor-pointer text-accent hover:underline"
+            onClick={() => setSourceOpen((open) => !open)}
+          >
             {sourceOpen ? "Hide source" : "Source"}
           </button>
           <button
             type="button"
+            className="cursor-pointer text-accent hover:underline disabled:opacity-50"
             disabled={status === "repairing" || status === "building"}
             onClick={() => setRepairPromptOpen((open) => !open)}
           >
@@ -107,9 +115,12 @@ export const WidgetArtifact = observer(function WidgetArtifact({
         />
       )}
       {status === "error" && (
-        <div className="inline-widget-diagnostic" role="alert">
+        <div
+          className="border-b border-border bg-destructive/10 p-2.5 text-xs text-destructive"
+          role="alert"
+        >
           <strong>Widget could not render</strong>
-          <pre>{state?.diagnostic}</pre>
+          <pre className="mt-1 font-mono">{state?.diagnostic}</pre>
         </div>
       )}
       {state?.compiled && (
@@ -119,11 +130,12 @@ export const WidgetArtifact = observer(function WidgetArtifact({
           sandbox="allow-scripts"
           referrerPolicy="no-referrer"
           src={state.compiled.url}
+          className="w-full border-none"
           style={{ height }}
         />
       )}
       {sourceOpen && (
-        <Markdown className="inline-widget-source">
+        <Markdown className="max-h-80 overflow-auto border-t border-border p-2">
           {fencedCode(
             state?.source ?? artifact.payload.source,
             artifact.payload.language === "react" ? "tsx" : "html",

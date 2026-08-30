@@ -174,15 +174,20 @@ export function ChatPopover({
   return createPortal(
     <div
       ref={surfaceRef}
-      className="message-comment-popover"
+      className="fixed z-50 flex max-h-[min(34rem,calc(100vh-24px))] w-[min(26rem,calc(100vw-24px))] flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl"
       style={position}
       role="dialog"
       aria-label={title}
     >
-      <header className="message-comment-titlebar" onPointerDown={startDrag}>
+      <header
+        className="flex cursor-grab select-none items-center justify-between border-b border-border bg-muted/70 px-3 py-2 active:cursor-grabbing"
+        onPointerDown={startDrag}
+      >
         <div>
-          <span>{eyebrow}</span>
-          <strong>{title}</strong>
+          <span className="block font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            {eyebrow}
+          </span>
+          <strong className="block text-xs font-semibold text-foreground">{title}</strong>
         </div>
         <IconButton tooltip={`Close ${title.toLowerCase()}`} onClick={onClose}>
           <CloseIcon size={16} strokeWidth={1.9} />

@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { cn } from "@/lib/utils";
 import type { ModelOption } from "../../ipc/session-contract";
 import { ChevronDownIcon } from "./ui/icons";
 
@@ -130,7 +131,10 @@ export function ModelCombobox({
   return (
     <div
       ref={rootRef}
-      className={`model-combobox ${variant}`}
+      className={cn(
+        "relative inline-flex w-full items-center",
+        variant === "settings" && "max-w-md",
+      )}
       onBlur={(event) => {
         if (
           !(event.relatedTarget instanceof Node) ||
@@ -143,7 +147,10 @@ export function ModelCombobox({
     >
       <input
         ref={inputRef}
-        className="model-combobox-input"
+        className={cn(
+          "h-8 w-full rounded-lg border border-border bg-input px-2.5 pr-7 text-xs text-foreground placeholder:text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          variant === "settings" && "h-9 text-sm",
+        )}
         role="combobox"
         aria-label={ariaLabel}
         aria-autocomplete="list"
@@ -166,28 +173,28 @@ export function ModelCombobox({
         }}
         onKeyDown={onKeyDown}
       />
-      <span className="model-combobox-chevron" aria-hidden="true">
-        <ChevronDownIcon />
+      <span
+        className="pointer-events-none absolute right-2 text-muted-foreground"
+        aria-hidden="true"
+      >
+        <ChevronDownIcon size={14} />
       </span>
       {open && (
-        <div className="model-combobox-popover">
+        <div className="absolute top-[calc(100%+4px)] left-0 z-50 w-full min-w-[260px] overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-xl">
           <div
-            className="model-combobox-list"
+            className="max-h-60 overflow-y-auto p-1 text-xs"
             id={listboxId}
             role="listbox"
             aria-label={`${ariaLabel} options`}
           >
             {filteredGroups.length === 0 ? (
-              <p className="model-combobox-empty">No matching models</p>
+              <p className="p-3 text-center text-muted-foreground">No matching models</p>
             ) : (
               filteredGroups.map((group) => (
-                <div
-                  className="model-combobox-group"
-                  role="group"
-                  aria-label={group.name}
-                  key={group.id}
-                >
-                  <div className="model-combobox-provider">{group.name}</div>
+                <div role="group" aria-label={group.name} key={group.id} className="space-y-0.5">
+                  <div className="px-2 pt-1.5 pb-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    {group.name}
+                  </div>
                   {group.models.map((model) => {
                     const index = optionIndex++;
                     const selected = modelValue(model) === value;
@@ -197,17 +204,28 @@ export function ModelCombobox({
                         type="button"
                         role="option"
                         aria-selected={selected}
-                        className={index === activeIndex ? "active" : undefined}
+                        className={cn(
+                          "flex w-full cursor-pointer items-center justify-between rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted/70",
+                          index === activeIndex && "bg-muted text-foreground",
+                        )}
                         key={modelValue(model)}
                         onMouseEnter={() => setActiveIndex(index)}
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => choose(model)}
                       >
-                        <span>
-                          <strong>{model.name}</strong>
-                          <small>{model.id}</small>
+                        <span className="min-w-0 flex-1">
+                          <strong className="block truncate font-medium text-foreground">
+                            {model.name}
+                          </strong>
+                          <small className="block truncate font-mono text-[10px] text-muted-foreground">
+                            {model.id}
+                          </small>
                         </span>
-                        {selected ? <i aria-hidden="true">✓</i> : null}
+                        {selected ? (
+                          <i className="font-mono text-accent not-italic" aria-hidden="true">
+                            ✓
+                          </i>
+                        ) : null}
                       </button>
                     );
                   })}

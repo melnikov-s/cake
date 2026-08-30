@@ -65,17 +65,25 @@ export function SessionTree({
 }) {
   const rows = flattenSessionTree(visibleSessionTree(nodes));
   return (
-    <ul className="session-tree" role="tree">
+    <ul className="m-0 list-none p-0" role="tree">
       {rows.map(({ node, depth }) => (
         <li
           key={node.id}
-          className={`session-tree-row ${node.active ? "active" : ""} ${depth > 0 ? "branched" : ""}`}
+          className={`group/row relative text-xs ${depth > 0 ? "border-l border-border" : ""}`}
           role="treeitem"
           aria-level={depth + 1}
           style={{ marginLeft: `${depth * 18}px` }}
         >
-          <div>
+          <div className="relative flex min-w-0 items-center gap-1.5 px-2 py-0.5">
+            {node.active && (
+              <span
+                aria-hidden="true"
+                className="absolute -left-[1px] size-1 -translate-x-1/2 rounded-full bg-accent"
+              />
+            )}
             <button
+              type="button"
+              className="flex min-w-0 max-w-full flex-1 items-baseline gap-2 rounded-md bg-transparent px-1.5 py-1 text-left text-muted-foreground hover:bg-muted hover:text-foreground"
               title={
                 node.messageRole === "user"
                   ? "Resume from this message"
@@ -84,14 +92,20 @@ export function SessionTree({
               onClick={() => onNavigate(node.id)}
             >
               {node.messageRole && (
-                <span className={`session-tree-role role-${node.messageRole}`}>
+                <span
+                  data-slot="session-tree-role"
+                  className={`w-18 shrink-0 font-mono text-[10px] text-right ${
+                    node.messageRole === "user" ? "text-accent" : "text-success"
+                  }`}
+                >
                   {node.messageRole}
                 </span>
               )}
-              <span>{node.label || node.preview}</span>
+              <span className="truncate">{node.label || node.preview}</span>
             </button>
             <button
-              className="session-tree-fork"
+              type="button"
+              className="shrink-0 rounded-md bg-transparent px-1.5 py-1 text-xs text-muted-foreground opacity-0 group-hover/row:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100"
               aria-label={`Fork from ${node.preview}`}
               title="Fork from here"
               onClick={() => onFork(node.id)}

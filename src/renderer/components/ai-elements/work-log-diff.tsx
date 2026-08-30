@@ -18,13 +18,13 @@ export function WorkLogDiff({
   const changes = workLogChanges(parts);
   if (changes.length === 0)
     return streaming ? (
-      <div className="work-log-diff-empty" role="status">
+      <div className="p-3 font-mono text-[11px] text-muted-foreground" role="status">
         Waiting for file changes…
       </div>
     ) : null;
 
   return (
-    <div className="work-log-diff" aria-label="Streaming file diff">
+    <div className="grid gap-2" aria-label="Streaming file diff">
       {changes.map((change) => (
         <DiffView
           key={change.path}

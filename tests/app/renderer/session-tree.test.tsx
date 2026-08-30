@@ -86,7 +86,9 @@ describe("SessionTree", () => {
       root.render(<SessionTree nodes={[tool, assistant]} onNavigate={vi.fn()} onFork={vi.fn()} />),
     );
 
-    expect(container.querySelector(".session-tree-role")?.textContent).toBe("assistant");
+    expect(container.querySelector('[data-slot="session-tree-role"]')?.textContent).toBe(
+      "assistant",
+    );
     expect(container.querySelector('[role="treeitem"]')?.textContent).toContain("Hello back");
     expect(container.textContent).not.toContain("[read]");
   });

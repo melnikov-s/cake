@@ -1,6 +1,7 @@
 import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
 import type { JsonValue } from "../../ipc/json-contract";
 import { cakeRequestV1Schema } from "../../ipc/request-contract";
+import { Callout } from "@/components/ui/callout";
 import { ArtifactForm } from "./artifact-form";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import { RequestWidget } from "./request-widget";
@@ -27,10 +28,10 @@ export function RequestArtifact({
   const parsed = cakeRequestV1Schema.safeParse(artifact.payload.request);
   if (!parsed.success)
     return (
-      <div className="notice notice-error">
+      <Callout variant="error">
         <strong>Request could not render</strong>
-        <span>{parsed.error.message}</span>
-      </div>
+        <span className="text-xs">{parsed.error.message}</span>
+      </Callout>
     );
   const request = parsed.data;
   if (request.view.type === "form")
@@ -45,10 +46,10 @@ export function RequestArtifact({
     );
   if (!inlineWidgets)
     return (
-      <div className="notice notice-error">
+      <Callout variant="error">
         <strong>Request widget unavailable</strong>
-        <span>Cake could not access its widget compiler.</span>
-      </div>
+        <span className="text-xs">Cake could not access its widget compiler.</span>
+      </Callout>
     );
   return (
     <RequestWidget

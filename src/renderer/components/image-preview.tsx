@@ -42,15 +42,18 @@ export function ImagePreview({
     };
   }, [open]);
 
-  const portalHost = triggerButton.current?.closest<HTMLElement>(".chat-layout") ?? document.body;
-  const contained = portalHost !== document.body;
+  const portalHost =
+    triggerButton.current?.closest<HTMLElement>(".chat-layout") ?? globalThis.document?.body;
+  const contained = Boolean(
+    portalHost && globalThis.document && portalHost !== globalThis.document.body,
+  );
 
   return (
     <>
       <button
         ref={triggerButton}
         type="button"
-        className="image-preview-trigger"
+        className="inline-block max-w-full cursor-zoom-in overflow-hidden rounded-lg leading-none outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         aria-label={`View ${alt} enlarged`}
         title="View enlarged"
         onClick={() => setOpen(true)}
@@ -58,9 +61,13 @@ export function ImagePreview({
         <img src={src} alt={alt} />
       </button>
       {open &&
+        portalHost &&
         createPortal(
           <div
-            className={cn("image-preview-overlay", contained && "image-preview-overlay-contained")}
+            className={cn(
+              "fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-6 backdrop-blur-sm",
+              contained && "absolute",
+            )}
             role="dialog"
             aria-modal="true"
             aria-label={alt}
@@ -70,16 +77,26 @@ export function ImagePreview({
           >
             <IconButton
               ref={closeButton}
-              className="image-preview-close"
+              className="absolute top-4 right-4 border border-white/20 bg-white/10 text-white hover:bg-white/20"
               tooltip="Close image"
               ariaLabel={`Close ${alt}`}
               onClick={() => setOpen(false)}
             >
               <CloseIcon />
             </IconButton>
-            <figure className="image-preview-figure">
-              <img src={src} alt={alt} draggable={false} onMouseDown={(e) => e.stopPropagation()} />
-              {caption && <figcaption>{caption}</figcaption>}
+            <figure className="m-0 flex max-h-full max-w-full flex-col items-center gap-3">
+              <img
+                src={src}
+                alt={alt}
+                draggable={false}
+                className="max-h-[calc(100vh-120px)] max-w-full rounded-lg object-contain shadow-2xl"
+                onMouseDown={(e) => e.stopPropagation()}
+              />
+              {caption && (
+                <figcaption className="max-w-[600px] text-center text-xs text-white/85">
+                  {caption}
+                </figcaption>
+              )}
             </figure>
           </div>,
           portalHost,

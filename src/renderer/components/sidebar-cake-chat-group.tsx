@@ -31,21 +31,16 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
   const collapsed = store.isGroupCollapsed(collapseKey);
   const empty = sessions.length === 0;
   return (
-    <div
-      className={cn(
-        "project-group cake-chat-sessions mb-3 last:mb-0",
-        empty && "project-group-empty mb-1",
-      )}
-    >
+    <div data-slot="cake-chat-group" className={cn("mb-3 last:mb-0", empty && "mb-1")}>
       <div
-        className="project-row group/proj flex h-8 w-full items-center gap-1 px-1 select-none text-muted-foreground"
+        className="group/proj flex h-8 w-full items-center gap-1 px-1 select-none text-muted-foreground"
         title="Cake Chat"
       >
         <IconButton
           className={cn(
-            "project-disclosure size-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-transform duration-150",
-            collapsed && "collapsed -rotate-90",
-            empty && "no-sessions invisible",
+            "size-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-transform duration-150",
+            collapsed && "-rotate-90",
+            empty && "invisible",
           )}
           aria-expanded={!collapsed}
           tooltip={collapsed ? "Expand" : "Collapse"}
@@ -55,7 +50,8 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
           <ChevronIcon />
         </IconButton>
         <button
-          className="project-label flex min-w-0 flex-1 items-center gap-2 h-7 px-1 rounded text-left text-xs font-medium text-inherit hover:text-foreground"
+          data-slot="project-label"
+          className="flex min-w-0 flex-1 items-center gap-2 h-7 px-1 rounded text-left text-xs font-medium text-inherit hover:text-foreground outline-none focus-visible:ring-2 focus-visible:ring-accent"
           type="button"
           aria-label={
             collapsed ? `Expand Cake Chat${resolved ? " resolved" : ""}` : "New Cake Chat"
@@ -67,7 +63,7 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
         </button>
         {!resolved && (
           <IconButton
-            className="project-add size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity"
+            className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity"
             tooltip="New Cake Chat"
             onClick={onCreateCakeChat}
           >

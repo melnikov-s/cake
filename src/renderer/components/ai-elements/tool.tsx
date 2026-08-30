@@ -1,4 +1,3 @@
-/* Adapted from Vercel AI Elements tool.tsx at 0c1f5e8c75273f0e95c8faa031544a8aa2bb1a5b (Apache-2.0). Uses Cake tool states. */
 import { useEffect, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { z } from "zod";
@@ -11,6 +10,7 @@ import { toolDiff } from "../../../utils/turn-diff";
 import { toolSourceRange } from "../../../utils/source-ranges";
 import { toWorkspaceRelativePath } from "../../../utils/workspace-relative-path";
 import { Button } from "../ui/button";
+import { StatusDot } from "../ui/status-dot";
 import { formatElapsed } from "../ui/loading-state";
 import { DiffView } from "./diff-view";
 import { languageForSource } from "./code";
@@ -102,7 +102,10 @@ function toolOutputContent(
         {fencedCode(item.text, language)}
       </Markdown>
     ) : (
-      <figure className="tool-output-image" key={`image-${index}`}>
+      <figure
+        className="my-2 overflow-hidden rounded-[10px] border border-border bg-background"
+        key={`image-${index}`}
+      >
         <ImagePreview
           src={`data:${item.mimeType};base64,${item.data}`}
           alt={`Tool output image ${index + 1}`}
@@ -126,12 +129,7 @@ function toolOutput(
 
 function readToolCode(part: Extract<UiPart, { kind: "tool" }>, highlightCode: boolean) {
   const path = toolPath(part);
-  return toolOutput(
-    part,
-    "tool-output tool-code-input tool-read-output mt-3 text-xs",
-    path ? languageForSource(path) : "text",
-    highlightCode,
-  );
+  return toolOutput(part, "mt-3 text-xs", path ? languageForSource(path) : "text", highlightCode);
 }
 
 function editorLocation(part: Extract<UiPart, { kind: "tool" }>): SourceLocation | undefined {
@@ -157,7 +155,10 @@ export const ToolRunTimer = observer(function ToolRunTimer({
     : store.workLogElapsedMs(partId);
   if (elapsedMs === undefined) return null;
   return (
-    <span className="tool-timer" aria-label="elapsed time">
+    <span
+      className="flex items-center gap-1 font-mono text-[10px] tabular-nums text-muted-foreground whitespace-nowrap"
+      aria-label="elapsed time"
+    >
       {formatElapsed(elapsedMs)}
     </span>
   );
@@ -225,20 +226,30 @@ export function Tool({
     diff || bash || part.input || part.output || part.outputContent?.length,
   );
   return (
-    <div
-      className={`tool-call rounded-xl border border-border bg-muted/35 px-4 py-3${diff ? " tool-edit" : ""}${open ? " tool-open" : ""}`}
-    >
-      <div className="tool-summary-row">
+    <div className="rounded-xl border border-border bg-muted/35 px-4 py-3">
+      <div className="flex items-center justify-between gap-3 min-w-0">
         <div className="group/path flex min-w-0 flex-1 items-center">
           <button
             type="button"
-            className="tool-summary cursor-pointer font-mono text-xs font-semibold"
+            className="flex items-center gap-2 min-w-0 cursor-pointer font-mono text-xs font-semibold text-foreground text-left"
             onClick={toggleOpen}
             aria-expanded={open}
             disabled={!hasDetails}
           >
-            <span className={`tool-state tool-${part.state}`} aria-label={part.state} />
-            <span className="tool-title" title={title}>
+            <StatusDot
+              status={
+                part.state === "running"
+                  ? "running"
+                  : part.state === "success"
+                    ? "complete"
+                    : part.state === "error" || part.state === "denied"
+                      ? "failed"
+                      : part.state === "interrupted"
+                        ? "interrupted"
+                        : "ready"
+              }
+            />
+            <span className="truncate" title={title}>
               {title}
             </span>
           </button>
@@ -259,7 +270,7 @@ export function Tool({
       </div>
       {/* Once opened, keep details mounted so later toggles do not feed Streamdown's passive update back into Virtuoso measurement. */}
       {hasDetails && detailsMounted && (
-        <div className="tool-details" hidden={!open}>
+        <div className="mt-1" hidden={!open}>
           {read ? (
             readToolCode(part, part.state !== "running")
           ) : diff ? (
@@ -275,25 +286,17 @@ export function Tool({
               onOpenSourceLocation={onOpenSourceLocation}
             />
           ) : bash ? (
-            <Markdown
-              className="tool-input tool-bash-input mt-3 text-xs"
-              highlightCode={part.state !== "running"}
-            >
+            <Markdown className="mt-3 text-xs" highlightCode={part.state !== "running"}>
               {fencedCode(bash, "bash")}
             </Markdown>
           ) : (
-            part.input &&
-            toolCode(
-              part.input,
-              "tool-input tool-code-input mt-3 text-xs",
-              part.state !== "running",
-            )
+            part.input && toolCode(part.input, "mt-3 text-xs", part.state !== "running")
           )}
           {!diff &&
             !read &&
             toolOutput(
               part,
-              "tool-output tool-code-input mt-3 border-t border-border pt-3 text-xs",
+              "mt-3 border-t border-border pt-3 text-xs",
               "text",
               part.state !== "running",
             )}

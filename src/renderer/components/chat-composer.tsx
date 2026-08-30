@@ -34,17 +34,17 @@ export const ChatComposer = observer(function ChatComposer({
     >
       {header}
       <Composer
-        className="relative z-10 border-border/90 bg-[var(--composer)] shadow-[0_24px_80px_-30px_hsl(var(--shadow)/0.55),0_2px_10px_hsl(var(--shadow)/0.08)]"
+        className="relative z-10 border-border/90 bg-composer shadow-[0_24px_80px_-30px_hsl(var(--shadow)/0.55),0_2px_10px_hsl(var(--shadow)/0.08)]"
         onSubmit={onSubmit}
       >
         {children}
         {input}
-        <ComposerToolbar className="composer-toolbar">
-          <div className="composer-context">
+        <ComposerToolbar className="flex min-w-0 items-center justify-between gap-3 px-1.5 py-1">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
             {toolbarLeading}
             {configuration && <ChatConfigurationSelector configuration={configuration} />}
           </div>
-          <div className="composer-actions">{toolbarActions}</div>
+          <div className="flex shrink-0 items-center gap-1">{toolbarActions}</div>
         </ComposerToolbar>
       </Composer>
     </div>

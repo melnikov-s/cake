@@ -13,7 +13,6 @@ import { mountRootStore } from "./mount-root-store";
 import "katex/dist/katex.min.css";
 import "streamdown/styles.css";
 import "./styles.css";
-import "./customization-recovery.css";
 
 const root = createRoot(document.getElementById("root")!);
 const disposeStaleAssetRecovery = installStaleAssetRecovery();
@@ -67,8 +66,10 @@ if (!window.cake) {
           <MarkdownLinkProvider actions={markdownLinkActions}>
             <Suspense
               fallback={
-                <main className="loading-screen">
-                  <span className="cake-mark">C</span>
+                <main className="grid h-screen place-items-center bg-background text-foreground">
+                  <span className="grid size-12 place-items-center rounded-2xl bg-primary text-xl font-bold text-primary-foreground shadow-lg">
+                    C
+                  </span>
                   <LoadingState label="Hydrating customization" />
                 </main>
               }

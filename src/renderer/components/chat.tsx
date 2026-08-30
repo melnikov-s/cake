@@ -1,5 +1,6 @@
 import { useLayoutEffect, useReducer, useRef, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
+import { cn } from "@/lib/utils";
 import { AnnotationSummary } from "@/components/annotation-summary";
 import { ChatComposer } from "@/components/chat-composer";
 import { ImagePreview } from "@/components/image-preview";
@@ -46,11 +47,12 @@ const Usage = observer(function Usage({ store }: { store: ChatStore }) {
     : "Context usage unavailable";
   return (
     <div
-      className="session-usage"
+      className="mr-1 flex items-center gap-1.5 font-mono text-[10px] whitespace-nowrap text-muted-foreground tabular-nums max-[820px]:hidden"
       aria-label={`${contextLabel}; ${contextTokenSummary}`}
       title={`${contextTitle} · ${usage.tokens.total.toLocaleString()} billed tokens`}
       tabIndex={0}
       onMouseEnter={(event) => show(event.currentTarget)}
+      onMouseOver={(event) => show(event.currentTarget)}
       onMouseLeave={hide}
       onMouseDown={hide}
       onFocus={(event) => {
@@ -58,17 +60,27 @@ const Usage = observer(function Usage({ store }: { store: ChatStore }) {
       }}
       onBlur={hide}
     >
-      <svg className="context-gauge" viewBox="0 0 36 36" aria-hidden="true">
-        <circle className="context-gauge-track" cx="18" cy="18" r="15.5" pathLength="100" />
+      <svg className="size-[30px] overflow-visible" viewBox="0 0 36 36" aria-hidden="true">
         <circle
-          className="context-gauge-value"
+          className="fill-none stroke-muted-foreground/20 [stroke-width:2.25]"
+          cx="18"
+          cy="18"
+          r="15.5"
+          pathLength="100"
+        />
+        <circle
+          className="fill-none stroke-muted-foreground [stroke-width:2.25] [stroke-linecap:round] -rotate-90 origin-center"
           cx="18"
           cy="18"
           r="15.5"
           pathLength="100"
           strokeDasharray={`${Math.min(100, percent ?? 0)} 100`}
         />
-        <text x="18" y="18">
+        <text
+          className="fill-current text-[8px] font-semibold [dominant-baseline:central] [text-anchor:middle]"
+          x="18"
+          y="18"
+        >
           {percent === undefined ? "—" : `${percent}%`}
         </text>
       </svg>
@@ -237,7 +249,14 @@ export const Chat = observer(function Chat({
     });
   };
   const composer = composerVisible && (
-    <div ref={composerDockRef} className={embedded ? "chat-embedded-composer" : "composer-dock"}>
+    <div
+      ref={composerDockRef}
+      className={
+        embedded
+          ? "min-w-0"
+          : "absolute inset-x-0 bottom-0 z-10 w-full max-w-full min-w-0 pointer-events-none bg-gradient-to-b from-transparent to-background/28 px-6 pb-4 pt-5 max-[620px]:px-2.5"
+      }
+    >
       <ChatComposer
         className={embedded ? "chat-embedded-workbench-composer" : undefined}
         configuration={store.configuration}
@@ -343,7 +362,7 @@ export const Chat = observer(function Chat({
                     <Popover open={draftMenuOpen} onOpenChange={setDraftMenuOpen}>
                       <IconButton
                         ref={draftSendButtonRef}
-                        className="send-button"
+                        className="size-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-45"
                         tooltip={
                           store.editingMessage
                             ? store.isDraftSession
@@ -412,7 +431,7 @@ export const Chat = observer(function Chat({
                   )}
                   {store.canStop && !hasInput && (
                     <IconButton
-                      className="send-button"
+                      className="size-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
                       tooltip="Stop"
                       onClick={() => void store.abort()}
                     >
@@ -437,7 +456,7 @@ export const Chat = observer(function Chat({
           onRemove={(id) => store.removeAnnotation(id)}
         />
         {store.attachments.length > 0 && (
-          <div className="attachment-list">
+          <div className="flex flex-wrap gap-1.5 px-1.5 pb-1.5 pt-0.5">
             {store.attachments.map((attachment, index) =>
               attachment.kind === "annotation" ? null : attachment.kind === "source" ? (
                 <SourceAttachment
@@ -448,16 +467,18 @@ export const Chat = observer(function Chat({
                 />
               ) : attachment.kind === "image" ? (
                 <div
-                  className="image-attachment"
+                  className="relative grid h-[82px] w-[112px] overflow-hidden rounded-[10px] border border-border bg-background"
                   key={`${attachment.kind}-${attachment.name}-${index}`}
                 >
                   <ImagePreview
                     src={`data:${attachment.mimeType};base64,${attachment.data}`}
                     alt={attachment.name}
                   />
-                  <span>{attachment.name}</span>
+                  <span className="absolute inset-x-0 bottom-0 flex justify-between gap-1 overflow-hidden bg-gradient-to-t from-black/80 to-transparent px-1.5 pb-1 pt-3 font-sans text-xs text-white truncate">
+                    {attachment.name}
+                  </span>
                   <IconButton
-                    className="image-attachment-remove"
+                    className="absolute right-[3px] top-[3px] grid size-[18px] place-items-center rounded-full bg-black/70 p-0 text-[13px] leading-none text-white hover:bg-black/90 cursor-pointer"
                     tooltip={`Remove ${attachment.name}`}
                     onClick={() => store.removeAttachment(index)}
                   >
@@ -467,6 +488,7 @@ export const Chat = observer(function Chat({
               ) : (
                 <button
                   type="button"
+                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-muted px-2 py-1 font-mono text-xs text-foreground hover:bg-muted/80"
                   key={`${attachment.kind}-${attachment.name}-${index}`}
                   onClick={() => store.removeAttachment(index)}
                 >
@@ -494,7 +516,11 @@ export const Chat = observer(function Chat({
   return (
     <div
       ref={layoutRef}
-      className={`chat-layout${embedded ? " chat-layout-embedded" : ""}${compact ? " chat-layout-compact" : ""} ${className}`.trim()}
+      className={cn(
+        "relative grid h-full w-full max-w-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden",
+        compact && "chat-layout-compact",
+        className,
+      )}
     >
       <ChatTranscript
         store={store}

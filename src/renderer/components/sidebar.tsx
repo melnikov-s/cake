@@ -1,4 +1,5 @@
 import { observer } from "r-state-tree/react";
+import { cn } from "@/lib/utils";
 import { IconButton } from "./ui/icon-button";
 import {
   BackIcon,
@@ -52,8 +53,8 @@ export const Sidebar = observer(function Sidebar({
 }) {
   const projectPaths = projects.orderedProjectPaths;
   return (
-    <aside className="sidebar">
-      <div className="sidebar-window-tools">
+    <aside className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border/72 bg-sidebar select-none">
+      <div className="flex h-[46px] shrink-0 items-center gap-1 pl-[103px] pr-3 [app-region:drag]">
         <IconButton tooltip="Toggle sidebar" onClick={onToggle}>
           <SidebarIcon />
         </IconButton>
@@ -74,10 +75,10 @@ export const Sidebar = observer(function Sidebar({
           <ForwardIcon />
         </IconButton>
       </div>
-      <div className="plugin-slot plugin-slot-sidebar-header">
+      <div className="flex min-w-0 flex-wrap gap-1.5 px-3 pb-2 empty:hidden">
         <Slot name="global.sidebar.header" />
       </div>
-      <div className="sidebar-scroll">
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 pb-4 pt-2">
         <SidebarCakeChatGroup
           store={store}
           cakeChat={cakeChat}
@@ -86,7 +87,10 @@ export const Sidebar = observer(function Sidebar({
           onOpenCakeChat={onOpenCakeChat}
           onCreateCakeChat={onCreateCakeChat}
         />
-        <div className="section-heading projects-heading">
+        <div
+          data-slot="projects-heading"
+          className="mt-0.5 flex items-center justify-between px-1.5 py-2 text-xs font-medium text-muted-foreground"
+        >
           <span>Projects</span>
           <div>
             <IconButton tooltip="Add project" onClick={onChooseProject}>
@@ -95,7 +99,9 @@ export const Sidebar = observer(function Sidebar({
           </div>
         </div>
         {projectPaths.length === 0 ? (
-          <p className="sidebar-empty">Add a folder to start a project.</p>
+          <p className="mx-2 my-1.5 text-xs leading-relaxed text-muted-foreground">
+            Add a folder to start a project.
+          </p>
         ) : (
           projectPaths.map((path) => (
             <SidebarProjectGroup
@@ -113,10 +119,17 @@ export const Sidebar = observer(function Sidebar({
           ))
         )}
         {store.hasResolvedSessions && (
-          <section className="resolved-lane" aria-labelledby="resolved-lane-heading">
-            <div className="section-heading lane-heading" id="resolved-lane-heading">
+          <section
+            data-slot="resolved-lane"
+            className="mt-4 border-t border-border/72 pt-2"
+            aria-labelledby="resolved-lane-heading"
+          >
+            <div
+              className="flex items-center justify-between px-1.5 pt-2.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/90"
+              id="resolved-lane-heading"
+            >
               <button
-                className="lane-toggle"
+                className="flex h-[27px] cursor-pointer items-center gap-1.5 px-1.5 text-inherit font-inherit tracking-inherit uppercase"
                 type="button"
                 aria-expanded={store.resolvedLaneExpanded}
                 aria-controls="resolved-lane-content"
@@ -124,7 +137,10 @@ export const Sidebar = observer(function Sidebar({
                 onClick={() => store.toggleResolvedLane()}
               >
                 <span
-                  className={`lane-disclosure ${store.resolvedLaneExpanded ? "" : "collapsed"}`}
+                  className={cn(
+                    "grid size-3.5 place-items-center text-muted-foreground transition-transform duration-150",
+                    !store.resolvedLaneExpanded && "-rotate-90",
+                  )}
                 >
                   <ChevronIcon />
                 </span>
@@ -132,7 +148,7 @@ export const Sidebar = observer(function Sidebar({
               </button>
             </div>
             {store.resolvedLaneExpanded && (
-              <div id="resolved-lane-content" className="resolved-lane-content">
+              <div id="resolved-lane-content" className="mt-1">
                 <SidebarCakeChatGroup
                   store={store}
                   cakeChat={cakeChat}
@@ -160,16 +176,15 @@ export const Sidebar = observer(function Sidebar({
           </section>
         )}
       </div>
-      <div className="sidebar-footer">
-        <div className="plugin-slot plugin-slot-sidebar-footer">
+      <div className="flex min-h-[52px] items-center justify-end border-t border-border/65 px-4 py-2 text-muted-foreground">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 empty:hidden">
           <Slot name="global.sidebar.footer" />
         </div>
         <IconButton
-          className={
-            shell.selection.kind === "settings"
-              ? "sidebar-settings-icon active"
-              : "sidebar-settings-icon"
-          }
+          className={cn(
+            "size-8 rounded-lg bg-transparent text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
+            shell.selection.kind === "settings" && "bg-sidebar-hover text-foreground",
+          )}
           tooltip="Open settings"
           aria-current={shell.selection.kind === "settings" ? "page" : undefined}
           onClick={onOpenSettings}

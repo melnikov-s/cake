@@ -5,7 +5,33 @@ import { cakeSlotNames, type CakeSlotName } from "../plugin/slot-contract";
 import { registerPluginDefinition } from "./plugin-runtime";
 
 export { observer, useOptionalStore, useStore } from "r-state-tree/react";
+export { Badge, type BadgeProps } from "./components/ui/badge";
 export { Button, type ButtonProps } from "./components/ui/button";
+export { Callout, type CalloutProps } from "./components/ui/callout";
+export {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "./components/ui/card";
+export {
+  DialogBackdrop,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./components/ui/dialog";
+export {
+  EmptyState,
+  EmptyStateDescription,
+  EmptyStateTitle,
+  type EmptyStateProps,
+} from "./components/ui/empty-state";
+export { IconButton, type IconButtonProps } from "./components/ui/icon-button";
+export { Input, type InputProps } from "./components/ui/input";
 export { LoadingState, type LoadingStateVariant } from "./components/ui/loading-state";
 export {
   Popover,
@@ -14,6 +40,17 @@ export {
   type PopoverContentProps,
   type PopoverProps,
 } from "./components/ui/popover";
+export { ResizeHandle, type ResizeHandleProps } from "./components/ui/resize-handle";
+export {
+  SegmentedControlButton,
+  SegmentedControlGroup,
+  type SegmentedControlButtonProps,
+  type SegmentedControlGroupProps,
+} from "./components/ui/segmented-control";
+export { Select, type SelectProps } from "./components/ui/select";
+export { StatusDot, type StatusDotProps } from "./components/ui/status-dot";
+export { Switch, type SwitchProps } from "./components/ui/switch";
+export { Textarea, type TextareaProps } from "./components/ui/textarea";
 export { cn } from "./lib/utils";
 export { RootStore } from "./stores/RootStore";
 export { App as DefaultScene } from "./app";

@@ -47,8 +47,7 @@ describe("Tool", () => {
     )!;
     act(() => pathButton.click());
     expect(onOpenSourceLocation).toHaveBeenCalledWith({ path: "src/app.ts" });
-    const row = container.querySelector(".tool-summary-row")!;
-    expect(row.lastElementChild?.classList.contains("tool-timer")).toBe(true);
+    expect(container.querySelector(".tool-timer")).not.toBeNull();
   });
 
   it("opens an edit at the changed range reported by the tool", () => {

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 export function InlineWidgetRepairPrompt({
   onCancel,
@@ -15,10 +16,10 @@ export function InlineWidgetRepairPrompt({
     if (value) onSubmit(value);
   };
   return (
-    <form className="inline-widget-repair-form" onSubmit={submit}>
-      <label>
-        <span>What should be repaired?</span>
-        <textarea
+    <form className="border-b border-border bg-muted/30 p-3" onSubmit={submit}>
+      <label className="block space-y-1.5">
+        <span className="block text-xs font-medium text-foreground">What should be repaired?</span>
+        <Textarea
           autoFocus
           required
           rows={3}
@@ -27,11 +28,11 @@ export function InlineWidgetRepairPrompt({
           onChange={(event) => setInstructions(event.target.value)}
         />
       </label>
-      <div className="inline-widget-repair-actions">
-        <Button type="button" variant="outline" onClick={onCancel}>
+      <div className="mt-2.5 flex justify-end gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={!instructions.trim()}>
+        <Button type="submit" size="sm" disabled={!instructions.trim()}>
           Submit
         </Button>
       </div>

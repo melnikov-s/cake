@@ -107,20 +107,26 @@ export function FullscreenSurface({
 
   return createPortal(
     <div
-      className={`fullscreen-surface fullscreen-surface-${mode}`}
+      className="fixed inset-0 z-60 flex flex-col bg-background text-foreground animate-in fade-in duration-150"
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
       onMouseDown={onClose}
     >
-      <header onMouseDown={(event) => event.stopPropagation()}>
+      <header
+        className="flex items-center justify-between border-b border-border bg-card px-5 py-3"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <div>
-          <span>{eyebrow}</span>
-          <h2 id={titleId}>{title}</h2>
+          <span className="block font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            {eyebrow}
+          </span>
+          <h2 id={titleId} className="text-sm font-semibold text-foreground">
+            {title}
+          </h2>
         </div>
         <IconButton
           ref={closeButton}
-          className="fullscreen-surface-close"
           tooltip="Exit fullscreen"
           ariaLabel={`Exit fullscreen ${title}`}
           onClick={onClose}
@@ -128,9 +134,11 @@ export function FullscreenSurface({
           <CloseIcon />
         </IconButton>
       </header>
-      <main>
+      <main
+        className={cn("flex flex-1 justify-center overflow-auto p-6", mode === "canvas" && "p-0")}
+      >
         <article
-          className="fullscreen-surface-content"
+          className={cn("w-full max-w-4xl", mode === "canvas" && "h-full max-w-none")}
           onMouseDown={(event) => event.stopPropagation()}
         >
           {children}

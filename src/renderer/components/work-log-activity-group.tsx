@@ -1,9 +1,12 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { observer } from "r-state-tree/react";
+import { cn } from "@/lib/utils";
 import { diffStats } from "@/components/ai-elements/diff-view";
 import { VirtualizedConversation } from "@/components/ai-elements/conversation";
 import { WorkLogDiff } from "@/components/ai-elements/work-log-diff";
 import { ChevronIcon } from "@/components/ui/icons";
+import { StatusDot } from "@/components/ui/status-dot";
+import { Badge } from "@/components/ui/badge";
 import { formatElapsed } from "@/components/ui/loading-state";
 import type { UiPart } from "../../ipc/session-contract";
 import { toolDiff, workLogChanges } from "../../utils/turn-diff";
@@ -80,7 +83,7 @@ export const ActivityGroup = observer(function ActivityGroup({
   const activityVersion = JSON.stringify(parts);
   const live = behavior.store.liveWorkPossible;
   const renderWorkLogItem = (item: (typeof workLogItems)[number], omitToolDiff = false) => (
-    <div className="work-log-item">
+    <div className="min-w-0">
       {item.kind === "subagent-work-log" ? (
         <TranscriptPart
           part={item.result}
@@ -107,30 +110,36 @@ export const ActivityGroup = observer(function ActivityGroup({
   }, [activityVersion, isStreaming, open]);
   if (tools === 0 && !reasoningHasContent)
     return (
-      <div className="activity-group activity-group-status" role="status">
-        <span
-          className={`work-log-state${activityIsRunning ? " work-log-running" : ""}`}
-          aria-label={activityIsRunning ? "working" : "complete"}
-        />
+      <div
+        data-slot="activity-group"
+        className="flex items-center gap-2 rounded-xl border border-border/80 bg-muted/45 px-3.5 py-2.5 font-mono text-xs font-semibold text-muted-foreground"
+        role="status"
+      >
+        <StatusDot status={activityIsRunning ? "running" : "complete"} />
         {reasoningIsStreaming ? "Thinking…" : "Reasoning details not exposed"}
       </div>
     );
   return (
-    <details className="activity-group" open={open}>
+    <details
+      data-slot="activity-group"
+      className="overflow-hidden rounded-xl border border-border/80 bg-muted/45"
+      open={open}
+    >
       <summary
+        className="flex cursor-pointer select-none items-center gap-2 px-3.5 py-2.5 font-mono text-xs font-semibold text-foreground [&::-webkit-details-marker]:hidden"
         onClick={(event) => {
           event.preventDefault();
           behavior.store.setWorkLogGroupOpen(groupId, !open);
         }}
       >
-        <span
-          className={`work-log-state${activityIsRunning ? " work-log-running" : ""}`}
-          aria-label={activityIsRunning ? "working" : "complete"}
-        />
-        Work log <small>{label}</small>
+        <StatusDot status={activityIsRunning ? "running" : "complete"} />
+        <span>Work log</span>
+        <small className="ml-1.5 font-normal text-muted-foreground">{label}</small>
       </summary>
       {open && (
         <div
+          data-slot="work-log-content"
+          className="max-h-[32rem] space-y-2 overflow-y-auto border-t border-border/60 p-3 pt-2.5"
           ref={attachLog}
           onScroll={(event) => {
             const log = event.currentTarget;
@@ -138,28 +147,33 @@ export const ActivityGroup = observer(function ActivityGroup({
           }}
         >
           {showDiff ? (
-            <div className="work-log-diff-view">
-              <div className="work-log-activity-strip">
+            <div>
+              <div className="mb-2 overflow-hidden rounded-lg border border-border bg-card/60">
                 <button
                   type="button"
-                  className="work-log-activity-strip-toggle"
+                  className="flex w-full cursor-pointer items-center justify-between gap-3 px-3 py-2 text-left font-mono text-xs text-foreground hover:bg-muted/50 transition-colors"
                   aria-expanded={activityStripOpen}
                   onClick={() => setActivityStripOpen((val) => !val)}
                 >
-                  <span className="work-log-activity-strip-summary">
-                    <span className="work-log-activity-strip-badge">Activity</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <Badge variant="outline" className="h-4 px-1 text-[9px] font-mono uppercase">
+                      Activity
+                    </Badge>
                     <span>{activityStripLabel}</span>
                   </span>
-                  <span className="work-log-activity-strip-action">
+                  <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                     <span>{activityStripOpen ? "Hide steps" : "View steps"}</span>
                     <ChevronIcon
-                      className={`work-log-strip-chevron${activityStripOpen ? " open" : ""}`}
+                      className={cn(
+                        "transition-transform duration-150",
+                        activityStripOpen && "-rotate-90",
+                      )}
                     />
                   </span>
                 </button>
                 {activityStripOpen && logElement && (
                   <VirtualizedConversation
-                    className="work-log-activity-strip-items"
+                    className="space-y-2 border-t border-border bg-muted/20 p-2.5"
                     customScrollParent={logElement}
                     data={workLogItems}
                     computeItemKey={(_index, item) => item.id}
@@ -178,7 +192,7 @@ export const ActivityGroup = observer(function ActivityGroup({
           ) : (
             logElement && (
               <VirtualizedConversation
-                className="work-log-items"
+                className="space-y-2"
                 customScrollParent={logElement}
                 data={workLogItems}
                 computeItemKey={(_index, item) => item.id}

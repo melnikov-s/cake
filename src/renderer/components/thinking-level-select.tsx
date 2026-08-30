@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { cn } from "@/lib/utils";
 import type { ThinkingLevel } from "../../ipc/session-contract";
 import { ChevronDownIcon } from "./ui/icons";
 
@@ -96,7 +97,10 @@ export function ThinkingLevelSelect({
   return (
     <div
       ref={rootRef}
-      className={`model-combobox thinking-level-select ${variant}`}
+      className={cn(
+        "relative inline-flex w-full items-center",
+        variant === "settings" && "max-w-md",
+      )}
       onBlur={(event) => {
         if (
           !(event.relatedTarget instanceof Node) ||
@@ -108,7 +112,10 @@ export function ThinkingLevelSelect({
       <button
         ref={triggerRef}
         type="button"
-        className="model-combobox-input thinking-level-trigger"
+        className={cn(
+          "flex h-8 w-full cursor-pointer items-center justify-between rounded-lg border border-border bg-input px-2.5 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+          variant === "settings" && "h-9 text-sm",
+        )}
         role="combobox"
         aria-label={ariaLabel}
         aria-haspopup="listbox"
@@ -118,21 +125,21 @@ export function ThinkingLevelSelect({
         onClick={() => (open ? setOpen(false) : openMenu())}
         onKeyDown={onKeyDown}
       >
-        <span className="thinking-level-label">{thinkingLevelLabel(value)}</span>
-        <span className="model-combobox-chevron" aria-hidden="true">
-          <ChevronDownIcon />
+        <span className="truncate">{thinkingLevelLabel(value)}</span>
+        <span className="pointer-events-none shrink-0 text-muted-foreground" aria-hidden="true">
+          <ChevronDownIcon size={14} />
         </span>
       </button>
       {open && (
-        <div className="model-combobox-popover">
+        <div className="absolute top-[calc(100%+4px)] left-0 z-50 w-full min-w-[200px] overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-xl">
           <div
-            className="model-combobox-list"
+            className="max-h-60 overflow-y-auto p-1 text-xs"
             id={listboxId}
             role="listbox"
             aria-label={`${ariaLabel} options`}
             onKeyDown={onKeyDown}
           >
-            <div className="model-combobox-group">
+            <div className="space-y-0.5">
               {levels.map((level, index) => {
                 const selected = level === value;
                 return (
@@ -141,15 +148,24 @@ export function ThinkingLevelSelect({
                     type="button"
                     role="option"
                     aria-selected={selected}
-                    className={index === activeIndex ? "active" : undefined}
+                    className={cn(
+                      "flex w-full cursor-pointer items-center justify-between rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted/70",
+                      index === activeIndex && "bg-muted text-foreground",
+                    )}
                     key={level}
                     onMouseEnter={() => setActiveIndex(index)}
                     onClick={() => choose(level)}
                   >
                     <span>
-                      <strong>{thinkingLevelLabel(level)}</strong>
+                      <strong className="font-medium text-foreground">
+                        {thinkingLevelLabel(level)}
+                      </strong>
                     </span>
-                    {selected ? <i aria-hidden="true">✓</i> : null}
+                    {selected ? (
+                      <i className="font-mono text-accent not-italic" aria-hidden="true">
+                        ✓
+                      </i>
+                    ) : null}
                   </button>
                 );
               })}

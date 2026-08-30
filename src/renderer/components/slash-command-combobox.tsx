@@ -9,6 +9,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { flushSync } from "react-dom";
+import { cn } from "@/lib/utils";
 import type { FileSuggestion, SessionSnapshot } from "../../ipc/session-contract";
 import { ComposerInput } from "./ai-elements/composer";
 
@@ -257,7 +258,7 @@ export function SlashCommandCombobox({
     <>
       {open && (
         <div
-          className={`slash-command-menu ${menuKind === "files" ? "file-mention-menu" : ""}`}
+          className="absolute bottom-[calc(100%+8px)] inset-x-0 z-50 flex max-h-72 flex-col gap-0.5 overflow-y-auto rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-2xl"
           id={listboxId}
           role="listbox"
           aria-label={menuKind === "files" ? "Project files" : "Slash commands"}
@@ -267,7 +268,10 @@ export function SlashCommandCombobox({
                 <button
                   id={`${listboxId}-option-${index}`}
                   key={`${item.value}:${index}`}
-                  className={index === selectedIndex ? "active" : undefined}
+                  className={cn(
+                    "flex w-full cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 text-left text-xs transition-colors hover:bg-muted/70",
+                    index === selectedIndex && "bg-muted text-foreground",
+                  )}
                   type="button"
                   role="option"
                   aria-selected={index === selectedIndex}
@@ -275,10 +279,16 @@ export function SlashCommandCombobox({
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => chooseFile(item)}
                 >
-                  <code>{item.label}</code>
-                  <span>
-                    <strong>{item.description ?? item.value.replace(/^@/, "")}</strong>
-                    <small>{item.label.endsWith("/") ? "Folder" : "File"}</small>
+                  <code className="font-mono text-[11px] font-semibold text-accent whitespace-nowrap">
+                    {item.label}
+                  </code>
+                  <span className="flex min-w-0 flex-col">
+                    <strong className="truncate font-medium text-foreground">
+                      {item.description ?? item.value.replace(/^@/, "")}
+                    </strong>
+                    <small className="truncate font-mono text-[10px] text-muted-foreground">
+                      {item.label.endsWith("/") ? "Folder" : "File"}
+                    </small>
                   </span>
                 </button>
               ))
@@ -286,7 +296,10 @@ export function SlashCommandCombobox({
                 <button
                   id={`${listboxId}-option-${index}`}
                   key={`${command.source}:${command.name}`}
-                  className={index === selectedIndex ? "active" : undefined}
+                  className={cn(
+                    "flex w-full cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 text-left text-xs transition-colors hover:bg-muted/70",
+                    index === selectedIndex && "bg-muted text-foreground",
+                  )}
                   type="button"
                   role="option"
                   aria-selected={index === selectedIndex}
@@ -294,13 +307,15 @@ export function SlashCommandCombobox({
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => chooseCommand(command)}
                 >
-                  <code>
+                  <code className="font-mono text-[11px] font-semibold text-accent whitespace-nowrap">
                     /{command.name}
                     {command.argumentHint ? ` ${command.argumentHint}` : ""}
                   </code>
-                  <span>
-                    <strong>{command.description ?? command.name}</strong>
-                    <small>
+                  <span className="flex min-w-0 flex-col">
+                    <strong className="truncate font-medium text-foreground">
+                      {command.description ?? command.name}
+                    </strong>
+                    <small className="truncate font-mono text-[10px] text-muted-foreground">
                       {command.source === "builtin"
                         ? "Pi CLI"
                         : `${command.source} · ${command.sourceInfo.scope}`}

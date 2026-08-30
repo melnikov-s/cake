@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import mermaid from "mermaid";
+import { Callout } from "@/components/ui/callout";
 import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
 import { useResolvedColorTheme } from "../lib/resolved-color-theme";
 
@@ -37,20 +38,20 @@ export function DiagramArtifact({
   }, [artifact.id, artifact.payload.source, artifact.revision, colorTheme]);
   if (error)
     return (
-      <div className="notice notice-error">
+      <Callout variant="error">
         <strong>Diagram could not render</strong>
-        <span>{error}</span>
-      </div>
+        <span className="text-xs">{error}</span>
+      </Callout>
     );
   return svg ? (
     <iframe
-      className="artifact-diagram"
+      className="min-h-60 w-full rounded-lg border border-border bg-background"
       title={artifact.title ?? artifact.id}
       sandbox=""
       srcDoc={isolatedDocument(svg, "img-src data:; style-src 'unsafe-inline'", colorTheme)}
     />
   ) : (
-    <p>Rendering diagram…</p>
+    <p className="text-xs text-muted-foreground">Rendering diagram…</p>
   );
 }
 

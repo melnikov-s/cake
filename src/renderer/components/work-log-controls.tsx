@@ -8,6 +8,7 @@ import {
   WorkLogFullyExpandedIcon,
   WorkLogSemiExpandedIcon,
 } from "@/components/ui/icons";
+import { SegmentedControlGroup, SegmentedControlButton } from "@/components/ui/segmented-control";
 import type { ChatStore } from "../stores/ChatStore";
 
 export const WorkLogControls = observer(function WorkLogControls({ store }: { store: ChatStore }) {
@@ -17,11 +18,11 @@ export const WorkLogControls = observer(function WorkLogControls({ store }: { st
   return (
     <Popover>
       <PopoverTrigger
-        className="header-pane-toggle work-log-popover-trigger"
+        className="flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]"
         aria-label="Work log display options"
         title="Work log display options"
       >
-        <span className="work-log-trigger-icons">
+        <span className="flex items-center gap-0.5">
           {viewMode === "auto" ? <SparkleIcon /> : viewMode === "diff" ? <DiffIcon /> : <LogIcon />}
           {expansion === "collapsed" ? (
             <WorkLogCollapsedIcon />
@@ -33,83 +34,91 @@ export const WorkLogControls = observer(function WorkLogControls({ store }: { st
         </span>
       </PopoverTrigger>
 
-      <PopoverContent align="end" side="bottom" offset={6} className="work-log-popover-menu">
-        <section className="work-log-popover-section" aria-labelledby="work-log-view-mode-title">
-          <header id="work-log-view-mode-title" className="work-log-popover-heading">
+      <PopoverContent align="end" side="bottom" offset={6} className="w-56 p-2.5 shadow-lg">
+        <section className="grid gap-1.5" aria-labelledby="work-log-view-mode-title">
+          <header
+            id="work-log-view-mode-title"
+            className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground"
+          >
             View Mode
           </header>
-          <div className="work-log-segmented-group" role="group" aria-label="Work log view mode">
-            <button
-              type="button"
-              className={`work-log-control-btn${viewMode === "auto" ? " active" : ""}`}
+          <SegmentedControlGroup
+            size="sm"
+            className="w-full grid grid-cols-3"
+            aria-label="Work log view mode"
+          >
+            <SegmentedControlButton
+              size="sm"
+              active={viewMode === "auto"}
               aria-label="Auto view mode"
-              aria-pressed={viewMode === "auto"}
               onClick={() => store.setWorkLogViewMode("auto")}
             >
               <SparkleIcon />
-              <span>Auto</span>
-            </button>
-            <button
-              type="button"
-              className={`work-log-control-btn${viewMode === "diff" ? " active" : ""}`}
+              <span className="ml-1">Auto</span>
+            </SegmentedControlButton>
+            <SegmentedControlButton
+              size="sm"
+              active={viewMode === "diff"}
               aria-label="Diff view mode"
-              aria-pressed={viewMode === "diff"}
               onClick={() => store.setWorkLogViewMode("diff")}
             >
               <DiffIcon />
-              <span>Diff</span>
-            </button>
-            <button
-              type="button"
-              className={`work-log-control-btn${viewMode === "log" ? " active" : ""}`}
+              <span className="ml-1">Diff</span>
+            </SegmentedControlButton>
+            <SegmentedControlButton
+              size="sm"
+              active={viewMode === "log"}
               aria-label="Log view mode"
-              aria-pressed={viewMode === "log"}
               onClick={() => store.setWorkLogViewMode("log")}
             >
               <LogIcon />
-              <span>Log</span>
-            </button>
-          </div>
+              <span className="ml-1">Log</span>
+            </SegmentedControlButton>
+          </SegmentedControlGroup>
         </section>
 
-        <div className="work-log-popover-divider" />
+        <div className="my-2 border-t border-border/70" />
 
-        <section className="work-log-popover-section" aria-labelledby="work-log-expansion-title">
-          <header id="work-log-expansion-title" className="work-log-popover-heading">
+        <section className="grid gap-1.5" aria-labelledby="work-log-expansion-title">
+          <header
+            id="work-log-expansion-title"
+            className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground"
+          >
             Expansion
           </header>
-          <div className="work-log-segmented-group" role="group" aria-label="Work log expansion">
-            <button
-              type="button"
-              className={`work-log-control-btn${expansion === "collapsed" ? " active" : ""}`}
+          <SegmentedControlGroup
+            size="sm"
+            className="w-full grid grid-cols-3"
+            aria-label="Work log expansion"
+          >
+            <SegmentedControlButton
+              size="sm"
+              active={expansion === "collapsed"}
               aria-label="Collapsed work logs"
-              aria-pressed={expansion === "collapsed"}
               onClick={() => store.setWorkLogsExpansion("collapsed")}
             >
               <WorkLogCollapsedIcon />
-              <span>Collapsed</span>
-            </button>
-            <button
-              type="button"
-              className={`work-log-control-btn${expansion === "expanded" ? " active" : ""}`}
+              <span className="ml-1">Collapsed</span>
+            </SegmentedControlButton>
+            <SegmentedControlButton
+              size="sm"
+              active={expansion === "expanded"}
               aria-label="Compact work logs"
-              aria-pressed={expansion === "expanded"}
               onClick={() => store.setWorkLogsExpansion("expanded")}
             >
               <WorkLogSemiExpandedIcon />
-              <span>Compact</span>
-            </button>
-            <button
-              type="button"
-              className={`work-log-control-btn${expansion === "fully-expanded" ? " active" : ""}`}
+              <span className="ml-1">Compact</span>
+            </SegmentedControlButton>
+            <SegmentedControlButton
+              size="sm"
+              active={expansion === "fully-expanded"}
               aria-label="Full work logs"
-              aria-pressed={expansion === "fully-expanded"}
               onClick={() => store.setWorkLogsExpansion("fully-expanded")}
             >
               <WorkLogFullyExpandedIcon />
-              <span>Full</span>
-            </button>
-          </div>
+              <span className="ml-1">Full</span>
+            </SegmentedControlButton>
+          </SegmentedControlGroup>
         </section>
       </PopoverContent>
     </Popover>

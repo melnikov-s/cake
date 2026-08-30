@@ -4,25 +4,28 @@ import type { EmbeddedEditorStore } from "../stores/EmbeddedEditorStore";
 import { Button } from "./ui/button";
 import { LoadingState } from "./ui/loading-state";
 
-// Observer-wrapped: reads EmbeddedEditorStore status fields directly, so status
-// transitions must re-render this card even if no parent render rescues it.
 const StatusCard = observer(function StatusCard({ store }: { store: EmbeddedEditorStore }) {
   const managedDownloadAvailable = /Linux/.test(navigator.userAgent);
   return (
-    <div className="embedded-editor-card" role="status">
-      <strong>Full VS Code editing</strong>
-      <p>
+    <div
+      className="m-auto grid max-w-[30rem] gap-2.5 rounded-xl border border-border bg-card p-5 shadow-lg"
+      role="status"
+    >
+      <strong className="text-sm font-semibold text-foreground">Full VS Code editing</strong>
+      <p className="text-xs leading-relaxed text-muted-foreground">
         Run a real VS Code server for this project inside Cake, with full language services, your
         extension workspace, and the command palette. On Mac, Cake needs code-server installed
         locally (Homebrew works well).
       </p>
-      {store.statusMessage ? <p className="embedded-editor-status">{store.statusMessage}</p> : null}
+      {store.statusMessage ? (
+        <p className="font-mono text-xs text-muted-foreground">{store.statusMessage}</p>
+      ) : null}
       {store.error ? (
-        <p className="embedded-editor-status" role="alert">
+        <p className="font-mono text-xs text-destructive" role="alert">
           {store.error}
         </p>
       ) : null}
-      <div className="embedded-editor-actions">
+      <div className="flex flex-wrap items-center gap-2 pt-1">
         {store.status === "downloading" || store.status === "starting" ? null : (
           <Button size="sm" onClick={() => void store.askCakeToSetUp()}>
             Ask Cake to set this up

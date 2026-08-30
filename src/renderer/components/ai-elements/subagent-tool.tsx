@@ -8,14 +8,9 @@ import type { ChatStore } from "../../stores/ChatStore";
 import { ChatPopover } from "../message-comment-popover";
 import { IconButton } from "../ui/icon-button";
 import { ChatIcon } from "../ui/icons";
+import { StatusDot } from "../ui/status-dot";
 
 type ToolPart = Extract<UiPart, { kind: "tool" }>;
-
-function toolState(status: SubagentRun["status"]) {
-  if (status === "complete") return "success";
-  if (status === "aborted") return "interrupted";
-  return status;
-}
 
 function currentActivity(run: SubagentRun) {
   const running = [...run.parts]
@@ -65,15 +60,22 @@ export const SubagentTool = observer(function SubagentTool({
   const parallel = toolOperationName(part) === "subagents.parallel";
 
   return (
-    <div
-      className={`tool-call subagent-call rounded-xl border border-border bg-muted/35 px-3 py-2${activeCount > 0 ? " subagent-running" : ""}`}
-    >
+    <div className="rounded-xl border border-border bg-muted/35 px-3 py-2">
       <div className="flex min-w-0 items-center gap-2 text-xs">
-        <span
-          className={`tool-state tool-${activeCount > 0 ? "running" : part.state}`}
-          aria-label={activeCount > 0 ? "running" : part.state}
+        <StatusDot
+          status={
+            activeCount > 0
+              ? "running"
+              : part.state === "success"
+                ? "complete"
+                : part.state === "error"
+                  ? "failed"
+                  : part.state === "interrupted"
+                    ? "interrupted"
+                    : "ready"
+          }
         />
-        <strong className="font-mono">
+        <strong className="font-mono font-semibold">
           {parallel ? "Delegated work" : `${runs[0]?.profile ?? "worker"} subagent`}
         </strong>
         {timer}
@@ -95,9 +97,18 @@ export const SubagentTool = observer(function SubagentTool({
               key={run.key}
               className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-background/50 px-2.5 py-2"
             >
-              <span
-                className={`tool-state tool-${toolState(run.status)}`}
-                aria-label={released ? "released" : run.status}
+              <StatusDot
+                status={
+                  run.status === "running"
+                    ? "running"
+                    : run.status === "complete"
+                      ? "complete"
+                      : run.status === "aborted"
+                        ? "interrupted"
+                        : run.status === "error"
+                          ? "failed"
+                          : "pending"
+                }
               />
               {parallel && <strong className="shrink-0 font-mono text-xs">{run.profile}</strong>}
               <div className="min-w-0 flex-1">

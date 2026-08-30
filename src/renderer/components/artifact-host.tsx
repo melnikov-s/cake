@@ -54,19 +54,25 @@ export const ArtifactHost = observer(function ArtifactHost({
         : undefined;
   const widgetReady = Boolean(widget && inlineWidgets?.state(widget.id)?.compiled);
   return (
-    <article className="artifact" data-artifact-id={artifact.id} data-artifact-kind={artifact.kind}>
-      <header>
-        <strong>{artifact.title ?? artifact.id}</strong>
+    <article
+      className="relative overflow-hidden rounded-[14px] border border-border bg-card shadow-[0_10px_30px_-15px_hsl(var(--shadow)/0.3)]"
+      data-artifact-id={artifact.id}
+      data-artifact-kind={artifact.kind}
+    >
+      <header className="flex items-center justify-between gap-2.5 border-b border-border bg-card/85 px-3.5 py-2.5">
+        <strong className="text-[13px] font-semibold text-foreground">
+          {artifact.title ?? artifact.id}
+        </strong>
         {widget && (
           <FullscreenButton
-            className="artifact-fullscreen-button"
+            className="ml-auto"
             disabled={!widgetReady}
             label={`View ${widget.title} fullscreen`}
             onClick={() => setFullscreen(true)}
           />
         )}
       </header>
-      <div className="artifact-body">
+      <div className="p-3.5">
         {artifact.kind === "markdown" ? (
           <Markdown onOpenSourceLocation={onOpenSourceLocation}>
             {artifact.payload.markdown}
@@ -85,7 +91,9 @@ export const ArtifactHost = observer(function ArtifactHost({
         ) : null}
         {artifact.kind === "media" ? <MediaArtifact artifact={artifact} /> : null}
         {artifact.kind === "diff" ? (
-          <pre className="artifact-diff">{artifact.payload.diff}</pre>
+          <pre className="overflow-x-auto font-mono text-[11px] leading-relaxed">
+            {artifact.payload.diff}
+          </pre>
         ) : null}
         {artifact.kind === "html" ? <HtmlArtifact artifact={artifact} /> : null}
         {artifact.kind === "widget" ? (
@@ -109,11 +117,15 @@ export const ArtifactHost = observer(function ArtifactHost({
           />
         ) : null}
       </div>
-      <details className="artifact-fallback">
-        <summary>Readable fallback</summary>
-        <Markdown onOpenSourceLocation={onOpenSourceLocation}>
-          {artifact.fallback.markdown}
-        </Markdown>
+      <details className="border-t border-border px-3.5 py-2 text-[11px]">
+        <summary className="cursor-pointer text-muted-foreground select-none">
+          Readable fallback
+        </summary>
+        <div className="mt-2">
+          <Markdown onOpenSourceLocation={onOpenSourceLocation}>
+            {artifact.fallback.markdown}
+          </Markdown>
+        </div>
       </details>
     </article>
   );

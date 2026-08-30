@@ -158,13 +158,15 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         onOpen={behavior.openSourceLocation}
       />
     ) : part.attachmentKind === "image" && part.data ? (
-      <figure className="transcript-image">
+      <figure className="my-1 mb-2 ml-auto w-[min(76%,34rem)] overflow-hidden rounded-[14px] border border-border bg-card">
         <ImagePreview
           src={`data:${part.mediaType};base64,${part.data}`}
           alt={part.name}
           caption={part.name}
         />
-        <figcaption>{part.name}</figcaption>
+        <figcaption className="truncate px-2.5 py-1.5 font-mono text-[10px] text-muted-foreground">
+          {part.name}
+        </figcaption>
       </figure>
     ) : (
       <div className="w-fit rounded-full border border-border px-3 py-1 font-mono text-[0.68rem]">
@@ -192,7 +194,7 @@ export function TranscriptPart(props: {
   omitToolDiff?: boolean;
 }) {
   return (
-    <div className="transcript-part" data-part-id={props.part.id}>
+    <div className="contents" data-part-id={props.part.id}>
       <TranscriptPartContent {...props} />
     </div>
   );

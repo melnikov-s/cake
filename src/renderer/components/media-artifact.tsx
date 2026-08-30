@@ -14,5 +14,11 @@ export function MediaArtifact({
     return <img {...common} alt={artifact.payload.alt ?? ""} />;
   if (artifact.payload.mediaType === "audio") return <audio {...common} controls />;
   if (artifact.payload.mediaType === "video") return <video {...common} controls />;
-  return <iframe className="artifact-document" {...common} sandbox="" />;
+  return (
+    <iframe
+      className="min-h-60 w-full rounded-lg border border-border bg-background"
+      {...common}
+      sandbox=""
+    />
+  );
 }

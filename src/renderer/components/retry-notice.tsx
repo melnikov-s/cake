@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Callout } from "@/components/ui/callout";
 import type { UiPart } from "../../ipc/session-contract";
 
 function retryDuration(milliseconds: number) {
@@ -32,10 +33,13 @@ export function RetryNotice({ part }: { part: Extract<UiPart, { kind: "notice" }
         )}. Press Stop to cancel.`;
 
   return (
-    <div className={`notice notice-${part.tone}`} role={part.tone === "error" ? "alert" : "status"}>
-      <strong>{part.title}</strong>
-      {part.detail && <span>{part.detail}</span>}
-      {countdown && <span>{countdown}</span>}
-    </div>
+    <Callout
+      variant={part.tone === "error" ? "error" : part.tone === "warning" ? "warning" : "default"}
+      role={part.tone === "error" ? "alert" : "status"}
+    >
+      <strong className="block text-xs font-semibold">{part.title}</strong>
+      {part.detail && <span className="block text-xs text-muted-foreground">{part.detail}</span>}
+      {countdown && <span className="block text-xs text-muted-foreground">{countdown}</span>}
+    </Callout>
   );
 }

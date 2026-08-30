@@ -5,6 +5,8 @@ import type { ModelGroup } from "./model-combobox";
 import { ModelCombobox } from "./model-combobox";
 import { ThinkingLevelSelect } from "./thinking-level-select";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Switch } from "./ui/switch";
 import type { ModelPresetSettingsStore } from "../stores/ModelPresetSettingsStore";
 
 const emptyDraft = (): Omit<ModelPreset, "id"> => ({
@@ -51,11 +53,13 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
   const fastModeAvailable = selectedModel?.fastMode ?? false;
 
   return (
-    <section className="settings-section" aria-labelledby="model-presets-title">
-      <header>
+    <section className="border-t border-border py-5" aria-labelledby="model-presets-title">
+      <header className="mb-4 flex items-start justify-between gap-4">
         <div>
-          <h2 id="model-presets-title">Model Presets</h2>
-          <p>
+          <h2 id="model-presets-title" className="text-[15px] font-semibold text-foreground">
+            Model Presets
+          </h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
             Save a model, reasoning level, and Fast mode as one reusable configuration. New sessions
             use the default preset, or your last selected model when no default is set.
           </p>
@@ -64,23 +68,32 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
           New preset
         </Button>
       </header>
-      <div className="model-preset-list">
+      <div className="grid gap-3">
         {settings.presets.length === 0 && !editingId && (
-          <p className="settings-empty">No presets yet. Create one for your preferred setup.</p>
+          <p className="text-xs text-muted-foreground">
+            No presets yet. Create one for your preferred setup.
+          </p>
         )}
         {settings.presets.map((preset) => (
-          <article key={preset.id}>
+          <article
+            key={preset.id}
+            className="flex items-center justify-between gap-4 rounded-xl border border-border bg-muted/50 p-3"
+          >
             <div>
-              <strong>{preset.name}</strong>
-              <small>
+              <strong className="block text-xs font-semibold text-foreground">{preset.name}</strong>
+              <small className="block font-mono text-[10px] text-muted-foreground">
                 {preset.provider}/{preset.modelId} · {preset.thinkingLevel} reasoning
                 {preset.fastMode ? " · Fast" : ""}
               </small>
             </div>
-            <div className="model-preset-actions">
-              <label title="Use for new conversations">
+            <div className="flex items-center gap-2 text-xs">
+              <label
+                title="Use for new conversations"
+                className="flex items-center gap-1.5 cursor-pointer text-muted-foreground hover:text-foreground"
+              >
                 <input
                   type="radio"
+                  className="accent-primary"
                   name="default-model-preset"
                   checked={settings.defaultPresetId === preset.id}
                   onChange={() => void settings.setDefaultPreset(preset.id)}
@@ -111,6 +124,7 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
           <Button
             variant="ghost"
             size="sm"
+            className="w-fit"
             onClick={() => void settings.setDefaultPreset(undefined)}
           >
             Clear default
@@ -118,19 +132,23 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
         )}
       </div>
       {editingId && (
-        <form className="model-preset-form" onSubmit={submit}>
-          <label>
-            <span>Name</span>
-            <input
+        <form
+          className="mt-4 grid gap-4 rounded-xl border border-border bg-card p-4 shadow-sm"
+          onSubmit={submit}
+        >
+          <label className="flex items-center justify-between gap-6 text-sm">
+            <span className="text-xs font-medium text-foreground">Name</span>
+            <Input
               autoFocus
+              className="h-8 max-w-md text-xs"
               value={draft.name}
               maxLength={80}
               placeholder="e.g. Deep review"
               onChange={(event) => setDraft({ ...draft, name: event.target.value })}
             />
           </label>
-          <div className="settings-field">
-            <span>Model</span>
+          <div className="flex items-center justify-between gap-6 text-sm">
+            <span className="text-xs font-medium text-foreground">Model</span>
             <ModelCombobox
               ariaLabel="Preset model"
               groups={groups}
@@ -153,8 +171,8 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
               }}
             />
           </div>
-          <label>
-            <span>Reasoning</span>
+          <label className="flex items-center justify-between gap-6 text-sm">
+            <span className="text-xs font-medium text-foreground">Reasoning</span>
             <ThinkingLevelSelect
               ariaLabel="Preset reasoning"
               value={draft.thinkingLevel}
@@ -164,20 +182,23 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
               onSelect={(thinkingLevel: ThinkingLevel) => setDraft({ ...draft, thinkingLevel })}
             />
           </label>
-          <label className="model-preset-fast">
-            <span>Fast mode</span>
-            <input
-              type="checkbox"
+          <div className="flex items-center justify-between gap-6 text-sm">
+            <span className="text-xs font-medium text-foreground">Fast mode</span>
+            <Switch
               checked={draft.fastMode}
               disabled={!fastModeAvailable}
-              onChange={(event) => setDraft({ ...draft, fastMode: event.target.checked })}
+              onCheckedChange={(checked) => setDraft({ ...draft, fastMode: checked })}
             />
-          </label>
-          <div className="model-preset-form-actions">
-            <Button variant="ghost" onClick={() => setEditingId(undefined)}>
+          </div>
+          <div className="flex justify-end gap-2 border-t border-border pt-3">
+            <Button variant="ghost" size="sm" onClick={() => setEditingId(undefined)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={!draft.name.trim() || !modelValue || settings.saving}>
+            <Button
+              size="sm"
+              type="submit"
+              disabled={!draft.name.trim() || !modelValue || settings.saving}
+            >
               Save preset
             </Button>
           </div>

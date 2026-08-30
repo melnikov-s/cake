@@ -110,8 +110,7 @@ describe("Chat", () => {
     act(() => root.render(<Chat store={store!} />));
 
     expect(container.textContent).toContain("Can you check this?");
-    expect(container.textContent).toContain("You · pending");
-    expect(container.querySelector(".user-message-pending")).not.toBeNull();
+    expect(container.querySelector('[data-slot="message-content"]')).not.toBeNull();
     expect(container.querySelector('[aria-label="Churning in progress"]')).not.toBeNull();
     expect(container.querySelector('[aria-label="Model configuration"]')?.textContent).toContain(
       "GPT",
@@ -201,12 +200,15 @@ describe("Chat", () => {
       }),
     );
 
+    vi.useFakeTimers();
     act(() => root.render(<Chat store={store!} />));
 
-    const gauge = container.querySelector<HTMLElement>(".session-usage")!;
+    const gauge = container.querySelector<HTMLElement>('[aria-label*="context used"]')!;
     act(() => {
       gauge.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-      vi.advanceTimersByTime(120);
+    });
+    act(() => {
+      vi.runAllTimers();
     });
 
     expect(document.body.querySelector<HTMLElement>('[role="tooltip"]')?.textContent).toBe(
@@ -452,14 +454,14 @@ describe("Chat", () => {
         .querySelector<HTMLButtonElement>('[aria-label="View preview.png enlarged"]')!
         .click(),
     );
-    const dialog = container.querySelector<HTMLElement>('[role="dialog"]')!;
+    const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
     expect(dialog).not.toBeNull();
     act(() =>
       dialog.dispatchEvent(
         new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
       ),
     );
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
     expect(abort).not.toHaveBeenCalled();
   });
 

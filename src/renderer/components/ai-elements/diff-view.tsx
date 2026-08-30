@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../../../ipc/source-location";
 import { CopyFilePathButton } from "@/components/copy-file-path-button";
 import { Button } from "../ui/button";
@@ -74,12 +75,14 @@ export function DiffView({
   label = "Changes",
   onOpenSourceLocation,
   highlightCode = true,
+  className,
 }: {
   diff: string;
   filePath?: string;
   label?: string;
   onOpenSourceLocation?: (location: SourceLocation) => void | Promise<void>;
   highlightCode?: boolean;
+  className?: string;
 }) {
   const lines = useMemo(() => parseDiff(diff), [diff]);
   const source = useMemo(
@@ -102,51 +105,85 @@ export function DiffView({
       }
     : undefined;
   return (
-    <section className="diff-view" aria-label={`${label}${filePath ? ` to ${filePath}` : ""}`}>
-      <header>
+    <section
+      className={cn(
+        "overflow-hidden rounded-lg border border-border/80 bg-card/60 font-mono text-[11px]",
+        className,
+      )}
+      aria-label={`${label}${filePath ? ` to ${filePath}` : ""}`}
+    >
+      <header className="sticky top-0 z-10 flex min-h-[31px] items-center justify-between gap-3 border-b border-border/70 bg-card/90 px-2.5 py-1 text-[10px] text-muted-foreground">
         <div className="group/path flex min-w-0 items-center gap-1">
           {filePath && onOpenSourceLocation ? (
             <Button
               variant="ghost"
               size="sm"
-              className="h-auto min-w-0 px-1 py-0 font-mono text-xs"
+              className="h-auto min-w-0 px-1 py-0 font-mono text-xs font-semibold text-foreground"
               title={filePath}
               onClick={() => void onOpenSourceLocation(location!)}
             >
               <span className="truncate">{filePath}</span>
             </Button>
           ) : (
-            <code title={filePath}>{filePath ?? label}</code>
+            <code className="truncate font-inherit font-semibold text-foreground" title={filePath}>
+              {filePath ?? label}
+            </code>
           )}
           {filePath && <CopyFilePathButton path={filePath} />}
         </div>
-        <span>
-          <b>+{stats.additions}</b>
-          <i>−{stats.deletions}</i>
+        <span className="ml-auto flex shrink-0 items-center gap-2 font-mono text-xs">
+          <b className="font-semibold text-success">+{stats.additions}</b>
+          <i className="font-semibold not-italic text-destructive">−{stats.deletions}</i>
         </span>
       </header>
-      <div className="diff-scroll" role="table" aria-label="Code changes">
+      <div
+        className="w-full max-w-full min-w-0 overflow-x-auto py-1 font-mono text-[11px] leading-[1.55]"
+        role="table"
+        aria-label="Code changes"
+      >
         {lines.map((line, index) =>
           line.kind === "meta" ? (
-            <div className="diff-line diff-meta" role="row" key={line.key}>
-              <span />
-              <span />
-              <code>{line.content}</code>
+            <div
+              className="my-1 grid w-max min-w-full max-w-none grid-cols-[3.5rem_3.5rem_max-content] bg-accent/10 text-muted-foreground"
+              role="row"
+              key={line.key}
+            >
+              <span className="select-none px-2 text-right" />
+              <code className="col-span-2 block px-2 py-0.5 whitespace-pre [tab-size:2] text-muted-foreground">
+                {line.content}
+              </code>
             </div>
           ) : (
-            <div className={`diff-line diff-${line.kind}`} role="row" key={line.key}>
+            <div
+              className={cn(
+                "grid w-max min-w-full max-w-none grid-cols-[3.5rem_3.5rem_max-content]",
+                line.kind === "add" && "bg-success/15",
+                line.kind === "remove" && "bg-destructive/15",
+              )}
+              role="row"
+              key={line.key}
+            >
               <span
+                className="select-none px-2 text-right text-muted-foreground/70"
                 aria-label={line.oldNumber === undefined ? undefined : `Old line ${line.oldNumber}`}
               >
                 {line.oldNumber}
               </span>
               <span
+                className="select-none px-2 text-right text-muted-foreground/70"
                 aria-label={line.newNumber === undefined ? undefined : `New line ${line.newNumber}`}
               >
                 {line.newNumber}
               </span>
-              <code>
-                <b aria-hidden="true">
+              <code className="block px-2 pr-3 whitespace-pre [tab-size:2] text-foreground">
+                <b
+                  className={cn(
+                    "inline-block w-5 select-none font-semibold text-muted-foreground",
+                    line.kind === "add" && "text-success",
+                    line.kind === "remove" && "text-destructive",
+                  )}
+                  aria-hidden="true"
+                >
                   {line.kind === "add" ? "+" : line.kind === "remove" ? "−" : " "}
                 </b>
                 {(tokens?.[index] ?? []).length > 0

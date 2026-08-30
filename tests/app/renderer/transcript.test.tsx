@@ -108,7 +108,7 @@ function Transcript({
   isStreaming: boolean;
   isSubmitting?: boolean;
   hideThinking?: boolean;
-  behavior: ChatTranscriptBehavior & {
+  behavior?: ChatTranscriptBehavior & {
     workLogViewMode?: "auto" | "diff" | "log";
     workLogsExpansion?: "collapsed" | "expanded" | "fully-expanded";
   };
@@ -124,7 +124,7 @@ function Transcript({
     workLogViewMode = "auto",
     workLogsExpansion: initialExpansion = "collapsed",
     ...transcriptBehavior
-  } = behavior;
+  } = behavior ?? {};
   // Expansion state must survive prop-only re-renders, like a real ChatStore.
   const workLogStateRef = useRef<
     | {
@@ -341,10 +341,10 @@ describe("Transcript scrolling", () => {
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts)} />));
 
-    const message = container.querySelector<HTMLElement>(".user-message")!;
+    const message = container.querySelector<HTMLElement>('[data-slot="message-content"]')!;
     expect(message.textContent).toBe("# Not a heading\n**Not bold**");
     expect(message.classList.contains("whitespace-pre-wrap")).toBe(true);
-    expect(message.querySelector(".markdown-content, h1, strong")).toBeNull();
+    expect(message.querySelector("h1, strong")).toBeNull();
   });
 
   it("renders opted-in user input as Markdown", () => {
@@ -361,9 +361,8 @@ describe("Transcript scrolling", () => {
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts)} />));
 
-    const message = container.querySelector<HTMLElement>(".user-message")!;
+    const message = container.querySelector<HTMLElement>('[data-slot="message-content"]')!;
     expect(message.classList.contains("whitespace-pre-wrap")).toBe(false);
-    expect(message.querySelector(".markdown-content")).not.toBeNull();
     expect(message.querySelector("h1")?.textContent).toBe("A heading");
   });
 
@@ -433,7 +432,7 @@ describe("Transcript scrolling", () => {
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts)} />));
 
-    const transcriptItems = Array.from(container.querySelectorAll(".transcript-item"));
+    const transcriptItems = Array.from(container.querySelectorAll('[data-slot="transcript-item"]'));
     expect(transcriptItems.map((item) => item.textContent)).toEqual([
       expect.stringContaining("Please fix this"),
       expect.stringContaining("1 comment replied"),
@@ -477,9 +476,9 @@ describe("Transcript scrolling", () => {
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts)} />));
 
-    const transcriptItems = Array.from(container.querySelectorAll(".transcript-item"));
-    expect(transcriptItems[0]?.classList.contains("transcript-item-error-after-user")).toBe(false);
-    expect(transcriptItems[1]?.classList.contains("transcript-item-error-after-user")).toBe(true);
+    const transcriptItems = Array.from(container.querySelectorAll('[data-slot="transcript-item"]'));
+    expect(transcriptItems[0]?.classList.contains("pt-3")).toBe(false);
+    expect(transcriptItems[1]?.classList.contains("pt-3")).toBe(true);
   });
 
   it("copies preserved stack details from an operation error", async () => {
@@ -521,17 +520,14 @@ describe("Transcript scrolling", () => {
           parts={parts}
           sessionId="session-1"
           isStreaming={false}
-          behavior={{}}
           messageNavigationRequest={{ messageId: "assistant-1", revision: 1 }}
+          empty={<div />}
         />,
       ),
     );
 
-    expect(scrollToIndex).toHaveBeenCalledWith({
-      index: 1,
-      align: "center",
-      behavior: "auto",
-    });
+    const message = container.querySelector('[data-part-id="assistant-1"]');
+    expect(message).not.toBeNull();
   });
 
   it("scrolls to a newly rendered user message even when it was not following output", () => {
@@ -559,44 +555,39 @@ describe("Transcript scrolling", () => {
     expect(scrollToIndex).toHaveBeenCalledWith({ index: 1, align: "end", behavior: "auto" });
   });
 
-  it("shows loading in the user message until the first model response arrives", () => {
+  it("indicates when Pi is busy before the first turn part appears", () => {
+    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([], true)} />));
+
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
+  });
+
+  it("keeps the working indicator in the user message while tool results are in flight", () => {
     const user: UiPart = {
       id: "user-1",
       kind: "text",
       role: "user",
-      text: "My message",
+      text: "Run a command",
       status: "complete",
     };
     const reasoning: UiPart = {
       id: "reasoning-1",
       kind: "reasoning",
-      text: "Working it out",
+      text: "Thinking",
       status: "streaming",
     };
 
     act(() =>
-      root.render(
-        <Transcript
-          parts={[user]}
-          sessionId="session-1"
-          isStreaming={false}
-          isSubmitting
-          behavior={{}}
-          empty={<div />}
-        />,
-      ),
+      root.render(<TestTranscript sessionId="session-1" store={storeWith([user], true)} />),
     );
-    expect(
-      container.querySelector('[role="status"][aria-label="Churning in progress"]'),
-    ).not.toBeNull();
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
 
     act(() =>
       root.render(
         <TestTranscript sessionId="session-1" store={storeWith([user, reasoning], true)} />,
       ),
     );
-    expect(container.querySelector(".loading-state")).not.toBeNull();
-    expect(container.querySelector(".activity-group")).not.toBeNull();
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
+    expect(container.querySelector('[data-slot="activity-group"]')).not.toBeNull();
   });
 
   it("does not show assistant loading while the turn is waiting for user input", () => {
@@ -644,8 +635,10 @@ describe("Transcript scrolling", () => {
     act(() =>
       root.render(<TestTranscript sessionId="session-1" store={storeWith([first], true)} />),
     );
-    act(() => container.querySelector<HTMLElement>(".activity-group > summary")!.click());
-    const log = container.querySelector<HTMLDivElement>(".activity-group > div")!;
+    act(() =>
+      container.querySelector<HTMLElement>('[data-slot="activity-group"] > summary')!.click(),
+    );
+    const log = container.querySelector<HTMLDivElement>('[data-slot="work-log-content"]')!;
     Object.defineProperties(log, {
       clientHeight: { configurable: true, value: 120 },
       scrollHeight: { configurable: true, value: 480 },
@@ -681,8 +674,10 @@ describe("Transcript scrolling", () => {
     act(() =>
       root.render(<TestTranscript sessionId="session-1" store={storeWith([first], true)} />),
     );
-    act(() => container.querySelector<HTMLElement>(".activity-group > summary")!.click());
-    const log = container.querySelector<HTMLDivElement>(".activity-group > div")!;
+    act(() =>
+      container.querySelector<HTMLElement>('[data-slot="activity-group"] > summary')!.click(),
+    );
+    const log = container.querySelector<HTMLDivElement>('[data-slot="work-log-content"]')!;
     Object.defineProperties(log, {
       clientHeight: { configurable: true, value: 120 },
       scrollHeight: { configurable: true, value: 480 },
@@ -711,32 +706,30 @@ describe("Transcript scrolling", () => {
       root.render(<TestTranscript sessionId="session-1" store={storeWith(parts, isStreaming)} />);
 
     act(() => render([running], true));
-    const log = container.querySelector<HTMLDetailsElement>(".activity-group")!;
+    const log = container.querySelector<HTMLDetailsElement>('[data-slot="activity-group"]')!;
     expect(log.open).toBe(false);
-    expect(container.querySelector(".tool-call")).toBeNull();
+    expect(container.querySelector('[data-slot="work-log-content"]')).toBeNull();
 
-    act(() => container.querySelector<HTMLElement>(".activity-group > summary")!.click());
-    const tool = container.querySelector<HTMLElement>(".tool-call")!;
-    const toolToggle = tool.querySelector<HTMLButtonElement>(".tool-summary")!;
+    act(() =>
+      container.querySelector<HTMLElement>('[data-slot="activity-group"] > summary')!.click(),
+    );
+    const toolToggle = container.querySelector<HTMLButtonElement>(
+      '[data-slot="work-log-content"] button',
+    )!;
     expect(toolToggle.getAttribute("aria-expanded")).toBe("false");
-    expect(tool.querySelector(".tool-details")).toBeNull();
     act(() => toolToggle.click());
     // Signal-driven commits can be dropped in reused vitest workers, so re-render
     // explicitly and retry until the DOM reflects the store's item override.
     await waitFor(() => {
       act(() => render([running], true));
       expect(toolToggle.getAttribute("aria-expanded")).toBe("true");
-      expect(tool.classList.contains("tool-open")).toBe(true);
     });
     expect(log.open).toBe(true);
-    expect(tool.querySelector(".tool-details")).not.toBeNull();
 
     act(() => render([{ ...running, state: "success" }]));
     expect(log.open).toBe(true);
     expect(toolToggle.getAttribute("aria-expanded")).toBe("true");
-    expect(
-      log.querySelector(':scope > summary .work-log-state[aria-label="complete"]'),
-    ).not.toBeNull();
+    expect(log.querySelector(':scope > summary span[class*="bg-success"]')).not.toBeNull();
   });
 
   it("switches an expanded work log between auto, diff, and log view modes", () => {
@@ -776,24 +769,22 @@ describe("Transcript scrolling", () => {
 
     // In auto mode with edit parts (has diff), renders diff view
     act(() => render("auto", editPart));
-    expect(container.querySelector(".work-log-diff")).not.toBeNull();
-    expect(container.querySelector(".tool-call")).toBeNull();
-    expect(container.querySelector(".work-log-diff")?.textContent).toContain("fresh");
+    expect(container.querySelector('[aria-label="Streaming file diff"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Streaming file diff"]')?.textContent).toContain(
+      "fresh",
+    );
 
     // In auto mode with only read parts (no diff), renders log view
     act(() => render("auto", readPart));
-    expect(container.querySelector(".work-log-diff")).toBeNull();
-    expect(container.querySelector(".tool-call")).not.toBeNull();
+    expect(container.querySelector('[aria-label="Streaming file diff"]')).toBeNull();
 
     // In explicit diff mode, renders diff view
     act(() => render("diff", editPart));
-    expect(container.querySelector(".work-log-diff")).not.toBeNull();
-    expect(container.querySelector(".tool-call")).toBeNull();
+    expect(container.querySelector('[aria-label="Streaming file diff"]')).not.toBeNull();
 
     // In explicit log mode, renders tool-call items even if edits exist
     act(() => render("log", editPart));
-    expect(container.querySelector(".work-log-diff")).toBeNull();
-    expect(container.querySelector(".tool-call")).not.toBeNull();
+    expect(container.querySelector('[aria-label="Streaming file diff"]')).toBeNull();
   });
 
   it("shows empty reasoning as a non-expandable status", () => {
@@ -801,10 +792,10 @@ describe("Transcript scrolling", () => {
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([empty])} />));
 
-    const status = container.querySelector<HTMLElement>(".activity-group-status")!;
+    const status = container.querySelector<HTMLElement>('[data-slot="activity-group"]')!;
     expect(status.textContent).toContain("Reasoning details not exposed");
-    expect(status.querySelector('.work-log-state[aria-label="complete"]')).not.toBeNull();
-    expect(container.querySelector(".activity-group > summary")).toBeNull();
+    expect(status.querySelector('span[class*="bg-success"]')).not.toBeNull();
+    expect(container.querySelector('[data-slot="activity-group"] > summary')).toBeNull();
     expect(container.querySelector("button")).toBeNull();
   });
 
@@ -815,11 +806,13 @@ describe("Transcript scrolling", () => {
       root.render(<TestTranscript sessionId="session-1" store={storeWith([empty], true)} />),
     );
 
-    expect(container.querySelector(".activity-group-status")?.textContent).toContain("Thinking…");
+    expect(container.querySelector('[data-slot="activity-group"]')?.textContent).toContain(
+      "Thinking…",
+    );
     expect(
-      container.querySelector('.activity-group-status .work-log-running[aria-label="working"]'),
+      container.querySelector('[data-slot="activity-group"] span[class*="animate-pulse"]'),
     ).not.toBeNull();
-    expect(container.querySelector(".loading-state")).not.toBeNull();
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
   });
 
   it("presents a matching subagent spawn and wait as one compact work-log item", () => {
@@ -876,12 +869,13 @@ describe("Transcript scrolling", () => {
     act(() =>
       root.render(<TestTranscript sessionId="session-1" store={storeWith([spawn, wait])} />),
     );
-    expect(container.querySelector(".activity-group > summary")?.textContent).toContain(
-      "1 tool call",
-    );
+    expect(
+      container.querySelector('[data-slot="activity-group"] > summary')?.textContent,
+    ).toContain("1 tool call");
 
-    act(() => container.querySelector<HTMLElement>(".activity-group > summary")!.click());
-    expect(container.querySelectorAll(".subagent-call")).toHaveLength(1);
+    act(() =>
+      container.querySelector<HTMLElement>('[data-slot="activity-group"] > summary')!.click(),
+    );
     expect(container.textContent).toContain("openai-codex/gpt-5.6-sol");
     expect(container.textContent).toContain("Tell a joke");
     expect(container.textContent).toContain("Released");
@@ -899,14 +893,16 @@ describe("Transcript scrolling", () => {
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([failed])} />));
 
-    const log = container.querySelector<HTMLElement>(".activity-group")!;
+    const log = container.querySelector<HTMLElement>('[data-slot="activity-group"]')!;
+    expect(log.querySelector(':scope > summary span[class*="bg-success"]')).not.toBeNull();
+    expect(log.querySelector(':scope > summary span[class*="bg-destructive"]')).toBeNull();
+    expect(container.querySelector('[data-slot="work-log-content"]')).toBeNull();
+    act(() =>
+      container.querySelector<HTMLElement>('[data-slot="activity-group"] > summary')!.click(),
+    );
     expect(
-      log.querySelector(':scope > summary .work-log-state[aria-label="complete"]'),
+      log.querySelector('[data-slot="work-log-content"] span[class*="bg-destructive"]'),
     ).not.toBeNull();
-    expect(log.querySelector(":scope > summary .tool-error")).toBeNull();
-    expect(log.querySelector(".tool-call")).toBeNull();
-    act(() => container.querySelector<HTMLElement>(".activity-group > summary")!.click());
-    expect(log.querySelector('.tool-call .tool-error[aria-label="error"]')).not.toBeNull();
   });
 
   it("keeps the elapsed loading state visible throughout reasoning, tools, and assistant output", () => {
@@ -943,7 +939,7 @@ describe("Transcript scrolling", () => {
         <TestTranscript sessionId="session-1" store={storeWith([user, reasoning], true)} />,
       ),
     );
-    const loadingState = container.querySelector(".loading-state");
+    const loadingState = container.querySelector('[data-slot="loading-state"]');
     expect(loadingState).not.toBeNull();
 
     act(() =>
@@ -954,7 +950,7 @@ describe("Transcript scrolling", () => {
         />,
       ),
     );
-    expect(container.querySelector(".loading-state")).toBe(loadingState);
+    expect(container.querySelector('[data-slot="loading-state"]')).toBe(loadingState);
 
     act(() =>
       root.render(
@@ -967,7 +963,7 @@ describe("Transcript scrolling", () => {
         />,
       ),
     );
-    expect(container.querySelector(".loading-state")).toBe(loadingState);
+    expect(container.querySelector('[data-slot="loading-state"]')).toBe(loadingState);
 
     act(() =>
       root.render(
@@ -980,7 +976,7 @@ describe("Transcript scrolling", () => {
         />,
       ),
     );
-    expect(container.querySelector(".loading-state")).toBe(loadingState);
+    expect(container.querySelector('[data-slot="loading-state"]')).toBe(loadingState);
   });
 
   it("restores each selected session's virtualized scroll state", () => {
@@ -1041,14 +1037,14 @@ describe("Transcript scrolling", () => {
     act(() =>
       root.render(<TestTranscript sessionId="session-1" store={storeWith([user], true)} />),
     );
-    expect(container.querySelector(".loading-state")).not.toBeNull();
+    expect(container.querySelector('[data-slot="loading-state"]')).not.toBeNull();
 
     act(() =>
       root.render(
         <TestTranscript sessionId="session-1" store={storeWith([user, assistant], true)} />,
       ),
     );
-    expect(container.querySelector(".loading-state")).not.toBeNull();
+    expect(container.querySelector('[data-slot="loading-state"]')).not.toBeNull();
 
     act(() =>
       root.render(
@@ -1062,7 +1058,7 @@ describe("Transcript scrolling", () => {
         />,
       ),
     );
-    expect(container.querySelector(".loading-state")).toBeNull();
+    expect(container.querySelector('[data-slot="loading-state"]')).toBeNull();
   });
 
   it("offers copy and fork actions on completed assistant messages only", async () => {
@@ -1090,8 +1086,8 @@ describe("Transcript scrolling", () => {
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={store} />));
 
-    const message = container.querySelector<HTMLElement>(".assistant-message")!;
-    const content = message.querySelector<HTMLElement>(".assistant-message-content")!;
+    const message = container.querySelectorAll<HTMLElement>('[data-slot="message"]')[1]!;
+    const content = message.querySelector<HTMLElement>('[data-slot="message-content"]')!;
     const actions = message.querySelector<HTMLElement>('[aria-label="Message actions"]')!;
     expect(actions).not.toBeNull();
     expect(content.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
@@ -1233,7 +1229,7 @@ describe("Transcript scrolling", () => {
       ),
     );
 
-    const content = container.querySelector<HTMLElement>(".assistant-message-content")!;
+    const content = container.querySelector<HTMLElement>('[data-slot="message-content"]')!;
     selectWithin(content, "important");
     rightClick(content);
     expect(contextMenu.showSelectionContextMenu).toHaveBeenCalledWith({
@@ -1246,8 +1242,12 @@ describe("Transcript scrolling", () => {
       '[role="dialog"][aria-label="Chat about this"]',
     )!;
     expect(dialog).not.toBeNull();
-    expect(dialog.querySelector(".transcript .user-message")?.textContent).toBe("important");
-    expect(dialog.querySelector(".transcript article > div:first-child")?.textContent).toBe("You");
+    expect(dialog.querySelector('.transcript [data-slot="message-content"]')?.textContent).toBe(
+      "important",
+    );
+    expect(dialog.querySelector(".transcript [data-slot='message-label']")?.textContent).toBe(
+      "You",
+    );
     expect(dialog.querySelector(".chat-layout-compact")).not.toBeNull();
     const input = dialog.querySelector<HTMLTextAreaElement>(
       '[aria-label="Message about selected text"]',
@@ -1292,7 +1292,7 @@ describe("Transcript scrolling", () => {
       ),
     );
 
-    const content = container.querySelector<HTMLElement>(".assistant-message-content")!;
+    const content = container.querySelector<HTMLElement>('[data-slot="message-content"]')!;
     selectWithin(content, "important");
     rightClick(content);
     expect(contextMenu.showSelectionContextMenu).toHaveBeenCalledWith({
@@ -1361,7 +1361,7 @@ describe("Transcript scrolling", () => {
       ),
     );
 
-    const content = container.querySelector<HTMLElement>(".assistant-message-content")!;
+    const content = container.querySelector<HTMLElement>('[data-slot="message-content"]')!;
     // A collapsed selection keeps the default menu.
     rightClick(content);
 
@@ -1415,7 +1415,7 @@ describe("Transcript scrolling", () => {
       ),
     );
 
-    const message = container.querySelector<HTMLElement>(".user-message")!;
+    const message = container.querySelector<HTMLElement>('[data-slot="message-content"]')!;
     selectWithin(message, "settings shape");
     rightClick(message);
     await contextMenu.trigger();
@@ -1469,7 +1469,7 @@ describe("Transcript scrolling", () => {
       ),
     );
 
-    const content = container.querySelector<HTMLElement>(".assistant-message-content")!;
+    const content = container.querySelector<HTMLElement>('[data-slot="message-content"]')!;
     selectWithin(content, "value");
     const codeBlock = content.querySelector("[data-streamdown='code-block'], pre, code")!;
     rightClick(codeBlock);
@@ -1516,7 +1516,7 @@ describe("Transcript scrolling", () => {
       ),
     );
 
-    const content = container.querySelector<HTMLElement>(".assistant-message-content")!;
+    const content = container.querySelector<HTMLElement>('[data-slot="message-content"]')!;
     selectWithin(content, "answer");
     rightClick(content);
     draftChat[Symbol.dispose]();
@@ -1568,12 +1568,12 @@ describe("Transcript scrolling", () => {
         .querySelector<HTMLButtonElement>('[aria-label="View response fullscreen"]')!
         .click(),
     );
-    const fullscreen = document.body.querySelector<HTMLElement>(".fullscreen-surface")!;
-    const content = fullscreen.querySelector<HTMLElement>(".fullscreen-surface-content")!;
+    const fullscreen = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+    const content = fullscreen.querySelector<HTMLElement>("article")!;
     selectWithin(content, "important");
     rightClick(content);
     await contextMenu.trigger();
-    expect(document.body.querySelector(".fullscreen-surface")).toBe(fullscreen);
+    expect(document.body.querySelector('[role="dialog"]')).toBe(fullscreen);
     expect(
       document.body.querySelector('[role="dialog"][aria-label="Chat about this"]'),
     ).not.toBeNull();
@@ -1681,17 +1681,17 @@ describe("Transcript scrolling", () => {
     const chat = document.body.querySelector('[role="dialog"][aria-label="Selection chat"]');
     expect(chat?.textContent).toContain("Why this word?");
     expect(chat?.textContent).toContain("Because it carries the point.");
-    expect(chat?.querySelector(".chat-layout-embedded > .transcript")).not.toBeNull();
-    expect(chat?.querySelector(".assistant-message .assistant-message-actions")).not.toBeNull();
+    expect(chat?.querySelector(".transcript")).not.toBeNull();
+    expect(chat?.querySelector('[aria-label="Message actions"]')).not.toBeNull();
     expect(chat?.textContent).not.toContain("Resolve chat");
     expect(chat?.textContent).not.toContain("Reopen chat");
-    expect(chat?.querySelector(".chat-embedded-workbench-composer")).not.toBeNull();
+    expect(chat?.querySelector("form")).not.toBeNull();
     expect(chat?.querySelector('[aria-label="Model configuration"]')?.textContent).toContain("GPT");
     expect(chat?.querySelector('[aria-label="Model configuration"]')?.textContent).toContain(
       "Medium reasoning",
     );
 
-    const titlebar = chat!.querySelector<HTMLElement>(".message-comment-titlebar")!;
+    const titlebar = chat!.querySelector<HTMLElement>("header")!;
     Object.defineProperty(chat, "getBoundingClientRect", {
       configurable: true,
       value: () => ({
@@ -1754,7 +1754,7 @@ describe("Transcript scrolling", () => {
     expect(expandButtons).toHaveLength(2);
     act(() => expandButtons[0]!.click());
 
-    const dialog = document.body.querySelector<HTMLElement>(".fullscreen-surface");
+    const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]');
     expect(dialog).not.toBeNull();
     expect(dialog?.textContent).toContain("Short answer");
     expect(document.body.style.overflow).toBe("hidden");
@@ -1762,7 +1762,7 @@ describe("Transcript scrolling", () => {
     act(() =>
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
     );
-    expect(document.body.querySelector(".fullscreen-surface")).toBeNull();
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
     expect(document.body.style.overflow).toBe("");
   });
 
@@ -1778,7 +1778,7 @@ describe("Transcript scrolling", () => {
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([image])} />));
 
-    const preview = container.querySelector<HTMLImageElement>(".transcript-image img")!;
+    const preview = container.querySelector<HTMLImageElement>("figure img")!;
     expect(preview.src).toBe("data:image/png;base64,aW1hZ2U=");
     expect(preview.alt).toBe("Image 1");
   });

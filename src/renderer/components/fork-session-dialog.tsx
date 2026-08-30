@@ -8,6 +8,7 @@ import {
   ConfirmationRequest,
   ConfirmationTitle,
 } from "./ai-elements/confirmation";
+import { DialogBackdrop } from "./ui/dialog";
 import type { SessionContinuationStore } from "../stores/SessionContinuationStore";
 
 export const ForkSessionDialog = observer(function ForkSessionDialog({
@@ -24,7 +25,7 @@ export const ForkSessionDialog = observer(function ForkSessionDialog({
   };
 
   return (
-    <div className="dialog-backdrop">
+    <DialogBackdrop onClose={() => store.cancelPrompt()}>
       <Confirmation
         state="requested"
         role="dialog"
@@ -117,6 +118,6 @@ export const ForkSessionDialog = observer(function ForkSessionDialog({
           </form>
         </ConfirmationRequest>
       </Confirmation>
-    </div>
+    </DialogBackdrop>
   );
 });

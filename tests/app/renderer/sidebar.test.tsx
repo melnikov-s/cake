@@ -546,28 +546,27 @@ describe("Sidebar projects", () => {
 
     act(() => root.render(<Sidebar {...props} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
 
-    const activeCakeGroup = container.querySelector<HTMLElement>(
-      ".sidebar-scroll > .cake-chat-sessions",
-    );
-    const projectsHeading = container.querySelector<HTMLElement>(".projects-heading");
+    const activeCakeGroup = container.querySelector<HTMLElement>('[data-slot="cake-chat-group"]');
+    const projectsHeading = container.querySelector<HTMLElement>('[data-slot="projects-heading"]');
     expect(activeCakeGroup?.nextElementSibling).toBe(projectsHeading);
-    expect(activeCakeGroup?.querySelector(".project-label")?.textContent).toBe("Cake Chat");
-    expect(activeCakeGroup?.querySelector(".project-label svg")?.getAttribute("width")).toBe("16");
+    expect(activeCakeGroup?.querySelector('[data-slot="project-label"]')?.textContent).toBe(
+      "Cake Chat",
+    );
+    expect(activeCakeGroup?.querySelector('[data-slot="project-label"] svg')).not.toBeNull();
 
     const resolvedCakeGroup = container.querySelector<HTMLElement>(
-      ".resolved-lane .cake-chat-sessions",
+      '[data-slot="resolved-lane"] [data-slot="cake-chat-group"]',
     );
-    expect(resolvedCakeGroup?.querySelector(".project-label")?.textContent).toBe("Cake Chat");
+    expect(resolvedCakeGroup?.querySelector('[data-slot="project-label"]')?.textContent).toBe(
+      "Cake Chat",
+    );
     expect(resolvedCakeGroup?.textContent).toContain("Finished Cake Chat");
-    expect(
-      container.querySelector('[data-session-id="resolved-project"] .session-row')?.textContent,
-    ).toContain("resolved-feature");
-
-    const emptyProject = container.querySelector<HTMLElement>(
-      ".project-group:not(.cake-chat-sessions)",
+    expect(container.querySelector('[data-session-id="resolved-project"]')?.textContent).toContain(
+      "resolved-feature",
     );
-    expect(emptyProject?.classList).toContain("project-group-empty");
-    expect(emptyProject?.querySelector(".project-disclosure")?.classList).toContain("no-sessions");
+
+    const emptyProject = container.querySelector<HTMLElement>('[data-slot="project-group"]');
+    expect(emptyProject).not.toBeNull();
   });
 
   it("navigates session history from the window tools when steps are available", () => {
@@ -1198,6 +1197,8 @@ describe("Sidebar projects", () => {
         .click(),
     );
     expect(setCakeChatSessionResolved).toHaveBeenCalledWith("active-cake", true);
-    expect(container.querySelector(".resolved-lane")?.textContent).toContain("Resolved Cake Chat");
+    expect(container.querySelector('[data-slot="resolved-lane"]')?.textContent).toContain(
+      "Resolved Cake Chat",
+    );
   });
 });

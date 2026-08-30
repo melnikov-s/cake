@@ -84,7 +84,7 @@ describe("Cake-owned conversation components", () => {
       </Reasoning>,
     );
     expect(html).toContain("Thinking…");
-    expect(html).toContain('class="tool-state tool-running" aria-label="running"');
+    expect(html).toContain("animate-pulse");
     expect(html).not.toContain("not exposed");
   });
 
@@ -99,8 +99,8 @@ describe("Cake-owned conversation components", () => {
         trace
       </Reasoning>,
     );
-    expect(completed).toContain('class="tool-state tool-success" aria-label="success"');
-    expect(active).toContain('class="tool-state tool-running" aria-label="running"');
+    expect(completed).toContain("bg-success");
+    expect(active).toContain("bg-accent animate-pulse");
   });
 
   it("shows work-log paths relative to the project root and keeps outside paths absolute", () => {
@@ -240,9 +240,9 @@ describe("Cake-owned conversation components", () => {
         part={{ id: "tool-error", kind: "tool", name: "bash", input: "exit 1", state: "error" }}
       />,
     );
-    expect(running).toContain('class="tool-state tool-running" aria-label="running"');
-    expect(success).toContain('class="tool-state tool-success" aria-label="success"');
-    expect(error).toContain('class="tool-state tool-error" aria-label="error"');
+    expect(running).toContain("bg-accent animate-pulse");
+    expect(success).toContain("bg-success");
+    expect(error).toContain("bg-destructive");
     expect(running).not.toContain("<small>running</small>");
     expect(success).not.toContain("<small>success</small>");
     expect(error).not.toContain("<small>error</small>");

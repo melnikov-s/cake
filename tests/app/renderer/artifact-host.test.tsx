@@ -331,15 +331,11 @@ describe("ArtifactHost", () => {
     const frame = container.querySelector("iframe")!;
     expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
     expect(frame.getAttribute("src")).toBe(`cake-widget://document/${token}`);
-    act(() =>
-      (container.querySelector(".inline-widget-actions button") as HTMLButtonElement).click(),
-    );
-    expect(
-      container.querySelector('.inline-widget-source [data-streamdown="code-block"]'),
-    ).not.toBeNull();
-    expect(container.querySelector(".inline-widget-source")?.textContent).toContain(
-      "cakeRequest.submit",
-    );
+    const sourceBtn = Array.from(container.querySelectorAll("button")).find(
+      (b) => b.textContent === "Source",
+    )!;
+    act(() => sourceBtn.click());
+    expect(container.textContent).toContain("cakeRequest.submit");
     act(() =>
       window.dispatchEvent(
         new MessageEvent("message", {
@@ -354,9 +350,8 @@ describe("ArtifactHost", () => {
         .querySelector<HTMLButtonElement>('[aria-label="View Visual choice fullscreen"]')!
         .click(),
     );
-    const fullscreenFrame = document.body.querySelector<HTMLIFrameElement>(
-      ".fullscreen-surface-canvas iframe",
-    )!;
+    const fullscreenFrame =
+      document.body.querySelector<HTMLIFrameElement>('[role="dialog"] iframe')!;
     act(() =>
       window.dispatchEvent(
         new MessageEvent("message", {
@@ -409,17 +404,18 @@ describe("ArtifactHost", () => {
     const fullscreenButton = container.querySelector<HTMLButtonElement>(
       '[aria-label="View Comparison fullscreen"]',
     )!;
-    expect(fullscreenButton.closest(".artifact > header")).not.toBeNull();
+    expect(fullscreenButton.closest("header")).not.toBeNull();
     expect(fullscreenButton.querySelector("svg")).not.toBeNull();
     expect(
       container.querySelector('.inline-widget-rail [aria-label="View Comparison fullscreen"]'),
     ).toBeNull();
-    act(() =>
-      (container.querySelector(".inline-widget-actions button") as HTMLButtonElement).click(),
-    );
+    const sourceBtn = Array.from(container.querySelectorAll("button")).find(
+      (b) => b.textContent === "Source",
+    )!;
+    act(() => sourceBtn.click());
     expect(container.textContent).toContain("export default");
     act(() => fullscreenButton.click());
-    const fullscreen = document.body.querySelector<HTMLElement>(".fullscreen-surface-canvas");
+    const fullscreen = document.body.querySelector<HTMLElement>('[role="dialog"]');
     const fullscreenFrame = fullscreen?.querySelector<HTMLIFrameElement>("iframe");
     expect(fullscreen?.textContent).toContain("Comparison");
     expect(fullscreenFrame?.getAttribute("src")).toBe(`cake-widget://document/${token}`);
@@ -427,24 +423,17 @@ describe("ArtifactHost", () => {
     act(() =>
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
     );
-    expect(document.body.querySelector(".fullscreen-surface")).toBeNull();
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
 
-    act(() =>
-      (
-        container.querySelector(".inline-widget-actions button:last-child") as HTMLButtonElement
-      ).click(),
-    );
-    expect(container.querySelector(".inline-widget-repair-form")).not.toBeNull();
-    const repairInput = container.querySelector(
-      ".inline-widget-repair-form textarea",
-    ) as HTMLTextAreaElement;
+    const repairBtn = Array.from(container.querySelectorAll("button")).find(
+      (b) => b.textContent === "Repair",
+    )!;
+    act(() => repairBtn.click());
+    expect(container.querySelector("form textarea")).not.toBeNull();
+    const repairInput = container.querySelector("form textarea") as HTMLTextAreaElement;
     act(() => setTextValue(repairInput, "Make the result easier to scan on a narrow window."));
     await act(async () => {
-      (
-        container.querySelector(
-          ".inline-widget-repair-form button[type='submit']",
-        ) as HTMLButtonElement
-      ).click();
+      (container.querySelector("form button[type='submit']") as HTMLButtonElement).click();
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(client.repairInlineWidget).toHaveBeenCalledWith(

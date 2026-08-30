@@ -28,13 +28,13 @@ describe("LoadingState", () => {
   it("shows a live elapsed timer until it unmounts", () => {
     act(() => root.render(<LoadingState label="Thinking" variant="Orbit" />));
     expect(container.textContent).toBe("Thinking0.0s");
-    expect(container.querySelectorAll(".loading-state-cell")).toHaveLength(9);
+    expect(container.querySelectorAll('[data-slot="loading-state-cell"]')).toHaveLength(9);
 
     act(() => vi.advanceTimersByTime(1_300));
     expect(container.textContent).toBe("Thinking1.3s");
 
     act(() => root.render(<div>Complete</div>));
-    expect(container.querySelector(".loading-state")).toBeNull();
+    expect(container.querySelector('[data-slot="loading-state"]')).toBeNull();
   });
 
   it("continues from a supplied start time after remounting", () => {

@@ -7,17 +7,25 @@ import type { ChatStore } from "../stores/ChatStore";
 export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store: ChatStore }) {
   if (store.queuedPrompts.length === 0) return null;
   return (
-    <div className="queued-prompts" role="list" aria-label="Queued prompts">
+    <div
+      className="flex flex-col gap-1 border-b border-border px-1.5 py-1"
+      role="list"
+      aria-label="Queued prompts"
+    >
       {store.queuedPrompts.map((entry) => {
         const label =
           entry.text ||
           `${entry.attachments.length} attachment${entry.attachments.length === 1 ? "" : "s"}`;
         return (
-          <div className="queued-prompt" role="listitem" key={entry.id}>
-            <span className="queued-prompt-text" title={label}>
+          <div
+            className="flex items-center justify-between gap-2 rounded-md bg-muted px-2 py-1 text-xs"
+            role="listitem"
+            key={entry.id}
+          >
+            <span className="min-w-0 flex-1 truncate" title={label}>
               {label}
             </span>
-            <div className="queued-prompt-actions">
+            <div className="flex shrink-0 items-center gap-0.5">
               {store.canSteerQueuedPrompt && (
                 <IconButton
                   tooltip="Send now as steering"

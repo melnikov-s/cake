@@ -1,9 +1,10 @@
+import { Switch } from "../ui/switch";
+
 export function SettingsToggle({
   label,
   description,
   checked,
   disabled,
-  instant = false,
   onChange,
 }: {
   label: string;
@@ -14,22 +15,12 @@ export function SettingsToggle({
   onChange(checked: boolean): void;
 }) {
   return (
-    <div className="settings-field">
-      <span>
-        {label}
-        <small>{description}</small>
+    <div className="flex items-center justify-between gap-6 text-sm">
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <strong className="text-xs font-medium text-foreground">{label}</strong>
+        <small className="text-[11px] text-muted-foreground">{description}</small>
       </span>
-      <button
-        className={`settings-switch${instant ? " settings-switch-instant" : ""}`}
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        disabled={disabled}
-        onClick={() => onChange(!checked)}
-      >
-        <i />
-      </button>
+      <Switch checked={checked} disabled={disabled} aria-label={label} onCheckedChange={onChange} />
     </div>
   );
 }

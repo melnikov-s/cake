@@ -77,13 +77,15 @@ export const RequestWidget = observer(function RequestWidget({
   };
   return (
     <section
-      className={`inline-widget inline-widget-${status}`}
+      className="flex flex-col overflow-hidden rounded-lg border border-border bg-card"
       aria-label={`Custom ${view.language} request`}
     >
-      <div className="inline-widget-rail">
-        <span className="inline-widget-notch" aria-hidden="true" />
-        <span>{view.language === "react" ? "React request" : "HTML request"}</span>
-        <span className="inline-widget-status">
+      <div className="flex items-center gap-2 border-b border-border bg-muted px-3 py-1.5 font-mono text-[11px]">
+        <span className="size-1.5 rounded-full bg-accent" aria-hidden="true" />
+        <span className="text-foreground">
+          {view.language === "react" ? "React request" : "HTML request"}
+        </span>
+        <span className="text-muted-foreground">
           {status === "repairing"
             ? "Repairing…"
             : status === "building"
@@ -94,12 +96,17 @@ export const RequestWidget = observer(function RequestWidget({
                   ? "Waiting for you"
                   : "Inactive"}
         </span>
-        <span className="inline-widget-actions">
-          <button type="button" onClick={() => setSourceOpen((open) => !open)}>
+        <span className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            className="cursor-pointer text-accent hover:underline"
+            onClick={() => setSourceOpen((open) => !open)}
+          >
             {sourceOpen ? "Hide source" : "Source"}
           </button>
           <button
             type="button"
+            className="cursor-pointer text-accent hover:underline disabled:opacity-50"
             disabled={status === "repairing" || status === "building"}
             onClick={() => setRepairPromptOpen((open) => !open)}
           >
@@ -114,9 +121,12 @@ export const RequestWidget = observer(function RequestWidget({
         />
       )}
       {status === "error" && (
-        <div className="inline-widget-diagnostic" role="alert">
+        <div
+          className="border-b border-border bg-destructive/10 p-2.5 text-xs text-destructive"
+          role="alert"
+        >
           <strong>Request widget could not render</strong>
-          <pre>{state?.diagnostic}</pre>
+          <pre className="mt-1 font-mono">{state?.diagnostic}</pre>
         </div>
       )}
       {state?.compiled && (
@@ -126,11 +136,12 @@ export const RequestWidget = observer(function RequestWidget({
           sandbox="allow-scripts"
           referrerPolicy="no-referrer"
           src={state.compiled.url}
+          className="w-full border-none"
           style={{ height }}
         />
       )}
       {sourceOpen && (
-        <Markdown className="inline-widget-source">
+        <Markdown className="max-h-80 overflow-auto border-t border-border p-2">
           {fencedCode(state?.source ?? view.source, view.language === "react" ? "tsx" : "html")}
         </Markdown>
       )}

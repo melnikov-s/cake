@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
+import { cn } from "@/lib/utils";
 import {
   Conversation,
   VirtualizedConversation,
@@ -304,9 +305,13 @@ export const ChatTranscript = observer(function ChatTranscript({
   const renderItem = (item: TranscriptItem, index: number) => (
     <div
       key={item.id}
+      data-slot="transcript-item"
       data-transcript-item-index={index}
       data-response-start={item.id === responseStartItemId ? "" : undefined}
-      className={`transcript-item${errorNoticeFollowsUser(items, index) ? " transcript-item-error-after-user" : ""}`}
+      className={cn(
+        "min-w-0 pb-5 in-[.chat-layout-compact]:pb-3.5",
+        errorNoticeFollowsUser(items, index) && "pt-3",
+      )}
     >
       {item.kind === "activity-group" ? (
         <ActivityGroup
@@ -327,7 +332,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     return (
       <>
         {selectionOverlays}
-        <div className="transcript transcript-empty">
+        <div className="transcript h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-6 pt-[42px] pb-[210px] [scrollbar-gutter:stable_both-edges] max-[620px]:px-4">
           <Conversation>
             {empty}
             {showAssistantLoading && <LoadingState startedAt={store.loadingStartedAt} />}
@@ -347,10 +352,13 @@ export const ChatTranscript = observer(function ChatTranscript({
     return (
       <>
         {selectionOverlays}
-        <div ref={staticTranscriptRef} className="transcript">
+        <div
+          ref={staticTranscriptRef}
+          className="transcript h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable_both-edges]"
+        >
           <TranscriptList>
             {items.map(renderItem)}
-            <div className="transcript-footer">
+            <div className="mx-auto w-full max-w-[51rem] px-6 pb-[var(--composer-dock-height,210px)] max-[620px]:px-4 in-[.chat-layout-compact]:px-3 in-[.chat-layout-compact]:pb-2 in-[.chat-layout-compact]:min-h-0">
               {footer}
               {error?.message && (
                 <ErrorNotice
@@ -370,7 +378,7 @@ export const ChatTranscript = observer(function ChatTranscript({
       <VirtualizedConversation
         key={store.id}
         ref={virtuosoRef}
-        className="transcript [overflow-anchor:none]"
+        className="transcript h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden [scrollbar-gutter:stable_both-edges] [overflow-anchor:none]"
         data={items}
         computeItemKey={(_index, item) => item.id}
         initialTopMostItemIndex={
@@ -382,7 +390,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         components={{
           List: TranscriptList,
           Footer: () => (
-            <div className="transcript-footer">
+            <div className="mx-auto w-full max-w-[51rem] px-6 pb-[var(--composer-dock-height,210px)] max-[620px]:px-4 in-[.chat-layout-compact]:px-3 in-[.chat-layout-compact]:pb-2 in-[.chat-layout-compact]:min-h-0">
               {footer}
               {error?.message && (
                 <ErrorNotice

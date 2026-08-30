@@ -32,7 +32,7 @@ export const ArtifactsPanel = observer(function ArtifactsPanel({
   );
   if (unlinked.length === 0) return null;
   return (
-    <section className="artifacts-panel" aria-label="Session artifacts">
+    <section className="mt-4 grid gap-4" aria-label="Session artifacts">
       {unlinked.map((record) => {
         const request =
           artifacts.request?.record.artifact.id === record.artifact.id

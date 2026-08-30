@@ -4,10 +4,13 @@ import type { ModelOption, ThinkingLevel } from "../../ipc/session-contract";
 import { FastModeToggle } from "./fast-mode-toggle";
 import { ChevronDownIcon } from "./ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Input } from "./ui/input";
+import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
+import { SegmentedControlGroup, SegmentedControlButton } from "./ui/segmented-control";
 import type { ChatConfigurationStore } from "../stores/ChatConfigurationStore";
 
 type ConfigurationView = "current" | "models" | "configure";
-type PanelMotion = "forward" | "back" | undefined;
 
 function reasoningLabel(level: ThinkingLevel) {
   return level === "off" ? "Off" : `${level.charAt(0).toUpperCase()}${level.slice(1)}`;
@@ -24,7 +27,6 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
 }) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<ConfigurationView>("current");
-  const [motion, setMotion] = useState<PanelMotion>();
   const [query, setQuery] = useState("");
   const [draftModel, setDraftModel] = useState<ModelOption>();
   const [draftThinkingLevel, setDraftThinkingLevel] = useState<ThinkingLevel>();
@@ -72,7 +74,6 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
 
   const reset = () => {
     setView(selectedModel ? "current" : "models");
-    setMotion(undefined);
     setQuery("");
     setDraftModel(undefined);
     setDraftThinkingLevel(undefined);
@@ -85,7 +86,6 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
   };
 
   const showModels = () => {
-    setMotion(view === "configure" ? "back" : "forward");
     setView("models");
     setQuery("");
   };
@@ -105,7 +105,6 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
         (model.availableThinkingLevels.length === 1 ? model.availableThinkingLevels[0] : undefined),
     );
     setDraftFastMode(Boolean(isCurrent && model.fastMode && configuration.fastMode));
-    setMotion("forward");
     setView("configure");
   };
 
@@ -124,47 +123,59 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
       <PopoverTrigger
         variant="ghost"
         size="sm"
-        className="chat-configuration-trigger"
+        className="flex max-w-full min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-left text-muted-foreground hover:bg-muted hover:text-foreground"
         aria-label="Model configuration"
       >
-        <span>
-          <strong>{activeName}</strong>
-          <small>{summary}</small>
+        <span className="flex min-w-0 flex-col">
+          <strong className="truncate text-xs font-semibold text-foreground">{activeName}</strong>
+          <small className="truncate text-[10px] text-muted-foreground">{summary}</small>
         </span>
-        <ChevronDownIcon size={13} />
+        <span className="shrink-0 text-muted-foreground">
+          <ChevronDownIcon size={13} />
+        </span>
       </PopoverTrigger>
       <PopoverContent
         side="top"
         align="start"
-        className="chat-configuration-menu"
+        className="w-80 overflow-hidden rounded-xl border border-border bg-card p-0 shadow-xl"
         aria-label="Model configuration"
       >
-        <div
-          className={`chat-configuration-panel${motion ? ` configuration-panel-${motion}` : ""}`}
-          key={view}
-        >
+        <div className="p-3" key={view}>
           {view === "current" && session && selectedModel && (
             <>
-              <header className="chat-configuration-header">
-                <span>
-                  <strong>{selectedModel.name}</strong>
-                  <small>{selectedModel.id}</small>
+              <header className="mb-3 flex items-start justify-between gap-2">
+                <span className="min-w-0 flex-1">
+                  <strong className="block truncate text-sm font-semibold text-foreground">
+                    {selectedModel.name}
+                  </strong>
+                  <small className="block truncate font-mono text-[10px] text-muted-foreground">
+                    {selectedModel.id}
+                  </small>
                 </span>
-                <button type="button" onClick={showModels} disabled={disabled}>
+                <button
+                  type="button"
+                  onClick={showModels}
+                  disabled={disabled}
+                  className="flex shrink-0 items-center gap-1 text-xs text-accent hover:underline disabled:opacity-50"
+                >
                   Change model
                   <span aria-hidden="true">›</span>
                 </button>
               </header>
-              <section className="chat-configuration-reasoning" aria-label="Reasoning effort">
+              <section className="mt-3 grid gap-1.5" aria-label="Reasoning effort">
                 <span>
-                  <strong>Reasoning</strong>
-                  <small>Choose how much time this model spends thinking.</small>
+                  <strong className="block text-xs font-medium text-foreground">Reasoning</strong>
+                  <small className="block text-[11px] text-muted-foreground">
+                    Choose how much time this model spends thinking.
+                  </small>
                 </span>
-                <div role="group" aria-label="Reasoning level">
+                <SegmentedControlGroup size="sm" className="w-full flex">
                   {session.availableThinkingLevels.map((level) => (
-                    <button
+                    <SegmentedControlButton
                       type="button"
-                      aria-pressed={session.thinkingLevel === level}
+                      size="sm"
+                      className="flex-1"
+                      active={session.thinkingLevel === level}
                       disabled={disabled}
                       key={level}
                       onClick={() => {
@@ -173,15 +184,20 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
                       }}
                     >
                       {reasoningLabel(level)}
-                    </button>
+                    </SegmentedControlButton>
                   ))}
-                </div>
+                </SegmentedControlGroup>
               </section>
               {session.fastModeAvailable && (
-                <section className="chat-configuration-fast" aria-label="Fast mode setting">
+                <section
+                  className="mt-3 flex items-center justify-between gap-2"
+                  aria-label="Fast mode setting"
+                >
                   <span>
-                    <strong>Fast mode</strong>
-                    <small>Use priority processing for this model.</small>
+                    <strong className="block text-xs font-medium text-foreground">Fast mode</strong>
+                    <small className="block text-[11px] text-muted-foreground">
+                      Use priority processing for this model.
+                    </small>
                   </span>
                   <FastModeToggle
                     enabled={configuration.fastMode}
@@ -195,80 +211,104 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
 
           {view === "models" && (
             <>
-              <header className="chat-configuration-list-header">
+              <header className="mb-2.5 flex items-center gap-2">
                 {selectedModel && (
                   <button
                     type="button"
                     aria-label="Back to current model"
+                    className="grid size-6 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
                     onClick={() => {
-                      setMotion("back");
                       setView("current");
                     }}
                   >
                     <span aria-hidden="true">‹</span>
                   </button>
                 )}
-                <strong>Choose model</strong>
+                <strong className="text-xs font-semibold text-foreground">Choose model</strong>
               </header>
-              <input
+              <Input
                 ref={searchRef}
-                className="chat-configuration-search"
+                className="mb-2 h-8 text-xs"
                 aria-label="Search presets and models"
                 placeholder="Search presets and models…"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
-              <div className="chat-configuration-options">
+              <div className="max-h-60 space-y-3 overflow-y-auto pr-1 text-xs">
                 {presets.length > 0 && (
-                  <section aria-label="Model presets">
-                    <h3>Presets</h3>
+                  <section aria-label="Model presets" className="space-y-1">
+                    <h3 className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Presets
+                    </h3>
                     {presets.map((preset) => (
                       <button
                         key={preset.id}
                         type="button"
                         disabled={disabled}
+                        className="flex w-full cursor-pointer items-center justify-between rounded-lg p-2 text-left hover:bg-muted/60 disabled:opacity-50"
                         onClick={() => {
                           close();
                           void configuration.selectPreset(preset);
                         }}
                       >
-                        <span>
-                          <strong>{preset.name}</strong>
-                          <small>
+                        <span className="min-w-0 flex-1">
+                          <strong className="block truncate font-medium text-foreground">
+                            {preset.name}
+                          </strong>
+                          <small className="block truncate font-mono text-[10px] text-muted-foreground">
                             {preset.provider}/{preset.modelId}
                           </small>
                         </span>
-                        <span className="configuration-badges">
-                          <i>{reasoningLabel(preset.thinkingLevel)}</i>
-                          {preset.fastMode && <i>Fast</i>}
+                        <span className="flex shrink-0 items-center gap-1 font-mono text-[10px]">
+                          <Badge variant="outline" className="text-[10px]">
+                            {reasoningLabel(preset.thinkingLevel)}
+                          </Badge>
+                          {preset.fastMode && (
+                            <Badge variant="accent" className="text-[10px]">
+                              Fast
+                            </Badge>
+                          )}
                         </span>
                       </button>
                     ))}
                   </section>
                 )}
                 {groups.map((group) => (
-                  <section aria-label={group.name} key={group.id}>
-                    <h3>{group.name}</h3>
+                  <section aria-label={group.name} key={group.id} className="space-y-1">
+                    <h3 className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      {group.name}
+                    </h3>
                     {group.models.map((model) => (
                       <button
                         key={modelValue(model)}
                         type="button"
                         disabled={disabled}
+                        className="flex w-full cursor-pointer items-center justify-between rounded-lg p-2 text-left hover:bg-muted/60 disabled:opacity-50"
                         onClick={() => configureModel(model)}
                       >
-                        <span>
-                          <strong>{model.name}</strong>
-                          <small>{model.id}</small>
+                        <span className="min-w-0 flex-1">
+                          <strong className="block truncate font-medium text-foreground">
+                            {model.name}
+                          </strong>
+                          <small className="block truncate font-mono text-[10px] text-muted-foreground">
+                            {model.id}
+                          </small>
                         </span>
-                        <span aria-hidden="true">›</span>
+                        <span aria-hidden="true" className="text-muted-foreground">
+                          ›
+                        </span>
                       </button>
                     ))}
                   </section>
                 ))}
-                {presets.length === 0 && groups.length === 0 && <p>No matching models</p>}
+                {presets.length === 0 && groups.length === 0 && (
+                  <p className="p-3 text-center text-xs text-muted-foreground">
+                    No matching models
+                  </p>
+                )}
               </div>
               <button
-                className="chat-configuration-settings"
+                className="mt-2 block w-full text-center text-[11px] text-accent hover:underline"
                 type="button"
                 onClick={() => {
                   close();
@@ -282,57 +322,70 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
 
           {view === "configure" && draftModel && (
             <>
-              <header className="chat-configuration-list-header">
+              <header className="mb-2.5 flex items-center gap-2">
                 <button
                   ref={configureBackRef}
                   type="button"
                   aria-label="Back to models"
+                  className="grid size-6 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
                   onClick={showModels}
                 >
                   <span aria-hidden="true">‹</span>
                 </button>
-                <span>
-                  <strong>{draftModel.name}</strong>
-                  <small>{draftModel.id}</small>
+                <span className="min-w-0 flex-1">
+                  <strong className="block truncate text-xs font-semibold text-foreground">
+                    {draftModel.name}
+                  </strong>
+                  <small className="block truncate font-mono text-[10px] text-muted-foreground">
+                    {draftModel.id}
+                  </small>
                 </span>
               </header>
-              <section className="chat-configuration-reasoning" aria-label="Reasoning effort">
+              <section className="mt-3 grid gap-1.5" aria-label="Reasoning level">
                 <span>
-                  <strong>Reasoning</strong>
-                  <small>Available levels are provided by this model.</small>
+                  <strong className="block text-xs font-medium text-foreground">Reasoning</strong>
+                  <small className="block text-[11px] text-muted-foreground">
+                    Available levels are provided by this model.
+                  </small>
                 </span>
-                <div role="group" aria-label="Reasoning level">
+                <SegmentedControlGroup size="sm" className="w-full flex">
                   {draftModel.availableThinkingLevels.map((level) => (
-                    <button
+                    <SegmentedControlButton
                       type="button"
-                      aria-pressed={draftThinkingLevel === level}
+                      size="sm"
+                      className="flex-1"
+                      active={draftThinkingLevel === level}
                       key={level}
                       onClick={() => setDraftThinkingLevel(level)}
                     >
                       {reasoningLabel(level)}
-                    </button>
+                    </SegmentedControlButton>
                   ))}
-                </div>
+                </SegmentedControlGroup>
               </section>
               {draftModel.fastMode && (
-                <section className="chat-configuration-fast" aria-label="Fast mode setting">
+                <section
+                  className="mt-3 flex items-center justify-between gap-2"
+                  aria-label="Fast mode setting"
+                >
                   <span>
-                    <strong>Fast mode</strong>
-                    <small>Use priority processing for this model.</small>
+                    <strong className="block text-xs font-medium text-foreground">Fast mode</strong>
+                    <small className="block text-[11px] text-muted-foreground">
+                      Use priority processing for this model.
+                    </small>
                   </span>
                   <FastModeToggle enabled={draftFastMode} onToggle={setDraftFastMode} />
                 </section>
               )}
               {!draftThinkingLevel && (
-                <p className="chat-configuration-hint">Choose a reasoning level to continue.</p>
+                <p className="mt-2 text-xs text-amber-500">Choose a reasoning level to continue.</p>
               )}
-              <footer className="chat-configuration-actions">
-                <button type="button" onClick={close}>
+              <footer className="mt-3 flex justify-end gap-2 border-t border-border pt-2.5">
+                <Button variant="ghost" size="sm" onClick={close}>
                   Cancel
-                </button>
-                <button
-                  type="button"
-                  className="primary"
+                </Button>
+                <Button
+                  size="sm"
                   disabled={!draftThinkingLevel || disabled}
                   onClick={() => {
                     if (!draftThinkingLevel) return;
@@ -347,12 +400,12 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
                   }}
                 >
                   Apply
-                </button>
+                </Button>
               </footer>
             </>
           )}
           {configuration.error && (
-            <p className="chat-configuration-error" role="alert">
+            <p className="mt-2 text-xs text-destructive" role="alert">
               {configuration.error}
             </p>
           )}

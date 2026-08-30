@@ -75,8 +75,8 @@ export const ChatTextMessage = forwardRef<
     <Message
       ref={ref}
       className={cn(
-        assistant ? "assistant-message mr-auto w-full" : "ml-auto w-[min(88%,42rem)]",
-        pending && "user-message-pending",
+        assistant ? "group/msg relative mr-auto w-full" : "ml-auto w-[min(88%,42rem)]",
+        pending && "opacity-75",
       )}
     >
       <MessageLabel>
@@ -85,7 +85,10 @@ export const ChatTextMessage = forwardRef<
       <MessageContent
         ref={contentRef}
         className={cn(
-          assistant ? "assistant-message-content" : "user-message",
+          assistant
+            ? "bg-card text-foreground"
+            : "border-transparent bg-foreground text-background",
+          pending && "border-dashed border-foreground/45",
           !assistant && part.renderAs !== "markdown" && "whitespace-pre-wrap",
         )}
       >
@@ -232,8 +235,7 @@ export function captureTranscriptSelection(
   // Offsets inside streaming text are unstable, so ignore those selections.
   if (part.kind === "text" && part.status === "streaming") return undefined;
   const container =
-    partElement.querySelector<HTMLElement>(".assistant-message-content, .user-message") ??
-    partElement;
+    partElement.querySelector<HTMLElement>('[data-slot="message-content"]') ?? partElement;
   const selection = captureMessageSelection(
     container,
     partId,
@@ -380,7 +382,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       onOpenSourceLocation={behavior.openSourceLocation}
     >
       <FullscreenButton
-        className="assistant-message-expand"
+        className="absolute -top-1.5 right-0 grid size-7 place-items-center rounded-md bg-transparent p-0 text-muted-foreground opacity-0 hover:bg-muted hover:text-foreground group-hover/msg:opacity-100 group-focus-within/msg:opacity-100 transition-opacity"
         label="View response fullscreen"
         onClick={() => setFullscreen(true)}
       />
@@ -389,14 +391,16 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
           markerPositions[thread.id] && (
             <IconButton
               key={thread.id}
-              className="message-comment-marker"
+              className="absolute z-2 grid size-[27px] -translate-y-1/2 place-items-center rounded-full border border-accent/60 bg-card/90 text-foreground shadow-md hover:scale-105 hover:bg-accent/20 cursor-pointer"
               style={markerPositions[thread.id]}
               tooltip={thread.anchor.selectedText}
               ariaLabel={`Open selection chat ${index + 1}`}
               onClick={(event) => setOpenThread({ id: thread.id, anchor: event.currentTarget })}
             >
               <ChatIcon size={15} />
-              <b>{thread.messageCount}</b>
+              <b className="absolute -top-1.5 -right-1.5 grid min-w-[15px] h-[15px] px-1 place-items-center rounded-full border-2 border-background bg-accent text-accent-foreground font-mono font-bold text-[8px]">
+                {thread.messageCount}
+              </b>
             </IconButton>
           ),
       )}
@@ -410,7 +414,10 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
         />
       )}
       {part.status !== "streaming" && (
-        <div className="assistant-message-actions" aria-label="Message actions">
+        <div
+          className="mt-1.5 flex min-h-7 items-center gap-1 opacity-0 group-hover/msg:opacity-100 group-focus-within/msg:opacity-100 transition-opacity"
+          aria-label="Message actions"
+        >
           <IconButton
             tooltip={copied ? "Copied" : "Copy response"}
             ariaLabel={copied ? "Copied response" : "Copy response"}
@@ -442,7 +449,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       )}
       {fullscreen && (
         <FullscreenSurface eyebrow="Full response" title="Cake" onClose={closeFullscreen}>
-          <div className="transcript-part" data-part-id={part.id}>
+          <div className="w-full" data-part-id={part.id}>
             {content()}
           </div>
         </FullscreenSurface>

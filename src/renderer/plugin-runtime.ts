@@ -183,6 +183,15 @@ function subscribePluginRuntime(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
+export function useHasSlotContributions(names: readonly CakeSlotName[]) {
+  useSyncExternalStore(
+    subscribePluginRuntime,
+    () => revision,
+    () => revision,
+  );
+  return names.some((name) => slotSnapshot(name).length > 0);
+}
+
 export function usePluginSlotDiagnostics() {
   useSyncExternalStore(
     subscribePluginRuntime,

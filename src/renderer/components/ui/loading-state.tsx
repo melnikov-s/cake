@@ -47,7 +47,8 @@ export function LoadingState({
 
   return (
     <div
-      className="loading-state flex w-fit items-center gap-2.5"
+      data-slot="loading-state"
+      className="flex w-fit items-center gap-2.5"
       role="status"
       aria-label={`${label} in progress`}
     >
@@ -55,7 +56,8 @@ export function LoadingState({
         {delays.map((delay, index) => (
           <span
             key={index}
-            className={`loading-state-cell size-[4px] bg-foreground ${round ? "rounded-full" : "rounded-[1px]"}`}
+            data-slot="loading-state-cell"
+            className={`size-[4px] bg-foreground motion-reduce:!animate-none ${round ? "rounded-full" : "rounded-[1px]"}`}
             style={{
               opacity: delay === null ? 0.07 : 0.15,
               animation:
@@ -65,7 +67,7 @@ export function LoadingState({
         ))}
       </span>
       <span
-        className="loading-state-label bg-clip-text text-[13px] font-medium text-transparent"
+        className="bg-clip-text text-[13px] font-medium text-transparent motion-reduce:!animate-none"
         style={{
           backgroundImage:
             "linear-gradient(90deg, var(--muted-foreground) 35%, var(--foreground) 50%, var(--muted-foreground) 65%)",

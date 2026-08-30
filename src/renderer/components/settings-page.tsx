@@ -1,5 +1,8 @@
 import { observer } from "r-state-tree/react";
 import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
+import { Callout } from "./ui/callout";
+import { Select } from "./ui/select";
 import { ModelCombobox } from "./model-combobox";
 import { ModelPresetSettings } from "./model-preset-settings";
 import { ThinkingLevelSelect } from "./thinking-level-select";
@@ -51,40 +54,58 @@ export const SettingsPage = observer(function SettingsPage({
     (model) => `${model.provider}/${model.id}` === utilityModelValue,
   );
   return (
-    <div className="settings-page">
-      <div className="settings-intro">
-        <span className="settings-kicker">Cake / Pi</span>
-        <h1>Settings</h1>
-        <p>
+    <div className="mx-auto max-w-4xl px-6 py-8 pb-16">
+      <div className="mb-8">
+        <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-accent">
+          Cake / Pi
+        </span>
+        <h1 className="mt-1 text-2xl font-bold text-foreground">Settings</h1>
+        <p className="mt-1.5 text-xs text-muted-foreground">
           Configure the same Pi runtime used by the CLI. These preferences are saved by Pi and
           follow you across projects.
         </p>
       </div>
       {error && (
-        <div className="notice notice-error" role="alert">
+        <Callout variant="error" className="mb-4">
           <strong>Operation failed</strong>
-          <span>{error}</span>
-        </div>
+          <span className="text-xs">{error}</span>
+        </Callout>
       )}
       {authNotice?.kind === "notice" && (
-        <div className={`notice notice-${authNotice.tone}`} role="status">
+        <Callout
+          variant={
+            authNotice.tone === "error"
+              ? "error"
+              : authNotice.tone === "warning"
+                ? "warning"
+                : "default"
+          }
+          className="mb-4"
+        >
           <strong>{authNotice.title}</strong>
-          <span>{authNotice.detail}</span>
-        </div>
+          <span className="text-xs">{authNotice.detail}</span>
+        </Callout>
       )}
 
-      <section className="settings-section" aria-labelledby="pi-settings-title">
-        <header>
+      <section className="border-t border-border py-5" aria-labelledby="pi-settings-title">
+        <header className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <h2 id="pi-settings-title">Current chat</h2>
-            <p>Model and reasoning changes apply to this chat and become Pi’s defaults.</p>
+            <h2 id="pi-settings-title" className="text-[15px] font-semibold text-foreground">
+              Current chat
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Model and reasoning changes apply to this chat and become Pi’s defaults.
+            </p>
           </div>
         </header>
         {store.session ? (
-          <div className="settings-fields">
-            <div className="settings-field">
-              <span>
-                Model<small>The model Pi uses for its next response.</small>
+          <div className="grid gap-4">
+            <div className="flex items-center justify-between gap-6 text-sm">
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <strong className="text-xs font-medium text-foreground">Model</strong>
+                <small className="text-[11px] text-muted-foreground">
+                  The model Pi uses for its next response.
+                </small>
               </span>
               <ModelCombobox
                 ariaLabel="Settings model"
@@ -94,15 +115,19 @@ export const SettingsPage = observer(function SettingsPage({
                 variant="settings"
               />
             </div>
-            <label>
-              <span>
-                Reasoning<small>Controls how much time Pi spends thinking.</small>
+            <label className="flex items-center justify-between gap-6 text-sm">
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <strong className="text-xs font-medium text-foreground">Reasoning</strong>
+                <small className="text-[11px] text-muted-foreground">
+                  Controls how much time Pi spends thinking.
+                </small>
               </span>
               <ThinkingLevelSelect
                 ariaLabel="Settings thinking level"
                 value={store.session.thinkingLevel}
                 levels={store.session.availableThinkingLevels}
                 onSelect={(level) => void configuration?.selectThinkingLevel(level)}
+                variant="settings"
               />
             </label>
             {store.session.fastModeAvailable && (
@@ -119,7 +144,7 @@ export const SettingsPage = observer(function SettingsPage({
             )}
           </div>
         ) : (
-          <p className="settings-empty">
+          <p className="text-xs text-muted-foreground">
             Open a project or start a one-off chat to choose a model and reasoning level.
           </p>
         )}
@@ -127,19 +152,28 @@ export const SettingsPage = observer(function SettingsPage({
 
       <ModelPresetSettings settings={settings.modelPresets} groups={providerGroups} />
 
-      <section className="settings-section" aria-labelledby="default-model-title">
-        <header>
+      <section className="border-t border-border py-5" aria-labelledby="default-model-title">
+        <header className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <h2 id="default-model-title">Default agent model</h2>
-            <p>Pi’s own default profile for new project chats and plugin agents.</p>
+            <h2 id="default-model-title" className="text-[15px] font-semibold text-foreground">
+              Default agent model
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Pi’s own default profile for new project chats and plugin agents.
+            </p>
           </div>
-          <span className="settings-source">Pi global</span>
+          <Badge variant="outline" className="font-mono text-[10px] uppercase">
+            Pi global
+          </Badge>
         </header>
         {pi ? (
-          <div className="settings-fields">
-            <div className="settings-field">
-              <span>
-                Model<small>Used when a plugin requests the default profile.</small>
+          <div className="grid gap-4">
+            <div className="flex items-center justify-between gap-6 text-sm">
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <strong className="text-xs font-medium text-foreground">Model</strong>
+                <small className="text-[11px] text-muted-foreground">
+                  Used when a plugin requests the default profile.
+                </small>
               </span>
               <ModelCombobox
                 ariaLabel="Default agent model"
@@ -157,9 +191,12 @@ export const SettingsPage = observer(function SettingsPage({
                 variant="settings"
               />
             </div>
-            <label>
-              <span>
-                Reasoning<small>The reasoning effort attached to Pi’s default profile.</small>
+            <label className="flex items-center justify-between gap-6 text-sm">
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <strong className="text-xs font-medium text-foreground">Reasoning</strong>
+                <small className="text-[11px] text-muted-foreground">
+                  The reasoning effort attached to Pi’s default profile.
+                </small>
               </span>
               <ThinkingLevelSelect
                 ariaLabel="Default agent thinking level"
@@ -174,28 +211,34 @@ export const SettingsPage = observer(function SettingsPage({
             </label>
           </div>
         ) : (
-          <p className="settings-empty">Open a chat to load Pi’s defaults.</p>
+          <p className="text-xs text-muted-foreground">Open a chat to load Pi’s defaults.</p>
         )}
       </section>
 
-      <section className="settings-section" aria-labelledby="utility-model-title">
-        <header>
+      <section className="border-t border-border py-5" aria-labelledby="utility-model-title">
+        <header className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <h2 id="utility-model-title">Utility model</h2>
-            <p>Runs user-configured, lightweight background tasks such as naming sessions.</p>
+            <h2 id="utility-model-title" className="text-[15px] font-semibold text-foreground">
+              Utility model
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Runs user-configured, lightweight background tasks such as naming sessions.
+            </p>
           </div>
-          <span className="settings-source">Cake</span>
+          <Badge variant="outline" className="font-mono text-[10px] uppercase">
+            Cake
+          </Badge>
         </header>
-        <div className="settings-fields">
-          <div className="settings-field">
-            <span>
-              Model
-              <small>
+        <div className="grid gap-4">
+          <div className="flex items-center justify-between gap-6 text-sm">
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <strong className="text-xs font-medium text-foreground">Model</strong>
+              <small className="text-[11px] text-muted-foreground">
                 When unset, Cake makes no utility calls and session lists use the truncated first
                 message.
               </small>
             </span>
-            <span className="settings-inline-action">
+            <div className="flex items-center gap-2">
               <ModelCombobox
                 ariaLabel="Utility model"
                 groups={providerGroups}
@@ -224,11 +267,14 @@ export const SettingsPage = observer(function SettingsPage({
                   Clear
                 </Button>
               )}
-            </span>
+            </div>
           </div>
-          <label>
-            <span>
-              Reasoning<small>The reasoning effort sent with utility requests.</small>
+          <label className="flex items-center justify-between gap-6 text-sm">
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <strong className="text-xs font-medium text-foreground">Reasoning</strong>
+              <small className="text-[11px] text-muted-foreground">
+                The reasoning effort sent with utility requests.
+              </small>
             </span>
             <ThinkingLevelSelect
               ariaLabel="Utility model thinking level"
@@ -242,16 +288,22 @@ export const SettingsPage = observer(function SettingsPage({
         </div>
       </section>
 
-      <section className="settings-section" aria-labelledby="behavior-title">
-        <header>
+      <section className="border-t border-border py-5" aria-labelledby="behavior-title">
+        <header className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <h2 id="behavior-title">Agent behavior</h2>
-            <p>Context, reasoning display, and queued message delivery.</p>
+            <h2 id="behavior-title" className="text-[15px] font-semibold text-foreground">
+              Agent behavior
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Context, reasoning display, and queued message delivery.
+            </p>
           </div>
-          <span className="settings-source">Pi global</span>
+          <Badge variant="outline" className="font-mono text-[10px] uppercase">
+            Pi global
+          </Badge>
         </header>
         {pi ? (
-          <div className="settings-fields">
+          <div className="grid gap-4">
             <SettingsToggle
               label="Auto-compact"
               description="Compact context automatically when it gets too large."
@@ -270,12 +322,16 @@ export const SettingsPage = observer(function SettingsPage({
               checked={pi.hideThinkingBlock}
               onChange={(value) => void providers.setPiSetting({ key: "hideThinkingBlock", value })}
             />
-            <label>
-              <span>
-                Steering mode<small>How steering messages are delivered while Pi is working.</small>
+            <label className="flex items-center justify-between gap-6 text-sm">
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <strong className="text-xs font-medium text-foreground">Steering mode</strong>
+                <small className="text-[11px] text-muted-foreground">
+                  How steering messages are delivered while Pi is working.
+                </small>
               </span>
-              <select
+              <Select
                 aria-label="Steering mode"
+                className="h-8 max-w-xs text-xs"
                 value={pi.steeringMode}
                 onChange={(event) =>
                   void providers.setPiSetting({
@@ -286,14 +342,18 @@ export const SettingsPage = observer(function SettingsPage({
               >
                 <option value="one-at-a-time">One at a time</option>
                 <option value="all">All at once</option>
-              </select>
+              </Select>
             </label>
-            <label>
-              <span>
-                Follow-up mode<small>How queued follow-ups are delivered after Pi stops.</small>
+            <label className="flex items-center justify-between gap-6 text-sm">
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <strong className="text-xs font-medium text-foreground">Follow-up mode</strong>
+                <small className="text-[11px] text-muted-foreground">
+                  How queued follow-ups are delivered after Pi stops.
+                </small>
               </span>
-              <select
+              <Select
                 aria-label="Follow-up mode"
+                className="h-8 max-w-xs text-xs"
                 value={pi.followUpMode}
                 onChange={(event) =>
                   void providers.setPiSetting({
@@ -304,23 +364,27 @@ export const SettingsPage = observer(function SettingsPage({
               >
                 <option value="one-at-a-time">One at a time</option>
                 <option value="all">All at once</option>
-              </select>
+              </Select>
             </label>
           </div>
         ) : (
-          <p className="settings-empty">Open a chat to load Pi’s settings.</p>
+          <p className="text-xs text-muted-foreground">Open a chat to load Pi’s settings.</p>
         )}
       </section>
 
-      <section className="settings-section" aria-labelledby="execution-title">
-        <header>
+      <section className="border-t border-border py-5" aria-labelledby="execution-title">
+        <header className="mb-4">
           <div>
-            <h2 id="execution-title">Execution</h2>
-            <p>Configure the shell and package command used by Pi.</p>
+            <h2 id="execution-title" className="text-[15px] font-semibold text-foreground">
+              Execution
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Configure the shell and package command used by Pi.
+            </p>
           </div>
         </header>
         {pi ? (
-          <div className="settings-fields">
+          <div className="grid gap-4">
             <SettingsTextField
               label="Shell path"
               description="Custom shell executable. Leave empty to use Pi’s platform default."
@@ -343,15 +407,17 @@ export const SettingsPage = observer(function SettingsPage({
             />
           </div>
         ) : (
-          <p className="settings-empty">Open a chat to load Pi’s settings.</p>
+          <p className="text-xs text-muted-foreground">Open a chat to load Pi’s settings.</p>
         )}
       </section>
 
-      <section className="settings-section" aria-labelledby="resources-title">
-        <header>
+      <section className="border-t border-border py-5" aria-labelledby="resources-title">
+        <header className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <h2 id="resources-title">Resources</h2>
-            <p>
+            <h2 id="resources-title" className="text-[15px] font-semibold text-foreground">
+              Resources
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
               Configure global Pi packages, extensions, skills, and prompt paths. Changes reload
               automatically.
             </p>
@@ -367,7 +433,7 @@ export const SettingsPage = observer(function SettingsPage({
           </Button>
         </header>
         {pi ? (
-          <div className="settings-fields">
+          <div className="grid gap-4">
             <SettingsPackagesField
               value={pi.packages}
               onApply={(value) => void providers.setPiSetting({ key: "packages", value })}
@@ -392,21 +458,25 @@ export const SettingsPage = observer(function SettingsPage({
             />
           </div>
         ) : (
-          <p className="settings-empty">Open a chat to load Pi’s settings.</p>
+          <p className="text-xs text-muted-foreground">Open a chat to load Pi’s settings.</p>
         )}
       </section>
 
       <PluginSettings store={customization} />
 
-      <section className="settings-section" aria-labelledby="content-title">
-        <header>
+      <section className="border-t border-border py-5" aria-labelledby="content-title">
+        <header className="mb-4">
           <div>
-            <h2 id="content-title">Content</h2>
-            <p>Control images, skills, and transcript diagnostics.</p>
+            <h2 id="content-title" className="text-[15px] font-semibold text-foreground">
+              Content
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Control images, skills, and transcript diagnostics.
+            </p>
           </div>
         </header>
         {pi ? (
-          <div className="settings-fields">
+          <div className="grid gap-4">
             <SettingsToggle
               label="Auto-resize images"
               description="Resize large images for better model compatibility."
@@ -437,25 +507,33 @@ export const SettingsPage = observer(function SettingsPage({
             />
           </div>
         ) : (
-          <p className="settings-empty">Open a chat to load Pi’s settings.</p>
+          <p className="text-xs text-muted-foreground">Open a chat to load Pi’s settings.</p>
         )}
       </section>
 
-      <section className="settings-section" aria-labelledby="network-title">
-        <header>
+      <section className="border-t border-border py-5" aria-labelledby="network-title">
+        <header className="mb-4">
           <div>
-            <h2 id="network-title">Network</h2>
-            <p>Choose Pi’s provider transport and idle timeout.</p>
+            <h2 id="network-title" className="text-[15px] font-semibold text-foreground">
+              Network
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Choose Pi’s provider transport and idle timeout.
+            </p>
           </div>
         </header>
         {pi ? (
-          <div className="settings-fields">
-            <label>
-              <span>
-                Transport<small>Preferred transport when a provider supports more than one.</small>
+          <div className="grid gap-4">
+            <label className="flex items-center justify-between gap-6 text-sm">
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <strong className="text-xs font-medium text-foreground">Transport</strong>
+                <small className="text-[11px] text-muted-foreground">
+                  Preferred transport when a provider supports more than one.
+                </small>
               </span>
-              <select
+              <Select
                 aria-label="Provider transport"
+                className="h-8 max-w-xs text-xs"
                 value={pi.transport}
                 onChange={(event) =>
                   void providers.setPiSetting({
@@ -468,14 +546,18 @@ export const SettingsPage = observer(function SettingsPage({
                 <option value="sse">SSE</option>
                 <option value="websocket">WebSocket</option>
                 <option value="websocket-cached">WebSocket cached</option>
-              </select>
+              </Select>
             </label>
-            <label>
-              <span>
-                HTTP idle timeout<small>Maximum pause while Pi waits for HTTP data.</small>
+            <label className="flex items-center justify-between gap-6 text-sm">
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <strong className="text-xs font-medium text-foreground">HTTP idle timeout</strong>
+                <small className="text-[11px] text-muted-foreground">
+                  Maximum pause while Pi waits for HTTP data.
+                </small>
               </span>
-              <select
+              <Select
                 aria-label="HTTP idle timeout"
+                className="h-8 max-w-xs text-xs"
                 value={pi.httpIdleTimeoutMs}
                 onChange={(event) =>
                   void providers.setPiSetting({
@@ -489,29 +571,39 @@ export const SettingsPage = observer(function SettingsPage({
                 <option value={120_000}>2 minutes</option>
                 <option value={300_000}>5 minutes</option>
                 <option value={0}>Disabled</option>
-              </select>
+              </Select>
             </label>
           </div>
         ) : (
-          <p className="settings-empty">Open a chat to load Pi’s settings.</p>
+          <p className="text-xs text-muted-foreground">Open a chat to load Pi’s settings.</p>
         )}
       </section>
 
-      <section className="settings-section" aria-labelledby="safety-title">
-        <header>
+      <section className="border-t border-border py-5" aria-labelledby="safety-title">
+        <header className="mb-4">
           <div>
-            <h2 id="safety-title">Safety & privacy</h2>
-            <p>Trust defaults, warnings, and Pi’s optional update telemetry.</p>
+            <h2 id="safety-title" className="text-[15px] font-semibold text-foreground">
+              Safety & privacy
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Trust defaults, warnings, and Pi’s optional update telemetry.
+            </p>
           </div>
         </header>
         {pi ? (
-          <div className="settings-fields">
-            <label>
-              <span>
-                Default project trust<small>Fallback when no saved trust decision applies.</small>
+          <div className="grid gap-4">
+            <label className="flex items-center justify-between gap-6 text-sm">
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <strong className="text-xs font-medium text-foreground">
+                  Default project trust
+                </strong>
+                <small className="text-[11px] text-muted-foreground">
+                  Fallback when no saved trust decision applies.
+                </small>
               </span>
-              <select
+              <Select
                 aria-label="Default project trust"
+                className="h-8 max-w-xs text-xs"
                 value={pi.defaultProjectTrust}
                 onChange={(event) =>
                   void providers.setPiSetting({
@@ -523,7 +615,7 @@ export const SettingsPage = observer(function SettingsPage({
                 <option value="ask">Ask</option>
                 <option value="always">Always trust</option>
                 <option value="never">Never trust</option>
-              </select>
+              </Select>
             </label>
             <SettingsToggle
               label="Anthropic extra usage warning"
@@ -543,7 +635,7 @@ export const SettingsPage = observer(function SettingsPage({
             />
           </div>
         ) : (
-          <p className="settings-empty">Open a chat to load Pi’s settings.</p>
+          <p className="text-xs text-muted-foreground">Open a chat to load Pi’s settings.</p>
         )}
       </section>
 

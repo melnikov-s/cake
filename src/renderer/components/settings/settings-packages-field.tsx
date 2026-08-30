@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { piSettingsSchema, type PiSettings } from "../../../ipc/session-contract";
 import { Button } from "../ui/button";
+import { Textarea } from "../ui/textarea";
 
 export function SettingsPackagesField({
   value,
@@ -25,18 +26,22 @@ export function SettingsPackagesField({
     }
   };
   return (
-    <label className="settings-multiline">
-      <span>
-        Packages<small>Pi package sources as JSON. Saving reloads every open Pi session.</small>
+    <label className="flex flex-col gap-2 text-sm">
+      <span className="flex flex-col gap-0.5">
+        <strong className="text-xs font-medium text-foreground">Packages</strong>
+        <small className="text-[11px] text-muted-foreground">
+          Pi package sources as JSON. Saving reloads every open Pi session.
+        </small>
         {error && (
-          <small className="settings-validation" role="alert">
+          <small className="mt-1 text-xs text-destructive" role="alert">
             {error}
           </small>
         )}
       </span>
-      <span className="settings-editor">
-        <textarea
+      <div className="flex flex-col items-end gap-2">
+        <Textarea
           aria-label="Pi packages"
+          className="w-full font-mono text-xs"
           value={draft}
           rows={6}
           onChange={(event) => setDraft(event.target.value)}
@@ -44,7 +49,7 @@ export function SettingsPackagesField({
         <Button variant="outline" size="sm" type="button" onClick={apply}>
           Apply
         </Button>
-      </span>
+      </div>
     </label>
   );
 }

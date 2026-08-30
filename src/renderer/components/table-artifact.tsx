@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
 import type { JsonValue } from "../../ipc/json-contract";
 
@@ -48,9 +49,10 @@ export function TableArtifact({
       "text/csv",
     );
   return (
-    <div className="artifact-table">
-      <div className="artifact-controls">
-        <input
+    <div className="grid gap-3">
+      <div className="flex items-center gap-2">
+        <Input
+          className="h-8 text-xs"
           aria-label="Filter table"
           placeholder="Filter rows"
           value={query}
@@ -60,14 +62,22 @@ export function TableArtifact({
           Export CSV
         </Button>
       </div>
-      <div className="artifact-table-scroll">
-        <table>
+      <div className="max-h-[28rem] overflow-auto rounded-lg border border-border">
+        <table className="w-full border-collapse text-left text-xs">
           <thead>
-            <tr>
-              {artifact.payload.selectable && <th aria-label="Selection" />}
+            <tr className="sticky top-0 z-1 bg-muted">
+              {artifact.payload.selectable && (
+                <th className="border-b border-border p-2.5" aria-label="Selection" />
+              )}
               {artifact.payload.columns.map((column) => (
-                <th key={column.id}>
-                  <button onClick={() => chooseSort(column.id)}>
+                <th
+                  className="border-b border-border p-2.5 font-semibold text-foreground"
+                  key={column.id}
+                >
+                  <button
+                    className="cursor-pointer font-inherit text-inherit"
+                    onClick={() => chooseSort(column.id)}
+                  >
                     {column.label}
                     {sort?.column === column.id ? (sort.direction === 1 ? " ↑" : " ↓") : ""}
                   </button>
@@ -75,13 +85,14 @@ export function TableArtifact({
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-border">
             {rows.map((row) => (
-              <tr key={row.id}>
+              <tr className="hover:bg-muted/50 transition-colors" key={row.id}>
                 {artifact.payload.selectable && (
-                  <td>
+                  <td className="p-2.5">
                     <input
                       type="checkbox"
+                      className="accent-primary"
                       aria-label={`Select ${row.id}`}
                       checked={selected.has(row.id)}
                       onChange={() =>
@@ -96,7 +107,9 @@ export function TableArtifact({
                   </td>
                 )}
                 {artifact.payload.columns.map((column) => (
-                  <td key={column.id}>{String(row[column.id] ?? "")}</td>
+                  <td className="p-2.5 text-foreground" key={column.id}>
+                    {String(row[column.id] ?? "")}
+                  </td>
                 ))}
               </tr>
             ))}

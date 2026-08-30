@@ -11,6 +11,7 @@ import {
   ConfirmationTitle,
 } from "./ai-elements/confirmation";
 import { Button } from "./ui/button";
+import { DialogBackdrop } from "./ui/dialog";
 import { BranchIcon, CheckIcon, ChevronDownIcon, FolderIcon, PullRequestIcon } from "./ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
@@ -59,7 +60,7 @@ export const WorktreePill = observer(function WorktreePill({
         ? candidates.find((record) => record.worktreePath === choice.worktreePath)
         : undefined;
     return (
-      <div className="mx-4 -mb-5 flex min-w-0 items-center gap-2 overflow-x-auto rounded-t-[1.75rem] border border-b-0 border-border/70 bg-card/70 px-5 pt-3.5 pb-8 text-sm">
+      <div className="mx-4 -mb-5 flex min-w-0 items-center gap-2 overflow-x-auto rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3.5 pb-8 text-sm">
         <Button
           type="button"
           variant="ghost"
@@ -165,7 +166,7 @@ export const WorktreePill = observer(function WorktreePill({
 
   return (
     <>
-      <div className="mx-4 -mb-5 flex flex-col gap-1 rounded-t-[1.75rem] border border-b-0 border-border/70 bg-card/70 px-5 pt-3.5 pb-8">
+      <div className="mx-4 -mb-5 flex flex-col gap-1 rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3.5 pb-8">
         <div className="flex min-w-0 items-center gap-2 overflow-x-auto text-sm">
           <span className="flex h-8 min-w-0 shrink items-center gap-2 px-2.5 text-foreground">
             <WorktreeStatusIcon state={status.record.state} className="shrink-0" />
@@ -295,7 +296,7 @@ export const WorktreePill = observer(function WorktreePill({
         )}
       </div>
       {(confirmation === "dirty-target" || confirmation === "dirty-target-resolve") && (
-        <div className="dialog-backdrop">
+        <DialogBackdrop>
           <Confirmation
             state="requested"
             role="alertdialog"
@@ -324,7 +325,7 @@ export const WorktreePill = observer(function WorktreePill({
               </ConfirmationActions>
             </ConfirmationRequest>
           </Confirmation>
-        </div>
+        </DialogBackdrop>
       )}
     </>
   );

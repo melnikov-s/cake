@@ -2,6 +2,7 @@ import { observer } from "r-state-tree/react";
 import type { ChatConfigurationStore } from "../stores/ChatConfigurationStore";
 import type { ProviderSettingsStore } from "../stores/ProviderSettingsStore";
 import { Button } from "./ui/button";
+import { StatusDot } from "./ui/status-dot";
 
 export const SettingsProvidersSection = observer(function SettingsProvidersSection({
   providers,
@@ -13,11 +14,15 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
   hasSession: boolean;
 }) {
   return (
-    <section className="settings-section" aria-labelledby="providers-title">
-      <header>
+    <section className="border-t border-border py-5" aria-labelledby="providers-title">
+      <header className="mb-4 flex items-start justify-between gap-4">
         <div>
-          <h2 id="providers-title">Providers</h2>
-          <p>Connect the accounts and API keys that make models available to Pi.</p>
+          <h2 id="providers-title" className="text-[15px] font-semibold text-foreground">
+            Providers
+          </h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Connect the accounts and API keys that make models available to Pi.
+          </p>
         </div>
         <Button
           variant="outline"
@@ -30,9 +35,11 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
         </Button>
       </header>
       {providerGroups.length === 0 ? (
-        <p className="settings-empty">Provider details will appear after a chat is open.</p>
+        <p className="text-xs text-muted-foreground">
+          Provider details will appear after a chat is open.
+        </p>
       ) : (
-        <div className="provider-list">
+        <div className="grid gap-3">
           {providerGroups.map((provider) => {
             const authenticated = provider.models.some((model) => model.authenticated);
             const authenticatedModel = provider.models.find((model) => model.authenticated);
@@ -43,29 +50,38 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
             const authTypes = [...new Set(provider.models.flatMap((model) => model.authTypes))];
             const operation = providers.providerOperation(provider.id);
             return (
-              <article className="provider-row" key={provider.id}>
-                <div className="provider-identity">
-                  <span className="provider-monogram">
+              <article
+                className="flex items-center justify-between gap-4 rounded-xl border border-border bg-muted/50 p-3"
+                key={provider.id}
+              >
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-lg border border-border bg-card font-mono text-xs font-bold text-accent">
                     {provider.name.slice(0, 1).toUpperCase()}
                   </span>
-                  <span>
-                    <strong>{provider.name}</strong>
-                    <small>
+                  <span className="min-w-0">
+                    <strong className="block truncate text-xs font-semibold text-foreground">
+                      {provider.name}
+                    </strong>
+                    <small className="block truncate text-[11px] text-muted-foreground">
                       {provider.models.length} {provider.models.length === 1 ? "model" : "models"}
                     </small>
                   </span>
                 </div>
-                <span className={authenticated ? "provider-state connected" : "provider-state"}>
-                  <i />
-                  {operation === "login"
-                    ? "Connecting…"
-                    : operation === "logout"
-                      ? "Disconnecting…"
-                      : authenticated
-                        ? `Connected${connectionLabel ? ` · ${connectionLabel}` : ""}`
-                        : "Not connected"}
+                <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                  <StatusDot
+                    status={operation ? "running" : authenticated ? "complete" : "pending"}
+                  />
+                  <span className={authenticated ? "text-foreground font-medium" : ""}>
+                    {operation === "login"
+                      ? "Connecting…"
+                      : operation === "logout"
+                        ? "Disconnecting…"
+                        : authenticated
+                          ? `Connected${connectionLabel ? ` · ${connectionLabel}` : ""}`
+                          : "Not connected"}
+                  </span>
                 </span>
-                <div className="provider-actions">
+                <div className="flex shrink-0 items-center gap-2">
                   {authenticated ? (
                     authSource === "stored" || authSource === "runtime" ? (
                       <Button

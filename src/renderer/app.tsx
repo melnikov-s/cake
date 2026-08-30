@@ -10,6 +10,8 @@ import {
   ConfirmationTitle,
 } from "@/components/ai-elements/confirmation";
 import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
+import { DialogBackdrop } from "@/components/ui/dialog";
 import { IconButton } from "@/components/ui/icon-button";
 import {
   BackIcon,
@@ -22,9 +24,9 @@ import {
   TreeIcon,
 } from "@/components/ui/icons";
 import { LoadingState } from "@/components/ui/loading-state";
+import { ResizeHandle } from "@/components/ui/resize-handle";
 import { IdeWorkspace } from "@/components/ide-workspace";
 import { SettingsPage } from "@/components/settings-page";
-import { PanelResizeHandle } from "@/components/panel-resize-handle";
 import { ToastHost } from "@/components/toast-host";
 import { WorktreePill } from "@/components/worktree-pill";
 import { WorkLogControls } from "@/components/work-log-controls";
@@ -36,6 +38,7 @@ import { ArtifactsPanel } from "@/components/artifacts-panel";
 import { UiDialog } from "@/components/ui-dialog";
 import { CommandPane } from "@/components/command-pane";
 import { Chat } from "@/components/chat";
+import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../ipc/source-location";
 import { toWorkspaceRelativePath } from "../utils/workspace-relative-path";
 import { RootStore } from "./stores/RootStore";
@@ -212,8 +215,10 @@ export const App = observer(function App() {
 
   if (!persistence.hydrated)
     return (
-      <main className="loading-screen">
-        <span className="cake-mark">C</span>
+      <main className="flex h-screen flex-col items-center justify-center gap-3.5 bg-background text-muted-foreground">
+        <span className="grid size-[27px] select-none place-items-center rounded-bl-[6px] rounded-br-[9px] rounded-tl-[9px] rounded-tr-[6px] bg-foreground text-sm font-black tracking-tighter text-background -rotate-2">
+          C
+        </span>
         <LoadingState label="Restoring Cake" />
       </main>
     );
@@ -235,7 +240,18 @@ export const App = observer(function App() {
   };
   return (
     <main
-      className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${store.commandPaneStore.pane ? "right-pane-open" : ""} ${resizingPanel ? "is-resizing" : ""}`}
+      className={cn(
+        "relative grid h-screen w-screen max-w-[100vw] overflow-hidden bg-background text-foreground transition-[grid-template-columns] duration-180 ease-out",
+        "grid-cols-[var(--sidebar-width)_minmax(0,1fr)_0px] max-[820px]:grid-cols-[min(var(--sidebar-width),230px)_minmax(0,1fr)_0px] max-[620px]:grid-cols-[0px_minmax(0,1fr)]",
+        sidebarCollapsed &&
+          "grid-cols-[0px_minmax(0,1fr)_0px] max-[820px]:grid-cols-[0px_minmax(0,1fr)_0px]",
+        store.commandPaneStore.pane &&
+          "grid-cols-[var(--sidebar-width)_minmax(0,1fr)_var(--right-pane-width)] max-[820px]:grid-cols-[min(var(--sidebar-width),230px)_minmax(0,1fr)_var(--right-pane-width)]",
+        sidebarCollapsed &&
+          store.commandPaneStore.pane &&
+          "grid-cols-[0px_minmax(0,1fr)_var(--right-pane-width)]",
+        resizingPanel && "cursor-col-resize select-none transition-none",
+      )}
       style={shellStyle}
     >
       <Sidebar
@@ -256,8 +272,8 @@ export const App = observer(function App() {
         onGoForward={goForward}
       />
       {!sidebarCollapsed && (
-        <PanelResizeHandle
-          className="sidebar-resize-handle"
+        <ResizeHandle
+          className="left-[calc(var(--sidebar-width)-5px)] max-[820px]:left-[calc(min(var(--sidebar-width),230px)-5px)]"
           label="Resize project sidebar"
           value={sidebarWidth}
           min={220}
@@ -269,7 +285,7 @@ export const App = observer(function App() {
         />
       )}
       <section
-        className="workspace"
+        className="relative grid h-full min-h-0 min-w-0 grid-rows-[52px_minmax(0,1fr)] overflow-hidden [contain:inline-size]"
         data-session-id={
           shell.selection.kind === "cake-chat"
             ? shell.selection.sessionId
@@ -279,19 +295,29 @@ export const App = observer(function App() {
         }
       >
         <IconButton
-          className={
-            surface === "settings" ? "workspace-settings-icon active" : "workspace-settings-icon"
-          }
+          className={cn(
+            "absolute bottom-[9.5px] left-4 z-20 hidden size-8 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground max-[620px]:grid",
+            sidebarCollapsed && "grid",
+            surface === "settings" && "bg-sidebar-hover text-foreground",
+          )}
           tooltip="Open settings"
           aria-current={surface === "settings" ? "page" : undefined}
           onClick={() => root.showSettings()}
         >
           <SettingsIcon />
         </IconButton>
-        <header className="workspace-header">
-          <div>
+        <header
+          className={cn(
+            "flex h-[52px] w-full max-w-full min-w-0 items-center justify-between overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:pl-[84px]",
+            sidebarCollapsed && "pl-[84px]",
+          )}
+        >
+          <div className="flex w-0 min-w-0 flex-1 items-center gap-3 overflow-hidden">
             <IconButton
-              className="header-sidebar-toggle"
+              className={cn(
+                "hidden size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag] max-[620px]:grid",
+                sidebarCollapsed && "grid -mt-1.5",
+              )}
               tooltip="Toggle sidebar"
               onClick={() => setSidebarCollapsed((value) => !value)}
             >
@@ -299,38 +325,47 @@ export const App = observer(function App() {
             </IconButton>
             {surface === "settings" && (
               <IconButton
-                className="header-back"
+                className="grid size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]"
                 tooltip="Back to chat"
                 onClick={returnToWorkbench}
               >
                 <BackIcon />
               </IconButton>
             )}
-            <strong>
+            <strong className="block min-w-0 max-w-full truncate text-[13px] font-semibold">
               {surface === "settings"
                 ? "Settings"
                 : surface === "global-chat"
                   ? "Cake Chat"
                   : (extensionUi.title ?? (session ? store.sessionTitle : "Cake"))}
             </strong>
-            {surface === "workbench" && store.projectPath && <span>{store.projectPath}</span>}
+            {surface === "workbench" && store.projectPath && (
+              <span className="truncate font-mono text-[10px] text-muted-foreground max-[820px]:hidden">
+                {store.projectPath}
+              </span>
+            )}
           </div>
-          <div className="workspace-header-actions" ref={setSessionHeaderHost} />
+          <div
+            className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]"
+            ref={setSessionHeaderHost}
+          />
         </header>
         {surface === "settings" ? (
-          <SettingsPage
-            store={store}
-            settings={settings}
-            configuration={chatConfiguration}
-            customization={root.customizationStore}
-            onViewStateChange={() => persistence.schedule()}
-          />
+          <div className="h-full min-h-0 w-full overflow-y-auto [scrollbar-gutter:stable_both-edges]">
+            <SettingsPage
+              store={store}
+              settings={settings}
+              configuration={chatConfiguration}
+              customization={root.customizationStore}
+              onViewStateChange={() => persistence.schedule()}
+            />
+          </div>
         ) : globalChat ? (
           cakeChatSession ? (
-            <div className="workbench global-chat">
+            <div className="grid h-full min-h-0 min-w-0">
               {sessionHeaderHost &&
                 createPortal(
-                  <div className="header-pane-actions">
+                  <div className="flex shrink-0 items-center gap-1">
                     <WorkLogControls store={cakeChatSession.chatStore} />
                   </div>,
                   sessionHeaderHost,
@@ -339,33 +374,45 @@ export const App = observer(function App() {
                 store={cakeChatSession.chatStore}
                 transcriptBehavior={cakeChatTranscriptBehavior}
                 empty={
-                  <div className="chat-empty">
-                    <span className="cake-orbit">
-                      <span className="cake-mark">C</span>
+                  <div className="grid min-h-[calc(100vh-330px)] place-items-center content-center text-center p-10">
+                    <span className="grid size-14 rotate-3 place-items-center rounded-bl-[14px] rounded-br-[20px] rounded-tl-[20px] rounded-tr-[14px] border border-border bg-card/75 shadow-[0_20px_70px_-30px_hsl(var(--shadow)/0.5)]">
+                      <span className="grid size-[27px] select-none place-items-center rounded-bl-[6px] rounded-br-[9px] rounded-tl-[9px] rounded-tr-[6px] bg-foreground text-sm font-black tracking-tighter text-background -rotate-2">
+                        C
+                      </span>
                     </span>
-                    <h1>What can I help you find or do?</h1>
-                    <p>Ask about your tasks, open one, or delegate work to it.</p>
+                    <h1 className="mt-5 font-display text-2xl font-semibold tracking-tight">
+                      What can I help you find or do?
+                    </h1>
+                    <p className="mt-3 max-w-[470px] text-sm leading-relaxed text-muted-foreground">
+                      Ask about your tasks, open one, or delegate work to it.
+                    </p>
                   </div>
                 }
               />
             </div>
           ) : (
-            <div className="loading-screen">
-              <span className="cake-mark">C</span>
+            <div className="flex h-screen flex-col items-center justify-center gap-3.5 bg-background text-muted-foreground">
+              <span className="grid size-[27px] select-none place-items-center rounded-bl-[6px] rounded-br-[9px] rounded-tl-[9px] rounded-tr-[6px] bg-foreground text-sm font-black tracking-tighter text-background -rotate-2">
+                C
+              </span>
               <LoadingState label="Opening Cake Chat" />
             </div>
           )
         ) : !session ? (
-          <div className="welcome">
-            <span className="cake-orbit">
-              <span className="cake-mark">C</span>
+          <div className="grid h-full min-h-0 min-w-0 place-items-center content-center overflow-y-auto p-10 text-center">
+            <span className="grid size-14 rotate-3 place-items-center rounded-bl-[14px] rounded-br-[20px] rounded-tl-[20px] rounded-tr-[14px] border border-border bg-card/75 shadow-[0_20px_70px_-30px_hsl(var(--shadow)/0.5)]">
+              <span className="grid size-[27px] select-none place-items-center rounded-bl-[6px] rounded-br-[9px] rounded-tl-[9px] rounded-tr-[6px] bg-foreground text-sm font-black tracking-tighter text-background -rotate-2">
+                C
+              </span>
             </span>
-            <h1>What should we build?</h1>
-            <p>
+            <h1 className="mt-5 font-display text-3xl font-semibold tracking-tight">
+              What should we build?
+            </h1>
+            <p className="mt-3 max-w-[470px] text-sm leading-relaxed text-muted-foreground">
               Open a project for durable workspace chats, or start a one-off chat from your home
               directory.
             </p>
-            <div>
+            <div className="mt-6 flex gap-2.5">
               <Button
                 size="lg"
                 disabled={store.piState !== "ready" || store.isBusy}
@@ -395,9 +442,9 @@ export const App = observer(function App() {
             {sessionHeaderHost &&
               createPortal(
                 <>
-                  <div className="header-pane-actions">
+                  <div className="flex shrink-0 items-center gap-1">
                     <button
-                      className="header-pane-toggle"
+                      className="flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]"
                       type="button"
                       aria-label="Open VS Code"
                       onClick={() => void store.openIde()}
@@ -406,7 +453,10 @@ export const App = observer(function App() {
                       <span>VS Code</span>
                     </button>
                     <button
-                      className={`header-pane-toggle${store.commandPaneStore.pane === "tree" ? " active" : ""}`}
+                      className={cn(
+                        "flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]",
+                        store.commandPaneStore.pane === "tree" && "bg-muted text-foreground",
+                      )}
                       type="button"
                       aria-label="Session tree"
                       aria-pressed={store.commandPaneStore.pane === "tree"}
@@ -417,7 +467,7 @@ export const App = observer(function App() {
                     </button>
                     {store.activeSessionExists && (
                       <button
-                        className="header-pane-toggle"
+                        className="flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg bg-transparent px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]"
                         type="button"
                         aria-label="Open workspace changes in VS Code"
                         onClick={() => void store.openWorkspaceChanges()}
@@ -428,26 +478,29 @@ export const App = observer(function App() {
                     )}
                     <WorkLogControls store={session.chatStore} />
                   </div>
-                  <div className="plugin-slot plugin-slot-project-session-header">
+                  <div className="relative flex h-[30px] max-h-[30px] min-w-0 items-center gap-1 overflow-visible">
                     <Slot name="project-session.header.actions" />
                   </div>
                 </>,
                 sessionHeaderHost,
               )}
-            <div className="workbench project-session-workbench">
+            <div className="grid h-full min-h-0 min-w-0 overflow-hidden grid-cols-[auto_minmax(0,1fr)_auto]">
               <ProjectSessionPluginRail side="left" />
               <Chat
+                className="col-start-2"
                 store={session.chatStore}
                 transcriptBehavior={projectTranscriptBehavior}
                 empty={
-                  <div className="chat-empty">
-                    <span className="cake-orbit">
-                      <span className="cake-mark">C</span>
+                  <div className="grid min-h-[calc(100vh-330px)] place-items-center content-center text-center p-10">
+                    <span className="grid size-14 rotate-3 place-items-center rounded-bl-[14px] rounded-br-[20px] rounded-tl-[20px] rounded-tr-[14px] border border-border bg-card/75 shadow-[0_20px_70px_-30px_hsl(var(--shadow)/0.5)]">
+                      <span className="grid size-[27px] select-none place-items-center rounded-bl-[6px] rounded-br-[9px] rounded-tl-[9px] rounded-tr-[6px] bg-foreground text-sm font-black tracking-tighter text-background -rotate-2">
+                        C
+                      </span>
                     </span>
-                    <h1>
+                    <h1 className="mt-5 font-display text-2xl font-semibold tracking-tight">
                       What should we build in <em>{store.projectName}</em>?
                     </h1>
-                    <p>
+                    <p className="mt-3 max-w-[470px] text-sm leading-relaxed text-muted-foreground">
                       Describe a task, ask a question, or type <code>/</code> for commands.
                     </p>
                   </div>
@@ -481,10 +534,13 @@ export const App = observer(function App() {
                 status={
                   <>
                     {extensionUi.statuses.length > 0 && (
-                      <div className="extension-statuses" role="status">
+                      <div
+                        className="mx-auto mt-1.5 flex w-full max-w-[51.25rem] gap-2.5 overflow-x-auto font-mono text-[10px] text-muted-foreground pointer-events-auto"
+                        role="status"
+                      >
                         {extensionUi.statuses.map((status) => (
-                          <span key={status.key}>
-                            <strong>{status.key}</strong> {status.text}
+                          <span key={status.key} className="whitespace-nowrap">
+                            <strong className="text-foreground">{status.key}</strong> {status.text}
                           </span>
                         ))}
                       </div>
@@ -500,8 +556,8 @@ export const App = observer(function App() {
       </section>
       <CommandPane store={store} extensionUi={extensionUi} />
       {store.commandPaneStore.pane && (
-        <PanelResizeHandle
-          className="command-pane-resize-handle"
+        <ResizeHandle
+          className="right-[calc(var(--right-pane-width)-5px)]"
           label="Resize command pane"
           value={commandPaneWidth}
           min={320}
@@ -513,7 +569,7 @@ export const App = observer(function App() {
         />
       )}
       {store.pendingTrustPath && (
-        <div className="dialog-backdrop">
+        <DialogBackdrop>
           <Confirmation
             state="requested"
             role="alertdialog"
@@ -539,32 +595,44 @@ export const App = observer(function App() {
               </ConfirmationActions>
             </ConfirmationRequest>
           </Confirmation>
-        </div>
+        </DialogBackdrop>
       )}
       <ForkSessionDialog store={store.sessionContinuationStore} />
       {extensionUi.request && (
-        <div className="dialog-backdrop">
+        <DialogBackdrop>
           <UiDialog
             key={extensionUi.request.uiRequestId}
             request={extensionUi.request}
             extensionUi={extensionUi}
           />
-        </div>
+        </DialogBackdrop>
       )}
       <ToastHost store={root.toastStore}>
         {extensionUi.notifications.map((notification) => (
           <button
             key={notification.id}
-            className={`notice notice-${notification.tone}`}
+            type="button"
+            className="w-full text-left"
             onClick={() => extensionUi.dismissNotification(notification.id)}
           >
-            <strong>Extension</strong>
-            <span>{notification.message}</span>
+            <Callout
+              variant={
+                notification.tone === "error"
+                  ? "error"
+                  : notification.tone === "warning"
+                    ? "warning"
+                    : "default"
+              }
+              className="shadow-md"
+            >
+              <strong className="text-xs">Extension</strong>
+              <span className="text-[11px] text-muted-foreground">{notification.message}</span>
+            </Callout>
           </button>
         ))}
       </ToastHost>
       {(store.piState === "failed" || store.piState === "stopped") && store.projectPath && (
-        <div className="agent-recovery">
+        <div className="fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-xl border border-border bg-card p-2.5 px-3 text-xs shadow-lg">
           <span>Pi runtime stopped.</span>
           <Button size="sm" onClick={() => void store.restartPi()}>
             Restart and reopen

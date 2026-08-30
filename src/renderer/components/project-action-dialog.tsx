@@ -6,6 +6,7 @@ import {
   ConfirmationRequest,
   ConfirmationTitle,
 } from "./ai-elements/confirmation";
+import { DialogBackdrop } from "./ui/dialog";
 
 export type ProjectAction = "remove-project" | "delete-resolved-worktrees";
 
@@ -32,7 +33,11 @@ export function ProjectActionDialog({
   const titleId = "project-action-title";
   const descriptionId = "project-action-description";
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
+    <DialogBackdrop
+      onClose={() => {
+        if (!busy) onCancel();
+      }}
+    >
       <Confirmation
         state="requested"
         role="alertdialog"
@@ -82,6 +87,6 @@ export function ProjectActionDialog({
           </ConfirmationActions>
         </ConfirmationRequest>
       </Confirmation>
-    </div>
+    </DialogBackdrop>
   );
 }

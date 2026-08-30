@@ -1,5 +1,4 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { createPortal } from "react-dom";
 import {
   Confirmation,
   ConfirmationAction,
@@ -9,6 +8,7 @@ import {
   ConfirmationTitle,
 } from "@/components/ai-elements/confirmation";
 import { ComposerInput } from "@/components/ai-elements/composer";
+import { DialogBackdrop } from "@/components/ui/dialog";
 
 export function RewordPromptDialog({
   busy,
@@ -37,13 +37,10 @@ export function RewordPromptDialog({
     if (prompt.trim()) onSubmit(prompt.trim());
   };
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-background/70 p-4 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
+  return (
+    <DialogBackdrop
       aria-labelledby={titleId}
-      onMouseDown={() => {
+      onClose={() => {
         if (!busy) onCancel();
       }}
     >
@@ -83,7 +80,6 @@ export function RewordPromptDialog({
           </form>
         </ConfirmationRequest>
       </Confirmation>
-    </div>,
-    document.body,
+    </DialogBackdrop>
   );
 }
