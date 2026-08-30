@@ -22,7 +22,6 @@ describe("ProjectCatalogStore", () => {
     const projects = mount(createStore(ProjectCatalogStore, { sessions }));
 
     projects.applyApplicationState({
-      schemaVersion: 1,
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
       unreadSessionIds: [],
@@ -70,7 +69,6 @@ describe("ProjectCatalogStore", () => {
     const projects = mount(createStore(ProjectCatalogStore, { sessions }));
 
     projects.applyApplicationState({
-      schemaVersion: 1,
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
       unreadSessionIds: [],
@@ -102,7 +100,6 @@ describe("ProjectCatalogStore managed worktrees", () => {
       createdAt: new Date(0).toISOString(),
     });
     projects.applyApplicationState({
-      schemaVersion: 1,
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
       unreadSessionIds: [],

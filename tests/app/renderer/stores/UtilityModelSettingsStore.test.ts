@@ -4,7 +4,6 @@ import type { ApplicationState, UtilityModel } from "../../../../src/ipc/session
 import { UtilityModelSettingsStore } from "../../../../src/renderer/stores/UtilityModelSettingsStore";
 
 const applicationState = (utilityModel?: UtilityModel): ApplicationState => ({
-  schemaVersion: 1,
   projects: [],
   resolvedSessionIds: [],
   resolvedCakeChatSessionIds: [],

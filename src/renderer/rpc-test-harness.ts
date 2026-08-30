@@ -12,6 +12,7 @@ let runningStream: Promise<ReadonlyArray<number>> | undefined;
 
 const harness = {
   getHomeDirectory: () => client.application.getHomeDirectory(),
+  getApplicationState: () => client.application.getState(),
   async typedFailureTag() {
     try {
       await client.foundation.typedFailure();

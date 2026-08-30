@@ -8,7 +8,6 @@ function createHarness(annotations?: EditorAnnotationSnapshot) {
     getEmbeddedEditorState: vi.fn(async () => ({ status: "missing" as const })),
     installEmbeddedEditor: vi.fn(async () => undefined),
     setVscodeServerPath: vi.fn(async () => ({
-      schemaVersion: 1 as const,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],

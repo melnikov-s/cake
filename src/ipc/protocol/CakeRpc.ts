@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import { ApplicationState } from "../../domain/application-data";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 
 export class FoundationFailure extends Schema.TaggedError<FoundationFailure>()(
@@ -12,6 +13,9 @@ export class FoundationFailure extends Schema.TaggedError<FoundationFailure>()(
 export const CakeRpc = RpcGroup.make(
   Rpc.make("application.getHomeDirectory", {
     success: Schema.String,
+  }),
+  Rpc.make("application.getState", {
+    success: ApplicationState,
   }),
   Rpc.make("foundation.typedFailure", {
     error: FoundationFailure,

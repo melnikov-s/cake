@@ -13,6 +13,11 @@ const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 type RpcHarness = {
   getHomeDirectory(): Promise<string>;
+  getApplicationState(): Promise<{
+    projects: ReadonlyArray<unknown>;
+    resolvedSessionIds: ReadonlyArray<string>;
+    modelPresets: ReadonlyArray<unknown>;
+  }>;
   typedFailureTag(): Promise<string>;
   stream(count: number, intervalMs: number): Promise<ReadonlyArray<number>>;
   startDelay(durationMs: number): void;
@@ -88,6 +93,11 @@ test("Effect RPC crosses Electron with schemas, streams, interruption, and conne
     const observer = await openHarness(application, "observer");
 
     expect(await callHarness<string>(observer, "getHomeDirectory")).toMatch(/^\//);
+    expect(await callHarness(observer, "getApplicationState")).toMatchObject({
+      projects: [],
+      resolvedSessionIds: [],
+      modelPresets: [],
+    });
     expect(await callHarness<string>(observer, "typedFailureTag")).toBe("FoundationFailure");
     expect(await callHarness<ReadonlyArray<number>>(observer, "stream", 3, 1)).toEqual([1, 2, 3]);
 

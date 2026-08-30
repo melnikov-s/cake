@@ -4,10 +4,12 @@ import type { RpcClientError } from "effect/unstable/rpc";
 import { CakeRpc, type FoundationFailure } from "../protocol/CakeRpc";
 import { makeElectronRpcClientProtocol } from "../transport/ElectronRpcClientProtocol";
 import type { ElectronRpcTransport } from "../transport/ElectronRpcTransport";
+import type { ApplicationState } from "../../domain/application-data";
 
 interface CakeIpcClientService {
   readonly application: {
     readonly getHomeDirectory: () => Effect.Effect<string, RpcClientError.RpcClientError>;
+    readonly getState: () => Effect.Effect<ApplicationState, RpcClientError.RpcClientError>;
   };
   readonly foundation: {
     readonly typedFailure: () => Effect.Effect<
@@ -39,6 +41,7 @@ const CakeIpcClientLive = Layer.effect(
     return CakeIpcClient.of({
       application: {
         getHomeDirectory: () => client("application.getHomeDirectory", undefined),
+        getState: () => client("application.getState", undefined),
       },
       foundation: {
         typedFailure: () => client("foundation.typedFailure", undefined),
@@ -53,6 +56,7 @@ const CakeIpcClientLive = Layer.effect(
 export interface CakeIpcPromiseClient {
   readonly application: {
     readonly getHomeDirectory: () => Promise<string>;
+    readonly getState: () => Promise<ApplicationState>;
   };
   readonly foundation: {
     readonly typedFailure: () => Promise<void>;
@@ -78,6 +82,7 @@ export function makeCakeIpcPromiseClient(transport: ElectronRpcTransport): CakeI
   return {
     application: {
       getHomeDirectory: () => run(withClient((client) => client.application.getHomeDirectory())),
+      getState: () => run(withClient((client) => client.application.getState())),
     },
     foundation: {
       typedFailure: () => run(withClient((client) => client.foundation.typedFailure())),

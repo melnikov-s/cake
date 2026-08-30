@@ -44,7 +44,22 @@ import {
   rewordSelection,
 } from "../agent/utility-model";
 import { rewordSelectionWithProjectContext } from "../agent/rewording-agent";
-import { Application } from "../models/Application";
+import {
+  forgetProjectSessions,
+  reconcileResolvedSessions,
+  removeProject,
+  renameProject,
+  setCakeChatSessionResolved,
+  setModelPresets,
+  setSessionFastMode,
+  setSessionUnread,
+  setSessionsResolved,
+  setUtilityModel,
+  setVscodeServerPath,
+  trustProject,
+  upsertProject,
+} from "../domain/application";
+import type { ApplicationState as ApplicationStateOwner } from "../services/storage/ApplicationState";
 import { shouldAllowNavigation } from "./navigation-policy";
 import { resolveRewordingWorkspace } from "./rewording-workspace";
 import {
@@ -72,7 +87,7 @@ import {
 } from "./inline-widget-protocol";
 import { PluginAgentHost, resolveAgentModel } from "./plugin-agent-host";
 import { TerminalManager } from "./terminal-manager";
-import { launchMainApplication } from "./MainLive";
+import { launchMainApplication, runMainApplicationEffect } from "./MainLive";
 import cakeIconPath from "../assets/cake.png?asset";
 import annotationMenuIconPath from "../assets/menu-annotation.png?asset";
 import chatMenuIconPath from "../assets/menu-chat.png?asset";
@@ -119,14 +134,17 @@ const windowCustomizationRevisions = new Map<number, string>();
 const customizationHealthTimers = new Map<number, ReturnType<typeof setTimeout>>();
 const fullscreenSurfaces = new Map<number, Set<string>>();
 const composerRewordControllers = new Map<number, Set<AbortController>>();
-let applicationModel = Application.from({});
-const stateFileWriter = new AtomicFileWriter();
+let applicationStateOwner: ApplicationStateOwner["Service"] | undefined;
+const windowStateFileWriter = new AtomicFileWriter();
 
-function replaceApplicationModel(next: Application) {
-  const previous = applicationModel;
-  applicationModel = next;
-  previous[Symbol.dispose]();
+function applicationState() {
+  if (!applicationStateOwner) throw new Error("Application state has not initialized");
+  return applicationStateOwner.unsafeCurrent();
 }
+
+const isProjectTrusted = (path: string) => applicationState().trustedProjectPaths.includes(path);
+const hasSessionFastMode = (sessionId: string) =>
+  applicationState().fastModeSessionIds.includes(sessionId);
 
 function clearPendingTrustRequests(webContentsId: number) {
   for (const key of pendingTrustRequests.keys())
@@ -190,7 +208,7 @@ const vscodeEditor = new VsCodeServerManager({
     { path: "./themes/cake-light-color-theme.json", content: cakeLightThemeSource },
     { path: "./themes/cake-dark-color-theme.json", content: cakeDarkThemeSource },
   ],
-  customPath: () => applicationModel.vscodeServerPath,
+  customPath: () => applicationState().vscodeServerPath,
   preferredTheme: async () => {
     const preference = (await loadWindowState()).theme;
     if (preference === "dark" || preference === "light") return preference;
@@ -223,12 +241,10 @@ const globalChatDriver = new GlobalChatDriver({
       2,
     );
   },
-  fastMode: (sessionId) => applicationModel.hasSessionFastMode(sessionId),
-  setFastMode: async (sessionId, enabled) => {
-    applicationModel.setSessionFastMode(sessionId, enabled);
-    await persistApplicationState();
-  },
-  sessionResolved: (sessionId) => applicationModel.resolvedCakeChatSessionIds.includes(sessionId),
+  fastMode: hasSessionFastMode,
+  setFastMode: (sessionId, enabled) =>
+    runMainApplicationEffect(setSessionFastMode(sessionId, enabled)).then(() => undefined),
+  sessionResolved: (sessionId) => applicationState().resolvedCakeChatSessionIds.includes(sessionId),
   setSessionResolved: (sessionId, resolved) => setCakeChatSessionResolution(sessionId, resolved),
   emit: (event) => {
     if (
@@ -242,7 +258,7 @@ const globalChatDriver = new GlobalChatDriver({
 });
 const pluginAgents = new PluginAgentHost({
   agentDir: cakePaths.piAgent,
-  utilityModel: () => applicationModel.utilityModel,
+  utilityModel: () => applicationState().utilityModel,
   driver: (workspacePath) => launchPi(workspacePath).driver,
   resolveSessionWorkspacePath,
   emit: sendTo,
@@ -297,9 +313,8 @@ async function setCakeChatSessionResolution(sessionId: string, resolved: boolean
       direct: true,
     });
   }
-  applicationModel.setCakeChatSessionResolved(sessionId, resolved);
-  await persistApplicationState();
-  broadcast({ type: "application-state-changed", state: applicationModel.snapshot() });
+  const state = await runMainApplicationEffect(setCakeChatSessionResolved(sessionId, resolved));
+  broadcast({ type: "application-state-changed", state });
 }
 
 async function setProjectSessionResolution(
@@ -320,8 +335,8 @@ async function setProjectSessionResolution(
     const restoredWorktree = await worktrees.restoreResolved(workspacePath);
     if (restoredWorktree) {
       allowedProjectPaths.add(restoredWorktree.worktreePath);
-      if (applicationModel.isProjectTrusted(restoredWorktree.projectPath))
-        applicationModel.trustProject(restoredWorktree.worktreePath);
+      if (isProjectTrusted(restoredWorktree.projectPath))
+        await runMainApplicationEffect(trustProject(restoredWorktree.worktreePath));
     }
     await sessionArchive.restore(sessionId, {
       cwd: workspacePath,
@@ -329,13 +344,12 @@ async function setProjectSessionResolution(
       resolvedRoot: cakePaths.piResolvedSessions,
     });
   }
-  applicationModel.setSessionsResolved([sessionId], resolved);
-  await persistApplicationState();
-  broadcast({ type: "application-state-changed", state: applicationModel.snapshot() });
+  const state = await runMainApplicationEffect(setSessionsResolved([sessionId], resolved));
+  broadcast({ type: "application-state-changed", state });
 }
 
 async function deleteCakeChatSession(sessionId: string) {
-  if (!applicationModel.resolvedCakeChatSessionIds.includes(sessionId))
+  if (!applicationState().resolvedCakeChatSessionIds.includes(sessionId))
     throw new Error("Only resolved Cake Chat sessions can be deleted");
   await sessionArchive.deleteResolved(sessionId, {
     cwd: homedir(),
@@ -343,13 +357,12 @@ async function deleteCakeChatSession(sessionId: string) {
     resolvedRoot: cakePaths.piGlobalChatResolvedSessions,
     direct: true,
   });
-  applicationModel.setCakeChatSessionResolved(sessionId, false);
-  await persistApplicationState();
-  broadcast({ type: "application-state-changed", state: applicationModel.snapshot() });
+  const state = await runMainApplicationEffect(setCakeChatSessionResolved(sessionId, false));
+  broadcast({ type: "application-state-changed", state });
 }
 
 async function deleteProjectSession(sessionId: string) {
-  if (!applicationModel.resolvedSessionIds.includes(sessionId))
+  if (!applicationState().resolvedSessionIds.includes(sessionId))
     throw new Error("Only resolved project sessions can be deleted");
   const workspacePath = await resolveSessionWorkspacePath(sessionId);
   await Promise.all([
@@ -362,18 +375,16 @@ async function deleteProjectSession(sessionId: string) {
     resolvedRoot: cakePaths.piResolvedSessions,
   });
   forgetProjectSession(sessionId);
-  await persistApplicationState();
-  broadcast({ type: "application-state-changed", state: applicationModel.snapshot() });
+  const state = await runMainApplicationEffect(forgetProjectSessions([sessionId]));
+  broadcast({ type: "application-state-changed", state });
 }
 
 function forgetProjectSession(sessionId: string) {
   sessionWorkspacePaths.delete(sessionId);
-  applicationModel.setSessionsResolved([sessionId], false);
-  applicationModel.setSessionUnread(sessionId, false);
-  applicationModel.setSessionFastMode(sessionId, false);
 }
 
 async function deleteProjectSessions(projectPath: string, records: readonly WorktreeRecord[]) {
+  const forgottenSessionIds: string[] = [];
   const workspacePaths = [
     projectPath,
     ...records
@@ -401,17 +412,20 @@ async function deleteProjectSessions(projectPath: string, records: readonly Work
         resolvedRoot: cakePaths.piResolvedSessions,
       });
       forgetProjectSession(session.id);
+      forgottenSessionIds.push(session.id);
     }
   }
+  if (forgottenSessionIds.length > 0)
+    await runMainApplicationEffect(forgetProjectSessions(forgottenSessionIds));
 }
 
 async function restoreCakeChatSessionForUse(sessionId: string) {
-  if (applicationModel.resolvedCakeChatSessionIds.includes(sessionId))
+  if (applicationState().resolvedCakeChatSessionIds.includes(sessionId))
     await setCakeChatSessionResolution(sessionId, false);
 }
 
 async function restoreProjectSessionForUse(workspacePath: string, sessionId: string) {
-  if (applicationModel.resolvedSessionIds.includes(sessionId))
+  if (applicationState().resolvedSessionIds.includes(sessionId))
     await setProjectSessionResolution(sessionId, false, workspacePath);
 }
 
@@ -427,7 +441,7 @@ async function resolveSessionWorkspacePath(sessionId: string) {
   if (cached && allowedProjectPaths.has(cached)) return cached;
   const worktreePaths = (await worktrees.records()).map((record) => record.worktreePath);
   const workspacePaths = [
-    ...new Set([...applicationModel.projects.map((project) => project.path), ...worktreePaths]),
+    ...new Set([...applicationState().projects.map((project) => project.path), ...worktreePaths]),
   ];
   const matches = (
     await Promise.all(
@@ -465,25 +479,15 @@ async function requireWorktreeRecord(
   return record;
 }
 
-function appStatePath() {
-  return join(app.getPath("userData"), "application.json");
-}
-
-async function loadApplicationState() {
-  try {
-    replaceApplicationModel(Application.from(JSON.parse(await readFile(appStatePath(), "utf8"))));
-  } catch {
-    replaceApplicationModel(Application.from({}));
-  }
+async function reconcileApplicationSessions() {
+  const state = applicationState();
   const worktreeRecords = await worktrees.records();
-  for (const project of applicationModel.projects) {
+  for (const project of state.projects) {
     allowedProjectPaths.add(project.path);
     // Worktree paths derive from registered projects, so re-allow them on boot.
     for (const record of worktreeRecords)
       if (record.projectPath === project.path) allowedProjectPaths.add(record.worktreePath);
   }
-  const previousResolvedIds = [...applicationModel.resolvedSessionIds].sort();
-  const previousResolvedCakeChatIds = [...applicationModel.resolvedCakeChatSessionIds].sort();
   const projectSessionLists = await Promise.all(
     [...allowedProjectPaths].map((workspacePath) =>
       listWorkspaceSessions(workspacePath, cakePaths.piSessions, {
@@ -491,31 +495,25 @@ async function loadApplicationState() {
       }).catch(() => []),
     ),
   );
-  applicationModel.replaceResolvedSessions(
-    projectSessionLists
-      .flat()
-      .filter((session) => session.resolved)
-      .map((session) => session.id),
-  );
   const cakeChatSessions = await listWorkspaceSessions(homedir(), cakePaths.piGlobalChatSessions, {
     direct: true,
     resolvedSessionDir: cakePaths.piGlobalChatResolvedSessions,
   }).catch(() => []);
-  applicationModel.replaceResolvedCakeChatSessions(
-    cakeChatSessions.filter((session) => session.resolved).map((session) => session.id),
-  );
+  const projectSessionIds = projectSessionLists
+    .flat()
+    .filter((session) => session.resolved)
+    .map((session) => session.id);
+  const cakeChatSessionIds = cakeChatSessions
+    .filter((session) => session.resolved)
+    .map((session) => session.id);
   const changed =
-    previousResolvedIds.join("\n") !== [...applicationModel.resolvedSessionIds].sort().join("\n") ||
-    previousResolvedCakeChatIds.join("\n") !==
-      [...applicationModel.resolvedCakeChatSessionIds].sort().join("\n");
-  if (changed) await persistApplicationState();
-}
-
-async function persistApplicationState() {
-  await stateFileWriter.write(
-    appStatePath(),
-    `${JSON.stringify(applicationModel.snapshot(), null, 2)}\n`,
-  );
+    [...state.resolvedSessionIds].sort().join("\n") !== [...projectSessionIds].sort().join("\n") ||
+    [...state.resolvedCakeChatSessionIds].sort().join("\n") !==
+      [...cakeChatSessionIds].sort().join("\n");
+  if (changed)
+    await runMainApplicationEffect(
+      reconcileResolvedSessions(projectSessionIds, cakeChatSessionIds),
+    );
 }
 
 function statePath() {
@@ -532,7 +530,7 @@ async function loadWindowState(): Promise<WindowViewState> {
 
 async function saveWindowState(state: WindowViewState) {
   const parsed = windowViewStateSchema.parse(state);
-  await stateFileWriter.write(statePath(), `${JSON.stringify(parsed, null, 2)}\n`);
+  await windowStateFileWriter.write(statePath(), `${JSON.stringify(parsed, null, 2)}\n`);
 }
 
 function setPiState(host: PiHost, state: PiHost["state"]) {
@@ -598,21 +596,19 @@ function launchPi(path: string) {
     artifactRepository,
     reviewRepository,
     pluginResources: pluginAgentResources,
-    isTrusted: () => applicationModel.isProjectTrusted(path),
-    utilityModel: () => applicationModel.utilityModel,
+    isTrusted: () => isProjectTrusted(path),
+    utilityModel: () => applicationState().utilityModel,
     modelPresets: () =>
-      applicationModel.modelPresets.map(({ name, modelId }) => ({ name, modelId })),
+      applicationState().modelPresets.map(({ name, modelId }) => ({ name, modelId })),
     worktreeLanding: worktrees,
-    fastMode: (sessionId) => applicationModel.hasSessionFastMode(sessionId),
-    setFastMode: async (sessionId, enabled) => {
-      applicationModel.setSessionFastMode(sessionId, enabled);
-      await persistApplicationState();
-    },
-    sessionResolved: (sessionId) => applicationModel.resolvedSessionIds.includes(sessionId),
+    fastMode: hasSessionFastMode,
+    setFastMode: (sessionId, enabled) =>
+      runMainApplicationEffect(setSessionFastMode(sessionId, enabled)).then(() => undefined),
+    sessionResolved: (sessionId) => applicationState().resolvedSessionIds.includes(sessionId),
     setSessionResolved: (sessionId, resolved) =>
       setProjectSessionResolution(sessionId, resolved, path),
     resolveAgentModel: (preference, snapshot) =>
-      resolveAgentModel(preference, snapshot, applicationModel.utilityModel),
+      resolveAgentModel(preference, snapshot, applicationState().utilityModel),
     openInEditor: (location, signal) => openProjectLocationInEditor(path, location, signal),
     openExternal: async (url) => {
       const protocol = new URL(url).protocol;
@@ -1112,7 +1108,7 @@ async function handleCakeRequest(
         completed = true;
         resolve(selected);
       };
-      const canReword = Boolean(applicationModel.utilityModel);
+      const canReword = Boolean(applicationState().utilityModel);
       Menu.buildFromTemplate([
         { role: "cut" },
         { role: "copy" },
@@ -1140,7 +1136,7 @@ async function handleCakeRequest(
     return desktopResponseSchema.parse({ type: "composer-context-menu-closed", action });
   }
   if (request.type === "reword-composer-selection") {
-    const utilityModel = applicationModel.utilityModel;
+    const utilityModel = applicationState().utilityModel;
     if (!utilityModel)
       throw new Error("Configure a utility model in Settings before rewording text");
     const controller = new AbortController();
@@ -1180,7 +1176,7 @@ async function handleCakeRequest(
     }
   }
   if (request.type === "generate-session-title") {
-    const utilityModel = applicationModel.utilityModel;
+    const utilityModel = applicationState().utilityModel;
     if (!utilityModel) return desktopResponseSchema.parse({ type: "session-title-generated" });
     const signal = AbortSignal.timeout(15_000);
     const modelRuntime = await createUtilityModelRuntime(cakePaths.piAgent, signal);
@@ -1282,22 +1278,16 @@ async function handleCakeRequest(
     return desktopResponseSchema.parse({ type: "session-context-menu-closed", action });
   }
   if (request.type === "set-session-unread") {
-    applicationModel.setSessionUnread(request.sessionId, request.unread);
-    await persistApplicationState();
-    broadcast({ type: "application-state-changed", state: applicationModel.snapshot() });
-    return desktopResponseSchema.parse({
-      type: "application-state-updated",
-      state: applicationModel.snapshot(),
-    });
+    const state = await runMainApplicationEffect(
+      setSessionUnread(request.sessionId, request.unread),
+    );
+    broadcast({ type: "application-state-changed", state });
+    return desktopResponseSchema.parse({ type: "application-state-updated", state });
   }
   if (request.type === "set-vscode-server-path") {
-    applicationModel.setVscodeServerPath(request.path);
-    await persistApplicationState();
+    const state = await runMainApplicationEffect(setVscodeServerPath(request.path));
     await vscodeEditor.refreshStatus();
-    return desktopResponseSchema.parse({
-      type: "application-state-updated",
-      state: applicationModel.snapshot(),
-    });
+    return desktopResponseSchema.parse({ type: "application-state-updated", state });
   }
   if (request.type === "get-embedded-editor-state")
     return desktopResponseSchema.parse({
@@ -1833,29 +1823,18 @@ async function handleCakeRequest(
     void vscodeEditor.updateTheme();
     return desktopResponseSchema.parse({ type: "window-state-saved" });
   }
-  if (request.type === "load-application-state")
-    return desktopResponseSchema.parse({
-      type: "application-state-loaded",
-      state: applicationModel.snapshot(),
-    });
   if (request.type === "set-utility-model") {
-    applicationModel.setUtilityModel(request.model);
-    await persistApplicationState();
-    return desktopResponseSchema.parse({
-      type: "application-state-updated",
-      state: applicationModel.snapshot(),
-    });
+    const state = await runMainApplicationEffect(setUtilityModel(request.model));
+    return desktopResponseSchema.parse({ type: "application-state-updated", state });
   }
   if (request.type === "set-model-presets") {
-    applicationModel.setModelPresets(request.presets, request.defaultPresetId);
-    await persistApplicationState();
-    return desktopResponseSchema.parse({
-      type: "application-state-updated",
-      state: applicationModel.snapshot(),
-    });
+    const state = await runMainApplicationEffect(
+      setModelPresets(request.presets, request.defaultPresetId),
+    );
+    return desktopResponseSchema.parse({ type: "application-state-updated", state });
   }
   if (request.type === "list-cake-chat-sessions") {
-    const resolvedSessionIds = new Set(applicationModel.resolvedCakeChatSessionIds);
+    const resolvedSessionIds = new Set(applicationState().resolvedCakeChatSessionIds);
     const sessions = (
       await listWorkspaceSessions(homedir(), cakePaths.piGlobalChatSessions, {
         resolvedSessionDir: cakePaths.piGlobalChatResolvedSessions,
@@ -1879,11 +1858,11 @@ async function handleCakeRequest(
     });
   }
   if (request.type === "list-sessions") {
-    const resolvedSessionIds = new Set(applicationModel.resolvedSessionIds);
-    const unreadSessionIds = new Set(applicationModel.unreadSessionIds);
+    const resolvedSessionIds = new Set(applicationState().resolvedSessionIds);
+    const unreadSessionIds = new Set(applicationState().unreadSessionIds);
     const projectSessions = (
       await Promise.all(
-        applicationModel.projects.map(async (project) => {
+        applicationState().projects.map(async (project) => {
           try {
             return (
               await listWorkspaceSessions(project.path, cakePaths.piSessions, {
@@ -1908,7 +1887,7 @@ async function handleCakeRequest(
     const worktreeSessions = (
       await Promise.all(
         (await worktrees.records()).map(async (record) => {
-          const project = applicationModel.projects.find(
+          const project = applicationState().projects.find(
             (entry) => entry.path === record.projectPath,
           );
           if (!project || !allowedProjectPaths.has(record.worktreePath)) return [];
@@ -1983,28 +1962,18 @@ async function handleCakeRequest(
     if (worktreeRecords.some((entry) => entry.worktreePath === request.path))
       return desktopResponseSchema.parse({
         type: "application-state-updated",
-        state: applicationModel.snapshot(),
+        state: applicationState(),
       });
-    applicationModel.upsertProject(request.path, request.name);
+    const state = await runMainApplicationEffect(upsertProject(request.path, request.name));
     for (const record of worktreeRecords)
       if (record.projectPath === request.path) allowedProjectPaths.add(record.worktreePath);
-    await persistApplicationState();
-    return desktopResponseSchema.parse({
-      type: "application-state-updated",
-      state: applicationModel.snapshot(),
-    });
+    return desktopResponseSchema.parse({ type: "application-state-updated", state });
   }
   if (request.type === "rename-project") {
     if (!allowedProjectPaths.has(request.path))
       throw new Error("Project path was not selected by the user");
-    applicationModel.projects
-      .find((project) => project.path === request.path)
-      ?.rename(request.name);
-    await persistApplicationState();
-    return desktopResponseSchema.parse({
-      type: "application-state-updated",
-      state: applicationModel.snapshot(),
-    });
+    const state = await runMainApplicationEffect(renameProject(request.path, request.name));
+    return desktopResponseSchema.parse({ type: "application-state-updated", state });
   }
   if (request.type === "remove-project") {
     if (!allowedProjectPaths.has(request.path))
@@ -2013,7 +1982,6 @@ async function handleCakeRequest(
       (record) => record.projectPath === request.path,
     );
     if (request.deleteSessions) await deleteProjectSessions(request.path, projectWorktrees);
-    applicationModel.removeProject(request.path);
     const projectWorkspacePaths = new Set([
       request.path,
       ...projectWorktrees.map((record) => record.worktreePath),
@@ -2031,17 +1999,14 @@ async function handleCakeRequest(
       if (projectWorkspacePaths.has(workspacePath)) sessionWorkspacePaths.delete(sessionId);
     for (const [webContentsId, workspacePath] of windowWorkspaces)
       if (projectWorkspacePaths.has(workspacePath)) windowWorkspaces.delete(webContentsId);
-    await persistApplicationState();
-    return desktopResponseSchema.parse({
-      type: "application-state-updated",
-      state: applicationModel.snapshot(),
-    });
+    const state = await runMainApplicationEffect(removeProject(request.path));
+    return desktopResponseSchema.parse({ type: "application-state-updated", state });
   }
   if (request.type === "resolve-session") {
     await setProjectSessionResolution(request.sessionId, request.resolved);
     return desktopResponseSchema.parse({
       type: "application-state-updated",
-      state: applicationModel.snapshot(),
+      state: applicationState(),
     });
   }
   if (request.type === "resolve-sessions") {
@@ -2064,28 +2029,28 @@ async function handleCakeRequest(
       await worktrees.cleanupResolved(request.workspacePath);
     return desktopResponseSchema.parse({
       type: "application-state-updated",
-      state: applicationModel.snapshot(),
+      state: applicationState(),
     });
   }
   if (request.type === "resolve-cake-chat-session") {
     await setCakeChatSessionResolution(request.sessionId, request.resolved);
     return desktopResponseSchema.parse({
       type: "application-state-updated",
-      state: applicationModel.snapshot(),
+      state: applicationState(),
     });
   }
   if (request.type === "delete-session") {
     await deleteProjectSession(request.sessionId);
     return desktopResponseSchema.parse({
       type: "application-state-updated",
-      state: applicationModel.snapshot(),
+      state: applicationState(),
     });
   }
   if (request.type === "delete-cake-chat-session") {
     await deleteCakeChatSession(request.sessionId);
     return desktopResponseSchema.parse({
       type: "application-state-updated",
-      state: applicationModel.snapshot(),
+      state: applicationState(),
     });
   }
   if (request.type === "restart-pi") {
@@ -2107,17 +2072,14 @@ async function handleCakeRequest(
     if (pendingTrustRequests.get(key) !== request.path)
       throw new Error("Workspace trust request is no longer pending");
     pendingTrustRequests.delete(key);
-    if (request.approved) {
-      applicationModel.trustProject(request.path);
-      await persistApplicationState();
-    }
+    if (request.approved) await runMainApplicationEffect(trustProject(request.path));
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   if (request.type === "create-worktree") {
     if (!allowedProjectPaths.has(request.path))
       throw new Error("Project path was not selected by the user");
     let worktreeName = request.worktreeName;
-    const utilityModel = applicationModel.utilityModel;
+    const utilityModel = applicationState().utilityModel;
     if (!worktreeName && request.firstUserMessage && utilityModel) {
       const signal = AbortSignal.timeout(15_000);
       try {
@@ -2133,8 +2095,8 @@ async function handleCakeRequest(
     }
     const record = await worktrees.create(request.path, request.baseWorktreePath, worktreeName);
     allowedProjectPaths.add(record.worktreePath);
-    if (applicationModel.isProjectTrusted(record.projectPath))
-      applicationModel.trustProject(record.worktreePath);
+    if (isProjectTrusted(record.projectPath))
+      await runMainApplicationEffect(trustProject(record.worktreePath));
     return desktopResponseSchema.parse({
       type: "worktree-created",
       requestId: request.requestId,
@@ -2216,7 +2178,7 @@ async function handleCakeRequest(
   }
   if (request.type === "inspect-workspace") {
     const inspection = inspectWorkspace(path);
-    const trustRequired = inspection.trustRequired && !applicationModel.isProjectTrusted(path);
+    const trustRequired = inspection.trustRequired && !isProjectTrusted(path);
     const key = `${event.sender.id}:${request.requestId}`;
     clearPendingTrustRequests(event.sender.id);
     if (trustRequired) pendingTrustRequests.set(key, path);
@@ -2276,7 +2238,7 @@ async function handleCakeRequest(
     return desktopResponseSchema.parse({ type: "review-thread-saved", thread });
   }
   if (request.type === "open-workspace" || (request.type === "prompt" && request.newSession)) {
-    if (inspectWorkspace(path).trustRequired && !applicationModel.isProjectTrusted(path)) {
+    if (inspectWorkspace(path).trustRequired && !isProjectTrusted(path)) {
       throw new Error("Project-local executable resources have not been trusted by the user");
     }
   }
@@ -2310,7 +2272,8 @@ async function handleCakeRequest(
   return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
 }
 
-async function startApplicationCapabilities() {
+async function startApplicationCapabilities(owner: ApplicationStateOwner["Service"]) {
+  applicationStateOwner = owner;
   if (process.env.CAKE_ELECTRON_SMOKE === "1" && process.platform === "darwin" && app.dock)
     app.dock.hide();
   configureApplicationBranding();
@@ -2328,13 +2291,13 @@ async function startApplicationCapabilities() {
     }
   }
   await refreshPluginAgentResources();
-  await loadApplicationState();
+  await reconcileApplicationSessions();
   createWindow();
 }
 
 function stopApplicationCapabilities() {
   applicationQuitting = true;
-  applicationModel[Symbol.dispose]();
+  applicationStateOwner = undefined;
   globalChatDriver[Symbol.dispose]();
   pluginBackends[Symbol.dispose]();
   vscodeEditor.disposeAll();

@@ -546,7 +546,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("load-window-state") }),
   z.object({ type: z.literal("save-window-state"), state: windowViewStateSchema }),
-  z.object({ type: z.literal("load-application-state") }),
   z.object({ type: z.literal("set-utility-model"), model: utilityModelSchema.optional() }),
   z.object({
     type: z.literal("set-model-presets"),
@@ -1027,7 +1026,6 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("inline-widget-repaired"), widget: repairedInlineWidgetSchema }),
   z.object({ type: z.literal("window-state-loaded"), state: windowViewStateSchema }),
   z.object({ type: z.literal("window-state-saved") }),
-  z.object({ type: z.literal("application-state-loaded"), state: applicationStateSchema }),
   z.object({
     type: z.literal("sessions-listed"),
     sessions: ipcProjectionArray(globalSessionSummarySchema, 50_000),

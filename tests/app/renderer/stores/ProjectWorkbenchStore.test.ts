@@ -139,7 +139,6 @@ function createDesktopClient(restoredPath?: string) {
     })),
     saveWindowState: vi.fn(async () => undefined),
     loadApplicationState: vi.fn(async () => ({
-      schemaVersion: 1 as const,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
@@ -147,7 +146,6 @@ function createDesktopClient(restoredPath?: string) {
       trustedProjectPaths: [],
     })),
     setUtilityModel: vi.fn(async (model) => ({
-      schemaVersion: 1 as const,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
@@ -156,7 +154,6 @@ function createDesktopClient(restoredPath?: string) {
       utilityModel: model,
     })),
     setModelPresets: vi.fn(async (modelPresets, defaultModelPresetId) => ({
-      schemaVersion: 1 as const,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
@@ -190,7 +187,6 @@ function createDesktopClient(restoredPath?: string) {
     }),
     submitReviewThread: vi.fn(async () => undefined),
     registerProject: vi.fn(async () => ({
-      schemaVersion: 1 as const,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
@@ -198,7 +194,6 @@ function createDesktopClient(restoredPath?: string) {
       trustedProjectPaths: [],
     })),
     renameProject: vi.fn(async () => ({
-      schemaVersion: 1 as const,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
@@ -206,7 +201,6 @@ function createDesktopClient(restoredPath?: string) {
       trustedProjectPaths: [],
     })),
     removeProject: vi.fn(async () => ({
-      schemaVersion: 1 as const,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
@@ -214,7 +208,6 @@ function createDesktopClient(restoredPath?: string) {
       trustedProjectPaths: [],
     })),
     resolveSession: vi.fn(async () => ({
-      schemaVersion: 1 as const,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
@@ -222,7 +215,6 @@ function createDesktopClient(restoredPath?: string) {
       trustedProjectPaths: [],
     })),
     resolveSessions: vi.fn(async () => ({
-      schemaVersion: 1 as const,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
@@ -230,7 +222,6 @@ function createDesktopClient(restoredPath?: string) {
       trustedProjectPaths: [],
     })),
     deleteSession: vi.fn(async () => ({
-      schemaVersion: 1 as const,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
@@ -238,7 +229,6 @@ function createDesktopClient(restoredPath?: string) {
       trustedProjectPaths: [],
     })),
     deleteCakeChatSession: vi.fn(async () => ({
-      schemaVersion: 1 as const,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
@@ -246,7 +236,6 @@ function createDesktopClient(restoredPath?: string) {
       trustedProjectPaths: [],
     })),
     setSessionUnread: vi.fn(async () => ({
-      schemaVersion: 1 as const,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
@@ -254,7 +243,6 @@ function createDesktopClient(restoredPath?: string) {
       trustedProjectPaths: [],
     })),
     resolveCakeChatSession: vi.fn(async () => ({
-      schemaVersion: 1 as const,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
@@ -281,7 +269,6 @@ function createDesktopClient(restoredPath?: string) {
     getEmbeddedEditorState: vi.fn(async () => ({ status: "missing" as const })),
     installEmbeddedEditor: vi.fn(async () => undefined),
     setVscodeServerPath: vi.fn(async () => ({
-      schemaVersion: 1 as const,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
@@ -498,7 +485,6 @@ describe("ProjectWorkbenchStore", () => {
     const { root } = mountTestStore(desktop.client);
     await flush();
     root.projectCatalogStore.applyApplicationState({
-      schemaVersion: 1,
       projects: [
         {
           path: "/project",
@@ -1283,7 +1269,6 @@ describe("ProjectWorkbenchStore", () => {
       fastMode: true,
     };
     root.settingsStore.applyApplicationState({
-      schemaVersion: 1,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
@@ -2721,7 +2706,6 @@ describe("ProjectWorkbenchStore", () => {
   it("keeps drafts per session across projects", async () => {
     const desktop = createDesktopClient();
     const applicationState = {
-      schemaVersion: 1 as const,
       resolvedSessionIds: ["session-2"],
       resolvedCakeChatSessionIds: [],
       unreadSessionIds: [],
@@ -2827,7 +2811,6 @@ describe("ProjectWorkbenchStore", () => {
       lastOpenedAt: new Date(0).toISOString(),
     }));
     const applicationState = {
-      schemaVersion: 1 as const,
       projects,
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],

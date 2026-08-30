@@ -99,7 +99,6 @@ function createTestStore() {
       void input;
     }),
     resolveSession: vi.fn(async (): Promise<ApplicationState> => ({
-      schemaVersion: 1 as const,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
@@ -107,7 +106,6 @@ function createTestStore() {
       trustedProjectPaths: [],
     })),
     deleteSession: vi.fn(async (): Promise<ApplicationState> => ({
-      schemaVersion: 1 as const,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
@@ -343,7 +341,6 @@ describe("GlobalChatStore", () => {
     await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
     const now = new Date().toISOString();
     store.applyApplicationState({
-      schemaVersion: 1,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: ["global-1"],
@@ -369,7 +366,6 @@ describe("GlobalChatStore", () => {
 
     expect(store.summaries[0]?.resolved).toBe(true);
     port.resolveSession.mockResolvedValueOnce({
-      schemaVersion: 1,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: [],
@@ -386,7 +382,6 @@ describe("GlobalChatStore", () => {
     const { store, port } = createTestStore();
     await vi.waitFor(() => expect(port.open).toHaveBeenCalledOnce());
     store.applyApplicationState({
-      schemaVersion: 1,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: ["global-1"],
@@ -441,7 +436,6 @@ describe("GlobalChatStore", () => {
       },
     });
     store.applyApplicationState({
-      schemaVersion: 1,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: ["global-1"],
@@ -463,7 +457,6 @@ describe("GlobalChatStore", () => {
     port.resolveSession
       .mockImplementationOnce(() => first.promise)
       .mockResolvedValueOnce({
-        schemaVersion: 1,
         projects: [],
         resolvedSessionIds: [],
         resolvedCakeChatSessionIds: ["global-1", "global-2"],
@@ -477,7 +470,6 @@ describe("GlobalChatStore", () => {
     expect(port.resolveSession).not.toHaveBeenCalledWith("global-2", true);
 
     first.resolve({
-      schemaVersion: 1,
       projects: [],
       resolvedSessionIds: [],
       resolvedCakeChatSessionIds: ["global-1"],

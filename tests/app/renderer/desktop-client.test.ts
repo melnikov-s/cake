@@ -37,7 +37,6 @@ function createBridge() {
       return {
         type: "application-state-updated",
         state: {
-          schemaVersion: 1,
           projects: [],
           resolvedSessionIds: [],
           resolvedCakeChatSessionIds: [],
@@ -94,7 +93,20 @@ function createBridge() {
   };
   return {
     bridge,
-    rpcClient: { application: { getHomeDirectory: async () => "/home/user" } },
+    rpcClient: {
+      application: {
+        getHomeDirectory: async () => "/home/user",
+        getState: async () => ({
+          projects: [],
+          resolvedSessionIds: [],
+          resolvedCakeChatSessionIds: [],
+          unreadSessionIds: [],
+          trustedProjectPaths: [],
+          fastModeSessionIds: [],
+          modelPresets: [],
+        }),
+      },
+    },
     request,
     emit: (event: DesktopEvent) => listener?.(event),
   };
@@ -107,6 +119,8 @@ describe("desktop client", () => {
     const operationId = crypto.randomUUID();
 
     expect(await client.chooseProject()).toBe("/project");
+    expect(await client.loadApplicationState()).toMatchObject({ projects: [] });
+    expect(desktop.request).not.toHaveBeenCalledWith({ type: "load-application-state" });
     await client.openExternalUrl("https://example.com/docs");
     expect(desktop.request).toHaveBeenCalledWith({
       type: "open-external-url",

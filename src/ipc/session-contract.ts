@@ -512,15 +512,14 @@ const projectRecordSchema = z.object({
 });
 
 export const applicationStateSchema = z.object({
-  schemaVersion: z.literal(1).default(1),
-  projects: z.array(projectRecordSchema).max(200).default([]),
-  resolvedSessionIds: z.array(z.string().max(256)).max(10_000).default([]),
-  resolvedCakeChatSessionIds: z.array(z.string().max(256)).max(10_000).default([]),
-  unreadSessionIds: z.array(z.string().max(256)).max(10_000).default([]),
-  trustedProjectPaths: z.array(z.string().max(4_096)).max(200).default([]),
-  fastModeSessionIds: z.array(z.string().max(256)).max(10_000).optional(),
+  projects: z.array(projectRecordSchema).max(200).readonly().default([]),
+  resolvedSessionIds: z.array(z.string().max(256)).max(10_000).readonly().default([]),
+  resolvedCakeChatSessionIds: z.array(z.string().max(256)).max(10_000).readonly().default([]),
+  unreadSessionIds: z.array(z.string().max(256)).max(10_000).readonly().default([]),
+  trustedProjectPaths: z.array(z.string().max(4_096)).max(200).readonly().default([]),
+  fastModeSessionIds: z.array(z.string().max(256)).max(10_000).readonly().optional(),
   utilityModel: utilityModelSchema.optional(),
-  modelPresets: z.array(modelPresetSchema).max(100).optional(),
+  modelPresets: z.array(modelPresetSchema).max(100).readonly().optional(),
   defaultModelPresetId: z.uuid().optional(),
   vscodeServerPath: z.string().max(4_096).optional(),
 });

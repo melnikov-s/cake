@@ -1,5 +1,6 @@
 import { Duration, Effect, Layer, Stream } from "effect";
 import { RpcServer } from "effect/unstable/rpc";
+import { getState } from "../../domain/application";
 import { CakeRpc, FoundationFailure } from "../protocol/CakeRpc";
 import {
   RendererConnection,
@@ -23,6 +24,7 @@ export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
         yield* RendererConnection;
         return yield* Effect.promise(() => Promise.resolve(operations.getHomeDirectory()));
       }),
+    "application.getState": () => getState(),
     "foundation.typedFailure": () =>
       Effect.fail(new FoundationFailure({ message: "Schema-decoded foundation failure" })),
     "foundation.stream": ({ count, intervalMs }) =>

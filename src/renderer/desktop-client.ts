@@ -1010,10 +1010,7 @@ export function createDesktopClient(
         throw new Error("Cake could not persist window state");
     },
     async loadApplicationState() {
-      const response = await bridge.request({ type: "load-application-state" });
-      if (response.type !== "application-state-loaded")
-        throw new Error("Cake received invalid application state");
-      return response.state;
+      return rpcClient.application.getState();
     },
     async setVscodeServerPath(path) {
       const response = await bridge.request({ type: "set-vscode-server-path", path });
