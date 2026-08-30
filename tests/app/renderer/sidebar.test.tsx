@@ -462,6 +462,51 @@ describe("Sidebar projects", () => {
     expect(removeProjectFromRoot).toHaveBeenCalledWith("/work/cake", true);
   });
 
+  it("keeps the project dialog blocking while resolved worktrees are deleted", async () => {
+    let finishDeletion!: (deleted: boolean) => void;
+    const deleteResolvedWorktrees = vi.fn(
+      () => new Promise<boolean>((resolve) => (finishDeletion = resolve)),
+    );
+    const store = {
+      recentProjectPaths: ["/work/cake"],
+      projects: [{ path: "/work/cake", name: "Cake" }],
+      projectSessions: () => [],
+      sessionLimit: () => 8,
+      sessionActivity: vi.fn(),
+      nameFromPath: () => "cake",
+      showProjectContextMenu: vi.fn(async () => "delete-resolved-worktrees" as const),
+      resolvedWorktreeCount: () => 2,
+      deleteResolvedWorktrees,
+      showMoreSessions: vi.fn(),
+    } as unknown as ProjectWorkbenchStore;
+    const props = sidebarProps(store);
+    act(() => root.render(<Sidebar {...props} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
+
+    await act(async () => {
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Start new chat in cake"]')!
+        .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 12, clientY: 34 }));
+      await Promise.resolve();
+    });
+
+    const deleteButton = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => button.textContent === "Delete worktrees",
+    )!;
+    act(() => deleteButton.click());
+
+    expect(deleteResolvedWorktrees).toHaveBeenCalledWith("/work/cake");
+    expect(container.querySelector('[role="alertdialog"]')).not.toBeNull();
+    expect(container.textContent).toContain("Deleting worktrees");
+    expect(
+      Array.from(
+        container.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button'),
+      ).every((button) => button.disabled),
+    ).toBe(true);
+
+    await act(async () => finishDeletion(true));
+    expect(container.querySelector('[role="alertdialog"]')).toBeNull();
+  });
+
   it("lists Cake Chat sessions and creates another without clearing history", () => {
     const store = {
       recentProjectPaths: [],

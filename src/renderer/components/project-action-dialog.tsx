@@ -1,12 +1,13 @@
+import { Button } from "./ui/button";
 import {
-  Confirmation,
-  ConfirmationAction,
-  ConfirmationActions,
-  ConfirmationDescription,
-  ConfirmationRequest,
-  ConfirmationTitle,
-} from "./ai-elements/confirmation";
-import { DialogBackdrop } from "./ui/dialog";
+  DialogBackdrop,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
+import { LoadingState } from "./ui/loading-state";
 
 export type ProjectAction = "remove-project" | "delete-resolved-worktrees";
 
@@ -32,61 +33,59 @@ export function ProjectActionDialog({
   const removing = action === "remove-project";
   const titleId = "project-action-title";
   const descriptionId = "project-action-description";
+  const progressLabel = removing ? "Removing project" : "Deleting worktrees";
+
   return (
     <DialogBackdrop
+      role="alertdialog"
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
       onClose={() => {
         if (!busy) onCancel();
       }}
     >
-      <Confirmation
-        state="requested"
-        role="alertdialog"
-        aria-labelledby={titleId}
-        aria-describedby={descriptionId}
-        className="w-full max-w-lg"
-      >
-        <ConfirmationRequest>
-          <ConfirmationTitle id={titleId}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle id={titleId}>
             {removing ? `Remove ${projectName}?` : "Delete resolved worktrees?"}
-          </ConfirmationTitle>
-          <ConfirmationDescription id={descriptionId}>
+          </DialogTitle>
+          <DialogDescription id={descriptionId}>
             {removing
               ? `Removing this project hides it and its ${sessionCount} session${sessionCount === 1 ? "" : "s"} from Cake. Adding the folder again restores them. You can instead permanently delete every session now.`
               : `${resolvedWorktreeCount} landed worktree${resolvedWorktreeCount === 1 ? "" : "s"} with only resolved sessions will be deleted. Their sessions will remain in project history.`}
-          </ConfirmationDescription>
-          <ConfirmationActions className="flex-wrap">
-            <ConfirmationAction variant="outline" disabled={busy} onClick={onCancel}>
-              Cancel
-            </ConfirmationAction>
-            {removing ? (
-              <>
-                <ConfirmationAction
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => onRemove(false)}
-                >
-                  Remove only
-                </ConfirmationAction>
-                <ConfirmationAction
-                  variant="destructive"
-                  disabled={busy}
-                  onClick={() => onRemove(true)}
-                >
-                  Remove and delete sessions
-                </ConfirmationAction>
-              </>
-            ) : (
-              <ConfirmationAction
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="flex-wrap">
+          {busy && <LoadingState label={progressLabel} variant="Dots" />}
+          <Button variant="outline" size="sm" disabled={busy} onClick={onCancel}>
+            Cancel
+          </Button>
+          {removing ? (
+            <>
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => onRemove(false)}>
+                Remove only
+              </Button>
+              <Button
                 variant="destructive"
+                size="sm"
                 disabled={busy}
-                onClick={onDeleteResolvedWorktrees}
+                onClick={() => onRemove(true)}
               >
-                Delete worktrees
-              </ConfirmationAction>
-            )}
-          </ConfirmationActions>
-        </ConfirmationRequest>
-      </Confirmation>
+                Remove and delete sessions
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={busy}
+              onClick={onDeleteResolvedWorktrees}
+            >
+              Delete worktrees
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
     </DialogBackdrop>
   );
 }

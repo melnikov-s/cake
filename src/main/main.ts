@@ -1954,25 +1954,8 @@ async function handleCakeRequest(
         `Cake could not update ${failures.length} of ${request.sessionIds.length} sessions: ${cause}`,
       );
     }
-    if (request.resolved && request.workspacePath) {
-      const workspacePath = request.workspacePath;
-      const requester = event.sender;
-      setImmediate(() => {
-        void worktrees.cleanupResolved(workspacePath).catch((error: unknown) => {
-          const described = describeOperationError(error);
-          console.error(
-            "[cake] Resolved worktree cleanup failed:",
-            described.details ?? described.message,
-          );
-          sendTo(requester, {
-            type: "notification",
-            tone: "error",
-            title: "Could not delete resolved worktree",
-            message: `Cake could not delete ${basename(workspacePath)}. ${described.message}`,
-          });
-        });
-      });
-    }
+    if (request.resolved && request.workspacePath)
+      await worktrees.cleanupResolved(request.workspacePath);
     return desktopResponseSchema.parse({
       type: "application-state-updated",
       state: applicationModel.snapshot(),
