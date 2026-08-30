@@ -39,7 +39,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   newSessionRequest():
     | { path: string; configuration?: ChatConfiguration; name?: string }
     | undefined;
-  prepareNewSession(): Promise<boolean>;
+  prepareNewSession(firstUserMessage: string): Promise<boolean>;
   worktreeClient: WorktreeStoreProps["client"];
   onWorktreeLanded(record: Parameters<WorktreeStoreProps["onLanded"]>[0]): Promise<void> | void;
   onWorktreeDiscarded(
@@ -224,7 +224,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       operations: this.props.operations,
       operationOwner: this.composerOwner,
       newSessionRequest: this.props.newSessionRequest,
-      prepareNewSession: this.props.prepareNewSession,
+      prepareNewSession: (firstUserMessage) => this.props.prepareNewSession(firstUserMessage),
     });
   }
 

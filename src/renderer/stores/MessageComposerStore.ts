@@ -58,7 +58,7 @@ export interface MessageComposerStoreProps {
   newSessionRequest?():
     | { path: string; configuration?: ChatConfiguration; name?: string }
     | undefined;
-  prepareNewSession?(): Promise<boolean>;
+  prepareNewSession?(firstUserMessage: string): Promise<boolean>;
 }
 
 /** Owns attachments, the local prompt queue, optimistic immediate prompts, and prompt delivery. */
@@ -316,11 +316,6 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     }
     const sessionId = this.props.sessionId();
     if (!sessionId) return;
-    if (
-      this.props.newSessionRequest?.() &&
-      !(await (this.props.prepareNewSession?.() ?? Promise.resolve(true)))
-    )
-      return;
     const explicitAttachments = this.attachments.filter(
       (attachment) => attachment.kind !== "annotation",
     );
@@ -767,6 +762,21 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       renderUserMessageAsMarkdown,
     );
     try {
+      if (
+        this.props.newSessionRequest?.() &&
+        !(await (this.props.prepareNewSession?.(text) ?? Promise.resolve(true)))
+      ) {
+        this.removePendingUserMessage(operationId);
+        this.finishOperation(operationId);
+        if (restoreOnError) {
+          if (!this.props.draft().trim()) this.props.setDraft(text);
+          for (const attachment of attachments) {
+            if (attachment.kind === "annotation") this.annotations.push(...attachment.annotations);
+            else this.attachments.push(attachment);
+          }
+        }
+        return false;
+      }
       const newSession = this.props.newSessionRequest?.();
       await this.props.client.submit({
         operationId,

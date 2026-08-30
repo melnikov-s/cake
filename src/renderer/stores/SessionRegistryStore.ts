@@ -38,7 +38,7 @@ export interface SessionRegistryStoreProps {
   newSessionRequest?(
     sessionId: string,
   ): { path: string; configuration?: ChatConfiguration; name?: string } | undefined;
-  prepareNewSession?(sessionId: string): Promise<boolean>;
+  prepareNewSession?(sessionId: string, firstUserMessage: string): Promise<boolean>;
   worktreeClient: WorktreeStoreProps["client"];
   onWorktreeLanded: WorktreeStoreProps["onLanded"];
   onWorktreeDiscarded: WorktreeStoreProps["onDiscarded"];
@@ -94,8 +94,9 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         modelPresets: () => this.props.modelPresets?.() ?? [],
         openModelPresetSettings: () => this.props.openModelPresetSettings?.(),
         newSessionRequest: () => this.props.newSessionRequest?.(target.sessionId),
-        prepareNewSession: () =>
-          this.props.prepareNewSession?.(target.sessionId) ?? Promise.resolve(true),
+        prepareNewSession: (firstUserMessage) =>
+          this.props.prepareNewSession?.(target.sessionId, firstUserMessage) ??
+          Promise.resolve(true),
         worktreeClient: this.props.worktreeClient,
         onWorktreeLanded: this.props.onWorktreeLanded,
         onWorktreeDiscarded: this.props.onWorktreeDiscarded,

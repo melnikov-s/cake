@@ -75,7 +75,11 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
    * Repeated calls are ignored while checkout preparation is active. A failure
    * leaves the draft and its selection intact so the user can retry or choose again.
    */
-  async prepare(sessionId: string, projectPath: string): Promise<boolean> {
+  async prepare(
+    sessionId: string,
+    projectPath: string,
+    firstUserMessage: string,
+  ): Promise<boolean> {
     const choice = this.choice(sessionId);
     if (choice.kind === "current") return true;
     if (this.preparingSessionId) return false;
@@ -97,6 +101,7 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
           operationId,
           path: projectPath,
           baseWorktreePath: choice.baseWorktreePath,
+          firstUserMessage: firstUserMessage.trim() || undefined,
         });
         if (this.signal.aborted) return false;
         this.props.catalog.noteManagedWorktree(record);

@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   generateSessionTitle,
+  generateWorktreeName,
   normalizeSessionTitle,
+  normalizeWorktreeName,
   rewordSelection,
 } from "../../../src/agent/utility-model";
 
@@ -36,6 +38,30 @@ describe("utility model", () => {
       }),
       expect.objectContaining({ reasoning: "low", maxTokens: 40 }),
     );
+  });
+
+  it("generates an exact three-part worktree slug", async () => {
+    const model = { provider: "openai", id: "gpt-5-mini" };
+    const completeSimple = vi.fn(async () => ({
+      content: [{ type: "text", text: "Fix Login Redirect." }],
+    }));
+
+    const name = await generateWorktreeName({
+      modelRuntime: {
+        getModel: vi.fn(() => model),
+        completeSimple,
+      } as never,
+      utilityModel: { provider: "openai", modelId: "gpt-5-mini", thinkingLevel: "off" },
+      firstUserMessage: "Fix the login redirect.",
+    });
+
+    expect(name).toBe("fix-login-redirect");
+    expect(completeSimple).toHaveBeenCalledWith(
+      model,
+      expect.objectContaining({ systemPrompt: expect.stringContaining("exactly three") }),
+      expect.objectContaining({ reasoning: undefined, maxTokens: 24 }),
+    );
+    expect(() => normalizeWorktreeName("this-has-four-parts")).toThrow(/invalid worktree name/);
   });
 
   it("rewrites selected text with optional user guidance", async () => {

@@ -1357,7 +1357,11 @@ describe("ProjectWorkbenchStore", () => {
     await session.chatStore.submit();
 
     expect(desktop.client.createWorktree).toHaveBeenCalledWith(
-      expect.objectContaining({ path: "/project", baseWorktreePath: undefined }),
+      expect.objectContaining({
+        path: "/project",
+        baseWorktreePath: undefined,
+        firstUserMessage: "Build this in isolation",
+      }),
     );
     expect(session.workspacePath).toBe("/project-worktree");
     expect(desktop.client.submit).toHaveBeenCalledWith(

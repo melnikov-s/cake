@@ -187,6 +187,13 @@ sessions. Configuring a utility model later makes an unnamed active session
 eligible after its next interaction; already named sessions are never
 regenerated automatically.
 
+When the first prompt will create a managed worktree, Cake also attempts a
+bounded utility completion before creating the checkout or Pi session. The
+validated result is an exact three-part, lowercase, hyphenated branch slug and
+the first prompt remains optimistically visible while this preparation runs.
+Missing configuration, timeout, provider failure, or invalid output silently
+falls back to the worktree service's existing random naming scheme.
+
 ## Renderer state
 
 `RootStore` is the renderer composition root and event-routing boundary. It is

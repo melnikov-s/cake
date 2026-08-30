@@ -19,6 +19,8 @@ function createComposerStore(options: {
   renameSession?: (name: string) => Promise<void>;
   handoffSession?: (entryId: string, prompt?: string) => Promise<boolean>;
   canonicalParts?: () => UiPart[];
+  newSessionRequest?: () => { path: string } | undefined;
+  prepareNewSession?: (firstUserMessage: string) => Promise<boolean>;
   streaming: () => boolean;
 }) {
   let draft = "";
@@ -55,6 +57,8 @@ function createComposerStore(options: {
       handoffSession: options.handoffSession ?? (async () => false),
       operations: mount(createStore(SessionOperationCoordinatorStore)),
       operationOwner: "message-composer:test",
+      newSessionRequest: options.newSessionRequest,
+      prepareNewSession: options.prepareNewSession,
     }),
   );
   return {
@@ -70,6 +74,42 @@ function createComposerStore(options: {
 }
 
 describe("MessageComposerStore prompt queue", () => {
+  it("shows the first prompt as pending while its new session is prepared", async () => {
+    let finishPreparation: ((prepared: boolean) => void) | undefined;
+    const clientSubmit = vi.fn(async () => undefined);
+    const prepareNewSession = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          finishPreparation = resolve;
+        }),
+    );
+    const harness = createComposerStore({
+      clientSubmit,
+      newSessionRequest: () => ({ path: "/project" }),
+      prepareNewSession,
+      streaming: () => false,
+    });
+    harness.setDraft("Build this in isolation");
+
+    const submission = harness.store.submit();
+    expect(prepareNewSession).toHaveBeenCalledWith("Build this in isolation");
+    expect(harness.store.parts).toEqual([
+      expect.objectContaining({ kind: "text", role: "user", text: "Build this in isolation" }),
+    ]);
+    expect(harness.store.activeOperations).toHaveLength(1);
+    expect(clientSubmit).not.toHaveBeenCalled();
+
+    finishPreparation?.(true);
+    await submission;
+    expect(clientSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "Build this in isolation",
+        newSession: { path: "/project" },
+      }),
+    );
+    harness.dispose();
+  });
+
   it("queues prompts locally instead of delivering follow-ups while streaming", async () => {
     const state = observable({ streaming: true });
     const submissions: SubmittedPrompt[] = [];

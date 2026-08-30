@@ -441,6 +441,7 @@ export interface DesktopClient {
     path: string;
     baseWorktreePath?: string;
     worktreeName?: string;
+    firstUserMessage?: string;
   }): Promise<WorktreeRecord>;
   getWorktreeStatus(input: { workspacePath: string }): Promise<WorktreeStatus | undefined>;
   landWorktree(input: {
@@ -1268,6 +1269,7 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
         path: input.path,
         baseWorktreePath: input.baseWorktreePath,
         worktreeName: input.worktreeName,
+        firstUserMessage: input.firstUserMessage,
       });
       if (response.type !== "worktree-created")
         throw new Error("Cake could not create the worktree");

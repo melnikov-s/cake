@@ -39,6 +39,7 @@ import { listAgentCatalogModels, refreshAgentCatalogModels } from "../agent/mode
 import {
   createUtilityModelRuntime,
   generateSessionTitle,
+  generateWorktreeName,
   rewordSelection,
 } from "../agent/utility-model";
 import { rewordSelectionWithProjectContext } from "../agent/rewording-agent";
@@ -2013,11 +2014,22 @@ async function handleCakeRequest(
   if (request.type === "create-worktree") {
     if (!allowedProjectPaths.has(request.path))
       throw new Error("Project path was not selected by the user");
-    const record = await worktrees.create(
-      request.path,
-      request.baseWorktreePath,
-      request.worktreeName,
-    );
+    let worktreeName = request.worktreeName;
+    const utilityModel = applicationModel.utilityModel;
+    if (!worktreeName && request.firstUserMessage && utilityModel) {
+      const signal = AbortSignal.timeout(15_000);
+      try {
+        worktreeName = await generateWorktreeName({
+          modelRuntime: await createUtilityModelRuntime(cakePaths.piAgent, signal),
+          utilityModel,
+          firstUserMessage: request.firstUserMessage,
+          signal,
+        });
+      } catch {
+        // Worktree naming is advisory. The service's random name remains the fallback.
+      }
+    }
+    const record = await worktrees.create(request.path, request.baseWorktreePath, worktreeName);
     allowedProjectPaths.add(record.worktreePath);
     if (applicationModel.isProjectTrusted(record.projectPath))
       applicationModel.trustProject(record.worktreePath);

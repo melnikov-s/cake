@@ -44,6 +44,38 @@ describe("WorktreeCreationStore", () => {
     catalog[Symbol.dispose]();
   });
 
+  it("passes the first prompt for utility naming before relocating a new worktree session", async () => {
+    const catalog = mount(createStore(SessionCatalogStore));
+    const operations = mount(createStore(SessionOperationCoordinatorStore));
+    const createWorktree = vi.fn(async () => worktree);
+    const relocateTemporarySession = vi.fn();
+    const store = mount(
+      createStore(WorktreeCreationStore, {
+        client: { createWorktree },
+        operations,
+        catalog,
+        relocateTemporarySession,
+        reportError: vi.fn(),
+      }),
+    );
+    store.select("session-1", { kind: "new" });
+
+    await expect(
+      store.prepare("session-1", "/project", "  Fix the login redirect  "),
+    ).resolves.toBe(true);
+    expect(createWorktree).toHaveBeenCalledWith({
+      operationId: expect.any(String),
+      path: "/project",
+      baseWorktreePath: undefined,
+      firstUserMessage: "Fix the login redirect",
+    });
+    expect(relocateTemporarySession).toHaveBeenCalledWith("session-1", worktree.worktreePath);
+
+    store[Symbol.dispose]();
+    operations[Symbol.dispose]();
+    catalog[Symbol.dispose]();
+  });
+
   it("includes the most recently active session title with an existing worktree", () => {
     const catalog = mount(createStore(SessionCatalogStore));
     const operations = mount(createStore(SessionOperationCoordinatorStore));

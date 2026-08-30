@@ -676,6 +676,8 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
       .string()
       .regex(/^[a-z0-9][a-z0-9-]{0,62}$/)
       .optional(),
+    /** Initial prompt used only for optional utility-model worktree naming. */
+    firstUserMessage: z.string().min(1).max(262_144).optional(),
   }),
   z.object({ type: z.literal("get-worktree-status"), workspacePath: z.string().max(4_096) }),
   z.object({

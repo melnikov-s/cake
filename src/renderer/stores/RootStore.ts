@@ -312,7 +312,8 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       modelPresets: () => this.settingsStore.modelPresets.presets,
       openModelPresetSettings: () => this.showModelPresetSettings(),
       newSessionRequest: (sessionId) => this.projectWorkbenchStore.newSessionRequest(sessionId),
-      prepareNewSession: (sessionId) => this.projectWorkbenchStore.prepareNewSession(sessionId),
+      prepareNewSession: (sessionId, firstUserMessage) =>
+        this.projectWorkbenchStore.prepareNewSession(sessionId, firstUserMessage),
       worktreeClient: this.client,
       onWorktreeLanded: (record) => {
         this.sessionCatalogStore.noteManagedWorktree(record);
