@@ -8,6 +8,6 @@
     "src/assets/vscode-companion/extension.js",
     "src/plugin/backend-api.ts"
   ],
-  "ignoreDependencies": ["@vitest/coverage-v8", "vscode"],
+  "ignoreDependencies": ["@vitest/coverage-v8", "effect", "effect-state-tree", "vscode"],
   "ignoreExportsUsedInFile": false
 }
