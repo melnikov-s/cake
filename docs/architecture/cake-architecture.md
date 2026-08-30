@@ -153,7 +153,11 @@ runtime. Cake resolves and validates every requested model against the parent
 session before constructing any child; parallel batches preflight atomically.
 A task may request Fast mode only for a model advertised by Cake as supporting
 it. That setting is scoped to the private runtime and is not persisted as a
-project-session preference. Private runtimes omit project-session catalogs, model menus, command
+project-session preference. Foreground delegation keeps one streaming tool call
+open until the child returns, matching Pi's reference subagent behavior.
+Background execution is explicit: completion is persisted as a hidden custom Pi
+message and triggers or steers the parent unless an active wait already claimed
+the handle. Private runtimes omit project-session catalogs, model menus, command
 menus, session trees, artifact indexes, and automatic naming. Live activity is
 coalesced from child part events rather than rebuilding full session snapshots.
 Cancellation reaches active child work. While a child turn is active, Cake may

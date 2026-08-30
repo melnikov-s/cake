@@ -282,7 +282,14 @@ export interface CakeRuntimeOptions {
     invoke(input: { name: string; arguments: JsonValue }, signal: AbortSignal): Promise<JsonValue>;
   };
   agentControl?: {
-    spawn(
+    run(
+      input: SubagentTaskInput,
+      parentSessionId: string,
+      signal: AbortSignal,
+      onUpdate?: (value: JsonValue) => void,
+      anchorPartId?: string,
+    ): Promise<JsonValue>;
+    start(
       input: SubagentTaskInput,
       parentSessionId: string,
       signal: AbortSignal,
@@ -386,6 +393,8 @@ function createAgentControlOperations(
   const handleSchema = z.object({ handleId: z.uuid() });
   const guidance = [
     "Use subagents only when the user explicitly requested delegation, subagents, or parallel agent work.",
+    "Use subagents.run for ordinary single-task delegation so the result returns in the same tool call. Use subagents.start only for explicitly background work; Cake automatically delivers its completion, so do not poll it.",
+    "subagents.wait is an optional synchronization barrier for background work, not a required completion mechanism.",
     "Handles are parent-owned. Delegation depth defaults to zero and is capped at one; parallel batches contain at most eight tasks.",
   ];
   const operation = <Input>(definition: {
@@ -427,9 +436,9 @@ function createAgentControlOperations(
   });
   return [
     operation({
-      command: "subagents.spawn",
+      command: "subagents.run",
       summary:
-        "Start one isolated parent-owned subagent with an explicit capability profile and model selection.",
+        "Run one isolated parent-owned subagent in the foreground, stream its activity, and return its final result.",
       schema: subagentTaskSchema,
       example: {
         task: "Inspect the authentication flow",
@@ -439,8 +448,24 @@ function createAgentControlOperations(
         maxDepth: 0,
         retain: false,
       },
+      run: (input, parent, signal, onUpdate, anchor) =>
+        control.run(input, parent, signal, onUpdate, anchor),
+    }),
+    operation({
+      command: "subagents.start",
+      summary:
+        "Explicitly start one isolated parent-owned subagent in the background. Cake automatically wakes the parent with its result unless the parent is already waiting on it.",
+      schema: subagentTaskSchema,
+      example: {
+        task: "Monitor the test run",
+        profile: "worker",
+        model: { prefer: "current" },
+        fastMode: false,
+        maxDepth: 0,
+        retain: false,
+      },
       run: (input, parent, signal, _onUpdate, anchor) =>
-        control.spawn(input, parent, signal, anchor),
+        control.start(input, parent, signal, anchor),
     }),
     operation({
       command: "subagents.parallel",
@@ -479,7 +504,8 @@ function createAgentControlOperations(
     }),
     operation({
       command: "subagents.wait",
-      summary: "Wait for a subagent and stream its latest activity, usage, and final result.",
+      summary:
+        "Optionally wait for an explicitly backgrounded subagent. While this wait is active, its result returns through this call instead of triggering a separate parent turn.",
       schema: handleSchema,
       example: { handleId: "00000000-0000-4000-8000-000000000000" },
       run: (input, parent, signal, onUpdate) =>
@@ -565,6 +591,7 @@ export interface CakeRuntime {
   snapshot(requestId?: string): Promise<SessionSnapshot>;
   /** Returns the active model configuration without performing snapshot discovery or auth checks. */
   currentConfiguration?(): ChatConfiguration | undefined;
+  notifySubagentCompletion?(result: JsonValue): Promise<void>;
   prompt(
     text: string,
     delivery: "prompt" | "steer" | "follow-up",
@@ -1878,6 +1905,18 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       });
     },
     snapshot: makeSnapshot,
+    async notifySubagentCompletion(result) {
+      if (disposed) throw new Error("The Cake runtime has been disposed");
+      await session.sendCustomMessage(
+        {
+          customType: "cake.subagent-completion",
+          content: `A background subagent completed. Use this result to continue the user's work:\n\n${formatUnknown(result, 24_000)}`,
+          display: false,
+          details: result,
+        },
+        { triggerTurn: true, deliverAs: "steer" },
+      );
+    },
     compact: (instructions) => runCompact(instructions),
     async prompt(text, delivery, attachments, renderUserMessageAsMarkdown = false) {
       if (disposed) throw new Error("The Cake runtime has been disposed");

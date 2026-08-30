@@ -34,13 +34,15 @@ function modelLabel(run: SubagentRun) {
 
 export const SubagentTool = observer(function SubagentTool({
   part,
-  spawnPart,
+  startPart,
+  protocolParts,
   subagents,
   timer,
   renderChat,
 }: {
   part: ToolPart;
-  spawnPart?: ToolPart;
+  startPart?: ToolPart;
+  protocolParts?: ToolPart[];
   subagents?: SubagentActivityStore;
   /** Retained for the shared Tool API; subagent detail now lives in the popup chat. */
   live?: boolean;
@@ -49,8 +51,31 @@ export const SubagentTool = observer(function SubagentTool({
   renderChat?(store: ChatStore): ReactNode;
 }) {
   const [popup, setPopup] = useState<{ key: string; anchor: HTMLElement }>();
-  const persistedParts = spawnPart ? [spawnPart, part] : [part];
-  const runs = subagents?.runsForTool(part, spawnPart) ?? historicalSubagentRuns(persistedParts);
+  const persistedParts = protocolParts ?? (startPart ? [startPart, part] : [part]);
+  const runs = subagents?.runsForTool(part, startPart) ?? historicalSubagentRuns(persistedParts);
+  const waitCount = persistedParts.filter(
+    (candidate) => toolOperationName(candidate) === "subagents.wait",
+  ).length;
+  const background = persistedParts.some(
+    (candidate) => toolOperationName(candidate) === "subagents.start",
+  );
+  const foreground = persistedParts.some(
+    (candidate) => toolOperationName(candidate) === "subagents.run",
+  );
+  const automaticallyCompleted = persistedParts.some(
+    (candidate) => toolOperationName(candidate) === "subagents.completion",
+  );
+  const protocolActivity = foreground
+    ? "Foreground"
+    : background
+      ? waitCount > 0
+        ? `Background · ${waitCount === 1 ? "waited" : `${waitCount} waits`}`
+        : automaticallyCompleted
+          ? "Background · notified"
+          : "Background"
+      : automaticallyCompleted
+        ? "Background completion"
+        : "Waiting";
   const activeCount = runs.filter(
     (run) => !run.released && (run.status === "queued" || run.status === "running"),
   ).length;
@@ -95,6 +120,8 @@ export const SubagentTool = observer(function SubagentTool({
           return (
             <div
               key={run.key}
+              data-slot="subagent-call"
+              data-status={run.released ? "released" : run.status}
               className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-background/50 px-2.5 py-2"
             >
               <StatusDot
@@ -116,7 +143,12 @@ export const SubagentTool = observer(function SubagentTool({
                   {run.task}
                 </p>
                 <p className="truncate text-[0.68rem] text-muted-foreground">
-                  {[activity, modelLabel(run), released ? "Released" : undefined]
+                  {[
+                    parallel ? undefined : protocolActivity,
+                    activity,
+                    modelLabel(run),
+                    released ? "Released" : undefined,
+                  ]
                     .filter(Boolean)
                     .join(" · ")}
                 </p>

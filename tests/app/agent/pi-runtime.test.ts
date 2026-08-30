@@ -1154,7 +1154,7 @@ describe("Pi 0.84.0 foundation contract", () => {
     });
     const entries = [
       assistantToolCall("spawn-call", "call-spawn", "cake", {
-        command: "subagents.spawn",
+        command: "subagents.start",
         input: { task: "Work" },
       }),
       {
@@ -1168,7 +1168,7 @@ describe("Pi 0.84.0 foundation contract", () => {
           toolName: "cake",
           details: {
             protocol: "cake.operation/v1",
-            command: "subagents.spawn",
+            command: "subagents.start",
             result: {
               handleId: "00000000-0000-0000-0000-000000000000",
               status: "running",
@@ -1199,7 +1199,7 @@ describe("Pi 0.84.0 foundation contract", () => {
       expect.objectContaining({
         kind: "tool",
         name: "cake",
-        command: "subagents.spawn",
+        command: "subagents.start",
         state: "success",
       }),
       expect.objectContaining({
@@ -1216,7 +1216,7 @@ describe("Pi 0.84.0 foundation contract", () => {
       expect.objectContaining({
         kind: "tool",
         name: "cake",
-        command: "subagents.spawn",
+        command: "subagents.start",
         state: "success",
       }),
       expect.objectContaining({
@@ -1224,6 +1224,68 @@ describe("Pi 0.84.0 foundation contract", () => {
         name: "cake",
         command: "subagents.wait",
         state: "running",
+      }),
+    ]);
+  });
+
+  it("folds a hidden subagent completion into its durable background-start activity", () => {
+    const handleId = crypto.randomUUID();
+    const entries = [
+      {
+        type: "message",
+        id: "start-call",
+        parentId: null,
+        timestamp: new Date(0).toISOString(),
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "call-start",
+              name: "cake",
+              arguments: { command: "subagents.start", input: { task: "Audit" } },
+            },
+          ],
+          stopReason: "toolUse",
+        },
+      },
+      {
+        type: "message",
+        id: "start-result",
+        parentId: "start-call",
+        timestamp: new Date(0).toISOString(),
+        message: {
+          role: "toolResult",
+          toolCallId: "call-start",
+          toolName: "cake",
+          details: {
+            protocol: "cake.operation/v1",
+            command: "subagents.start",
+            result: { handleId, task: "Audit", status: "running" },
+          },
+          content: [{ type: "text", text: JSON.stringify({ handleId, status: "running" }) }],
+          isError: false,
+          timestamp: 0,
+        },
+      },
+      {
+        type: "custom_message",
+        id: "completion-1",
+        parentId: "start-result",
+        timestamp: new Date(0).toISOString(),
+        customType: "cake.subagent-completion",
+        content: "Background subagent completed",
+        display: false,
+        details: { handleId, task: "Audit", status: "complete", parts: [] },
+      },
+    ] as never;
+
+    expect(projectSessionEntries(entries)).toEqual([
+      expect.objectContaining({
+        kind: "tool",
+        command: "subagents.start",
+        output: expect.stringContaining('"status": "complete"'),
+        state: "success",
       }),
     ]);
   });
@@ -1406,7 +1468,8 @@ describe("S1 Pi runtime", () => {
       newSession: true,
       requestUi: async () => undefined,
       agentControl: {
-        spawn: async () => ({ handleId: crypto.randomUUID(), running: true }),
+        run: async () => ({ handleId: crypto.randomUUID(), status: "complete" }),
+        start: async () => ({ handleId: crypto.randomUUID(), status: "running" }),
         parallel: async () => ({ mode: "parallel", completed: 0, total: 0, results: [] }),
         prompt: async () => ({ streaming: false, parts: [] }),
         wait: async () => ({ streaming: false, parts: [] }),

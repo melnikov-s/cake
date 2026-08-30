@@ -988,13 +988,13 @@ describe("Transcript scrolling", () => {
     expect(container.querySelector('[role="status"]')).not.toBeNull();
   });
 
-  it("presents a matching subagent spawn and wait as one compact work-log item", () => {
+  it("presents a matching background start and waits as one compact work-log item", () => {
     const handleId = crypto.randomUUID();
     const spawn: UiPart = {
       id: "subagent-spawn",
       kind: "tool",
       name: "cake",
-      command: "subagents.spawn",
+      command: "subagents.start",
       input: JSON.stringify({
         task: "Tell a joke",
         profile: "worker",
@@ -1006,6 +1006,20 @@ describe("Transcript scrolling", () => {
         },
       }),
       output: JSON.stringify({ handleId, task: "Tell a joke", status: "running" }),
+      state: "success",
+    };
+    const firstPoll: UiPart = {
+      id: "subagent-poll",
+      kind: "tool",
+      name: "cake",
+      command: "subagents.wait",
+      input: JSON.stringify({ handleId }),
+      output: JSON.stringify({
+        handleId,
+        task: "Tell a joke",
+        profile: "worker",
+        status: "running",
+      }),
       state: "success",
     };
     const wait: UiPart = {
@@ -1040,7 +1054,9 @@ describe("Transcript scrolling", () => {
     };
 
     act(() =>
-      root.render(<TestTranscript sessionId="session-1" store={storeWith([spawn, wait])} />),
+      root.render(
+        <TestTranscript sessionId="session-1" store={storeWith([spawn, firstPoll, wait])} />,
+      ),
     );
     expect(
       container.querySelector('[data-slot="activity-group"] > summary')?.textContent,
@@ -1051,6 +1067,7 @@ describe("Transcript scrolling", () => {
     );
     expect(container.textContent).toContain("openai-codex/gpt-5.6-sol");
     expect(container.textContent).toContain("Tell a joke");
+    expect(container.textContent).toContain("Background · 2 waits");
     expect(container.textContent).toContain("Released");
     expect(container.textContent).not.toContain("A compact joke.");
   });

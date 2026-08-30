@@ -169,7 +169,8 @@ export function Tool({
   onOpenSourceLocation,
   timer,
   expansion,
-  subagentSpawnPart,
+  subagentStartPart,
+  subagentParts,
   subagents,
   renderChat,
   live = false,
@@ -181,8 +182,9 @@ export function Tool({
   timer?: ReactNode;
   /** Controlled expansion inside a work log; uncontrolled local state otherwise. */
   expansion?: { open: boolean; toggle(): void };
-  /** The matching spawn call when Cake presents spawn + wait as one subagent run. */
-  subagentSpawnPart?: Extract<UiPart, { kind: "tool" }>;
+  /** The matching background start when Cake unifies later completion or wait activity. */
+  subagentStartPart?: Extract<UiPart, { kind: "tool" }>;
+  subagentParts?: Extract<UiPart, { kind: "tool" }>[];
   subagents?: SubagentActivityStore;
   renderChat?(store: ChatStore): ReactNode;
   /** True while this conversation's runtime may still be producing subagent work. */
@@ -206,7 +208,8 @@ export function Tool({
     return (
       <SubagentTool
         part={part}
-        spawnPart={subagentSpawnPart}
+        startPart={subagentStartPart}
+        protocolParts={subagentParts}
         subagents={subagents}
         renderChat={renderChat}
         live={live}

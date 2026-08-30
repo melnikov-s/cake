@@ -149,10 +149,10 @@ test("opens a released subagent in a read-only popup chat", async () => {
         "user-1",
         timestamp,
         "call-spawn",
-        "subagents.spawn",
+        "subagents.start",
         request,
       ),
-      toolResult("spawn-result", "spawn-call", timestamp, "call-spawn", "subagents.spawn", {
+      toolResult("spawn-result", "spawn-call", timestamp, "call-spawn", "subagents.start", {
         handleId,
         task: request.task,
         profile: request.profile,
@@ -162,7 +162,19 @@ test("opens a released subagent in a read-only popup chat", async () => {
         maxDepth: 0,
         resolvedModel,
       }),
-      assistantToolCall("wait-call", "spawn-result", timestamp, "call-wait", "subagents.wait", {
+      assistantToolCall("poll-call", "spawn-result", timestamp, "call-poll", "subagents.wait", {
+        handleId,
+      }),
+      toolResult("poll-result", "poll-call", timestamp, "call-poll", "subagents.wait", {
+        handleId,
+        task: request.task,
+        profile: request.profile,
+        status: "running",
+        resolvedModel,
+        streaming: true,
+        parts: [],
+      }),
+      assistantToolCall("wait-call", "poll-result", timestamp, "call-wait", "subagents.wait", {
         handleId,
       }),
       toolResult("wait-result", "wait-call", timestamp, "call-wait", "subagents.wait", {
@@ -228,14 +240,15 @@ test("opens a released subagent in a read-only popup chat", async () => {
 
   try {
     const page = await application.firstWindow();
-    const log = page.locator(".activity-group");
+    const log = page.locator('[data-slot="activity-group"]');
     await expect(log).toHaveCount(1, { timeout: 20_000 });
     await expect(log.locator(":scope > summary")).toContainText("1 tool call");
 
     await log.locator(":scope > summary").click();
-    const subagent = log.locator(".subagent-call");
+    const subagent = log.locator('[data-slot="subagent-call"]');
     await expect(subagent).toHaveCount(1);
     await expect(subagent).toContainText("Tell one short programming joke");
+    await expect(subagent).toContainText("Background · 2 waits");
     await expect(subagent).toContainText("openai-codex/gpt-5.6-sol");
     await expect(subagent).toContainText("Released");
     await expect(subagent).not.toContainText(
@@ -247,6 +260,13 @@ test("opens a released subagent in a read-only popup chat", async () => {
     await expect(popup).toContainText("Released");
     await expect(popup).toContainText("The loop opened a bakery because it knew how to roll.");
     await expect(popup.locator("textarea")).toHaveCount(0);
+    await popup.getByRole("button", { name: "Close worker subagent" }).click();
+
+    const status = page.getByRole("button", { name: "0 subagents running" });
+    await expect(status).toBeVisible();
+    await status.click();
+    const activeList = page.getByRole("dialog", { name: "Active subagents" });
+    await expect(activeList).toContainText("No subagents are running.");
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
@@ -304,11 +324,11 @@ test("never restores an interrupted subagent as running", async () => {
           timestamp: 0,
         },
       },
-      assistantToolCall("spawn-call", "user-1", timestamp, "call-spawn", "subagents.spawn", {
+      assistantToolCall("spawn-call", "user-1", timestamp, "call-spawn", "subagents.start", {
         task: "Background work that never finished.",
         profile: "worker",
       }),
-      toolResult("spawn-result", "spawn-call", timestamp, "call-spawn", "subagents.spawn", {
+      toolResult("spawn-result", "spawn-call", timestamp, "call-spawn", "subagents.start", {
         handleId,
         task: "Background work that never finished.",
         profile: "worker",
@@ -336,13 +356,13 @@ test("never restores an interrupted subagent as running", async () => {
 
   try {
     const page = await application.firstWindow();
-    const log = page.locator(".activity-group");
+    const log = page.locator('[data-slot="activity-group"]');
     await expect(log).toHaveCount(1, { timeout: 20_000 });
     await log.locator(":scope > summary").click();
-    await expect(log.locator(".subagent-call")).toHaveCount(1);
-    await expect(log.locator(".subagent-running")).toHaveCount(0);
-    await expect(log.locator(".work-log-running")).toHaveCount(0);
-    await expect(log.locator(".subagent-call")).toContainText("released");
+    const subagent = log.locator('[data-slot="subagent-call"]');
+    await expect(subagent).toHaveCount(1);
+    await expect(subagent).toHaveAttribute("data-status", "released");
+    await expect(subagent).toContainText("Released");
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

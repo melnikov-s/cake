@@ -16,7 +16,7 @@ import {
 } from "../agent/sidecar-runtime";
 import {
   parallelSubagentSchema,
-  subagentSpawnReceiptSchema,
+  subagentStartReceiptSchema,
   subagentSystemPrompt,
   subagentTaskSchema,
   toolsForSubagentProfile,
@@ -123,6 +123,8 @@ interface SubagentHandle {
   liveStreaming: boolean;
   unsubscribe?: () => void;
   observers: Set<() => void>;
+  activeWaiters: number;
+  completionDisposition: "pending" | "waited" | "notifying" | "notified";
 }
 
 interface PreparedSubagentTask {
@@ -911,8 +913,10 @@ export class PiWorkspaceDriver {
         policy?.remainingSubagentDepth === 0
           ? undefined
           : {
-              spawn: (input, parentSessionId, signal, anchorPartId) =>
-                this.spawnSubagent(input, parentSessionId, signal, anchorPartId),
+              run: (input, parentSessionId, signal, onUpdate, anchorPartId) =>
+                this.runSubagent(input, parentSessionId, signal, onUpdate, anchorPartId),
+              start: (input, parentSessionId, signal, anchorPartId) =>
+                this.startBackgroundSubagent(input, parentSessionId, signal, anchorPartId),
               parallel: (input, parentSessionId, signal, onUpdate, anchorPartId) =>
                 this.parallelSubagents(input, parentSessionId, signal, onUpdate, anchorPartId),
               prompt: (input, parentSessionId, signal) =>
@@ -1071,11 +1075,10 @@ export class PiWorkspaceDriver {
     }
   }
 
-  private async spawnSubagent(
+  private async prepareSingleSubagent(
     rawInput: SubagentTaskInput,
     parentSessionId: string,
     signal: AbortSignal,
-    anchorPartId = `subagent-${crypto.randomUUID()}`,
   ) {
     const [prepared] = await this.prepareSubagentTasks(
       [subagentTaskSchema.parse(rawInput)],
@@ -1083,13 +1086,41 @@ export class PiWorkspaceDriver {
       signal,
     );
     if (!prepared) throw new Error("Subagent preflight did not produce a task");
-    return this.startSubagent(prepared, parentSessionId, anchorPartId);
+    return prepared;
+  }
+
+  private async runSubagent(
+    rawInput: SubagentTaskInput,
+    parentSessionId: string,
+    signal: AbortSignal,
+    onUpdate?: (value: JsonValue) => void,
+    anchorPartId = `subagent-${crypto.randomUUID()}`,
+  ) {
+    const prepared = await this.prepareSingleSubagent(rawInput, parentSessionId, signal);
+    const { handleId } = this.startSubagent(prepared, parentSessionId, anchorPartId, false);
+    try {
+      return await this.waitSubagent(handleId, parentSessionId, signal, onUpdate);
+    } catch (error) {
+      await this.closeSubagent(handleId, parentSessionId).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async startBackgroundSubagent(
+    rawInput: SubagentTaskInput,
+    parentSessionId: string,
+    signal: AbortSignal,
+    anchorPartId = `subagent-${crypto.randomUUID()}`,
+  ) {
+    const prepared = await this.prepareSingleSubagent(rawInput, parentSessionId, signal);
+    return this.startSubagent(prepared, parentSessionId, anchorPartId, true).receipt;
   }
 
   private startSubagent(
     { input, resolvedModel, tools, remainingSubagentDepth }: PreparedSubagentTask,
     parentSessionId: string,
     anchorPartId: string,
+    notifyOnCompletion: boolean,
   ) {
     const handleId = crypto.randomUUID();
     const handle: SubagentHandle = {
@@ -1107,6 +1138,8 @@ export class PiWorkspaceDriver {
       liveParts: new Map(),
       liveStreaming: false,
       observers: new Set(),
+      activeWaiters: 0,
+      completionDisposition: notifyOnCompletion ? "pending" : "waited",
     };
     this.subagentHandles.set(handleId, handle);
     this.emitSubagentActivity(handleId, handle);
@@ -1151,6 +1184,7 @@ export class PiWorkspaceDriver {
       handle.usage = finalSnapshot.usage;
       handle.result = this.subagentResult(handleId, handle, finalSnapshot);
       this.emitSubagentActivity(handleId, handle);
+      this.deliverSubagentCompletion(handleId, handle);
     })
       .catch((error) => {
         handle.error = error instanceof Error ? error.message : String(error);
@@ -1164,6 +1198,7 @@ export class PiWorkspaceDriver {
           error: handle.error,
         });
         this.emitSubagentActivity(handleId, handle);
+        this.deliverSubagentCompletion(handleId, handle);
       })
       .finally(() => {
         this.emitSessionBackgroundWork(parentSessionId);
@@ -1177,7 +1212,7 @@ export class PiWorkspaceDriver {
           this.releaseAgent(handle.sessionId);
         if (!handle.retain) this.scheduleSubagentResultExpiry(handleId, handle);
       });
-    return jsonValueSchema.parse({
+    const receipt = jsonValueSchema.parse({
       handleId,
       task: input.task,
       profile: input.profile,
@@ -1187,6 +1222,28 @@ export class PiWorkspaceDriver {
       maxDepth: remainingSubagentDepth,
       resolvedModel,
     });
+    return { handleId, receipt };
+  }
+
+  private deliverSubagentCompletion(handleId: string, handle: SubagentHandle) {
+    if (handle.completionDisposition !== "pending" || !handle.result) return;
+    if (handle.activeWaiters > 0) {
+      handle.completionDisposition = "waited";
+      return;
+    }
+    handle.completionDisposition = "notifying";
+    const parent = this.runtimes.get(handle.parentSessionId);
+    if (!parent?.notifySubagentCompletion) {
+      handle.completionDisposition = "notified";
+      return;
+    }
+    void parent
+      .notifySubagentCompletion(handle.result)
+      .then(() => {
+        if (this.subagentHandles.get(handleId) === handle)
+          handle.completionDisposition = "notified";
+      })
+      .catch(() => undefined);
   }
 
   private async prepareSubagentTasks(
@@ -1200,7 +1257,7 @@ export class PiWorkspaceDriver {
     ).length;
     if (existingHandles + inputs.length > MAX_SUBAGENT_HANDLES_PER_PARENT) {
       throw new Error(
-        `An agent may own at most ${MAX_SUBAGENT_HANDLES_PER_PARENT} subagent handles. Close an unused subagent before spawning another.`,
+        `An agent may own at most ${MAX_SUBAGENT_HANDLES_PER_PARENT} subagent handles. Close an unused subagent before starting another.`,
       );
     }
     const parentRuntime = this.runtimeFor(parentSessionId);
@@ -1254,8 +1311,8 @@ export class PiWorkspaceDriver {
     const handles: string[] = [];
     try {
       for (const task of preparedTasks) {
-        const spawned = this.startSubagent(task, parentSessionId, anchorPartId);
-        handles.push(subagentSpawnReceiptSchema.parse(spawned).handleId);
+        const started = this.startSubagent(task, parentSessionId, anchorPartId, false);
+        handles.push(subagentStartReceiptSchema.parse(started.receipt).handleId);
       }
       const results = await Promise.all(
         handles.map((handleId) =>
@@ -1357,6 +1414,8 @@ export class PiWorkspaceDriver {
     const handle = this.subagentHandle(handleId, parentSessionId);
     if (handle.sessionId === parentSessionId)
       throw new Error("An agent cannot synchronously wait on itself");
+    const claimedCompletion = handle.completionDisposition === "pending";
+    if (claimedCompletion) handle.activeWaiters += 1;
     let updateTimer: ReturnType<typeof setTimeout> | undefined;
     const emitUpdate = () => {
       if (updateTimer || !onUpdate) return;
@@ -1379,6 +1438,7 @@ export class PiWorkspaceDriver {
     } finally {
       handle.observers.delete(emitUpdate);
       if (updateTimer) clearTimeout(updateTimer);
+      if (claimedCompletion) handle.activeWaiters -= 1;
     }
     if (handle.result) {
       const result = handle.result;

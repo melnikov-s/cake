@@ -256,6 +256,8 @@ describe("PiWorkspaceDriver", () => {
       "parent",
       vi.fn(async () => undefined),
     );
+    const notifySubagentCompletion = vi.fn(async () => undefined);
+    parent.notifySubagentCompletion = notifySubagentCompletion;
     const childPrompt = vi.fn(async () => taskGate);
     const child = runtime("child", childPrompt, false);
     const resolveAgentModel = vi.fn(() => ({
@@ -281,7 +283,7 @@ describe("PiWorkspaceDriver", () => {
     const control = createdWith[0]?.agentControl;
     if (!control) throw new Error("Expected subagent control");
 
-    const spawned = await control.spawn(
+    const spawned = await control.start(
       { task: "Audit the IPC boundary", model: { prefer: "current" }, fastMode: true },
       parent.sessionId,
       new AbortController().signal,
@@ -396,6 +398,168 @@ describe("PiWorkspaceDriver", () => {
       active: false,
     });
     expect(child.dispose).toHaveBeenCalledOnce();
+    expect(notifySubagentCompletion).not.toHaveBeenCalled();
+    driver[Symbol.dispose]();
+  });
+
+  it("automatically wakes the parent when a background subagent completes without a waiter", async () => {
+    let finishTask!: () => void;
+    const taskGate = new Promise<void>((resolve) => {
+      finishTask = resolve;
+    });
+    const createdWith: CakeRuntimeOptions[] = [];
+    const runtime = (sessionId: string, prompt: CakeRuntime["prompt"]): CakeRuntime => ({
+      sessionId,
+      sessionFile: `/sessions/${sessionId}.jsonl`,
+      snapshot: vi.fn(async () => ({
+        ...snapshot,
+        sessionId,
+        sessionFile: `/sessions/${sessionId}.jsonl`,
+        model: { provider: "test", id: "model", name: "Model" },
+      })),
+      prompt,
+      compact: vi.fn(async () => undefined),
+      abort: vi.fn(async () => undefined),
+      setModel: vi.fn(async () => undefined),
+      setThinkingLevel: vi.fn(async () => undefined),
+      applyConfiguration: vi.fn(async () => undefined),
+      setPiSetting: vi.fn(async () => undefined),
+      recordReviewRun: vi.fn(),
+      login: vi.fn(async () => undefined),
+      logout: vi.fn(async () => undefined),
+      rename: vi.fn(async () => undefined),
+      fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      handoff: vi.fn(async () => ({
+        sessionId: "handoff",
+        sessionFile: "/sessions/handoff.jsonl",
+      })),
+      navigate: vi.fn(async () => undefined),
+      dispose: vi.fn(),
+    });
+    const parent = runtime(
+      "parent",
+      vi.fn(async () => undefined),
+    );
+    const notifySubagentCompletion = vi.fn(async () => undefined);
+    parent.notifySubagentCompletion = notifySubagentCompletion;
+    const child = runtime(
+      "child",
+      vi.fn(async () => taskGate),
+    );
+    const driver = new PiWorkspaceDriver({
+      ...piPaths,
+      workspacePath: "/project",
+      emit: vi.fn(),
+      resolveAgentModel: () => ({
+        requested: "current",
+        source: "current",
+        provider: "test",
+        modelId: "model",
+        thinkingLevel: "off",
+        fallbacks: [],
+      }),
+      createRuntime: vi.fn(async (options) => {
+        createdWith.push(options);
+        return options.auxiliary ? child : parent;
+      }),
+    });
+    await driver.openAgent({ target: { kind: "new", visibility: "project" } });
+    const control = createdWith[0]?.agentControl;
+    if (!control) throw new Error("Expected subagent control");
+
+    const started = await control.start(
+      { task: "Background audit" },
+      parent.sessionId,
+      new AbortController().signal,
+    );
+    expect(started).toMatchObject({ status: "running", handleId: expect.any(String) });
+    finishTask();
+
+    await vi.waitFor(() => expect(notifySubagentCompletion).toHaveBeenCalledOnce());
+    expect(notifySubagentCompletion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        handleId: expect.any(String),
+        task: "Background audit",
+        status: "complete",
+      }),
+    );
+    driver[Symbol.dispose]();
+  });
+
+  it("keeps foreground delegation pending until its result is ready", async () => {
+    let finishTask!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      finishTask = resolve;
+    });
+    const createdWith: CakeRuntimeOptions[] = [];
+    const base = (sessionId: string, prompt: CakeRuntime["prompt"]): CakeRuntime => ({
+      sessionId,
+      sessionFile: `/sessions/${sessionId}.jsonl`,
+      snapshot: vi.fn(async () => ({
+        ...snapshot,
+        sessionId,
+        sessionFile: `/sessions/${sessionId}.jsonl`,
+        model: { provider: "test", id: "model", name: "Model" },
+      })),
+      prompt,
+      compact: vi.fn(async () => undefined),
+      abort: vi.fn(async () => undefined),
+      setModel: vi.fn(async () => undefined),
+      setThinkingLevel: vi.fn(async () => undefined),
+      applyConfiguration: vi.fn(async () => undefined),
+      setPiSetting: vi.fn(async () => undefined),
+      recordReviewRun: vi.fn(),
+      login: vi.fn(async () => undefined),
+      logout: vi.fn(async () => undefined),
+      rename: vi.fn(async () => undefined),
+      fork: vi.fn(async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" })),
+      handoff: vi.fn(async () => ({
+        sessionId: "handoff",
+        sessionFile: "/sessions/handoff.jsonl",
+      })),
+      navigate: vi.fn(async () => undefined),
+      dispose: vi.fn(),
+    });
+    const parent = base(
+      "parent",
+      vi.fn(async () => undefined),
+    );
+    const child = base(
+      "child",
+      vi.fn(async () => gate),
+    );
+    const driver = new PiWorkspaceDriver({
+      ...piPaths,
+      workspacePath: "/project",
+      emit: vi.fn(),
+      resolveAgentModel: () => ({
+        requested: "current",
+        source: "current",
+        provider: "test",
+        modelId: "model",
+        thinkingLevel: "off",
+        fallbacks: [],
+      }),
+      createRuntime: vi.fn(async (options) => {
+        createdWith.push(options);
+        return options.auxiliary ? child : parent;
+      }),
+    });
+    await driver.openAgent({ target: { kind: "new", visibility: "project" } });
+    const control = createdWith[0]?.agentControl;
+    if (!control) throw new Error("Expected subagent control");
+
+    let settled = false;
+    const running = control
+      .run({ task: "Foreground audit" }, parent.sessionId, new AbortController().signal)
+      .then((result) => {
+        settled = true;
+        return result;
+      });
+    await vi.waitFor(() => expect(child.prompt).toHaveBeenCalledOnce());
+    expect(settled).toBe(false);
+    finishTask();
+    await expect(running).resolves.toMatchObject({ task: "Foreground audit", status: "complete" });
     driver[Symbol.dispose]();
   });
 

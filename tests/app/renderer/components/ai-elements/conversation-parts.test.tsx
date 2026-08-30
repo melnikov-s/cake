@@ -379,11 +379,11 @@ describe("Cake-owned conversation components", () => {
     const handleId = crypto.randomUUID();
     const html = renderToStaticMarkup(
       <Tool
-        subagentSpawnPart={{
+        subagentStartPart={{
           id: "subagent-spawn",
           kind: "tool",
           name: "cake",
-          command: "subagents.spawn",
+          command: "subagents.start",
           input: JSON.stringify({
             task: "Inspect the session boundary",
             profile: "reviewer",
@@ -504,7 +504,7 @@ describe("Cake-owned conversation components", () => {
           id: "tool-live-spawn",
           kind: "tool",
           name: "cake",
-          command: "subagents.spawn",
+          command: "subagents.start",
           input: JSON.stringify({ task: "Inspect the live boundary", profile: "reviewer" }),
           output: JSON.stringify({ handleId, status: "running" }),
           state: "success",

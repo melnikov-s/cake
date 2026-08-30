@@ -85,8 +85,9 @@ export const ActivityGroup = observer(function ActivityGroup({
     <div className="min-w-0">
       {item.kind === "subagent-work-log" ? (
         <TranscriptPart
-          part={item.result}
-          subagentSpawnPart={item.spawn}
+          part={item.latest}
+          subagentParts={item.parts}
+          subagentStartPart={item.start}
           live={live}
           behavior={behavior}
           workLogItem

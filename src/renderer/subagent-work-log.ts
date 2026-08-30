@@ -7,8 +7,10 @@ type ToolPart = Extract<UiPart, { kind: "tool" }>;
 interface SubagentWorkLogItem {
   kind: "subagent-work-log";
   id: string;
-  spawn: ToolPart;
-  result: ToolPart;
+  handleId: string;
+  parts: ToolPart[];
+  start?: ToolPart;
+  latest: ToolPart;
 }
 
 export type WorkLogItem = UiPart | SubagentWorkLogItem;
@@ -28,33 +30,57 @@ function handleId(value: string | undefined) {
   }
 }
 
-/** Combines the internal spawn + wait protocol into one user-facing subagent run. */
+function subagentHandle(part: ToolPart) {
+  return handleId(part.output) ?? handleId(part.input);
+}
+
+/**
+ * Projects every foreground run or background start and its later completion or
+ * wait for a stable handle as one work-log item. Background items remain at the
+ * start's transcript position while later protocol activity updates them.
+ */
 export function combineSubagentWorkLogParts(parts: UiPart[]): WorkLogItem[] {
   const items: WorkLogItem[] = [];
-  const spawns = new Map<string, number>();
+  const itemByHandle = new Map<string, number>();
 
   for (const part of parts) {
-    if (part.kind === "tool" && toolOperationName(part) === "subagents.spawn") {
-      const index = items.push(part) - 1;
-      const handle = handleId(part.output);
-      if (handle) spawns.set(handle, index);
+    if (part.kind !== "tool") {
+      items.push(part);
       continue;
     }
-    if (part.kind === "tool" && toolOperationName(part) === "subagents.wait") {
-      const handle = handleId(part.input);
-      const spawnIndex = handle ? spawns.get(handle) : undefined;
-      const spawn = spawnIndex === undefined ? undefined : items[spawnIndex];
-      if (spawnIndex !== undefined && spawn?.kind === "tool") {
-        items[spawnIndex] = {
-          kind: "subagent-work-log",
-          id: spawn.id,
-          spawn,
-          result: part,
-        };
-        continue;
-      }
+    const operation = toolOperationName(part);
+    if (
+      operation !== "subagents.run" &&
+      operation !== "subagents.start" &&
+      operation !== "subagents.wait" &&
+      operation !== "subagents.completion"
+    ) {
+      items.push(part);
+      continue;
     }
-    items.push(part);
+    const handle = subagentHandle(part);
+    if (!handle) {
+      items.push(part);
+      continue;
+    }
+    const existingIndex = itemByHandle.get(handle);
+    const existing = existingIndex === undefined ? undefined : items[existingIndex];
+    if (existingIndex !== undefined && existing?.kind === "subagent-work-log") {
+      existing.parts.push(part);
+      existing.latest = part;
+      if (operation === "subagents.start") existing.start = part;
+      continue;
+    }
+    const index =
+      items.push({
+        kind: "subagent-work-log",
+        id: `subagent-${handle}`,
+        handleId: handle,
+        parts: [part],
+        start: operation === "subagents.start" ? part : undefined,
+        latest: part,
+      }) - 1;
+    itemByHandle.set(handle, index);
   }
 
   return items;

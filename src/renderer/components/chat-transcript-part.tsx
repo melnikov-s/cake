@@ -25,7 +25,8 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   part,
   behavior,
   workLogItem = false,
-  subagentSpawnPart,
+  subagentStartPart,
+  subagentParts,
   live,
   omitToolDiff,
 }: {
@@ -33,7 +34,8 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   behavior: CanonicalTranscriptBehavior;
   /** True when rendered inside a work log, so item expansion follows the global mode. */
   workLogItem?: boolean;
-  subagentSpawnPart?: Extract<UiPart, { kind: "tool" }>;
+  subagentStartPart?: Extract<UiPart, { kind: "tool" }>;
+  subagentParts?: Extract<UiPart, { kind: "tool" }>[];
   /** True while this conversation's runtime may still be producing subagent work. */
   live?: boolean;
   omitToolDiff?: boolean;
@@ -122,10 +124,11 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
           <ToolRunTimer
             store={behavior.store}
             partId={part.id}
-            startPartId={subagentSpawnPart?.id}
+            startPartId={subagentStartPart?.id}
           />
         }
-        subagentSpawnPart={subagentSpawnPart}
+        subagentStartPart={subagentStartPart}
+        subagentParts={subagentParts}
         subagents={behavior.subagents}
         renderChat={behavior.renderChat}
         live={live}
@@ -185,7 +188,8 @@ export function TranscriptPart(props: {
   part: UiPart;
   behavior: CanonicalTranscriptBehavior;
   workLogItem?: boolean;
-  subagentSpawnPart?: Extract<UiPart, { kind: "tool" }>;
+  subagentStartPart?: Extract<UiPart, { kind: "tool" }>;
+  subagentParts?: Extract<UiPart, { kind: "tool" }>[];
   live?: boolean;
   omitToolDiff?: boolean;
 }) {

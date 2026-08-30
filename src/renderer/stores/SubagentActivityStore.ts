@@ -61,15 +61,21 @@ export class SubagentActivityStore extends Store<{
     return [...runs.values()];
   }
 
+  get activeRuns() {
+    return this.runs.filter(
+      (run) => !run.released && (run.status === "queued" || run.status === "running"),
+    );
+  }
+
   run(key: string) {
     return this.runs.find((run) => run.key === key);
   }
 
-  runsForTool(part: ToolPart, spawnPart?: ToolPart) {
-    const anchorPartId = spawnPart?.id ?? part.id;
+  runsForTool(part: ToolPart, startPart?: ToolPart) {
+    const anchorPartId = startPart?.id ?? part.id;
     if (toolOperationName(part) === "subagents.parallel")
       return this.runs.filter((run) => run.anchorPartId === anchorPartId);
-    const handleId = subagentHandleFromTool(part) ?? subagentHandleFromTool(spawnPart);
+    const handleId = subagentHandleFromTool(part) ?? subagentHandleFromTool(startPart);
     const run = handleId ? this.run(handleId) : undefined;
     return run ? [run] : this.runs.filter((candidate) => candidate.anchorPartId === anchorPartId);
   }

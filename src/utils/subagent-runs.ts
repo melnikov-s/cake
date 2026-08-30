@@ -109,32 +109,42 @@ function runFromPayload(
 /** Reconstructs read-only subagent chats from the parent Pi transcript. */
 export function historicalSubagentRuns(parts: readonly UiPart[]) {
   const runs = new Map<string, SubagentRun>();
-  const spawnByHandle = new Map<string, { part: ToolPart; request?: Payload; output?: Payload }>();
+  const startByHandle = new Map<string, { part: ToolPart; request?: Payload; output?: Payload }>();
 
   for (const part of parts) {
     if (part.kind !== "tool") continue;
-    if (toolOperationName(part) === "subagents.spawn") {
+    const operation = toolOperationName(part);
+    if (operation === "subagents.run") {
       const request = payload(part.input);
       const output = payload(part.output);
       const source = output ?? request;
       if (!source) continue;
       const run = runFromPayload(source, part.id, part.state, request);
       runs.set(run.key, run);
-      if (run.handleId) spawnByHandle.set(run.handleId, { part, request, output });
       continue;
     }
-    if (toolOperationName(part) === "subagents.wait") {
+    if (operation === "subagents.start") {
+      const request = payload(part.input);
+      const output = payload(part.output);
+      const source = output ?? request;
+      if (!source) continue;
+      const run = runFromPayload(source, part.id, part.state, request);
+      runs.set(run.key, run);
+      if (run.handleId) startByHandle.set(run.handleId, { part, request, output });
+      continue;
+    }
+    if (operation === "subagents.wait" || operation === "subagents.completion") {
       const input = payload(part.input);
       const output = payload(part.output);
       const handleId = output?.handleId ?? input?.handleId;
       if (!handleId || !output) continue;
-      const spawn = spawnByHandle.get(handleId);
-      const fallback = spawn?.request ?? spawn?.output;
-      const run = runFromPayload(output, spawn?.part.id ?? part.id, part.state, fallback);
+      const start = startByHandle.get(handleId);
+      const fallback = start?.request ?? start?.output;
+      const run = runFromPayload(output, start?.part.id ?? part.id, part.state, fallback);
       runs.set(run.key, run);
       continue;
     }
-    if (toolOperationName(part) === "subagents.parallel") {
+    if (operation === "subagents.parallel") {
       const request = payload(part.input);
       const output = payload(part.output);
       const results = output?.results ?? (output?.latest ? [output.latest] : []);

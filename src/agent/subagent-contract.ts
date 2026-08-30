@@ -31,7 +31,7 @@ const SUBAGENT_PROFILE_INSTRUCTIONS = {
     "Complete the bounded implementation task, verify the result, and summarize changed files and checks. Do not delegate unless the caller explicitly granted delegation depth.",
 } satisfies Record<SubagentProfile, string>;
 
-export const subagentSpawnReceiptSchema = z.object({ handleId: z.uuid() }).passthrough();
+export const subagentStartReceiptSchema = z.object({ handleId: z.uuid() }).passthrough();
 
 const READ_ONLY_TOOLS = new Set(["read", "grep", "find", "ls", "cake"]);
 const AUXILIARY_TOOLS = new Set(["read", "bash", "edit", "write", "grep", "find", "ls", "cake"]);

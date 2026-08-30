@@ -370,6 +370,11 @@ function partsFromMessage(
     ];
   }
 
+  // Live subagent activity already updates the handle-keyed surface. The full
+  // snapshot folds this hidden completion into its original background start.
+  if (role === "custom" && Reflect.get(message, "customType") === "cake.subagent-completion")
+    return [];
+
   if (role === "custom" && Reflect.get(message, "display") === true) {
     return [
       {
@@ -574,7 +579,29 @@ export function projectSessionEntries(
       continue;
     }
     if (entry.type === "custom_message") {
-      if (entry.display)
+      if (entry.customType === "cake.subagent-completion") {
+        const completion = z.object({ handleId: z.uuid() }).passthrough().safeParse(entry.details);
+        const start = completion.success
+          ? projected.findLast(
+              (part): part is Extract<UiPart, { kind: "tool" }> =>
+                part.kind === "tool" &&
+                part.command === "subagents.start" &&
+                (part.input.includes(completion.data.handleId) ||
+                  part.output?.includes(completion.data.handleId) === true),
+            )
+          : undefined;
+        if (start) start.output = formatUnknown(entry.details);
+        else
+          append({
+            id: `entry-${entry.id}-subagent-completion`,
+            kind: "tool",
+            name: "cake",
+            command: "subagents.completion",
+            input: "",
+            output: formatUnknown(entry.details),
+            state: "success",
+          });
+      } else if (entry.display)
         append({
           id: `entry-${entry.id}-custom`,
           kind: "notice",

@@ -9,6 +9,7 @@ import { QueuedPrompts } from "@/components/queued-prompts";
 import { RewordPromptDialog } from "@/components/reword-prompt-dialog";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
 import { SourceAttachment } from "@/components/source-attachment";
+import { SubagentStatus } from "@/components/subagent-status";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { IconButton } from "@/components/ui/icon-button";
@@ -251,6 +252,21 @@ export const Chat = observer(function Chat({
       end: selection.start + rewritten.length,
     });
   };
+  const renderNestedChat = (nestedStore: ChatStore) => (
+    <Chat
+      store={nestedStore}
+      embedded
+      compact
+      transcriptBehavior={
+        transcriptBehavior?.openSourceLocation || transcriptBehavior?.workspacePath
+          ? {
+              openSourceLocation: transcriptBehavior.openSourceLocation,
+              workspacePath: transcriptBehavior.workspacePath,
+            }
+          : undefined
+      }
+    />
+  );
   const composer = composerVisible && (
     <div
       ref={composerDockRef}
@@ -263,7 +279,19 @@ export const Chat = observer(function Chat({
       <ChatComposer
         className={embedded ? "chat-embedded-workbench-composer" : undefined}
         configuration={store.configuration}
-        header={composerHeader}
+        header={
+          (transcriptBehavior?.subagents || composerHeader) && (
+            <>
+              {transcriptBehavior?.subagents && (
+                <SubagentStatus
+                  store={transcriptBehavior.subagents}
+                  renderChat={renderNestedChat}
+                />
+              )}
+              {composerHeader}
+            </>
+          )
+        }
         onSubmit={(event) => {
           event.preventDefault();
           void submit();
@@ -535,21 +563,7 @@ export const Chat = observer(function Chat({
         footer={footer}
         error={error}
         virtualized={!compact}
-        renderChat={(nestedStore) => (
-          <Chat
-            store={nestedStore}
-            embedded
-            compact
-            transcriptBehavior={
-              transcriptBehavior?.openSourceLocation || transcriptBehavior?.workspacePath
-                ? {
-                    openSourceLocation: transcriptBehavior.openSourceLocation,
-                    workspacePath: transcriptBehavior.workspacePath,
-                  }
-                : undefined
-            }
-          />
-        )}
+        renderChat={renderNestedChat}
       />
       {composer}
     </div>
