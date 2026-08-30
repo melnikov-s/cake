@@ -8,6 +8,7 @@
     "build": "electron-vite build && node scripts/prepare-authoring-snapshot.mjs",
     "dev": "electron-vite dev --watch",
     "dev:agent": "electron-vite dev --watch --remoteDebuggingPort 9222",
+    "dev:manual": "CAKE_MANUAL_RELOAD=1 electron-vite dev --watch",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "lint": "pnpm lint:oxlint && pnpm lint:eslint && pnpm lint:knip",

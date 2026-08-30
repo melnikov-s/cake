@@ -40,6 +40,10 @@ endpoint at `http://127.0.0.1:9222`; Playwright can attach with
 `chromium.connectOverCDP("http://127.0.0.1:9222")`. Do not expose that port in a
 packaged build.
 
+Run `pnpm dev:manual` to disable renderer HMR. Renderer edits become visible only
+after choosing **Developer → Reload Cake** or pressing `CommandOrControl+R`.
+Changes to main or preload still restart Electron automatically.
+
 The app starts a sandboxed renderer, exposes only a typed preload API, and runs
 Pi directly through its SDK in Electron's main process. It supports project
 trust, provider login, model and thinking controls, Cake-owned transcript parts,

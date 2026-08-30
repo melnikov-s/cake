@@ -647,6 +647,19 @@ function configureApplicationBranding() {
       { role: "fileMenu" },
       { role: "editMenu" },
       { role: "viewMenu" },
+      ...(process.env.CAKE_MANUAL_RELOAD === "1"
+        ? [
+            {
+              label: "Developer",
+              submenu: [
+                {
+                  label: "Reload Cake",
+                  click: () => BrowserWindow.getFocusedWindow()?.webContents.reload(),
+                },
+              ],
+            },
+          ]
+        : []),
       { role: "windowMenu" },
     ]),
   );
