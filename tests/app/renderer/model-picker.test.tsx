@@ -119,4 +119,51 @@ describe("ModelPicker", () => {
       fastMode: false,
     });
   });
+
+  it("retains focus on search input while typing filter characters", () => {
+    const onSelect = vi.fn();
+    act(() =>
+      root.render(
+        <ModelPicker
+          groups={groups}
+          value={{ provider: "openai", modelId: "gpt-5", thinkingLevel: "medium" }}
+          onSelect={onSelect}
+        />,
+      ),
+    );
+
+    // Open popover
+    act(() => container.querySelector<HTMLButtonElement>("button")!.click());
+
+    // Click "Change model" to go to models search view
+    const changeModelBtn = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
+      (btn) => btn.textContent?.includes("Change model"),
+    )!;
+    act(() => changeModelBtn.click());
+
+    const input = document.body.querySelector<HTMLInputElement>('input[placeholder*="Search"]')!;
+    expect(input).not.toBeNull();
+    input.focus();
+    expect(document.activeElement).toBe(input);
+
+    // Simulate multiple keystrokes
+    const nativeSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    for (const char of ["c", "l", "a", "u"]) {
+      act(() => {
+        nativeSetter?.call(input, input.value + char);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      // Focus should remain on the input, not jump to any other element
+      expect(document.activeElement).toBe(input);
+    }
+
+    const dialog = document.body.querySelector('[role="dialog"]')!;
+    // Only Claude Opus should be visible in the filtered list
+    expect(dialog.textContent).toContain("Claude Opus");
+    expect(dialog.textContent).not.toContain("GPT-5");
+  });
 });

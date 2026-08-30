@@ -50,13 +50,16 @@ export function Popover({
   const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const contentId = useId();
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+
   const open = controlledOpen ?? uncontrolledOpen;
   const setOpen = useCallback(
     (next: boolean) => {
       if (controlledOpen === undefined) setUncontrolledOpen(next);
-      onOpenChange?.(next);
+      onOpenChangeRef.current?.(next);
     },
-    [controlledOpen, onOpenChange],
+    [controlledOpen],
   );
   const value = useMemo(
     () => ({ contentId, open, setOpen, triggerRef }),
@@ -127,13 +130,31 @@ export function PopoverContent({
     updatePosition();
   }, [open, updatePosition, children]);
 
+  const prevOpenRef = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      prevOpenRef.current = false;
+      return;
+    }
+    if (!prevOpenRef.current) {
+      prevOpenRef.current = true;
+      const content = contentRef.current;
+      if (content && !content.contains(document.activeElement)) {
+        const focusable = content.querySelector<HTMLElement>(
+          'input:not([disabled]), button:not([disabled]), [href], select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        );
+        focusable?.focus();
+      }
+    }
+  }, [open]);
+
+  const updatePositionRef = useRef(updatePosition);
+  updatePositionRef.current = updatePosition;
+  const setOpenRef = useRef(setOpen);
+  setOpenRef.current = setOpen;
+
   useEffect(() => {
     if (!open) return;
-    const content = contentRef.current;
-    const focusable = content?.querySelector<HTMLElement>(
-      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    );
-    focusable?.focus();
     const dismiss = (event: PointerEvent) => {
       const target = event.target;
       if (
@@ -142,15 +163,15 @@ export function PopoverContent({
         effectiveAnchorRef.current?.contains(target)
       )
         return;
-      setOpen(false);
+      setOpenRef.current(false);
     };
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
-      setOpen(false);
+      setOpenRef.current(false);
       effectiveAnchorRef.current?.focus();
     };
-    const reposition = () => updatePosition();
+    const reposition = () => updatePositionRef.current();
     document.addEventListener("pointerdown", dismiss, true);
     document.addEventListener("keydown", escape);
     document.addEventListener("scroll", reposition, true);
@@ -166,7 +187,7 @@ export function PopoverContent({
       window.removeEventListener("resize", reposition);
       observer?.disconnect();
     };
-  }, [effectiveAnchorRef, open, setOpen, updatePosition]);
+  }, [effectiveAnchorRef, open]);
 
   if (!open || !("document" in globalThis)) return null;
   return createPortal(

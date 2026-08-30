@@ -130,8 +130,15 @@ export function ModelPicker({
 
   useEffect(() => {
     if (!open) return;
-    if (view === "models") searchRef.current?.focus();
-    else if (view === "configure") configureBackRef.current?.focus();
+    if (view === "models") {
+      if (document.activeElement !== searchRef.current) {
+        searchRef.current?.focus();
+      }
+    } else if (view === "configure") {
+      if (document.activeElement !== configureBackRef.current) {
+        configureBackRef.current?.focus();
+      }
+    }
   }, [open, view]);
 
   const reset = () => {
@@ -309,22 +316,12 @@ export function ModelPicker({
 
           {view === "models" && (
             <>
-              <header className="mb-2.5 flex items-center gap-2">
-                {hasValue && (
-                  <IconButton
-                    tooltip="Back to current model"
-                    className="size-6"
-                    onClick={() => {
-                      setView("current");
-                    }}
-                  >
-                    <span aria-hidden="true">‹</span>
-                  </IconButton>
-                )}
+              <header className="mb-2.5 flex items-center justify-between">
                 <strong className="text-xs font-semibold text-foreground">Choose model</strong>
               </header>
               <Input
                 ref={searchRef}
+                autoFocus
                 className="mb-2 h-8 text-xs"
                 aria-label="Search presets and models"
                 placeholder="Search presets and models…"
@@ -492,7 +489,8 @@ export function ModelPicker({
                 <Button
                   size="sm"
                   disabled={
-                    ((draftModel.availableThinkingLevels?.length ?? 0) > 0 && !draftThinkingLevel) ||
+                    ((draftModel.availableThinkingLevels?.length ?? 0) > 0 &&
+                      !draftThinkingLevel) ||
                     disabled
                   }
                   onClick={() => {
