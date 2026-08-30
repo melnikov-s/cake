@@ -131,9 +131,7 @@ export function FullscreenSurface({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div>
-          <span className="block font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            {eyebrow}
-          </span>
+          <span className="block text-xs font-medium text-muted-foreground">{eyebrow}</span>
           <h2 id={titleId} className="text-sm font-semibold text-foreground">
             {title}
           </h2>

@@ -184,9 +184,7 @@ export function ChatPopover({
         onPointerDown={startDrag}
       >
         <div>
-          <span className="block font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            {eyebrow}
-          </span>
+          <span className="block text-xs font-medium text-muted-foreground">{eyebrow}</span>
           <strong className="block text-xs font-semibold text-foreground">{title}</strong>
         </div>
         <IconButton tooltip={`Close ${title.toLowerCase()}`} onClick={onClose}>

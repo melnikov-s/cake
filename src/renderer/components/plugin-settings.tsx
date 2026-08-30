@@ -37,7 +37,7 @@ export const PluginSettings = observer(function PluginSettings({
               See installed plugins and control which customizations Cake loads.
             </p>
           </div>
-          <Badge variant="outline" className="font-mono text-[10px] uppercase">
+          <Badge variant="outline" size="xs" className="text-muted-foreground">
             {enabledCount} enabled
           </Badge>
         </header>

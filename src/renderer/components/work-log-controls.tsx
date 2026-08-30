@@ -38,7 +38,7 @@ export const WorkLogControls = observer(function WorkLogControls({ store }: { st
         <section className="grid gap-1.5" aria-labelledby="work-log-view-mode-title">
           <header
             id="work-log-view-mode-title"
-            className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground"
+            className="text-xs font-medium text-muted-foreground"
           >
             View Mode
           </header>
@@ -82,7 +82,7 @@ export const WorkLogControls = observer(function WorkLogControls({ store }: { st
         <section className="grid gap-1.5" aria-labelledby="work-log-expansion-title">
           <header
             id="work-log-expansion-title"
-            className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground"
+            className="text-xs font-medium text-muted-foreground"
           >
             Expansion
           </header>

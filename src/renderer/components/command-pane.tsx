@@ -102,9 +102,7 @@ export const CommandPane = observer(function CommandPane({
         <div className="grid gap-6">
           {diagnostics.length > 0 && (
             <section className="grid gap-2">
-              <h3 className="m-0 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Diagnostics
-              </h3>
+              <h3 className="m-0 text-xs font-medium text-muted-foreground">Diagnostics</h3>
               {diagnostics.map((item) => (
                 <Callout
                   key={item.id}

@@ -45,9 +45,7 @@ export const SettingsPage = observer(function SettingsPage({
   return (
     <div className="mx-auto max-w-4xl px-6 py-8 pb-16">
       <div className="mb-8">
-        <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-accent">
-          Cake / Pi
-        </span>
+        <span className="text-xs font-medium text-accent">Cake / Pi</span>
         <h1 className="mt-1 text-2xl font-bold text-foreground">Settings</h1>
         <p className="mt-1.5 text-xs text-muted-foreground">
           Configure the same Pi runtime used by the CLI. These preferences are saved by Pi and
@@ -116,7 +114,7 @@ export const SettingsPage = observer(function SettingsPage({
               Pi’s own default profile for new project chats and plugin agents.
             </p>
           </div>
-          <Badge variant="outline" className="font-mono text-[10px] uppercase">
+          <Badge variant="outline" size="xs" className="text-muted-foreground">
             Pi global
           </Badge>
         </header>
@@ -170,7 +168,7 @@ export const SettingsPage = observer(function SettingsPage({
               Runs user-configured, lightweight background tasks such as naming sessions.
             </p>
           </div>
-          <Badge variant="outline" className="font-mono text-[10px] uppercase">
+          <Badge variant="outline" size="xs" className="text-muted-foreground">
             Cake
           </Badge>
         </header>
@@ -216,7 +214,7 @@ export const SettingsPage = observer(function SettingsPage({
               Context, reasoning display, and queued message delivery.
             </p>
           </div>
-          <Badge variant="outline" className="font-mono text-[10px] uppercase">
+          <Badge variant="outline" size="xs" className="text-muted-foreground">
             Pi global
           </Badge>
         </header>

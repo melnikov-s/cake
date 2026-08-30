@@ -336,7 +336,7 @@ export function ModelPicker({
               <div className="max-h-60 space-y-3 overflow-y-auto pr-1 text-xs">
                 {filteredPresets.length > 0 && (
                   <section aria-label="Model presets" className="space-y-1">
-                    <h3 className="px-1 font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    <h3 className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
                       Presets
                     </h3>
                     {filteredPresets.map((preset) => {
@@ -398,7 +398,7 @@ export function ModelPicker({
                     key={group.id}
                     className="space-y-1 pt-1.5 border-t border-border first:border-t-0 first:pt-0"
                   >
-                    <h3 className="px-1 font-mono text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    <h3 className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
                       {group.name}
                     </h3>
                     {group.models.map((model) => (

@@ -16,10 +16,7 @@ export function MessageLabel({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       data-slot="message-label"
-      className={cn(
-        "font-mono text-[0.64rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground",
-        className,
-      )}
+      className={cn("text-xs font-medium text-muted-foreground", className)}
       {...props}
     />
   );

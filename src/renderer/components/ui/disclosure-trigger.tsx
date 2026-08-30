@@ -39,7 +39,7 @@ export const DisclosureTrigger = forwardRef<HTMLButtonElement, DisclosureTrigger
         aria-expanded={open}
         title={title}
         className={cn(
-          "flex w-full min-w-0 items-center justify-between gap-2 text-left font-mono text-xs font-semibold text-foreground transition-colors select-none",
+          "flex w-full min-w-0 items-center justify-between gap-2 text-left text-xs font-medium text-foreground transition-colors select-none",
           disabled ? "opacity-40 cursor-default" : "cursor-pointer",
           className,
         )}

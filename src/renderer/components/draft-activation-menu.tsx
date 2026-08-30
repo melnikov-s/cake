@@ -58,7 +58,7 @@ export const DraftActivationMenu = observer(function DraftActivationMenu({
         </Button>
         {candidates.length > 0 && (
           <>
-            <p className="px-2 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <p className="px-2 pt-2 pb-1 text-[11px] font-medium text-muted-foreground">
               Existing worktrees
             </p>
             {candidates.map((record) => (

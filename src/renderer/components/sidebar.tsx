@@ -119,11 +119,11 @@ export const Sidebar = observer(function Sidebar({
             aria-labelledby="resolved-lane-heading"
           >
             <div
-              className="flex items-center justify-between px-1.5 pt-2.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/90"
+              className="flex items-center justify-between px-1.5 pt-2.5 text-xs font-medium text-muted-foreground"
               id="resolved-lane-heading"
             >
               <DisclosureTrigger
-                className="h-[27px] px-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/90 hover:text-foreground"
+                className="h-[27px] px-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
                 open={store.resolvedLaneExpanded}
                 aria-controls="resolved-lane-content"
                 aria-label={`${store.resolvedLaneExpanded ? "Collapse" : "Expand"} Resolved`}

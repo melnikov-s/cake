@@ -113,7 +113,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
           label={<span className="session-title min-w-0 truncate">{session.title}</span>}
           badge={
             session.draft && (
-              <Badge variant="outline" size="xs" className="font-semibold uppercase tracking-wide">
+              <Badge variant="outline" size="xs" className="text-muted-foreground">
                 Draft
               </Badge>
             )

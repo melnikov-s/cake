@@ -161,7 +161,7 @@ export const ActivityGroup = observer(function ActivityGroup({
                   open={activityStripOpen}
                   onClick={() => setActivityStripOpen((val) => !val)}
                   badge={
-                    <Badge variant="outline" className="h-4 px-1 text-[9px] font-mono uppercase">
+                    <Badge variant="outline" size="xs" className="text-muted-foreground">
                       Activity
                     </Badge>
                   }

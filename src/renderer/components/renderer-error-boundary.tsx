@@ -62,7 +62,7 @@ export class RendererErrorBoundary extends Component<
           >
             !
           </div>
-          <p className="mb-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <p className="mb-1 text-xs font-medium text-muted-foreground">
             Cake encountered an error
           </p>
           <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
