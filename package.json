@@ -30,6 +30,7 @@
     "@earendil-works/pi-ai": "0.84.0",
     "@earendil-works/pi-coding-agent": "0.84.0",
     "@earendil-works/pi-tui": "0.84.0",
+    "@effect/platform-node-shared": "4.0.0-rc.111",
     "@preact/signals-react": "3.10.3",
     "@shikijs/langs": "3.23.0",
     "@shikijs/themes": "3.23.0",

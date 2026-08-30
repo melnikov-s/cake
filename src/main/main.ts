@@ -72,6 +72,7 @@ import {
 } from "./inline-widget-protocol";
 import { PluginAgentHost, resolveAgentModel } from "./plugin-agent-host";
 import { TerminalManager } from "./terminal-manager";
+import { launchMainApplication } from "./MainLive";
 import cakeIconPath from "../assets/cake.png?asset";
 import annotationMenuIconPath from "../assets/menu-annotation.png?asset";
 import chatMenuIconPath from "../assets/menu-chat.png?asset";
@@ -2314,7 +2315,7 @@ async function handleCakeRequest(
   return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
 }
 
-app.whenReady().then(async () => {
+async function startApplicationCapabilities() {
   if (process.env.CAKE_ELECTRON_SMOKE === "1" && process.platform === "darwin" && app.dock)
     app.dock.hide();
   configureApplicationBranding();
@@ -2334,12 +2335,9 @@ app.whenReady().then(async () => {
   await refreshPluginAgentResources();
   await loadApplicationState();
   createWindow();
-});
+}
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
-});
-app.on("before-quit", () => {
+function stopApplicationCapabilities() {
   applicationQuitting = true;
   applicationModel[Symbol.dispose]();
   globalChatDriver[Symbol.dispose]();
@@ -2348,7 +2346,12 @@ app.on("before-quit", () => {
   terminals.disposeAll();
   for (const host of piHosts.values()) host.driver[Symbol.dispose]();
   piHosts.clear();
-  if (process.env.CAKE_ELECTRON_SMOKE === "1") setImmediate(() => app.exit(0));
+}
+
+launchMainApplication({
+  application: app,
+  start: startApplicationCapabilities,
+  stop: stopApplicationCapabilities,
 });
 
 if (process.env.CAKE_ELECTRON_SMOKE === "1") {
