@@ -543,11 +543,11 @@ export const windowViewStateSchema = z.object({
       z.object({
         sessionId: z.string().min(1).max(256),
         workspacePath: z.string().min(1).max(4_096),
+        lifecycle: z.enum(["staged", "saved-draft", "starting"]),
         draft: z.string().max(262_144),
         attachments: z.array(attachmentSchema).max(20).optional(),
         configuration: chatConfigurationSchema.optional(),
         name: z.string().min(1).max(512).optional(),
-        draftSession: z.boolean().optional(),
         resolved: z.boolean().optional(),
         stagedPrompt: z
           .object({

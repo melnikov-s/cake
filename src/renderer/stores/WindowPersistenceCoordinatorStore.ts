@@ -89,8 +89,13 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
       if (this.signal.aborted) return;
       this.props.sessions.replace(sessionIndex.sessions);
       this.props.projects.applyApplicationState(application);
-      for (const pending of state.pendingProjectSessions)
+      const listedSessionIds = new Set(sessionIndex.sessions.map((session) => session.id));
+      for (const pending of state.pendingProjectSessions) {
+        // A starting session may have reached Pi before Cake committed its next window-state
+        // snapshot. Once Pi lists it, the transcript-backed summary is authoritative.
+        if (pending.lifecycle === "starting" && listedSessionIds.has(pending.sessionId)) continue;
         this.props.registry.restorePendingNewSession(pending);
+      }
       this.props.globalChat().applyApplicationState(application);
       this.props.settings().applyApplicationState(application);
       this.props.projects.restoreRecentPaths(state.recentProjectPaths);

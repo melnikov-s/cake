@@ -1140,6 +1140,7 @@ describe("ProjectWorkbenchStore", () => {
         {
           sessionId: "unpersisted-session",
           workspacePath: "/project",
+          lifecycle: "staged" as const,
           draft: "restored temporary draft",
           attachments: [
             {
@@ -1186,7 +1187,7 @@ describe("ProjectWorkbenchStore", () => {
           workspacePath: "/project",
           draft: "",
           name: "First saved draft",
-          draftSession: true,
+          lifecycle: "saved-draft" as const,
           stagedPrompt: { text: "First prompt", attachments: [] },
         },
         {
@@ -1194,8 +1195,21 @@ describe("ProjectWorkbenchStore", () => {
           workspacePath: "/project",
           draft: "",
           name: "Second saved draft",
-          draftSession: true,
+          lifecycle: "saved-draft" as const,
           stagedPrompt: { text: "Second prompt", attachments: [] },
+        },
+        {
+          sessionId: "starting-1",
+          workspacePath: "/project",
+          lifecycle: "starting" as const,
+          draft: "",
+          name: "Activating session",
+        },
+        {
+          sessionId: "staged-1",
+          workspacePath: "/project",
+          lifecycle: "staged" as const,
+          draft: "Unsent prompt",
         },
       ],
     }));
@@ -1210,6 +1224,13 @@ describe("ProjectWorkbenchStore", () => {
     );
     expect(root.sessionRegistry.draftSessionPrompt("draft-1")?.text).toBe("First prompt");
     expect(root.sessionRegistry.draftSessionPrompt("draft-2")?.text).toBe("Second prompt");
+    expect(root.sessionCatalogStore.find("starting-1")).toMatchObject({
+      title: "Activating session",
+      draft: false,
+    });
+    expect(root.sessionRegistry.isDraftSession("starting-1")).toBe(false);
+    expect(root.sessionRegistry.stagedSession()?.sessionId).toBe("staged-1");
+    expect(root.sessionCatalogStore.find("staged-1")).toBeUndefined();
     root[Symbol.dispose]();
   });
 
@@ -2622,7 +2643,7 @@ describe("ProjectWorkbenchStore", () => {
         pendingProjectSessions: expect.arrayContaining([
           expect.objectContaining({
             sessionId: session.sessionId,
-            draftSession: true,
+            lifecycle: "saved-draft",
             stagedPrompt: expect.objectContaining({ text: "Investigate the flaky tests" }),
           }),
         ]),
@@ -2675,12 +2696,23 @@ describe("ProjectWorkbenchStore", () => {
         newSession: expect.objectContaining({ path: "/project-worktree" }),
       }),
     );
+
+    // Activation removes Cake's draft marker before Pi emits its first snapshot. A
+    // concurrent workspace refresh must retain that cataloged, starting identity.
+    root.sessionCatalogStore.applyWorkspace(
+      "/project-worktree",
+      "Project",
+      [],
+      store.sessionRegistry.retainedNewSessionIds("/project-worktree"),
+    );
+    expect(root.sessionCatalogStore.find(session.sessionId)).toMatchObject({ draft: false });
+
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(
       vi.mocked(desktop.client.saveWindowState).mock.calls.at(-1)?.[0].pendingProjectSessions,
     ).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ sessionId: session.sessionId, draftSession: false }),
+        expect.objectContaining({ sessionId: session.sessionId, lifecycle: "starting" }),
       ]),
     );
     root[Symbol.dispose]();

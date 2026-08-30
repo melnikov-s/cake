@@ -26,7 +26,7 @@ test("restores, edits, resolves, and activates a project draft session", async (
           workspacePath: project,
           draft: "",
           name: "Planned work",
-          draftSession: true,
+          lifecycle: "saved-draft",
           resolved: false,
           stagedPrompt: { text: "Original plan", attachments: [] },
         },

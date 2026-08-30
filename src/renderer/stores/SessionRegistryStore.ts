@@ -149,7 +149,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
 
   retainedNewSessionIds(workspacePath: string) {
     return [
-      ...[...this.temporarySessionIds].filter((sessionId) => this.isDraftSession(sessionId)),
+      ...[...this.temporarySessionIds].filter((sessionId) => !this.isStagedSession(sessionId)),
       ...this.unlistedNewSessionIds,
     ].filter((sessionId) => this.sessionWorkspacePaths.get(sessionId) === workspacePath);
   }
@@ -338,11 +338,15 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         {
           sessionId,
           workspacePath: session.workspacePath,
+          lifecycle: this.isDraftSession(sessionId)
+            ? ("saved-draft" as const)
+            : this.isStagedSession(sessionId)
+              ? ("staged" as const)
+              : ("starting" as const),
           draft: session.chatStore.draft,
           attachments: session.composerStore.stagedAttachments,
           configuration: this.pendingConfiguration(sessionId),
           name: this.pendingName(sessionId),
-          draftSession: this.isDraftSession(sessionId),
           resolved: this.draftSessionPrompt(sessionId)?.resolved ?? false,
           stagedPrompt: this.draftSessionPrompt(sessionId)
             ? {
@@ -362,21 +366,22 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     attachments?: Attachment[];
     configuration?: ChatConfiguration;
     name?: string;
-    draftSession?: boolean;
+    lifecycle: "staged" | "saved-draft" | "starting";
     resolved?: boolean;
     stagedPrompt?: { text: string; attachments: Attachment[] };
   }) {
-    const shouldRestoreAsDraft = state.draftSession || this.stagedSessionId !== undefined;
-    const workspacePath = state.draftSession
+    const isSavedDraft = state.lifecycle === "saved-draft";
+    const workspacePath = isSavedDraft
       ? (this.props.catalog?.projectOfManagedWorktree(state.workspacePath) ?? state.workspacePath)
       : state.workspacePath;
-    const session = shouldRestoreAsDraft
-      ? this.prepareNewSession(workspacePath, state.sessionId)
-      : this.prepareStagedSession(workspacePath, state.sessionId);
+    const session =
+      state.lifecycle === "staged"
+        ? this.prepareStagedSession(workspacePath, state.sessionId)
+        : this.prepareNewSession(workspacePath, state.sessionId);
     session.chatStore.setDraft(state.draft);
     session.composerStore.restoreStagedAttachments(state.attachments ?? []);
     if (state.configuration) this.setPendingConfiguration(state.sessionId, state.configuration);
-    if (shouldRestoreAsDraft) {
+    if (isSavedDraft) {
       const prompt = state.stagedPrompt ?? {
         text: state.draft,
         attachments: state.attachments ?? [],
@@ -387,13 +392,14 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
       };
       session.chatStore.setDraft("");
       session.composerStore.restoreStagedAttachments([]);
+    }
+    if (state.lifecycle !== "staged")
       this.props.catalog?.upsertPending(
         state.sessionId,
         workspacePath,
         this.props.projectName(workspacePath),
-        { draft: true, resolved: state.resolved },
+        { draft: isSavedDraft, resolved: state.resolved },
       );
-    }
     if (state.name) this.setPendingName(state.sessionId, state.name);
     return session;
   }

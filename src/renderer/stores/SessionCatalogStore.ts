@@ -3,7 +3,7 @@ import type { GlobalSessionSummary, SessionSnapshot } from "../../ipc/session-co
 import type { WorktreeRecord } from "../../ipc/worktree-contract";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 
-/** The single renderer-owned catalog of Pi session summaries. */
+/** The flat renderer projection of Pi summaries and cataloged Cake-owned pseudo-sessions. */
 export class SessionCatalogStore extends Store<Record<string, never>> {
   readonly sessions: GlobalSessionSummary[] = observable([]);
   private indexedById = new Map<string, GlobalSessionSummary>();
