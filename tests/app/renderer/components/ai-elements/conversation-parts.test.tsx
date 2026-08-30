@@ -7,6 +7,7 @@ import {
 } from "../../../../../src/renderer/components/ai-elements/composer";
 import { Markdown } from "../../../../../src/renderer/components/ai-elements/markdown";
 import { Reasoning } from "../../../../../src/renderer/components/ai-elements/reasoning";
+import { ShellCommand } from "../../../../../src/renderer/components/ai-elements/shell-command";
 import { Tool } from "../../../../../src/renderer/components/ai-elements/tool";
 import { WorkLogDiff } from "../../../../../src/renderer/components/ai-elements/work-log-diff";
 import type { DesktopClient } from "../../../../../src/renderer/desktop-client";
@@ -296,6 +297,41 @@ describe("Cake-owned conversation components", () => {
     expect(html).toContain("for file in *.ts; do");
     expect(html).toContain("language-bash");
     expect(html).not.toContain("&quot;command&quot;");
+  });
+
+  it("renders user shell commands in their own terminal-style surface", () => {
+    const html = renderToStaticMarkup(
+      <ShellCommand
+        part={{
+          id: "command-1",
+          kind: "command",
+          command: "printf hello",
+          output: "hello",
+          excludeFromContext: false,
+          state: "success",
+        }}
+      />,
+    );
+    expect(html).toContain('data-slot="shell-command"');
+    expect(html).toContain('title="! printf hello"');
+    expect(html).toContain("! printf hello");
+    expect(html).toContain("hello");
+    expect(html).not.toContain("Work log");
+
+    const hidden = renderToStaticMarkup(
+      <ShellCommand
+        part={{
+          id: "command-2",
+          kind: "command",
+          command: "printf hidden",
+          output: "hidden",
+          excludeFromContext: true,
+          state: "success",
+        }}
+      />,
+    );
+    expect(hidden).toContain("!! printf hidden");
+    expect(hidden).toContain("no context");
   });
 
   it("renders read results as highlighted file contents instead of JSON arguments", () => {

@@ -108,6 +108,7 @@ import {
   reviewRunEntrySchema,
   reviewRunEntryType,
   reviewRunPart,
+  shellCommandPart,
   textFromContent,
   userMessagePresentationEntryType,
   toolArtifactId,
@@ -1941,14 +1942,13 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           options.onEvent({
             type: "part-updated",
             sessionId: cakeSessionId,
-            part: {
+            part: shellCommandPart({
               id: partId,
-              kind: "tool",
-              name: excludeFromContext ? "bash · hidden from context" : "bash",
-              input: shellCommand,
+              command: shellCommand,
               output: output.slice(-500_000),
+              excludeFromContext,
               state,
-            },
+            }),
           });
         project("running");
         const result = await session.executeBash(

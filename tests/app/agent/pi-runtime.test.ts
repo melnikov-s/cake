@@ -133,14 +133,20 @@ describe("Pi 0.84.0 foundation contract", () => {
     await runtime.prompt("!!printf hidden", "prompt", []);
 
     const snapshot = await runtime.snapshot();
-    const bashParts = snapshot.parts.filter((part) => part.kind === "tool");
+    const bashParts = snapshot.parts.filter((part) => part.kind === "command");
     expect(bashParts).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: "bash", input: "printf included", output: "included" }),
         expect.objectContaining({
-          name: "bash · hidden from context",
-          input: "printf hidden",
+          kind: "command",
+          command: "printf included",
+          output: "included",
+          excludeFromContext: false,
+        }),
+        expect.objectContaining({
+          kind: "command",
+          command: "printf hidden",
           output: "hidden",
+          excludeFromContext: true,
         }),
       ]),
     );
@@ -148,8 +154,8 @@ describe("Pi 0.84.0 foundation contract", () => {
       events.some(
         (event) =>
           event.type === "part-updated" &&
-          event.part.kind === "tool" &&
-          event.part.input === "printf included" &&
+          event.part.kind === "command" &&
+          event.part.command === "printf included" &&
           event.part.state === "running",
       ),
     ).toBe(true);

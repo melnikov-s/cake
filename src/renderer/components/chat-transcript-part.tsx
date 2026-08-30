@@ -1,6 +1,7 @@
 import { observer } from "r-state-tree/react";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { Reasoning } from "@/components/ai-elements/reasoning";
+import { ShellCommand } from "@/components/ai-elements/shell-command";
 import { Source } from "@/components/ai-elements/source";
 import { Tool, ToolRunTimer } from "@/components/ai-elements/tool";
 import { AnnotationSummary } from "@/components/annotation-summary";
@@ -95,6 +96,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         </Markdown>
       </Reasoning>
     );
+  if (part.kind === "command") return <ShellCommand part={part} />;
   if (part.kind === "tool") {
     const record = part.artifactId
       ? behavior.artifacts?.records.find((candidate) => candidate.artifact.id === part.artifactId)

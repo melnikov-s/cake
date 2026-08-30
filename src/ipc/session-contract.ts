@@ -220,6 +220,15 @@ export const uiPartSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     ...partBase,
+    kind: z.literal("command"),
+    /** User-invoked `!`/`!!` shell command. */
+    command: boundedText,
+    output: boundedText,
+    excludeFromContext: z.boolean(),
+    state: z.enum(["running", "success", "error"]),
+  }),
+  z.object({
+    ...partBase,
     kind: z.literal("tool"),
     name: ipcProjectionString(256),
     /** Inner Cake operation discriminator when the outer model-visible tool is `cake`. */

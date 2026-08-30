@@ -9,7 +9,7 @@ import {
 type TextRole = Extract<UiPart, { kind: "text" }>["role"];
 type TextStatus = Extract<UiPart, { kind: "text" }>["status"];
 type PartStatus = Extract<UiPart, { kind: "text" | "reasoning" | "review-run" }>["status"];
-type ToolState = Extract<UiPart, { kind: "tool" }>["state"];
+type PartState = Extract<UiPart, { kind: "tool" | "command" }>["state"];
 type AttachmentKind = Extract<UiPart, { kind: "attachment" }>["attachmentKind"];
 type NoticeTone = Extract<UiPart, { kind: "notice" }>["tone"];
 type DeliveryState = Extract<UiPart, { kind: "text" }>["deliveryState"];
@@ -27,13 +27,14 @@ export class Message extends Model {
   renderAs: TextRenderAs | undefined;
   name: string | undefined;
   command: string | undefined;
+  excludeFromContext: boolean | undefined;
   input: string | undefined;
   output: string | undefined;
   outputContent: ToolOutputContent[] | undefined;
   artifactId: string | undefined;
   filePath: string | undefined;
   diff: string | undefined;
-  state: ToolState | undefined;
+  state: PartState | undefined;
   title: string | undefined;
   url: string | undefined;
   mediaType: string | undefined;
@@ -69,6 +70,12 @@ export class Message extends Model {
       case "reasoning":
         this.text = part.text;
         this.status = part.status;
+        return true;
+      case "command":
+        this.command = part.command;
+        this.output = part.output;
+        this.excludeFromContext = part.excludeFromContext;
+        this.state = part.state;
         return true;
       case "tool":
         this.name = part.name;
@@ -137,6 +144,16 @@ export class Message extends Model {
           text: this.text!,
           status: this.status,
         });
+      case "command":
+        return {
+          id: this.id,
+          kind: this.kind,
+          command: this.command!,
+          output: this.output!,
+          excludeFromContext: this.excludeFromContext!,
+          // SAFETY: snapshots and update() keep command state aligned with the part discriminant.
+          state: this.state as Extract<UiPart, { kind: "command" }>["state"],
+        };
       case "tool":
         return {
           id: this.id,

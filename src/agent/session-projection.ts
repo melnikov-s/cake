@@ -59,6 +59,16 @@ export function formatToolInput(toolName: string, args: unknown) {
   return formatUnknown(args);
 }
 
+export function shellCommandPart(input: {
+  id: string;
+  command: string;
+  output: string;
+  excludeFromContext: boolean;
+  state: Extract<UiPart, { kind: "command" }>["state"];
+}): Extract<UiPart, { kind: "command" }> {
+  return { kind: "command", ...input };
+}
+
 function parseToolOutputContent(content: unknown) {
   const parsed = toolOutputContentArraySchema.safeParse(content);
   return parsed.success && parsed.data.length > 0 ? parsed.data : undefined;
@@ -379,17 +389,13 @@ function partsFromMessage(
     const exitCode = Reflect.get(message, "exitCode");
     const cancelled = Reflect.get(message, "cancelled") === true;
     return [
-      {
+      shellCommandPart({
         id: `${baseId}-bash`,
-        kind: "tool",
-        name:
-          Reflect.get(message, "excludeFromContext") === true
-            ? "bash · hidden from context"
-            : "bash",
-        input: String(Reflect.get(message, "command") ?? ""),
+        command: String(Reflect.get(message, "command") ?? ""),
         output: String(Reflect.get(message, "output") ?? ""),
+        excludeFromContext: Reflect.get(message, "excludeFromContext") === true,
         state: cancelled || (typeof exitCode === "number" && exitCode !== 0) ? "error" : "success",
-      },
+      }),
     ];
   }
 

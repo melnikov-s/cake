@@ -42,6 +42,7 @@ import {
 export {
   captureMessageSelection,
   chatWorkIsActive,
+  groupTranscriptParts,
   type ChatTranscriptBehavior,
   type TranscriptSelectionCapture,
 } from "./chat-transcript-parts";
@@ -101,6 +102,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     (part) =>
       (part.kind === "text" && part.role === "user") ||
       part.kind === "skill" ||
+      part.kind === "command" ||
       part.kind === "annotation" ||
       (part.kind === "attachment" && part.attachmentKind === "image"),
   );

@@ -57,6 +57,7 @@ import {
   captureMessageSelection,
   chatWorkIsActive,
   ChatTranscript,
+  groupTranscriptParts,
   type ChatTranscriptBehavior,
 } from "../../../src/renderer/components/chat-transcript";
 import { MessageCommentsStore } from "../../../src/renderer/stores/MessageCommentsStore";
@@ -605,6 +606,40 @@ describe("Transcript scrolling", () => {
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([], true)} />));
 
     expect(container.querySelector('[role="status"]')).not.toBeNull();
+  });
+
+  it("keeps direct shell commands out of work logs and assistant loading", () => {
+    const command: UiPart = {
+      id: "command-1",
+      kind: "command",
+      command: "printf hello",
+      output: "hello",
+      excludeFromContext: false,
+      state: "success",
+    };
+    const tool: UiPart = {
+      id: "tool-1",
+      kind: "tool",
+      name: "read",
+      input: "README.md",
+      state: "success",
+    };
+
+    expect(groupTranscriptParts([command, tool])).toEqual([
+      command,
+      { kind: "activity-group", id: "activity-tool-1", parts: [tool] },
+    ]);
+    expect(chatWorkIsActive([command], false, true)).toBe(false);
+
+    act(() =>
+      root.render(
+        <Transcript parts={[command]} sessionId="session-1" isStreaming={false} isSubmitting />,
+      ),
+    );
+
+    expect(container.querySelector('[data-slot="shell-command"]')).not.toBeNull();
+    expect(container.querySelector('[data-slot="activity-group"]')).toBeNull();
+    expect(container.querySelector('[data-slot="loading-state"]')).toBeNull();
   });
 
   it("keeps the working indicator in the user message while tool results are in flight", () => {

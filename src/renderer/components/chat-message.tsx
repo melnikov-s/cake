@@ -38,6 +38,9 @@ export function chatWorkIsActive(
   if (waitingForUser) return false;
   if (streaming) return true;
   if (!submitting) return false;
+  // Direct !/!! commands stream their own result surface and never start a
+  // model turn, so do not add the generic assistant loading indicator.
+  if (parts.at(-1)?.kind === "command") return false;
   const latestUserIndex = parts.findLastIndex(
     (part) =>
       (part.kind === "text" && part.role === "user") ||
