@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { ElectronRpcTransport } from "./transport/ElectronRpcTransport";
 import { artifactRecordSchema } from "./artifact-contract";
-import { reviewAnchorSchema, reviewThreadSchema } from "./review-contract";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { sourceLocationSchema } from "./source-location";
 import { editorAnnotationSnapshotSchema } from "./editor-annotation";
@@ -22,7 +21,7 @@ import {
   inlineWidgetSourceSchema,
   repairedInlineWidgetSchema,
 } from "./inline-widget-contract";
-import { jsonObjectSchema, jsonValueSchema } from "./json-contract";
+import { jsonValueSchema } from "./json-contract";
 import {
   pluginAgentOpenOptionsSchema,
   pluginAgentSnapshotSchema,
@@ -37,10 +36,7 @@ import {
   fileSuggestionSchema,
   chatConfigurationSchema,
   piSettingUpdateSchema,
-  sessionPreviewSchema,
   sessionSnapshotSchema,
-  sessionSummarySchema,
-  sessionUsageSchema,
   thinkingLevelSchema,
   utilityModelSchema,
   uiPartSchema,
@@ -90,39 +86,6 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     handleId: z.uuid(),
   }),
   z.object({
-    type: z.literal("global-chat-snapshot"),
-    requestId: z.uuid().optional(),
-    snapshot: sessionSnapshotSchema,
-  }),
-  z.object({
-    type: z.literal("global-chat-part-updated"),
-    sessionId: z.string().min(1).max(256),
-    part: uiPartSchema,
-  }),
-  z.object({
-    type: z.literal("global-chat-part-removed"),
-    sessionId: z.string().min(1).max(256),
-    partId: z.string().max(256),
-  }),
-  z.object({
-    type: z.literal("global-chat-streaming"),
-    sessionId: z.string().min(1).max(256),
-    streaming: z.boolean(),
-  }),
-  z.object({ type: z.literal("global-chat-operation-completed"), requestId: z.uuid() }),
-  z.object({
-    type: z.literal("global-chat-operation-failed"),
-    requestId: z.uuid(),
-    message: ipcProjectionString(2_048),
-    /** Full stack trace (including cause chain) for the underlying failure. */
-    details: ipcProjectionString(16_384).optional(),
-  }),
-  z.object({
-    type: z.literal("global-chat-control-request"),
-    controlRequestId: z.uuid(),
-    invocation: z.object({ name: z.string().min(1).max(256), arguments: jsonValueSchema }),
-  }),
-  z.object({
     type: z.literal("extension-ui"),
     sessionId: z.string().max(256),
     event: extensionUiEventSchema,
@@ -140,34 +103,6 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     requestId: z.uuid(),
     artifactRequestId: z.uuid(),
     record: artifactRecordSchema,
-  }),
-  z.object({
-    type: z.literal("review-threads-snapshot"),
-    workspacePath: z.string().max(4_096),
-    sessionId: z.string().max(256),
-    threads: ipcProjectionArray(reviewThreadSchema, 10_000),
-  }),
-  z.object({ type: z.literal("review-thread-updated"), thread: reviewThreadSchema }),
-  z.object({
-    type: z.literal("review-thread-streaming"),
-    workspacePath: z.string().max(4_096),
-    sessionId: z.string().max(256),
-    threadId: z.string().max(256),
-    streaming: z.boolean(),
-  }),
-  z.object({
-    type: z.literal("review-thread-part-updated"),
-    workspacePath: z.string().max(4_096),
-    sessionId: z.string().max(256),
-    threadId: z.string().max(256),
-    part: uiPartSchema,
-  }),
-  z.object({
-    type: z.literal("review-thread-usage-updated"),
-    workspacePath: z.string().max(4_096),
-    sessionId: z.string().max(256),
-    threadId: z.string().max(256),
-    usage: sessionUsageSchema,
   }),
   z.object({
     type: z.literal("ui-request"),
@@ -253,27 +188,6 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
     location: sourceLocationSchema,
   }),
 ]);
-
-const cakeControlToolSchema = z.object({
-  command: z.string().min(1).max(256),
-  topic: z.string().min(1).max(256),
-  summary: z.string().min(1).max(2_048),
-  guidance: z.array(z.string().max(4_096)).max(50).optional(),
-  parameters: jsonObjectSchema,
-  examples: z
-    .array(
-      z.object({
-        input: jsonObjectSchema.optional(),
-        description: z.string().max(2_048).optional(),
-      }),
-    )
-    .max(20)
-    .optional(),
-  result: z.string().max(4_096).optional(),
-  limitations: z.array(z.string().max(4_096)).max(50).optional(),
-});
-
-const cakeControlToolsSchema = z.array(cakeControlToolSchema).min(1).max(50);
 
 export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("choose-project") }),
@@ -544,116 +458,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("load-window-state") }),
   z.object({ type: z.literal("save-window-state"), state: windowViewStateSchema }),
   z.object({ type: z.literal("set-utility-model"), model: utilityModelSchema.optional() }),
-  z.object({ type: z.literal("list-cake-chat-sessions") }),
-  z.object({ type: z.literal("load-cake-chat-session"), sessionId: z.string().min(1).max(256) }),
-  z.object({
-    type: z.literal("open-global-chat"),
-    requestId: z.uuid(),
-    tools: cakeControlToolsSchema,
-    sessionId: z.string().min(1).max(256).optional(),
-  }),
-  z
-    .object({
-      type: z.literal("prompt-global-chat"),
-      requestId: z.uuid(),
-      sessionId: z.string().min(1).max(256),
-      text: z.string().max(262_144),
-      renderUserMessageAsMarkdown: z.boolean().default(false),
-      attachments: z.array(attachmentSchema).max(20),
-      newSession: z
-        .object({
-          tools: cakeControlToolsSchema,
-          configuration: chatConfigurationSchema.optional(),
-          name: z.string().min(1).max(512).optional(),
-        })
-        .optional(),
-    })
-    .refine((request) => Boolean(request.text.trim() || request.attachments.length), {
-      message: "A global-chat prompt requires text or an attachment",
-    }),
-  z.object({
-    type: z.literal("edit-global-chat-message"),
-    requestId: z.uuid(),
-    sessionId: z.string().min(1).max(256),
-    entryId: z.string().min(1).max(256),
-    text: z.string().max(262_144),
-    attachments: z.array(attachmentSchema).max(20),
-    renderUserMessageAsMarkdown: z.boolean(),
-  }),
-  z.object({
-    type: z.literal("abort-global-chat"),
-    requestId: z.uuid(),
-    sessionId: z.string().min(1).max(256),
-  }),
-  z.object({
-    type: z.literal("compact-global-chat"),
-    requestId: z.uuid(),
-    sessionId: z.string().min(1).max(256),
-    instructions: z.string().max(262_144).optional(),
-  }),
-  z.object({
-    type: z.literal("set-global-chat-model"),
-    requestId: z.uuid(),
-    sessionId: z.string().min(1).max(256),
-    provider: z.string().min(1).max(256),
-    modelId: z.string().min(1).max(512),
-  }),
-  z.object({
-    type: z.literal("set-global-chat-thinking"),
-    requestId: z.uuid(),
-    sessionId: z.string().min(1).max(256),
-    level: thinkingLevelSchema,
-  }),
-  z.object({
-    type: z.literal("set-global-chat-configuration"),
-    requestId: z.uuid(),
-    sessionId: z.string().min(1).max(256),
-    configuration: chatConfigurationSchema,
-  }),
-  z.object({
-    type: z.literal("set-global-chat-fast-mode"),
-    requestId: z.uuid(),
-    sessionId: z.string().min(1).max(256),
-    enabled: z.boolean(),
-  }),
-  z.object({
-    type: z.literal("rename-global-chat"),
-    requestId: z.uuid(),
-    sessionId: z.string().min(1).max(256),
-    name: z.string().min(1).max(512),
-  }),
-  z.object({
-    type: z.literal("handoff-global-chat"),
-    requestId: z.uuid(),
-    sessionId: z.string().min(1).max(256),
-    entryId: z.string().max(256),
-    prompt: z.string().max(262_144).optional(),
-    resolveSource: z.boolean().default(false),
-  }),
-  z.object({
-    type: z.literal("respond-global-chat-control"),
-    controlRequestId: z.uuid(),
-    result: jsonValueSchema,
-  }),
-  z.object({ type: z.literal("list-review-threads"), sessionId: z.string().min(1).max(256) }),
-  z.object({
-    type: z.literal("create-review-thread"),
-    sessionId: z.string().min(1).max(256),
-    anchor: reviewAnchorSchema,
-    body: z.string().min(1).max(262_144),
-  }),
-  z.object({
-    type: z.literal("reply-review-thread"),
-    sessionId: z.string().min(1).max(256),
-    threadId: z.string().min(1).max(256),
-    body: z.string().min(1).max(262_144),
-  }),
-  z.object({
-    type: z.literal("resolve-review-thread"),
-    sessionId: z.string().min(1).max(256),
-    threadId: z.string().min(1).max(256),
-    resolved: z.boolean(),
-  }),
   z.object({
     type: z.literal("register-project"),
     path: z.string().max(4_096),
@@ -674,18 +478,9 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     sessionId: z.string().min(1).max(256),
   }),
   z.object({
-    type: z.literal("delete-cake-chat-session"),
-    sessionId: z.string().min(1).max(256),
-  }),
-  z.object({
     type: z.literal("set-session-unread"),
     sessionId: z.string().min(1).max(256),
     unread: z.boolean(),
-  }),
-  z.object({
-    type: z.literal("resolve-cake-chat-session"),
-    sessionId: z.string().max(256),
-    resolved: z.boolean(),
   }),
   z.object({ type: z.literal("restart-pi"), path: z.string().max(4_096) }),
   z.object({
@@ -745,14 +540,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     text: z.string().max(262_144),
     attachments: z.array(attachmentSchema).max(20),
     renderUserMessageAsMarkdown: z.boolean(),
-  }),
-  z.object({
-    type: z.literal("submit-review-thread"),
-    requestId: z.uuid(),
-    sessionId: z.string().max(256),
-    threadId: z.string().min(1).max(256),
-    model: z.object({ provider: z.string().max(256), id: z.string().max(512) }).optional(),
-    thinkingLevel: thinkingLevelSchema.optional(),
   }),
   z.object({
     type: z.literal("compact-session"),
@@ -947,16 +734,6 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("inline-widget-repaired"), widget: repairedInlineWidgetSchema }),
   z.object({ type: z.literal("window-state-loaded"), state: windowViewStateSchema }),
   z.object({ type: z.literal("window-state-saved") }),
-  z.object({
-    type: z.literal("cake-chat-sessions-listed"),
-    sessions: ipcProjectionArray(sessionSummarySchema, 10_000),
-  }),
-  z.object({ type: z.literal("session-loaded"), session: sessionPreviewSchema.optional() }),
-  z.object({
-    type: z.literal("review-threads-loaded"),
-    threads: ipcProjectionArray(reviewThreadSchema, 10_000),
-  }),
-  z.object({ type: z.literal("review-thread-saved"), thread: reviewThreadSchema }),
   z.object({ type: z.literal("application-state-updated"), state: applicationStateSchema }),
   z.object({
     type: z.literal("worktree-created"),

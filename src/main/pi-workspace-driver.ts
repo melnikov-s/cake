@@ -12,7 +12,6 @@ import { forkWorkspaceSession, loadPiChangelog } from "../services/pi/runtime/se
 import {
   runInlineWidgetGeneration,
   runInlineWidgetRepair,
-  runReviewTurn,
   type InlineWidgetGenerationRequest,
 } from "../services/pi/runtime/sidecar-runtime";
 import {
@@ -39,7 +38,6 @@ import {
   type ArtifactRecord,
   type CakeArtifactV1,
 } from "../ipc/artifact-contract";
-import { REVIEW_TEXT_MAX_LENGTH } from "../ipc/review-contract";
 import type { ArtifactRepository } from "./artifact-repository";
 import type { ReviewRepository } from "./review-repository";
 import { compileInlineWidget, extractRepairedWidget } from "./inline-widget-service";
@@ -48,11 +46,7 @@ type ArtifactRepositoryPort = Pick<
   ArtifactRepository,
   "upsert" | "get" | "listSession" | "linkSession"
 >;
-type ReviewRepositoryPort = Pick<
-  ReviewRepository,
-  "claimPending" | "completeRun" | "failRun" | "recoverRunning" | "agentSessionDirectory"
-> &
-  Partial<Pick<ReviewRepository, "reviewContextPath">>;
+type ReviewRepositoryPort = Partial<Pick<ReviewRepository, "reviewContextPath">>;
 
 const MAX_LIVE_PRIVATE_AGENT_RUNTIMES = 32;
 const MAX_SUBAGENT_HANDLES_PER_PARENT = 8;
@@ -64,7 +58,6 @@ type PiCommandType =
   | "navigate-session"
   | "get-changelog"
   | "edit-session-message"
-  | "submit-review-thread"
   | "compact-session"
   | "set-model"
   | "set-chat-configuration"
@@ -150,7 +143,6 @@ export interface PiWorkspaceDriverOptions {
   pluginAgentSessionDir?: string;
   emit(event: DesktopEvent): void;
   createRuntime?: typeof createCakeRuntime;
-  runReviewTurn?: typeof runReviewTurn;
   runWidgetGeneration?: typeof runInlineWidgetGeneration;
   runWidgetRepair?: typeof runInlineWidgetRepair;
   compileWidget?: typeof compileInlineWidget;
@@ -186,7 +178,6 @@ export class PiWorkspaceDriver {
   private readonly widgetSessionDir: string;
   private readonly pluginAgentSessionDir: string;
   private readonly createRuntimeImpl: typeof createCakeRuntime;
-  private readonly runReviewTurnImpl: typeof runReviewTurn;
   private readonly runWidgetGeneration: typeof runInlineWidgetGeneration;
   private readonly runWidgetRepair: typeof runInlineWidgetRepair;
   private readonly compileWidget: typeof compileInlineWidget;
@@ -222,8 +213,6 @@ export class PiWorkspaceDriver {
     operationId: string;
     sessionId?: string;
   }>();
-  private readonly activeReviewRuns = new Map<string, AbortController>();
-  private readonly reviewRecovery: Promise<void>;
   private trusted = false;
   private disposed = false;
 
@@ -238,7 +227,6 @@ export class PiWorkspaceDriver {
       options.pluginAgentSessionDir ?? resolve(options.sessionDir, "..", "plugin-agent-sessions");
     this.emitEvent = options.emit;
     this.createRuntimeImpl = options.createRuntime ?? createCakeRuntime;
-    this.runReviewTurnImpl = options.runReviewTurn ?? runReviewTurn;
     this.runWidgetGeneration = options.runWidgetGeneration ?? runInlineWidgetGeneration;
     this.runWidgetRepair = options.runWidgetRepair ?? runInlineWidgetRepair;
     this.compileWidget = options.compileWidget ?? compileInlineWidget;
@@ -300,23 +288,7 @@ export class PiWorkspaceDriver {
         return undefined;
       },
     };
-    this.reviewRepository = options.reviewRepository ?? {
-      async claimPending() {
-        return undefined;
-      },
-      async completeRun() {
-        throw new Error("Review persistence is unavailable");
-      },
-      async failRun() {
-        throw new Error("Review persistence is unavailable");
-      },
-      async recoverRunning() {},
-      agentSessionDirectory() {
-        throw new Error("Review persistence is unavailable");
-      },
-    };
-    this.reviewRecovery = this.reviewRepository.recoverRunning(this.workspacePath);
-    void this.reviewRecovery.catch(() => undefined);
+    this.reviewRepository = options.reviewRepository ?? {};
   }
 
   dispatch(command: PiWorkspaceCommand) {
@@ -348,10 +320,6 @@ export class PiWorkspaceDriver {
         },
         command.sessionId,
       );
-      return;
-    }
-    if (command.type === "submit-review-thread") {
-      void this.run(command.requestId, () => this.runReviewThread(command), command.sessionId);
       return;
     }
     void this.run(
@@ -442,8 +410,6 @@ export class PiWorkspaceDriver {
   [Symbol.dispose]() {
     if (this.disposed) return;
     this.disposed = true;
-    for (const controller of this.activeReviewRuns.values()) controller.abort();
-    this.activeReviewRuns.clear();
     for (const pending of this.pendingUi.values()) pending.settle(undefined);
     this.pendingUi.clear();
     this.cancelPendingRequests();
@@ -1704,113 +1670,6 @@ export class PiWorkspaceDriver {
     }, SUBAGENT_RESULT_TTL_MS);
     handle.cleanupTimer.unref?.();
   }
-
-  private async runReviewThread(
-    command: Extract<PiWorkspaceCommand, { type: "submit-review-thread" }>,
-  ) {
-    const parentRuntime = this.runtimeFor(command.sessionId);
-    await this.reviewRecovery;
-    const runId = crypto.randomUUID();
-    const thread = await this.reviewRepository.claimPending(
-      this.workspacePath,
-      command.sessionId,
-      command.threadId,
-      runId,
-    );
-    if (!thread) return;
-    const controller = new AbortController();
-    let persistedFailure: string | undefined;
-    this.activeReviewRuns.set(runId, controller);
-    this.emit({
-      type: "review-thread-streaming",
-      workspacePath: this.workspacePath,
-      sessionId: command.sessionId,
-      threadId: command.threadId,
-      streaming: true,
-    });
-    try {
-      const agent = await this.runReviewTurnImpl({
-        cwd: this.workspacePath,
-        agentDir: this.agentDir,
-        trusted: this.trusted,
-        thread,
-        sessionDir: this.reviewRepository.agentSessionDirectory(
-          this.workspacePath,
-          command.sessionId,
-          command.threadId,
-        ),
-        parentSessionRoot: this.sessionDir,
-        signal: controller.signal,
-        model: command.model,
-        thinkingLevel: command.thinkingLevel,
-        parent: parentRuntime.getReviewParentContext?.(),
-        onEvent: (event) =>
-          this.emit(
-            event.type === "part-updated"
-              ? {
-                  type: "review-thread-part-updated",
-                  workspacePath: this.workspacePath,
-                  sessionId: command.sessionId,
-                  threadId: command.threadId,
-                  part: event.part,
-                }
-              : {
-                  type: "review-thread-usage-updated",
-                  workspacePath: this.workspacePath,
-                  sessionId: command.sessionId,
-                  threadId: command.threadId,
-                  usage: event.usage,
-                },
-          ),
-      });
-      const updated = agent.error
-        ? await this.reviewRepository.failRun(
-            this.workspacePath,
-            command.sessionId,
-            command.threadId,
-            runId,
-            agent.error,
-          )
-        : await this.reviewRepository.completeRun(
-            this.workspacePath,
-            command.sessionId,
-            command.threadId,
-            runId,
-            agent,
-          );
-      if (updated) this.emit({ type: "review-thread-updated", thread: updated });
-      if (agent.error) {
-        persistedFailure = agent.error;
-        throw new Error(agent.error);
-      }
-    } catch (error) {
-      const message = errorMessage(error);
-      if (message !== persistedFailure) {
-        const updated = await this.reviewRepository.failRun(
-          this.workspacePath,
-          command.sessionId,
-          command.threadId,
-          runId,
-          message,
-        );
-        if (updated) this.emit({ type: "review-thread-updated", thread: updated });
-      }
-      throw error;
-    } finally {
-      this.activeReviewRuns.delete(runId);
-      this.emit({
-        type: "review-thread-streaming",
-        workspacePath: this.workspacePath,
-        sessionId: command.sessionId,
-        threadId: command.threadId,
-        streaming: false,
-      });
-    }
-  }
-}
-
-function errorMessage(error: unknown) {
-  return (error instanceof Error ? error.message : String(error)).slice(0, REVIEW_TEXT_MAX_LENGTH);
 }
 
 /** Full message plus stack and cause chain so failures stay diagnosable across IPC. */

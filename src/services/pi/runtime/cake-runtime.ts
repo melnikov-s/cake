@@ -339,7 +339,7 @@ export interface CakeRuntimeOptions {
   onEvent(event: CakeRuntimeEvent): void;
 }
 
-export interface GlobalControlTool {
+interface GlobalControlTool {
   command: string;
   topic: string;
   summary: string;

@@ -46,11 +46,7 @@ function createBridge() {
       return { type: "session-context-menu-closed", action: "rename" };
     if (input.type === "show-project-context-menu")
       return { type: "project-context-menu-closed", action: "remove-project" };
-    if (
-      input.type === "set-session-unread" ||
-      input.type === "delete-session" ||
-      input.type === "delete-cake-chat-session"
-    )
+    if (input.type === "set-session-unread" || input.type === "delete-session")
       return {
         type: "application-state-updated",
         state: {
@@ -80,8 +76,6 @@ function createBridge() {
           pendingProjectSessions: [],
         },
       };
-    if (input.type === "list-cake-chat-sessions")
-      return { type: "cake-chat-sessions-listed", sessions: [] };
     if (
       input.type === "list-plugins" ||
       input.type === "set-plugin-enabled" ||
@@ -121,6 +115,43 @@ function createBridge() {
       },
       models: {
         list: async () => [],
+      },
+      cakeChats: {
+        list: vi.fn(async () => []),
+        inspect: vi.fn(async (sessionId: string) => ({
+          sessionId,
+          sessionFile: `/cake/${sessionId}.jsonl`,
+          parts: [],
+          resolved: false,
+        })),
+        open: vi.fn(async (target: { sessionId: string }) => ({
+          ...conversationSnapshot,
+          sessionId: target.sessionId,
+          sessionFile: `/cake/${target.sessionId}.jsonl`,
+        })),
+        observe: vi.fn(() => () => undefined),
+        prompt: vi.fn(async () => TurnId.make(crypto.randomUUID())),
+        abort: vi.fn(async () => undefined),
+        compact: vi.fn(async () => undefined),
+        editMessage: vi.fn(async () => undefined),
+        applyConfiguration: vi.fn(async () => undefined),
+        setModel: vi.fn(async () => undefined),
+        setThinkingLevel: vi.fn(async () => undefined),
+        setFastMode: vi.fn(async () => undefined),
+        rename: vi.fn(async () => undefined),
+        handoff: vi.fn(async () => ({ sessionId: "cake-handoff" })),
+        resolve: vi.fn(async () => undefined),
+        restore: vi.fn(async () => undefined),
+        deleteResolved: vi.fn(async () => undefined),
+        respondControl: vi.fn(async () => undefined),
+      },
+      discussionSessions: {
+        list: vi.fn(async () => []),
+        create: vi.fn(),
+        observe: vi.fn(() => () => undefined),
+        prompt: vi.fn(),
+        abort: vi.fn(async () => undefined),
+        setResolved: vi.fn(),
       },
       projectSessions: {
         list: vi.fn(async () => []),
@@ -239,9 +270,9 @@ describe("desktop client", () => {
     await client.deleteSession("session");
     expect(desktop.request).toHaveBeenCalledWith({ type: "delete-session", sessionId: "session" });
     await client.deleteCakeChatSession("cake-chat");
-    expect(desktop.request).toHaveBeenCalledWith({
-      type: "delete-cake-chat-session",
+    expect(desktop.rpcClient.cakeChats.deleteResolved).toHaveBeenCalledWith({
       sessionId: "cake-chat",
+      tools: [],
     });
     await client.setSessionUnread("session", true);
     expect(desktop.request).toHaveBeenCalledWith({
@@ -341,47 +372,27 @@ describe("desktop client", () => {
       requestId: operationId,
       sessionId: "session",
     });
-    expect(desktop.request).toHaveBeenCalledWith({
-      type: "prompt-global-chat",
-      requestId: operationId,
-      sessionId: "cake-chat",
-      text: "",
-      renderUserMessageAsMarkdown: true,
-      attachments: [
-        { kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" },
-      ],
-      newSession: {
-        tools: [
-          {
-            command: "app.state",
-            topic: "app",
-            summary: "Read application state",
-            parameters: { type: "object", properties: {} },
-          },
+    expect(desktop.rpcClient.cakeChats.prompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "cake-chat",
+        text: "",
+        attachments: [
+          { kind: "image", name: "clipboard.png", mimeType: "image/png", data: "aW1hZ2U=" },
         ],
-        configuration: {
-          provider: "openai",
-          modelId: "gpt-test",
-          thinkingLevel: "high",
-          fastMode: false,
-        },
-        name: "Pending title",
-      },
-    });
-    expect(desktop.request).toHaveBeenCalledWith({
-      type: "rename-global-chat",
-      requestId: operationId,
-      sessionId: "cake-chat",
-      name: "Renamed",
-    });
-    expect(desktop.request).toHaveBeenCalledWith({
-      type: "handoff-global-chat",
-      requestId: operationId,
-      sessionId: "cake-chat",
-      entryId: "assistant-entry",
-      prompt: "Continue here",
-      resolveSource: true,
-    });
+        newSession: expect.objectContaining({ name: "Pending title" }),
+      }),
+    );
+    expect(desktop.rpcClient.cakeChats.rename).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "cake-chat", name: "Renamed" }),
+    );
+    expect(desktop.rpcClient.cakeChats.handoff).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "cake-chat",
+        entryId: "assistant-entry",
+        prompt: "Continue here",
+        resolveSource: true,
+      }),
+    );
     expect(desktop.rpcClient.projectSessions.inspect).toHaveBeenCalledWith({
       sessionId: "session",
     });
@@ -404,12 +415,12 @@ describe("desktop client", () => {
       sessionId: "session",
       instructions: undefined,
     });
-    expect(desktop.request).toHaveBeenCalledWith({
-      type: "compact-global-chat",
-      requestId: operationId,
-      sessionId: "cake-chat",
-      instructions: "Keep the migration notes",
-    });
+    expect(desktop.rpcClient.cakeChats.compact).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "cake-chat",
+        instructions: "Keep the migration notes",
+      }),
+    );
     expect(desktop.request).toHaveBeenCalledWith({
       type: "suggest-files",
       workspacePath: "/project",

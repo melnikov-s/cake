@@ -22,6 +22,25 @@ import {
 } from "../../domain/project-session-data";
 import { ConversationSnapshot, TurnId } from "../../domain/conversation-data";
 import {
+  CakeChatConfiguration,
+  CakeChatError,
+  CakeChatPreview,
+  CakeChatPromptInput,
+  CakeChatSummary,
+  CakeChatTarget,
+  CakeChatUpdate,
+} from "../../domain/cake-chat-data";
+import {
+  DiscussionSessionAcceptedTurn,
+  DiscussionSessionCreateInput,
+  DiscussionSessionError,
+  DiscussionSessionPromptInput,
+  DiscussionSessionTarget,
+  DiscussionSessionUpdate,
+  DiscussionThread,
+} from "../../domain/discussion-session-data";
+import { ProjectCatalogUpdate, SessionCatalogUpdate } from "../../domain/catalog-data";
+import {
   ModelSelection,
   PiModel,
   PiModelCatalogError,
@@ -71,6 +90,10 @@ export const CakeRpc = RpcGroup.make(
   Rpc.make("application.getState", {
     success: RendererApplicationState,
   }),
+  Rpc.make("projects.observeCatalog", {
+    success: ProjectCatalogUpdate,
+    stream: true,
+  }),
   Rpc.make("models.list", {
     success: Schema.Array(PiModel),
     error: PiModelCatalogError,
@@ -104,9 +127,134 @@ export const CakeRpc = RpcGroup.make(
     success: ModelSelection,
     error: ModelResolutionError,
   }),
+  Rpc.make("cakeChats.list", {
+    success: Schema.Array(CakeChatSummary),
+    error: CakeChatError,
+  }),
+  Rpc.make("cakeChats.inspect", {
+    payload: { sessionId: CakeChatTarget.fields.sessionId },
+    success: CakeChatPreview,
+    error: CakeChatError,
+  }),
+  Rpc.make("cakeChats.open", {
+    payload: CakeChatTarget,
+    success: ConversationSnapshot,
+    error: CakeChatError,
+  }),
+  Rpc.make("cakeChats.observe", {
+    payload: CakeChatTarget,
+    success: CakeChatUpdate,
+    error: CakeChatError,
+    stream: true,
+  }),
+  Rpc.make("cakeChats.prompt", {
+    payload: CakeChatPromptInput,
+    success: TurnId,
+    error: CakeChatError,
+  }),
+  Rpc.make("cakeChats.abort", {
+    payload: CakeChatTarget,
+    error: CakeChatError,
+  }),
+  Rpc.make("cakeChats.compact", {
+    payload: {
+      ...CakeChatTarget.fields,
+      instructions: Schema.optionalKey(Schema.String),
+    },
+    error: CakeChatError,
+  }),
+  Rpc.make("cakeChats.editMessage", {
+    payload: { ...CakeChatPromptInput.fields, entryId: Schema.String },
+    error: CakeChatError,
+  }),
+  Rpc.make("cakeChats.applyConfiguration", {
+    payload: { ...CakeChatTarget.fields, configuration: CakeChatConfiguration },
+    error: CakeChatError,
+  }),
+  Rpc.make("cakeChats.setModel", {
+    payload: {
+      ...CakeChatTarget.fields,
+      provider: Schema.String,
+      modelId: Schema.String,
+    },
+    error: CakeChatError,
+  }),
+  Rpc.make("cakeChats.setThinkingLevel", {
+    payload: { ...CakeChatTarget.fields, level: CakeChatConfiguration.fields.thinkingLevel },
+    error: CakeChatError,
+  }),
+  Rpc.make("cakeChats.setFastMode", {
+    payload: { ...CakeChatTarget.fields, enabled: Schema.Boolean },
+    error: CakeChatError,
+  }),
+  Rpc.make("cakeChats.rename", {
+    payload: { ...CakeChatTarget.fields, name: Schema.String },
+    error: CakeChatError,
+  }),
+  Rpc.make("cakeChats.handoff", {
+    payload: {
+      ...CakeChatTarget.fields,
+      entryId: Schema.String,
+      prompt: Schema.optionalKey(Schema.String),
+      resolveSource: Schema.optionalKey(Schema.Boolean),
+    },
+    success: Schema.Struct({
+      sessionId: Schema.String,
+      turnId: Schema.optionalKey(TurnId),
+    }),
+    error: CakeChatError,
+  }),
+  Rpc.make("cakeChats.resolve", { payload: CakeChatTarget, error: CakeChatError }),
+  Rpc.make("cakeChats.restore", { payload: CakeChatTarget, error: CakeChatError }),
+  Rpc.make("cakeChats.deleteResolved", { payload: CakeChatTarget, error: CakeChatError }),
+  Rpc.make("cakeChats.respondControl", {
+    payload: {
+      controlRequestId: Schema.String.check(Schema.isUUID(4)),
+      result: Schema.Json,
+    },
+    error: CakeChatError,
+  }),
+  Rpc.make("discussionSessions.list", {
+    payload: {
+      workingDirectory: DiscussionSessionTarget.fields.workingDirectory,
+      parentSessionId: DiscussionSessionTarget.fields.parentSessionId,
+    },
+    success: Schema.Array(DiscussionThread),
+    error: DiscussionSessionError,
+  }),
+  Rpc.make("discussionSessions.create", {
+    payload: DiscussionSessionCreateInput,
+    success: DiscussionThread,
+    error: DiscussionSessionError,
+  }),
+  Rpc.make("discussionSessions.observe", {
+    payload: DiscussionSessionTarget,
+    success: DiscussionSessionUpdate,
+    error: DiscussionSessionError,
+    stream: true,
+  }),
+  Rpc.make("discussionSessions.prompt", {
+    payload: DiscussionSessionPromptInput,
+    success: DiscussionSessionAcceptedTurn,
+    error: DiscussionSessionError,
+  }),
+  Rpc.make("discussionSessions.abort", {
+    payload: DiscussionSessionTarget,
+    error: DiscussionSessionError,
+  }),
+  Rpc.make("discussionSessions.setResolved", {
+    payload: { ...DiscussionSessionTarget.fields, resolved: Schema.Boolean },
+    success: DiscussionThread,
+    error: DiscussionSessionError,
+  }),
   Rpc.make("projectSessions.list", {
     success: Schema.Array(ProjectSessionSummary),
     error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.observeCatalog", {
+    success: SessionCatalogUpdate,
+    error: ProjectSessionError,
+    stream: true,
   }),
   Rpc.make("projectSessions.inspect", {
     payload: ProjectSessionTarget,

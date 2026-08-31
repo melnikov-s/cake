@@ -82,10 +82,9 @@ test("resolves and restores the selected project session in the desktop sidebar"
   try {
     const page = await application.firstWindow();
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
-    const cakeChatGroup = page.locator(".sidebar-scroll > .cake-chat-sessions");
-    await expect(cakeChatGroup.locator(".project-label")).toHaveText("Cake Chat");
-    await expect(cakeChatGroup.locator(".project-label svg")).toHaveAttribute("width", "16");
-    await expect(page.locator(".resolved-lane")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Collapse Cake Chat" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "New Cake Chat" }).first()).toBeVisible();
+    await expect(page.getByRole("region", { name: "Expand Resolved" })).toHaveCount(0);
 
     const selectedSession = page
       .locator(".session-item.active")
@@ -94,16 +93,15 @@ test("resolves and restores the selected project session in the desktop sidebar"
     await expect(selectedSession.locator(".session-time")).toHaveCount(1);
     await selectedSession.locator(".session-resolve-action").click();
 
-    await expect(page.locator(".resolved-lane")).toBeVisible();
+    const resolvedLane = page.getByRole("region", { name: "Expand Resolved" });
+    await expect(resolvedLane).toBeVisible();
     const resolvedToggle = page.getByRole("button", { name: "Expand Resolved" });
     await expect(resolvedToggle).toHaveAttribute("aria-expanded", "false");
-    await expect(page.locator("#resolved-lane-content")).toHaveCount(0);
     await resolvedToggle.click();
-    await expect(
-      page.locator(".resolved-lane .session-item.active .session-resolve-action"),
-    ).toHaveAttribute("aria-label", /^Restore /);
-    await page.locator(".resolved-lane .session-item.active .session-resolve-action").click();
-    await expect(page.locator(".resolved-lane")).toHaveCount(0);
+    const restoreAction = page.getByRole("button", { name: /^Restore / });
+    await expect(restoreAction).toBeVisible();
+    await restoreAction.click();
+    await expect(resolvedLane).toHaveCount(0);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

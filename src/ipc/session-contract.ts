@@ -329,7 +329,7 @@ export const sessionUsageSchema = z.object({
     .optional(),
 });
 
-export const sessionSummarySchema = z.object({
+const sessionSummarySchema = z.object({
   id: z.string().min(1).max(256),
   title: ipcProjectionString(SESSION_TITLE_MAX_LENGTH),
   created: z.string().datetime(),

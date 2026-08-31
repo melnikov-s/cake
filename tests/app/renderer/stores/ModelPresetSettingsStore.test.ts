@@ -11,6 +11,7 @@ import type { ModelPreset as ModelPresetValue } from "../../../../src/domain/app
 import { CakeIpcClient, type CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import { PiModelCatalogError, type PiModel } from "../../../../src/services/pi/model-data";
 import { ApplicationWriteError } from "../../../../src/services/storage/ApplicationStorage";
+import { unusedCakeChats, unusedDiscussionSessions } from "./unused-cake-session-client";
 import {
   ModelPresetSettingsStore,
   ModelPresetSettingsStoreFactory,
@@ -112,6 +113,7 @@ function createClient(
           fastModeSessionIds: [],
         }),
     },
+    projects: { observeCatalog: () => Stream.empty },
     models: { list: calls.listModels },
     modelPresets: {
       list: calls.listModelPresets,
@@ -121,8 +123,11 @@ function createClient(
       setDefault: calls.setDefaultModelPreset,
       resolve: () => Effect.die("not used"),
     },
+    cakeChats: unusedCakeChats,
+    discussionSessions: unusedDiscussionSessions,
     projectSessions: {
       list: () => Effect.die("not used"),
+      observeCatalog: () => Stream.empty,
       inspect: () => Effect.die("not used"),
       create: () => Effect.die("not used"),
       open: () => Effect.die("not used"),

@@ -6,7 +6,7 @@ import {
   type UiPart,
 } from "./session-contract";
 
-export const REVIEW_TEXT_MAX_LENGTH = 262_144;
+const REVIEW_TEXT_MAX_LENGTH = 262_144;
 const boundedReviewText = z.string().max(REVIEW_TEXT_MAX_LENGTH);
 
 const reviewPointSchema = z.object({
@@ -16,7 +16,7 @@ const reviewPointSchema = z.object({
   column: z.number().int().nonnegative().optional(),
 });
 
-export const reviewAnchorSchema = z.object({
+const reviewAnchorSchema = z.object({
   path: z.string().min(1).max(8_192),
   view: z.enum(["file", "message"]).optional(),
   start: reviewPointSchema,

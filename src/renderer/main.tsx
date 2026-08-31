@@ -1,6 +1,7 @@
 import { StrictMode, Suspense, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { StoreProvider as LegacyStoreProvider } from "r-state-tree/react";
+import type { Effect } from "effect";
 import { mount } from "effect-state-tree";
 import { StoreProvider } from "effect-state-tree/react";
 import Scene from "virtual:cake-scene";
@@ -19,6 +20,8 @@ import {
   ModelPresetSettingsStore,
   ModelPresetSettingsStoreFactory,
 } from "./stores/ModelPresetSettingsStore";
+import { SessionCatalogStore, SessionCatalogStoreFactory } from "./stores/SessionCatalogStore";
+import { ProjectCatalogStore, ProjectCatalogStoreFactory } from "./stores/ProjectCatalogStore";
 import "katex/dist/katex.min.css";
 import "streamdown/styles.css";
 import "@xterm/xterm/css/xterm.css";
@@ -72,12 +75,55 @@ if (!window.cake) {
         await rendererRuntime.dispose();
         throw error;
       });
-    await rendererRuntime.runPromise(modelPresets.instance.awaitHydrated());
+    const sessionCatalog = await rendererRuntime
+      .runPromise(
+        mount(SessionCatalogStoreFactory, {
+          managedWorktrees: [],
+          loading: true,
+          revision: 0,
+          sourceRevision: -1,
+        }),
+      )
+      .catch(async (error: unknown) => {
+        await rendererRuntime.runPromise(modelPresets.dispose);
+        await rendererRuntime.dispose();
+        throw error;
+      });
+    const projectCatalog = await rendererRuntime
+      .runPromise(
+        mount(ProjectCatalogStoreFactory, {
+          props: { sessions: sessionCatalog.instance },
+          recentPaths: [],
+          loading: true,
+          revision: 0,
+          sourceRevision: -1,
+        }),
+      )
+      .catch(async (error: unknown) => {
+        await rendererRuntime.runPromise(sessionCatalog.dispose);
+        await rendererRuntime.runPromise(modelPresets.dispose);
+        await rendererRuntime.dispose();
+        throw error;
+      });
+    await Promise.all([
+      rendererRuntime.runPromise(modelPresets.instance.awaitHydrated()),
+      rendererRuntime.runPromise(sessionCatalog.instance.awaitHydrated()),
+      rendererRuntime.runPromise(projectCatalog.instance.awaitHydrated()),
+    ]);
     const cakeIpc = makeCakeIpcPromiseClient(rendererRuntime);
+    const runCatalog = <A, E>(effect: Effect.Effect<A, E>) => rendererRuntime.runPromise(effect);
     let rootStore: ReturnType<typeof mountRootStore>;
     try {
-      rootStore = mountRootStore(createDesktopClient(bridge, cakeIpc), modelPresets.instance);
+      rootStore = mountRootStore(
+        createDesktopClient(bridge, cakeIpc),
+        modelPresets.instance,
+        projectCatalog.instance,
+        sessionCatalog.instance,
+        runCatalog,
+      );
     } catch (error) {
+      await rendererRuntime.runPromise(projectCatalog.dispose);
+      await rendererRuntime.runPromise(sessionCatalog.dispose);
       await rendererRuntime.runPromise(modelPresets.dispose);
       await rendererRuntime.dispose();
       throw error;
@@ -99,7 +145,13 @@ if (!window.cake) {
     root.render(
       <RendererErrorBoundary>
         <StrictMode>
-          <StoreProvider stores={[[ModelPresetSettingsStore, modelPresets.instance]]}>
+          <StoreProvider
+            stores={[
+              [ModelPresetSettingsStore, modelPresets.instance],
+              [SessionCatalogStore, sessionCatalog.instance],
+              [ProjectCatalogStore, projectCatalog.instance],
+            ]}
+          >
             <LegacyStoreProvider store={rootStore}>
               <MarkdownLinkProvider actions={markdownLinkActions}>
                 <Suspense
@@ -128,7 +180,9 @@ if (!window.cake) {
         disposeStaleAssetRecovery();
         rootStore[Symbol.dispose]();
         void rendererRuntime
-          .runPromise(modelPresets.dispose)
+          .runPromise(projectCatalog.dispose)
+          .finally(() => rendererRuntime.runPromise(sessionCatalog.dispose))
+          .finally(() => rendererRuntime.runPromise(modelPresets.dispose))
           .finally(() => rendererRuntime.dispose());
       },
       { once: true },

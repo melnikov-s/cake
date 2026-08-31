@@ -19,7 +19,7 @@ import type {
   WindowViewState,
 } from "../ipc/session-contract";
 import type { ArtifactRecord } from "../ipc/artifact-contract";
-import type { ReviewAnchor, ReviewThread } from "../ipc/review-contract";
+import { reviewThreadSchema, type ReviewAnchor, type ReviewThread } from "../ipc/review-contract";
 import type { SourceLocation } from "../ipc/source-location";
 import type { EditorAnnotationSnapshot } from "../ipc/editor-annotation";
 import type {
@@ -35,7 +35,7 @@ import type {
   InlineWidgetLanguage,
   RepairedInlineWidget,
 } from "../ipc/inline-widget-contract";
-import type { JsonObject, JsonValue } from "../ipc/json-contract";
+import { jsonValueSchema, type JsonObject, type JsonValue } from "../ipc/json-contract";
 import type { SubagentActivity } from "../ipc/subagent-activity-contract";
 import type { ModelOption } from "../ipc/session-contract";
 import type {
@@ -592,35 +592,6 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
   if (event.type === "subagent-activity")
     return { type: "subagent-activity-received", activity: event.activity };
   if (event.type === "subagent-activity-removed") return event;
-  if (event.type === "global-chat-snapshot")
-    return {
-      type: "global-chat-snapshot-received",
-      operationId: event.requestId,
-      snapshot: event.snapshot,
-    };
-  if (event.type === "global-chat-part-updated" || event.type === "global-chat-part-removed")
-    return event;
-  if (event.type === "global-chat-streaming")
-    return {
-      type: "global-chat-streaming-changed",
-      sessionId: event.sessionId,
-      streaming: event.streaming,
-    };
-  if (event.type === "global-chat-operation-completed")
-    return { type: event.type, operationId: event.requestId };
-  if (event.type === "global-chat-operation-failed")
-    return {
-      type: event.type,
-      operationId: event.requestId,
-      message: event.message,
-      details: event.details,
-    };
-  if (event.type === "global-chat-control-request")
-    return {
-      type: "global-chat-control-requested",
-      controlRequestId: event.controlRequestId,
-      invocation: event.invocation,
-    };
   if (event.type === "extension-ui")
     return { type: "extension-ui-received", sessionId: event.sessionId, event: event.event };
   if (event.type === "plugin-agent-event") return event;
@@ -632,20 +603,6 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
       artifactRequestId: event.artifactRequestId,
       record: event.record,
     };
-  if (event.type === "review-threads-snapshot")
-    return {
-      type: "review-threads-received",
-      workspacePath: event.workspacePath,
-      sessionId: event.sessionId,
-      threads: event.threads,
-    };
-  if (
-    event.type === "review-thread-updated" ||
-    event.type === "review-thread-streaming" ||
-    event.type === "review-thread-part-updated" ||
-    event.type === "review-thread-usage-updated"
-  )
-    return event;
   if (event.type === "changelog-snapshot")
     return {
       type: "changelog-received",
@@ -713,11 +670,23 @@ async function accept(
 
 export function createDesktopClient(
   bridge: CakeDesktopBridge,
-  rpcClient: Pick<CakeIpcPromiseClient, "application" | "models" | "projectSessions">,
+  rpcClient: Pick<
+    CakeIpcPromiseClient,
+    "application" | "models" | "projectSessions" | "cakeChats" | "discussionSessions"
+  >,
 ): DesktopClient {
   const listeners = new Set<(event: DesktopClientEvent) => void>();
   const sessionSubscriptions = new Map<string, () => void>();
+  const cakeChatSubscriptions = new Map<string, () => void>();
+  const discussionSubscriptions = new Map<string, () => void>();
+  const projectWorkingDirectories = new Map<string, string>();
+  const cakeChatTools = new Map<
+    string,
+    Parameters<CakeIpcPromiseClient["cakeChats"]["observe"]>[0]["tools"]
+  >();
+  const pendingDiscussionBodies = new Map<string, string>();
   const turnOperations = new Map<string, string>();
+  const cakeChatTurnOperations = new Map<string, string>();
   const settledTurns = new Map<
     string,
     { readonly outcome: "complete" | "failed" | "aborted"; readonly message?: string }
@@ -755,6 +724,143 @@ export function createDesktopClient(
     turnOperations.set(turnId, operationId);
     const settled = settledTurns.get(turnId);
     if (settled) settleTurn(turnId, settled);
+  };
+  const settleCakeChatTurn = (
+    turnId: string,
+    settlement: { readonly outcome: "complete" | "failed" | "aborted"; readonly message?: string },
+  ) => {
+    const operationId = cakeChatTurnOperations.get(turnId);
+    if (!operationId) return;
+    cakeChatTurnOperations.delete(turnId);
+    publish(
+      settlement.outcome === "failed"
+        ? {
+            type: "global-chat-operation-failed",
+            operationId,
+            message: settlement.message ?? "Cake Chat turn failed",
+          }
+        : { type: "global-chat-operation-completed", operationId },
+    );
+  };
+  const toolsForCakeChat = (sessionId: string) => cakeChatTools.get(sessionId) ?? [];
+  const observeCakeChat = (
+    sessionId: string,
+    tools: Parameters<CakeIpcPromiseClient["cakeChats"]["observe"]>[0]["tools"],
+  ) => {
+    cakeChatTools.set(sessionId, tools);
+    cakeChatSubscriptions.get(sessionId)?.();
+    const unsubscribe = rpcClient.cakeChats.observe({ sessionId, tools }, (update) => {
+      if (update._tag === "Snapshot") {
+        publish({
+          type: "global-chat-snapshot-received",
+          snapshot: legacySnapshot(update.snapshot.conversation),
+        });
+        return;
+      }
+      const event = update.event;
+      if (event._tag === "SnapshotUpdated")
+        publish({
+          type: "global-chat-snapshot-received",
+          snapshot: legacySnapshot(event.snapshot),
+        });
+      else if (event._tag === "PartUpdated")
+        publish({
+          type: "global-chat-part-updated",
+          sessionId: event.sessionId,
+          part: uiPartSchema.parse(event.part),
+        });
+      else if (event._tag === "PartRemoved")
+        publish({
+          type: "global-chat-part-removed",
+          sessionId: event.sessionId,
+          partId: event.partId,
+        });
+      else if (event._tag === "StreamingChanged")
+        publish({
+          type: "global-chat-streaming-changed",
+          sessionId: event.sessionId,
+          streaming: event.streaming,
+        });
+      else if (event._tag === "ControlRequested")
+        publish({
+          type: "global-chat-control-requested",
+          controlRequestId: event.controlRequestId,
+          invocation: {
+            name: event.invocation.name,
+            arguments: jsonValueSchema.parse(event.invocation.arguments),
+          },
+        });
+      else if (event._tag === "TurnSettled") settleCakeChatTurn(event.turnId, event);
+    });
+    cakeChatSubscriptions.set(sessionId, unsubscribe);
+  };
+  const completeCakeChatOperation = async (operationId: string, operation: Promise<unknown>) => {
+    await operation;
+    publish({ type: "global-chat-operation-completed", operationId });
+  };
+  const workingDirectoryForSession = async (sessionId: string) => {
+    const known = projectWorkingDirectories.get(sessionId);
+    if (known) return known;
+    const session = (await rpcClient.projectSessions.list()).find(
+      (candidate) => candidate.sessionId === sessionId,
+    );
+    if (!session) throw new Error("Cake could not find the Discussion Session parent");
+    projectWorkingDirectories.set(sessionId, session.workingDirectory);
+    return session.workingDirectory;
+  };
+  const legacyDiscussionThread = (
+    thread: Awaited<ReturnType<CakeIpcPromiseClient["discussionSessions"]["create"]>>,
+  ) =>
+    reviewThreadSchema.parse({
+      id: thread.id,
+      workspacePath: thread.workingDirectory,
+      sessionId: thread.parentSessionId,
+      agentSessionId: thread.sidecarSessionId,
+      anchor: thread.anchor,
+      parts: thread.parts,
+      usage: thread.usage,
+      status: thread.status,
+      createdAt: thread.createdAt,
+      updatedAt: thread.updatedAt,
+      resolvedAt: thread.resolvedAt,
+    });
+  const observeDiscussion = (
+    target: Parameters<CakeIpcPromiseClient["discussionSessions"]["observe"]>[0],
+  ) => {
+    discussionSubscriptions.get(target.threadId)?.();
+    const unsubscribe = rpcClient.discussionSessions.observe(target, (update) => {
+      if (update._tag === "Snapshot") {
+        const thread = legacyDiscussionThread(update.snapshot.thread);
+        publish({ type: "review-thread-updated", thread });
+        publish({
+          type: "review-thread-streaming",
+          workspacePath: thread.workspacePath,
+          sessionId: thread.sessionId,
+          threadId: thread.id,
+          streaming: update.snapshot.conversation.streaming,
+        });
+        return;
+      }
+      const event = update.event;
+      if (event._tag === "PartUpdated")
+        publish({
+          type: "review-thread-part-updated",
+          workspacePath: target.workingDirectory,
+          sessionId: target.parentSessionId,
+          threadId: target.threadId,
+          part: uiPartSchema.parse(event.part),
+        });
+      else if (event._tag === "StreamingChanged")
+        publish({
+          type: "review-thread-streaming",
+          workspacePath: target.workingDirectory,
+          sessionId: target.parentSessionId,
+          threadId: target.threadId,
+          streaming: event.streaming,
+        });
+      else if (event._tag === "TurnSettled") settleTurn(event.turnId, event);
+    });
+    discussionSubscriptions.set(target.threadId, unsubscribe);
   };
   const observeProjectSession = (
     sessionId: string,
@@ -1153,6 +1259,7 @@ export function createDesktopClient(
     },
     async listSessions() {
       const sessions = (await rpcClient.projectSessions.list()).map((session) => {
+        projectWorkingDirectories.set(session.sessionId, session.workingDirectory);
         const projected: GlobalSessionSummary = {
           id: session.sessionId,
           title: session.title,
@@ -1174,28 +1281,41 @@ export function createDesktopClient(
       });
       const reviewThreads = (
         await Promise.all(
-          sessions.map(async (session) => {
-            const response = await bridge.request({
-              type: "list-review-threads",
-              sessionId: session.id,
-            });
-            return response.type === "review-threads-loaded" ? response.threads : [];
-          }),
+          sessions.map(async (session) =>
+            (
+              await rpcClient.discussionSessions.list({
+                parentSessionId: session.id,
+                workingDirectory: session.workspacePath,
+              })
+            ).map(legacyDiscussionThread),
+          ),
         )
       ).flat();
       return { sessions, reviewThreads };
     },
     async listCakeChatSessions() {
-      const response = await bridge.request({ type: "list-cake-chat-sessions" });
-      if (response.type !== "cake-chat-sessions-listed")
-        throw new Error("Cake received an invalid Cake Chat session index");
-      return response.sessions;
+      return (await rpcClient.cakeChats.list()).map((session) => {
+        const projected: SessionSummary = {
+          id: session.sessionId,
+          title: session.title,
+          created: session.createdAt,
+          modified: session.modifiedAt,
+          messageCount: session.messageCount,
+          resolved: session.resolved,
+        };
+        if (session.parentSessionId !== undefined)
+          Object.assign(projected, { parentSessionId: session.parentSessionId });
+        return projected;
+      });
     },
     async loadCakeChatSession(sessionId) {
-      const response = await bridge.request({ type: "load-cake-chat-session", sessionId });
-      if (response.type !== "session-loaded")
-        throw new Error("Cake received invalid Cake Chat session content");
-      return response.session;
+      const preview = await rpcClient.cakeChats.inspect(sessionId);
+      return sessionPreviewSchema.parse({
+        workspacePath: "",
+        sessionId: preview.sessionId,
+        sessionFile: preview.sessionFile,
+        parts: preview.parts,
+      });
     },
     async loadSession(sessionId) {
       const preview = await rpcClient.projectSessions.inspect({ sessionId });
@@ -1206,138 +1326,214 @@ export function createDesktopClient(
         parts: preview.parts,
       });
     },
-    openGlobalChat: (input) =>
-      accept(bridge, {
-        type: "open-global-chat",
-        requestId: input.operationId,
-        tools: input.tools.map((tool) => ({
-          ...tool,
-          guidance: tool.guidance ? [...tool.guidance] : undefined,
-          examples: tool.examples?.map((example) => ({ ...example })),
-          limitations: tool.limitations ? [...tool.limitations] : undefined,
-        })),
-        sessionId: input.sessionId,
-      }),
-    promptGlobalChat: (input) =>
-      accept(bridge, {
-        type: "prompt-global-chat",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        text: input.text,
-        renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
-        attachments: input.attachments,
-        newSession: input.newSession
-          ? {
-              ...input.newSession,
-              tools: input.newSession.tools.map((tool) => ({
-                ...tool,
-                guidance: tool.guidance ? [...tool.guidance] : undefined,
-                examples: tool.examples?.map((example) => ({ ...example })),
-                limitations: tool.limitations ? [...tool.limitations] : undefined,
-              })),
-            }
-          : undefined,
-      }),
-    editGlobalChatMessage: (input) =>
-      accept(bridge, {
-        type: "edit-global-chat-message",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        entryId: input.entryId,
-        text: input.text,
-        attachments: input.attachments,
-        renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
-      }),
-    abortGlobalChat: (input) =>
-      accept(bridge, {
-        type: "abort-global-chat",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-      }),
-    compactGlobalChat: (input) =>
-      accept(bridge, {
-        type: "compact-global-chat",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        instructions: input.instructions,
-      }),
-    setGlobalChatModel: (input) =>
-      accept(bridge, {
-        type: "set-global-chat-model",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        provider: input.provider,
-        modelId: input.modelId,
-      }),
-    setGlobalChatThinkingLevel: (input) =>
-      accept(bridge, {
-        type: "set-global-chat-thinking",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        level: input.level,
-      }),
-    setGlobalChatConfiguration: (input) =>
-      accept(bridge, {
-        type: "set-global-chat-configuration",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        configuration: input.configuration,
-      }),
-    setGlobalChatFastMode: (input) =>
-      accept(bridge, {
-        type: "set-global-chat-fast-mode",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        enabled: input.enabled,
-      }),
-    renameGlobalChat: (input) =>
-      accept(bridge, {
-        type: "rename-global-chat",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        name: input.name,
-      }),
-    handoffGlobalChat: (input) =>
-      accept(bridge, {
-        type: "handoff-global-chat",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        entryId: input.entryId,
-        prompt: input.prompt,
-        resolveSource: input.resolveSource ?? false,
-      }),
-    async respondToGlobalChatControl(controlRequestId, result) {
-      const response = await bridge.request({
-        type: "respond-global-chat-control",
-        controlRequestId,
-        result,
+    async openGlobalChat(input) {
+      const tools = input.tools;
+      if (!input.sessionId) return;
+      cakeChatTools.set(input.sessionId, tools);
+      const snapshot = await rpcClient.cakeChats.open({ sessionId: input.sessionId, tools });
+      publish({
+        type: "global-chat-snapshot-received",
+        operationId: input.operationId,
+        snapshot: legacySnapshot(snapshot),
       });
-      if (response.type !== "accepted" || response.requestId !== controlRequestId)
-        throw new Error("Cake received a mismatched global control response");
+      observeCakeChat(input.sessionId, tools);
+      publish({ type: "global-chat-operation-completed", operationId: input.operationId });
     },
+    async promptGlobalChat(input) {
+      const tools = input.newSession?.tools ?? toolsForCakeChat(input.sessionId);
+      cakeChatTools.set(input.sessionId, tools);
+      const request: Parameters<CakeIpcPromiseClient["cakeChats"]["prompt"]>[0] = {
+        sessionId: input.sessionId,
+        text: input.text,
+        renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
+        attachments: input.attachments,
+      };
+      if (input.newSession) {
+        const newSession: NonNullable<typeof request.newSession> = { tools };
+        if (input.newSession.configuration !== undefined)
+          Object.assign(newSession, { configuration: input.newSession.configuration });
+        if (input.newSession.name !== undefined)
+          Object.assign(newSession, { name: input.newSession.name });
+        Object.assign(request, { newSession });
+      }
+      const turnId = await rpcClient.cakeChats.prompt(request);
+      cakeChatTurnOperations.set(turnId, input.operationId);
+      if (!cakeChatSubscriptions.has(input.sessionId)) observeCakeChat(input.sessionId, tools);
+    },
+    editGlobalChatMessage: (input) =>
+      completeCakeChatOperation(
+        input.operationId,
+        rpcClient.cakeChats.editMessage({
+          sessionId: input.sessionId,
+          entryId: input.entryId,
+          text: input.text,
+          attachments: input.attachments,
+          renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
+        }),
+      ),
+    abortGlobalChat: (input) =>
+      completeCakeChatOperation(
+        input.operationId,
+        rpcClient.cakeChats.abort({
+          sessionId: input.sessionId,
+          tools: toolsForCakeChat(input.sessionId),
+        }),
+      ),
+    compactGlobalChat: (input) =>
+      completeCakeChatOperation(
+        input.operationId,
+        (() => {
+          const request: Parameters<CakeIpcPromiseClient["cakeChats"]["compact"]>[0] = {
+            sessionId: input.sessionId,
+            tools: toolsForCakeChat(input.sessionId),
+          };
+          if (input.instructions !== undefined)
+            Object.assign(request, { instructions: input.instructions });
+          return rpcClient.cakeChats.compact(request);
+        })(),
+      ),
+    setGlobalChatModel: (input) =>
+      completeCakeChatOperation(
+        input.operationId,
+        rpcClient.cakeChats.setModel({
+          sessionId: input.sessionId,
+          tools: toolsForCakeChat(input.sessionId),
+          provider: input.provider,
+          modelId: input.modelId,
+        }),
+      ),
+    setGlobalChatThinkingLevel: (input) =>
+      completeCakeChatOperation(
+        input.operationId,
+        rpcClient.cakeChats.setThinkingLevel({
+          sessionId: input.sessionId,
+          tools: toolsForCakeChat(input.sessionId),
+          level: input.level,
+        }),
+      ),
+    setGlobalChatConfiguration: (input) =>
+      completeCakeChatOperation(
+        input.operationId,
+        rpcClient.cakeChats.applyConfiguration({
+          sessionId: input.sessionId,
+          tools: toolsForCakeChat(input.sessionId),
+          configuration: input.configuration,
+        }),
+      ),
+    setGlobalChatFastMode: (input) =>
+      completeCakeChatOperation(
+        input.operationId,
+        rpcClient.cakeChats.setFastMode({
+          sessionId: input.sessionId,
+          tools: toolsForCakeChat(input.sessionId),
+          enabled: input.enabled,
+        }),
+      ),
+    renameGlobalChat: (input) =>
+      completeCakeChatOperation(
+        input.operationId,
+        rpcClient.cakeChats.rename({
+          sessionId: input.sessionId,
+          tools: toolsForCakeChat(input.sessionId),
+          name: input.name,
+        }),
+      ),
+    async handoffGlobalChat(input) {
+      const tools = toolsForCakeChat(input.sessionId);
+      const request: Parameters<CakeIpcPromiseClient["cakeChats"]["handoff"]>[0] = {
+        sessionId: input.sessionId,
+        tools,
+        entryId: input.entryId,
+      };
+      if (input.prompt !== undefined) Object.assign(request, { prompt: input.prompt });
+      if (input.resolveSource !== undefined)
+        Object.assign(request, { resolveSource: input.resolveSource });
+      const result = await rpcClient.cakeChats.handoff(request);
+      cakeChatTools.set(result.sessionId, tools);
+      if (result.turnId) cakeChatTurnOperations.set(result.turnId, input.operationId);
+      const snapshot = await rpcClient.cakeChats.open({ sessionId: result.sessionId, tools });
+      publish({
+        type: "global-chat-snapshot-received",
+        operationId: input.operationId,
+        snapshot: legacySnapshot(snapshot),
+      });
+      observeCakeChat(result.sessionId, tools);
+      if (!result.turnId)
+        publish({ type: "global-chat-operation-completed", operationId: input.operationId });
+    },
+    respondToGlobalChatControl: (controlRequestId, result) =>
+      rpcClient.cakeChats.respondControl(controlRequestId, result),
     async listReviewThreads(sessionId) {
-      const response = await bridge.request({ type: "list-review-threads", sessionId });
-      if (response.type !== "review-threads-loaded")
-        throw new Error("Cake received invalid review threads");
-      return response.threads;
+      const workingDirectory = await workingDirectoryForSession(sessionId);
+      return (
+        await rpcClient.discussionSessions.list({
+          parentSessionId: sessionId,
+          workingDirectory,
+        })
+      ).map(legacyDiscussionThread);
     },
     async createReviewThread(input) {
-      const response = await bridge.request({ type: "create-review-thread", ...input });
-      if (response.type !== "review-thread-saved")
-        throw new Error("Cake could not save the review thread");
-      return response.thread;
+      const workingDirectory = await workingDirectoryForSession(input.sessionId);
+      const created = await rpcClient.discussionSessions.create({
+        parentSessionId: input.sessionId,
+        workingDirectory,
+        anchor: input.anchor,
+      });
+      pendingDiscussionBodies.set(created.id, input.body.trim());
+      const thread = legacyDiscussionThread(created);
+      return reviewThreadSchema.parse({
+        ...thread,
+        parts: [
+          ...thread.parts,
+          {
+            id: crypto.randomUUID(),
+            kind: "text",
+            role: "user",
+            text: input.body.trim(),
+            status: "complete",
+            deliveryState: "sending",
+          },
+        ],
+      });
     },
     async replyReviewThread(input) {
-      const response = await bridge.request({ type: "reply-review-thread", ...input });
-      if (response.type !== "review-thread-saved")
-        throw new Error("Cake could not save the review reply");
-      return response.thread;
+      const workingDirectory = await workingDirectoryForSession(input.sessionId);
+      const existing = (
+        await rpcClient.discussionSessions.list({
+          parentSessionId: input.sessionId,
+          workingDirectory,
+        })
+      ).find((thread) => thread.id === input.threadId);
+      if (!existing) throw new Error("That Discussion Session no longer exists");
+      pendingDiscussionBodies.set(input.threadId, input.body.trim());
+      const thread = legacyDiscussionThread(existing);
+      return reviewThreadSchema.parse({
+        ...thread,
+        status: "open",
+        resolvedAt: undefined,
+        parts: [
+          ...thread.parts,
+          {
+            id: crypto.randomUUID(),
+            kind: "text",
+            role: "user",
+            text: input.body.trim(),
+            status: "complete",
+            deliveryState: "sending",
+          },
+        ],
+      });
     },
     async resolveReviewThread(input) {
-      const response = await bridge.request({ type: "resolve-review-thread", ...input });
-      if (response.type !== "review-thread-saved")
-        throw new Error("Cake could not update the review thread");
-      return response.thread;
+      const workingDirectory = await workingDirectoryForSession(input.sessionId);
+      return legacyDiscussionThread(
+        await rpcClient.discussionSessions.setResolved({
+          parentSessionId: input.sessionId,
+          workingDirectory,
+          threadId: input.threadId,
+          resolved: input.resolved,
+        }),
+      );
     },
     async registerProject(path, name) {
       const response = await bridge.request({ type: "register-project", path, name });
@@ -1389,10 +1585,13 @@ export function createDesktopClient(
       return response.state;
     },
     async deleteCakeChatSession(sessionId) {
-      const response = await bridge.request({ type: "delete-cake-chat-session", sessionId });
-      if (response.type !== "application-state-updated")
-        throw new Error("Cake could not delete the Cake Chat session");
-      return response.state;
+      cakeChatSubscriptions.get(sessionId)?.();
+      cakeChatSubscriptions.delete(sessionId);
+      await rpcClient.cakeChats.deleteResolved({
+        sessionId,
+        tools: toolsForCakeChat(sessionId),
+      });
+      return rpcClient.application.getState();
     },
     async setSessionUnread(sessionId, unread) {
       const response = await bridge.request({ type: "set-session-unread", sessionId, unread });
@@ -1401,14 +1600,12 @@ export function createDesktopClient(
       return response.state;
     },
     async resolveCakeChatSession(sessionId, resolved) {
-      const response = await bridge.request({
-        type: "resolve-cake-chat-session",
-        sessionId,
-        resolved,
-      });
-      if (response.type !== "application-state-updated")
-        throw new Error("Cake could not resolve the Cake Chat session");
-      return response.state;
+      const target = { sessionId, tools: toolsForCakeChat(sessionId) };
+      cakeChatSubscriptions.get(sessionId)?.();
+      cakeChatSubscriptions.delete(sessionId);
+      if (resolved) await rpcClient.cakeChats.resolve(target);
+      else await rpcClient.cakeChats.restore(target);
+      return rpcClient.application.getState();
     },
     async restartPi(path) {
       await bridge.request({ type: "restart-pi", path });
@@ -1543,15 +1740,27 @@ export function createDesktopClient(
         attachments: input.attachments,
         renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
       }),
-    submitReviewThread: (input) =>
-      accept(bridge, {
-        type: "submit-review-thread",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
+    async submitReviewThread(input) {
+      const text = pendingDiscussionBodies.get(input.threadId);
+      if (!text) throw new Error("The Discussion Session reply is unavailable");
+      const workingDirectory = await workingDirectoryForSession(input.sessionId);
+      const target = {
+        parentSessionId: input.sessionId,
+        workingDirectory,
         threadId: input.threadId,
-        model: input.model,
-        thinkingLevel: input.thinkingLevel,
-      }),
+      };
+      const request: Parameters<CakeIpcPromiseClient["discussionSessions"]["prompt"]>[0] = {
+        ...target,
+        text,
+      };
+      if (input.model !== undefined) Object.assign(request, { model: input.model });
+      if (input.thinkingLevel !== undefined)
+        Object.assign(request, { thinkingLevel: input.thinkingLevel });
+      const accepted = await rpcClient.discussionSessions.prompt(request);
+      pendingDiscussionBodies.delete(input.threadId);
+      rememberTurn(accepted.turnId, input.operationId);
+      observeDiscussion(target);
+    },
     async abort(input) {
       await rpcClient.projectSessions.abort({ sessionId: input.sessionId });
       publish({ type: "operation-completed", operationId: input.operationId });

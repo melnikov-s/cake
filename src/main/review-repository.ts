@@ -54,6 +54,14 @@ export class ReviewRepository {
     return join(this.sessionDirectory(workspacePath, sessionId), "review-threads.md");
   }
 
+  discussionParentContextPath(workspacePath: string, sessionId: string, threadId: string) {
+    return join(
+      this.sessionDirectory(workspacePath, sessionId),
+      "context",
+      `${digestKey(threadId)}.md`,
+    );
+  }
+
   async deleteSession(workspacePath: string, sessionId: string) {
     await Promise.all([
       rm(this.sessionDirectory(workspacePath, sessionId), { recursive: true, force: true }),
@@ -67,6 +75,11 @@ export class ReviewRepository {
   async listSession(workspacePath: string, sessionId: string): Promise<ReviewThread[]> {
     const records = await this.listRecords(workspacePath, sessionId);
     return Promise.all(records.map((record) => this.project(record)));
+  }
+
+  /** Cake-owned Discussion anchors and sidecar references; replies remain in Pi. */
+  listDiscussionRecords(workspacePath: string, sessionId: string) {
+    return this.listRecords(workspacePath, sessionId);
   }
 
   async get(
@@ -84,73 +97,11 @@ export class ReviewRepository {
     }
   }
 
-  async recoverRunning(workspacePath: string): Promise<void> {
-    let sessionDirectories: string[];
-    try {
-      sessionDirectories = await readdir(join(this.root, digestKey(workspacePath)));
-    } catch (error) {
-      if (isMissing(error)) return;
-      throw error;
-    }
-    await Promise.all(
-      sessionDirectories.map(async (sessionDirectory) => {
-        const directory = join(this.root, digestKey(workspacePath), sessionDirectory);
-        const names = await readdir(directory);
-        await Promise.all(
-          names
-            .filter((name) => name.endsWith(".json"))
-            .map(async (name) => {
-              const path = join(directory, name);
-              const record = await this.readRecord(JSON.parse(await readFile(path, "utf8")));
-              if (record.submission?.status !== "running") return;
-              record.submission = {
-                ...record.submission,
-                status: "failed",
-                failedAt: new Date().toISOString(),
-                error: "Cake stopped before this review run completed. Retry the comment.",
-              };
-              record.updatedAt = new Date().toISOString();
-              await this.write(record);
-            }),
-        );
-      }),
-    );
-  }
-
-  async claimPending(
-    workspacePath: string,
-    sessionId: string,
-    threadId: string,
-    runId: string,
-  ): Promise<ReviewThreadRecord | undefined> {
-    let claimed: ReviewThreadRecord | undefined;
-    await this.update(workspacePath, sessionId, threadId, (thread) => {
-      if (
-        thread.status !== "open" ||
-        thread.pendingComments.length === 0 ||
-        thread.submission?.status === "running"
-      )
-        return thread;
-      const now = new Date().toISOString();
-      thread.submission = {
-        status: "running",
-        runId,
-        commentIds: thread.pendingComments.map((comment) => comment.id),
-        startedAt: now,
-      };
-      thread.updatedAt = now;
-      claimed = reviewThreadRecordSchema.parse(thread);
-      return thread;
-    });
-    return claimed;
-  }
-
-  async create(
+  async createDiscussion(
     workspacePath: string,
     sessionId: string,
     anchor: ReviewAnchor,
-    body: string,
-  ): Promise<ReviewThread> {
+  ): Promise<ReviewThreadRecord> {
     const now = new Date().toISOString();
     const record = reviewThreadRecordSchema.parse({
       id: crypto.randomUUID(),
@@ -160,29 +111,31 @@ export class ReviewRepository {
       status: "open",
       createdAt: now,
       updatedAt: now,
-      pendingComments: [{ id: crypto.randomUUID(), body: body.trim(), createdAt: now }],
+      pendingComments: [],
     });
     await this.write(record);
     await this.refreshReviewContext(workspacePath, sessionId);
-    return projectReviewThread(record);
+    return record;
   }
 
-  async reply(
+  async linkDiscussionSidecar(
     workspacePath: string,
     sessionId: string,
     threadId: string,
-    body: string,
-  ): Promise<ReviewThread> {
-    const record = await this.update(workspacePath, sessionId, threadId, (thread) => {
-      const now = new Date().toISOString();
-      thread.pendingComments.push({ id: crypto.randomUUID(), body: body.trim(), createdAt: now });
-      thread.status = "open";
-      thread.resolvedAt = undefined;
-      thread.updatedAt = now;
+    sidecar: { sessionId: string; sessionFile: string },
+  ): Promise<ReviewThreadRecord> {
+    return this.update(workspacePath, sessionId, threadId, (thread) => {
+      thread.agentSessionId = sidecar.sessionId;
+      thread.agentSessionFile = sidecar.sessionFile;
+      thread.pendingComments.splice(0);
+      thread.submission = undefined;
+      thread.updatedAt = new Date().toISOString();
       return thread;
     });
-    await this.refreshReviewContext(workspacePath, sessionId);
-    return this.project(record);
+  }
+
+  refreshDiscussionContext(workspacePath: string, sessionId: string) {
+    return this.refreshReviewContext(workspacePath, sessionId);
   }
 
   async resolve(
@@ -198,65 +151,6 @@ export class ReviewRepository {
       thread.updatedAt = now;
       return thread;
     });
-    await this.refreshReviewContext(workspacePath, sessionId);
-    return this.project(record);
-  }
-
-  async completeRun(
-    workspacePath: string,
-    sessionId: string,
-    threadId: string,
-    runId: string,
-    agent: { sessionId: string; sessionFile?: string; usage?: ReviewThreadRecord["usage"] },
-  ): Promise<ReviewThread | undefined> {
-    let completed = false;
-    const record = await this.update(workspacePath, sessionId, threadId, (thread) => {
-      if (thread.submission?.status !== "running" || thread.submission.runId !== runId)
-        return thread;
-      thread.agentSessionId = agent.sessionId;
-      thread.agentSessionFile = agent.sessionFile;
-      thread.usage = agent.usage;
-      const now = new Date().toISOString();
-      const claimed = new Set(thread.submission.commentIds);
-      thread.pendingComments.splice(
-        0,
-        thread.pendingComments.length,
-        ...thread.pendingComments.filter((comment) => !claimed.has(comment.id)),
-      );
-      thread.submission = { status: "answered", runId, commentIds: [...claimed], completedAt: now };
-      thread.updatedAt = now;
-      completed = true;
-      return thread;
-    });
-    if (!completed) return undefined;
-    await this.refreshReviewContext(workspacePath, sessionId);
-    return this.project(record);
-  }
-
-  async failRun(
-    workspacePath: string,
-    sessionId: string,
-    threadId: string,
-    runId: string,
-    error: string,
-  ): Promise<ReviewThread | undefined> {
-    let failed = false;
-    const record = await this.update(workspacePath, sessionId, threadId, (thread) => {
-      if (thread.submission?.status !== "running" || thread.submission.runId !== runId)
-        return thread;
-      const now = new Date().toISOString();
-      thread.submission = {
-        status: "failed",
-        runId,
-        commentIds: thread.submission.commentIds,
-        failedAt: now,
-        error,
-      };
-      thread.updatedAt = now;
-      failed = true;
-      return thread;
-    });
-    if (!failed) return undefined;
     await this.refreshReviewContext(workspacePath, sessionId);
     return this.project(record);
   }

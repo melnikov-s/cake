@@ -12,6 +12,14 @@ import {
   makeProjectSessionEnvironmentLayer,
   type ProjectSessionEnvironment,
 } from "../services/project-sessions/ProjectSessionEnvironment";
+import {
+  makeCakeChatEnvironmentLayer,
+  type CakeChatEnvironment,
+} from "../services/cake-chats/CakeChatEnvironment";
+import {
+  makeDiscussionSessionEnvironmentLayer,
+  type DiscussionSessionEnvironment,
+} from "../services/discussion-sessions/DiscussionSessionEnvironment";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import { makeApplicationStorageLive } from "../services/storage/ApplicationStorage";
 import { BootstrapLive } from "./BootstrapLive";
@@ -32,6 +40,8 @@ const makeMainLive = (
     makePiAgentResourcesLive(piAgentDirectory),
     makePiSessionsLive(),
     makeProjectSessionEnvironmentLayer(rpcOperations.projectSessions),
+    makeCakeChatEnvironmentLayer(rpcOperations.cakeChats),
+    makeDiscussionSessionEnvironmentLayer(rpcOperations.discussionSessions),
   );
   const serverLive = makeCakeIpcServerLive(rpcOperations).pipe(Layer.provide(servicesLive));
   return Layer.merge(servicesLive, serverLive);
@@ -50,7 +60,9 @@ type MainService =
   | PiAgentResources
   | PiModels
   | PiSessions
-  | ProjectSessionEnvironment;
+  | ProjectSessionEnvironment
+  | CakeChatEnvironment
+  | DiscussionSessionEnvironment;
 let runEffect:
   | (<A, E>(effect: Effect.Effect<A, E, MainService>, signal?: AbortSignal) => Promise<A>)
   | undefined;

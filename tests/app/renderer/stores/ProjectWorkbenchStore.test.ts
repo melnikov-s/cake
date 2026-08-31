@@ -14,6 +14,9 @@ import type { DesktopClient, DesktopClientEvent } from "../../../../src/renderer
 import { mountRootStore } from "../../../../src/renderer/mount-root-store";
 import type { ProjectWorkbenchStore } from "../../../../src/renderer/stores/ProjectWorkbenchStore";
 import { ModelPresetSettingsStoreFactory } from "../../../../src/renderer/stores/ModelPresetSettingsStore";
+import { SessionCatalogStoreFactory } from "../../../../src/renderer/stores/SessionCatalogStore";
+import { ProjectCatalogStoreFactory } from "../../../../src/renderer/stores/ProjectCatalogStore";
+import { unusedCakeChats, unusedDiscussionSessions } from "./unused-cake-session-client";
 
 const snapshot: SessionSnapshot = {
   workspacePath: "/project",
@@ -325,6 +328,18 @@ function mountTestStore(
       getHomeDirectory: () => Effect.succeed("/home/user"),
       getState: () => Effect.die("not used"),
     },
+    projects: {
+      observeCatalog: () =>
+        Stream.fromEffect(
+          Effect.promise(() => client.loadApplicationState()).pipe(
+            Effect.map((state) => ({
+              _tag: "Snapshot" as const,
+              revision: 1,
+              projects: state.projects,
+            })),
+          ),
+        ),
+    },
     models: {
       list: () =>
         Effect.promise(() => client.listModels()).pipe(
@@ -370,8 +385,38 @@ function mountTestStore(
       },
       resolve: () => Effect.die("not used"),
     },
+    cakeChats: unusedCakeChats,
+    discussionSessions: unusedDiscussionSessions,
     projectSessions: {
       list: () => Effect.die("not used"),
+      observeCatalog: () =>
+        Stream.fromEffect(
+          Effect.promise(() => client.listSessions()).pipe(
+            Effect.map((index) => ({
+              _tag: "Snapshot" as const,
+              revision: 1,
+              sessions: index.sessions.map((session) => {
+                const projected = {
+                  sessionId: session.id,
+                  title: session.title,
+                  createdAt: session.created,
+                  modifiedAt: session.modified,
+                  messageCount: session.messageCount,
+                  resolved: session.resolved,
+                  unread: session.unread,
+                  projectPath: session.projectPath ?? session.workspacePath,
+                  projectName: session.workspaceName,
+                  workingDirectory: session.workspacePath,
+                };
+                if (session.parentSessionId !== undefined)
+                  Object.assign(projected, { parentSessionId: session.parentSessionId });
+                if (session.managedWorktree !== undefined)
+                  Object.assign(projected, { managedWorktree: session.managedWorktree });
+                return projected;
+              }),
+            })),
+          ),
+        ),
       inspect: () => Effect.die("not used"),
       create: () => Effect.die("not used"),
       open: () => Effect.die("not used"),
@@ -401,8 +446,31 @@ function mountTestStore(
       revision: 0,
     }).pipe(Effect.provide(Layer.succeed(CakeIpcClient)(effectClient))),
   );
-  modelPresetHandles.push(modelPresetHandle);
-  const root = mountRootStore(client, modelPresetHandle.instance);
+  const sessionCatalogHandle = Effect.runSync(
+    mount(SessionCatalogStoreFactory, {
+      managedWorktrees: [],
+      loading: true,
+      revision: 0,
+      sourceRevision: -1,
+    }).pipe(Effect.provide(Layer.succeed(CakeIpcClient)(effectClient))),
+  );
+  const projectCatalogHandle = Effect.runSync(
+    mount(ProjectCatalogStoreFactory, {
+      props: { sessions: sessionCatalogHandle.instance },
+      recentPaths: [],
+      loading: true,
+      revision: 0,
+      sourceRevision: -1,
+    }).pipe(Effect.provide(Layer.succeed(CakeIpcClient)(effectClient))),
+  );
+  modelPresetHandles.push(modelPresetHandle, sessionCatalogHandle, projectCatalogHandle);
+  const root = mountRootStore(
+    client,
+    modelPresetHandle.instance,
+    projectCatalogHandle.instance,
+    sessionCatalogHandle.instance,
+    (effect) => Effect.runPromise(effect),
+  );
   return { root, store: root.projectWorkbenchStore };
 }
 
@@ -490,19 +558,21 @@ describe("ProjectWorkbenchStore", () => {
     const desktop = createDesktopClient();
     const { root, store } = mountTestStore(desktop.client);
     await flush();
-    root.sessionCatalogStore.replace([
-      {
-        id: "resolved-session",
-        title: "Resolved work",
-        created: new Date(0).toISOString(),
-        modified: new Date(0).toISOString(),
-        messageCount: 1,
-        resolved: true,
-        unread: false,
-        workspacePath: "/project",
-        workspaceName: "Project",
-      },
-    ]);
+    await root.props.runCatalog(
+      root.sessionCatalogStore.replace([
+        {
+          id: "resolved-session",
+          title: "Resolved work",
+          created: new Date(0).toISOString(),
+          modified: new Date(0).toISOString(),
+          messageCount: 1,
+          resolved: true,
+          unread: false,
+          workspacePath: "/project",
+          workspaceName: "Project",
+        },
+      ]),
+    );
     vi.mocked(desktop.client.loadSession).mockResolvedValue({
       workspacePath: "/project",
       sessionId: "resolved-session",
@@ -574,20 +644,22 @@ describe("ProjectWorkbenchStore", () => {
     const desktop = createDesktopClient();
     const { root } = mountTestStore(desktop.client);
     await flush();
-    root.projectCatalogStore.applyApplicationState({
-      projects: [
-        {
-          path: "/project",
-          name: "Project",
-          addedAt: "2026-08-01T00:00:00.000Z",
-          lastOpenedAt: "2026-08-01T00:00:00.000Z",
-        },
-      ],
-      resolvedSessionIds: [],
-      resolvedCakeChatSessionIds: [],
-      unreadSessionIds: [],
-      trustedProjectPaths: ["/project"],
-    });
+    await root.props.runCatalog(
+      root.projectCatalogStore.applyApplicationState({
+        projects: [
+          {
+            path: "/project",
+            name: "Project",
+            addedAt: "2026-08-01T00:00:00.000Z",
+            lastOpenedAt: "2026-08-01T00:00:00.000Z",
+          },
+        ],
+        resolvedSessionIds: [],
+        resolvedCakeChatSessionIds: [],
+        unreadSessionIds: [],
+        trustedProjectPaths: ["/project"],
+      }),
+    );
     vi.mocked(desktop.client.createWorktree).mockResolvedValueOnce({
       projectPath: "/project",
       worktreePath: "/project-worktrees/isolated-task",
@@ -2495,19 +2567,21 @@ describe("ProjectWorkbenchStore", () => {
       ],
     };
     await openSnapshot(store, desktop, oldSnapshot);
-    root.sessionCatalogStore.replace([
-      {
-        id: "session-2",
-        title: "Session two",
-        created: new Date(0).toISOString(),
-        modified: new Date(0).toISOString(),
-        messageCount: 1,
-        resolved: false,
-        unread: false,
-        workspacePath: "/project",
-        workspaceName: "Project",
-      },
-    ]);
+    await root.props.runCatalog(
+      root.sessionCatalogStore.replace([
+        {
+          id: "session-2",
+          title: "Session two",
+          created: new Date(0).toISOString(),
+          modified: new Date(0).toISOString(),
+          messageCount: 1,
+          resolved: false,
+          unread: false,
+          workspacePath: "/project",
+          workspaceName: "Project",
+        },
+      ]),
+    );
     root.sessionRegistry.ensure("session-2");
 
     await root.openSession("session-2");
@@ -2666,19 +2740,22 @@ describe("ProjectWorkbenchStore", () => {
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop);
-    root.sessionCatalogStore.replace([
-      {
-        id: snapshot.sessionId,
-        title: "Resolved work",
-        created: new Date(0).toISOString(),
-        modified: new Date(0).toISOString(),
-        messageCount: 1,
-        resolved: true,
-        unread: false,
-        workspacePath: snapshot.workspacePath,
-        workspaceName: "Project",
-      },
-    ]);
+    await root.props.runCatalog(root.sessionCatalogStore.awaitHydrated());
+    await root.props.runCatalog(
+      root.sessionCatalogStore.replace([
+        {
+          id: snapshot.sessionId,
+          title: "Resolved work",
+          created: new Date(0).toISOString(),
+          modified: new Date(0).toISOString(),
+          messageCount: 1,
+          resolved: true,
+          unread: false,
+          workspacePath: snapshot.workspacePath,
+          workspaceName: "Project",
+        },
+      ]),
+    );
 
     await store.sessionManagementStore.deleteSession(snapshot.sessionId);
 
@@ -2769,11 +2846,13 @@ describe("ProjectWorkbenchStore", () => {
 
     // Activation removes Cake's draft marker before Pi emits its first snapshot. A
     // concurrent workspace refresh must retain that cataloged, starting identity.
-    root.sessionCatalogStore.applyWorkspace(
-      "/project-worktree",
-      "Project",
-      [],
-      store.sessionRegistry.retainedNewSessionIds("/project-worktree"),
+    await root.props.runCatalog(
+      root.sessionCatalogStore.applyWorkspace(
+        "/project-worktree",
+        "Project",
+        [],
+        store.sessionRegistry.retainedNewSessionIds("/project-worktree"),
+      ),
     );
     expect(root.sessionCatalogStore.find(session.sessionId)).toMatchObject({ draft: false });
 
@@ -2951,19 +3030,21 @@ describe("ProjectWorkbenchStore", () => {
       ...snapshot,
       parts: [{ id: "one", kind: "text", role: "assistant", text: "One", status: "complete" }],
     });
-    root.sessionCatalogStore.replace([
-      {
-        id: "session-2",
-        title: "Session two",
-        created: new Date(0).toISOString(),
-        modified: new Date(0).toISOString(),
-        messageCount: 0,
-        resolved: false,
-        unread: false,
-        workspacePath: "/project",
-        workspaceName: "Project",
-      },
-    ]);
+    await root.props.runCatalog(
+      root.sessionCatalogStore.replace([
+        {
+          id: "session-2",
+          title: "Session two",
+          created: new Date(0).toISOString(),
+          modified: new Date(0).toISOString(),
+          messageCount: 0,
+          resolved: false,
+          unread: false,
+          workspacePath: "/project",
+          workspaceName: "Project",
+        },
+      ]),
+    );
 
     await store.openSession("session-2");
     const secondOpenId = store.activeOperations.at(-1)!;
@@ -3007,19 +3088,21 @@ describe("ProjectWorkbenchStore", () => {
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop);
-    root.sessionCatalogStore.replace([
-      {
-        id: "session-2",
-        title: "Session two",
-        created: new Date(0).toISOString(),
-        modified: new Date(0).toISOString(),
-        messageCount: 0,
-        resolved: false,
-        unread: false,
-        workspacePath: "/project",
-        workspaceName: "Project",
-      },
-    ]);
+    await root.props.runCatalog(
+      root.sessionCatalogStore.replace([
+        {
+          id: "session-2",
+          title: "Session two",
+          created: new Date(0).toISOString(),
+          modified: new Date(0).toISOString(),
+          messageCount: 0,
+          resolved: false,
+          unread: false,
+          workspacePath: "/project",
+          workspaceName: "Project",
+        },
+      ]),
+    );
 
     await store.openSession("session-2");
     const secondOpenId = store.activeOperations.at(-1)!;
@@ -3069,19 +3152,22 @@ describe("ProjectWorkbenchStore", () => {
     const { root, store } = mountTestStore(desktop.client);
     await flush();
     await openSnapshot(store, desktop);
-    root.sessionCatalogStore.replace([
-      {
-        id: "session-1",
-        title: "Session one",
-        created: new Date(0).toISOString(),
-        modified: new Date(0).toISOString(),
-        messageCount: 0,
-        resolved: false,
-        unread: true,
-        workspacePath: "/project",
-        workspaceName: "Project",
-      },
-    ]);
+    await root.props.runCatalog(root.sessionCatalogStore.awaitHydrated());
+    await root.props.runCatalog(
+      root.sessionCatalogStore.replace([
+        {
+          id: "session-1",
+          title: "Session one",
+          created: new Date(0).toISOString(),
+          modified: new Date(0).toISOString(),
+          messageCount: 0,
+          resolved: false,
+          unread: true,
+          workspacePath: "/project",
+          workspaceName: "Project",
+        },
+      ]),
+    );
     expect(root.sidebarStore.sessionActivity("session-1")).toBe("unread");
 
     await store.openSession("session-1");
@@ -3121,19 +3207,21 @@ describe("ProjectWorkbenchStore", () => {
     await flush();
     desktop.emit({ type: "pi-state-changed", state: "ready" });
     await openSnapshot(store, desktop);
-    root.sessionCatalogStore.replace([
-      {
-        id: "session-2",
-        title: "Session two",
-        created: new Date(0).toISOString(),
-        modified: new Date(0).toISOString(),
-        messageCount: 0,
-        resolved: false,
-        unread: false,
-        workspacePath: "/project",
-        workspaceName: "Project",
-      },
-    ]);
+    await root.props.runCatalog(
+      root.sessionCatalogStore.replace([
+        {
+          id: "session-2",
+          title: "Session two",
+          created: new Date(0).toISOString(),
+          modified: new Date(0).toISOString(),
+          messageCount: 0,
+          resolved: false,
+          unread: false,
+          workspacePath: "/project",
+          workspaceName: "Project",
+        },
+      ]),
+    );
     desktop.client.loadSession = vi.fn(
       async () =>
         ({

@@ -1,6 +1,6 @@
 import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { chmod, mkdir } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import {
   type ReviewSessionProjection,
   type ReviewThreadRecord,
@@ -8,31 +8,12 @@ import {
 import { runIsolatedSession } from "./isolated-session-runner";
 import { assertSessionPath } from "./session-path";
 import { AtomicFileWriter } from "../../../main/atomic-file-writer";
-import type { SessionSnapshot, ThinkingLevel, UiPart } from "../../../ipc/session-contract";
 import { projectSessionEntries } from "./session-projection";
 
 const atomicFileWriter = new AtomicFileWriter();
 
 export const inlineWidgetLayoutRequirements =
   "The layout must remain collision-free from 320 CSS pixels through wide desktop sizes and when labels or values grow. Structural content must use normal-flow flex or grid layout that wraps or reflows; do not use absolute or fixed positioning for structural text, controls, icons, or navigation. Reserve explicit space for decorative marks, set min-width: 0 on shrinkable flex/grid children, wrap control groups when needed, and allow long text to wrap. No text or interactive control may overlap, cover, or be covered by another element, and the page must not require horizontal scrolling.";
-
-export interface ReviewTurnOptions {
-  cwd: string;
-  trusted: boolean;
-  thread: ReviewThreadRecord;
-  sessionDir: string;
-  parentSessionRoot: string;
-  signal?: AbortSignal;
-  model?: { provider: string; id: string };
-  thinkingLevel?: ThinkingLevel;
-  parent?: ReviewParentContext;
-  agentDir: string;
-  onEvent?(event: ReviewTurnEvent): void;
-}
-
-type ReviewTurnEvent =
-  | { type: "part-updated"; part: UiPart }
-  | { type: "usage-updated"; usage: NonNullable<SessionSnapshot["usage"]> };
 
 export interface ReviewParentContext {
   sessionId: string;
@@ -41,13 +22,6 @@ export interface ReviewParentContext {
   systemPrompt?: string;
   activeTools?: string[];
   model?: { provider: string; id: string };
-}
-
-export interface ReviewTurnResult {
-  sessionId: string;
-  sessionFile?: string;
-  error?: string;
-  usage?: SessionSnapshot["usage"];
 }
 
 export interface InlineWidgetRepairOptions {
@@ -81,44 +55,6 @@ export interface InlineWidgetGenerationResult {
   language: "react";
   source: string;
   generationSessionId: string;
-}
-
-function openReviewSession(options: ReviewTurnOptions) {
-  if (!options.thread.agentSessionFile)
-    return SessionManager.create(options.cwd, options.sessionDir);
-  assertSessionPath(options.thread.agentSessionFile, options.sessionDir, "Review session file");
-  return SessionManager.open(options.thread.agentSessionFile, options.sessionDir, options.cwd);
-}
-
-export async function runReviewTurn(options: ReviewTurnOptions): Promise<ReviewTurnResult> {
-  const sessionManager = openReviewSession(options);
-  const parentTranscriptPath = await writeReviewParentContext(options);
-  const isolatedSessionOptions = {
-    cwd: options.cwd,
-    agentDir: options.agentDir,
-    sessionManager,
-    projectTrusted: options.trusted,
-    systemPrompt: reviewSidecarSystemPrompt(options.thread, parentTranscriptPath),
-    prompt: options.thread.pendingComments.map((comment) => comment.body).join("\n\n"),
-    signal: options.signal,
-    model: options.model,
-    thinkingLevel: options.thinkingLevel,
-    modelPurpose: "review",
-    cancellationMessage: "The review run was cancelled",
-    bindExtensions: true,
-    capturePromptError: true,
-    onEvent: options.onEvent,
-  };
-  const result = await runIsolatedSession({
-    ...isolatedSessionOptions,
-    tools: ["read", "grep", "find", "ls"],
-  });
-  return {
-    sessionId: result.sessionId,
-    sessionFile: result.sessionFile,
-    error: result.error,
-    usage: result.usage,
-  };
 }
 
 export async function runInlineWidgetRepair(
@@ -186,9 +122,17 @@ export async function runInlineWidgetGeneration(options: {
   };
 }
 
-async function writeReviewParentContext(options: ReviewTurnOptions) {
+const MAX_DISCUSSION_PARENT_CONTEXT_LENGTH = 524_288;
+
+/** Writes one bounded, regenerated parent projection to a Cake-owned derived-context path. */
+export async function writeDiscussionParentContext(options: {
+  cwd: string;
+  parentSessionRoot: string;
+  parent?: ReviewParentContext;
+  target: string;
+}) {
   if (!options.parent?.sessionFile)
-    throw new Error("The parent session is unavailable for this review thread");
+    throw new Error("The parent session is unavailable for this discussion");
   assertSessionPath(options.parent.sessionFile, options.parentSessionRoot, "Parent session file");
   const parent = SessionManager.open(
     options.parent.sessionFile,
@@ -196,12 +140,14 @@ async function writeReviewParentContext(options: ReviewTurnOptions) {
     options.cwd,
   );
   const entries = parent.getBranch(options.parent.leafId);
-  const directory = join(options.sessionDir, "context");
-  const target = join(directory, "parent-transcript.md");
-  await mkdir(directory, { recursive: true, mode: 0o700 });
-  await atomicFileWriter.write(target, renderParentTranscript(parent.getSessionId(), entries));
-  await chmod(target, 0o400);
-  return target;
+  await mkdir(dirname(options.target), { recursive: true, mode: 0o700 });
+  await chmod(options.target, 0o600).catch(() => undefined);
+  await atomicFileWriter.write(
+    options.target,
+    renderParentTranscript(parent.getSessionId(), entries),
+  );
+  await chmod(options.target, 0o400);
+  return options.target;
 }
 
 function renderParentTranscript(sessionId: string, entries: SessionEntry[]) {
@@ -228,10 +174,22 @@ function renderParentTranscript(sessionId: string, entries: SessionEntry[]) {
     }
     return [];
   });
-  return `# Live parent session\n\nSession: ${sessionId}\n\nThis read-only projection follows the parent session's currently active branch and is regenerated before every review-thread reply.\n\n${sections.join("\n\n---\n\n")}\n`;
+  const header = `# Live parent session\n\nSession: ${sessionId}\n\nThis read-only projection follows the parent session's currently active branch and is regenerated before every discussion reply. It is bounded and may omit older entries.\n\n`;
+  const selected: string[] = [];
+  let length = header.length;
+  for (const section of sections.toReversed()) {
+    const addition = `${section}\n\n---\n\n`;
+    if (length + addition.length > MAX_DISCUSSION_PARENT_CONTEXT_LENGTH) break;
+    selected.unshift(section);
+    length += addition.length;
+  }
+  return `${header}${selected.join("\n\n---\n\n")}\n`;
 }
 
-function reviewSidecarSystemPrompt(thread: ReviewThreadRecord, parentTranscriptPath: string) {
+export function reviewSidecarSystemPrompt(
+  thread: ReviewThreadRecord,
+  parentTranscriptPath: string,
+) {
   const common = [
     "You are replying in an independent lightweight Cake sidecar chat. Its history is separate from the parent conversation, which may contain later corrections or decisions.",
     `A read-only projection of the parent conversation is available at ${parentTranscriptPath}. Read or search it only when the anchor and local context are insufficient. Never modify this projection or any Cake session files.`,

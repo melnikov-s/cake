@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { observer, StoreProvider, useStore } from "r-state-tree/react";
+import { useAtomRef } from "effect-state-tree/react";
 import {
   Confirmation,
   ConfirmationAction,
@@ -52,6 +53,8 @@ export const App = observer(function App() {
   const store = root.projectWorkbenchStore;
   const sidebar = root.sidebarStore;
   const projects = root.projectCatalogStore;
+  const catalogRevision =
+    useAtomRef(projects.revision) + useAtomRef(root.sessionCatalogStore.revision);
   const persistence = root.windowPersistence;
   const reviews = root.reviewsStore;
   const settings = root.settingsStore;
@@ -277,6 +280,7 @@ export const App = observer(function App() {
         onChooseProject={chooseProject}
         onGoBack={goBack}
         onGoForward={goForward}
+        catalogRevision={catalogRevision}
       />
       {!sidebarCollapsed && (
         <ResizeHandle

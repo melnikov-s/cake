@@ -1,8 +1,11 @@
 import { Duration, Effect, Layer, Stream } from "effect";
 import { RpcServer } from "effect/unstable/rpc";
 import { getState } from "../../domain/application";
+import * as cakeChats from "../../domain/cakeChats";
+import * as discussionSessions from "../../domain/discussionSessions";
 import * as modelPresets from "../../domain/modelPresets";
 import * as projectSessions from "../../domain/projectSessions";
+import * as projects from "../../domain/projects";
 import { PiModels } from "../../services/pi/PiModels";
 import { CakeRpc, FoundationFailure } from "../protocol/CakeRpc";
 import {
@@ -11,10 +14,14 @@ import {
 } from "../protocol/RendererConnectionMiddleware";
 import { ElectronRpcServerProtocolLive } from "../transport/ElectronRpcServerProtocol";
 import type { ProjectSessionEnvironmentService } from "../../services/project-sessions/ProjectSessionEnvironment";
+import type { CakeChatEnvironmentOperations } from "../../services/cake-chats/CakeChatEnvironment";
+import type { DiscussionSessionEnvironmentService } from "../../services/discussion-sessions/DiscussionSessionEnvironment";
 
 export interface CakeIpcServerOperations {
   readonly getHomeDirectory: () => string | Promise<string>;
   readonly projectSessions: ProjectSessionEnvironmentService;
+  readonly cakeChats: CakeChatEnvironmentOperations;
+  readonly discussionSessions: DiscussionSessionEnvironmentService;
 }
 
 export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
@@ -30,6 +37,7 @@ export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
         return yield* Effect.promise(() => Promise.resolve(operations.getHomeDirectory()));
       }),
     "application.getState": () => getState(),
+    "projects.observeCatalog": () => Stream.unwrap(projects.observeCatalog()),
     "models.list": () => Effect.flatMap(PiModels, (models) => models.list()),
     "modelPresets.list": () => modelPresets.list(),
     "modelPresets.create": (input) => modelPresets.create(input),
@@ -37,7 +45,42 @@ export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
     "modelPresets.remove": ({ id }) => modelPresets.remove(id),
     "modelPresets.setDefault": ({ id }) => modelPresets.setDefault(id),
     "modelPresets.resolve": ({ id }) => modelPresets.resolve(id),
+    "cakeChats.list": () => cakeChats.list(),
+    "cakeChats.inspect": ({ sessionId }) => cakeChats.inspect(sessionId),
+    "cakeChats.open": (target) => cakeChats.open(target),
+    "cakeChats.observe": (target) => Stream.unwrap(cakeChats.observe(target)),
+    "cakeChats.prompt": (input) => cakeChats.prompt(input),
+    "cakeChats.abort": (target) => cakeChats.abort(target),
+    "cakeChats.compact": ({ instructions, ...target }) => cakeChats.compact(target, instructions),
+    "cakeChats.editMessage": (input) => cakeChats.editMessage(input),
+    "cakeChats.applyConfiguration": ({ configuration, ...target }) =>
+      cakeChats.applyConfiguration(target, configuration),
+    "cakeChats.setModel": ({ provider, modelId, ...target }) =>
+      cakeChats.setModel(target, provider, modelId),
+    "cakeChats.setThinkingLevel": ({ level, ...target }) =>
+      cakeChats.setThinkingLevel(target, level),
+    "cakeChats.setFastMode": ({ enabled, ...target }) => cakeChats.setFastMode(target, enabled),
+    "cakeChats.rename": ({ name, ...target }) => cakeChats.rename(target, name),
+    "cakeChats.handoff": ({ entryId, prompt, resolveSource, ...target }) => {
+      const input: Parameters<typeof cakeChats.handoff>[0] = { target, entryId };
+      if (prompt !== undefined) Object.assign(input, { prompt });
+      if (resolveSource !== undefined) Object.assign(input, { resolveSource });
+      return cakeChats.handoff(input);
+    },
+    "cakeChats.resolve": (target) => cakeChats.resolve(target),
+    "cakeChats.restore": (target) => cakeChats.restore(target),
+    "cakeChats.deleteResolved": (target) => cakeChats.deleteResolved(target),
+    "cakeChats.respondControl": ({ controlRequestId, result }) =>
+      cakeChats.respondControl(controlRequestId, result),
+    "discussionSessions.list": (input) => discussionSessions.list(input),
+    "discussionSessions.create": (input) => discussionSessions.create(input),
+    "discussionSessions.observe": (target) => Stream.unwrap(discussionSessions.observe(target)),
+    "discussionSessions.prompt": (input) => discussionSessions.prompt(input),
+    "discussionSessions.abort": (target) => discussionSessions.abort(target),
+    "discussionSessions.setResolved": ({ resolved, ...target }) =>
+      discussionSessions.setResolved(target, resolved),
     "projectSessions.list": () => projectSessions.list(),
+    "projectSessions.observeCatalog": () => Stream.unwrap(projectSessions.observeCatalog()),
     "projectSessions.inspect": (target) => projectSessions.inspect(target),
     "projectSessions.create": (input) => projectSessions.create(input),
     "projectSessions.open": (target) => projectSessions.open(target),

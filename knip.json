@@ -9,6 +9,5 @@
     "src/plugin/backend-api.ts"
   ],
   "ignoreDependencies": ["vscode"],
-  "ignoreFiles": ["src/models/Project.ts"],
   "ignoreExportsUsedInFile": false
 }

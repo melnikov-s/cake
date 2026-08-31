@@ -27,21 +27,29 @@ import {
   type WindowViewState,
 } from "../ipc/session-contract";
 import type { SourceLocation } from "../ipc/source-location";
+import { jsonObjectSchema } from "../ipc/json-contract";
 import type { WorktreeRecord } from "../ipc/worktree-contract";
 import {
   findSessionFile,
   forkWorkspaceSession,
   inspectWorkspace,
   listWorkspaceSessions,
-  loadWorkspaceSessionPreview,
   suggestProjectFiles,
 } from "../services/pi/runtime/session-discovery";
 import {
   loadReviewSessionProjection,
+  reviewSidecarSystemPrompt,
   runInlineWidgetRepair,
+  writeDiscussionParentContext,
 } from "../services/pi/runtime/sidecar-runtime";
 import { PiModels } from "../services/pi/PiModels";
+import { PiSessions } from "../services/pi/PiSessions";
 import { ProjectSessionEnvironmentError } from "../services/project-sessions/ProjectSessionEnvironment";
+import { CakeChatEnvironmentError } from "../services/cake-chats/CakeChatEnvironment";
+import {
+  DiscussionSessionEnvironmentError,
+  type DiscussionSessionRecord,
+} from "../services/discussion-sessions/DiscussionSessionEnvironment";
 import { rewordSelectionWithProjectContext } from "../services/pi/runtime/rewording-agent";
 import {
   generateSessionTitle,
@@ -76,7 +84,6 @@ import { ArtifactRepository } from "./artifact-repository";
 import { ReviewRepository } from "./review-repository";
 import { AtomicFileWriter } from "./atomic-file-writer";
 import { WorktreeService } from "./worktree-service";
-import { GlobalChatDriver } from "./global-chat-driver";
 import { resolveCakePaths } from "./cake-paths";
 import { SessionArchiveRepository } from "./session-archive-repository";
 import { PluginBuildService } from "./plugin-build-service";
@@ -134,6 +141,7 @@ const piHosts = new Map<string, PiHost>();
 const sessionWorkspacePaths = new Map<string, string>();
 const allowedProjectPaths = new Set<string>();
 const pendingTrustRequests = new Map<string, string>();
+const openSessionContextMenus = new Set<Menu>();
 const windowCustomizationRevisions = new Map<number, string>();
 const customizationHealthTimers = new Map<number, ReturnType<typeof setTimeout>>();
 const fullscreenSurfaces = new Map<number, Set<string>>();
@@ -155,6 +163,20 @@ const modelPresetAgentProjection = () => {
     presets: state.modelPresets.map(({ id, name, modelId }) => ({ id, name, modelId })),
     defaultPresetId: state.defaultModelPresetId,
   };
+};
+const cakeChatRecoveryContext = () => {
+  const state = pluginActivation.snapshot();
+  if (!state.recoveryRequired && state.diagnostics.length === 0) return undefined;
+  return JSON.stringify(
+    {
+      failedRevision: state.failedRevision,
+      pendingRevision: state.pendingRevision,
+      lastKnownGoodRevision: state.lastKnownGoodRevision,
+      diagnostics: state.diagnostics,
+    },
+    null,
+    2,
+  );
 };
 
 function clearPendingTrustRequests(webContentsId: number) {
@@ -186,7 +208,7 @@ const pluginBackends = new PluginBackendManager(
     const revision = pluginActivation.snapshot().activeRevision;
     void pluginActivation.fail(revision, { phase: "backend", pluginId, message }).then(async () => {
       await pluginBackends.stop();
-      globalChatDriver.refreshRecoveryContext();
+      refreshCakeChatApplicationContext();
       broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
       reloadAllAfterResponse({ kind: "factory" });
     });
@@ -210,6 +232,39 @@ const reviewRepository = new ReviewRepository(
   cakePaths.piReviewSessions,
   (record) => loadReviewSessionProjection(record, cakePaths.piReviewSessions),
 );
+
+function discussionRecord(
+  record: Awaited<ReturnType<ReviewRepository["get"]>>,
+): DiscussionSessionRecord {
+  if (!record) throw new Error("That Discussion Session no longer exists");
+  const projected: DiscussionSessionRecord = {
+    id: record.id,
+    workingDirectory: record.workspacePath,
+    parentSessionId: record.sessionId,
+    anchor: record.anchor,
+    status: record.status,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+  if (record.agentSessionId !== undefined)
+    Object.assign(projected, { sidecarSessionId: record.agentSessionId });
+  if (record.agentSessionFile !== undefined)
+    Object.assign(projected, { sidecarSessionFile: record.agentSessionFile });
+  if (record.resolvedAt !== undefined) Object.assign(projected, { resolvedAt: record.resolvedAt });
+  return projected;
+}
+
+const cakeChatEnvironmentError = (operation: string, cause: unknown) =>
+  new CakeChatEnvironmentError({
+    operation,
+    message: cause instanceof Error ? cause.message : String(cause),
+  });
+const discussionEnvironmentError = (operation: string, cause: unknown) =>
+  new DiscussionSessionEnvironmentError({
+    operation,
+    message: cause instanceof Error ? cause.message : String(cause),
+  });
+
 let applicationQuitting = false;
 const vscodeEditor = new VsCodeServerManager({
   root: join(app.getPath("userData"), "vscode-editor"),
@@ -231,41 +286,6 @@ const vscodeEditor = new VsCodeServerManager({
 // OS scheme flips (system preference) or the renderer persists a new preference.
 nativeTheme.on("updated", () => {
   void vscodeEditor.updateTheme();
-});
-let globalChatController: WebContents | undefined;
-const globalChatDriver = new GlobalChatDriver({
-  agentDir: cakePaths.piAgent,
-  sessionDir: cakePaths.piGlobalChatSessions,
-  resolvedSessionDir: cakePaths.piGlobalChatResolvedSessions,
-  modelPresets: modelPresetAgentProjection,
-  recoveryContext: () => {
-    const state = pluginActivation.snapshot();
-    if (!state.recoveryRequired && state.diagnostics.length === 0) return undefined;
-    return JSON.stringify(
-      {
-        failedRevision: state.failedRevision,
-        pendingRevision: state.pendingRevision,
-        lastKnownGoodRevision: state.lastKnownGoodRevision,
-        diagnostics: state.diagnostics,
-      },
-      null,
-      2,
-    );
-  },
-  fastMode: hasSessionFastMode,
-  setFastMode: (sessionId, enabled) =>
-    runMainEffect(setSessionFastMode(sessionId, enabled)).then(() => undefined),
-  sessionResolved: (sessionId) => applicationState().resolvedCakeChatSessionIds.includes(sessionId),
-  setSessionResolved: (sessionId, resolved) => setCakeChatSessionResolution(sessionId, resolved),
-  emit: (event) => {
-    if (
-      event.type === "global-chat-control-request" &&
-      globalChatController &&
-      !globalChatController.isDestroyed()
-    )
-      sendTo(globalChatController, event);
-    else broadcast(event);
-  },
 });
 const pluginAgents = new PluginAgentHost({
   utilityModel: () => applicationState().utilityModel,
@@ -313,7 +333,6 @@ function closeFullscreenSurfaceForWindow(window: BrowserWindow) {
 async function setCakeChatSessionResolution(sessionId: string, resolved: boolean) {
   if (resolved) {
     terminals.closeSession("cake-chat", sessionId);
-    await globalChatDriver.releaseSessionForArchive(sessionId);
     await sessionArchive.resolve(sessionId, {
       cwd: homedir(),
       activeRoot: cakePaths.piGlobalChatSessions,
@@ -360,19 +379,6 @@ async function setProjectSessionResolution(
     });
   }
   const state = await runMainEffect(setSessionsResolved([sessionId], resolved));
-  broadcast({ type: "application-state-changed", state });
-}
-
-async function deleteCakeChatSession(sessionId: string) {
-  if (!applicationState().resolvedCakeChatSessionIds.includes(sessionId))
-    throw new Error("Only resolved Cake Chat sessions can be deleted");
-  await sessionArchive.deleteResolved(sessionId, {
-    cwd: homedir(),
-    activeRoot: cakePaths.piGlobalChatSessions,
-    resolvedRoot: cakePaths.piGlobalChatResolvedSessions,
-    direct: true,
-  });
-  const state = await runMainEffect(setCakeChatSessionResolved(sessionId, false));
   broadcast({ type: "application-state-changed", state });
 }
 
@@ -432,11 +438,6 @@ async function deleteProjectSessions(projectPath: string, records: readonly Work
   }
   if (forgottenSessionIds.length > 0)
     await runMainEffect(forgetProjectSessions(forgottenSessionIds));
-}
-
-async function restoreCakeChatSessionForUse(sessionId: string) {
-  if (applicationState().resolvedCakeChatSessionIds.includes(sessionId))
-    await setCakeChatSessionResolution(sessionId, false);
 }
 
 function rememberSessionLocation(workspacePath: string, sessionId: string) {
@@ -643,6 +644,12 @@ function dispatchToPi(path: string, command: PiWorkspaceCommand) {
   launchPi(path).driver.dispatch(command);
 }
 
+function refreshCakeChatApplicationContext() {
+  void runMainEffect(
+    Effect.flatMap(PiSessions, (sessions) => sessions.reloadCakeChatContext()),
+  ).catch((error) => console.error("[cake] Cake Chat context refresh failed", error));
+}
+
 /**
  * Refreshes the model catalog everywhere without a restart. The shared
  * agent-directory catalog performs the single network pass and writes the
@@ -657,7 +664,7 @@ function refreshModelsEverywhere(requestId: string) {
       await runMainEffect(Effect.flatMap(PiModels, (models) => models.refreshCatalog()));
       await Promise.all([
         ...[...piHosts.values()].map((host) => host.driver.refreshModels()),
-        globalChatDriver.refreshModels(),
+        runMainEffect(Effect.flatMap(PiSessions, (sessions) => sessions.refreshModels())),
       ]);
       broadcast({ type: "complete", requestId });
     } catch (error) {
@@ -854,7 +861,7 @@ function createWindow() {
         message: `Customization renderer process exited: ${details.reason}.`,
       })
       .then(() => {
-        globalChatDriver.refreshRecoveryContext();
+        refreshCakeChatApplicationContext();
         broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
         if (!window.isDestroyed()) void loadSelectedRenderer(window, { kind: "factory" });
       });
@@ -910,7 +917,7 @@ async function loadSelectedRenderer(
             message: "The custom interface did not finish loading within 10 seconds.",
           })
           .then(() => {
-            globalChatDriver.refreshRecoveryContext();
+            refreshCakeChatApplicationContext();
             broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
             return loadSelectedRenderer(window, { kind: "factory" });
           });
@@ -936,7 +943,7 @@ async function rebuildAfterPluginConfigurationChange(request: string) {
   const candidate = await pluginActivation.validate(undefined, request);
   if (candidate.diagnostics.length > 0) {
     await pluginActivation.recoverFromRejected(candidate.revision);
-    globalChatDriver.refreshRecoveryContext();
+    refreshCakeChatApplicationContext();
     broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
     reloadAllAfterResponse({ kind: "factory" });
     return;
@@ -954,7 +961,7 @@ async function rebuildAfterPluginConfigurationChange(request: string) {
       phase: "backend",
       message: error instanceof Error ? error.message : String(error),
     });
-    globalChatDriver.refreshRecoveryContext();
+    refreshCakeChatApplicationContext();
     broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
     reloadAllAfterResponse({ kind: "factory" });
     return;
@@ -1255,7 +1262,7 @@ async function handleCakeRequest(
         completed = true;
         resolve(selected);
       };
-      Menu.buildFromTemplate(
+      const menu = Menu.buildFromTemplate(
         request.resolved
           ? [
               { label: "Unresolve", click: () => finish("unresolve") },
@@ -1282,11 +1289,16 @@ async function handleCakeRequest(
               },
               { label: "Resolve", click: () => finish("resolve") },
             ],
-      ).popup({
+      );
+      openSessionContextMenus.add(menu);
+      menu.popup({
         window: owner,
         x: request.x,
         y: request.y,
-        callback: () => finish(),
+        callback: () => {
+          openSessionContextMenus.delete(menu);
+          finish();
+        },
       });
     });
     return desktopResponseSchema.parse({ type: "session-context-menu-closed", action });
@@ -1434,7 +1446,7 @@ async function handleCakeRequest(
       valid: candidate.diagnostics.length === 0,
     });
     broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
-    if (candidate.diagnostics.length) globalChatDriver.refreshRecoveryContext();
+    if (candidate.diagnostics.length) refreshCakeChatApplicationContext();
     return response;
   }
   if (request.type === "activate-customization") {
@@ -1452,7 +1464,7 @@ async function handleCakeRequest(
       };
       await pluginActivation.fail(candidate.revision, diagnostic);
       broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
-      globalChatDriver.refreshRecoveryContext();
+      refreshCakeChatApplicationContext();
       throw error;
     }
     const response = desktopResponseSchema.parse({
@@ -1480,7 +1492,7 @@ async function handleCakeRequest(
     const healthTimer = customizationHealthTimers.get(event.sender.id);
     if (healthTimer) clearTimeout(healthTimer);
     customizationHealthTimers.delete(event.sender.id);
-    if (activating) globalChatDriver.refreshRecoveryContext();
+    if (activating) refreshCakeChatApplicationContext();
     broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
     return desktopResponseSchema.parse({
       type: "customization-state",
@@ -1490,7 +1502,7 @@ async function handleCakeRequest(
   if (request.type === "customization-runtime-failed") {
     await pluginBackends.stop();
     await pluginActivation.fail(request.revision, { phase: "runtime", message: request.message });
-    globalChatDriver.refreshRecoveryContext();
+    refreshCakeChatApplicationContext();
     broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
     reloadAllAfterResponse({ kind: "factory" });
     return desktopResponseSchema.parse({
@@ -1507,14 +1519,14 @@ async function handleCakeRequest(
         phase: "backend",
         message: error instanceof Error ? error.message : String(error),
       });
-      globalChatDriver.refreshRecoveryContext();
+      refreshCakeChatApplicationContext();
       reloadAllAfterResponse({ kind: "factory" });
       return desktopResponseSchema.parse({
         type: "customization-state",
         state: pluginActivation.snapshot(),
       });
     }
-    globalChatDriver.refreshRecoveryContext();
+    refreshCakeChatApplicationContext();
     const renderer = revision
       ? { kind: "custom" as const, revision, path: pluginActivation.buildPath(revision) }
       : { kind: "factory" as const };
@@ -1527,7 +1539,7 @@ async function handleCakeRequest(
   if (request.type === "use-factory-customization") {
     await pluginActivation.useFactory();
     await pluginBackends.stop();
-    globalChatDriver.refreshRecoveryContext();
+    refreshCakeChatApplicationContext();
     reloadAllAfterResponse({ kind: "factory" });
     return desktopResponseSchema.parse({
       type: "customization-state",
@@ -1567,7 +1579,7 @@ async function handleCakeRequest(
         pluginId: request.pluginId,
         message: `Plugin ${request.pluginId} was deleted. Rebuild the customization to activate the remaining plugins.`,
       });
-      globalChatDriver.refreshRecoveryContext();
+      refreshCakeChatApplicationContext();
       reloadAllAfterResponse({ kind: "factory" });
     }
     return desktopResponseSchema.parse({ type: "plugins-listed", plugins });
@@ -1688,95 +1700,6 @@ async function handleCakeRequest(
       ?.abort();
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
-  if (request.type === "open-global-chat") {
-    globalChatController = event.sender;
-    if (request.sessionId) await restoreCakeChatSessionForUse(request.sessionId);
-    globalChatDriver.open(request.requestId, request.tools, { sessionId: request.sessionId });
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
-  }
-  if (request.type === "prompt-global-chat") {
-    globalChatController = event.sender;
-    if (!request.newSession) await restoreCakeChatSessionForUse(request.sessionId);
-    globalChatDriver.prompt(
-      request.requestId,
-      request.sessionId,
-      request.text,
-      request.attachments,
-      request.renderUserMessageAsMarkdown,
-      request.newSession,
-    );
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
-  }
-  if (request.type === "edit-global-chat-message") {
-    globalChatController = event.sender;
-    await restoreCakeChatSessionForUse(request.sessionId);
-    globalChatDriver.editMessage(
-      request.requestId,
-      request.sessionId,
-      request.entryId,
-      request.text,
-      request.attachments,
-      request.renderUserMessageAsMarkdown,
-    );
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
-  }
-  if (request.type === "abort-global-chat") {
-    globalChatController = event.sender;
-    globalChatDriver.abort(request.requestId, request.sessionId);
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
-  }
-  if (request.type === "compact-global-chat") {
-    globalChatController = event.sender;
-    globalChatDriver.compact(request.requestId, request.sessionId, request.instructions);
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
-  }
-  if (request.type === "set-global-chat-model") {
-    globalChatController = event.sender;
-    globalChatDriver.setModel(
-      request.requestId,
-      request.sessionId,
-      request.provider,
-      request.modelId,
-    );
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
-  }
-  if (request.type === "set-global-chat-thinking") {
-    globalChatController = event.sender;
-    globalChatDriver.setThinkingLevel(request.requestId, request.sessionId, request.level);
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
-  }
-  if (request.type === "set-global-chat-configuration") {
-    globalChatController = event.sender;
-    globalChatDriver.setConfiguration(request.requestId, request.sessionId, request.configuration);
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
-  }
-  if (request.type === "set-global-chat-fast-mode") {
-    globalChatController = event.sender;
-    globalChatDriver.setFastMode(request.requestId, request.sessionId, request.enabled);
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
-  }
-  if (request.type === "rename-global-chat") {
-    globalChatController = event.sender;
-    await restoreCakeChatSessionForUse(request.sessionId);
-    globalChatDriver.rename(request.requestId, request.sessionId, request.name);
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
-  }
-  if (request.type === "handoff-global-chat") {
-    globalChatController = event.sender;
-    await restoreCakeChatSessionForUse(request.sessionId);
-    globalChatDriver.handoff(
-      request.requestId,
-      request.sessionId,
-      request.entryId,
-      request.prompt,
-      request.resolveSource,
-    );
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
-  }
-  if (request.type === "respond-global-chat-control") {
-    globalChatDriver.respond(request.controlRequestId, request.result);
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.controlRequestId });
-  }
   if (request.type === "choose-project") {
     if (!owner) return desktopResponseSchema.parse({ type: "project-chosen" });
     const result = await dialog.showOpenDialog(owner, { properties: ["openDirectory"] });
@@ -1839,30 +1762,6 @@ async function handleCakeRequest(
     const state = await runMainEffect(setUtilityModel(request.model));
     return desktopResponseSchema.parse({ type: "application-state-updated", state });
   }
-  if (request.type === "list-cake-chat-sessions") {
-    const resolvedSessionIds = new Set(applicationState().resolvedCakeChatSessionIds);
-    const sessions = (
-      await listWorkspaceSessions(homedir(), cakePaths.piGlobalChatSessions, {
-        resolvedSessionDir: cakePaths.piGlobalChatResolvedSessions,
-        direct: true,
-      })
-    )
-      .map((session) => ({ ...session, resolved: resolvedSessionIds.has(session.id) }))
-      .sort((left, right) => right.modified.localeCompare(left.modified));
-    return desktopResponseSchema.parse({ type: "cake-chat-sessions-listed", sessions });
-  }
-  if (request.type === "load-cake-chat-session") {
-    return desktopResponseSchema.parse({
-      type: "session-loaded",
-      session: await loadWorkspaceSessionPreview(
-        homedir(),
-        request.sessionId,
-        cakePaths.piGlobalChatSessions,
-        cakePaths.piGlobalChatResolvedSessions,
-        true,
-      ),
-    });
-  }
   if (request.type === "register-project") {
     if (!allowedProjectPaths.has(request.path))
       throw new Error("Project path was not selected by the user");
@@ -1911,22 +1810,8 @@ async function handleCakeRequest(
     const state = await runMainEffect(removeProject(request.path));
     return desktopResponseSchema.parse({ type: "application-state-updated", state });
   }
-  if (request.type === "resolve-cake-chat-session") {
-    await setCakeChatSessionResolution(request.sessionId, request.resolved);
-    return desktopResponseSchema.parse({
-      type: "application-state-updated",
-      state: applicationState(),
-    });
-  }
   if (request.type === "delete-session") {
     await deleteProjectSession(request.sessionId);
-    return desktopResponseSchema.parse({
-      type: "application-state-updated",
-      state: applicationState(),
-    });
-  }
-  if (request.type === "delete-cake-chat-session") {
-    await deleteCakeChatSession(request.sessionId);
     return desktopResponseSchema.parse({
       type: "application-state-updated",
       state: applicationState(),
@@ -2060,42 +1945,6 @@ async function handleCakeRequest(
     });
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
-  if (request.type === "list-review-threads") {
-    return desktopResponseSchema.parse({
-      type: "review-threads-loaded",
-      threads: await reviewRepository.listSession(path, request.sessionId),
-    });
-  }
-  if (request.type === "create-review-thread") {
-    const thread = await reviewRepository.create(
-      path,
-      request.sessionId,
-      request.anchor,
-      request.body,
-    );
-    broadcast({ type: "review-thread-updated", thread });
-    return desktopResponseSchema.parse({ type: "review-thread-saved", thread });
-  }
-  if (request.type === "reply-review-thread") {
-    const thread = await reviewRepository.reply(
-      path,
-      request.sessionId,
-      request.threadId,
-      request.body,
-    );
-    broadcast({ type: "review-thread-updated", thread });
-    return desktopResponseSchema.parse({ type: "review-thread-saved", thread });
-  }
-  if (request.type === "resolve-review-thread") {
-    const thread = await reviewRepository.resolve(
-      path,
-      request.sessionId,
-      request.threadId,
-      request.resolved,
-    );
-    broadcast({ type: "review-thread-updated", thread });
-    return desktopResponseSchema.parse({ type: "review-thread-saved", thread });
-  }
   if (request.type === "respond-ui") {
     dispatchToPi(path, request);
     return desktopResponseSchema.parse({
@@ -2145,8 +1994,9 @@ async function startApplicationCapabilities(owner: ApplicationStateOwner["Servic
 
 function stopApplicationCapabilities() {
   applicationQuitting = true;
+  for (const menu of openSessionContextMenus) menu.closePopup();
+  openSessionContextMenus.clear();
   applicationStateOwner = undefined;
-  globalChatDriver[Symbol.dispose]();
   pluginBackends[Symbol.dispose]();
   vscodeEditor.disposeAll();
   terminals.disposeAll();
@@ -2162,6 +2012,217 @@ launchMainApplication({
       const path = homedir();
       allowedProjectPaths.add(path);
       return path;
+    },
+    cakeChats: {
+      location: Effect.fn("CakeChatEnvironment.location")(() =>
+        Effect.succeed({
+          workingDirectory: homedir(),
+          sessionDirectory: cakePaths.piGlobalChatSessions,
+          resolvedSessionDirectory: cakePaths.piGlobalChatResolvedSessions,
+        }),
+      ),
+      runtimeOptions: Effect.fn("CakeChatEnvironment.runtimeOptions")((input, invoke) =>
+        Effect.succeed({
+          profile: { _tag: "CakeChatSession" as const },
+          runtime: {
+            cwd: homedir(),
+            trusted: true,
+            agentDir: cakePaths.piAgent,
+            sessionDir: cakePaths.piGlobalChatSessions,
+            resolvedSessionDir: cakePaths.piGlobalChatResolvedSessions,
+            newSession: input.newSession,
+            sessionId: input.sessionId,
+            slashCommands: ["compact", "model", "handoff", "handoffandresolve"],
+            requestUi: async () => undefined,
+            modelPresets: modelPresetAgentProjection,
+            fastMode: {
+              get: () => hasSessionFastMode(input.sessionId),
+              set: (enabled) =>
+                runMainEffect(setSessionFastMode(input.sessionId, enabled)).then(() => undefined),
+            },
+            currentSessionControl: {
+              resolved: () =>
+                applicationState().resolvedCakeChatSessionIds.includes(input.sessionId),
+              setResolved: (resolved) => setCakeChatSessionResolution(input.sessionId, resolved),
+            },
+            globalControl: {
+              tools: input.tools.map((tool) => ({
+                ...tool,
+                parameters: jsonObjectSchema.parse(tool.parameters),
+                examples: tool.examples?.map((example) => ({
+                  ...example,
+                  input:
+                    example.input === undefined ? undefined : jsonObjectSchema.parse(example.input),
+                })),
+              })),
+              recoveryContext: cakeChatRecoveryContext(),
+              invoke: (invocation, signal) => invoke(input.sessionId, invocation, signal),
+            },
+          },
+        }),
+      ),
+      archive: Effect.fn("CakeChatEnvironment.archive")(function* (sessionId) {
+        yield* Effect.tryPromise({
+          try: async () => {
+            terminals.closeSession("cake-chat", sessionId);
+            await sessionArchive.resolve(sessionId, {
+              cwd: homedir(),
+              activeRoot: cakePaths.piGlobalChatSessions,
+              resolvedRoot: cakePaths.piGlobalChatResolvedSessions,
+              direct: true,
+            });
+          },
+          catch: (cause) => cakeChatEnvironmentError("archive", cause),
+        });
+      }),
+      restore: Effect.fn("CakeChatEnvironment.restore")(function* (sessionId) {
+        yield* Effect.tryPromise({
+          try: () =>
+            sessionArchive.restore(sessionId, {
+              cwd: homedir(),
+              activeRoot: cakePaths.piGlobalChatSessions,
+              resolvedRoot: cakePaths.piGlobalChatResolvedSessions,
+              direct: true,
+            }),
+          catch: (cause) => cakeChatEnvironmentError("restore", cause),
+        });
+      }),
+      deleteResolved: Effect.fn("CakeChatEnvironment.deleteResolved")(function* (sessionId) {
+        yield* Effect.tryPromise({
+          try: () =>
+            sessionArchive.deleteResolved(sessionId, {
+              cwd: homedir(),
+              activeRoot: cakePaths.piGlobalChatSessions,
+              resolvedRoot: cakePaths.piGlobalChatResolvedSessions,
+              direct: true,
+            }),
+          catch: (cause) => cakeChatEnvironmentError("deleteResolved", cause),
+        });
+      }),
+    },
+    discussionSessions: {
+      list: Effect.fn("DiscussionSessionEnvironment.list")(
+        function* (workingDirectory, parentSessionId) {
+          return yield* Effect.tryPromise({
+            try: async () =>
+              (await reviewRepository.listDiscussionRecords(workingDirectory, parentSessionId)).map(
+                (record) => discussionRecord(record),
+              ),
+            catch: (cause) => discussionEnvironmentError("list", cause),
+          });
+        },
+      ),
+      get: Effect.fn("DiscussionSessionEnvironment.get")(
+        function* (workingDirectory, parentSessionId, threadId) {
+          return yield* Effect.tryPromise({
+            try: async () =>
+              discussionRecord(
+                await reviewRepository.get(workingDirectory, parentSessionId, threadId),
+              ),
+            catch: (cause) => discussionEnvironmentError("get", cause),
+          });
+        },
+      ),
+      create: Effect.fn("DiscussionSessionEnvironment.create")(
+        function* (workingDirectory, parentSessionId, anchor) {
+          return yield* Effect.tryPromise({
+            try: async () =>
+              discussionRecord(
+                await reviewRepository.createDiscussion(workingDirectory, parentSessionId, anchor),
+              ),
+            catch: (cause) => discussionEnvironmentError("create", cause),
+          });
+        },
+      ),
+      linkSidecar: Effect.fn("DiscussionSessionEnvironment.linkSidecar")(
+        function* (record, sidecar) {
+          return yield* Effect.tryPromise({
+            try: async () =>
+              discussionRecord(
+                await reviewRepository.linkDiscussionSidecar(
+                  record.workingDirectory,
+                  record.parentSessionId,
+                  record.id,
+                  sidecar,
+                ),
+              ),
+            catch: (cause) => discussionEnvironmentError("linkSidecar", cause),
+          });
+        },
+      ),
+      setResolved: Effect.fn("DiscussionSessionEnvironment.setResolved")(
+        function* (record, resolved) {
+          return yield* Effect.tryPromise({
+            try: async () => {
+              await reviewRepository.resolve(
+                record.workingDirectory,
+                record.parentSessionId,
+                record.id,
+                resolved,
+              );
+              return discussionRecord(
+                await reviewRepository.get(
+                  record.workingDirectory,
+                  record.parentSessionId,
+                  record.id,
+                ),
+              );
+            },
+            catch: (cause) => discussionEnvironmentError("setResolved", cause),
+          });
+        },
+      ),
+      location: Effect.fn("DiscussionSessionEnvironment.location")((record) =>
+        Effect.succeed({
+          agentDirectory: cakePaths.piAgent,
+          sessionDirectory: reviewRepository.agentSessionDirectory(
+            record.workingDirectory,
+            record.parentSessionId,
+            record.id,
+          ),
+          parentSessionDirectory: cakePaths.piSessions,
+          trusted: isProjectTrusted(record.workingDirectory),
+        }),
+      ),
+      prepareParentContext: Effect.fn("DiscussionSessionEnvironment.prepareParentContext")(
+        function* (record, parent) {
+          return yield* Effect.tryPromise({
+            try: async () => {
+              const stored = await reviewRepository.get(
+                record.workingDirectory,
+                record.parentSessionId,
+                record.id,
+              );
+              if (!stored) throw new Error("That Discussion Session no longer exists");
+              const target = reviewRepository.discussionParentContextPath(
+                record.workingDirectory,
+                record.parentSessionId,
+                record.id,
+              );
+              const path = await writeDiscussionParentContext({
+                cwd: record.workingDirectory,
+                parentSessionRoot: cakePaths.piSessions,
+                parent,
+                target,
+              });
+              return reviewSidecarSystemPrompt(stored, path);
+            },
+            catch: (cause) => discussionEnvironmentError("prepareParentContext", cause),
+          });
+        },
+      ),
+      refreshParentIndex: Effect.fn("DiscussionSessionEnvironment.refreshParentIndex")(
+        function* (record) {
+          yield* Effect.tryPromise({
+            try: () =>
+              reviewRepository.refreshDiscussionContext(
+                record.workingDirectory,
+                record.parentSessionId,
+              ),
+            catch: (cause) => discussionEnvironmentError("refreshParentIndex", cause),
+          });
+        },
+      ),
     },
     projectSessions: {
       locations: Effect.fn("ProjectSessionEnvironment.locations")(function* () {

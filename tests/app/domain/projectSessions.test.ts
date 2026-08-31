@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
-import { Effect, Layer, Stream } from "effect";
+import { Deferred, Effect, Fiber, Layer, Stream, SubscriptionRef } from "effect";
 import { describe } from "vitest";
 import * as projectSessions from "../../../src/domain/projectSessions";
+import { refreshProjection } from "../../../src/domain/application";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
@@ -70,20 +71,29 @@ const makeLayer = (
     trustedProjectPaths: ["/project"],
   },
 ) => {
-  let state = initial;
-  const application = ApplicationState.of({
-    initialize: () => Effect.succeed(state),
-    current: () => Effect.succeed(state),
-    unsafeCurrent: () => state,
-    transact: (transition) =>
-      transition(state).pipe(
-        Effect.tap((next) =>
-          Effect.sync(() => {
-            state = next;
-          }),
-        ),
-      ),
-  });
+  const application = Layer.effect(
+    ApplicationState,
+    Effect.gen(function* () {
+      const projection = yield* SubscriptionRef.make({ revision: 0, state: initial });
+      return ApplicationState.of({
+        initialize: () => Effect.succeed(SubscriptionRef.getUnsafe(projection).state),
+        current: () => SubscriptionRef.get(projection).pipe(Effect.map((current) => current.state)),
+        unsafeCurrent: () => SubscriptionRef.getUnsafe(projection).state,
+        changes: () => SubscriptionRef.changes(projection),
+        refreshProjection: () =>
+          SubscriptionRef.update(projection, (current) => ({
+            revision: current.revision + 1,
+            state: current.state,
+          })),
+        transact: (transition) =>
+          SubscriptionRef.updateAndGetEffect(projection, (current) =>
+            transition(current.state).pipe(
+              Effect.map((state) => ({ revision: current.revision + 1, state })),
+            ),
+          ).pipe(Effect.map((current) => current.state)),
+      });
+    }),
+  );
   const adapter: PiSessionsAdapter = {
     list: () =>
       Effect.succeed([
@@ -107,7 +117,7 @@ const makeLayer = (
     changelog: () => Effect.succeed("# Changelog"),
   };
   return Layer.mergeAll(
-    Layer.succeed(ApplicationState, application),
+    application,
     makePiSessionsLayer(adapter),
     makeProjectSessionEnvironmentLayer({
       locations: () =>
@@ -142,6 +152,27 @@ const makeLayer = (
 };
 
 describe("Project Sessions domain", () => {
+  it.effect("observes a current catalog Snapshot followed by ordered replacement Events", () =>
+    Effect.gen(function* () {
+      const updates = yield* projectSessions.observeCatalog();
+      const ready = yield* Deferred.make<void>();
+      const fiber = yield* updates.pipe(
+        Stream.tap(() => Deferred.succeed(ready, undefined)),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* Deferred.await(ready);
+      yield* refreshProjection();
+      const observed = Array.from(yield* Fiber.join(fiber));
+      assert.deepEqual(
+        observed.map((update) => update._tag),
+        ["Snapshot", "Event"],
+      );
+      assert.ok(observed[1]!.revision > observed[0]!.revision);
+    }).pipe(Effect.provide(makeLayer())),
+  );
+
   it.effect("lists Project and Working Directory associations above PiSessions", () =>
     Effect.gen(function* () {
       const sessions = yield* projectSessions.list();

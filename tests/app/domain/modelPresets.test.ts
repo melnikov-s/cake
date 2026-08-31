@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
-import { Effect, Fiber, Layer, SynchronizedRef } from "effect";
+import { Effect, Fiber, Layer, Stream, SynchronizedRef } from "effect";
 import { TestClock } from "effect/testing";
 import { describe } from "vitest";
 import {
@@ -210,6 +210,11 @@ describe("Model Presets domain", () => {
         ),
         current: Effect.fn("ApplicationState.Test.current")(() => SynchronizedRef.get(stateRef)),
         unsafeCurrent: () => SynchronizedRef.getUnsafe(stateRef),
+        changes: () =>
+          Stream.fromEffect(
+            SynchronizedRef.get(stateRef).pipe(Effect.map((state) => ({ revision: 0, state }))),
+          ),
+        refreshProjection: () => Effect.void,
         transact: (transition) => SynchronizedRef.updateAndGetEffect(stateRef, transition),
       });
       const duplicateError = yield* Effect.flip(update({ ...duplicate, name: "Changed" })).pipe(

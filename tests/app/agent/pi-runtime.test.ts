@@ -1,14 +1,5 @@
 import { execFile } from "node:child_process";
-import {
-  chmod,
-  mkdir,
-  mkdtemp,
-  readFile,
-  readdir,
-  realpath,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -44,10 +35,7 @@ import {
   projectSessionEntries,
   toolResultContent,
 } from "../../../src/services/pi/runtime/session-projection";
-import {
-  loadReviewSessionProjection,
-  runReviewTurn,
-} from "../../../src/services/pi/runtime/sidecar-runtime";
+import { loadReviewSessionProjection } from "../../../src/services/pi/runtime/sidecar-runtime";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { sessionSnapshotSchema, type SessionSnapshot } from "../../../src/ipc/session-contract";
 
@@ -576,152 +564,6 @@ describe("Pi 0.84.0 foundation contract", () => {
     expect(summaries).toEqual([
       expect.objectContaining({ id: "cake-chat", title: "Repair my plugins" }),
     ]);
-  });
-
-  it("keeps code comments lightweight and refreshes their live parent projection", async () => {
-    const directory = await createTemporaryDirectory();
-    const parentDir = join(directory, "parents");
-    const reviewDir = join(directory, "reviews");
-    const agentDir = join(directory, "agent");
-    await mkdir(parentDir, { recursive: true });
-    const timestamp = new Date(0).toISOString();
-    const parentFile = join(parentDir, "parent.jsonl");
-    await writeFile(
-      parentFile,
-      [
-        { type: "session", version: 3, id: "parent-session", timestamp, cwd: directory },
-        {
-          type: "message",
-          id: "parent-user",
-          parentId: null,
-          timestamp,
-          message: { role: "user", content: "Build the feature", timestamp: 0 },
-        },
-      ]
-        .map((entry) => JSON.stringify(entry))
-        .join("\n") + "\n",
-    );
-    const controller = new AbortController();
-    controller.abort();
-    const thread = {
-      id: "review-1",
-      workspacePath: directory,
-      sessionId: "parent-session",
-      status: "open" as const,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      anchor: {
-        path: "src/app.ts",
-        start: { diffLine: 1 },
-        end: { diffLine: 1 },
-        selectedText: "value",
-        contextBefore: "",
-        contextAfter: "",
-        diff: "+value",
-      },
-      pendingComments: [{ id: "comment-1", body: "Rename this", createdAt: timestamp }],
-    };
-
-    await expect(
-      runReviewTurn({
-        cwd: directory,
-        trusted: false,
-        thread,
-        sessionDir: reviewDir,
-        parentSessionRoot: parentDir,
-        agentDir,
-        signal: controller.signal,
-        parent: { sessionId: "parent-session", sessionFile: parentFile, leafId: "parent-user" },
-      }),
-    ).rejects.toThrow("cancelled");
-
-    const projection = await readFile(join(reviewDir, "context", "parent-transcript.md"), "utf8");
-    expect(projection).toContain("Build the feature");
-    expect((await readdir(reviewDir)).filter((name) => name.endsWith(".jsonl"))).toHaveLength(0);
-  });
-
-  it("keeps transcript comments lightweight and refreshes their live parent projection", async () => {
-    const directory = await createTemporaryDirectory();
-    const parentDir = join(directory, "parents");
-    const reviewDir = join(directory, "comments");
-    const agentDir = join(directory, "agent");
-    await mkdir(parentDir, { recursive: true });
-    const timestamp = new Date(0).toISOString();
-    const parentFile = join(parentDir, "parent.jsonl");
-    await writeFile(
-      parentFile,
-      [
-        { type: "session", version: 3, id: "parent-session", timestamp, cwd: directory },
-        {
-          type: "message",
-          id: "parent-user",
-          parentId: null,
-          timestamp,
-          message: { role: "user", content: "Draft a plan", timestamp: 0 },
-        },
-        {
-          type: "message",
-          id: "parent-assistant",
-          parentId: "parent-user",
-          timestamp,
-          message: {
-            role: "assistant",
-            content: [{ type: "text", text: "The original plan" }],
-            timestamp: 0,
-          },
-        },
-      ]
-        .map((entry) => JSON.stringify(entry))
-        .join("\n") + "\n",
-    );
-    const controller = new AbortController();
-    controller.abort();
-    const thread = {
-      id: "comment-1",
-      workspacePath: directory,
-      sessionId: "parent-session",
-      status: "open" as const,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      anchor: {
-        path: "session:parent-session/message/assistant",
-        view: "message" as const,
-        messageId: "assistant",
-        entryId: "parent-assistant",
-        startOffset: 4,
-        endOffset: 12,
-        start: { diffLine: 0 },
-        end: { diffLine: 0 },
-        selectedText: "original",
-        contextBefore: "The ",
-        contextAfter: " plan",
-        diff: "",
-      },
-      pendingComments: [{ id: "question-1", body: "Why original?", createdAt: timestamp }],
-    };
-
-    await expect(
-      runReviewTurn({
-        cwd: directory,
-        trusted: false,
-        thread,
-        sessionDir: reviewDir,
-        parentSessionRoot: parentDir,
-        agentDir,
-        signal: controller.signal,
-        parent: {
-          sessionId: "parent-session",
-          sessionFile: parentFile,
-          leafId: "parent-assistant",
-          model: { provider: "fixture", id: "model" },
-        },
-      }),
-    ).rejects.toThrow("cancelled");
-
-    const projection = await readFile(join(reviewDir, "context", "parent-transcript.md"), "utf8");
-    expect(projection).toContain("Draft a plan");
-    expect(projection).toContain("The original plan");
-    expect((await readdir(reviewDir)).filter((name) => name.endsWith(".jsonl"))).toHaveLength(0);
   });
 
   it("reopens review sidecars as complete chat parts with persisted usage", async () => {

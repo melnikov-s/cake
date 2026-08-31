@@ -16,10 +16,11 @@ import { AppShellStore } from "./AppShellStore";
 import { CustomizationStore } from "./CustomizationStore";
 import { PluginCommandStore } from "./PluginCommandStore";
 import { InlineWidgetStore } from "./InlineWidgetStore";
-import { SessionCatalogStore } from "./SessionCatalogStore";
+import type { SessionCatalogStoreInstance } from "./SessionCatalogStore";
 import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { AppControlOperationStore } from "./AppControlOperationStore";
-import { ProjectCatalogStore } from "./ProjectCatalogStore";
+import type { ProjectCatalogStoreInstance } from "./ProjectCatalogStore";
+import type { CatalogOperationRunner } from "../catalog-operation-runner";
 import { WindowPersistenceCoordinatorStore } from "./WindowPersistenceCoordinatorStore";
 import { ToastStore } from "./ToastStore";
 import { TerminalStore, type TerminalTarget } from "./TerminalStore";
@@ -28,6 +29,9 @@ import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
 export class RootStore extends Store<{
   client: DesktopClient;
   modelPresets: ModelPresetSettingsStoreInstance;
+  projectCatalog: ProjectCatalogStoreInstance;
+  sessionCatalog: SessionCatalogStoreInstance;
+  runCatalog: CatalogOperationRunner;
 }> {
   readonly appControl: AppControlBridge;
   private readonly pendingProjectPartUpdates = new Map<string, Map<string, UiPart>>();
@@ -297,6 +301,7 @@ export class RootStore extends Store<{
     return createStore(SessionRegistryStore, {
       client: this.client,
       catalog: this.sessionCatalogStore,
+      runCatalog: this.props.runCatalog,
       operations: this.sessionOperationCoordinator,
       reviews: () => this.reviewsStore,
       pluginCommands: () => this.pluginCommandStore,
@@ -370,14 +375,12 @@ export class RootStore extends Store<{
     return createStore(ToastStore, {});
   }
 
-  @child
-  get sessionCatalogStore(): SessionCatalogStore {
-    return createStore(SessionCatalogStore);
+  get sessionCatalogStore(): SessionCatalogStoreInstance {
+    return this.props.sessionCatalog;
   }
 
-  @child
-  get projectCatalogStore(): ProjectCatalogStore {
-    return createStore(ProjectCatalogStore, { sessions: this.sessionCatalogStore });
+  get projectCatalogStore(): ProjectCatalogStoreInstance {
+    return this.props.projectCatalog;
   }
 
   @child
@@ -469,6 +472,7 @@ export class RootStore extends Store<{
       pluginCommands: () => this.pluginCommandStore,
       persistence: () => this.windowPersistence,
       catalog: this.sessionCatalogStore,
+      runCatalog: this.props.runCatalog,
       startCakeChat: (prompt) => this.startCakeChat(prompt),
       onWorktreeSessionsResolved: (sessionIds, projectPath) =>
         this.forgetResolvedSessions(sessionIds, projectPath),
@@ -723,7 +727,7 @@ export class RootStore extends Store<{
       const activeCakeChatSessionWasResolved = activeCakeChatSessionId
         ? this.globalChatStore.isSessionResolved(activeCakeChatSessionId)
         : false;
-      this.projectCatalogStore.applyApplicationState(event.state);
+      // Project and Project Session catalogs consume their focused current-first RPC Streams.
       this.globalChatStore.applyApplicationState(event.state);
       this.settingsStore.applyApplicationState(event.state);
       this.terminalStore.discardResolvedSessions([

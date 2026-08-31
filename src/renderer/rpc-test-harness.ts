@@ -21,6 +21,12 @@ const harness = {
   listModels: () => client.models.list(),
   listModelPresets: () => withClient((client) => client.modelPresets.list()),
   listProjectSessions: () => client.projectSessions.list(),
+  listCakeChats: () => client.cakeChats.list(),
+  listDiscussionSessions: () =>
+    client.discussionSessions.list({
+      workingDirectory: "/tmp/cake-effect-rpc",
+      parentSessionId: "rpc-empty-parent",
+    }),
   createModelPreset: (input: {
     name: string;
     provider: string;

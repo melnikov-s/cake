@@ -13,8 +13,9 @@ import { EmbeddedEditorStore, type EmbeddedEditorStoreProps } from "./EmbeddedEd
 import type { ReviewsStore } from "./ReviewsStore";
 import type { ExtensionUiStore } from "./ExtensionUiStore";
 import type { PluginCommandStore } from "./PluginCommandStore";
-import type { ProjectCatalogStore } from "./ProjectCatalogStore";
-import type { SessionCatalogStore } from "./SessionCatalogStore";
+import type { ProjectCatalogStoreInstance } from "./ProjectCatalogStore";
+import type { SessionCatalogStoreInstance } from "./SessionCatalogStore";
+import type { CatalogOperationRunner } from "../catalog-operation-runner";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { WindowPersistenceCoordinatorStore } from "./WindowPersistenceCoordinatorStore";
@@ -56,13 +57,14 @@ export interface ProjectWorkbenchStoreProps {
   worktreeCreationClient: WorktreeCreationStoreProps["client"];
   sessionRegistry: SessionRegistryStore;
   operations: SessionOperationCoordinatorStore;
-  projects: ProjectCatalogStore;
+  projects: ProjectCatalogStoreInstance;
   defaultConfiguration?(): ChatConfiguration | undefined;
   reviews(): ReviewsStore;
   extensionUi(): ExtensionUiStore;
   pluginCommands(): PluginCommandStore;
   persistence(): WindowPersistenceCoordinatorStore;
-  catalog: SessionCatalogStore;
+  catalog: SessionCatalogStoreInstance;
+  runCatalog: CatalogOperationRunner;
   startCakeChat(prompt?: string): Promise<void>;
   /** Removes resolved worktree sessions from history and chooses the next conversation. */
   onWorktreeSessionsResolved(sessionIds: readonly string[], projectPath: string): Promise<void>;
@@ -253,7 +255,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   private applyApplicationState(state: ApplicationState) {
-    this.props.projects.applyApplicationState(state);
+    void this.props
+      .runCatalog(this.props.projects.applyApplicationState(state))
+      .catch((error) => this.setError(error, "Project catalog"));
   }
 
   async restoreSelection(state: WindowViewState, sessions: readonly GlobalSessionSummary[]) {
@@ -654,7 +658,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       const retainedProjectSessions = this.props.catalog
         .projectSessions(path)
         .filter((session) => !listedIds.has(session.id));
-      this.props.catalog.replace([...sessionIndex.sessions, ...retainedProjectSessions]);
+      await this.props.runCatalog(
+        this.props.catalog.replace([...sessionIndex.sessions, ...retainedProjectSessions]),
+      );
     } catch (error) {
       if (
         !this.signal.aborted &&
@@ -763,12 +769,16 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.extensionUi.applyState(snapshot.extensionUi);
     this.pendingOpen = undefined;
     const workspaceName = this.props.projects.nameForPath(snapshot.workspacePath);
-    this.props.catalog.applyWorkspace(
-      snapshot.workspacePath,
-      workspaceName,
-      snapshot.sessions,
-      this.sessionRegistry.retainedNewSessionIds(snapshot.workspacePath),
-    );
+    void this.props
+      .runCatalog(
+        this.props.catalog.applyWorkspace(
+          snapshot.workspacePath,
+          workspaceName,
+          snapshot.sessions,
+          this.sessionRegistry.retainedNewSessionIds(snapshot.workspacePath),
+        ),
+      )
+      .catch((error) => this.setError(error, "Project Session catalog"));
     this.props.projects.recordOpened(
       this.props.catalog.projectOfManagedWorktree(snapshot.workspacePath) ?? snapshot.workspacePath,
     );

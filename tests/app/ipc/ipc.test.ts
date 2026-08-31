@@ -51,7 +51,7 @@ describe("process IPC", () => {
     ).toEqual({ type: "reword-composer-selection", selection: "selected words" });
   });
 
-  it("accepts remaining desktop and Cake Chat requests", () => {
+  it("accepts remaining desktop requests", () => {
     const requestId = crypto.randomUUID();
     expect(
       desktopRequestSchema.parse({
@@ -61,26 +61,6 @@ describe("process IPC", () => {
         approved: true,
       }),
     ).toMatchObject({ approved: true });
-    expect(
-      desktopRequestSchema.parse({
-        type: "prompt-global-chat",
-        requestId,
-        sessionId: "cake-chat",
-        text: "",
-        attachments: [
-          { kind: "image", name: "paste.png", mimeType: "image/png", data: "aW1hZ2U=" },
-        ],
-      }),
-    ).toMatchObject({ text: "", attachments: [{ kind: "image" }] });
-    expect(() =>
-      desktopRequestSchema.parse({
-        type: "prompt-global-chat",
-        requestId,
-        sessionId: "cake-chat",
-        text: "",
-        attachments: [],
-      }),
-    ).toThrow();
     expect(
       desktopRequestSchema.parse({
         type: "set-utility-model",
@@ -166,31 +146,6 @@ describe("process IPC", () => {
     expect(
       desktopRequestSchema.parse({ type: "get-changelog", requestId, sessionId: "session" }),
     ).toMatchObject({ type: "get-changelog", requestId });
-    const anchor = {
-      path: "src/app.ts",
-      start: { diffLine: 1, newLine: 4 },
-      end: { diffLine: 1, newLine: 4 },
-      selectedText: "value",
-      contextBefore: "",
-      contextAfter: "",
-      diff: "+value",
-    };
-    expect(
-      desktopRequestSchema.parse({
-        type: "create-review-thread",
-        sessionId: "session",
-        anchor,
-        body: "Why?",
-      }),
-    ).toMatchObject({ body: "Why?" });
-    expect(
-      desktopRequestSchema.parse({
-        type: "submit-review-thread",
-        requestId,
-        sessionId: "session",
-        threadId: crypto.randomUUID(),
-      }),
-    ).toMatchObject({ type: "submit-review-thread" });
     expect(
       desktopEventSchema.parse({
         type: "changelog-snapshot",

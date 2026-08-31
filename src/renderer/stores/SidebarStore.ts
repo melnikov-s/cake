@@ -1,15 +1,15 @@
 import { Store, observable } from "r-state-tree";
 import { formatRelativeSessionTime } from "../../utils/format-relative-session-time";
-import type { ProjectCatalogStore } from "./ProjectCatalogStore";
-import type { SessionCatalogStore } from "./SessionCatalogStore";
+import type { ProjectCatalogStoreInstance } from "./ProjectCatalogStore";
+import type { SessionCatalogStoreInstance } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { GlobalChatStore } from "./GlobalChatStore";
 import type { DesktopClient } from "../desktop-client";
 
 export interface SidebarStoreProps {
   client: Pick<DesktopClient, "showSessionContextMenu" | "showProjectContextMenu">;
-  projects: ProjectCatalogStore;
-  catalog: SessionCatalogStore;
+  projects: ProjectCatalogStoreInstance;
+  catalog: SessionCatalogStoreInstance;
   sessions: SessionRegistryStore;
   cakeChat(): GlobalChatStore;
   setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;

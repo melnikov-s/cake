@@ -33,6 +33,7 @@ import {
   loadPiChangelog,
   loadWorkspaceSessionPreview,
 } from "./runtime/session-discovery";
+import type { ReviewParentContext } from "./runtime/sidecar-runtime";
 
 const PiSessionCapabilityProfile = Schema.TaggedUnion({
   ProjectSession: {},
@@ -111,6 +112,12 @@ export interface PiSessionHandle {
     text: string,
     attachments?: ReadonlyArray<Attachment>,
   ) => Effect.Effect<string, PiSessionError>;
+  readonly editMessage: (
+    entryId: string,
+    text: string,
+    attachments: ReadonlyArray<Attachment>,
+    renderUserMessageAsMarkdown: boolean,
+  ) => Effect.Effect<void, PiSessionError>;
   readonly abort: () => Effect.Effect<void, PiSessionError>;
   readonly executeCommand: (
     command: string,
@@ -119,7 +126,9 @@ export interface PiSessionHandle {
   readonly applyConfiguration: (
     configuration: ChatConfiguration,
   ) => Effect.Effect<void, PiSessionError>;
+  readonly configuration: () => Effect.Effect<ChatConfiguration | undefined, PiSessionError>;
   readonly setModel: (provider: string, modelId: string) => Effect.Effect<void, PiSessionError>;
+  readonly setFastMode: (enabled: boolean) => Effect.Effect<void, PiSessionError>;
   readonly setThinkingLevel: (level: ThinkingLevel) => Effect.Effect<void, PiSessionError>;
   readonly setPiSetting: (update: PiSettingUpdate) => Effect.Effect<void, PiSessionError>;
   readonly compact: (instructions?: string) => Effect.Effect<void, PiSessionError>;
@@ -127,6 +136,10 @@ export interface PiSessionHandle {
   readonly fork: (
     entryId: string,
   ) => Effect.Effect<{ readonly sessionId: string; readonly sessionFile: string }, PiSessionError>;
+  readonly handoff: (
+    entryId: string,
+  ) => Effect.Effect<{ readonly sessionId: string; readonly sessionFile: string }, PiSessionError>;
+  readonly reviewParentContext: () => Effect.Effect<ReviewParentContext, PiSessionError>;
   readonly reload: () => Effect.Effect<void, PiSessionError>;
 }
 
@@ -147,11 +160,14 @@ export class PiSessions extends Context.Service<
     readonly acquire: (
       options: PiSessionAcquireOptions,
     ) => Effect.Effect<PiSessionHandle, PiSessionError, Scope.Scope>;
+    readonly refreshModels: () => Effect.Effect<void, PiSessionError>;
+    readonly reloadCakeChatContext: () => Effect.Effect<void, PiSessionError>;
   }
 >()("cake/services/pi/PiSessions") {}
 
 interface SharedRuntime {
   readonly fingerprint: string;
+  readonly profile: PiSessionAcquireOptions["profile"]["_tag"];
   readonly runtime: CakeRuntime;
   readonly events: PubSub.PubSub<PiSessionEvent>;
   readonly activeTurns: Ref.Ref<ReadonlyMap<string, "prompt" | "steer" | "follow-up">>;
@@ -239,6 +255,10 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
     PiSessions,
     Effect.gen(function* () {
       const layerScope = yield* Effect.scope;
+      // RcMap remains the sole resource owner. This set is only a process-local projection used
+      // to fan explicit refresh intents to currently acquired runtimes; it never acquires or
+      // retains a runtime.
+      const activeRuntimes = new Set<SharedRuntime>();
       // RcMap is the process-local keyed resource owner. Each acquire retains a
       // reference in its caller Scope; the final release disposes the one Pi
       // runtime. Equal/Hash intentionally key only by Pi Session target, while
@@ -261,20 +281,24 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
                   PubSub.publishUnsafe(events, projected);
                 },
               });
-              return {
+              const shared = {
                 fingerprint: key.fingerprint,
+                profile: key.options.profile._tag,
                 runtime,
                 events,
                 activeTurns,
               } satisfies SharedRuntime;
+              activeRuntimes.add(shared);
+              return shared;
             }),
-            ({ runtime, events }) =>
+            (shared) =>
               Effect.tryPromise({
                 try: async () => {
-                  await runtime.dispose();
+                  activeRuntimes.delete(shared);
+                  await shared.runtime.dispose();
                 },
                 catch: (cause) => cause,
-              }).pipe(Effect.orDie, Effect.ensuring(PubSub.shutdown(events))),
+              }).pipe(Effect.orDie, Effect.ensuring(PubSub.shutdown(shared.events))),
           ),
       });
 
@@ -409,6 +433,24 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
             startTurn("prompt", text, attachments, markdown),
           steer: (text, attachments = []) => startTurn("steer", text, attachments),
           followUp: (text, attachments = []) => startTurn("follow-up", text, attachments),
+          editMessage: (entryId, text, attachments, renderUserMessageAsMarkdown) =>
+            shared.runtime.editMessage
+              ? call(
+                  "editMessage",
+                  (runtime) =>
+                    runtime.editMessage?.(
+                      entryId,
+                      text,
+                      [...attachments],
+                      renderUserMessageAsMarkdown,
+                    ) ?? Promise.resolve(),
+                )
+              : Effect.fail(
+                  new PiSessionError({
+                    operation: "editMessage",
+                    message: "Message editing is unavailable",
+                  }),
+                ),
           abort: Effect.fn("PiSessions.abort")(function* () {
             const active = yield* Ref.getAndSet(shared.activeTurns, new Map());
             yield* call("abort", (runtime) => runtime.abort());
@@ -441,14 +483,49 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
                 ),
           applyConfiguration: (configuration) =>
             call("applyConfiguration", (runtime) => runtime.applyConfiguration(configuration)),
+          configuration: () =>
+            Effect.try({
+              try: () => shared.runtime.currentConfiguration?.(),
+              catch: (cause) => cause,
+            }).pipe(sessionError("configuration")),
           setModel: (provider, modelId) =>
             call("setModel", (runtime) => runtime.setModel(provider, modelId)),
+          setFastMode: (enabled) =>
+            shared.runtime.setFastMode
+              ? call(
+                  "setFastMode",
+                  (runtime) => runtime.setFastMode?.(enabled) ?? Promise.resolve(),
+                )
+              : Effect.fail(
+                  new PiSessionError({
+                    operation: "setFastMode",
+                    message: "Fast mode is unavailable",
+                  }),
+                ),
           setThinkingLevel: (level) =>
             call("setThinkingLevel", (runtime) => runtime.setThinkingLevel(level)),
           setPiSetting: (update) => call("setPiSetting", (runtime) => runtime.setPiSetting(update)),
           compact: (instructions) => call("compact", (runtime) => runtime.compact(instructions)),
           rename: (name) => call("rename", (runtime) => runtime.rename(name)),
           fork: (entryId) => call("fork", (runtime) => runtime.fork(entryId)),
+          handoff: (entryId) => call("handoff", (runtime) => runtime.handoff(entryId)),
+          reviewParentContext: () =>
+            Effect.try({
+              try: () => shared.runtime.getReviewParentContext?.(),
+              catch: (cause) => cause,
+            }).pipe(
+              sessionError("reviewParentContext"),
+              Effect.flatMap((context) =>
+                context
+                  ? Effect.succeed(context)
+                  : Effect.fail(
+                      new PiSessionError({
+                        operation: "reviewParentContext",
+                        message: "The parent session context is unavailable",
+                      }),
+                    ),
+              ),
+            ),
           reload: () =>
             shared.runtime.reload
               ? call("reload", (runtime) => runtime.reload?.() ?? Promise.resolve())
@@ -458,7 +535,32 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         } satisfies PiSessionHandle;
       });
 
-      return PiSessions.of({ list, inspect, acquire });
+      const refreshModels = Effect.fn("PiSessions.refreshModels")(function* () {
+        yield* Effect.forEach(
+          activeRuntimes,
+          (shared) => {
+            const refresh = shared.runtime.refreshModels;
+            return refresh
+              ? runtimeOperation("refreshModels", () => refresh.call(shared.runtime))
+              : Effect.void;
+          },
+          { concurrency: "unbounded", discard: true },
+        );
+      });
+      const reloadCakeChatContext = Effect.fn("PiSessions.reloadCakeChatContext")(function* () {
+        yield* Effect.forEach(
+          [...activeRuntimes].filter((shared) => shared.profile === "CakeChatSession"),
+          (shared) => {
+            const reload = shared.runtime.reload;
+            return reload
+              ? runtimeOperation("reloadCakeChatContext", () => reload.call(shared.runtime))
+              : Effect.void;
+          },
+          { concurrency: "unbounded", discard: true },
+        );
+      });
+
+      return PiSessions.of({ list, inspect, acquire, refreshModels, reloadCakeChatContext });
     }),
   );
 

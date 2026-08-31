@@ -5,7 +5,15 @@ import type {
   ChatConfiguration,
   SessionSummary,
 } from "../ipc/session-contract";
-import { getState, setSessionsResolved, trustProject } from "./application";
+import {
+  getState,
+  observeState,
+  refreshProjection,
+  setSessionsResolved,
+  trustProject,
+} from "./application";
+import type { ApplicationState } from "./application-data";
+import type { SessionCatalogUpdate } from "./catalog-data";
 import {
   TurnId,
   acquire as acquireConversation,
@@ -22,7 +30,6 @@ import {
 export {
   ProjectSessionCreateInput,
   ProjectSessionPromptInput,
-  ProjectSessionSummary,
   ProjectSessionTarget,
   ProjectSessionUpdate,
 } from "./project-session-data";
@@ -76,8 +83,7 @@ const summary = (
   return projected;
 };
 
-export const list = Effect.fn("ProjectSessions.list")(function* () {
-  const state = yield* getState();
+const listForState = Effect.fn("ProjectSessions.listForState")(function* (state: ApplicationState) {
   const environment = yield* ProjectSessionEnvironment;
   const sessions = yield* PiSessions;
   const locations = yield* environment.locations().pipe(asError("list"));
@@ -108,6 +114,36 @@ export const list = Effect.fn("ProjectSessions.list")(function* () {
     byId.set(item.sessionId, item);
   }
   return [...byId.values()].sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt));
+});
+
+export const list = Effect.fn("ProjectSessions.list")(function* () {
+  return yield* listForState(yield* getState());
+});
+
+/**
+ * Current-first catalog observation. Application projection revisions trigger a fresh Pi-owned
+ * listing, so reconnect replaces the renderer projection without persisting a catalog copy.
+ */
+export const observeCatalog = Effect.fn("ProjectSessions.observeCatalog")(function* () {
+  const changes = yield* observeState();
+  let initialized = false;
+  return changes.pipe(
+    Stream.mapEffect((projection) =>
+      listForState(projection.state).pipe(
+        Effect.map((sessions): SessionCatalogUpdate => {
+          if (!initialized) {
+            initialized = true;
+            return { _tag: "Snapshot", revision: projection.revision, sessions };
+          }
+          return {
+            _tag: "Event",
+            revision: projection.revision,
+            event: { _tag: "Replaced", sessions },
+          };
+        }),
+      ),
+    ),
+  );
 });
 
 const findLocation = Effect.fn("ProjectSessions.findLocation")(function* (
@@ -185,7 +221,9 @@ export const create = Effect.fn("ProjectSessions.create")(function* (
       .applyConfiguration(input.configuration satisfies ChatConfiguration)
       .pipe(asError("create"));
   if (input.name?.trim()) yield* handle.rename(input.name.trim()).pipe(asError("create"));
-  return projectSnapshot(yield* handle.snapshot().pipe(asError("create")));
+  const snapshot = projectSnapshot(yield* handle.snapshot().pipe(asError("create")));
+  yield* refreshProjection();
+  return snapshot;
 });
 
 export const inspect = Effect.fn("ProjectSessions.inspect")(function* (
@@ -240,6 +278,11 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
     workingDirectory: location.workingDirectory,
   };
   return observeConversation(handle).pipe(
+    Stream.tap((update) =>
+      update._tag === "Event" && update.event._tag === "TurnSettled"
+        ? refreshProjection()
+        : Effect.void,
+    ),
     Stream.mapError(
       (error) => new ProjectSessionError({ operation: "observe", message: error.message }),
     ),
@@ -326,7 +369,7 @@ const runtimeAttachments = (
 export const prompt = Effect.fn("ProjectSessions.prompt")(function* (
   input: ProjectSessionPromptInput,
 ) {
-  return TurnId.make(
+  const turnId = TurnId.make(
     yield* withHandle({ sessionId: input.sessionId }, (handle) =>
       handle.prompt(
         input.text,
@@ -335,26 +378,32 @@ export const prompt = Effect.fn("ProjectSessions.prompt")(function* (
       ),
     ).pipe(asError("prompt")),
   );
+  yield* refreshProjection();
+  return turnId;
 });
 
 export const steer = Effect.fn("ProjectSessions.steer")(function* (
   input: ProjectSessionPromptInput,
 ) {
-  return TurnId.make(
+  const turnId = TurnId.make(
     yield* withHandle({ sessionId: input.sessionId }, (handle) =>
       handle.steer(input.text, runtimeAttachments(input.attachments)),
     ).pipe(asError("steer")),
   );
+  yield* refreshProjection();
+  return turnId;
 });
 
 export const followUp = Effect.fn("ProjectSessions.followUp")(function* (
   input: ProjectSessionPromptInput,
 ) {
-  return TurnId.make(
+  const turnId = TurnId.make(
     yield* withHandle({ sessionId: input.sessionId }, (handle) =>
       handle.followUp(input.text, runtimeAttachments(input.attachments)),
     ).pipe(asError("followUp")),
   );
+  yield* refreshProjection();
+  return turnId;
 });
 
 export const abort = Effect.fn("ProjectSessions.abort")(function* (target: ProjectSessionTarget) {
@@ -369,6 +418,7 @@ export const rename = Effect.fn("ProjectSessions.rename")(function* (
   if (!normalized)
     return yield* new ProjectSessionError({ operation: "rename", message: "Name is required" });
   yield* withHandle(target, (handle) => handle.rename(normalized)).pipe(asError("rename"));
+  yield* refreshProjection();
 });
 
 export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
@@ -413,6 +463,7 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
       .pipe(asError("fork"));
   }
   if (input.resolveSource) yield* resolve(input.target);
+  else yield* refreshProjection();
   return { sessionId };
 });
 

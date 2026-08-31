@@ -36,6 +36,16 @@ export const getState = Effect.fn("Application.getState")(function* () {
   return yield* owner.current();
 });
 
+export const observeState = Effect.fn("Application.observeState")(function* () {
+  const owner = yield* ApplicationStateOwner;
+  return owner.changes();
+});
+
+export const refreshProjection = Effect.fn("Application.refreshProjection")(function* () {
+  const owner = yield* ApplicationStateOwner;
+  yield* owner.refreshProjection();
+});
+
 export const upsertProject = Effect.fn("Application.upsertProject")(function* (
   path: string,
   defaultName: string,
