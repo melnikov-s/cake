@@ -1,14 +1,5 @@
-import { Store, applySnapshot, child, createStore, observable, updateStore } from "r-state-tree";
-import type { ArtifactRecord } from "../../ipc/artifact-contract";
-import type {
-  Attachment,
-  ChatConfiguration,
-  ModelPreset,
-  SessionPreview,
-  SessionSnapshot,
-  UiPart,
-} from "../../ipc/session-contract";
-import type { ReviewThread } from "../../ipc/review-contract";
+import { Store, child, createStore, observable, updateStore } from "r-state-tree";
+import type { Attachment, ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
 import type { DesktopClient } from "../desktop-client";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
@@ -16,7 +7,6 @@ import type { PluginCommandStore } from "./PluginCommandStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ProjectSessionStore, type SessionTarget } from "./ProjectSessionStore";
-import { toSessionPreviewSnapshot, toSessionSnapshot } from "../../utils/session-snapshot";
 import type { WorktreeStoreProps } from "./WorktreeStore";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 
@@ -43,7 +33,7 @@ export interface SessionRegistryStoreProps {
   prepareNewSession?(sessionId: string, firstUserMessage: string): Promise<boolean>;
   configureDraftActivation?(sessionId: string, choice: WorktreeDraftChoice): void;
   draftActivationCandidates?(sessionId: string): ExistingWorktreeCandidate[];
-  worktreeClient: WorktreeStoreProps["client"];
+  worktreeClient: WorktreeStoreProps["nativeClient"];
   onWorktreeLanded: WorktreeStoreProps["onLanded"];
   onWorktreeDiscarded: WorktreeStoreProps["onDiscarded"];
   onResolveWorktree: WorktreeStoreProps["onResolveWorkspace"];
@@ -56,6 +46,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   // Pi may take time to include a newly started session in its disk-backed listing.
   // Retain all such sessions independently from unsent renderer-owned sessions.
   private readonly unlistedNewSessionIds: Set<string> = observable(new Set<string>());
+  private readonly materializedSessionIds: Set<string> = observable(new Set<string>());
   // A deferred new session has no runtime yet, so configuration changes are kept
   // locally and delivered with the first prompt instead of runtime commands.
   private readonly pendingConfigurationsBySession: Record<string, ChatConfiguration> = observable(
@@ -71,9 +62,6 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   private stagedSessionId: string | undefined;
   private readonly sessionsById = new Map<string, ProjectSessionStore>();
   private readonly sessionWorkspacePaths = new Map<string, string>();
-  private readonly pendingPartsBySession = new Map<string, Map<string, UiPart | null>>();
-  private readonly pendingStreamingBySession = new Map<string, boolean>();
-  private readonly pendingArtifactsBySession = new Map<string, Map<string, ArtifactRecord>>();
 
   @child
   get sessions(): ProjectSessionStore[] {
@@ -126,14 +114,15 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     return session;
   }
 
-  ensure(sessionId: string) {
-    let session = this.findSession(sessionId);
-    if (!session) {
-      const workspacePath = this.workspacePathFor(sessionId);
-      this.targets.push({ sessionId, workspacePath });
-      session = this.findSession(sessionId)!;
-    }
+  load(sessionId: string, workingDirectory: string) {
+    this.rememberSessionLocation(sessionId, workingDirectory);
+    const session = this.addTarget(sessionId, workingDirectory);
+    this.materializedSessionIds.add(sessionId);
     return session;
+  }
+
+  get materializedSessions() {
+    return this.sessions.filter((session) => this.materializedSessionIds.has(session.sessionId));
   }
 
   markNewSessionStarted(sessionId: string) {
@@ -156,7 +145,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
 
   prepareNewSession(workspacePath: string, sessionId: string) {
     this.rememberSessionLocation(sessionId, workspacePath);
-    const session = this.ensure(sessionId);
+    const session = this.addTarget(sessionId, workspacePath);
     // Deferred sessions have no Pi runtime snapshot until their first prompt. Seed
     // their workspace-scoped menu from a loaded sibling so skills remain invokable.
     if (session.model.commands.length === 0) {
@@ -319,13 +308,11 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     this.temporarySessionIds.delete(sessionId);
     if (this.stagedSessionId === sessionId) this.stagedSessionId = undefined;
     this.unlistedNewSessionIds.delete(sessionId);
+    this.materializedSessionIds.delete(sessionId);
     delete this.pendingConfigurationsBySession[sessionId];
     delete this.pendingNamesBySession[sessionId];
     delete this.draftSessionsById[sessionId];
     this.sessionWorkspacePaths.delete(sessionId);
-    this.pendingPartsBySession.delete(sessionId);
-    this.pendingStreamingBySession.delete(sessionId);
-    this.pendingArtifactsBySession.delete(sessionId);
     this.props.catalog?.remove(sessionId);
     this.props.persist();
   }
@@ -404,134 +391,17 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     return session;
   }
 
-  upsert(snapshot: SessionSnapshot) {
-    this.rememberSessionLocation(snapshot.sessionId, snapshot.workspacePath);
-    if (this.temporarySessionIds.has(snapshot.sessionId))
-      this.markNewSessionStarted(snapshot.sessionId);
-    else {
-      this.temporarySessionIds.delete(snapshot.sessionId);
-      delete this.pendingConfigurationsBySession[snapshot.sessionId];
-      delete this.pendingNamesBySession[snapshot.sessionId];
-    }
-    const session = this.ensure(snapshot.sessionId);
-    applySnapshot(session.model, toSessionSnapshot(snapshot));
-    session.model.applyArtifacts(snapshot.artifacts ?? []);
-    this.applyPendingEvents(session);
-    session.markHydrated();
-    if (snapshot.sessionListed === true && this.unlistedNewSessionIds.delete(snapshot.sessionId))
-      this.props.persist();
-    else if (snapshot.sessionListed === false) this.unlistedNewSessionIds.add(snapshot.sessionId);
-    return session.model;
-  }
-
-  upsertPart(sessionId: string, part: UiPart) {
-    const session = this.findSession(sessionId);
-    if (session) {
-      session.model.upsertPart(part);
-      return session;
-    }
-    this.pendingParts(sessionId).set(part.id, part);
-    return undefined;
-  }
-
-  removePart(sessionId: string, partId: string) {
-    const session = this.findSession(sessionId);
-    if (session) {
-      session.model.removePart(partId);
-      return;
-    }
-    this.pendingParts(sessionId).set(partId, null);
-  }
-
-  setStreaming(sessionId: string, streaming: boolean) {
-    const session = this.findSession(sessionId);
-    if (session) {
-      session.model.setStreaming(streaming);
-      return session;
-    }
-    this.pendingStreamingBySession.set(sessionId, streaming);
-    return undefined;
-  }
-
-  upsertArtifact(record: ArtifactRecord) {
-    const sessionId = record.artifact.sessionId;
-    const session = this.findSession(sessionId);
-    if (session) {
-      session.model.upsertArtifact(record);
-      return;
-    }
-    const records = this.pendingArtifactsBySession.get(sessionId) ?? new Map();
-    const existing = records.get(record.artifact.id);
-    if (!existing || record.artifact.revision >= existing.artifact.revision)
-      records.set(record.artifact.id, record);
-    this.pendingArtifactsBySession.set(sessionId, records);
-  }
-
-  hydratePreview(preview: SessionPreview) {
-    this.rememberSessionLocation(preview.sessionId, preview.workspacePath);
-    const session = this.ensure(preview.sessionId);
-    applySnapshot(session.model, toSessionPreviewSnapshot(preview));
-    session.markHydrated();
-    return session.model;
-  }
-
-  applyReviewThreads(sessionId: string, threads: ReviewThread[]) {
-    if (!this.findSession(sessionId) && threads[0])
-      this.rememberSessionLocation(sessionId, threads[0].workspacePath);
-    const session =
-      this.findSession(sessionId) ?? (threads.length > 0 ? this.ensure(sessionId) : undefined);
-    if (!session) return undefined;
-    session.model.applyReviewThreads(threads);
-    return session.model;
-  }
-
-  upsertReviewThread(thread: ReviewThread) {
-    this.rememberSessionLocation(thread.sessionId, thread.workspacePath);
-    const session = this.ensure(thread.sessionId);
-    session.model.upsertReviewThread(thread);
-    return session.model;
-  }
-
-  private pendingParts(sessionId: string) {
-    const parts = this.pendingPartsBySession.get(sessionId) ?? new Map<string, UiPart | null>();
-    this.pendingPartsBySession.set(sessionId, parts);
-    return parts;
-  }
-
-  private applyPendingEvents(session: ProjectSessionStore) {
-    const sessionId = session.sessionId;
-    const parts = this.pendingPartsBySession.get(sessionId);
-    if (parts) {
-      for (const [partId, part] of parts) {
-        if (part) session.model.upsertPart(part);
-        else session.model.removePart(partId);
-      }
-      this.pendingPartsBySession.delete(sessionId);
-    }
-    const streaming = this.pendingStreamingBySession.get(sessionId);
-    if (streaming !== undefined) {
-      session.model.setStreaming(streaming);
-      this.pendingStreamingBySession.delete(sessionId);
-    }
-    const artifacts = this.pendingArtifactsBySession.get(sessionId);
-    if (artifacts) {
-      session.model.applyArtifacts([...artifacts.values()]);
-      this.pendingArtifactsBySession.delete(sessionId);
-    }
-  }
-
-  private workspacePathFor(sessionId: string) {
-    const workspacePath =
-      this.props.catalog?.find(sessionId)?.workspacePath ??
-      this.sessionWorkspacePaths.get(sessionId);
-    if (!workspacePath) throw new Error(`Cake could not find session ${sessionId}`);
-    return workspacePath;
+  private addTarget(sessionId: string, workspacePath: string) {
+    const existing = this.findSession(sessionId);
+    if (existing) return existing;
+    this.targets.push({ sessionId, workspacePath });
+    return this.findSession(sessionId)!;
   }
 
   private rememberSessionLocation(sessionId: string, workspacePath: string) {
     const prior =
       this.sessionWorkspacePaths.get(sessionId) ??
-      this.props.catalog?.find(sessionId)?.workspacePath;
+      this.props.catalog?.find(sessionId)?.workingDirectory;
     if (prior && prior !== workspacePath)
       throw new Error(`Session ID collision detected: ${sessionId}`);
     this.sessionWorkspacePaths.set(sessionId, workspacePath);

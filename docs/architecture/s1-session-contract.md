@@ -57,8 +57,9 @@ inserted into Cake's DOM.
 
 ## Renderer ownership
 
-A keyed Project Session projection synchronizer owns the session observation and
-updates the stable Session Model. `ProjectSessionStore` owns composer, chat
+The window-owned Model synchronizer owns Project Session observations and
+applies mapped snapshots to stable Session Models supplied only by `RootStore`.
+`ProjectSessionStore` owns composer, chat
 configuration, artifacts, discussion presentation, and renderer operation state
 around that Model. Its `ChatStore` supplies the authoritative shared `Chat`
 component. `RootStore` routes application intents and coordinates selection
@@ -66,8 +67,8 @@ without copying this state.
 
 Stores invoke the Promise-based `RendererClient`; they do not import Effect,
 `CakeIpcClient`, RPC definitions, main domain modules, or `PiSessions`.
-Projection-registry lifetime owns observation subscriptions. Store disposal owns
-local workflow cleanup and aborts cancellable client operations.
+The window-owned Model synchronizer owns observation subscriptions. Store disposal
+owns local workflow cleanup and aborts cancellable client operations.
 
 ## Verification boundary
 

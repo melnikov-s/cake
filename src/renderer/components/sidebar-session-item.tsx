@@ -12,9 +12,9 @@ import { WorktreeStatusIcon } from "./worktree-status-icon";
 export interface SidebarSessionItemProps {
   store: SidebarStore;
   session: {
-    id: string;
+    sessionId: string;
     title: string;
-    modified: string;
+    modifiedAt: string;
     draft?: boolean;
     managedWorktree?: Pick<
       WorktreeRecord,
@@ -60,11 +60,11 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
     setRenamingValue(null);
     if (!value) return;
     const name = value.trim();
-    if (name) onRename(session.id, name);
+    if (name) onRename(session.sessionId, name);
   };
   return (
     <div
-      data-session-id={session.id}
+      data-session-id={session.sessionId}
       className={cn(
         "session-item group relative flex min-h-11 w-full items-center rounded-md py-1 text-xs select-none transition-colors",
         selected
@@ -91,12 +91,12 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
         <NavItem
           className="session-row flex-1"
           active={selected}
-          onClick={() => onOpen(session.id)}
+          onClick={() => onOpen(session.sessionId)}
           onContextMenu={(event) => {
             event.preventDefault();
             void store
               .showSessionContextMenu(
-                session.id,
+                session.sessionId,
                 event.clientX,
                 event.clientY,
                 resolved,
@@ -104,10 +104,10 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
               )
               .then((action) => {
                 if (action === "rename") setRenamingValue(session.title);
-                else if (action === "mark-unread") onMarkUnread?.(session.id, true);
-                else if (action === "resolve") onResolve(session.id, true);
-                else if (action === "unresolve") onResolve(session.id, false);
-                else if (action === "delete") onDelete(session.id);
+                else if (action === "mark-unread") onMarkUnread?.(session.sessionId, true);
+                else if (action === "resolve") onResolve(session.sessionId, true);
+                else if (action === "unresolve") onResolve(session.sessionId, false);
+                else if (action === "delete") onDelete(session.sessionId);
               });
           }}
           label={<span className="session-title min-w-0 truncate">{session.title}</span>}
@@ -146,10 +146,10 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                     {branch && <span aria-hidden="true">·</span>}
                     <time
                       className="session-time shrink-0 whitespace-nowrap text-[10px] tabular-nums text-muted-foreground"
-                      dateTime={session.modified}
-                      title={new Date(session.modified).toLocaleString()}
+                      dateTime={session.modifiedAt}
+                      title={new Date(session.modifiedAt).toLocaleString()}
                     >
-                      {store.sessionActivityTime(session.modified)}
+                      {store.sessionActivityTime(session.modifiedAt)}
                     </time>
                   </>
                 )}
@@ -189,7 +189,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                     ariaLabel={`${resolved ? "Restore" : "Resolve"} ${session.title}`}
                     onClick={(event) => {
                       event.stopPropagation();
-                      onResolve(session.id, !resolved);
+                      onResolve(session.sessionId, !resolved);
                     }}
                   >
                     {resolved ? <RestoreIcon /> : <ResolveIcon />}

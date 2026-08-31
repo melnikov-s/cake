@@ -1,22 +1,21 @@
 import { Store, child, createStore, observable } from "r-state-tree";
-import type { DesktopClientEvent } from "../desktop-client";
+import type { DesktopClient } from "../desktop-client";
+import { RendererClientContext } from "../client/RendererClientContext";
 import type { JsonObject } from "../../ipc/json-contract";
 import type {
   ApplicationState,
   Attachment,
   ChatConfiguration,
-  ModelOption,
   ModelPreset,
-  SessionPreview,
-  SessionSnapshot,
-  SessionSummary,
-  ThinkingLevel,
 } from "../../ipc/session-contract";
+import type { CakeChatSummary } from "../../domain/cake-chat-data";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { CakeChatSessionStore } from "./CakeChatSessionStore";
 import { describeError } from "../error-details";
+
+type CakeChatSummaryProjection = CakeChatSummary & { draft?: boolean };
 
 interface CakeControlTool {
   command: string;
@@ -29,75 +28,11 @@ interface CakeControlTool {
   limitations?: readonly string[];
 }
 
-export interface GlobalChatPort {
-  listSessions(): Promise<SessionSummary[]>;
-  loadSession(sessionId: string): Promise<SessionPreview | undefined>;
-  listModels(): Promise<ModelOption[]>;
-  showComposerContextMenu(input: {
-    selection: string;
-    x: number;
-    y: number;
-  }): Promise<"reword" | "reword-with-prompt" | undefined>;
-  rewordComposerSelection(input: { selection: string; prompt?: string }): Promise<string>;
-  generateSessionTitle?(firstUserMessage: string): Promise<string | undefined>;
-  open(input: {
-    operationId: string;
-    tools: ReadonlyArray<CakeControlTool>;
-    sessionId?: string;
-  }): Promise<void>;
-  prompt(input: {
-    operationId: string;
-    sessionId: string;
-    text: string;
-    renderUserMessageAsMarkdown: boolean;
-    attachments: Attachment[];
-    newSession?: {
-      tools: ReadonlyArray<CakeControlTool>;
-      configuration?: ChatConfiguration;
-      name?: string;
-    };
-  }): Promise<void>;
-  editMessage?(input: {
-    operationId: string;
-    sessionId: string;
-    entryId: string;
-    text: string;
-    attachments: Attachment[];
-    renderUserMessageAsMarkdown: boolean;
-  }): Promise<void>;
-  abort(input: { operationId: string; sessionId: string }): Promise<void>;
-  compact(input: { operationId: string; sessionId: string; instructions?: string }): Promise<void>;
-  handoff(input: {
-    operationId: string;
-    sessionId: string;
-    entryId: string;
-    prompt?: string;
-    resolveSource?: boolean;
-  }): Promise<void>;
-  setConfiguration(input: {
-    operationId: string;
-    sessionId: string;
-    configuration: ChatConfiguration;
-  }): Promise<void>;
-  setModel(input: {
-    operationId: string;
-    sessionId: string;
-    provider: string;
-    modelId: string;
-  }): Promise<void>;
-  setThinkingLevel(input: {
-    operationId: string;
-    sessionId: string;
-    level: ThinkingLevel;
-  }): Promise<void>;
-  setFastMode(input: { operationId: string; sessionId: string; enabled: boolean }): Promise<void>;
-  rename(input: { operationId: string; sessionId: string; name: string }): Promise<void>;
-  resolveSession(sessionId: string, resolved: boolean): Promise<ApplicationState>;
-  deleteSession(sessionId: string): Promise<ApplicationState>;
-}
-
 export interface GlobalChatStoreProps {
-  port: GlobalChatPort;
+  nativeClient: Pick<
+    DesktopClient,
+    "showComposerContextMenu" | "rewordComposerSelection" | "generateSessionTitle"
+  >;
   tools(): ReadonlyArray<CakeControlTool>;
   modelPresets?(): readonly ModelPreset[];
   defaultConfiguration?(): ChatConfiguration | undefined;
@@ -113,7 +48,7 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   hydrated = false;
   error: string | undefined;
   errorDetails: string | undefined;
-  readonly summaries: SessionSnapshot["sessions"] = observable([]);
+  readonly summaries: CakeChatSummaryProjection[] = observable([]);
   readonly targets: string[] = observable([]);
   readonly resolvedSessionIds: string[] = observable([]);
   private initialization: Promise<void> | undefined;
@@ -123,25 +58,21 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   private pendingDraftPrompt:
     | { text: string; attachments: Attachment[]; resolved: boolean }
     | undefined;
-  private selectionOpenOperationId: string | undefined;
-  private handoffOperationId: string | undefined;
   private resolutionQueue: Promise<void> = Promise.resolve();
-  private readonly pendingPartsBySession = new Map<
-    string,
-    Map<string, SessionSnapshot["parts"][number] | null>
-  >();
-  private readonly pendingStreamingBySession = new Map<string, boolean>();
 
   @child
   get operations(): SessionOperationCoordinatorStore {
     return createStore(SessionOperationCoordinatorStore);
   }
 
-  get port() {
-    return this.props.port;
+  get client() {
+    return RendererClientContext.consume(this)!;
   }
   get sessionId() {
     return this.selectedSessionId;
+  }
+  get nativeClient() {
+    return this.props.nativeClient;
   }
 
   @child
@@ -168,6 +99,10 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     return this.loadedSessions.find((session) => session.sessionId === sessionId);
   }
 
+  target(sessionId: string) {
+    return { sessionId, tools: this.props.tools() };
+  }
+
   /** Explicit application startup. Repeated callers share the same initialization. */
   initialize() {
     if (!this.initialization) this.initialization = this.performInitialization();
@@ -176,12 +111,14 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
 
   private async performInitialization() {
     try {
-      const summaries = await this.port.listSessions();
+      const summaries: CakeChatSummaryProjection[] = [
+        ...(await this.client.cakeChats.list({ signal: this.signal })),
+      ];
       if (this.signal.aborted) return;
       const persistedPendingSessionId = this.pendingSessionId;
       if (
         persistedPendingSessionId &&
-        summaries.some((summary) => summary.id === persistedPendingSessionId)
+        summaries.some((summary) => summary.sessionId === persistedPendingSessionId)
       )
         this.markSessionStarted(persistedPendingSessionId);
       this.replaceSummaries(summaries);
@@ -191,28 +128,22 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
         return;
       }
       const recent = summaries.find((summary) => !summary.resolved);
-      if (recent) await this.open(recent.id);
+      if (recent) await this.open(recent.sessionId);
       else this.prepareNewSession();
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error, "Cake Chat could not load sessions");
     }
   }
 
-  open(sessionId?: string) {
-    const operationId = this.operations.start("cake-chat-open");
-    this.selectionOpenOperationId = operationId;
-    return this.port
-      .open({
-        operationId,
-        tools: this.props.tools(),
-        sessionId,
-      })
-      .catch((error) => {
-        this.operations.finish(operationId);
-        if (this.selectionOpenOperationId === operationId)
-          this.selectionOpenOperationId = undefined;
-        if (!this.signal.aborted) this.reportError(error);
-      });
+  async open(sessionId?: string) {
+    if (!sessionId) return;
+    if (!this.targets.includes(sessionId)) this.targets.push(sessionId);
+    try {
+      await this.client.cakeChats.open(this.target(sessionId), { signal: this.signal });
+      if (!this.signal.aborted) this.selectedSessionId = sessionId;
+    } catch (error) {
+      if (!this.signal.aborted) this.reportError(error);
+    }
   }
 
   async startNewSession(prompt?: string) {
@@ -222,7 +153,6 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     const session = pending ?? this.prepareNewSession();
     // A startup open is accepted before its snapshot arrives. Once the user
     // explicitly chooses a new chat, that late snapshot must not steal selection.
-    this.selectionOpenOperationId = undefined;
     this.selectedSessionId = session.sessionId;
     if (prompt?.trim()) await session.submit(prompt);
   }
@@ -257,7 +187,7 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     this.updateSummary(sessionId, (summary) => ({
       ...summary,
       draft: true,
-      modified: new Date().toISOString(),
+      modifiedAt: new Date().toISOString(),
     }));
     this.props.persist?.();
     return true;
@@ -339,7 +269,7 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       const targetIndex = this.targets.indexOf(this.pendingSessionId);
       if (targetIndex >= 0) this.targets.splice(targetIndex, 1);
       const summaryIndex = this.summaries.findIndex(
-        (summary) => summary.id === this.pendingSessionId,
+        (summary) => summary.sessionId === this.pendingSessionId,
       );
       if (summaryIndex >= 0) this.summaries.splice(summaryIndex, 1);
       this.pendingSessionId = undefined;
@@ -361,23 +291,20 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   }
 
   async handoff(sessionId: string, entryId: string, prompt?: string, resolveSource = false) {
-    if (this.selectionOpenOperationId) return false;
-    const operationId = this.operations.start("cake-chat-open");
-    this.selectionOpenOperationId = operationId;
-    this.handoffOperationId = operationId;
     try {
-      await this.port.handoff({
-        operationId,
-        sessionId,
-        entryId,
-        prompt: prompt?.trim() || undefined,
-        resolveSource,
-      });
-      return true;
+      const result = await this.client.cakeChats.handoff(
+        {
+          ...this.target(sessionId),
+          entryId,
+          prompt: prompt?.trim() || undefined,
+          resolveSource,
+        },
+        { signal: this.signal },
+      );
+      if (this.signal.aborted) return false;
+      await this.open(result.sessionId);
+      return !this.signal.aborted;
     } catch (error) {
-      this.operations.finish(operationId);
-      if (this.selectionOpenOperationId === operationId) this.selectionOpenOperationId = undefined;
-      if (this.handoffOperationId === operationId) this.handoffOperationId = undefined;
       if (!this.signal.aborted) this.reportError(error);
       return false;
     }
@@ -391,17 +318,18 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       this.updateSummary(sessionId, (summary) => ({
         ...summary,
         title: name,
-        modified: new Date().toISOString(),
+        modifiedAt: new Date().toISOString(),
       }));
       this.props.persist?.();
       return true;
     }
-    const operationId = this.operations.start("cake-chat-rename");
     try {
-      await this.port.rename({ operationId, sessionId, name });
+      await this.client.cakeChats.rename(
+        { ...this.target(sessionId), name },
+        { signal: this.signal },
+      );
       return true;
     } catch (error) {
-      this.operations.finish(operationId);
       if (!this.signal.aborted) this.reportError(error, "Cake Chat could not rename the session");
       return false;
     }
@@ -437,9 +365,10 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     if (!this.isSessionResolved(sessionId) || this.signal.aborted) return;
     try {
       await this.resolutionQueue;
-      const state = await this.port.deleteSession(sessionId);
+      await this.client.cakeChats.deleteResolved(this.target(sessionId), {
+        signal: this.signal,
+      });
       if (this.signal.aborted) return;
-      this.applyApplicationState(state);
       this.removeSession(sessionId);
       if (this.selectedSessionId === sessionId) this.selectedSessionId = undefined;
     } catch (error) {
@@ -474,9 +403,14 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     const run = async () => {
       try {
         for (const sessionId of sessionIds) {
-          const state = await this.port.resolveSession(sessionId, resolved);
+          const target = this.target(sessionId);
+          if (resolved) await this.client.cakeChats.resolve(target, { signal: this.signal });
+          else await this.client.cakeChats.restore(target, { signal: this.signal });
           if (this.signal.aborted) return;
-          this.applyApplicationState(state);
+          const index = this.resolvedSessionIds.indexOf(sessionId);
+          if (resolved && index < 0) this.resolvedSessionIds.push(sessionId);
+          if (!resolved && index >= 0) this.resolvedSessionIds.splice(index, 1);
+          this.updateSummary(sessionId, (summary) => ({ ...summary, resolved }));
         }
       } catch (error) {
         if (!this.signal.aborted) this.reportError(error);
@@ -494,14 +428,6 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       this.selectedSessionId = sessionId;
       return;
     }
-    if (this.isSessionResolved(sessionId)) {
-      const preview = await this.port.loadSession(sessionId);
-      if (!preview || this.signal.aborted) return;
-      this.ensureTarget(sessionId);
-      this.findSession(sessionId)?.applyPreview(preview);
-      this.selectedSessionId = sessionId;
-      return;
-    }
     return this.open(sessionId);
   }
 
@@ -514,119 +440,18 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     }
   }
 
-  receive(event: DesktopClientEvent) {
-    if (event.type === "global-chat-snapshot-received") {
-      this.ensureTarget(event.snapshot.sessionId);
-      const session = this.findSession(event.snapshot.sessionId)!;
-      this.markSessionStarted(event.snapshot.sessionId);
-      session.applySnapshot(event.snapshot);
-      this.applyPendingEvents(session);
-      session.receive(event);
-      this.applySummaries(event.snapshot);
-      if (event.operationId && event.operationId === this.selectionOpenOperationId) {
-        this.selectedSessionId = event.snapshot.sessionId;
-        this.selectionOpenOperationId = undefined;
-      } else if (!this.selectedSessionId) {
-        this.selectedSessionId = event.snapshot.sessionId;
-      }
-      this.hydrated = true;
-      return;
-    }
-    if (event.type === "global-chat-part-updated") {
-      const session = this.findSession(event.sessionId);
-      if (session) session.upsertPart(event.part);
-      else this.pendingParts(event.sessionId).set(event.part.id, event.part);
-      return;
-    }
-    if (event.type === "global-chat-part-removed") {
-      const session = this.findSession(event.sessionId);
-      if (session) session.removePart(event.partId);
-      else this.pendingParts(event.sessionId).set(event.partId, null);
-      return;
-    }
-    if (event.type === "global-chat-streaming-changed") {
-      const session = this.findSession(event.sessionId);
-      if (session) session.setStreaming(event.streaming);
-      else this.pendingStreamingBySession.set(event.sessionId, event.streaming);
-      return;
-    }
-    if (event.type === "global-chat-operation-failed") {
-      for (const session of this.loadedSessions) {
-        if (!this.sessionOwnsOperation(session, event.operationId)) continue;
-        session.receive(event);
-        session.receiveOperationFailure(event.operationId, event.message, event.details);
-      }
-      if (this.operations.includes(event.operationId, "cake-chat-rename"))
-        this.reportError(event.message, "Cake Chat could not rename the session");
-      if (event.operationId === this.handoffOperationId) {
-        this.handoffOperationId = undefined;
-        this.reportError(event.message, "Cake Chat could not continue the handed-off session");
-      }
-      if (event.operationId === this.selectionOpenOperationId) {
-        this.selectionOpenOperationId = undefined;
-        this.error = event.message;
-        this.errorDetails = event.details ?? event.message;
-      }
-      this.operations.finish(event.operationId);
-      return;
-    }
-    if (event.type === "global-chat-operation-completed") {
-      for (const session of this.loadedSessions) {
-        if (this.sessionOwnsOperation(session, event.operationId)) session.receive(event);
-      }
-      if (event.operationId === this.handoffOperationId) this.handoffOperationId = undefined;
-      this.operations.finish(event.operationId);
-    }
-  }
-
-  private sessionOwnsOperation(session: CakeChatSessionStore, operationId: string) {
-    return (
-      this.operations.includes(operationId, session.promptOwner) ||
-      this.operations.includes(operationId, session.configurationOwner) ||
-      this.operations.includes(operationId, `cake-chat-abort:${session.sessionId}`)
-    );
-  }
-
-  private pendingParts(sessionId: string) {
-    const parts =
-      this.pendingPartsBySession.get(sessionId) ??
-      new Map<string, SessionSnapshot["parts"][number] | null>();
-    this.pendingPartsBySession.set(sessionId, parts);
-    return parts;
-  }
-
-  private applyPendingEvents(session: CakeChatSessionStore) {
-    const parts = this.pendingPartsBySession.get(session.sessionId);
-    if (parts) {
-      for (const [partId, part] of parts) {
-        if (part) session.upsertPart(part);
-        else session.removePart(partId);
-      }
-      this.pendingPartsBySession.delete(session.sessionId);
-    }
-    const streaming = this.pendingStreamingBySession.get(session.sessionId);
-    if (streaming !== undefined) {
-      session.setStreaming(streaming);
-      this.pendingStreamingBySession.delete(session.sessionId);
-    }
-  }
-
-  private ensureTarget(sessionId: string) {
-    if (!this.targets.includes(sessionId)) this.targets.push(sessionId);
-  }
-
   private prepareNewSession(sessionId: string = crypto.randomUUID(), name?: string) {
     if (this.pendingSessionId) return this.findSession(this.pendingSessionId)!;
     const now = new Date().toISOString();
     this.pendingSessionId = sessionId;
     this.pendingConfiguration = undefined;
     this.pendingName = name;
-    this.ensureTarget(sessionId);
+    this.targets.push(sessionId);
     this.summaries.unshift({
-      id: sessionId,
+      sessionId,
       title: name ?? "New chat",
-      created: now,
-      modified: now,
+      createdAt: now,
+      modifiedAt: now,
       messageCount: 0,
       resolved: false,
     });
@@ -650,60 +475,33 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   private removeSession(sessionId: string) {
     const targetIndex = this.targets.indexOf(sessionId);
     if (targetIndex >= 0) this.targets.splice(targetIndex, 1);
-    const summaryIndex = this.summaries.findIndex((summary) => summary.id === sessionId);
+    const summaryIndex = this.summaries.findIndex((summary) => summary.sessionId === sessionId);
     if (summaryIndex >= 0) this.summaries.splice(summaryIndex, 1);
-    this.pendingPartsBySession.delete(sessionId);
-    this.pendingStreamingBySession.delete(sessionId);
     this.props.persist?.();
   }
 
-  private replaceSummaries(summaries: readonly SessionSummary[]) {
+  private replaceSummaries(summaries: readonly CakeChatSummaryProjection[]) {
     const resolvedIds = new Set(this.resolvedSessionIds);
     const pending = this.pendingSessionId
-      ? this.summaries.find((summary) => summary.id === this.pendingSessionId)
+      ? this.summaries.find((summary) => summary.sessionId === this.pendingSessionId)
       : undefined;
     const next = summaries.map((summary) => ({
       ...summary,
-      resolved: resolvedIds.has(summary.id),
+      resolved: resolvedIds.has(summary.sessionId),
     }));
-    if (pending && !next.some((summary) => summary.id === pending.id)) next.push(pending);
+    if (pending && !next.some((summary) => summary.sessionId === pending.sessionId))
+      next.push(pending);
     next.sort(compareSessionSummariesForSidebar);
     this.summaries.splice(0, this.summaries.length, ...next);
   }
 
-  private updateSummary(sessionId: string, update: (summary: SessionSummary) => SessionSummary) {
-    const index = this.summaries.findIndex((summary) => summary.id === sessionId);
+  private updateSummary(
+    sessionId: string,
+    update: (summary: CakeChatSummaryProjection) => CakeChatSummaryProjection,
+  ) {
+    const index = this.summaries.findIndex((summary) => summary.sessionId === sessionId);
     const summary = this.summaries[index];
     if (index >= 0 && summary) this.summaries.splice(index, 1, update(summary));
-  }
-
-  private applySummaries(snapshot: SessionSnapshot) {
-    const prior = new Map(this.summaries.map((summary) => [summary.id, summary]));
-    const resolvedIds = new Set(this.resolvedSessionIds);
-    const next = snapshot.sessions.map((summary) => ({
-      ...summary,
-      resolved: resolvedIds.has(summary.id),
-    }));
-    const listed = new Set(next.map((summary) => summary.id));
-    for (const sessionId of this.targets) {
-      if (listed.has(sessionId)) continue;
-      const existing = prior.get(sessionId);
-      const now = new Date().toISOString();
-      next.push(
-        existing
-          ? { ...existing, resolved: resolvedIds.has(sessionId) }
-          : {
-              id: sessionId,
-              title: "New chat",
-              created: now,
-              modified: now,
-              messageCount: 0,
-              resolved: resolvedIds.has(sessionId),
-            },
-      );
-    }
-    next.sort(compareSessionSummariesForSidebar);
-    this.summaries.splice(0, this.summaries.length, ...next);
   }
 
   private applyResolvedState() {
@@ -711,7 +509,7 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     for (let index = 0; index < this.summaries.length; index += 1) {
       const summary = this.summaries[index]!;
       if (summary.draft) continue;
-      const resolved = resolvedIds.has(summary.id);
+      const resolved = resolvedIds.has(summary.sessionId);
       if (summary.resolved !== resolved) this.summaries.splice(index, 1, { ...summary, resolved });
     }
   }

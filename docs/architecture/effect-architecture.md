@@ -17,14 +17,14 @@ flowchart LR
   subgraph Renderer[Sandboxed renderer process]
     React[React]
     StateTree[r-state-tree Models and Stores]
-    Projections[Projection synchronizers]
+    Synchronizer[Window Model synchronizer]
     Client[RendererClient]
     Runtime[Renderer Effect runtime and CakeIpcClient]
     React --> StateTree
     StateTree --> Client
-    Projections --> StateTree
+    Synchronizer --> StateTree
     Client --> Runtime
-    Projections --> Runtime
+    Synchronizer --> Runtime
   end
 
   subgraph Boundary[Validated boundary]
@@ -123,8 +123,9 @@ parallel conversation engines.
 The window's renderer infrastructure owns `CakeIpcClient` and the Effect
 runtime. A permanent typed `RendererClient` executes semantic commands as
 Promises and propagates optional `AbortSignal` cancellation to Effect Fiber and
-RPC interruption. Focused projection synchronizers consume RPC Streams and
-atomically reduce Updates into stable r-state-tree Models.
+RPC interruption. One window-owned Model synchronizer consumes RPC Streams,
+maps validated Updates to snapshots, and applies them to stable r-state-tree
+Models with `applySnapshot`.
 
 Renderer Stores read those Models, invoke `RendererClient`, and own window-local
 application/UI logic and repeated-call policy. They do not import Effect,
@@ -172,8 +173,9 @@ migration.
 ### Renderer runtime
 
 Each renderer window has one small runtime providing `CakeIpcClient` over the
-validated preload transport. `RendererClient` and projection synchronizers are
-the only ordinary application modules allowed to execute that client. The
+validated preload transport. `RendererClient` and the window-owned Model
+synchronizer are the only ordinary application modules allowed to execute that
+client. The
 runtime is created once, lives for the window, and is disposed on window
 teardown.
 
@@ -370,12 +372,12 @@ snapshot and resumes observation. Cake does not invent history to fill the gap.
 
 The Pi adapter has one underlying runtime listener per acquired runtime and
 multicasts updates to its scoped consumers. Domain functions project Pi updates
-into Cake Session updates before RPC. Renderer projection synchronizers reduce
-the RPC Stream into Models.
+into Cake Session updates before RPC. The renderer Model synchronizer maps the
+RPC Stream into Model snapshots and applies them.
 
 ```text
 Pi → PiSessions Stream → Cake domain projection → RPC Stream
-   → projection synchronizer → reactive r-state-tree Models → Stores/React
+   → Model synchronizer → applySnapshot → reactive r-state-tree Models → Stores/React
 ```
 
 Terminal output, plugin diagnostics, filesystem observation, and other live
@@ -522,15 +524,16 @@ Renderer Stores live in `src/renderer/stores`. They own:
 - keyed child Store projections;
 - explicit window snapshot fields.
 
-Projection synchronizers live in `src/renderer/projections`. They own RPC Stream
-subscriptions, observation generations, revision/reconnect policy, and reducing
-Updates into Models. They are infrastructure, not a second application state
-system.
+The single Model synchronizer lives in renderer infrastructure. It owns RPC
+Stream subscriptions, observation generations, and revision/reconnect policy.
+It maps each validated Update to an ordinary Model snapshot and calls
+`applySnapshot`; it is not a second application state system. Only `RootStore`
+supplies it the current loaded Models. Feature Stores and Models never access it.
 
 The normal data and command paths are:
 
 ```text
-CakeIpcClient Stream → projection synchronizer → Model projection → Store/React
+CakeIpcClient Stream → Model synchronizer → applySnapshot(Model) → Store/React
 Store intent → RendererClient Promise → CakeIpcClient Effect → RPC
 ```
 
@@ -547,10 +550,11 @@ r-state-tree Models and Stores use the installed package's actual semantics:
   entity observation Streams;
 - snapshots contain only explicitly selected renderer-owned state.
 
-Projection synchronizers never let arbitrary Effect Fibers mutate Models. Each
-validated Update enters one synchronous reducer/transaction, stale generations
-cannot commit, and reconnect starts from a fresh authoritative Snapshot. One
-registry owns at most one active observation for each loaded identity.
+The Model synchronizer never lets arbitrary Effect Fibers mutate Models. Each
+validated Update maps to one snapshot application, stale generations cannot
+commit, and reconnect starts from a fresh authoritative Snapshot. It owns at
+most one active observation for each loaded identity. Models remain passive
+reactive data and know nothing about Streams or synchronization.
 
 React mounts the root Store outside render, finds it through r-state-tree's
 `StoreProvider`, and observes reactive reads with `observer`. Provider ancestry
@@ -605,7 +609,7 @@ src/
 ├── renderer/
 │   ├── RendererRuntime.ts    # one window-local Effect runtime
 │   ├── client/               # permanent Promise RendererClient adapter
-│   ├── projections/          # Effect Stream → r-state-tree Model synchronizers
+│   ├── RendererModelSynchronizer.ts # Effect Streams → applySnapshot(Model)
 │   ├── models/               # r-state-tree projection Models
 │   ├── stores/               # r-state-tree application/UI Stores
 │   └── components/
@@ -622,7 +626,7 @@ Dependencies flow as follows:
 ```text
 renderer components → renderer Stores and Models
 renderer Stores → RendererClient
-projection synchronizers → CakeIpcClient and renderer Models
+RendererModelSynchronizer → CakeIpcClient and renderer Models
 RendererClient → CakeIpcClient ↔ shared RPC protocol ↔ CakeIpcServer
 CakeIpcServer → domain operations → Services
 ```

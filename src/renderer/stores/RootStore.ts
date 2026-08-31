@@ -1,7 +1,11 @@
 import { Store, child, createStore, untracked } from "r-state-tree";
+import type { CakeChatControlRequest } from "../../domain/cake-chat-data";
 import { jsonValueSchema } from "../../ipc/json-contract";
-import type { ChatConfiguration, SessionSnapshot, UiPart } from "../../ipc/session-contract";
+import type { ChatConfiguration } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
+import type { RendererClient } from "../client/RendererClient";
+import { RendererClientContext } from "../client/RendererClientContext";
+import { ActiveProjectSessionContext } from "../context/ActiveProjectSessionContext";
 import type { SessionHistoryEntry } from "./AppShellStore";
 import { SessionRegistryStore } from "./SessionRegistryStore";
 import { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
@@ -23,11 +27,30 @@ import { WindowPersistenceCoordinatorStore } from "./WindowPersistenceCoordinato
 import { ToastStore } from "./ToastStore";
 import { TerminalStore, type TerminalTarget } from "./TerminalStore";
 import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
+import type { RendererModelSynchronizer } from "../RendererModelSynchronizer";
+import { ProjectCatalog } from "../models/ProjectCatalog";
+import { SessionCatalog } from "../models/SessionCatalog";
 
-export class RootStore extends Store<{ client: DesktopClient }> {
+export class RootStore extends Store<{
+  nativeClient: DesktopClient;
+  rendererClient: RendererClient;
+  synchronizer: RendererModelSynchronizer;
+}> {
   readonly appControl: AppControlBridge;
-  private readonly pendingProjectPartUpdates = new Map<string, Map<string, UiPart>>();
-  private projectPartFlushFrame: number | undefined;
+  readonly projectCatalogModel = ProjectCatalog.create();
+  readonly sessionCatalogModel = SessionCatalog.create();
+
+  [RendererClientContext.provide]() {
+    return this.client;
+  }
+
+  [ActiveProjectSessionContext.provide]() {
+    const context = this.projectWorkbenchStore.sessionContext();
+    return context
+      ? { sessionId: context.sessionId, workingDirectory: context.workspacePath }
+      : undefined;
+  }
+  private readonly respondedCakeChatControlIds = new Set<string>();
 
   @child
   get pluginCommandStore(): PluginCommandStore {
@@ -36,11 +59,15 @@ export class RootStore extends Store<{ client: DesktopClient }> {
 
   @child
   get inlineWidgetStore(): InlineWidgetStore {
-    return createStore(InlineWidgetStore, { client: this.client });
+    return createStore(InlineWidgetStore, { client: this.nativeClient });
   }
 
   get client() {
-    return this.props.client;
+    return this.props.rendererClient;
+  }
+
+  get nativeClient() {
+    return this.props.nativeClient;
   }
 
   private projectSession(sessionId: string) {
@@ -85,7 +112,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       await this.openSession(sessionId);
       return;
     }
-    if (this.globalChatStore.summaries.some((session) => session.id === sessionId)) {
+    if (this.globalChatStore.summaries.some((session) => session.sessionId === sessionId)) {
       await this.openCakeChat(sessionId);
       return;
     }
@@ -93,7 +120,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   }
 
   openExternalUrl(url: string) {
-    return this.client.openExternalUrl(url);
+    return this.nativeClient.openExternalUrl(url);
   }
 
   async createSession(workspacePath: string) {
@@ -191,6 +218,10 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     this.appShellStore.selectCakeChat(this.globalChatStore.sessionId);
     this.windowPersistence.schedule();
   }
+  showTranscriptSelectionContextMenu(input: { canChat: boolean; canAnnotate: boolean }) {
+    return this.nativeClient.showTranscriptSelectionContextMenu(input);
+  }
+
   showSettings() {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.appShellStore.showSettings();
@@ -201,7 +232,9 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   }
 
   async removeProject(path: string, deleteSessions: boolean) {
-    const sessionIds = this.sessionCatalogStore.projectSessions(path).map((session) => session.id);
+    const sessionIds = this.sessionCatalogStore
+      .projectSessions(path)
+      .map((session) => session.sessionId);
     const removed = await this.projectWorkbenchStore.removeProject(path, deleteSessions);
     if (!removed) return false;
     const target = this.appShellStore.removeSessionsFromHistory(sessionIds);
@@ -241,14 +274,14 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     if (!this.sessionCatalogStore.find(sessionId))
       await this.forgetResolvedSessions(
         [sessionId],
-        wasSelected ? session?.workspacePath : undefined,
+        wasSelected ? session?.workingDirectory : undefined,
       );
   }
 
   private async deleteCakeChatSession(sessionId: string) {
     const wasSelected = this.appShellStore.activeConversation?.sessionId === sessionId;
     await this.globalChatStore.deleteSession(sessionId);
-    if (this.globalChatStore.summaries.some((session) => session.id === sessionId)) return;
+    if (this.globalChatStore.summaries.some((session) => session.sessionId === sessionId)) return;
     await this.forgetResolvedSessions([sessionId]);
     if (wasSelected && this.appShellStore.activeConversation?.sessionId === sessionId)
       this.showGlobalChat();
@@ -285,13 +318,13 @@ export class RootStore extends Store<{ client: DesktopClient }> {
 
   @child
   get customizationStore(): CustomizationStore {
-    return createStore(CustomizationStore, { client: this.client });
+    return createStore(CustomizationStore, { client: this.nativeClient });
   }
 
   @child
   get sessionRegistry(): SessionRegistryStore {
     return createStore(SessionRegistryStore, {
-      client: this.client,
+      client: this.nativeClient,
       catalog: this.sessionCatalogStore,
       operations: this.sessionOperationCoordinator,
       reviews: () => this.reviewsStore,
@@ -320,7 +353,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         this.projectWorkbenchStore.configureDraftActivation(sessionId, choice),
       draftActivationCandidates: (sessionId) =>
         this.projectWorkbenchStore.draftActivationCandidates(sessionId),
-      worktreeClient: this.client,
+      worktreeClient: this.nativeClient,
       onWorktreeLanded: (record) => {
         this.sessionCatalogStore.noteManagedWorktree(record);
         this.toastStore.show({
@@ -356,7 +389,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   @child
   get terminalStore(): TerminalStore {
     return createStore(TerminalStore, {
-      client: this.client,
+      client: this.nativeClient,
       activeTarget: () => this.activeTerminalTarget(),
     });
   }
@@ -368,12 +401,15 @@ export class RootStore extends Store<{ client: DesktopClient }> {
 
   @child
   get sessionCatalogStore(): SessionCatalogStore {
-    return createStore(SessionCatalogStore);
+    return createStore(SessionCatalogStore, { model: this.sessionCatalogModel });
   }
 
   @child
   get projectCatalogStore(): ProjectCatalogStore {
-    return createStore(ProjectCatalogStore, { sessions: this.sessionCatalogStore });
+    return createStore(ProjectCatalogStore, {
+      sessions: this.sessionCatalogStore,
+      model: this.projectCatalogModel,
+    });
   }
 
   @child
@@ -389,7 +425,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   @child
   get sidebarStore(): SidebarStore {
     return createStore(SidebarStore, {
-      client: this.client,
+      client: this.nativeClient,
       projects: this.projectCatalogStore,
       catalog: this.sessionCatalogStore,
       sessions: this.sessionRegistry,
@@ -407,21 +443,14 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   @child
   get reviewsStore(): ReviewsStore {
     return createStore(ReviewsStore, {
-      client: this.client,
       sessionRegistry: this.sessionRegistry,
-      operations: this.sessionOperationCoordinator,
-      context: () => this.projectWorkbenchStore.sessionContext(),
-      model: () => this.projectWorkbenchStore.session?.model,
-      thinkingLevel: () => this.projectWorkbenchStore.session?.thinkingLevel,
-      configuration: () => this.projectWorkbenchStore.activeSession?.configurationStore,
     });
   }
 
   @child
   get settingsStore(): SettingsStore {
     return createStore(SettingsStore, {
-      client: this.client,
-      sessionContext: () => this.projectWorkbenchStore.sessionContext(),
+      client: this.nativeClient,
       operations: this.sessionOperationCoordinator,
     });
   }
@@ -429,7 +458,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   @child
   get extensionUiStore(): ExtensionUiStore {
     return createStore(ExtensionUiStore, {
-      client: this.client,
+      client: this.nativeClient,
       activeSessionId: () => this.projectWorkbenchStore.session?.sessionId,
       sessionContext: () => this.projectWorkbenchStore.sessionContext(),
       operationActive: (operationId) => this.sessionOperationCoordinator.includes(operationId),
@@ -445,16 +474,14 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   @child
   get projectWorkbenchStore(): ProjectWorkbenchStore {
     return createStore(ProjectWorkbenchStore, {
-      client: this.client,
-      commandPaneClient: this.client,
-      embeddedEditorClient: this.client,
-      sessionContinuationClient: this.client,
-      sessionManagementClient: this.client,
+      nativeClient: this.nativeClient,
+      embeddedEditorClient: this.nativeClient,
+      sessionManagementClient: this.nativeClient,
       prepareSessionResolution: (sessionIds) =>
         this.terminalStore.prepareResolution(
           sessionIds.map((sessionId) => ({ kind: "project", sessionId })),
         ),
-      worktreeCreationClient: this.client,
+      worktreeCreationClient: this.nativeClient,
       sessionRegistry: this.sessionRegistry,
       operations: this.sessionOperationCoordinator,
       projects: this.projectCatalogStore,
@@ -476,7 +503,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   @child
   get windowPersistence(): WindowPersistenceCoordinatorStore {
     return createStore(WindowPersistenceCoordinatorStore, {
-      client: this.client,
+      nativeClient: this.nativeClient,
       projects: this.projectCatalogStore,
       sessions: this.sessionCatalogStore,
       registry: this.sessionRegistry,
@@ -491,33 +518,7 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   @child
   get globalChatStore(): GlobalChatStore {
     return createStore(GlobalChatStore, {
-      port: {
-        listSessions: () => this.client.listCakeChatSessions(),
-        loadSession: (sessionId) => this.client.loadCakeChatSession(sessionId),
-        listModels: () => this.client.listModels(),
-        showComposerContextMenu: (input) => this.client.showComposerContextMenu(input),
-        rewordComposerSelection: (input) => this.client.rewordComposerSelection(input),
-        generateSessionTitle: (firstUserMessage) =>
-          this.client.generateSessionTitle?.(firstUserMessage) ?? Promise.resolve(undefined),
-        open: (input) => this.client.openGlobalChat(input),
-        prompt: (input) => this.client.promptGlobalChat(input),
-        editMessage: (input) => {
-          if (!this.client.editGlobalChatMessage)
-            return Promise.reject(new Error("This Cake client does not support message editing"));
-          return this.client.editGlobalChatMessage(input);
-        },
-        abort: (input) => this.client.abortGlobalChat(input),
-        compact: (input) => this.client.compactGlobalChat(input),
-        handoff: (input) => this.client.handoffGlobalChat(input),
-        setConfiguration: (input) => this.client.setGlobalChatConfiguration(input),
-        setModel: (input) => this.client.setGlobalChatModel(input),
-        setThinkingLevel: (input) => this.client.setGlobalChatThinkingLevel(input),
-        setFastMode: (input) => this.client.setGlobalChatFastMode(input),
-        rename: (input) => this.client.renameGlobalChat(input),
-        resolveSession: (sessionId, resolved) =>
-          this.client.resolveCakeChatSession(sessionId, resolved),
-        deleteSession: (sessionId) => this.client.deleteCakeChatSession(sessionId),
-      },
+      nativeClient: this.nativeClient,
       tools: () => this.appControl.listTools(),
       modelPresets: () => this.settingsStore.modelPresets.presets,
       defaultConfiguration: () => this.settingsStore.modelPresets.defaultConfiguration,
@@ -535,13 +536,55 @@ export class RootStore extends Store<{ client: DesktopClient }> {
   get appShellStore(): AppShellStore {
     return createStore(AppShellStore, {
       sessionWorkspacePath: (sessionId) =>
-        this.sessionCatalogStore.find(sessionId)?.workspacePath ??
+        this.sessionCatalogStore.find(sessionId)?.workingDirectory ??
         this.sessionRegistry.findSession(sessionId)?.workspacePath,
     });
   }
 
   constructor(props: RootStore["props"]) {
     super(props);
+    this.effect(() => () => {
+      this.projectCatalogModel[Symbol.dispose]();
+      this.sessionCatalogModel[Symbol.dispose]();
+    });
+    this.effect(() => {
+      const projectSessions = this.sessionRegistry.materializedSessions.map((session) => ({
+        target: {
+          sessionId: session.sessionId,
+          workingDirectory: session.model.workingDirectory,
+        },
+        model: session.model,
+      }));
+      const cakeChats = this.globalChatStore.loadedSessions
+        .filter((session) => !this.globalChatStore.isPendingSession(session.sessionId))
+        .map((session) => ({
+          target: this.globalChatStore.target(session.sessionId),
+          model: session.model,
+        }));
+      const discussions = projectSessions.flatMap(({ model: parent }) =>
+        parent.reviewThreads.map((thread) => ({
+          target: {
+            parentSessionId: thread.parentSessionId,
+            workingDirectory: thread.workingDirectory,
+            threadId: thread.id,
+          },
+          parent,
+        })),
+      );
+      this.props.synchronizer.sync({
+        projects: this.projectCatalogModel,
+        sessionCatalog: this.sessionCatalogModel,
+        projectSessions,
+        cakeChats,
+        discussions,
+      });
+      for (const { model } of cakeChats)
+        for (const request of model.controlRequests)
+          if (!this.respondedCakeChatControlIds.has(request.controlRequestId)) {
+            this.respondedCakeChatControlIds.add(request.controlRequestId);
+            void this.respondCakeChatControl(request);
+          }
+    });
     this.appControl = new AppControlBridge({
       currentSession: () =>
         this.projectWorkbenchStore.projectPath && this.projectWorkbenchStore.selectedSessionId
@@ -557,19 +600,26 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       openSession: (sessionId, messageId) => this.openSession(sessionId, messageId),
       createSession: (input) => this.createPromptedSession(input),
       sendSessionMessage: (sessionId, text, delivery) =>
-        this.appControlOperationStore.run((operationId) =>
-          this.client.submit({
-            operationId,
-            sessionId,
-            text,
-            delivery,
-            renderUserMessageAsMarkdown: false,
-            attachments: [],
-          }),
-        ),
+        this.appControlOperationStore.run(() => {
+          const command =
+            delivery === "steer"
+              ? this.client.projectSessions.steer
+              : delivery === "follow-up"
+                ? this.client.projectSessions.followUp
+                : this.client.projectSessions.prompt;
+          return command(
+            {
+              sessionId,
+              text,
+              renderUserMessageAsMarkdown: false,
+              attachments: [],
+            },
+            { signal: this.signal },
+          ).then(() => undefined);
+        }),
       abortSession: (sessionId) =>
-        this.appControlOperationStore.run((operationId) =>
-          this.client.abort({ operationId, sessionId }),
+        this.appControlOperationStore.run(() =>
+          this.client.projectSessions.abort({ sessionId }, { signal: this.signal }),
         ),
       renameSession: (sessionId, title) =>
         this.projectWorkbenchStore.sessionManagementStore.renameSession(sessionId, title),
@@ -588,28 +638,36 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         return count;
       },
       setSessionModel: (sessionId, provider, modelId) =>
-        this.appControlOperationStore.run((operationId) =>
-          this.client.setModel({ operationId, sessionId, provider, modelId }),
+        this.appControlOperationStore.run(() =>
+          this.client.projectSessions.setModel(
+            { sessionId, provider, modelId },
+            { signal: this.signal },
+          ),
         ),
       customizationState: () => this.customizationStore.state,
       plugins: () => this.customizationStore.plugins,
-      getPluginAuthoringReference: () => this.client.getPluginAuthoringReference(),
-      listPluginFiles: () => this.client.listPluginFiles(),
-      createPlugin: (input) => this.client.createPlugin(input),
-      readPluginFile: (pluginId, path) => this.client.readPluginFile(pluginId, path),
+      getPluginAuthoringReference: () => this.nativeClient.getPluginAuthoringReference(),
+      listPluginFiles: () => this.nativeClient.listPluginFiles(),
+      createPlugin: (input) => this.nativeClient.createPlugin(input),
+      readPluginFile: (pluginId, path) => this.nativeClient.readPluginFile(pluginId, path),
       writePluginFile: (pluginId, path, content, expectedWorkingRevision) =>
-        this.client.writePluginFile(pluginId, path, content, expectedWorkingRevision),
+        this.nativeClient.writePluginFile(pluginId, path, content, expectedWorkingRevision),
       validateCustomization: (expectedBaseRevision, request, expectedSourceRevision) =>
-        this.client.validateCustomization(expectedBaseRevision, request, expectedSourceRevision),
+        this.nativeClient.validateCustomization(
+          expectedBaseRevision,
+          request,
+          expectedSourceRevision,
+        ),
       activateCustomization: (revision, expectedSourceRevision, request) =>
-        this.client.activateCustomization(revision, expectedSourceRevision, request),
-      rollbackCustomization: () => this.client.rollbackCustomization(),
-      useFactoryCustomization: () => this.client.useFactoryCustomization(),
-      setPluginEnabled: (pluginId, enabled) => this.client.setPluginEnabled(pluginId, enabled),
-      setActiveScene: (pluginId) => this.client.setActiveScene(pluginId),
+        this.nativeClient.activateCustomization(revision, expectedSourceRevision, request),
+      rollbackCustomization: () => this.nativeClient.rollbackCustomization(),
+      useFactoryCustomization: () => this.nativeClient.useFactoryCustomization(),
+      setPluginEnabled: (pluginId, enabled) =>
+        this.nativeClient.setPluginEnabled(pluginId, enabled),
+      setActiveScene: (pluginId) => this.nativeClient.setActiveScene(pluginId),
     });
     this.effect(() =>
-      this.client.subscribe((event) => {
+      this.nativeClient.subscribe((event) => {
         try {
           this.receive(event);
         } catch (error) {
@@ -626,70 +684,41 @@ export class RootStore extends Store<{ client: DesktopClient }> {
     this.effect(() => {
       untracked(() => void this.globalChatStore.initialize());
     });
-    this.effect(() => () => this.cancelProjectPartFlush());
   }
 
-  private enqueueProjectPartUpdate(sessionId: string, part: UiPart) {
-    const sessionUpdates = this.pendingProjectPartUpdates.get(sessionId) ?? new Map();
-    sessionUpdates.set(part.id, part);
-    this.pendingProjectPartUpdates.set(sessionId, sessionUpdates);
-    if (this.projectPartFlushFrame !== undefined) return;
-
-    const frame = globalThis.requestAnimationFrame?.(() => {
-      this.projectPartFlushFrame = undefined;
-      try {
-        this.flushProjectPartUpdates();
-      } catch (error) {
-        this.projectWorkbenchStore.setError(error, "Desktop event: part-updated");
-      }
-    });
-    if (frame === undefined) {
-      this.flushProjectPartUpdates();
-      return;
+  private async respondCakeChatControl(request: CakeChatControlRequest) {
+    const result = await this.appControl
+      .invoke(request.invocation)
+      .catch((error) => ({
+        ok: false as const,
+        name: request.invocation.name,
+        error: error instanceof Error ? error.message : String(error),
+      }))
+      .then((value) => {
+        try {
+          return jsonValueSchema.parse(value);
+        } catch {
+          return {
+            ok: false as const,
+            name: request.invocation.name,
+            error: "Cake produced a control result that could not be serialized.",
+          };
+        }
+      });
+    try {
+      await this.client.cakeChats.respondControl(request.controlRequestId, result, {
+        signal: this.signal,
+      });
+    } catch (error) {
+      if (!this.signal.aborted)
+        this.globalChatStore.reportError(
+          error,
+          `Cake Chat control response: ${request.invocation.name}`,
+        );
     }
-    this.projectPartFlushFrame = frame;
-  }
-
-  private flushProjectPartUpdates() {
-    if (this.pendingProjectPartUpdates.size === 0) return;
-    const updates = [...this.pendingProjectPartUpdates];
-    this.pendingProjectPartUpdates.clear();
-
-    for (const [sessionId, parts] of updates) {
-      for (const part of parts.values()) {
-        const session = this.sessionRegistry.upsertPart(sessionId, part);
-        const canReconcileOptimisticMessage =
-          (part.kind === "text" && part.role === "user" && part.status === "complete") ||
-          part.kind === "annotation" ||
-          (part.kind === "attachment" && part.attachmentKind === "image");
-        if (canReconcileOptimisticMessage) session?.composerStore.reconcile(sessionId);
-      }
-    }
-  }
-
-  private cancelProjectPartFlush() {
-    if (this.projectPartFlushFrame !== undefined)
-      globalThis.cancelAnimationFrame?.(this.projectPartFlushFrame);
-    this.projectPartFlushFrame = undefined;
-    this.pendingProjectPartUpdates.clear();
-  }
-
-  /** Tracks the most recent chat configuration so new sessions can fall back to it. */
-  private recordLastChatConfiguration(snapshot: SessionSnapshot) {
-    if (!snapshot.model) return;
-    this.settingsStore.modelPresets.recordUsage({
-      provider: snapshot.model.provider,
-      modelId: snapshot.model.id,
-      thinkingLevel: snapshot.thinkingLevel,
-      fastMode: snapshot.fastMode ?? false,
-    });
-    this.windowPersistence.schedule();
   }
 
   private receive(event: DesktopClientEvent) {
-    // Streamed token deltas are frame-coalesced below. Flush them before any other
-    // event so snapshots, removals, and streaming state retain desktop event order.
-    if (event.type !== "part-updated") this.flushProjectPartUpdates();
     this.customizationStore.receive(event);
     if (event.type === "notification") {
       this.toastStore.show(event);
@@ -718,8 +747,6 @@ export class RootStore extends Store<{ client: DesktopClient }> {
       const activeCakeChatSessionWasResolved = activeCakeChatSessionId
         ? this.globalChatStore.isSessionResolved(activeCakeChatSessionId)
         : false;
-      this.projectCatalogStore.applyApplicationState(event.state);
-      this.globalChatStore.applyApplicationState(event.state);
       this.settingsStore.applyApplicationState(event.state);
       this.terminalStore.discardResolvedSessions([
         ...event.state.resolvedSessionIds.map((sessionId) => ({
@@ -745,145 +772,10 @@ export class RootStore extends Store<{ client: DesktopClient }> {
         this.appShellStore.selectCakeChat(activeCakeChatSessionId);
       return;
     }
-    if (event.type === "global-chat-control-requested") {
-      void this.appControl
-        .invoke(event.invocation)
-        .catch((error) => ({
-          ok: false as const,
-          name: event.invocation.name,
-          error: error instanceof Error ? error.message : String(error),
-        }))
-        .then((result) => {
-          try {
-            return jsonValueSchema.parse(result);
-          } catch {
-            return {
-              ok: false as const,
-              name: event.invocation.name,
-              error: "Cake produced a control result that could not be serialized.",
-            };
-          }
-        })
-        .then((result) => this.client.respondToGlobalChatControl(event.controlRequestId, result))
-        .catch((error) =>
-          this.globalChatStore.reportError(
-            error,
-            `Cake Chat control response: ${event.invocation.name}`,
-          ),
-        );
-      return;
-    }
-    if (event.type.startsWith("global-chat-")) {
-      // Transcript deltas are the hot streaming path. Route them directly instead
-      // of waking every loaded chat's configuration workflow for every token.
-      if (
-        event.type === "global-chat-part-updated" ||
-        event.type === "global-chat-part-removed" ||
-        event.type === "global-chat-streaming-changed"
-      ) {
-        this.globalChatStore.receive(event);
-        return;
-      }
-      this.globalChatStore.receive(event);
-      if (event.type === "global-chat-snapshot-received") {
-        this.recordLastChatConfiguration(event.snapshot);
-        if (this.appShellStore.selection.kind === "cake-chat") {
-          const requestedSessionId = this.appShellStore.selection.sessionId;
-          if (!requestedSessionId || requestedSessionId === event.snapshot.sessionId) {
-            this.appShellStore.selectCakeChat(event.snapshot.sessionId);
-            this.windowPersistence.schedule();
-          }
-        }
-      }
-      return;
-    }
-    // Keep high-frequency transcript events off the general event fan-out. During
-    // streaming this avoids invoking unrelated workflows and materializing their
-    // lazy child Stores once per token.
-    if (event.type === "part-updated") {
-      this.enqueueProjectPartUpdate(event.sessionId, event.part);
-      return;
-    }
-    if (event.type === "part-removed") {
-      this.sessionRegistry.removePart(event.sessionId, event.partId);
-      return;
-    }
-    if (event.type === "streaming-changed") {
-      const wasStreaming = this.sessionRegistry.findModel(event.sessionId)?.streaming ?? false;
-      const session = this.sessionRegistry.setStreaming(event.sessionId, event.streaming);
-      if (session) session.updateActivity(event.streaming, wasStreaming);
-      return;
-    }
-    if (event.type === "background-work-changed") {
-      this.sessionRegistry.findSession(event.sessionId)?.setBackgroundWorkActive(event.active);
-      return;
-    }
-    if (event.type === "subagent-activity-received") {
-      this.sessionRegistry.findSession(event.activity.parentSessionId)?.receive(event);
-      return;
-    }
-    if (event.type === "subagent-activity-removed") {
-      this.sessionRegistry.findSession(event.parentSessionId)?.receive(event);
-      return;
-    }
-    if (
-      event.type === "operation-completed" ||
-      event.type === "operation-failed" ||
-      event.type === "pi-state-changed"
-    ) {
-      const sessionReceivers =
-        event.type === "pi-state-changed" && event.workspacePath
-          ? this.sessionRegistry.sessions.filter(
-              (session) => session.workspacePath === event.workspacePath,
-            )
-          : this.sessionRegistry.sessions;
-      for (const session of sessionReceivers) session.receive(event);
-    }
-    this.appControlOperationStore.receive(event);
-    this.reviewsStore.receive(event);
-    this.settingsStore.receive(event);
     this.extensionUiStore.receive(event);
-    if (event.type === "session-snapshot-received") {
-      this.recordLastChatConfiguration(event.snapshot);
-      const previousSessionId = this.projectWorkbenchStore.session?.sessionId;
-      if (event.operationId && !this.projectWorkbenchStore.acceptSessionSnapshot(event)) return;
-      const previous = this.sessionRegistry.findModel(event.snapshot.sessionId);
-      const wasStreaming = previous?.streaming ?? false;
-      this.sessionRegistry.upsert(event.snapshot);
-      const session = this.sessionRegistry.findSession(event.snapshot.sessionId)!;
-      session.receive(event);
-      session.updateActivity(session.model.streaming, wasStreaming);
-      session.composerStore.reconcile(event.snapshot.sessionId);
-      if (
-        event.operationId ||
-        this.projectWorkbenchStore.isActiveSession(event.snapshot.sessionId)
-      ) {
-        this.projectWorkbenchStore.applySessionSnapshot(
-          event.snapshot,
-          event.operationId ? previousSessionId : undefined,
-          Boolean(event.operationId),
-        );
-        if (this.appShellStore.surface === "workbench") {
-          this.appShellStore.selectProjectSession(event.snapshot.sessionId);
-        }
-      }
-      return;
-    }
-    if (event.type === "artifact-updated" || event.type === "artifact-requested") {
-      this.sessionRegistry.upsertArtifact(event.record);
-      if (event.type === "artifact-updated") return;
+    if (event.type === "artifact-updated") return;
+    if (event.type === "artifact-requested")
       this.sessionRegistry.findSession(event.record.artifact.sessionId)?.receive(event);
-    }
-    if (event.type === "review-threads-received") {
-      this.sessionRegistry.applyReviewThreads(event.sessionId, event.threads);
-      this.projectWorkbenchStore.receive(event);
-      return;
-    }
-    if (event.type === "review-thread-updated") {
-      this.sessionRegistry.upsertReviewThread(event.thread);
-      this.projectWorkbenchStore.receive(event);
-      return;
-    }
     this.projectWorkbenchStore.receive(event);
   }
 }

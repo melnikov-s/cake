@@ -94,7 +94,19 @@ function createClient(initial: Projection = { presets: [] }, models = [catalogMo
 
 function mountStore(initial?: Projection, models?: ModelOption[]) {
   const controlled = createClient(initial, models);
-  const store = mount(createStore(ModelPresetSettingsStore, { client: controlled.client }));
+  const store = mount(
+    createStore(ModelPresetSettingsStore, {
+      client: controlled.client,
+      modelPresets: {
+        list: controlled.client.listModelPresets,
+        create: controlled.client.createModelPreset,
+        update: controlled.client.updateModelPreset,
+        remove: controlled.client.removeModelPreset,
+        setDefault: controlled.client.setDefaultModelPreset,
+        resolve: vi.fn(),
+      },
+    }),
+  );
   return { ...controlled, store };
 }
 

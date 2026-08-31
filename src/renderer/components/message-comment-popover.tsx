@@ -16,7 +16,7 @@ import {
   FLOATING_WINDOW_MARGIN,
   maximizedFloatingWindowGeometry,
 } from "@/components/ui/floating-window";
-import type { ReviewThread } from "../../models/ReviewThread";
+import type { ReviewThread } from "../models/ReviewThread";
 import type { ChatStore } from "../stores/ChatStore";
 import type { MessageCommentsStore } from "../stores/MessageCommentsStore";
 

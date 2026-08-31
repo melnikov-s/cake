@@ -7,19 +7,24 @@ import {
   subagentHandleFromTool,
   type SubagentRun,
 } from "../../utils/subagent-runs";
-import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
+import type { DesktopClientEvent } from "../desktop-client";
+import { RendererClientContext } from "../client/RendererClientContext";
 import { ChatStore } from "./ChatStore";
+import { SubagentHandleId } from "../../domain/subagent-data";
 
 type ToolPart = Extract<UiPart, { kind: "tool" }>;
 
 /** Owns live and historical subagent chats belonging to one parent session. */
 export class SubagentActivityStore extends Store<{
   sessionId: string;
-  client: DesktopClient;
   parts(): readonly UiPart[];
 }> {
   private readonly activitiesByHandle: Record<string, SubagentActivity> = observable({});
   private readonly releasedHandles: Set<string> = observable(new Set<string>());
+
+  get client() {
+    return RendererClientContext.consume(this)!;
+  }
 
   receive(event: DesktopClientEvent) {
     if (event.type === "subagent-activity-received") {
@@ -113,20 +118,26 @@ export class SubagentActivityStore extends Store<{
         submit: async (draft) => {
           const current = this.run(run.key);
           if (!current?.handleId || !this.canSteer(run.key)) return false;
-          await this.props.client.steerSubagent({
-            parentSessionId: this.props.sessionId,
-            handleId: current.handleId,
-            text: draft.trim(),
-          });
+          await this.client.subagents.steer(
+            {
+              parentSessionId: this.props.sessionId,
+              handleId: SubagentHandleId.make(current.handleId),
+              text: draft.trim(),
+            },
+            { signal: this.signal },
+          );
           return true;
         },
         abort: async () => {
           const current = this.run(run.key);
           if (!current?.handleId || current.released) return;
-          await this.props.client.abortSubagent({
-            parentSessionId: this.props.sessionId,
-            handleId: current.handleId,
-          });
+          await this.client.subagents.abort(
+            {
+              parentSessionId: this.props.sessionId,
+              handleId: SubagentHandleId.make(current.handleId),
+            },
+            { signal: this.signal },
+          );
         },
         composerVisible: () => this.canSteer(run.key),
         usage: () => this.run(run.key)?.usage,

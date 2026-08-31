@@ -41,7 +41,7 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
   candidates(projectPath: string): ExistingWorktreeCandidate[] {
     const records = new Map<string, ExistingWorktreeCandidate>();
     for (const session of this.props.catalog.projectSessions(projectPath)) {
-      const record = this.props.catalog.managedWorktree(session.workspacePath);
+      const record = this.props.catalog.managedWorktree(session.workingDirectory);
       if (record && (record.state ?? "active") === "active" && !records.has(record.worktreePath))
         records.set(record.worktreePath, { ...record, sessionTitle: session.title });
     }

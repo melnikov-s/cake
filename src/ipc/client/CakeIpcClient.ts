@@ -1,10 +1,9 @@
-import { Context, Effect, Layer, ManagedRuntime, Stream, type Schema } from "effect";
+import { Context, Effect, Layer, type Schema, type Stream } from "effect";
 import { RpcClient } from "effect/unstable/rpc";
 import type { RpcClientError } from "effect/unstable/rpc";
 import { CakeRpc, type FoundationFailure } from "../protocol/CakeRpc";
-import { makeElectronRpcClientProtocol } from "../transport/ElectronRpcClientProtocol";
-import type { ElectronRpcTransport } from "../transport/ElectronRpcTransport";
 import type { RendererApplicationState } from "../../domain/application-data";
+import type { PiSettingUpdate } from "../session-contract";
 import type {
   ProjectSessionCreateInput,
   ProjectSessionError,
@@ -84,6 +83,7 @@ export interface CakeIpcClientService {
       ReadonlyArray<PiModel>,
       PiModelCatalogError | TransportError
     >;
+    readonly refresh: () => Effect.Effect<void, PiModelCatalogError | TransportError>;
   };
   readonly modelPresets: {
     readonly list: () => Effect.Effect<ModelPresetProjection, TransportError>;
@@ -219,6 +219,57 @@ export interface CakeIpcClientService {
     readonly abort: (
       target: ProjectSessionTarget,
     ) => Effect.Effect<void, ProjectSessionError | TransportError>;
+    readonly compact: (
+      input: ProjectSessionTarget & { readonly instructions?: string },
+    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
+    readonly editMessage: (
+      input: ProjectSessionTarget &
+        Pick<ProjectSessionPromptInput, "text" | "attachments" | "renderUserMessageAsMarkdown"> & {
+          readonly entryId: string;
+        },
+    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
+    readonly applyConfiguration: (
+      input: ProjectSessionTarget & { readonly configuration: CakeChatConfiguration },
+    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
+    readonly setModel: (
+      input: ProjectSessionTarget & { readonly provider: string; readonly modelId: string },
+    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
+    readonly setThinkingLevel: (
+      input: ProjectSessionTarget & {
+        readonly level: CakeChatConfiguration["thinkingLevel"];
+      },
+    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
+    readonly setFastMode: (
+      input: ProjectSessionTarget & { readonly enabled: boolean },
+    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
+    readonly getChangelog: (
+      target: ProjectSessionTarget,
+    ) => Effect.Effect<string, ProjectSessionError | TransportError>;
+    readonly navigate: (
+      input: ProjectSessionTarget & { readonly entryId: string },
+    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
+    readonly setPiSetting: (
+      input: ProjectSessionTarget & { readonly update: PiSettingUpdate },
+    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
+    readonly reload: (
+      target: ProjectSessionTarget,
+    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
+    readonly login: (
+      input: ProjectSessionTarget & {
+        readonly provider: string;
+        readonly authType: "api_key" | "oauth";
+      },
+    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
+    readonly logout: (
+      input: ProjectSessionTarget & { readonly provider: string },
+    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
+    readonly handoff: (
+      input: ProjectSessionTarget & {
+        readonly entryId: string;
+        readonly prompt?: string;
+        readonly resolveSource?: boolean;
+      },
+    ) => Effect.Effect<{ readonly sessionId: string }, ProjectSessionError | TransportError>;
     readonly rename: (
       target: ProjectSessionTarget & { readonly name: string },
     ) => Effect.Effect<void, ProjectSessionError | TransportError>;
@@ -290,6 +341,9 @@ export const CakeIpcClientLive = Layer.effect(
       },
       models: {
         list: Effect.fn("CakeIpcClient.models.list")(() => client("models.list", undefined)),
+        refresh: Effect.fn("CakeIpcClient.models.refresh")(() =>
+          client("models.refresh", undefined),
+        ),
       },
       modelPresets: {
         list: Effect.fn("CakeIpcClient.modelPresets.list")(() =>
@@ -409,6 +463,45 @@ export const CakeIpcClientLive = Layer.effect(
         abort: Effect.fn("CakeIpcClient.projectSessions.abort")((target) =>
           client("projectSessions.abort", target),
         ),
+        compact: Effect.fn("CakeIpcClient.projectSessions.compact")((input) =>
+          client("projectSessions.compact", input),
+        ),
+        editMessage: Effect.fn("CakeIpcClient.projectSessions.editMessage")((input) =>
+          client("projectSessions.editMessage", input),
+        ),
+        applyConfiguration: Effect.fn("CakeIpcClient.projectSessions.applyConfiguration")((input) =>
+          client("projectSessions.applyConfiguration", input),
+        ),
+        setModel: Effect.fn("CakeIpcClient.projectSessions.setModel")((input) =>
+          client("projectSessions.setModel", input),
+        ),
+        setThinkingLevel: Effect.fn("CakeIpcClient.projectSessions.setThinkingLevel")((input) =>
+          client("projectSessions.setThinkingLevel", input),
+        ),
+        setFastMode: Effect.fn("CakeIpcClient.projectSessions.setFastMode")((input) =>
+          client("projectSessions.setFastMode", input),
+        ),
+        getChangelog: Effect.fn("CakeIpcClient.projectSessions.getChangelog")((target) =>
+          client("projectSessions.getChangelog", target),
+        ),
+        navigate: Effect.fn("CakeIpcClient.projectSessions.navigate")((input) =>
+          client("projectSessions.navigate", input),
+        ),
+        setPiSetting: Effect.fn("CakeIpcClient.projectSessions.setPiSetting")((input) =>
+          client("projectSessions.setPiSetting", input),
+        ),
+        reload: Effect.fn("CakeIpcClient.projectSessions.reload")((target) =>
+          client("projectSessions.reload", target),
+        ),
+        login: Effect.fn("CakeIpcClient.projectSessions.login")((input) =>
+          client("projectSessions.login", input),
+        ),
+        logout: Effect.fn("CakeIpcClient.projectSessions.logout")((input) =>
+          client("projectSessions.logout", input),
+        ),
+        handoff: Effect.fn("CakeIpcClient.projectSessions.handoff")((input) =>
+          client("projectSessions.handoff", input),
+        ),
         rename: Effect.fn("CakeIpcClient.projectSessions.rename")((input) =>
           client("projectSessions.rename", input),
         ),
@@ -449,270 +542,3 @@ export const CakeIpcClientLive = Layer.effect(
     });
   }),
 );
-
-export interface CakeIpcPromiseClient {
-  readonly application: {
-    readonly getHomeDirectory: () => Promise<string>;
-    readonly getState: () => Promise<RendererApplicationState>;
-  };
-  readonly models: {
-    readonly list: () => Promise<ReadonlyArray<PiModel>>;
-  };
-  readonly modelPresets: {
-    readonly list: () => Promise<ModelPresetProjection>;
-    readonly create: (input: ModelPresetCreateInput) => Promise<ModelPresetProjection>;
-    readonly update: (input: ModelPresetUpdateInput) => Promise<ModelPresetProjection>;
-    readonly remove: (id: string) => Promise<ModelPresetProjection>;
-    readonly setDefault: (id?: string) => Promise<ModelPresetProjection>;
-    readonly resolve: (id: string) => Promise<ModelSelection>;
-  };
-  readonly cakeChats: {
-    readonly list: () => Promise<ReadonlyArray<CakeChatSummary>>;
-    readonly inspect: (sessionId: string) => Promise<CakeChatPreview>;
-    readonly open: (target: CakeChatTarget) => Promise<ConversationSnapshot>;
-    readonly observe: (
-      target: CakeChatTarget,
-      listener: (update: CakeChatUpdate) => void,
-    ) => () => void;
-    readonly prompt: (input: CakeChatPromptInput) => Promise<TurnId>;
-    readonly abort: (target: CakeChatTarget) => Promise<void>;
-    readonly compact: (input: CakeChatTarget & { readonly instructions?: string }) => Promise<void>;
-    readonly editMessage: (
-      input: CakeChatPromptInput & { readonly entryId: string },
-    ) => Promise<void>;
-    readonly applyConfiguration: (
-      input: CakeChatTarget & { readonly configuration: CakeChatConfiguration },
-    ) => Promise<void>;
-    readonly setModel: (
-      input: CakeChatTarget & { readonly provider: string; readonly modelId: string },
-    ) => Promise<void>;
-    readonly setThinkingLevel: (
-      input: CakeChatTarget & { readonly level: CakeChatConfiguration["thinkingLevel"] },
-    ) => Promise<void>;
-    readonly setFastMode: (input: CakeChatTarget & { readonly enabled: boolean }) => Promise<void>;
-    readonly rename: (input: CakeChatTarget & { readonly name: string }) => Promise<void>;
-    readonly handoff: (
-      input: CakeChatTarget & {
-        readonly entryId: string;
-        readonly prompt?: string;
-        readonly resolveSource?: boolean;
-      },
-    ) => Promise<{ readonly sessionId: string; readonly turnId?: TurnId }>;
-    readonly resolve: (target: CakeChatTarget) => Promise<void>;
-    readonly restore: (target: CakeChatTarget) => Promise<void>;
-    readonly deleteResolved: (target: CakeChatTarget) => Promise<void>;
-    readonly respondControl: (
-      controlRequestId: string,
-      result: Schema.Schema.Type<typeof Schema.Json>,
-    ) => Promise<void>;
-  };
-  readonly discussionSessions: {
-    readonly list: (input: {
-      readonly workingDirectory: string;
-      readonly parentSessionId: string;
-    }) => Promise<ReadonlyArray<DiscussionThread>>;
-    readonly create: (input: DiscussionSessionCreateInput) => Promise<DiscussionThread>;
-    readonly observe: (
-      target: DiscussionSessionTarget,
-      listener: (update: DiscussionSessionUpdate) => void,
-    ) => () => void;
-    readonly prompt: (
-      input: DiscussionSessionPromptInput,
-    ) => Promise<{ readonly turnId: TurnId; readonly thread: DiscussionThread }>;
-    readonly abort: (target: DiscussionSessionTarget) => Promise<void>;
-    readonly setResolved: (
-      target: DiscussionSessionTarget & { readonly resolved: boolean },
-    ) => Promise<DiscussionThread>;
-  };
-  readonly projectSessions: {
-    readonly list: () => Promise<ReadonlyArray<ProjectSessionSummary>>;
-    readonly inspect: (target: ProjectSessionTarget) => Promise<ProjectSessionPreview>;
-    readonly create: (input: ProjectSessionCreateInput) => Promise<ConversationSnapshot>;
-    readonly open: (target: ProjectSessionTarget) => Promise<ConversationSnapshot>;
-    readonly observe: (
-      target: ProjectSessionTarget,
-      listener: (update: ProjectSessionUpdate) => void,
-    ) => () => void;
-    readonly prompt: (input: ProjectSessionPromptInput) => Promise<TurnId>;
-    readonly steer: (input: ProjectSessionPromptInput) => Promise<TurnId>;
-    readonly followUp: (input: ProjectSessionPromptInput) => Promise<TurnId>;
-    readonly abort: (target: ProjectSessionTarget) => Promise<void>;
-    readonly rename: (target: ProjectSessionTarget & { readonly name: string }) => Promise<void>;
-    readonly fork: (
-      input: ProjectSessionTarget & {
-        readonly entryId: string;
-        readonly destinationWorkingDirectory?: string;
-        readonly resolveSource?: boolean;
-      },
-    ) => Promise<{ readonly sessionId: string }>;
-    readonly resolve: (target: ProjectSessionTarget) => Promise<void>;
-    readonly restore: (target: ProjectSessionTarget) => Promise<void>;
-  };
-  readonly subagents: {
-    readonly observe: (
-      parentSessionId: string,
-      listener: (update: SubagentUpdate) => void,
-    ) => () => void;
-    readonly steer: (input: {
-      readonly parentSessionId: string;
-      readonly handleId: SubagentHandleId;
-      readonly text: string;
-    }) => Promise<void>;
-    readonly abort: (input: {
-      readonly parentSessionId: string;
-      readonly handleId: SubagentHandleId;
-    }) => Promise<void>;
-    readonly close: (input: {
-      readonly parentSessionId: string;
-      readonly handleId: SubagentHandleId;
-    }) => Promise<void>;
-  };
-  readonly foundation: {
-    readonly typedFailure: () => Promise<void>;
-    readonly stream: (input: {
-      readonly count: number;
-      readonly intervalMs: number;
-    }) => Promise<ReadonlyArray<number>>;
-    readonly delay: (durationMs: number, signal?: AbortSignal) => Promise<void>;
-    readonly activeRequests: () => Promise<{ readonly delays: number; readonly streams: number }>;
-  };
-  readonly dispose: () => Promise<void>;
-}
-
-export function makeCakeIpcPromiseClient(transport: ElectronRpcTransport): CakeIpcPromiseClient {
-  const live = CakeIpcClientLive.pipe(Layer.provide(makeElectronRpcClientProtocol(transport)));
-  const runtime = ManagedRuntime.make(live);
-  const run = <A, E>(effect: Effect.Effect<A, E, CakeIpcClient>, signal?: AbortSignal) =>
-    runtime.runPromise(effect, signal ? { signal } : undefined);
-  const withClient = <A, E>(
-    operation: (client: CakeIpcClientService) => Effect.Effect<A, E>,
-  ): Effect.Effect<A, E, CakeIpcClient> => Effect.flatMap(CakeIpcClient, operation);
-
-  return {
-    application: {
-      getHomeDirectory: () => run(withClient((client) => client.application.getHomeDirectory())),
-      getState: () => run(withClient((client) => client.application.getState())),
-    },
-    models: {
-      list: () => run(withClient((client) => client.models.list())),
-    },
-    modelPresets: {
-      list: () => run(withClient((client) => client.modelPresets.list())),
-      create: (input) => run(withClient((client) => client.modelPresets.create(input))),
-      update: (input) => run(withClient((client) => client.modelPresets.update(input))),
-      remove: (id) => run(withClient((client) => client.modelPresets.remove(id))),
-      setDefault: (id) => run(withClient((client) => client.modelPresets.setDefault(id))),
-      resolve: (id) => run(withClient((client) => client.modelPresets.resolve(id))),
-    },
-    cakeChats: {
-      list: () => run(withClient((client) => client.cakeChats.list())),
-      inspect: (sessionId) => run(withClient((client) => client.cakeChats.inspect(sessionId))),
-      open: (target) => run(withClient((client) => client.cakeChats.open(target))),
-      observe: (target, listener) => {
-        const controller = new AbortController();
-        void run(
-          withClient((client) =>
-            client.cakeChats
-              .observe(target)
-              .pipe(Stream.runForEach((update) => Effect.sync(() => listener(update)))),
-          ),
-          controller.signal,
-        ).catch(() => undefined);
-        return () => controller.abort();
-      },
-      prompt: (input) => run(withClient((client) => client.cakeChats.prompt(input))),
-      abort: (target) => run(withClient((client) => client.cakeChats.abort(target))),
-      compact: (input) => run(withClient((client) => client.cakeChats.compact(input))),
-      editMessage: (input) => run(withClient((client) => client.cakeChats.editMessage(input))),
-      applyConfiguration: (input) =>
-        run(withClient((client) => client.cakeChats.applyConfiguration(input))),
-      setModel: (input) => run(withClient((client) => client.cakeChats.setModel(input))),
-      setThinkingLevel: (input) =>
-        run(withClient((client) => client.cakeChats.setThinkingLevel(input))),
-      setFastMode: (input) => run(withClient((client) => client.cakeChats.setFastMode(input))),
-      rename: (input) => run(withClient((client) => client.cakeChats.rename(input))),
-      handoff: (input) => run(withClient((client) => client.cakeChats.handoff(input))),
-      resolve: (target) => run(withClient((client) => client.cakeChats.resolve(target))),
-      restore: (target) => run(withClient((client) => client.cakeChats.restore(target))),
-      deleteResolved: (target) =>
-        run(withClient((client) => client.cakeChats.deleteResolved(target))),
-      respondControl: (controlRequestId, result) =>
-        run(withClient((client) => client.cakeChats.respondControl(controlRequestId, result))),
-    },
-    discussionSessions: {
-      list: (input) => run(withClient((client) => client.discussionSessions.list(input))),
-      create: (input) => run(withClient((client) => client.discussionSessions.create(input))),
-      observe: (target, listener) => {
-        const controller = new AbortController();
-        void run(
-          withClient((client) =>
-            client.discussionSessions
-              .observe(target)
-              .pipe(Stream.runForEach((update) => Effect.sync(() => listener(update)))),
-          ),
-          controller.signal,
-        ).catch(() => undefined);
-        return () => controller.abort();
-      },
-      prompt: (input) => run(withClient((client) => client.discussionSessions.prompt(input))),
-      abort: (target) => run(withClient((client) => client.discussionSessions.abort(target))),
-      setResolved: (target) =>
-        run(withClient((client) => client.discussionSessions.setResolved(target))),
-    },
-    projectSessions: {
-      list: () => run(withClient((client) => client.projectSessions.list())),
-      inspect: (target) => run(withClient((client) => client.projectSessions.inspect(target))),
-      create: (input) => run(withClient((client) => client.projectSessions.create(input))),
-      open: (target) => run(withClient((client) => client.projectSessions.open(target))),
-      observe: (target, listener) => {
-        const controller = new AbortController();
-        void run(
-          withClient((client) =>
-            client.projectSessions
-              .observe(target)
-              .pipe(Stream.runForEach((update) => Effect.sync(() => listener(update)))),
-          ),
-          controller.signal,
-        ).catch(() => undefined);
-        return () => controller.abort();
-      },
-      prompt: (input) => run(withClient((client) => client.projectSessions.prompt(input))),
-      steer: (input) => run(withClient((client) => client.projectSessions.steer(input))),
-      followUp: (input) => run(withClient((client) => client.projectSessions.followUp(input))),
-      abort: (target) => run(withClient((client) => client.projectSessions.abort(target))),
-      rename: (input) => run(withClient((client) => client.projectSessions.rename(input))),
-      fork: (input) => run(withClient((client) => client.projectSessions.fork(input))),
-      resolve: (target) => run(withClient((client) => client.projectSessions.resolve(target))),
-      restore: (target) => run(withClient((client) => client.projectSessions.restore(target))),
-    },
-    subagents: {
-      observe: (parentSessionId, listener) => {
-        const controller = new AbortController();
-        void run(
-          withClient((client) =>
-            client.subagents
-              .observe(parentSessionId)
-              .pipe(Stream.runForEach((update) => Effect.sync(() => listener(update)))),
-          ),
-          controller.signal,
-        ).catch(() => undefined);
-        return () => controller.abort();
-      },
-      steer: (input) => run(withClient((client) => client.subagents.steer(input))),
-      abort: (input) => run(withClient((client) => client.subagents.abort(input))),
-      close: (input) => run(withClient((client) => client.subagents.close(input))),
-    },
-    foundation: {
-      typedFailure: () => run(withClient((client) => client.foundation.typedFailure())),
-      stream: (input) =>
-        run(withClient((client) => Stream.runCollect(client.foundation.stream(input)))),
-      delay: (durationMs, signal) =>
-        run(
-          withClient((client) => client.foundation.delay({ durationMs })),
-          signal,
-        ),
-      activeRequests: () => run(withClient((client) => client.foundation.activeRequests())),
-    },
-    dispose: () => runtime.dispose(),
-  };
-}

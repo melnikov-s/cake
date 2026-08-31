@@ -5,9 +5,9 @@ import type {
   ModelPreset,
   ThinkingLevel,
 } from "../../ipc/session-contract";
-import type { Session } from "../../models/Session";
-import type { DesktopClientEvent } from "../desktop-client";
+import type { Session } from "../models/Session";
 import { describeError } from "../error-details";
+import { RendererClientContext } from "../client/RendererClientContext";
 
 export interface ChatConfigurationStoreProps {
   session(): Session | undefined;
@@ -26,12 +26,10 @@ export interface ChatConfigurationStoreProps {
   /** The configuration the first prompt will carry (pending override or default preset). */
   effectiveConfiguration?(): ChatConfiguration | undefined;
   setPendingConfiguration?(configuration: ChatConfiguration): void;
-  /** Session-less model catalog for deferred chats that have no runtime snapshot. */
-  listModels?(): Promise<ModelOption[]>;
-  setConfiguration(operationId: string, configuration: ChatConfiguration): Promise<void>;
-  setModel(operationId: string, provider: string, modelId: string): Promise<void>;
-  setThinkingLevel(operationId: string, level: ThinkingLevel): Promise<void>;
-  setFastMode(operationId: string, enabled: boolean): Promise<void>;
+  setConfiguration(configuration: ChatConfiguration): Promise<void>;
+  setModel(provider: string, modelId: string): Promise<void>;
+  setThinkingLevel(level: ThinkingLevel): Promise<void>;
+  setFastMode(enabled: boolean): Promise<void>;
 }
 
 /** Reusable model-catalog and reasoning configuration for one Pi chat session. */
@@ -41,8 +39,10 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   readonly catalogModels: ModelOption[] = observable([]);
   private catalogLoadRevision = 0;
   private fastModeOverride: boolean | undefined;
-  private fastModeOperationId: string | undefined;
 
+  get client() {
+    return RendererClientContext.consume(this)!;
+  }
   get session() {
     return this.props.session();
   }
@@ -98,10 +98,9 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
    */
   ensureCatalog() {
     if (!this.deferred) return;
-    if (!this.props.listModels) return;
     const revision = ++this.catalogLoadRevision;
-    void this.props
-      .listModels()
+    void this.client.models
+      .list({ signal: this.signal })
       .then((models) => {
         if (!this.signal.aborted && revision === this.catalogLoadRevision)
           this.catalogModels.splice(0, this.catalogModels.length, ...models);
@@ -138,7 +137,7 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
       });
       return;
     }
-    await this.run((operationId) => this.props.setModel(operationId, provider, modelId));
+    await this.run(() => this.props.setModel(provider, modelId));
   }
 
   async selectConfiguration(configuration: ChatConfiguration) {
@@ -153,14 +152,9 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
       return;
     }
     this.fastModeOverride = configuration.fastMode;
-    const accepted = await this.run((operationId) => {
-      this.fastModeOperationId = operationId;
-      return this.props.setConfiguration(operationId, configuration);
-    });
-    if (!accepted) {
-      this.fastModeOverride = undefined;
-      this.fastModeOperationId = undefined;
-    }
+    const accepted = await this.run(() => this.props.setConfiguration(configuration));
+    this.fastModeOverride = undefined;
+    if (!accepted) return;
   }
 
   async selectPreset(preset: ModelPreset) {
@@ -177,7 +171,7 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
       if (base) this.writePendingConfiguration({ ...base, thinkingLevel: level });
       return;
     }
-    await this.run((operationId) => this.props.setThinkingLevel(operationId, level));
+    await this.run(() => this.props.setThinkingLevel(level));
   }
 
   async selectFastMode(enabled: boolean) {
@@ -186,80 +180,9 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
       if (base) this.writePendingConfiguration({ ...base, fastMode: enabled });
       return;
     }
-    if (this.fastModeOperationId) return;
     this.fastModeOverride = enabled;
-    const accepted = await this.run((operationId) => {
-      this.fastModeOperationId = operationId;
-      return this.props.setFastMode(operationId, enabled);
-    });
-    if (!accepted) {
-      this.fastModeOverride = undefined;
-      this.fastModeOperationId = undefined;
-    }
-  }
-
-  receive(event: DesktopClientEvent) {
-    if (
-      event.type === "session-snapshot-received" ||
-      event.type === "global-chat-snapshot-received"
-    ) {
-      if (
-        event.snapshot.sessionId === this.session?.sessionId &&
-        this.fastModeOverride !== undefined &&
-        (event.snapshot.fastMode === this.fastModeOverride ||
-          event.snapshot.fastModeAvailable === false)
-      ) {
-        this.fastModeOverride = undefined;
-      }
-    }
-    if (
-      (event.type === "operation-completed" || event.type === "operation-failed") &&
-      event.operationId &&
-      event.operationId === this.fastModeOperationId
-    ) {
-      this.fastModeOverride = undefined;
-      this.fastModeOperationId = undefined;
-    }
-    if (
-      (event.type === "global-chat-operation-completed" ||
-        event.type === "global-chat-operation-failed") &&
-      event.operationId === this.fastModeOperationId
-    ) {
-      this.fastModeOverride = undefined;
-      this.fastModeOperationId = undefined;
-    }
-    if (
-      event.type === "pi-state-changed" &&
-      (event.state === "failed" || event.state === "stopped")
-    ) {
-      this.fastModeOverride = undefined;
-      this.fastModeOperationId = undefined;
-      this.props.operations.reset(this.props.operationOwner);
-      return;
-    }
-    if (
-      (event.type === "operation-completed" || event.type === "operation-failed") &&
-      event.operationId &&
-      this.activeOperations.includes(event.operationId)
-    ) {
-      if (event.type === "operation-failed") {
-        this.error = event.message;
-        this.errorDetails = event.details ?? event.message;
-      }
-      this.finish(event.operationId);
-      return;
-    }
-    if (
-      (event.type === "global-chat-operation-completed" ||
-        event.type === "global-chat-operation-failed") &&
-      this.activeOperations.includes(event.operationId)
-    ) {
-      if (event.type === "global-chat-operation-failed") {
-        this.error = event.message;
-        this.errorDetails = event.details ?? event.message;
-      }
-      this.finish(event.operationId);
-    }
+    await this.run(() => this.props.setFastMode(enabled));
+    this.fastModeOverride = undefined;
   }
 
   private writePendingConfiguration(configuration: ChatConfiguration) {
@@ -268,19 +191,18 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
     this.props.setPendingConfiguration?.(configuration);
   }
 
-  private async run(command: (operationId: string) => Promise<void>) {
+  private async run(command: () => Promise<void>) {
     this.error = undefined;
     this.errorDetails = undefined;
     const operationId = this.props.operations.start(this.props.operationOwner);
     try {
-      await command(operationId);
-      if (this.signal.aborted) return false;
-      return true;
+      await command();
+      return !this.signal.aborted;
     } catch (error) {
-      if (this.signal.aborted) return false;
-      this.reportError(error);
-      this.finish(operationId);
+      if (!this.signal.aborted) this.reportError(error);
       return false;
+    } finally {
+      this.finish(operationId);
     }
   }
 

@@ -1,6 +1,6 @@
 import { Store, child, createStore } from "r-state-tree";
 import type { ApplicationState } from "../../ipc/session-contract";
-import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
+import type { DesktopClient } from "../desktop-client";
 import { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ModelPresetSettingsStore } from "./ModelPresetSettingsStore";
 import { ProviderSettingsStore } from "./ProviderSettingsStore";
@@ -8,22 +8,7 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 import { UtilityModelSettingsStore } from "./UtilityModelSettingsStore";
 
 export interface SettingsStoreProps {
-  client: Pick<
-    DesktopClient,
-    | "setPiSetting"
-    | "reloadPi"
-    | "refreshModels"
-    | "login"
-    | "logout"
-    | "setUtilityModel"
-    | "listModels"
-    | "listModelPresets"
-    | "createModelPreset"
-    | "updateModelPreset"
-    | "removeModelPreset"
-    | "setDefaultModelPreset"
-  >;
-  sessionContext(): { sessionId: string } | undefined;
+  client: Pick<DesktopClient, "setUtilityModel">;
   operations: SessionOperationCoordinatorStore;
 }
 
@@ -36,12 +21,10 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     return createStore(UtilityModelSettingsStore, { client: this.props.client });
   }
   @child get modelPresets(): ModelPresetSettingsStore {
-    return createStore(ModelPresetSettingsStore, { client: this.props.client });
+    return createStore(ModelPresetSettingsStore);
   }
   @child get providers(): ProviderSettingsStore {
     return createStore(ProviderSettingsStore, {
-      client: this.props.client,
-      sessionContext: this.props.sessionContext,
       operations: this.props.operations,
     });
   }
@@ -59,8 +42,5 @@ export class SettingsStore extends Store<SettingsStoreProps> {
 
   applyApplicationState(state: ApplicationState) {
     this.utilityModel.applyApplicationState(state);
-  }
-  receive(event: DesktopClientEvent) {
-    this.providers.receive(event);
   }
 }

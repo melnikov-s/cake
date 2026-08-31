@@ -1,5 +1,5 @@
 import { Model, id } from "r-state-tree";
-import type { ResourceDiagnostic as ResourceDiagnosticRecord } from "../ipc/session-contract";
+import type { ResourceDiagnostic as ResourceDiagnosticRecord } from "../../ipc/session-contract";
 
 export class ResourceDiagnostic extends Model {
   @id id = "";

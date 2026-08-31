@@ -1,19 +1,8 @@
 import type { CakeDesktopBridge, DesktopEvent } from "../ipc/desktop-ipc";
-import type { CakeIpcPromiseClient } from "../ipc/client/CakeIpcClient";
-import type { ConversationSnapshot } from "../domain/conversation-data";
-import { sessionPreviewSchema, sessionSnapshotSchema, uiPartSchema } from "../ipc/session-contract";
 import type {
   Attachment,
   ApplicationState,
-  ChatConfiguration,
   FileSuggestion,
-  GlobalSessionSummary,
-  SessionSnapshot,
-  SessionPreview,
-  SessionSummary,
-  PiSettingUpdate,
-  ThinkingLevel,
-  ModelPreset,
   UtilityModel,
   SessionUsage,
   ExtensionUiEvent,
@@ -21,7 +10,6 @@ import type {
   WindowViewState,
 } from "../ipc/session-contract";
 import type { ArtifactRecord } from "../ipc/artifact-contract";
-import { reviewThreadSchema, type ReviewAnchor, type ReviewThread } from "../ipc/review-contract";
 import type { SourceLocation } from "../ipc/source-location";
 import type { EditorAnnotationSnapshot } from "../ipc/editor-annotation";
 import type {
@@ -37,12 +25,8 @@ import type {
   InlineWidgetLanguage,
   RepairedInlineWidget,
 } from "../ipc/inline-widget-contract";
-import { jsonValueSchema, type JsonObject, type JsonValue } from "../ipc/json-contract";
-import {
-  SubagentHandleId,
-  type SubagentActivity as DomainSubagentActivity,
-} from "../domain/subagent-data";
-import type { ModelOption } from "../ipc/session-contract";
+import type { JsonValue } from "../ipc/json-contract";
+import type { SubagentActivity as DomainSubagentActivity } from "../domain/subagent-data";
 import type {
   PluginAgentOpenOptions,
   PluginAgentSnapshot,
@@ -81,29 +65,9 @@ export interface EmbeddedEditorStateSnapshot {
 export type DesktopClientEvent =
   | { type: "pi-state-changed"; state: PiState; workspacePath?: string }
   | { type: "workspace-inspected"; operationId: string; path: string; trustRequired: boolean }
-  | { type: "session-snapshot-received"; operationId?: string; snapshot: SessionSnapshot }
-  | { type: "part-updated"; sessionId: string; part: UiPart }
-  | { type: "part-removed"; sessionId: string; partId: string }
-  | { type: "streaming-changed"; sessionId: string; streaming: boolean }
   | { type: "background-work-changed"; sessionId: string; active: boolean }
   | { type: "subagent-activity-received"; activity: SubagentActivity }
   | { type: "subagent-activity-removed"; parentSessionId: string; handleId: string }
-  | { type: "global-chat-snapshot-received"; operationId?: string; snapshot: SessionSnapshot }
-  | { type: "global-chat-part-updated"; sessionId: string; part: UiPart }
-  | { type: "global-chat-part-removed"; sessionId: string; partId: string }
-  | { type: "global-chat-streaming-changed"; sessionId: string; streaming: boolean }
-  | { type: "global-chat-operation-completed"; operationId: string }
-  | {
-      type: "global-chat-operation-failed";
-      operationId: string;
-      message: string;
-      details?: string;
-    }
-  | {
-      type: "global-chat-control-requested";
-      controlRequestId: string;
-      invocation: { name: string; arguments: JsonValue };
-    }
   | { type: "extension-ui-received"; sessionId: string; event: ExtensionUiEvent }
   | {
       type: "changelog-received";
@@ -118,34 +82,6 @@ export type DesktopClientEvent =
       operationId: string;
       artifactRequestId: string;
       record: ArtifactRecord;
-    }
-  | {
-      type: "review-threads-received";
-      workspacePath: string;
-      sessionId: string;
-      threads: ReviewThread[];
-    }
-  | { type: "review-thread-updated"; thread: ReviewThread }
-  | {
-      type: "review-thread-streaming";
-      workspacePath: string;
-      sessionId: string;
-      threadId: string;
-      streaming: boolean;
-    }
-  | {
-      type: "review-thread-part-updated";
-      workspacePath: string;
-      sessionId: string;
-      threadId: string;
-      part: UiPart;
-    }
-  | {
-      type: "review-thread-usage-updated";
-      workspacePath: string;
-      sessionId: string;
-      threadId: string;
-      usage: NonNullable<SessionSnapshot["usage"]>;
     }
   | {
       type: "ui-requested";
@@ -227,8 +163,6 @@ export interface DesktopClient {
     y: number;
     resolvedWorktreeCount: number;
   }): Promise<"remove-project" | "delete-resolved-worktrees" | undefined>;
-  listModels(): Promise<ModelOption[]>;
-  getHomeDirectory(): Promise<string>;
   openTerminal?(input: {
     target:
       | { kind: "project"; sessionId: string; workspacePath: string }
@@ -318,7 +252,6 @@ export interface DesktopClient {
   }): Promise<RepairedInlineWidget>;
   loadWindowState(): Promise<WindowViewState>;
   saveWindowState(state: WindowViewState): Promise<void>;
-  loadApplicationState(): Promise<ApplicationState>;
   setVscodeServerPath(path: string | undefined): Promise<ApplicationState>;
   getEmbeddedEditorState(): Promise<EmbeddedEditorStateSnapshot>;
   installEmbeddedEditor(): Promise<void>;
@@ -337,158 +270,17 @@ export interface DesktopClient {
     snapshot: EditorAnnotationSnapshot,
   ): Promise<void>;
   setUtilityModel(model: UtilityModel | undefined): Promise<ApplicationState>;
-  listModelPresets(): Promise<{
-    presets: readonly ModelPreset[];
-    defaultPresetId?: string;
-  }>;
-  createModelPreset(preset: Omit<ModelPreset, "id">): Promise<{
-    presets: readonly ModelPreset[];
-    defaultPresetId?: string;
-  }>;
-  updateModelPreset(preset: ModelPreset): Promise<{
-    presets: readonly ModelPreset[];
-    defaultPresetId?: string;
-  }>;
-  removeModelPreset(id: string): Promise<{
-    presets: readonly ModelPreset[];
-    defaultPresetId?: string;
-  }>;
-  setDefaultModelPreset(id?: string): Promise<{
-    presets: readonly ModelPreset[];
-    defaultPresetId?: string;
-  }>;
-  listSessions(): Promise<{ sessions: GlobalSessionSummary[]; reviewThreads: ReviewThread[] }>;
-  listCakeChatSessions(): Promise<SessionSummary[]>;
-  loadCakeChatSession(sessionId: string): Promise<SessionPreview | undefined>;
-  loadSession(sessionId: string): Promise<SessionPreview | undefined>;
-  openGlobalChat(input: {
-    operationId: string;
-    tools: ReadonlyArray<{
-      command: string;
-      topic: string;
-      summary: string;
-      guidance?: readonly string[];
-      parameters: JsonObject;
-      examples?: readonly { input?: JsonObject; description?: string }[];
-      result?: string;
-      limitations?: readonly string[];
-    }>;
-    sessionId?: string;
-  }): Promise<void>;
-  promptGlobalChat(input: {
-    operationId: string;
-    sessionId: string;
-    text: string;
-    renderUserMessageAsMarkdown: boolean;
-    attachments: Attachment[];
-    newSession?: {
-      tools: ReadonlyArray<{
-        command: string;
-        topic: string;
-        summary: string;
-        guidance?: readonly string[];
-        parameters: JsonObject;
-        examples?: readonly { input?: JsonObject; description?: string }[];
-        result?: string;
-        limitations?: readonly string[];
-      }>;
-      configuration?: ChatConfiguration;
-      name?: string;
-    };
-  }): Promise<void>;
-  editGlobalChatMessage?(input: {
-    operationId: string;
-    sessionId: string;
-    entryId: string;
-    text: string;
-    attachments: Attachment[];
-    renderUserMessageAsMarkdown: boolean;
-  }): Promise<void>;
-  abortGlobalChat(input: { operationId: string; sessionId: string }): Promise<void>;
-  compactGlobalChat(input: {
-    operationId: string;
-    sessionId: string;
-    instructions?: string;
-  }): Promise<void>;
-  setGlobalChatModel(input: {
-    operationId: string;
-    sessionId: string;
-    provider: string;
-    modelId: string;
-  }): Promise<void>;
-  setGlobalChatThinkingLevel(input: {
-    operationId: string;
-    sessionId: string;
-    level: ThinkingLevel;
-  }): Promise<void>;
-  setGlobalChatConfiguration(input: {
-    operationId: string;
-    sessionId: string;
-    configuration: ChatConfiguration;
-  }): Promise<void>;
-  setGlobalChatFastMode(input: {
-    operationId: string;
-    sessionId: string;
-    enabled: boolean;
-  }): Promise<void>;
-  renameGlobalChat(input: { operationId: string; sessionId: string; name: string }): Promise<void>;
-  handoffGlobalChat(input: {
-    operationId: string;
-    sessionId: string;
-    entryId: string;
-    prompt?: string;
-    resolveSource?: boolean;
-  }): Promise<void>;
-  respondToGlobalChatControl(controlRequestId: string, result: JsonValue): Promise<void>;
-  listReviewThreads(sessionId: string): Promise<ReviewThread[]>;
-  createReviewThread(input: {
-    sessionId: string;
-    anchor: ReviewAnchor;
-    body: string;
-  }): Promise<ReviewThread>;
-  replyReviewThread(input: {
-    sessionId: string;
-    threadId: string;
-    body: string;
-  }): Promise<ReviewThread>;
-  resolveReviewThread(input: {
-    sessionId: string;
-    threadId: string;
-    resolved: boolean;
-  }): Promise<ReviewThread>;
-  submitReviewThread(input: {
-    operationId: string;
-    sessionId: string;
-    threadId: string;
-    model?: { provider: string; id: string };
-    thinkingLevel?: ThinkingLevel;
-  }): Promise<void>;
   registerProject(path: string, name: string): Promise<ApplicationState>;
   renameProject(path: string, name: string): Promise<ApplicationState>;
   removeProject(path: string, deleteSessions: boolean): Promise<ApplicationState>;
-  resolveSession(sessionId: string, resolved: boolean): Promise<ApplicationState>;
-  resolveSessions(
-    sessionIds: readonly string[],
-    resolved: boolean,
-    workspacePath?: string,
-  ): Promise<ApplicationState>;
   deleteSession(sessionId: string): Promise<ApplicationState>;
-  deleteCakeChatSession(sessionId: string): Promise<ApplicationState>;
   setSessionUnread(sessionId: string, unread: boolean): Promise<ApplicationState>;
-  resolveCakeChatSession(sessionId: string, resolved: boolean): Promise<ApplicationState>;
   restartPi(path: string): Promise<void>;
   inspectWorkspace(input: { operationId: string; path: string }): Promise<void>;
   respondToWorkspaceTrust(input: {
     operationId: string;
     path: string;
     approved: boolean;
-  }): Promise<void>;
-  openWorkspace(input: {
-    operationId: string;
-    path: string;
-    newSession?: boolean;
-    sessionId?: string;
-    configuration?: ChatConfiguration;
   }): Promise<void>;
   createWorktree(input: {
     operationId: string;
@@ -508,90 +300,6 @@ export interface DesktopClient {
     workspacePath: string;
     keepBranch: boolean;
   }): Promise<void>;
-  forkSessionToWorkspace(input: {
-    operationId: string;
-    sessionId: string;
-    entryId: string;
-    sourceWorkspacePath: string;
-    destinationWorkspacePath: string;
-    resolveSource: boolean;
-  }): Promise<{ sessionId: string }>;
-  steerSubagent(input: { parentSessionId: string; handleId: string; text: string }): Promise<void>;
-  abortSubagent(input: { parentSessionId: string; handleId: string }): Promise<void>;
-  submit(input: {
-    operationId: string;
-    sessionId: string;
-    text: string;
-    delivery: "prompt" | "steer" | "follow-up";
-    renderUserMessageAsMarkdown: boolean;
-    attachments: Attachment[];
-    newSession?: { path: string; configuration?: ChatConfiguration; name?: string };
-  }): Promise<void>;
-  editSessionMessage?(input: {
-    operationId: string;
-    sessionId: string;
-    entryId: string;
-    text: string;
-    attachments: Attachment[];
-    renderUserMessageAsMarkdown: boolean;
-  }): Promise<void>;
-  abort(input: { operationId: string; sessionId: string }): Promise<void>;
-  compactSession(input: {
-    operationId: string;
-    sessionId: string;
-    instructions?: string;
-  }): Promise<void>;
-  setModel(input: {
-    operationId: string;
-    sessionId: string;
-    provider: string;
-    modelId: string;
-  }): Promise<void>;
-  setThinkingLevel(input: {
-    operationId: string;
-    sessionId: string;
-    level: ThinkingLevel;
-  }): Promise<void>;
-  setChatConfiguration(input: {
-    operationId: string;
-    sessionId: string;
-    configuration: ChatConfiguration;
-  }): Promise<void>;
-  setFastMode(input: { operationId: string; sessionId: string; enabled: boolean }): Promise<void>;
-  setPiSetting(input: {
-    operationId: string;
-    sessionId: string;
-    update: PiSettingUpdate;
-  }): Promise<void>;
-  reloadPi(input: { operationId: string; sessionId: string }): Promise<void>;
-  refreshModels(input: { operationId: string; sessionId: string }): Promise<void>;
-  login(input: {
-    operationId: string;
-    sessionId: string;
-    provider: string;
-    authType: "api_key" | "oauth";
-  }): Promise<void>;
-  logout(input: { operationId: string; sessionId: string; provider: string }): Promise<void>;
-  renameSession(input: { operationId: string; sessionId: string; name: string }): Promise<void>;
-  forkSession(input: {
-    operationId: string;
-    sessionId: string;
-    entryId: string;
-    resolveSource?: boolean;
-  }): Promise<void>;
-  handoffSession(input: {
-    operationId: string;
-    sessionId: string;
-    entryId: string;
-    prompt?: string;
-    resolveSource?: boolean;
-  }): Promise<void>;
-  navigateSession(input: {
-    operationId: string;
-    sessionId: string;
-    entryId: string;
-  }): Promise<void>;
-  getChangelog(input: { operationId: string; sessionId: string }): Promise<void>;
   respondToUi(input: {
     operationId: string;
     sessionId: string;
@@ -620,15 +328,6 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
       path: event.path,
       trustRequired: event.trustRequired,
     };
-  if (event.type === "session-snapshot")
-    return {
-      type: "session-snapshot-received",
-      operationId: event.requestId,
-      snapshot: event.snapshot,
-    };
-  if (event.type === "part-updated" || event.type === "part-removed") return event;
-  if (event.type === "session-streaming")
-    return { type: "streaming-changed", sessionId: event.sessionId, streaming: event.streaming };
   if (event.type === "extension-ui")
     return { type: "extension-ui-received", sessionId: event.sessionId, event: event.event };
   if (event.type === "plugin-agent-event") return event;
@@ -705,302 +404,7 @@ async function accept(
     throw new Error("Cake received a mismatched operation response");
 }
 
-export function createDesktopClient(
-  bridge: CakeDesktopBridge,
-  rpcClient: Pick<
-    CakeIpcPromiseClient,
-    | "application"
-    | "models"
-    | "modelPresets"
-    | "projectSessions"
-    | "cakeChats"
-    | "discussionSessions"
-    | "subagents"
-  >,
-): DesktopClient {
-  const listeners = new Set<(event: DesktopClientEvent) => void>();
-  const sessionSubscriptions = new Map<string, () => void>();
-  const cakeChatSubscriptions = new Map<string, () => void>();
-  const discussionSubscriptions = new Map<string, () => void>();
-  const subagentSubscriptions = new Map<string, () => void>();
-  const subagentHandlesBySession = new Map<string, Set<SubagentHandleId>>();
-  const projectWorkingDirectories = new Map<string, string>();
-  const cakeChatTools = new Map<
-    string,
-    Parameters<CakeIpcPromiseClient["cakeChats"]["observe"]>[0]["tools"]
-  >();
-  const pendingDiscussionBodies = new Map<string, string>();
-  const turnOperations = new Map<string, string>();
-  const cakeChatTurnOperations = new Map<string, string>();
-  const settledTurns = new Map<
-    string,
-    { readonly outcome: "complete" | "failed" | "aborted"; readonly message?: string }
-  >();
-  const publish = (event: DesktopClientEvent) => {
-    for (const listener of listeners) listener(event);
-  };
-  const legacySnapshot = (snapshot: ConversationSnapshot) =>
-    sessionSnapshotSchema.parse({
-      ...snapshot,
-      workspacePath: snapshot.workingDirectory,
-    });
-  const settleTurn = (
-    turnId: string,
-    settlement: { readonly outcome: "complete" | "failed" | "aborted"; readonly message?: string },
-  ) => {
-    const operationId = turnOperations.get(turnId);
-    if (!operationId) {
-      settledTurns.set(turnId, settlement);
-      return;
-    }
-    turnOperations.delete(turnId);
-    settledTurns.delete(turnId);
-    publish(
-      settlement.outcome === "failed"
-        ? {
-            type: "operation-failed",
-            operationId,
-            message: settlement.message ?? "Project Session turn failed",
-          }
-        : { type: "operation-completed", operationId },
-    );
-  };
-  const rememberTurn = (turnId: string, operationId: string) => {
-    turnOperations.set(turnId, operationId);
-    const settled = settledTurns.get(turnId);
-    if (settled) settleTurn(turnId, settled);
-  };
-  const settleCakeChatTurn = (
-    turnId: string,
-    settlement: { readonly outcome: "complete" | "failed" | "aborted"; readonly message?: string },
-  ) => {
-    const operationId = cakeChatTurnOperations.get(turnId);
-    if (!operationId) return;
-    cakeChatTurnOperations.delete(turnId);
-    publish(
-      settlement.outcome === "failed"
-        ? {
-            type: "global-chat-operation-failed",
-            operationId,
-            message: settlement.message ?? "Cake Chat turn failed",
-          }
-        : { type: "global-chat-operation-completed", operationId },
-    );
-  };
-  const toolsForCakeChat = (sessionId: string) => cakeChatTools.get(sessionId) ?? [];
-  const observeCakeChat = (
-    sessionId: string,
-    tools: Parameters<CakeIpcPromiseClient["cakeChats"]["observe"]>[0]["tools"],
-  ) => {
-    cakeChatTools.set(sessionId, tools);
-    cakeChatSubscriptions.get(sessionId)?.();
-    const unsubscribe = rpcClient.cakeChats.observe({ sessionId, tools }, (update) => {
-      if (update._tag === "Snapshot") {
-        publish({
-          type: "global-chat-snapshot-received",
-          snapshot: legacySnapshot(update.snapshot.conversation),
-        });
-        return;
-      }
-      const event = update.event;
-      if (event._tag === "SnapshotUpdated")
-        publish({
-          type: "global-chat-snapshot-received",
-          snapshot: legacySnapshot(event.snapshot),
-        });
-      else if (event._tag === "PartUpdated")
-        publish({
-          type: "global-chat-part-updated",
-          sessionId: event.sessionId,
-          part: uiPartSchema.parse(event.part),
-        });
-      else if (event._tag === "PartRemoved")
-        publish({
-          type: "global-chat-part-removed",
-          sessionId: event.sessionId,
-          partId: event.partId,
-        });
-      else if (event._tag === "StreamingChanged")
-        publish({
-          type: "global-chat-streaming-changed",
-          sessionId: event.sessionId,
-          streaming: event.streaming,
-        });
-      else if (event._tag === "ControlRequested")
-        publish({
-          type: "global-chat-control-requested",
-          controlRequestId: event.controlRequestId,
-          invocation: {
-            name: event.invocation.name,
-            arguments: jsonValueSchema.parse(event.invocation.arguments),
-          },
-        });
-      else if (event._tag === "TurnSettled") settleCakeChatTurn(event.turnId, event);
-    });
-    cakeChatSubscriptions.set(sessionId, unsubscribe);
-  };
-  const completeCakeChatOperation = async (operationId: string, operation: Promise<unknown>) => {
-    await operation;
-    publish({ type: "global-chat-operation-completed", operationId });
-  };
-  const workingDirectoryForSession = async (sessionId: string) => {
-    const known = projectWorkingDirectories.get(sessionId);
-    if (known) return known;
-    const session = (await rpcClient.projectSessions.list()).find(
-      (candidate) => candidate.sessionId === sessionId,
-    );
-    if (!session) throw new Error("Cake could not find the Discussion Session parent");
-    projectWorkingDirectories.set(sessionId, session.workingDirectory);
-    return session.workingDirectory;
-  };
-  const legacyDiscussionThread = (
-    thread: Awaited<ReturnType<CakeIpcPromiseClient["discussionSessions"]["create"]>>,
-  ) =>
-    reviewThreadSchema.parse({
-      id: thread.id,
-      workspacePath: thread.workingDirectory,
-      sessionId: thread.parentSessionId,
-      agentSessionId: thread.sidecarSessionId,
-      anchor: thread.anchor,
-      parts: thread.parts,
-      usage: thread.usage,
-      status: thread.status,
-      createdAt: thread.createdAt,
-      updatedAt: thread.updatedAt,
-      resolvedAt: thread.resolvedAt,
-    });
-  const observeDiscussion = (
-    target: Parameters<CakeIpcPromiseClient["discussionSessions"]["observe"]>[0],
-  ) => {
-    discussionSubscriptions.get(target.threadId)?.();
-    const unsubscribe = rpcClient.discussionSessions.observe(target, (update) => {
-      if (update._tag === "Snapshot") {
-        const thread = legacyDiscussionThread(update.snapshot.thread);
-        publish({ type: "review-thread-updated", thread });
-        publish({
-          type: "review-thread-streaming",
-          workspacePath: thread.workspacePath,
-          sessionId: thread.sessionId,
-          threadId: thread.id,
-          streaming: update.snapshot.conversation.streaming,
-        });
-        return;
-      }
-      const event = update.event;
-      if (event._tag === "PartUpdated")
-        publish({
-          type: "review-thread-part-updated",
-          workspacePath: target.workingDirectory,
-          sessionId: target.parentSessionId,
-          threadId: target.threadId,
-          part: uiPartSchema.parse(event.part),
-        });
-      else if (event._tag === "StreamingChanged")
-        publish({
-          type: "review-thread-streaming",
-          workspacePath: target.workingDirectory,
-          sessionId: target.parentSessionId,
-          threadId: target.threadId,
-          streaming: event.streaming,
-        });
-      else if (event._tag === "TurnSettled") settleTurn(event.turnId, event);
-    });
-    discussionSubscriptions.set(target.threadId, unsubscribe);
-  };
-  const observeProjectSession = (
-    sessionId: string,
-    workingDirectory: string,
-    newSession = false,
-  ) => {
-    sessionSubscriptions.get(sessionId)?.();
-    const target = { sessionId, workingDirectory };
-    if (newSession) Object.assign(target, { newSession: true });
-    const unsubscribe = rpcClient.projectSessions.observe(target, (update) => {
-      if (update._tag === "Snapshot") {
-        publish({
-          type: "session-snapshot-received",
-          snapshot: legacySnapshot(update.snapshot.conversation),
-        });
-        return;
-      }
-      const event = update.event;
-      if (event._tag === "SnapshotUpdated")
-        publish({ type: "session-snapshot-received", snapshot: legacySnapshot(event.snapshot) });
-      else if (event._tag === "PartUpdated")
-        publish({
-          type: "part-updated",
-          sessionId: event.sessionId,
-          part: uiPartSchema.parse(event.part),
-        });
-      else if (event._tag === "PartRemoved")
-        publish({ type: "part-removed", sessionId: event.sessionId, partId: event.partId });
-      else if (event._tag === "StreamingChanged")
-        publish({
-          type: "streaming-changed",
-          sessionId: event.sessionId,
-          streaming: event.streaming,
-        });
-      else if (event._tag === "ExtensionUi") {
-        // Extension UI remains on the legacy desktop event bridge until its
-        // focused renderer Store migrates in Phase 7.
-      } else if (event._tag === "TurnSettled") settleTurn(event.turnId, event);
-    });
-    sessionSubscriptions.set(sessionId, unsubscribe);
-    subagentSubscriptions.get(sessionId)?.();
-    subagentSubscriptions.set(
-      sessionId,
-      rpcClient.subagents.observe(sessionId, (update) => {
-        const projectActivity = (activity: DomainSubagentActivity): SubagentActivity => ({
-          ...activity,
-          resolvedModel: {
-            ...activity.resolvedModel,
-            fallbacks: [...activity.resolvedModel.fallbacks],
-          },
-          parts: activity.parts.map((part) => uiPartSchema.parse(part)),
-          usage:
-            activity.usage === undefined
-              ? undefined
-              : sessionSnapshotSchema.shape.usage.parse(activity.usage),
-        });
-        if (update._tag === "Snapshot") {
-          const currentHandles = new Set(update.activities.map((activity) => activity.handleId));
-          for (const handleId of subagentHandlesBySession.get(sessionId) ?? [])
-            if (!currentHandles.has(handleId))
-              publish({
-                type: "subagent-activity-removed",
-                parentSessionId: sessionId,
-                handleId,
-              });
-          subagentHandlesBySession.set(sessionId, currentHandles);
-          for (const activity of update.activities)
-            publish({
-              type: "subagent-activity-received",
-              activity: projectActivity(activity),
-            });
-          publish({
-            type: "background-work-changed",
-            sessionId,
-            active: update.backgroundActive,
-          });
-        } else if (update._tag === "Activity") {
-          const handles = subagentHandlesBySession.get(sessionId) ?? new Set();
-          handles.add(update.activity.handleId);
-          subagentHandlesBySession.set(sessionId, handles);
-          publish({
-            type: "subagent-activity-received",
-            activity: projectActivity(update.activity),
-          });
-        } else if (update._tag === "Removed") {
-          subagentHandlesBySession.get(sessionId)?.delete(update.handleId);
-          publish({
-            type: "subagent-activity-removed",
-            parentSessionId: sessionId,
-            handleId: update.handleId,
-          });
-        } else publish({ type: "background-work-changed", sessionId, active: update.active });
-      }),
-    );
-  };
+export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
   return {
     async chooseProject() {
       const response = await bridge.request({ type: "choose-project" });
@@ -1051,18 +455,6 @@ export function createDesktopClient(
       if (response.type !== "project-context-menu-closed")
         throw new Error("Cake received an invalid project context menu response");
       return response.action;
-    },
-    async listModels() {
-      const models = await rpcClient.models.list();
-      return models.map(({ supportedThinkingLevels, input, authTypes, ...model }) => ({
-        ...model,
-        availableThinkingLevels: [...supportedThinkingLevels],
-        input: [...input],
-        authTypes: [...authTypes],
-      }));
-    },
-    getHomeDirectory() {
-      return rpcClient.application.getHomeDirectory();
     },
     async openTerminal(input) {
       const requestId = crypto.randomUUID();
@@ -1294,9 +686,6 @@ export function createDesktopClient(
       if (response.type !== "window-state-saved")
         throw new Error("Cake could not persist window state");
     },
-    async loadApplicationState() {
-      return rpcClient.application.getState();
-    },
     async setVscodeServerPath(path) {
       const response = await bridge.request({ type: "set-vscode-server-path", path });
       if (response.type !== "application-state-updated")
@@ -1356,299 +745,6 @@ export function createDesktopClient(
         throw new Error("Cake could not update the utility model");
       return response.state;
     },
-    listModelPresets() {
-      return rpcClient.modelPresets.list();
-    },
-    createModelPreset(preset) {
-      return rpcClient.modelPresets.create(preset);
-    },
-    updateModelPreset(preset) {
-      return rpcClient.modelPresets.update(preset);
-    },
-    removeModelPreset(id) {
-      return rpcClient.modelPresets.remove(id);
-    },
-    setDefaultModelPreset(id) {
-      return rpcClient.modelPresets.setDefault(id);
-    },
-    async listSessions() {
-      const sessions = (await rpcClient.projectSessions.list()).map((session) => {
-        projectWorkingDirectories.set(session.sessionId, session.workingDirectory);
-        const projected: GlobalSessionSummary = {
-          id: session.sessionId,
-          title: session.title,
-          created: session.createdAt,
-          modified: session.modifiedAt,
-          messageCount: session.messageCount,
-          resolved: session.resolved,
-          unread: session.unread,
-          workspacePath: session.workingDirectory,
-          workspaceName: session.projectName,
-        };
-        if (session.parentSessionId !== undefined)
-          Object.assign(projected, { parentSessionId: session.parentSessionId });
-        if (session.workingDirectory !== session.projectPath)
-          Object.assign(projected, { projectPath: session.projectPath });
-        if (session.managedWorktree !== undefined)
-          Object.assign(projected, { managedWorktree: session.managedWorktree });
-        return projected;
-      });
-      const reviewThreads = (
-        await Promise.all(
-          sessions.map(async (session) =>
-            (
-              await rpcClient.discussionSessions.list({
-                parentSessionId: session.id,
-                workingDirectory: session.workspacePath,
-              })
-            ).map(legacyDiscussionThread),
-          ),
-        )
-      ).flat();
-      return { sessions, reviewThreads };
-    },
-    async listCakeChatSessions() {
-      return (await rpcClient.cakeChats.list()).map((session) => {
-        const projected: SessionSummary = {
-          id: session.sessionId,
-          title: session.title,
-          created: session.createdAt,
-          modified: session.modifiedAt,
-          messageCount: session.messageCount,
-          resolved: session.resolved,
-        };
-        if (session.parentSessionId !== undefined)
-          Object.assign(projected, { parentSessionId: session.parentSessionId });
-        return projected;
-      });
-    },
-    async loadCakeChatSession(sessionId) {
-      const preview = await rpcClient.cakeChats.inspect(sessionId);
-      return sessionPreviewSchema.parse({
-        workspacePath: "",
-        sessionId: preview.sessionId,
-        sessionFile: preview.sessionFile,
-        parts: preview.parts,
-      });
-    },
-    async loadSession(sessionId) {
-      const preview = await rpcClient.projectSessions.inspect({ sessionId });
-      return sessionPreviewSchema.parse({
-        workspacePath: preview.workingDirectory,
-        sessionId: preview.sessionId,
-        sessionFile: preview.sessionFile,
-        parts: preview.parts,
-      });
-    },
-    async openGlobalChat(input) {
-      const tools = input.tools;
-      if (!input.sessionId) return;
-      cakeChatTools.set(input.sessionId, tools);
-      const snapshot = await rpcClient.cakeChats.open({ sessionId: input.sessionId, tools });
-      publish({
-        type: "global-chat-snapshot-received",
-        operationId: input.operationId,
-        snapshot: legacySnapshot(snapshot),
-      });
-      observeCakeChat(input.sessionId, tools);
-      publish({ type: "global-chat-operation-completed", operationId: input.operationId });
-    },
-    async promptGlobalChat(input) {
-      const tools = input.newSession?.tools ?? toolsForCakeChat(input.sessionId);
-      cakeChatTools.set(input.sessionId, tools);
-      const request: Parameters<CakeIpcPromiseClient["cakeChats"]["prompt"]>[0] = {
-        sessionId: input.sessionId,
-        text: input.text,
-        renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
-        attachments: input.attachments,
-      };
-      if (input.newSession) {
-        const newSession: NonNullable<typeof request.newSession> = { tools };
-        if (input.newSession.configuration !== undefined)
-          Object.assign(newSession, { configuration: input.newSession.configuration });
-        if (input.newSession.name !== undefined)
-          Object.assign(newSession, { name: input.newSession.name });
-        Object.assign(request, { newSession });
-      }
-      const turnId = await rpcClient.cakeChats.prompt(request);
-      cakeChatTurnOperations.set(turnId, input.operationId);
-      if (!cakeChatSubscriptions.has(input.sessionId)) observeCakeChat(input.sessionId, tools);
-    },
-    editGlobalChatMessage: (input) =>
-      completeCakeChatOperation(
-        input.operationId,
-        rpcClient.cakeChats.editMessage({
-          sessionId: input.sessionId,
-          entryId: input.entryId,
-          text: input.text,
-          attachments: input.attachments,
-          renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
-        }),
-      ),
-    abortGlobalChat: (input) =>
-      completeCakeChatOperation(
-        input.operationId,
-        rpcClient.cakeChats.abort({
-          sessionId: input.sessionId,
-          tools: toolsForCakeChat(input.sessionId),
-        }),
-      ),
-    compactGlobalChat: (input) =>
-      completeCakeChatOperation(
-        input.operationId,
-        (() => {
-          const request: Parameters<CakeIpcPromiseClient["cakeChats"]["compact"]>[0] = {
-            sessionId: input.sessionId,
-            tools: toolsForCakeChat(input.sessionId),
-          };
-          if (input.instructions !== undefined)
-            Object.assign(request, { instructions: input.instructions });
-          return rpcClient.cakeChats.compact(request);
-        })(),
-      ),
-    setGlobalChatModel: (input) =>
-      completeCakeChatOperation(
-        input.operationId,
-        rpcClient.cakeChats.setModel({
-          sessionId: input.sessionId,
-          tools: toolsForCakeChat(input.sessionId),
-          provider: input.provider,
-          modelId: input.modelId,
-        }),
-      ),
-    setGlobalChatThinkingLevel: (input) =>
-      completeCakeChatOperation(
-        input.operationId,
-        rpcClient.cakeChats.setThinkingLevel({
-          sessionId: input.sessionId,
-          tools: toolsForCakeChat(input.sessionId),
-          level: input.level,
-        }),
-      ),
-    setGlobalChatConfiguration: (input) =>
-      completeCakeChatOperation(
-        input.operationId,
-        rpcClient.cakeChats.applyConfiguration({
-          sessionId: input.sessionId,
-          tools: toolsForCakeChat(input.sessionId),
-          configuration: input.configuration,
-        }),
-      ),
-    setGlobalChatFastMode: (input) =>
-      completeCakeChatOperation(
-        input.operationId,
-        rpcClient.cakeChats.setFastMode({
-          sessionId: input.sessionId,
-          tools: toolsForCakeChat(input.sessionId),
-          enabled: input.enabled,
-        }),
-      ),
-    renameGlobalChat: (input) =>
-      completeCakeChatOperation(
-        input.operationId,
-        rpcClient.cakeChats.rename({
-          sessionId: input.sessionId,
-          tools: toolsForCakeChat(input.sessionId),
-          name: input.name,
-        }),
-      ),
-    async handoffGlobalChat(input) {
-      const tools = toolsForCakeChat(input.sessionId);
-      const request: Parameters<CakeIpcPromiseClient["cakeChats"]["handoff"]>[0] = {
-        sessionId: input.sessionId,
-        tools,
-        entryId: input.entryId,
-      };
-      if (input.prompt !== undefined) Object.assign(request, { prompt: input.prompt });
-      if (input.resolveSource !== undefined)
-        Object.assign(request, { resolveSource: input.resolveSource });
-      const result = await rpcClient.cakeChats.handoff(request);
-      cakeChatTools.set(result.sessionId, tools);
-      if (result.turnId) cakeChatTurnOperations.set(result.turnId, input.operationId);
-      const snapshot = await rpcClient.cakeChats.open({ sessionId: result.sessionId, tools });
-      publish({
-        type: "global-chat-snapshot-received",
-        operationId: input.operationId,
-        snapshot: legacySnapshot(snapshot),
-      });
-      observeCakeChat(result.sessionId, tools);
-      if (!result.turnId)
-        publish({ type: "global-chat-operation-completed", operationId: input.operationId });
-    },
-    respondToGlobalChatControl: (controlRequestId, result) =>
-      rpcClient.cakeChats.respondControl(controlRequestId, result),
-    async listReviewThreads(sessionId) {
-      const workingDirectory = await workingDirectoryForSession(sessionId);
-      return (
-        await rpcClient.discussionSessions.list({
-          parentSessionId: sessionId,
-          workingDirectory,
-        })
-      ).map(legacyDiscussionThread);
-    },
-    async createReviewThread(input) {
-      const workingDirectory = await workingDirectoryForSession(input.sessionId);
-      const created = await rpcClient.discussionSessions.create({
-        parentSessionId: input.sessionId,
-        workingDirectory,
-        anchor: input.anchor,
-      });
-      pendingDiscussionBodies.set(created.id, input.body.trim());
-      const thread = legacyDiscussionThread(created);
-      return reviewThreadSchema.parse({
-        ...thread,
-        parts: [
-          ...thread.parts,
-          {
-            id: crypto.randomUUID(),
-            kind: "text",
-            role: "user",
-            text: input.body.trim(),
-            status: "complete",
-            deliveryState: "sending",
-          },
-        ],
-      });
-    },
-    async replyReviewThread(input) {
-      const workingDirectory = await workingDirectoryForSession(input.sessionId);
-      const existing = (
-        await rpcClient.discussionSessions.list({
-          parentSessionId: input.sessionId,
-          workingDirectory,
-        })
-      ).find((thread) => thread.id === input.threadId);
-      if (!existing) throw new Error("That Discussion Session no longer exists");
-      pendingDiscussionBodies.set(input.threadId, input.body.trim());
-      const thread = legacyDiscussionThread(existing);
-      return reviewThreadSchema.parse({
-        ...thread,
-        status: "open",
-        resolvedAt: undefined,
-        parts: [
-          ...thread.parts,
-          {
-            id: crypto.randomUUID(),
-            kind: "text",
-            role: "user",
-            text: input.body.trim(),
-            status: "complete",
-            deliveryState: "sending",
-          },
-        ],
-      });
-    },
-    async resolveReviewThread(input) {
-      const workingDirectory = await workingDirectoryForSession(input.sessionId);
-      return legacyDiscussionThread(
-        await rpcClient.discussionSessions.setResolved({
-          parentSessionId: input.sessionId,
-          workingDirectory,
-          threadId: input.threadId,
-          resolved: input.resolved,
-        }),
-      );
-    },
     async registerProject(path, name) {
       const response = await bridge.request({ type: "register-project", path, name });
       if (response.type !== "application-state-updated")
@@ -1667,63 +763,17 @@ export function createDesktopClient(
         throw new Error("Cake could not remove the project");
       return response.state;
     },
-    async resolveSession(sessionId, resolved) {
-      const target = { sessionId };
-      if (resolved) await rpcClient.projectSessions.resolve(target);
-      else await rpcClient.projectSessions.restore(target);
-      sessionSubscriptions.get(sessionId)?.();
-      sessionSubscriptions.delete(sessionId);
-      subagentSubscriptions.get(sessionId)?.();
-      subagentSubscriptions.delete(sessionId);
-      return rpcClient.application.getState();
-    },
-    async resolveSessions(sessionIds, resolved, workspacePath) {
-      await Promise.all(
-        sessionIds.map((sessionId) => {
-          const target = { sessionId };
-          if (workspacePath !== undefined)
-            Object.assign(target, { workingDirectory: workspacePath });
-          return resolved
-            ? rpcClient.projectSessions.resolve(target)
-            : rpcClient.projectSessions.restore(target);
-        }),
-      );
-      for (const sessionId of sessionIds) {
-        sessionSubscriptions.get(sessionId)?.();
-        sessionSubscriptions.delete(sessionId);
-        subagentSubscriptions.get(sessionId)?.();
-        subagentSubscriptions.delete(sessionId);
-      }
-      return rpcClient.application.getState();
-    },
     async deleteSession(sessionId) {
       const response = await bridge.request({ type: "delete-session", sessionId });
       if (response.type !== "application-state-updated")
         throw new Error("Cake could not delete the session");
       return response.state;
     },
-    async deleteCakeChatSession(sessionId) {
-      cakeChatSubscriptions.get(sessionId)?.();
-      cakeChatSubscriptions.delete(sessionId);
-      await rpcClient.cakeChats.deleteResolved({
-        sessionId,
-        tools: toolsForCakeChat(sessionId),
-      });
-      return rpcClient.application.getState();
-    },
     async setSessionUnread(sessionId, unread) {
       const response = await bridge.request({ type: "set-session-unread", sessionId, unread });
       if (response.type !== "application-state-updated")
         throw new Error("Cake could not update the session");
       return response.state;
-    },
-    async resolveCakeChatSession(sessionId, resolved) {
-      const target = { sessionId, tools: toolsForCakeChat(sessionId) };
-      cakeChatSubscriptions.get(sessionId)?.();
-      cakeChatSubscriptions.delete(sessionId);
-      if (resolved) await rpcClient.cakeChats.resolve(target);
-      else await rpcClient.cakeChats.restore(target);
-      return rpcClient.application.getState();
     },
     async restartPi(path) {
       await bridge.request({ type: "restart-pi", path });
@@ -1737,32 +787,6 @@ export function createDesktopClient(
         path: input.path,
         approved: input.approved,
       }),
-    async openWorkspace(input) {
-      const sessionId = input.sessionId ?? crypto.randomUUID();
-      const create = input.newSession === true || input.sessionId === undefined;
-      observeProjectSession(sessionId, input.path, create);
-      if (create) {
-        const createInput = { sessionId, workingDirectory: input.path };
-        if (input.configuration !== undefined)
-          Object.assign(createInput, { configuration: input.configuration });
-        const snapshot = await rpcClient.projectSessions.create(createInput);
-        publish({
-          type: "session-snapshot-received",
-          operationId: input.operationId,
-          snapshot: legacySnapshot(snapshot),
-        });
-        return;
-      }
-      const snapshot = await rpcClient.projectSessions.open({
-        sessionId,
-        workingDirectory: input.path,
-      });
-      publish({
-        type: "session-snapshot-received",
-        operationId: input.operationId,
-        snapshot: legacySnapshot(snapshot),
-      });
-    },
     async createWorktree(input) {
       const response = await bridge.request({
         type: "create-worktree",
@@ -1800,195 +824,6 @@ export function createDesktopClient(
         workspacePath: input.workspacePath,
         keepBranch: input.keepBranch,
       }),
-    async forkSessionToWorkspace(input) {
-      return rpcClient.projectSessions.fork({
-        sessionId: input.sessionId,
-        workingDirectory: input.sourceWorkspacePath,
-        entryId: input.entryId,
-        destinationWorkingDirectory: input.destinationWorkspacePath,
-        resolveSource: input.resolveSource,
-      });
-    },
-    steerSubagent: (input) =>
-      rpcClient.subagents.steer({
-        ...input,
-        handleId: SubagentHandleId.make(input.handleId),
-      }),
-    abortSubagent: (input) =>
-      rpcClient.subagents.abort({
-        ...input,
-        handleId: SubagentHandleId.make(input.handleId),
-      }),
-    async submit(input) {
-      if (input.newSession) {
-        observeProjectSession(input.sessionId, input.newSession.path, true);
-        const createInput = {
-          sessionId: input.sessionId,
-          workingDirectory: input.newSession.path,
-        };
-        if (input.newSession.configuration !== undefined)
-          Object.assign(createInput, { configuration: input.newSession.configuration });
-        if (input.newSession.name !== undefined)
-          Object.assign(createInput, { name: input.newSession.name });
-        await rpcClient.projectSessions.create(createInput);
-      }
-      const command =
-        input.delivery === "steer"
-          ? rpcClient.projectSessions.steer
-          : input.delivery === "follow-up"
-            ? rpcClient.projectSessions.followUp
-            : rpcClient.projectSessions.prompt;
-      const turnId = await command({
-        sessionId: input.sessionId,
-        text: input.text,
-        attachments: input.attachments,
-        renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
-      });
-      rememberTurn(turnId, input.operationId);
-    },
-    editSessionMessage: (input) =>
-      accept(bridge, {
-        type: "edit-session-message",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        entryId: input.entryId,
-        text: input.text,
-        attachments: input.attachments,
-        renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
-      }),
-    async submitReviewThread(input) {
-      const text = pendingDiscussionBodies.get(input.threadId);
-      if (!text) throw new Error("The Discussion Session reply is unavailable");
-      const workingDirectory = await workingDirectoryForSession(input.sessionId);
-      const target = {
-        parentSessionId: input.sessionId,
-        workingDirectory,
-        threadId: input.threadId,
-      };
-      const request: Parameters<CakeIpcPromiseClient["discussionSessions"]["prompt"]>[0] = {
-        ...target,
-        text,
-      };
-      if (input.model !== undefined) Object.assign(request, { model: input.model });
-      if (input.thinkingLevel !== undefined)
-        Object.assign(request, { thinkingLevel: input.thinkingLevel });
-      const accepted = await rpcClient.discussionSessions.prompt(request);
-      pendingDiscussionBodies.delete(input.threadId);
-      rememberTurn(accepted.turnId, input.operationId);
-      observeDiscussion(target);
-    },
-    async abort(input) {
-      await rpcClient.projectSessions.abort({ sessionId: input.sessionId });
-      publish({ type: "operation-completed", operationId: input.operationId });
-    },
-    compactSession: (input) =>
-      accept(bridge, {
-        type: "compact-session",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        instructions: input.instructions,
-      }),
-    setModel: (input) =>
-      accept(bridge, {
-        type: "set-model",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        provider: input.provider,
-        modelId: input.modelId,
-      }),
-    setThinkingLevel: (input) =>
-      accept(bridge, {
-        type: "set-thinking",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        level: input.level,
-      }),
-    setChatConfiguration: (input) =>
-      accept(bridge, {
-        type: "set-chat-configuration",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        configuration: input.configuration,
-      }),
-    setFastMode: (input) =>
-      accept(bridge, {
-        type: "set-fast-mode",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        enabled: input.enabled,
-      }),
-    setPiSetting: (input) =>
-      accept(bridge, {
-        type: "set-pi-setting",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        update: input.update,
-      }),
-    reloadPi: (input) =>
-      accept(bridge, {
-        type: "reload-pi",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-      }),
-    refreshModels: (input) =>
-      accept(bridge, {
-        type: "refresh-models",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-      }),
-    login: (input) =>
-      accept(bridge, {
-        type: "login",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        provider: input.provider,
-        authType: input.authType,
-      }),
-    logout: (input) =>
-      accept(bridge, {
-        type: "logout",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        provider: input.provider,
-      }),
-    async renameSession(input) {
-      await rpcClient.projectSessions.rename({ sessionId: input.sessionId, name: input.name });
-      publish({ type: "operation-completed", operationId: input.operationId });
-    },
-    async forkSession(input) {
-      const forked = await rpcClient.projectSessions.fork({
-        sessionId: input.sessionId,
-        entryId: input.entryId,
-        resolveSource: input.resolveSource ?? false,
-      });
-      publish({ type: "operation-completed", operationId: input.operationId });
-      const source = (await rpcClient.projectSessions.list()).find(
-        (session) => session.sessionId === forked.sessionId,
-      );
-      if (source) observeProjectSession(forked.sessionId, source.workingDirectory);
-    },
-    handoffSession: (input) =>
-      accept(bridge, {
-        type: "handoff-session",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        entryId: input.entryId,
-        prompt: input.prompt,
-        resolveSource: input.resolveSource ?? false,
-      }),
-    navigateSession: (input) =>
-      accept(bridge, {
-        type: "navigate-session",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        entryId: input.entryId,
-      }),
-    getChangelog: (input) =>
-      accept(bridge, {
-        type: "get-changelog",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-      }),
     async respondToUi(input) {
       const response = await bridge.request({
         type: "respond-ui",
@@ -2023,21 +858,10 @@ export function createDesktopClient(
       return response.markdown;
     },
     subscribe(listener) {
-      listeners.add(listener);
-      const unsubscribeBridge = bridge.subscribe((event) => {
+      return bridge.subscribe((event) => {
         const mapped = toClientEvent(event);
         if (mapped) listener(mapped);
       });
-      return () => {
-        listeners.delete(listener);
-        unsubscribeBridge();
-        if (listeners.size === 0) {
-          for (const unsubscribe of sessionSubscriptions.values()) unsubscribe();
-          sessionSubscriptions.clear();
-          for (const unsubscribe of subagentSubscriptions.values()) unsubscribe();
-          subagentSubscriptions.clear();
-        }
-      };
     },
   };
 }

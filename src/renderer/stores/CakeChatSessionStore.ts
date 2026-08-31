@@ -1,21 +1,15 @@
-import { Store, applySnapshot, child, createStore, observable } from "r-state-tree";
-import { Session } from "../../models/Session";
-import type {
-  Attachment,
-  ModelPreset,
-  SessionPreview,
-  SessionSnapshot,
-} from "../../ipc/session-contract";
+import { Store, child, createStore, observable } from "r-state-tree";
+import { Session } from "../models/Session";
+import type { Attachment, ModelPreset, SessionSnapshot } from "../../ipc/session-contract";
 import { parsePiBuiltinCommand } from "../../ipc/session-contract";
 import { pastedImageAttachments } from "../pasted-image-attachments";
 import { describeError } from "../error-details";
+import { RendererClientContext } from "../client/RendererClientContext";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { ChatStore } from "./ChatStore";
 import type { GlobalChatStore } from "./GlobalChatStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
-import type { DesktopClientEvent } from "../desktop-client";
-import { toSessionPreviewSnapshot, toSessionSnapshot } from "../../utils/session-snapshot";
 
 export interface CakeChatSessionStoreProps {
   sessionId: string;
@@ -51,6 +45,9 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     });
   }
 
+  get client() {
+    return RendererClientContext.consume(this)!;
+  }
   get sessionId() {
     return this.props.sessionId;
   }
@@ -93,56 +90,6 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     return `cake-chat-configuration:${this.sessionId}`;
   }
 
-  applySnapshot(snapshot: SessionSnapshot) {
-    applySnapshot(this.model, toSessionSnapshot(snapshot));
-  }
-
-  applyPreview(preview: SessionPreview) {
-    applySnapshot(this.model, toSessionPreviewSnapshot(preview));
-  }
-
-  upsertPart(part: SessionSnapshot["parts"][number]) {
-    this.model.upsertPart(part);
-  }
-
-  removePart(partId: string) {
-    this.model.removePart(partId);
-  }
-
-  setStreaming(streaming: boolean) {
-    this.model.setStreaming(streaming);
-  }
-
-  receive(event: DesktopClientEvent) {
-    if (event.type === "global-chat-snapshot-received") {
-      if (
-        event.snapshot.sessionId === this.sessionId &&
-        this.props.operations.active(this.configurationOwner).length > 0
-      )
-        this.configurationStore.receive(event);
-      return;
-    }
-    if (
-      (event.type === "global-chat-operation-completed" ||
-        event.type === "global-chat-operation-failed") &&
-      this.props.operations.includes(event.operationId, this.configurationOwner)
-    )
-      this.configurationStore.receive(event);
-    if (
-      (event.type === "global-chat-operation-completed" ||
-        event.type === "global-chat-operation-failed") &&
-      this.props.operations.includes(event.operationId, this.promptOwner)
-    ) {
-      const pending = this.pendingSubmissions.get(event.operationId);
-      this.pendingSubmissions.delete(event.operationId);
-      if (event.type === "global-chat-operation-failed" && pending) {
-        if (!this.chatStore.draft.trim()) this.chatStore.setDraft(pending.text);
-        if (this.attachments.length === 0) this.attachments.push(...pending.attachments);
-        this.editingEntryId = pending.editingEntryId;
-      }
-    }
-  }
-
   async submit(text: string, renderUserMessageAsMarkdown = false) {
     text = text.trim();
     const attachments = this.attachments.slice();
@@ -160,16 +107,18 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       this.pendingSubmissions.set(operationId, { text, attachments, editingEntryId: entryId });
       this.attachments.splice(0);
       try {
-        if (!this.props.collection.port.editMessage)
-          throw new Error("This Cake Chat client does not support message editing");
-        await this.props.collection.port.editMessage({
-          operationId,
-          sessionId: this.sessionId,
-          entryId,
-          text,
-          attachments,
-          renderUserMessageAsMarkdown,
-        });
+        await this.client.cakeChats.editMessage(
+          {
+            ...this.props.collection.target(this.sessionId),
+            entryId,
+            text,
+            attachments,
+            renderUserMessageAsMarkdown,
+          },
+          { signal: this.signal },
+        );
+        this.pendingSubmissions.delete(operationId);
+        this.props.operations.finish(operationId);
         return true;
       } catch (error) {
         if (!this.signal.aborted) {
@@ -224,12 +173,15 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       // Compaction is a session operation, not a prompt: nothing enters the transcript.
       const operationId = this.props.operations.start(this.promptOwner);
       try {
-        await this.props.collection.port.compact({
-          operationId,
-          sessionId: this.sessionId,
-          instructions: builtin.args || undefined,
-        });
+        await this.client.cakeChats.compact(
+          {
+            ...this.props.collection.target(this.sessionId),
+            instructions: builtin.args || undefined,
+          },
+          { signal: this.signal },
+        );
         if (this.signal.aborted) return false;
+        this.props.operations.finish(operationId);
         this.attachments.splice(0);
         return true;
       } catch (error) {
@@ -243,14 +195,20 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     this.pendingSubmissions.set(operationId, { text, attachments });
     this.attachments.splice(0);
     try {
-      await this.props.collection.port.prompt({
-        operationId,
-        sessionId: this.sessionId,
-        text,
-        renderUserMessageAsMarkdown,
-        attachments,
-        newSession: this.props.collection.newSessionRequest(this.sessionId),
-      });
+      const newSession = this.props.collection.newSessionRequest(this.sessionId);
+      await this.client.cakeChats.prompt(
+        {
+          sessionId: this.sessionId,
+          text,
+          renderUserMessageAsMarkdown,
+          attachments,
+          newSession,
+        },
+        { signal: this.signal },
+      );
+      this.props.collection.markSessionStarted(this.sessionId);
+      this.pendingSubmissions.delete(operationId);
+      this.props.operations.finish(operationId);
       return true;
     } catch (error) {
       if (this.signal.aborted) return false;
@@ -269,8 +227,8 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     if (!this.props.collection.createDraftSession(this.sessionId, text, attachments)) return false;
     this.chatStore.setDraft("");
     this.attachments.splice(0);
-    if (text && this.props.collection.port.generateSessionTitle)
-      void this.props.collection.port
+    if (text && this.props.collection.nativeClient.generateSessionTitle)
+      void this.props.collection.nativeClient
         .generateSessionTitle(text)
         .then((title) => {
           if (title && !this.signal.aborted)
@@ -362,32 +320,26 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         this.props.collection.pendingSessionConfiguration(this.sessionId),
       setPendingConfiguration: (configuration) =>
         this.props.collection.setPendingSessionConfiguration(this.sessionId, configuration),
-      listModels: () => this.props.collection.port.listModels(),
-      setConfiguration: (operationId, configuration) =>
-        this.props.collection.port.setConfiguration({
-          operationId,
-          sessionId: this.sessionId,
-          configuration,
-        }),
-      setModel: (operationId, provider, modelId) =>
-        this.props.collection.port.setModel({
-          operationId,
-          sessionId: this.sessionId,
-          provider,
-          modelId,
-        }),
-      setThinkingLevel: (operationId, level) =>
-        this.props.collection.port.setThinkingLevel({
-          operationId,
-          sessionId: this.sessionId,
-          level,
-        }),
-      setFastMode: (operationId, enabled) =>
-        this.props.collection.port.setFastMode({
-          operationId,
-          sessionId: this.sessionId,
-          enabled,
-        }),
+      setConfiguration: (configuration) =>
+        this.client.cakeChats.applyConfiguration(
+          { ...this.props.collection.target(this.sessionId), configuration },
+          { signal: this.signal },
+        ),
+      setModel: (provider, modelId) =>
+        this.client.cakeChats.setModel(
+          { ...this.props.collection.target(this.sessionId), provider, modelId },
+          { signal: this.signal },
+        ),
+      setThinkingLevel: (level) =>
+        this.client.cakeChats.setThinkingLevel(
+          { ...this.props.collection.target(this.sessionId), level },
+          { signal: this.signal },
+        ),
+      setFastMode: (enabled) =>
+        this.client.cakeChats.setFastMode(
+          { ...this.props.collection.target(this.sessionId), enabled },
+          { signal: this.signal },
+        ),
     });
   }
 
@@ -418,9 +370,9 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       addPastedImages: (files) => this.addPastedImages(files),
       removeAttachment: (index) => this.removeAttachment(index),
       showComposerContextMenu: (selection, x, y) =>
-        this.props.collection.port.showComposerContextMenu({ selection, x, y }),
+        this.props.collection.nativeClient.showComposerContextMenu({ selection, x, y }),
       rewordComposerSelection: (selection, prompt) =>
-        this.props.collection.port.rewordComposerSelection({ selection, prompt }),
+        this.props.collection.nativeClient.rewordComposerSelection({ selection, prompt }),
       usage: () => this.model.usage,
       hideThinking: () => Boolean(this.model.piSettings?.hideThinkingBlock),
       error: () => ({
@@ -446,26 +398,14 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     if (!this.streaming) return;
     const operationId = this.props.operations.start(`cake-chat-abort:${this.sessionId}`);
     try {
-      await this.props.collection.port.abort({ operationId, sessionId: this.sessionId });
+      await this.client.cakeChats.abort(this.props.collection.target(this.sessionId), {
+        signal: this.signal,
+      });
+      this.props.operations.finish(operationId);
     } catch (error) {
       if (this.signal.aborted) return;
       this.props.operations.finish(operationId);
       this.reportError(error);
-    }
-  }
-
-  receiveOperationFailure(operationId: string, error: unknown, details?: string) {
-    if (
-      this.props.operations.includes(operationId, this.promptOwner) ||
-      this.props.operations.includes(operationId, `cake-chat-abort:${this.sessionId}`)
-    ) {
-      if (details !== undefined) {
-        const described = describeError(error);
-        this.error = described.message;
-        this.errorDetails = details;
-      } else {
-        this.reportError(error);
-      }
     }
   }
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { reaction } from "r-state-tree";
 import { useStore } from "r-state-tree/react";
 import type {
   PluginAgentOpenOptions,
@@ -44,7 +45,7 @@ export function usePluginAgent(options: { abortOnUnmount?: boolean } = {}): Plug
 
   useEffect(
     () =>
-      root.client.subscribe((event) => {
+      root.nativeClient.subscribe((event) => {
         if (
           event.type === "plugin-agent-event" &&
           event.pluginId === pluginId &&
@@ -60,10 +61,10 @@ export function usePluginAgent(options: { abortOnUnmount?: boolean } = {}): Plug
       const current = latest.current;
       if (!current) return;
       if (options.abortOnUnmount && current.status === "running")
-        void root.client
+        void root.nativeClient
           .abortPluginAgent(pluginId, current.handleId)
-          .finally(() => root.client.detachPluginAgent(pluginId, current.handleId));
-      else void root.client.detachPluginAgent(pluginId, current.handleId);
+          .finally(() => root.nativeClient.detachPluginAgent(pluginId, current.handleId));
+      else void root.nativeClient.detachPluginAgent(pluginId, current.handleId);
     },
     [options.abortOnUnmount, pluginId, root],
   );
@@ -71,12 +72,14 @@ export function usePluginAgent(options: { abortOnUnmount?: boolean } = {}): Plug
   const open = useCallback(
     async (input: PluginAgentOpenOptions) => {
       const previous = latest.current;
-      if (previous) await root.client.detachPluginAgent(pluginId, previous.handleId);
+      if (previous) await root.nativeClient.detachPluginAgent(pluginId, previous.handleId);
       setOpening(true);
       setLocalError(undefined);
       setSnapshot(undefined);
       try {
-        setSnapshot(await root.client.openPluginAgent(pluginId, input, implicitSession(root)));
+        setSnapshot(
+          await root.nativeClient.openPluginAgent(pluginId, input, implicitSession(root)),
+        );
       } catch (error) {
         setLocalError(error instanceof Error ? error.message : String(error));
         throw error;
@@ -96,7 +99,7 @@ export function usePluginAgent(options: { abortOnUnmount?: boolean } = {}): Plug
       setLocalError(undefined);
       try {
         setSnapshot(
-          await root.client.promptPluginAgent(pluginId, current.handleId, delivery, text),
+          await root.nativeClient.promptPluginAgent(pluginId, current.handleId, delivery, text),
         );
       } catch (error) {
         setLocalError(error instanceof Error ? error.message : String(error));
@@ -109,7 +112,7 @@ export function usePluginAgent(options: { abortOnUnmount?: boolean } = {}): Plug
   const abort = useCallback(async () => {
     const current = latest.current;
     if (!current) return;
-    setSnapshot(await root.client.abortPluginAgent(pluginId, current.handleId));
+    setSnapshot(await root.nativeClient.abortPluginAgent(pluginId, current.handleId));
   }, [pluginId, root]);
 
   return useMemo(
@@ -155,8 +158,8 @@ export function usePluginSessionActivity(): PluginSessionActivity {
   const selection = root.appShellStore.selection;
   if (selection.kind !== "project-session")
     throw new Error("usePluginSessionActivity() requires a selected project session");
-  const model = root.sessionRegistry.findModel(selection.sessionId);
-  const initial = (): PluginSessionActivity => {
+  const current = (): PluginSessionActivity => {
+    const model = root.sessionRegistry.findModel(selection.sessionId);
     const parts = model?.uiParts ?? [];
     const messages = parts.filter(
       (part): part is Extract<UiPart, { kind: "text" }> =>
@@ -169,30 +172,16 @@ export function usePluginSessionActivity(): PluginSessionActivity {
       lastMessageId: messages.at(-1)?.entryId,
     };
   };
-  const [value, setValue] = useState(initial);
+  const [value, setValue] = useState(current);
   useEffect(
     () =>
-      root.client.subscribe((event) => {
-        if (
-          event.type === "session-snapshot-received" &&
-          event.snapshot.workspacePath === selection.workspacePath &&
-          event.snapshot.sessionId === selection.sessionId
-        ) {
-          const parts = event.snapshot.parts;
-          const messages = parts.filter(
-            (part): part is Extract<UiPart, { kind: "text" }> =>
-              part.kind === "text" && Boolean(part.entryId),
-          );
-          setValue((current) => ({
-            streaming: event.snapshot.streaming,
-            settledRevision: event.snapshot.streaming ? current.settledRevision : revision(parts),
-            leafId: messages.at(-1)?.entryId,
-            lastMessageId: messages.at(-1)?.entryId,
-          }));
-        } else if (event.type === "streaming-changed" && event.sessionId === selection.sessionId)
-          setValue((current) => ({ ...current, streaming: event.streaming }));
-      }),
-    [root, selection.sessionId, selection.workspacePath],
+      reaction(current, (next) =>
+        setValue((previous) => ({
+          ...next,
+          settledRevision: next.streaming ? previous.settledRevision : next.settledRevision,
+        })),
+      ),
+    [root, selection.sessionId],
   );
   return value;
 }
@@ -218,23 +207,23 @@ export function usePluginCompletion(): PluginCompletionHandle {
     const requestId = active.current;
     if (!requestId) return;
     active.current = undefined;
-    await root.client.cancelPluginCompletion(pluginId, requestId);
+    await root.nativeClient.cancelPluginCompletion(pluginId, requestId);
     setState({ status: "idle" });
   }, [pluginId, root]);
   useEffect(
     () => () => {
-      if (active.current) void root.client.cancelPluginCompletion(pluginId, active.current);
+      if (active.current) void root.nativeClient.cancelPluginCompletion(pluginId, active.current);
     },
     [pluginId, root],
   );
   const run = useCallback(
     async (request: PluginCompletionRequest) => {
-      if (active.current) await root.client.cancelPluginCompletion(pluginId, active.current);
+      if (active.current) await root.nativeClient.cancelPluginCompletion(pluginId, active.current);
       const requestId = crypto.randomUUID();
       active.current = requestId;
       setState({ status: "running" });
       try {
-        const result = await root.client.runPluginCompletion(
+        const result = await root.nativeClient.runPluginCompletion(
           pluginId,
           requestId,
           request,

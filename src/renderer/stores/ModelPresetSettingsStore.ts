@@ -1,23 +1,11 @@
 import { Store, observable } from "r-state-tree";
 import type { ChatConfiguration, ModelOption, ModelPreset } from "../../ipc/session-contract";
-import type { DesktopClient } from "../desktop-client";
+import { RendererClientContext } from "../client/RendererClientContext";
 import { describeError } from "../error-details";
 
 interface ModelPresetProjection {
   readonly presets: readonly ModelPreset[];
   readonly defaultPresetId?: string;
-}
-
-export interface ModelPresetSettingsStoreProps {
-  client: Pick<
-    DesktopClient,
-    | "listModels"
-    | "listModelPresets"
-    | "createModelPreset"
-    | "updateModelPreset"
-    | "removeModelPreset"
-    | "setDefaultModelPreset"
-  >;
 }
 
 export type ModelPresetResolutionStatus =
@@ -32,7 +20,7 @@ export type ModelPresetResolutionStatus =
  * Owns the one renderer model-preset collection, default new-session
  * configuration, and serialized optimistic semantic command queue.
  */
-export class ModelPresetSettingsStore extends Store<ModelPresetSettingsStoreProps> {
+export class ModelPresetSettingsStore extends Store {
   readonly presets: ModelPreset[] = observable([]);
   readonly catalogModels: ModelOption[] = observable([]);
   defaultPresetId: string | undefined;
@@ -48,6 +36,10 @@ export class ModelPresetSettingsStore extends Store<ModelPresetSettingsStoreProp
   private persistedPresets: ModelPreset[] = [];
   private persistedDefaultPresetId: string | undefined;
   private readonly authoritativeIds = new Map<string, string>();
+
+  get client() {
+    return RendererClientContext.consume(this)!;
+  }
 
   hydrate() {
     this.hydration ??= this.performHydration();
@@ -119,7 +111,9 @@ export class ModelPresetSettingsStore extends Store<ModelPresetSettingsStoreProp
     );
     return this.enqueue(revision, async () => {
       const knownIds = new Set(this.persistedPresets.map((candidate) => candidate.id));
-      const state = await this.props.client.createModelPreset(preset);
+      const state = await this.client.modelPresets.create(preset, {
+        signal: this.signal,
+      });
       const created = state.presets.find((candidate) => !knownIds.has(candidate.id));
       if (created) this.authoritativeIds.set(optimisticId, created.id);
       return state;
@@ -132,10 +126,13 @@ export class ModelPresetSettingsStore extends Store<ModelPresetSettingsStoreProp
       this.defaultPresetId,
     );
     return this.enqueue(revision, () =>
-      this.props.client.updateModelPreset({
-        ...preset,
-        id: this.resolveAuthoritativeId(preset.id),
-      }),
+      this.client.modelPresets.update(
+        {
+          ...preset,
+          id: this.resolveAuthoritativeId(preset.id),
+        },
+        { signal: this.signal },
+      ),
     );
   }
 
@@ -151,23 +148,26 @@ export class ModelPresetSettingsStore extends Store<ModelPresetSettingsStoreProp
       this.defaultPresetId === id ? undefined : this.defaultPresetId,
     );
     return this.enqueue(revision, () =>
-      this.props.client.removeModelPreset(this.resolveAuthoritativeId(id)),
+      this.client.modelPresets.remove(this.resolveAuthoritativeId(id), {
+        signal: this.signal,
+      }),
     );
   }
 
   setDefaultPreset(id: string | undefined) {
     const revision = this.beginOptimistic(this.presets, id);
     return this.enqueue(revision, () =>
-      this.props.client.setDefaultModelPreset(
+      this.client.modelPresets.setDefault(
         id === undefined ? undefined : this.resolveAuthoritativeId(id),
+        { signal: this.signal },
       ),
     );
   }
 
   private async performHydration() {
     const [presets, models] = await Promise.allSettled([
-      this.props.client.listModelPresets(),
-      this.props.client.listModels(),
+      this.client.modelPresets.list({ signal: this.signal }),
+      this.client.models.list({ signal: this.signal }),
     ]);
     if (this.signal.aborted) return;
     if (presets.status === "fulfilled") {

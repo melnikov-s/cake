@@ -77,11 +77,12 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
         <div className="flex flex-col pl-5 space-y-0.5 mt-0.5">
           {sessions.map((session) => {
             const selected =
-              shell.selection.kind === "cake-chat" && shell.selection.sessionId === session.id;
-            const running = cakeChat.findSession(session.id)?.streaming === true;
+              shell.selection.kind === "cake-chat" &&
+              shell.selection.sessionId === session.sessionId;
+            const running = cakeChat.findSession(session.sessionId)?.streaming === true;
             return (
               <SidebarSessionItem
-                key={session.id}
+                key={session.sessionId}
                 store={store}
                 session={session}
                 selected={selected}

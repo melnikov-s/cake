@@ -99,9 +99,7 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
           return Boolean(threadId);
         }
         const reviews = this.props.reviews();
-        const saved = await reviews.replyThread(this.createdThreadId, draft);
-        if (saved) await reviews.submitThread(this.createdThreadId);
-        return saved;
+        return reviews.replyThread(this.createdThreadId, draft);
       },
       error: () => ({
         message: this.props.reviews().error,

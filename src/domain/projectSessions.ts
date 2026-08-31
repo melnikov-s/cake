@@ -4,6 +4,7 @@ import type {
   Annotation,
   Attachment,
   ChatConfiguration,
+  PiSettingUpdate,
   SessionSummary,
 } from "../ipc/session-contract";
 import {
@@ -407,6 +408,108 @@ export const followUp = Effect.fn("ProjectSessions.followUp")(function* (
   return turnId;
 });
 
+export const getChangelog = Effect.fn("ProjectSessions.getChangelog")(function* (
+  target: ProjectSessionTarget,
+) {
+  return yield* withHandle(target, (handle) => handle.executeCommand("changelog", "")).pipe(
+    asError("getChangelog"),
+    Effect.map((markdown) => markdown ?? ""),
+  );
+});
+
+export const navigate = Effect.fn("ProjectSessions.navigate")(function* (
+  target: ProjectSessionTarget,
+  entryId: string,
+) {
+  yield* withHandle(target, (handle) => handle.navigate(entryId)).pipe(asError("navigate"));
+});
+
+export const setPiSetting = Effect.fn("ProjectSessions.setPiSetting")(function* (
+  target: ProjectSessionTarget,
+  update: PiSettingUpdate,
+) {
+  yield* withHandle(target, (handle) => handle.setPiSetting(update)).pipe(asError("setPiSetting"));
+});
+
+export const reload = Effect.fn("ProjectSessions.reload")(function* (target: ProjectSessionTarget) {
+  yield* withHandle(target, (handle) => handle.reload()).pipe(asError("reload"));
+});
+
+export const login = Effect.fn("ProjectSessions.login")(function* (
+  target: ProjectSessionTarget,
+  provider: string,
+  authType: "api_key" | "oauth",
+) {
+  yield* withHandle(target, (handle) => handle.login(provider, authType)).pipe(asError("login"));
+});
+
+export const logout = Effect.fn("ProjectSessions.logout")(function* (
+  target: ProjectSessionTarget,
+  provider: string,
+) {
+  yield* withHandle(target, (handle) => handle.logout(provider)).pipe(asError("logout"));
+});
+
+export const compact = Effect.fn("ProjectSessions.compact")(function* (
+  target: ProjectSessionTarget,
+  instructions?: string,
+) {
+  yield* withHandle(target, (handle) => handle.compact(instructions)).pipe(asError("compact"));
+});
+
+export const editMessage = Effect.fn("ProjectSessions.editMessage")(function* (
+  input: ProjectSessionTarget & {
+    readonly entryId: string;
+    readonly text: ProjectSessionPromptInput["text"];
+    readonly attachments: ProjectSessionPromptInput["attachments"];
+    readonly renderUserMessageAsMarkdown: ProjectSessionPromptInput["renderUserMessageAsMarkdown"];
+  },
+) {
+  yield* withHandle(input, (handle) =>
+    handle.editMessage(
+      input.entryId,
+      input.text,
+      runtimeAttachments(input.attachments),
+      input.renderUserMessageAsMarkdown,
+    ),
+  ).pipe(asError("editMessage"));
+});
+
+export const applyConfiguration = Effect.fn("ProjectSessions.applyConfiguration")(function* (
+  target: ProjectSessionTarget,
+  configuration: ChatConfiguration,
+) {
+  yield* withHandle(target, (handle) => handle.applyConfiguration(configuration)).pipe(
+    asError("applyConfiguration"),
+  );
+});
+
+export const setModel = Effect.fn("ProjectSessions.setModel")(function* (
+  target: ProjectSessionTarget,
+  provider: string,
+  modelId: string,
+) {
+  yield* withHandle(target, (handle) => handle.setModel(provider, modelId)).pipe(
+    asError("setModel"),
+  );
+});
+
+export const setThinkingLevel = Effect.fn("ProjectSessions.setThinkingLevel")(function* (
+  target: ProjectSessionTarget,
+  level: Parameters<PiSessionHandle["setThinkingLevel"]>[0],
+) {
+  yield* withHandle(target, (handle) => handle.setThinkingLevel(level)).pipe(
+    asError("setThinkingLevel"),
+  );
+});
+
+export const setFastMode = Effect.fn("ProjectSessions.setFastMode")(function* (
+  target: ProjectSessionTarget,
+  enabled: boolean,
+) {
+  yield* withHandle(target, (handle) => handle.setFastMode(enabled)).pipe(asError("setFastMode"));
+});
+
 export const abort = Effect.fn("ProjectSessions.abort")(function* (target: ProjectSessionTarget) {
   yield* subagents.abortParentChildren(target.sessionId).pipe(asError("abort"));
   yield* withHandle(target, (handle) => handle.abort()).pipe(asError("abort"));
@@ -467,6 +570,37 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
   if (input.resolveSource) yield* resolve(input.target);
   else yield* refreshProjection();
   return { sessionId };
+});
+
+export const handoff = Effect.fn("ProjectSessions.handoff")(function* (input: {
+  readonly target: ProjectSessionTarget;
+  readonly entryId: string;
+  readonly prompt?: string;
+  readonly resolveSource?: boolean;
+}) {
+  const transition = yield* withHandle(input.target, (handle) =>
+    Effect.gen(function* () {
+      const configuration = yield* handle.configuration();
+      const handedOff = yield* handle.handoff(input.entryId);
+      return { configuration, sessionId: handedOff.sessionId };
+    }),
+  ).pipe(asError("handoff"));
+  const nextTarget = { sessionId: transition.sessionId };
+  const configuration = transition.configuration;
+  if (configuration)
+    yield* withHandle(nextTarget, (handle) => handle.applyConfiguration(configuration)).pipe(
+      asError("handoff"),
+    );
+  if (input.prompt?.trim())
+    yield* prompt({
+      sessionId: transition.sessionId,
+      text: input.prompt.trim(),
+      attachments: [],
+      renderUserMessageAsMarkdown: false,
+    });
+  if (input.resolveSource) yield* resolve(input.target);
+  else yield* refreshProjection();
+  return { sessionId: transition.sessionId };
 });
 
 export const resolve = Effect.fn("ProjectSessions.resolve")(function* (

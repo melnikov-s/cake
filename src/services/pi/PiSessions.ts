@@ -132,6 +132,12 @@ export interface PiSessionHandle {
   readonly setFastMode: (enabled: boolean) => Effect.Effect<void, PiSessionError>;
   readonly setThinkingLevel: (level: ThinkingLevel) => Effect.Effect<void, PiSessionError>;
   readonly setPiSetting: (update: PiSettingUpdate) => Effect.Effect<void, PiSessionError>;
+  readonly login: (
+    provider: string,
+    authType: "api_key" | "oauth",
+  ) => Effect.Effect<void, PiSessionError>;
+  readonly logout: (provider: string) => Effect.Effect<void, PiSessionError>;
+  readonly navigate: (entryId: string) => Effect.Effect<void, PiSessionError>;
   readonly compact: (instructions?: string) => Effect.Effect<void, PiSessionError>;
   readonly rename: (name: string) => Effect.Effect<void, PiSessionError>;
   readonly fork: (
@@ -509,6 +515,10 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           setThinkingLevel: (level) =>
             call("setThinkingLevel", (runtime) => runtime.setThinkingLevel(level)),
           setPiSetting: (update) => call("setPiSetting", (runtime) => runtime.setPiSetting(update)),
+          login: (provider, authType) =>
+            call("login", (runtime) => runtime.login(provider, authType)),
+          logout: (provider) => call("logout", (runtime) => runtime.logout(provider)),
+          navigate: (entryId) => call("navigate", (runtime) => runtime.navigate(entryId)),
           compact: (instructions) => call("compact", (runtime) => runtime.compact(instructions)),
           rename: (name) => call("rename", (runtime) => runtime.rename(name)),
           fork: (entryId) => call("fork", (runtime) => runtime.fork(entryId)),

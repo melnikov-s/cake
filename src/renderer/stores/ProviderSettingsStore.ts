@@ -1,12 +1,11 @@
 import { Store, observable } from "r-state-tree";
 import type { PiSettingUpdate } from "../../ipc/session-contract";
-import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
+import { RendererClientContext } from "../client/RendererClientContext";
+import { ActiveProjectSessionContext } from "../context/ActiveProjectSessionContext";
 import { describeError } from "../error-details";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
 export interface ProviderSettingsStoreProps {
-  client: Pick<DesktopClient, "setPiSetting" | "reloadPi" | "refreshModels" | "login" | "logout">;
-  sessionContext(): { sessionId: string } | undefined;
   operations: SessionOperationCoordinatorStore;
 }
 
@@ -17,14 +16,13 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
   error: string | undefined;
   errorDetails: string | undefined;
   private refreshOperationId: string | undefined;
-  private readonly ownedOperationIds = new Set<string>();
 
-  constructor(props: ProviderSettingsStore["props"]) {
-    super(props);
-    this.effect(() => () => {
-      for (const operationId of this.ownedOperationIds) this.props.operations.finish(operationId);
-      this.ownedOperationIds.clear();
-    });
+  get client() {
+    return RendererClientContext.consume(this)!;
+  }
+
+  get activeSession() {
+    return ActiveProjectSessionContext.consume(this);
   }
 
   get activeOperations() {
@@ -37,111 +35,91 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
   }
 
   async setPiSetting(update: PiSettingUpdate) {
-    await this.run((operationId, sessionId) =>
-      this.props.client.setPiSetting({ operationId, sessionId, update }),
+    await this.run((sessionId) =>
+      this.client.projectSessions.setPiSetting({ sessionId, update }, { signal: this.signal }),
     );
   }
+
   async reloadPi() {
-    await this.run((operationId, sessionId) =>
-      this.props.client.reloadPi({ operationId, sessionId }),
+    await this.run((sessionId) =>
+      this.client.projectSessions.reload({ sessionId }, { signal: this.signal }),
     );
   }
+
   async refreshModels() {
     if (this.refreshingModels || this.signal.aborted) return;
     this.clearError();
     const operationId = this.startOperation();
     this.refreshOperationId = operationId;
     try {
-      await this.props.client.refreshModels({ operationId, sessionId: this.requireSessionId() });
+      await this.client.models.refresh({ signal: this.signal });
     } catch (error) {
-      if (this.signal.aborted) return;
+      if (!this.signal.aborted) this.reportError(error);
+    } finally {
       this.refreshOperationId = undefined;
-      this.reportError(error);
       this.finish(operationId);
     }
   }
+
   async authenticate(provider: string, authType: "api_key" | "oauth") {
     if (this.providerOperation(provider) || this.signal.aborted) return;
-    this.clearError();
     const operationId = this.startOperation();
     this.providerOperations[operationId] = { provider, kind: "login" };
     try {
-      await this.props.client.login({
-        operationId,
-        sessionId: this.requireSessionId(),
-        provider,
-        authType,
-      });
+      await this.client.projectSessions.login(
+        { sessionId: this.requireSessionId(), provider, authType },
+        { signal: this.signal },
+      );
     } catch (error) {
-      if (this.signal.aborted) return;
+      if (!this.signal.aborted) this.reportError(error);
+    } finally {
       delete this.providerOperations[operationId];
-      this.reportError(error);
       this.finish(operationId);
     }
   }
+
   async logout(provider: string) {
     if (this.providerOperation(provider) || this.signal.aborted) return;
-    this.clearError();
     const operationId = this.startOperation();
     this.providerOperations[operationId] = { provider, kind: "logout" };
     try {
-      await this.props.client.logout({ operationId, sessionId: this.requireSessionId(), provider });
+      await this.client.projectSessions.logout(
+        { sessionId: this.requireSessionId(), provider },
+        { signal: this.signal },
+      );
     } catch (error) {
-      if (this.signal.aborted) return;
+      if (!this.signal.aborted) this.reportError(error);
+    } finally {
       delete this.providerOperations[operationId];
-      this.reportError(error);
       this.finish(operationId);
     }
   }
+
   providerOperation(provider: string) {
     return Object.values(this.providerOperations).find(
       (operation) => operation.provider === provider,
     )?.kind;
   }
-  receive(event: DesktopClientEvent) {
-    if (event.type === "operation-completed" && this.ownedOperationIds.has(event.operationId)) {
-      this.finishTrackedOperation(event.operationId);
-      return;
-    }
-    if (
-      event.type === "operation-failed" &&
-      event.operationId &&
-      this.ownedOperationIds.has(event.operationId)
-    ) {
-      this.finishTrackedOperation(event.operationId);
-      this.reportError(event.message);
-      return;
-    }
-    if (
-      event.type === "pi-state-changed" &&
-      (event.state === "failed" || event.state === "stopped")
-    ) {
-      this.refreshOperationId = undefined;
-      for (const operationId of this.ownedOperationIds) this.finishTrackedOperation(operationId);
-    }
-  }
-  private finishTrackedOperation(operationId: string) {
-    if (this.providerOperations[operationId]) delete this.providerOperations[operationId];
-    if (this.refreshOperationId === operationId) this.refreshOperationId = undefined;
-    this.finish(operationId);
-  }
+
   private requireSessionId() {
-    const context = this.props.sessionContext();
-    if (!context) throw new Error("No active session");
+    const context = this.activeSession;
+    if (!context) throw new Error("No active Project Session");
     return context.sessionId;
   }
-  private async run(command: (operationId: string, sessionId: string) => Promise<void>) {
+
+  private async run(command: (sessionId: string) => Promise<void>) {
     if (this.signal.aborted) return;
     this.clearError();
     const operationId = this.startOperation();
     try {
-      await command(operationId, this.requireSessionId());
+      await command(this.requireSessionId());
     } catch (error) {
-      if (this.signal.aborted) return;
-      this.reportError(error);
+      if (!this.signal.aborted) this.reportError(error);
+    } finally {
       this.finish(operationId);
     }
   }
+
   private clearError() {
     this.error = undefined;
     this.errorDetails = undefined;
@@ -152,12 +130,9 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     this.errorDetails = described.details;
   }
   private startOperation() {
-    const operationId = this.props.operations.start("settings");
-    this.ownedOperationIds.add(operationId);
-    return operationId;
+    return this.props.operations.start("settings");
   }
   private finish(operationId: string) {
-    this.ownedOperationIds.delete(operationId);
     this.props.operations.finish(operationId);
   }
 }

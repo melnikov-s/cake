@@ -4,7 +4,7 @@ import {
   type Annotation,
   type ToolOutputContent,
   type UiPart,
-} from "../ipc/session-contract";
+} from "../../ipc/session-contract";
 
 type TextRole = Extract<UiPart, { kind: "text" }>["role"];
 type TextStatus = Extract<UiPart, { kind: "text" }>["status"];

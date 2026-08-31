@@ -1,41 +1,34 @@
 import type { Snapshot } from "r-state-tree";
-import type { SessionPreview, SessionSnapshot } from "../ipc/session-contract";
+import type { ConversationSnapshot } from "../domain/conversation-data";
+import { sessionSnapshotSchema } from "../ipc/session-contract";
 import { modelOptionKey } from "./model-option-key";
-import type { Session } from "../models/Session";
+import type { Session } from "../renderer/models/Session";
 
-/** Converts the validated IPC projection into Session's canonical snapshot shape. */
-export function toSessionSnapshot(snapshot: SessionSnapshot): Snapshot<Session> {
-  // SAFETY: Every field is sourced from the validated IPC projection and paired with
-  // the Session field that mirrors it. The cast contains Snapshot's distributive
-  // array typing at this transport boundary.
+/** Validates one authoritative conversation Snapshot into Session's canonical Model shape. */
+export function toSessionSnapshot(snapshot: ConversationSnapshot): Snapshot<Session> {
+  const parsed = sessionSnapshotSchema.parse({
+    ...snapshot,
+    workspacePath: snapshot.workingDirectory,
+  });
+  // SAFETY: every field is populated from the validated session contract and canonical child snapshots.
   return {
-    workspacePath: snapshot.workspacePath,
-    sessionId: snapshot.sessionId,
-    sessionFile: snapshot.sessionFile,
-    parts: snapshot.parts,
-    model: snapshot.model,
-    fastMode: snapshot.fastMode ?? false,
-    fastModeAvailable: snapshot.fastModeAvailable ?? false,
-    models: snapshot.models.map((option) => ({ ...option, key: modelOptionKey(option) })),
-    thinkingLevel: snapshot.thinkingLevel,
-    availableThinkingLevels: snapshot.availableThinkingLevels,
-    piSettings: snapshot.piSettings,
-    streaming: snapshot.streaming,
-    diagnostics: snapshot.diagnostics,
-    commands: snapshot.commands,
-    usage: snapshot.usage,
-    resources: snapshot.compatibility.resources,
-    resourceDiagnostics: snapshot.compatibility.diagnostics,
-    tree: snapshot.tree,
-  } as Snapshot<Session>;
-}
-
-export function toSessionPreviewSnapshot(preview: SessionPreview): Snapshot<Session> {
-  // SAFETY: Session previews are validated partial Session snapshots.
-  return {
-    workspacePath: preview.workspacePath,
-    sessionId: preview.sessionId,
-    sessionFile: preview.sessionFile,
-    parts: preview.parts,
+    workingDirectory: snapshot.workingDirectory,
+    sessionId: parsed.sessionId,
+    sessionFile: parsed.sessionFile,
+    parts: parsed.parts,
+    model: parsed.model,
+    fastMode: parsed.fastMode ?? false,
+    fastModeAvailable: parsed.fastModeAvailable ?? false,
+    models: parsed.models.map((option) => ({ ...option, key: modelOptionKey(option) })),
+    thinkingLevel: parsed.thinkingLevel,
+    availableThinkingLevels: parsed.availableThinkingLevels,
+    piSettings: parsed.piSettings,
+    streaming: parsed.streaming,
+    diagnostics: parsed.diagnostics,
+    commands: parsed.commands,
+    usage: parsed.usage,
+    resources: parsed.compatibility.resources,
+    resourceDiagnostics: parsed.compatibility.diagnostics,
+    tree: parsed.tree,
   } as Snapshot<Session>;
 }

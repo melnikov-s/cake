@@ -1,5 +1,5 @@
 import { Model, id, observable } from "r-state-tree";
-import type { CompatibilityResource as CompatibilityResourceRecord } from "../ipc/session-contract";
+import type { CompatibilityResource as CompatibilityResourceRecord } from "../../ipc/session-contract";
 
 export class CompatibilityResource extends Model {
   @id id = "";

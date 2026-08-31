@@ -7,8 +7,10 @@ import { RendererErrorBoundary } from "./components/renderer-error-boundary";
 import { CustomizationRecovery } from "./components/customization-recovery";
 import { LoadingState } from "./components/ui/loading-state";
 import { MarkdownLinkProvider } from "./components/ai-elements/markdown";
-import { makeCakeIpcPromiseClient } from "../ipc/client/CakeIpcClient";
 import { createDesktopClient } from "./desktop-client";
+import { makeRendererRuntime } from "./RendererRuntime";
+import { makeRendererClient } from "./client/RendererClientLive";
+import { RendererModelSynchronizer } from "./RendererModelSynchronizer";
 import { installStaleAssetRecovery } from "./stale-asset-recovery";
 import { mountRootStore } from "./mount-root-store";
 import "katex/dist/katex.min.css";
@@ -46,11 +48,11 @@ if (!window.cake) {
     </main>,
   );
 } else {
-  const cakeIpc = makeCakeIpcPromiseClient(window.cake.rpc);
-  window.addEventListener("pagehide", () => {
-    void cakeIpc.dispose();
-  });
-  const rootStore = mountRootStore(createDesktopClient(window.cake, cakeIpc));
+  const rendererRuntime = makeRendererRuntime(window.cake.rpc);
+  const rendererClient = makeRendererClient(rendererRuntime);
+  const synchronizer = new RendererModelSynchronizer(rendererRuntime);
+  const desktopClient = createDesktopClient(window.cake);
+  const rootStore = mountRootStore(desktopClient, rendererClient, synchronizer);
   const reportLinkError = (error: unknown) =>
     rootStore.toastStore.show({
       tone: "error",
@@ -94,6 +96,8 @@ if (!window.cake) {
     () => {
       disposeStaleAssetRecovery();
       rootStore[Symbol.dispose]();
+      synchronizer[Symbol.dispose]();
+      void rendererRuntime.dispose();
     },
     { once: true },
   );

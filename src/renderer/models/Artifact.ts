@@ -3,7 +3,7 @@ import {
   cakeArtifactV1Schema,
   type ArtifactRecord,
   type CakeArtifactV1,
-} from "../ipc/artifact-contract";
+} from "../../ipc/artifact-contract";
 
 export class Artifact extends Model {
   @id id = "";

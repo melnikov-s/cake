@@ -1,7 +1,7 @@
 /** Minimal shape of a session summary needed to determine sidebar list order. */
 interface OrderableSessionSummary {
   messageCount: number;
-  modified: string;
+  modifiedAt: string;
 }
 
 /**
@@ -16,5 +16,5 @@ export function compareSessionSummariesForSidebar(
   const leftUnsubmitted = left.messageCount === 0;
   const rightUnsubmitted = right.messageCount === 0;
   if (leftUnsubmitted !== rightUnsubmitted) return leftUnsubmitted ? -1 : 1;
-  return right.modified.localeCompare(left.modified);
+  return right.modifiedAt.localeCompare(left.modifiedAt);
 }

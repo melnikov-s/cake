@@ -27,9 +27,11 @@ Establish final renderer infrastructure in one pass:
 - one window-owned `RendererRuntime` and semantic Promise `RendererClient`;
 - all Effect command adaptation moved out of `DesktopClient`, with cancellation
   propagation and stable renderer failures;
-- generic projection registry primitives for keyed ownership, generation and
-  revision filtering, Snapshot reconnect, disposal, and synchronous reducers;
-- final dependency injection for Stores and projection owners;
+- one small window-owned Model synchronizer for Stream subscription, Update to
+  snapshot mapping, `applySnapshot`, revision/generation filtering, Snapshot
+  reconnect, and disposal;
+- final Store/client injection, with only `RootStore` supplying loaded Models to
+  the synchronizer;
 - every renderer caller moved mechanically to the final client;
 - replaced Promise methods, duplicate runtime helpers, and migrated raw bridge
   operations deleted without forwarding aliases.
@@ -44,8 +46,8 @@ Convert the whole renderer state layer in dependency order:
 
 - all r-state-tree projection Models moved/created in final locations;
 - every authoritative Project, Session, Cake Chat, Discussion, Subagent, review,
-  artifact, extension UI, and related Stream wired through Bulk Pass A
-  projection primitives;
+  artifact, extension UI, and related Stream wired through the single Bulk Pass A
+  Model synchronizer;
 - all Stores changed to read stable Models and call `RendererClient`;
 - broad `DesktopClientEvent`, root projection routing, per-Store authoritative
   subscriptions, and duplicate state removed;
@@ -77,6 +79,6 @@ Custom Renderer remains out of scope.
 Remove broad `DesktopClient`/events, obsolete routes/drivers/handlers/resource
 maps, forwarding APIs, migration helpers, stale tests, and terminology. Keep
 r-state-tree, one renderer Effect runtime, generated `CakeIpcClient`, permanent
-`RendererClient`, and projection registries. Add final import boundaries,
+`RendererClient`, and the one window-owned Model synchronizer. Add final import boundaries,
 reconcile docs, and run the release matrix once. Never restore compatibility
 code to satisfy a failure.

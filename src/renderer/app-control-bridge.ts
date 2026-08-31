@@ -3,10 +3,10 @@ import { jsonObjectSchema, jsonValueSchema } from "../ipc/json-contract";
 import {
   thinkingLevelSchema,
   type ChatConfiguration,
-  type GlobalSessionSummary,
   type ProjectRecord,
-  type SessionSummary,
 } from "../ipc/session-contract";
+import type { CakeChatSummary } from "../domain/cake-chat-data";
+import type { SessionSummary } from "./models/SessionSummary";
 import type { WorktreeRecord } from "../ipc/worktree-contract";
 import {
   customizationStateSchema,
@@ -169,8 +169,8 @@ type AppControlInvocation = z.infer<typeof appControlInvocationSchema>;
 export interface AppControlHost {
   currentSession(): { workspacePath: string; sessionId: string } | undefined;
   projects(): readonly ProjectRecord[];
-  sessions(): readonly GlobalSessionSummary[];
-  cakeChatSessions(): readonly SessionSummary[];
+  sessions(): readonly SessionSummary[];
+  cakeChatSessions(): readonly CakeChatSummary[];
   sessionActivity(sessionId: string): "running" | "unread" | "error" | undefined;
   openSession(sessionId: string, messageId?: string): Promise<boolean | void>;
   createSession(input: {
@@ -550,10 +550,11 @@ export class AppControlBridge {
       projects: this.host.projects().map((project) => ({
         path: project.path,
         name: project.name,
-        sessionCount: sessions.filter((session) => session.workspacePath === project.path).length,
+        sessionCount: sessions.filter((session) => session.workingDirectory === project.path)
+          .length,
       })),
       attentionSessions: sessions
-        .filter((session) => this.host.sessionActivity(session.id))
+        .filter((session) => this.host.sessionActivity(session.sessionId))
         .map((session) => this.toControlSession(session)),
       recentSessions: sessions
         .slice(0, recentSessionLimit)
@@ -593,7 +594,9 @@ export class AppControlBridge {
           name: "set_sessions_resolved",
           error: `Cake could not find session ${unknownProject}.`,
         };
-      const knownCakeChatIds = new Set(this.host.cakeChatSessions().map((session) => session.id));
+      const knownCakeChatIds = new Set(
+        this.host.cakeChatSessions().map((session) => session.sessionId),
+      );
       const unknownCakeChat = cakeChatIds.find((sessionId) => !knownCakeChatIds.has(sessionId));
       if (unknownCakeChat)
         return {
@@ -740,7 +743,7 @@ export class AppControlBridge {
     const known = this.knownSession(sessionId);
     if (!known)
       return { ok: false, name: invocation.name, error: "Cake could not find that session." };
-    const { workspacePath } = known;
+    const workspacePath = known.workingDirectory;
     const target = { workspacePath, sessionId };
 
     if (invocation.name === "get_session_status") {
@@ -750,7 +753,7 @@ export class AppControlBridge {
         ok: true,
         name: invocation.name,
         session: this.toControlSession(known),
-        selected: current?.workspacePath === workspacePath && current.sessionId === sessionId,
+        selected: current?.workspacePath === workspacePath && current?.sessionId === sessionId,
         status: activity ?? "idle",
       };
     }
@@ -814,12 +817,12 @@ export class AppControlBridge {
 
   private sortedSessions() {
     return [...this.host.sessions()].sort((left, right) =>
-      right.modified.localeCompare(left.modified),
+      right.modifiedAt.localeCompare(left.modifiedAt),
     );
   }
 
   private knownSession(sessionId: string) {
-    return this.host.sessions().find((session) => session.id === sessionId);
+    return this.host.sessions().find((session) => session.sessionId === sessionId);
   }
 
   private async createSession(
@@ -868,7 +871,7 @@ export class AppControlBridge {
   }: z.infer<
     typeof appControlArgumentSchemas.set_cake_chat_sessions_resolved
   >): Promise<AppControlResult> {
-    const knownIds = new Set(this.host.cakeChatSessions().map((session) => session.id));
+    const knownIds = new Set(this.host.cakeChatSessions().map((session) => session.sessionId));
     const unknown = sessionIds.find((sessionId) => !knownIds.has(sessionId));
     if (unknown)
       return {
@@ -887,14 +890,14 @@ export class AppControlBridge {
     };
   }
 
-  private toControlSession(session: GlobalSessionSummary): AppControlSession {
-    const activity = this.host.sessionActivity(session.id);
+  private toControlSession(session: SessionSummary): AppControlSession {
+    const activity = this.host.sessionActivity(session.sessionId);
     const result = {
-      workspacePath: session.workspacePath,
-      workspaceName: session.workspaceName,
-      sessionId: session.id,
+      workspacePath: session.workingDirectory,
+      workspaceName: session.projectName,
+      sessionId: session.sessionId,
       title: session.title,
-      modified: session.modified,
+      modified: session.modifiedAt,
       messageCount: session.messageCount,
       resolved: session.resolved,
     };

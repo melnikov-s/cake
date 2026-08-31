@@ -1,14 +1,20 @@
 import { Store, observable } from "r-state-tree";
-import type { ApplicationState, ProjectRecord } from "../../ipc/session-contract";
+import type { ProjectCatalog } from "../models/ProjectCatalog";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 
-/** Owns Cake's renderer projection of registered projects and their window ordering. */
-export class ProjectCatalogStore extends Store<{ sessions: SessionCatalogStore }> {
-  readonly projects: ProjectRecord[] = observable([]);
+/** Owns renderer-local recent Project ordering over the authoritative Project projection. */
+export class ProjectCatalogStore extends Store<{
+  sessions: SessionCatalogStore;
+  model: ProjectCatalog;
+}> {
   readonly recentProjectPaths: string[] = observable([]);
 
+  get projects() {
+    return this.props.model.projects;
+  }
+
   find(path: string) {
-    return this.projects.find((project) => project.path === path);
+    return this.props.model.find(path);
   }
 
   nameFromPath(path: string) {
@@ -17,10 +23,8 @@ export class ProjectCatalogStore extends Store<{ sessions: SessionCatalogStore }
   }
 
   nameForPath(path: string) {
-    // Managed worktrees always present under their parent project's identity.
     const managedProject = this.props.sessions.projectOfManagedWorktree(path);
-    if (managedProject) return this.nameForRegisteredPath(managedProject);
-    return this.nameForRegisteredPath(path);
+    return this.nameForRegisteredPath(managedProject ?? path);
   }
 
   private nameForRegisteredPath(path: string) {
@@ -31,9 +35,9 @@ export class ProjectCatalogStore extends Store<{ sessions: SessionCatalogStore }
     const persistedOrder = new Map(this.recentProjectPaths.map((path, index) => [path, index]));
     const lastSessionByProject = new Map<string, string>();
     for (const session of this.props.sessions.sessions) {
-      const key = session.projectPath ?? session.workspacePath;
-      const previous = lastSessionByProject.get(key);
-      if (!previous || session.modified > previous) lastSessionByProject.set(key, session.modified);
+      const previous = lastSessionByProject.get(session.projectPath);
+      if (!previous || session.modifiedAt > previous)
+        lastSessionByProject.set(session.projectPath, session.modifiedAt);
     }
 
     return [...this.recentProjectPaths].sort((left, right) => {
@@ -43,22 +47,11 @@ export class ProjectCatalogStore extends Store<{ sessions: SessionCatalogStore }
         return rightLastSession.localeCompare(leftLastSession);
       if (leftLastSession) return -1;
       if (rightLastSession) return 1;
-
       const leftLastOpened = this.find(left)?.lastOpenedAt ?? "";
       const rightLastOpened = this.find(right)?.lastOpenedAt ?? "";
       if (leftLastOpened !== rightLastOpened) return rightLastOpened.localeCompare(leftLastOpened);
       return (persistedOrder.get(left) ?? 0) - (persistedOrder.get(right) ?? 0);
     });
-  }
-
-  applyApplicationState(state: ApplicationState) {
-    this.projects.splice(0, this.projects.length, ...state.projects);
-    this.props.sessions.applyResolvedState(state.resolvedSessionIds);
-    this.props.sessions.applyUnreadState(state.unreadSessionIds);
-    this.props.sessions.updateWorkspaceNames(
-      new Map(state.projects.map((project) => [project.path, project.name])),
-    );
-    this.reconcileRecentPaths();
   }
 
   restoreRecentPaths(paths: readonly string[]) {
@@ -70,7 +63,7 @@ export class ProjectCatalogStore extends Store<{ sessions: SessionCatalogStore }
     if (!this.recentProjectPaths.includes(path)) this.recentProjectPaths.push(path);
   }
 
-  private reconcileRecentPaths() {
+  reconcileRecentPaths() {
     const registeredPaths = new Set(this.projects.map((project) => project.path));
     const paths = this.recentProjectPaths.filter((path) => registeredPaths.has(path));
     for (const project of this.projects)

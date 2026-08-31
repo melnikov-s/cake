@@ -100,15 +100,15 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
         <div className="flex flex-col pl-6 space-y-0.5 mt-0.5">
           {visibleSessions.map((session) => (
             <SidebarSessionItem
-              key={session.id}
+              key={session.sessionId}
               store={store}
               session={session}
               selected={
                 shell.selection.kind === "project-session" &&
-                shell.selection.sessionId === session.id
+                shell.selection.sessionId === session.sessionId
               }
               resolved={resolved}
-              activity={store.sessionActivity(session.id)}
+              activity={store.sessionActivity(session.sessionId)}
               onOpen={onOpenSession}
               onRename={(sessionId, name) =>
                 void chat.sessionManagementStore.renameSession(sessionId, name)

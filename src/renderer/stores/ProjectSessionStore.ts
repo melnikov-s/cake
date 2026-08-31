@@ -1,6 +1,6 @@
 import { Store, child, createStore } from "r-state-tree";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
-import { Session } from "../../models/Session";
+import { Session } from "../models/Session";
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -14,6 +14,7 @@ import { ArtifactInteractionStore } from "./ArtifactInteractionStore";
 import { MessageCommentsStore } from "./MessageCommentsStore";
 import { SubagentActivityStore } from "./SubagentActivityStore";
 import { WorktreeStore, type WorktreeStoreProps } from "./WorktreeStore";
+import { RendererClientContext } from "../client/RendererClientContext";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 
 export interface SessionTarget {
@@ -43,7 +44,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   prepareNewSession(firstUserMessage: string): Promise<boolean>;
   configureDraftActivation(choice: WorktreeDraftChoice): void;
   draftActivationCandidates(): ExistingWorktreeCandidate[];
-  worktreeClient: WorktreeStoreProps["client"];
+  worktreeClient: WorktreeStoreProps["nativeClient"];
   onWorktreeLanded(record: Parameters<WorktreeStoreProps["onLanded"]>[0]): Promise<void> | void;
   onWorktreeDiscarded(
     record: Parameters<WorktreeStoreProps["onDiscarded"]>[0],
@@ -59,17 +60,20 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   backgroundWorkActive = false;
   private artifactRequestActive = false;
   // Drafts and review threads can create this Store before its transcript is loaded.
-  hydrated = false;
+  private locallyHydrated = false;
 
   constructor(props: ProjectSessionStore["props"]) {
     super(props);
     this.model = Session.create({
       sessionId: props.sessionId,
-      workspacePath: props.workspacePath,
+      workingDirectory: props.workspacePath,
     });
     this.effect(() => () => this.model[Symbol.dispose]());
   }
 
+  get client() {
+    return RendererClientContext.consume(this)!;
+  }
   get workspacePath() {
     return this.props.workspacePath;
   }
@@ -101,25 +105,12 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       this.artifactInteractionStore.receive(event);
       return;
     }
-    if (event.type === "session-snapshot-received") {
-      if (
-        event.snapshot.sessionId === this.sessionId &&
-        this.props.operations.active(this.configurationOwner).length > 0
-      )
-        this.configurationStore.receive(event);
-      return;
-    }
     if (event.type === "operation-completed" || event.type === "operation-failed") {
       if (
         event.operationId &&
         this.props.operations.includes(event.operationId, this.composerOwner)
       )
         this.composerStore.receive(event);
-      if (
-        event.operationId &&
-        this.props.operations.includes(event.operationId, this.configurationOwner)
-      )
-        this.configurationStore.receive(event);
       return;
     }
     if (
@@ -128,14 +119,16 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     ) {
       if (this.props.operations.active(this.composerOwner).length > 0)
         this.composerStore.receive(event);
-      if (this.props.operations.active(this.configurationOwner).length > 0)
-        this.configurationStore.receive(event);
       if (this.artifactRequestActive) this.artifactInteractionStore.receive(event);
     }
   }
 
+  get hydrated() {
+    return this.locallyHydrated || Boolean(this.model.sessionFile);
+  }
+
   markHydrated() {
-    this.hydrated = true;
+    this.locallyHydrated = true;
   }
 
   get canSubmit() {
@@ -184,7 +177,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   @child
   get worktreeStore(): WorktreeStore {
     return createStore(WorktreeStore, {
-      client: this.props.worktreeClient,
+      nativeClient: this.props.worktreeClient,
       workspacePath: () => this.workspacePath,
       sessionId: () => this.sessionId,
       enabled: () => this.props.isActive(),
@@ -199,7 +192,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   get subagentActivityStore(): SubagentActivityStore {
     return createStore(SubagentActivityStore, {
       sessionId: this.sessionId,
-      client: this.props.client,
       parts: () => this.canonicalParts,
     });
   }
@@ -207,7 +199,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   @child
   get composerStore(): MessageComposerStore {
     return createStore(MessageComposerStore, {
-      client: this.props.client,
+      nativeClient: this.props.client,
       sessionRegistry: this.props.registry,
       reviews: this.props.reviews,
       projectPath: () => this.workspacePath,
@@ -244,19 +236,26 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       effectiveConfiguration: () => this.props.newSessionRequest()?.configuration,
       setPendingConfiguration: (configuration) =>
         this.props.registry.setPendingConfiguration(this.sessionId, configuration),
-      listModels: () => this.props.client.listModels(),
-      setConfiguration: (operationId, configuration) =>
-        this.props.client.setChatConfiguration({
-          operationId,
-          sessionId: this.sessionId,
-          configuration,
-        }),
-      setModel: (operationId, provider, modelId) =>
-        this.props.client.setModel({ operationId, sessionId: this.sessionId, provider, modelId }),
-      setThinkingLevel: (operationId, level) =>
-        this.props.client.setThinkingLevel({ operationId, sessionId: this.sessionId, level }),
-      setFastMode: (operationId, enabled) =>
-        this.props.client.setFastMode({ operationId, sessionId: this.sessionId, enabled }),
+      setConfiguration: (configuration) =>
+        this.client.projectSessions.applyConfiguration(
+          { sessionId: this.sessionId, configuration },
+          { signal: this.signal },
+        ),
+      setModel: (provider, modelId) =>
+        this.client.projectSessions.setModel(
+          { sessionId: this.sessionId, provider, modelId },
+          { signal: this.signal },
+        ),
+      setThinkingLevel: (level) =>
+        this.client.projectSessions.setThinkingLevel(
+          { sessionId: this.sessionId, level },
+          { signal: this.signal },
+        ),
+      setFastMode: (enabled) =>
+        this.client.projectSessions.setFastMode(
+          { sessionId: this.sessionId, enabled },
+          { signal: this.signal },
+        ),
     });
   }
 
@@ -339,7 +338,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   @child
   get artifactInteractionStore(): ArtifactInteractionStore {
     return createStore(ArtifactInteractionStore, {
-      client: this.props.client,
+      nativeClient: this.props.client,
       sessionContext: () => ({ sessionId: this.sessionId }),
       operations: this.props.operations,
       operationOwner: `artifact-answer:${this.sessionId}`,

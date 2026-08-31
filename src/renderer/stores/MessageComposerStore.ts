@@ -7,12 +7,14 @@ import type {
   UiPart,
 } from "../../ipc/session-contract";
 import { parsePiBuiltinCommand } from "../../ipc/session-contract";
+import type { ProjectSessionCreateInput } from "../../domain/project-session-data";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { describeError } from "../error-details";
 import { pastedImageAttachments } from "../pasted-image-attachments";
+import { RendererClientContext } from "../client/RendererClientContext";
 import type { WorktreeDraftChoice } from "./WorktreeCreationStore";
 
 interface PendingUserMessage {
@@ -34,11 +36,8 @@ export interface QueuedPrompt {
 }
 
 export interface MessageComposerStoreProps {
-  client: Pick<
-    DesktopClient,
-    "chooseAttachments" | "suggestFiles" | "submit" | "compactSession" | "setModel"
-  > &
-    Partial<Pick<DesktopClient, "editSessionMessage" | "generateSessionTitle">>;
+  nativeClient: Pick<DesktopClient, "chooseAttachments" | "suggestFiles"> &
+    Partial<Pick<DesktopClient, "generateSessionTitle">>;
   sessionRegistry: SessionRegistryStore;
   reviews(): ReviewsStore;
   projectPath(): string | undefined;
@@ -85,6 +84,17 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         if (previousStreaming && !streaming) this.drainQueue();
       },
     );
+    this.reaction(
+      () => this.props.canonicalParts().length,
+      () => {
+        const sessionId = this.props.sessionId();
+        if (sessionId) this.reconcile(sessionId);
+      },
+    );
+  }
+
+  get client() {
+    return RendererClientContext.consume(this)!;
   }
 
   get activeOperations() {
@@ -132,7 +142,7 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     this.error = undefined;
     this.errorDetails = undefined;
     try {
-      const selected = await this.props.client.chooseAttachments();
+      const selected = await this.props.nativeClient.chooseAttachments();
       if (this.signal.aborted) return;
       const draft = this.props.draft();
       const fileMentions = selected
@@ -242,7 +252,9 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
 
   suggestFiles(prefix: string): Promise<FileSuggestion[]> {
     const projectPath = this.props.projectPath();
-    return projectPath ? this.props.client.suggestFiles(projectPath, prefix) : Promise.resolve([]);
+    return projectPath
+      ? this.props.nativeClient.suggestFiles(projectPath, prefix)
+      : Promise.resolve([]);
   }
 
   removeAttachment(index: number) {
@@ -393,9 +405,8 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     if (!text && attachments.length === 0) return false;
     await this.props.sessionRegistry.createDraftSession(sessionId, text, attachments);
     this.clearComposer();
-    if (text && this.props.client.generateSessionTitle)
-      void this.props.client
-        .generateSessionTitle(text)
+    if (text && this.props.nativeClient.generateSessionTitle)
+      void this.props.nativeClient.generateSessionTitle!(text)
         .then((title) => {
           if (title && !this.signal.aborted)
             this.props.sessionRegistry.applyGeneratedDraftName(sessionId, title);
@@ -473,13 +484,15 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     this.errorDetails = undefined;
     const operationId = this.props.operations.start(this.props.operationOwner);
     try {
-      await this.props.client.setModel({
-        operationId,
-        sessionId,
-        provider: value.slice(0, separator),
-        modelId: value.slice(separator + 1),
-      });
-      if (this.signal.aborted) this.finishOperation(operationId);
+      await this.client.projectSessions.setModel(
+        {
+          sessionId,
+          provider: value.slice(0, separator),
+          modelId: value.slice(separator + 1),
+        },
+        { signal: this.signal },
+      );
+      this.finishOperation(operationId);
     } catch (error) {
       if (this.signal.aborted) {
         this.finishOperation(operationId);
@@ -572,16 +585,17 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       renderUserMessageAsMarkdown,
     );
     try {
-      if (!this.props.client.editSessionMessage)
-        throw new Error("This Cake client does not support message editing");
-      await this.props.client.editSessionMessage({
-        operationId,
-        sessionId,
-        entryId,
-        text,
-        attachments,
-        renderUserMessageAsMarkdown,
-      });
+      await this.client.projectSessions.editMessage(
+        {
+          sessionId,
+          entryId,
+          text,
+          attachments,
+          renderUserMessageAsMarkdown,
+        },
+        { signal: this.signal },
+      );
+      this.finishOperation(operationId);
       return true;
     } catch (error) {
       if (this.signal.aborted) {
@@ -744,11 +758,11 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       // Compaction is a session operation, not a prompt: no optimistic user message.
       const operationId = this.props.operations.start(this.props.operationOwner);
       try {
-        await this.props.client.compactSession({
-          operationId,
-          sessionId,
-          instructions: builtin.args || undefined,
-        });
+        await this.client.projectSessions.compact(
+          { sessionId, instructions: builtin.args || undefined },
+          { signal: this.signal },
+        );
+        this.finishOperation(operationId);
         if (this.signal.aborted) {
           this.finishOperation(operationId);
           return false;
@@ -791,20 +805,26 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
         return false;
       }
       const newSession = this.props.newSessionRequest?.();
-      await this.props.client.submit({
-        operationId,
-        sessionId,
-        text,
-        delivery,
-        renderUserMessageAsMarkdown,
-        attachments,
-        newSession,
-      });
-      if (this.signal.aborted) {
-        this.finishOperation(operationId);
-        return false;
+      if (newSession) {
+        const input: ProjectSessionCreateInput = {
+          sessionId,
+          workingDirectory: newSession.path,
+          configuration: newSession.configuration,
+          name: newSession.name,
+        };
+        await this.client.projectSessions.create(input, { signal: this.signal });
+        this.props.sessionRegistry.load(sessionId, newSession.path);
       }
-      return true;
+      const command =
+        delivery === "steer"
+          ? this.client.projectSessions.steer
+          : this.client.projectSessions.prompt;
+      await command(
+        { sessionId, text, renderUserMessageAsMarkdown, attachments },
+        { signal: this.signal },
+      );
+      this.finishOperation(operationId);
+      return !this.signal.aborted;
     } catch (error) {
       if (this.signal.aborted) {
         this.finishOperation(operationId);

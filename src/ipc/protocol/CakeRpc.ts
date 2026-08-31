@@ -104,6 +104,7 @@ export const CakeRpc = RpcGroup.make(
     success: Schema.Array(PiModel),
     error: PiModelCatalogError,
   }),
+  Rpc.make("models.refresh", { error: PiModelCatalogError }),
   Rpc.make("modelPresets.list", {
     success: ModelPresetProjection,
   }),
@@ -300,6 +301,88 @@ export const CakeRpc = RpcGroup.make(
   }),
   Rpc.make("projectSessions.abort", {
     payload: ProjectSessionTarget,
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.compact", {
+    payload: {
+      ...ProjectSessionTarget.fields,
+      instructions: Schema.optionalKey(Schema.String),
+    },
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.editMessage", {
+    payload: {
+      ...ProjectSessionTarget.fields,
+      entryId: Schema.String,
+      text: ProjectSessionPromptInput.fields.text,
+      attachments: ProjectSessionPromptInput.fields.attachments,
+      renderUserMessageAsMarkdown: ProjectSessionPromptInput.fields.renderUserMessageAsMarkdown,
+    },
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.applyConfiguration", {
+    payload: {
+      ...ProjectSessionTarget.fields,
+      configuration: CakeChatConfiguration,
+    },
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.setModel", {
+    payload: {
+      ...ProjectSessionTarget.fields,
+      provider: Schema.String,
+      modelId: Schema.String,
+    },
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.setThinkingLevel", {
+    payload: {
+      ...ProjectSessionTarget.fields,
+      level: CakeChatConfiguration.fields.thinkingLevel,
+    },
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.setFastMode", {
+    payload: { ...ProjectSessionTarget.fields, enabled: Schema.Boolean },
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.getChangelog", {
+    payload: ProjectSessionTarget,
+    success: Schema.String,
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.navigate", {
+    payload: { ...ProjectSessionTarget.fields, entryId: Schema.String },
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.setPiSetting", {
+    payload: { ...ProjectSessionTarget.fields, update: Schema.Json },
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.reload", {
+    payload: ProjectSessionTarget,
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.login", {
+    payload: {
+      ...ProjectSessionTarget.fields,
+      provider: Schema.String,
+      authType: Schema.Literals(["api_key", "oauth"]),
+    },
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.logout", {
+    payload: { ...ProjectSessionTarget.fields, provider: Schema.String },
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.handoff", {
+    payload: {
+      ...ProjectSessionTarget.fields,
+      entryId: Schema.String,
+      prompt: Schema.optionalKey(Schema.String),
+      resolveSource: Schema.optionalKey(Schema.Boolean),
+    },
+    success: Schema.Struct({ sessionId: Schema.String }),
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.rename", {

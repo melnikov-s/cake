@@ -1,6 +1,7 @@
 import { Store, untracked } from "r-state-tree";
 import type { DesktopClient } from "../desktop-client";
 import { describeError } from "../error-details";
+import { RendererClientContext } from "../client/RendererClientContext";
 import type {
   WorktreeLandOutcome,
   WorktreeLandRequest,
@@ -11,7 +12,7 @@ import type {
 const POLL_INTERVAL_MS = 5_000;
 
 export interface WorktreeStoreProps {
-  client: Pick<DesktopClient, "getWorktreeStatus" | "landWorktree" | "discardWorktree" | "submit">;
+  nativeClient: Pick<DesktopClient, "getWorktreeStatus" | "landWorktree" | "discardWorktree">;
   workspacePath(): string | undefined;
   sessionId(): string | undefined;
   enabled(): boolean;
@@ -28,6 +29,10 @@ export interface WorktreeStoreProps {
  * run as ordinary turns in the same session so the user sees all agent work.
  */
 export class WorktreeStore extends Store<WorktreeStoreProps> {
+  get client() {
+    return RendererClientContext.consume(this)!;
+  }
+
   status: WorktreeStatus | undefined;
   phase:
     | "idle"
@@ -90,7 +95,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     }
     this.refreshing = true;
     try {
-      const status = await this.props.client.getWorktreeStatus({ workspacePath });
+      const status = await this.props.nativeClient.getWorktreeStatus({ workspacePath });
       if (this.signal.aborted || this.props.workspacePath() !== workspacePath) return;
       this.status = status;
       if (!status) {
@@ -146,7 +151,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.stalled = false;
     this.error = undefined;
     try {
-      const outcome = await this.props.client.landWorktree({
+      const outcome = await this.props.nativeClient.landWorktree({
         operationId: crypto.randomUUID(),
         workspacePath,
         request,
@@ -189,7 +194,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.phase = "discarding";
     this.error = undefined;
     try {
-      await this.props.client.discardWorktree({
+      await this.props.nativeClient.discardWorktree({
         operationId: crypto.randomUUID(),
         workspacePath,
         keepBranch: keepUnmergedBranch,
@@ -305,20 +310,21 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     const sessionId = this.props.sessionId();
     if (!sessionId) throw new Error("Cake could not find the session to commit with");
     const target = this.status?.targetBranch ?? "its target";
-    await this.props.client.submit({
-      operationId: crypto.randomUUID(),
-      sessionId,
-      delivery: "prompt",
-      renderUserMessageAsMarkdown: false,
-      attachments: [],
-      text: [
-        `Cake is preparing to merge this worktree into ${target}, but it has uncommitted changes.`,
-        "",
-        "Inspect the complete working tree, verify the change, and commit all intended work with an appropriate commit message.",
-        "",
-        "Do not merge, rebase, push, switch branches, or modify the target checkout. Cake will merge the committed branch after this turn finishes.",
-      ].join("\n"),
-    });
+    await this.client.projectSessions.prompt(
+      {
+        sessionId,
+        renderUserMessageAsMarkdown: false,
+        attachments: [],
+        text: [
+          `Cake is preparing to merge this worktree into ${target}, but it has uncommitted changes.`,
+          "",
+          "Inspect the complete working tree, verify the change, and commit all intended work with an appropriate commit message.",
+          "",
+          "Do not merge, rebase, push, switch branches, or modify the target checkout. Cake will merge the committed branch after this turn finishes.",
+        ].join("\n"),
+      },
+      { signal: this.signal },
+    );
   }
 
   private async requestConflictResolution(
@@ -357,14 +363,10 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
             "",
             "Do not push, merge, or switch branches, and do not rewrite commit messages. Cake will finish the landing.",
           ].join("\n");
-    await this.props.client.submit({
-      operationId: crypto.randomUUID(),
-      sessionId,
-      delivery: "prompt",
-      renderUserMessageAsMarkdown: false,
-      attachments: [],
-      text,
-    });
+    await this.client.projectSessions.prompt(
+      { sessionId, renderUserMessageAsMarkdown: false, attachments: [], text },
+      { signal: this.signal },
+    );
   }
 
   private async requestSquashMessage() {
@@ -372,20 +374,21 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     if (!sessionId)
       throw new Error("Cake could not find the session to propose the commit message with");
     const target = this.status?.targetBranch ?? "its target";
-    await this.props.client.submit({
-      operationId: crypto.randomUUID(),
-      sessionId,
-      delivery: "prompt",
-      renderUserMessageAsMarkdown: false,
-      attachments: [],
-      text: [
-        `Cake is preparing to squash this worktree into ${target} as one commit.`,
-        "",
-        `Inspect the complete change (for example \`git log --reverse ${target}..HEAD\`, \`git diff --stat ${target}...HEAD\`, and file contents where needed), then propose one commit message describing the entire resulting change with the Cake \`worktrees.proposeSquashMessage\` tool: a concise subject line plus an optional body.`,
-        "",
-        "Do not modify Git state; Cake will create the commit.",
-      ].join("\n"),
-    });
+    await this.client.projectSessions.prompt(
+      {
+        sessionId,
+        renderUserMessageAsMarkdown: false,
+        attachments: [],
+        text: [
+          `Cake is preparing to squash this worktree into ${target} as one commit.`,
+          "",
+          `Inspect the complete change (for example \`git log --reverse ${target}..HEAD\`, \`git diff --stat ${target}...HEAD\`, and file contents where needed), then propose one commit message describing the entire resulting change with the Cake \`worktrees.proposeSquashMessage\` tool: a concise subject line plus an optional body.`,
+          "",
+          "Do not modify Git state; Cake will create the commit.",
+        ].join("\n"),
+      },
+      { signal: this.signal },
+    );
   }
 
   private async finishLanded(workspacePath: string) {

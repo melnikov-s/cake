@@ -3,7 +3,7 @@ import type {
   EditorAnnotationSnapshot,
   EditorAnnotationStatus,
 } from "../ipc/editor-annotation";
-import type { ReviewThread } from "../models/ReviewThread";
+import type { ReviewThread } from "../renderer/models/ReviewThread";
 
 export function reviewThreadAnnotations(
   sessionId: string,

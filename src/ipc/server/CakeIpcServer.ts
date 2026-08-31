@@ -18,6 +18,7 @@ import type { ProjectSessionEnvironmentService } from "../../services/project-se
 import type { CakeChatEnvironmentOperations } from "../../services/cake-chats/CakeChatEnvironment";
 import type { DiscussionSessionEnvironmentService } from "../../services/discussion-sessions/DiscussionSessionEnvironment";
 import type { SubagentEnvironmentService } from "../../services/subagents/SubagentEnvironment";
+import { piSettingUpdateSchema } from "../session-contract";
 
 export interface CakeIpcServerOperations {
   readonly getHomeDirectory: () => string | Promise<string>;
@@ -42,6 +43,7 @@ export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
     "application.getState": () => getState(),
     "projects.observeCatalog": () => Stream.unwrap(projects.observeCatalog()),
     "models.list": () => Effect.flatMap(PiModels, (models) => models.list()),
+    "models.refresh": () => Effect.flatMap(PiModels, (models) => models.refreshCatalog()),
     "modelPresets.list": () => modelPresets.list(),
     "modelPresets.create": (input) => modelPresets.create(input),
     "modelPresets.update": (input) => modelPresets.update(input),
@@ -92,6 +94,32 @@ export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
     "projectSessions.steer": (input) => projectSessions.steer(input),
     "projectSessions.followUp": (input) => projectSessions.followUp(input),
     "projectSessions.abort": (target) => projectSessions.abort(target),
+    "projectSessions.compact": ({ instructions, ...target }) =>
+      projectSessions.compact(target, instructions),
+    "projectSessions.editMessage": (input) => projectSessions.editMessage(input),
+    "projectSessions.applyConfiguration": ({ configuration, ...target }) =>
+      projectSessions.applyConfiguration(target, configuration),
+    "projectSessions.setModel": ({ provider, modelId, ...target }) =>
+      projectSessions.setModel(target, provider, modelId),
+    "projectSessions.setThinkingLevel": ({ level, ...target }) =>
+      projectSessions.setThinkingLevel(target, level),
+    "projectSessions.setFastMode": ({ enabled, ...target }) =>
+      projectSessions.setFastMode(target, enabled),
+    "projectSessions.getChangelog": (target) => projectSessions.getChangelog(target),
+    "projectSessions.navigate": ({ entryId, ...target }) =>
+      projectSessions.navigate(target, entryId),
+    "projectSessions.setPiSetting": ({ update, ...target }) =>
+      projectSessions.setPiSetting(target, piSettingUpdateSchema.parse(update)),
+    "projectSessions.reload": (target) => projectSessions.reload(target),
+    "projectSessions.login": ({ provider, authType, ...target }) =>
+      projectSessions.login(target, provider, authType),
+    "projectSessions.logout": ({ provider, ...target }) => projectSessions.logout(target, provider),
+    "projectSessions.handoff": ({ entryId, prompt, resolveSource, ...target }) => {
+      const input: Parameters<typeof projectSessions.handoff>[0] = { target, entryId };
+      if (prompt !== undefined) Object.assign(input, { prompt });
+      if (resolveSource !== undefined) Object.assign(input, { resolveSource });
+      return projectSessions.handoff(input);
+    },
     "projectSessions.rename": ({ name, ...target }) => projectSessions.rename(target, name),
     "projectSessions.fork": ({
       entryId,

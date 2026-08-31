@@ -1,6 +1,7 @@
 import { Store } from "r-state-tree";
 import type { WindowViewState } from "../../ipc/session-contract";
 import type { DesktopClient } from "../desktop-client";
+import { RendererClientContext } from "../client/RendererClientContext";
 import { describeError } from "../error-details";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { AppShellStore } from "./AppShellStore";
@@ -13,10 +14,7 @@ import type { SettingsStore } from "./SettingsStore";
 import type { SidebarStore } from "./SidebarStore";
 
 export interface WindowPersistenceCoordinatorStoreProps {
-  client: Pick<
-    DesktopClient,
-    "listSessions" | "loadApplicationState" | "loadWindowState" | "saveWindowState"
-  >;
+  nativeClient: Pick<DesktopClient, "loadWindowState" | "saveWindowState">;
   projects: ProjectCatalogStore;
   sessions: SessionCatalogStore;
   registry: SessionRegistryStore;
@@ -36,6 +34,10 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
   private persistTimer: ReturnType<typeof setTimeout> | undefined;
   private hydration: Promise<void> | undefined;
   private saveQueue: Promise<void> = Promise.resolve();
+
+  get client() {
+    return RendererClientContext.consume(this)!;
+  }
 
   constructor(props: WindowPersistenceCoordinatorStore["props"]) {
     super(props);
@@ -81,15 +83,14 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
 
   private async performHydration() {
     try {
-      const [state, application, sessionIndex] = await Promise.all([
-        this.props.client.loadWindowState(),
-        this.props.client.loadApplicationState(),
-        this.props.client.listSessions(),
+      const [state, application] = await Promise.all([
+        this.props.nativeClient.loadWindowState(),
+        this.client.application.getState({ signal: this.signal }),
       ]);
       if (this.signal.aborted) return;
-      this.props.sessions.replace(sessionIndex.sessions);
-      this.props.projects.applyApplicationState(application);
-      const listedSessionIds = new Set(sessionIndex.sessions.map((session) => session.id));
+      const listedSessionIds = new Set(
+        this.props.sessions.sessions.map((session) => session.sessionId),
+      );
       for (const pending of state.pendingProjectSessions) {
         // A starting session may have reached Pi before Cake committed its next window-state
         // snapshot. Once Pi lists it, the transcript-backed summary is authoritative.
@@ -109,18 +110,10 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
       if (state.pendingCakeChat)
         this.props.globalChat().restorePendingSession(state.pendingCakeChat);
 
-      const reviewsBySession = new Map<string, typeof sessionIndex.reviewThreads>();
-      for (const thread of sessionIndex.reviewThreads) {
-        const threads = reviewsBySession.get(thread.sessionId) ?? [];
-        threads.push(thread);
-        reviewsBySession.set(thread.sessionId, threads);
-      }
-      for (const session of sessionIndex.sessions) {
-        this.props.registry.applyReviewThreads(session.id, reviewsBySession.get(session.id) ?? []);
-      }
       for (const [sessionId, draft] of Object.entries(state.draftsBySession)) {
-        const summary = sessionIndex.sessions.find((session) => session.id === sessionId);
-        if (summary) this.props.registry.ensure(sessionId).chatStore.setDraft(draft);
+        const summary = this.props.sessions.find(sessionId);
+        if (summary)
+          this.props.registry.load(sessionId, summary.workingDirectory).chatStore.setDraft(draft);
       }
 
       const activeConversation = state.activeConversation;
@@ -178,7 +171,7 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
     const state = this.viewState();
     this.saveQueue = this.saveQueue
       .then(async () => {
-        if (!this.signal.aborted) await this.props.client.saveWindowState(state);
+        if (!this.signal.aborted) await this.props.nativeClient.saveWindowState(state);
       })
       .catch((error) => {
         if (!this.signal.aborted) this.setError(error);

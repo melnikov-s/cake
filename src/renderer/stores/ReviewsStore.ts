@@ -1,48 +1,30 @@
-import { Store, child, createStore, observable } from "r-state-tree";
-import type { ReviewAnchor } from "../../ipc/review-contract";
-import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
-import type { SessionRegistryStore } from "./SessionRegistryStore";
-import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
+import { Store, child, createStore } from "r-state-tree";
+import type { DiscussionAnchor } from "../../domain/discussion-session-data";
+import { RendererClientContext } from "../client/RendererClientContext";
+import { ActiveProjectSessionContext } from "../context/ActiveProjectSessionContext";
 import { describeError } from "../error-details";
-import type { ThinkingLevel } from "../../ipc/session-contract";
-import type { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { ChatStore } from "./ChatStore";
+import type { SessionRegistryStore } from "./SessionRegistryStore";
 
 export interface ReviewsStoreProps {
-  client: Pick<
-    DesktopClient,
-    | "createReviewThread"
-    | "replyReviewThread"
-    | "resolveReviewThread"
-    | "listReviewThreads"
-    | "submitReviewThread"
-  >;
   sessionRegistry: SessionRegistryStore;
-  context(): { sessionId: string } | undefined;
-  model(): { provider: string; id: string } | undefined;
-  thinkingLevel(): ThinkingLevel | undefined;
-  configuration(): ChatConfigurationStore | undefined;
-  operations: SessionOperationCoordinatorStore;
 }
 
-/** Shared review workflow projected into chat and embedded VS Code. */
+/** Shared Discussion Session workflow projected into chat and embedded VS Code. */
 export class ReviewsStore extends Store<ReviewsStoreProps> {
-  streamingThreadIds: string[] = observable([]);
-  submissionsByOperation: Record<string, string[]> = observable({});
   activeThreadId: string | undefined;
-  draftAnchor: ReviewAnchor | undefined;
+  draftAnchor: DiscussionAnchor | undefined;
   draftFocusRequestRevision = 0;
   error: string | undefined;
   errorDetails: string | undefined;
-  private readonly loadRevisions = new Map<string, number>();
   private readonly resolutionRevisions = new Map<string, number>();
 
-  constructor(props: ReviewsStore["props"]) {
-    super(props);
-    this.effect(() => () => {
-      for (const operationId of Object.keys(this.submissionsByOperation))
-        this.props.operations.finish(operationId);
-    });
+  get client() {
+    return RendererClientContext.consume(this)!;
+  }
+
+  get context() {
+    return ActiveProjectSessionContext.consume(this);
   }
 
   private reportError(error: unknown) {
@@ -52,7 +34,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   }
 
   get threads() {
-    const context = this.props.context();
+    const context = this.context;
     return context ? this.threadsForSession(context.sessionId) : [];
   }
 
@@ -62,10 +44,6 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
 
   codeThreadsForSession(sessionId: string) {
     return this.threadsForSession(sessionId).filter((thread) => thread.anchor.view !== "message");
-  }
-
-  private submittedThreadIds() {
-    return new Set(Object.values(this.submissionsByOperation).flat());
   }
 
   get codeThreads() {
@@ -78,10 +56,13 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     return this.threads.find((thread) => thread.id === this.activeThreadId) ?? this.openThreads[0];
   }
   get configuration() {
-    return this.props.configuration();
+    const context = this.context;
+    return context
+      ? this.props.sessionRegistry.findSession(context.sessionId)?.configurationStore
+      : undefined;
   }
   threadStreaming(threadId: string) {
-    return this.streamingThreadIds.includes(threadId);
+    return this.threads.find((thread) => thread.id === threadId)?.streaming ?? false;
   }
 
   selectThread(threadId: string) {
@@ -98,7 +79,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     this.activeThreadId = undefined;
   }
 
-  prepareDraft(anchor: ReviewAnchor) {
+  prepareDraft(anchor: DiscussionAnchor) {
     this.draftChatStore.setDraft("");
     this.draftAnchor = anchor;
     this.draftFocusRequestRevision += 1;
@@ -127,7 +108,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
           : [],
       streaming: () => false,
       submitting: () => false,
-      configuration: () => this.props.configuration(),
+      configuration: () => this.configuration,
       commands: () => [],
       placeholder: () => "Ask Cake about this code…",
       inputLabel: () => "Message code chat",
@@ -163,25 +144,17 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
           },
           ...thread.uiParts,
         ],
-        streaming: () => this.threadStreaming(thread.id),
+        streaming: () => thread.streaming,
         submitting: () => false,
-        configuration: () => this.props.configuration(),
+        configuration: () => this.configuration,
         commands: () => [],
         placeholder: () => "Ask a follow-up…",
         inputLabel: () =>
           thread.anchor.view === "message" ? "Reply to selection chat" : "Reply to code chat",
         canSubmit: (draft) =>
-          Boolean(draft.trim()) &&
-          thread.status === "open" &&
-          !thread.pending &&
-          !this.threadStreaming(thread.id),
-        submit: async (draft) => {
-          const saved = await this.replyThread(thread.id, draft);
-          if (saved) await this.submitThread(thread.id, thread.sessionId);
-          return saved;
-        },
-        composerVisible: () =>
-          thread.status === "open" && !thread.pending && !this.threadStreaming(thread.id),
+          Boolean(draft.trim()) && thread.status === "open" && !thread.streaming,
+        submit: (draft) => this.replyThread(thread.id, draft),
+        composerVisible: () => thread.status === "open" && !thread.streaming,
         error: () => ({ message: this.error, details: this.errorDetails }),
         usage: () => thread.usage,
       }),
@@ -192,19 +165,21 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     return this.chatStores.find((chat) => chat.id === threadId);
   }
 
-  async createThread(anchor: ReviewAnchor, body: string) {
-    const context = this.props.context();
+  async createThread(anchor: DiscussionAnchor, body: string) {
+    const context = this.context;
     if (!context || !body.trim()) return undefined;
     this.clearError();
     try {
-      const thread = await this.props.client.createReviewThread({
-        sessionId: context.sessionId,
-        anchor,
-        body: body.trim(),
-      });
+      const thread = await this.client.discussionSessions.create(
+        {
+          parentSessionId: context.sessionId,
+          workingDirectory: context.workingDirectory,
+          anchor,
+        },
+        { signal: this.signal },
+      );
       if (this.signal.aborted) return undefined;
-      this.props.sessionRegistry.upsertReviewThread(thread);
-      await this.submitThread(thread.id, context.sessionId);
+      await this.promptThread(thread.id, body.trim());
       return thread.id;
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
@@ -213,40 +188,33 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   }
 
   async replyThread(threadId: string, body: string) {
-    const context = this.props.context();
-    if (!context || !body.trim()) return false;
-    this.clearError();
+    if (!body.trim()) return false;
     try {
-      const thread = await this.props.client.replyReviewThread({
-        sessionId: context.sessionId,
-        threadId,
-        body: body.trim(),
-      });
-      if (this.signal.aborted) return false;
-      this.props.sessionRegistry.upsertReviewThread(thread);
-      return true;
+      await this.promptThread(threadId, body.trim());
+      return !this.signal.aborted;
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
       return false;
     }
   }
 
-  /** Repeated resolution changes are latest-wins per thread. */
   async resolveThread(threadId: string, resolved = true) {
-    const context = this.props.context();
+    const context = this.context;
     if (!context) return false;
     const revision = (this.resolutionRevisions.get(threadId) ?? 0) + 1;
     this.resolutionRevisions.set(threadId, revision);
     this.clearError();
     try {
-      const thread = await this.props.client.resolveReviewThread({
-        sessionId: context.sessionId,
-        threadId,
-        resolved,
-      });
-      if (this.signal.aborted || this.resolutionRevisions.get(threadId) !== revision) return false;
-      this.props.sessionRegistry.upsertReviewThread(thread);
-      return true;
+      await this.client.discussionSessions.setResolved(
+        {
+          parentSessionId: context.sessionId,
+          workingDirectory: context.workingDirectory,
+          threadId,
+          resolved,
+        },
+        { signal: this.signal },
+      );
+      return !this.signal.aborted && this.resolutionRevisions.get(threadId) === revision;
     } catch (error) {
       if (!this.signal.aborted && this.resolutionRevisions.get(threadId) === revision)
         this.reportError(error);
@@ -254,79 +222,21 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     }
   }
 
-  /** Repeated loads are latest-wins per session. */
-  async loadThreads(sessionId: string) {
-    const revision = (this.loadRevisions.get(sessionId) ?? 0) + 1;
-    this.loadRevisions.set(sessionId, revision);
-    this.clearError();
-    try {
-      const threads = await this.props.client.listReviewThreads(sessionId);
-      if (this.signal.aborted || this.loadRevisions.get(sessionId) !== revision) return;
-      this.props.sessionRegistry.applyReviewThreads(sessionId, threads);
-    } catch (error) {
-      if (!this.signal.aborted && this.loadRevisions.get(sessionId) === revision)
-        this.reportError(error);
-    }
-  }
-
-  async submitThread(threadId: string, sessionId = this.props.context()?.sessionId) {
-    if (!sessionId || this.submittedThreadIds().has(threadId) || this.signal.aborted) return;
-    this.clearError();
-    const session = this.props.sessionRegistry.findModel(sessionId);
-    const operationId = this.props.operations.start();
-    this.submissionsByOperation[operationId] = [threadId];
-    try {
-      await this.props.client.submitReviewThread({
-        operationId,
-        sessionId,
+  private async promptThread(threadId: string, text: string) {
+    const context = this.context;
+    if (!context) throw new Error("There is no active Project Session");
+    const session = this.props.sessionRegistry.findModel(context.sessionId);
+    await this.client.discussionSessions.prompt(
+      {
+        parentSessionId: context.sessionId,
+        workingDirectory: context.workingDirectory,
         threadId,
-        model: session?.model ?? this.props.model(),
-        thinkingLevel: session?.thinkingLevel ?? this.props.thinkingLevel(),
-      });
-    } catch (error) {
-      delete this.submissionsByOperation[operationId];
-      this.props.operations.finish(operationId);
-      if (!this.signal.aborted) this.reportError(error);
-    }
-  }
-
-  receive(event: DesktopClientEvent) {
-    if (event.type === "review-thread-streaming") {
-      const index = this.streamingThreadIds.indexOf(event.threadId);
-      if (event.streaming && index < 0) this.streamingThreadIds.push(event.threadId);
-      if (!event.streaming && index >= 0) this.streamingThreadIds.splice(index, 1);
-    } else if (event.type === "review-thread-part-updated") {
-      this.props.sessionRegistry
-        .findModel(event.sessionId)
-        ?.reviewThreads.find((thread) => thread.id === event.threadId)
-        ?.upsertPart(event.part);
-    } else if (event.type === "review-thread-usage-updated") {
-      const thread = this.props.sessionRegistry
-        .findModel(event.sessionId)
-        ?.reviewThreads.find((item) => item.id === event.threadId);
-      thread?.setUsage(event.usage);
-    } else if (event.type === "operation-completed") {
-      const threadIds = this.submissionsByOperation[event.operationId];
-      if (!threadIds) return;
-      delete this.submissionsByOperation[event.operationId];
-      this.props.operations.finish(event.operationId);
-    } else if (
-      event.type === "operation-failed" &&
-      event.operationId &&
-      this.submissionsByOperation[event.operationId]
-    ) {
-      delete this.submissionsByOperation[event.operationId];
-      this.props.operations.finish(event.operationId);
-      this.reportError(event.message);
-    } else if (
-      event.type === "pi-state-changed" &&
-      (event.state === "failed" || event.state === "stopped")
-    ) {
-      for (const operationId of Object.keys(this.submissionsByOperation)) {
-        delete this.submissionsByOperation[operationId];
-        this.props.operations.finish(operationId);
-      }
-    }
+        text,
+        model: session?.model,
+        thinkingLevel: session?.thinkingLevel,
+      },
+      { signal: this.signal },
+    );
   }
 
   private clearError() {

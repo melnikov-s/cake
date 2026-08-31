@@ -226,19 +226,20 @@ runtime. It propagates `AbortSignal` cancellation into Effect interruption and
 hides Layers, Fibers, transport envelopes, and RPC implementation details from
 Stores and React.
 
-### Projection synchronizer
+### Model synchronizer
 
-A renderer-infrastructure owner for one authoritative observation boundary. It
-consumes a current-first Effect RPC Stream, handles revision and reconnect
-policy, and atomically reduces validated Updates into stable r-state-tree
-Models. It is scoped to the window, registry, or loaded entity that actually
-owns the projection—not to whichever Store currently displays it.
+The renderer's single window-owned Stream-to-Model boundary. It listens to
+current-first Effect RPC Streams, maps validated Updates to ordinary r-state-tree
+snapshots, and applies them with `applySnapshot`. It owns subscription,
+revision, reconnect, and interruption mechanics. Only the Root Store composition
+boundary supplies the current loaded Models; feature Stores and Models never
+access the synchronizer.
 
 ### Store
 
 An r-state-tree behavioral component owning window-local renderer application
 state, application/UI logic, workflow operations, cancellation, and concurrency
-policy. Stores read projection Models and invoke `RendererClient`; they do not
+policy. Stores read Models and invoke `RendererClient`; they do not
 consume Effect directly or contain Cake business rules or privileged
 implementations.
 
@@ -246,8 +247,9 @@ implementations.
 
 An r-state-tree reactive representation of a validated entity such as a
 Project, Cake Session, Message, Artifact, or Review Thread. Models represent
-current projected state and synchronous invariants. Projection synchronizers
-reduce Updates into Models; Stores and React read Models.
+current projected state and synchronous invariants. Models know nothing about
+Streams, RPC, revisions, reconnects, or synchronization; the Model synchronizer
+populates them through snapshots, and Stores and React read them reactively.
 
 ### React-local state
 

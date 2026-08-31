@@ -200,7 +200,7 @@ export const App = observer(function App() {
         messageComments: session.messageCommentsStore,
         subagents: session.subagentActivityStore,
         showSelectionContextMenu: (input: { canChat: boolean; canAnnotate: boolean }) =>
-          root.client.showTranscriptSelectionContextMenu(input),
+          root.showTranscriptSelectionContextMenu(input),
         inlineWidgets: root.inlineWidgetStore,
         artifacts: {
           records: session.model.artifacts.map((artifact) => artifact.value),

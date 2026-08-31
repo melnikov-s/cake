@@ -105,12 +105,13 @@ capabilities. It contains no Cake business logic.
 ### Renderer
 
 The renderer is sandboxed and has no Node integration. It owns React views, one
-window-local r-state-tree, reactive projections, and renderer application state
-and logic. Renderer infrastructure owns one Effect runtime and generated
+window-local r-state-tree, reactive Models, and renderer application state and
+logic. Renderer infrastructure owns one Effect runtime and generated
 `CakeIpcClient`, then exposes a typed Promise-based `RendererClient` for commands
-and focused projection synchronizers for Streams. Ordinary Stores and Models do
-not import Effect, construct transport envelopes, or import privileged
-implementations.
+and one window-owned Model synchronizer for Streams. The synchronizer maps
+validated updates to snapshots and applies them to existing Models. Ordinary
+Stores and Models do not import Effect, construct transport envelopes, or import
+privileged implementations.
 
 Every cross-process request, success, typed failure, and stream element is
 parsed by shared Effect Schemas at the receiving boundary. Raw Pi event and
@@ -217,10 +218,12 @@ not the owner of every workflow merely because its lifetime matches the window.
 Named product surfaces receive named Stores with cohesive behavior, lifecycle,
 async policy, and persistence responsibility.
 
-Models are validated reactive projections of entities. Focused projection
-synchronizers own authoritative RPC Stream subscriptions, reconnect and
-revision policy, and atomic reduction into stable Models. Stores own
-window-local application/UI state and logic: workflow timers, cancellation,
+Models are validated reactive projections of entities. One window-owned Model
+synchronizer owns authoritative RPC Stream subscriptions, reconnect and revision
+policy, maps updates to Model snapshots, and applies them with `applySnapshot`.
+Only `RootStore` supplies it the current loaded Models; feature Stores and Models
+never access synchronization machinery. Stores own window-local application/UI
+state and logic: workflow timers, cancellation,
 concurrency, snapshot coordination, and application intents. They invoke
 semantic Promise operations on `RendererClient`; Cake business logic lives in
 main-process domain Effect modules. React keeps only truly local DOM, focus,

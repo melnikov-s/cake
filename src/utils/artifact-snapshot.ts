@@ -1,6 +1,6 @@
 import type { Snapshot } from "r-state-tree";
 import type { ArtifactRecord } from "../ipc/artifact-contract";
-import type { Artifact } from "../models/Artifact";
+import type { Artifact } from "../renderer/models/Artifact";
 
 export function toArtifactSnapshot(record: ArtifactRecord): Snapshot<Artifact> {
   // SAFETY: Artifact mirrors the validated artifact record after its envelope is flattened.
