@@ -351,7 +351,7 @@ Scope:
 - Emit one Pi-authoritative initial snapshot followed by live typed events
   without tailing JSONL directly.
 - Preserve retry, recovery, command, resource, trust, and disposal behavior.
-- Move or replace session discovery/projection/runtime code from `src/agent` and
+- Move or replace session discovery/projection/runtime code from `src/services/pi/runtime` and
   current main drivers as far as this Service boundary permits.
 - Enforce with tests or lint that ordinary Pi imports now exist only beneath
   `src/services/pi`.

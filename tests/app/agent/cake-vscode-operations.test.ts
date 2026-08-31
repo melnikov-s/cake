@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCakeVscodeOperations } from "../../../src/agent/cake-vscode-operations";
-import { CakeOperationRegistry } from "../../../src/agent/cake-operation-registry";
+import { createCakeVscodeOperations } from "../../../src/services/pi/runtime/cake-vscode-operations";
+import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import type { SourceLocation } from "../../../src/ipc/source-location";
 
 function registry(open = vi.fn(async (location: SourceLocation) => location)) {

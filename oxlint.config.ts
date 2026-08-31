@@ -38,7 +38,7 @@ export default defineConfig({
       // Raw Pi values terminate in the adapter. Runtime inspection is the
       // boundary mechanism; the rules that keep its Cake-facing outputs typed
       // remain enabled.
-      files: ["src/agent/**/*.{ts,tsx}"],
+      files: ["src/services/pi/runtime/**/*.{ts,tsx}"],
       rules: {
         "anti-slop/no-reflect-get": "off",
         "anti-slop/no-runtime-typeof": "off",

@@ -4,8 +4,10 @@ import { initialize } from "../domain/application";
 import { makeCakeIpcServerLive, type CakeIpcServerOperations } from "../ipc/server/CakeIpcServer";
 import type { PiAgentResources } from "../services/pi/PiAgentResources";
 import type { PiModels } from "../services/pi/PiModels";
+import type { PiSessions } from "../services/pi/PiSessions";
 import { makePiAgentResourcesLive } from "../services/pi/live/PiAgentResourcesLive";
 import { makePiModelsLive } from "../services/pi/live/PiModelsLive";
+import { makePiSessionsLive } from "../services/pi/PiSessions";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import { makeApplicationStorageLive } from "../services/storage/ApplicationStorage";
 import { BootstrapLive } from "./BootstrapLive";
@@ -24,6 +26,7 @@ const makeMainLive = (
     applicationLive,
     makePiModelsLive(piAgentDirectory),
     makePiAgentResourcesLive(piAgentDirectory),
+    makePiSessionsLive(),
   );
   const serverLive = makeCakeIpcServerLive(rpcOperations).pipe(Layer.provide(servicesLive));
   return Layer.merge(servicesLive, serverLive);
@@ -37,7 +40,7 @@ export interface LaunchMainApplicationOptions extends Omit<MainApplicationHooks,
 }
 
 let launched = false;
-type MainService = ApplicationState | PiAgentResources | PiModels;
+type MainService = ApplicationState | PiAgentResources | PiModels | PiSessions;
 let runEffect:
   | (<A, E>(effect: Effect.Effect<A, E, MainService>, signal?: AbortSignal) => Promise<A>)
   | undefined;

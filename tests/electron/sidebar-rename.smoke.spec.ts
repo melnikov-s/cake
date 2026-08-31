@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
-import { cakeWorkspaceSessionDirectory } from "../../src/agent/session-discovery";
+import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 

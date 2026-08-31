@@ -1,12 +1,12 @@
 import type { InlineExtension } from "@earendil-works/pi-coding-agent";
-import { jsonValueSchema, type JsonValue } from "../ipc/json-contract";
+import { jsonValueSchema, type JsonValue } from "../../../ipc/json-contract";
 import {
   artifactPointerSchema,
   parseArtifactInput,
   validateArtifactResponse,
   type ArtifactRecord,
   type CakeArtifactV1,
-} from "../ipc/artifact-contract";
+} from "../../../ipc/artifact-contract";
 import type {
   InlineWidgetGenerationRequest,
   InlineWidgetGenerationResult,

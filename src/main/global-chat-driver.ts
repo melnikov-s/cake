@@ -4,7 +4,7 @@ import {
   type CakeRuntime,
   type CakeRuntimeEvent,
   type GlobalControlTool,
-} from "../agent/cake-runtime";
+} from "../services/pi/runtime/cake-runtime";
 import type { DesktopEvent } from "../ipc/desktop-ipc";
 import type { JsonValue } from "../ipc/json-contract";
 import type { Attachment, ChatConfiguration, ModelPreset } from "../ipc/session-contract";

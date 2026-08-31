@@ -1,6 +1,6 @@
 import type { WebContents } from "electron";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CakeRuntimeEvent } from "../../../src/agent/cake-runtime";
+import type { CakeRuntimeEvent } from "../../../src/services/pi/runtime/cake-runtime";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
 import {
   PluginAgentHost,

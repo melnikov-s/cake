@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { agentModelPreferenceSchema } from "../ipc/plugin-agent-contract";
+import { agentModelPreferenceSchema } from "../../../ipc/plugin-agent-contract";
 
 const subagentProfileSchema = z.enum(["scout", "planner", "reviewer", "worker"]);
 export type SubagentProfile = z.infer<typeof subagentProfileSchema>;

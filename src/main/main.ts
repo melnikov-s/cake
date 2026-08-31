@@ -35,10 +35,13 @@ import {
   listWorkspaceSessions,
   loadWorkspaceSessionPreview,
   suggestProjectFiles,
-} from "../agent/session-discovery";
-import { loadReviewSessionProjection, runInlineWidgetRepair } from "../agent/sidecar-runtime";
+} from "../services/pi/runtime/session-discovery";
+import {
+  loadReviewSessionProjection,
+  runInlineWidgetRepair,
+} from "../services/pi/runtime/sidecar-runtime";
 import { PiModels } from "../services/pi/PiModels";
-import { rewordSelectionWithProjectContext } from "../agent/rewording-agent";
+import { rewordSelectionWithProjectContext } from "../services/pi/runtime/rewording-agent";
 import {
   generateSessionTitle,
   generateWorktreeName,

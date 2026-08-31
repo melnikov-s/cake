@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
-import { createConversationHandoff } from "../../../src/agent/session-handoff";
+import { createConversationHandoff } from "../../../src/services/pi/runtime/session-handoff";
 
 const usage: Usage = {
   input: 100,

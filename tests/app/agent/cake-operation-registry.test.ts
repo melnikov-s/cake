@@ -4,7 +4,7 @@ import {
   CakeOperationRegistry,
   cakeToolEnvelopeSchema,
   cakeToolDescription,
-} from "../../../src/agent/cake-operation-registry";
+} from "../../../src/services/pi/runtime/cake-operation-registry";
 
 function context() {
   return {

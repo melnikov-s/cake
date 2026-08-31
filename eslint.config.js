@@ -26,16 +26,22 @@ export default tseslint.config(
   },
   {
     files: ["src/**/*.{ts,tsx}"],
-    ignores: ["src/agent/**/*.ts", "src/services/pi/**/*.ts"],
+    ignores: ["src/services/pi/**/*.ts"],
     rules: {
       "no-restricted-imports": [
         "error",
         {
-          paths: [
+          patterns: [
             {
-              name: "@earendil-works/pi-coding-agent",
-              message:
-                "Only the transitional src/agent adapters and src/services/pi may import Pi.",
+              group: [
+                "@earendil-works/pi-coding-agent",
+                "@earendil-works/pi-coding-agent/*",
+                "@earendil-works/pi-ai",
+                "@earendil-works/pi-ai/*",
+                "@earendil-works/pi-tui",
+                "@earendil-works/pi-tui/*",
+              ],
+              message: "Ordinary Pi package imports belong beneath src/services/pi.",
             },
           ],
         },

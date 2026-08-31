@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { _electron as electron, expect, test } from "@playwright/test";
-import { cakeWorkspaceSessionDirectory } from "../../src/agent/session-discovery";
+import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(import.meta.dirname, "../..");

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { subagentTaskSchema, toolsForSubagentProfile } from "../../../src/agent/subagent-contract";
+import {
+  subagentTaskSchema,
+  toolsForSubagentProfile,
+} from "../../../src/services/pi/runtime/subagent-contract";
 
 describe("subagent contract", () => {
   it("defaults to isolated one-shot work without recursive delegation", () => {

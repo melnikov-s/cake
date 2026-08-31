@@ -4,7 +4,7 @@ import {
   jsonValueSchema,
   type JsonObject,
   type JsonValue,
-} from "../ipc/json-contract";
+} from "../../../ipc/json-contract";
 
 const CAKE_OPERATION_PROTOCOL = "cake.operation/v1" as const;
 export const cakeToolDescription =

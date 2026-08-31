@@ -1,11 +1,14 @@
 import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { chmod, mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { type ReviewSessionProjection, type ReviewThreadRecord } from "../ipc/review-contract";
+import {
+  type ReviewSessionProjection,
+  type ReviewThreadRecord,
+} from "../../../ipc/review-contract";
 import { runIsolatedSession } from "./isolated-session-runner";
 import { assertSessionPath } from "./session-path";
-import { AtomicFileWriter } from "../main/atomic-file-writer";
-import type { SessionSnapshot, ThinkingLevel, UiPart } from "../ipc/session-contract";
+import { AtomicFileWriter } from "../../../main/atomic-file-writer";
+import type { SessionSnapshot, ThinkingLevel, UiPart } from "../../../ipc/session-contract";
 import { projectSessionEntries } from "./session-projection";
 
 const atomicFileWriter = new AtomicFileWriter();

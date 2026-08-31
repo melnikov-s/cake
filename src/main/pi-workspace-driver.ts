@@ -6,15 +6,15 @@ import {
   type CakeRuntimeEvent,
   type CakeRuntimeOptions,
   type RuntimeUiRequest,
-} from "../agent/cake-runtime";
+} from "../services/pi/runtime/cake-runtime";
 import { supportsFastMode } from "../services/pi/fast-mode";
-import { forkWorkspaceSession, loadPiChangelog } from "../agent/session-discovery";
+import { forkWorkspaceSession, loadPiChangelog } from "../services/pi/runtime/session-discovery";
 import {
   runInlineWidgetGeneration,
   runInlineWidgetRepair,
   runReviewTurn,
   type InlineWidgetGenerationRequest,
-} from "../agent/sidecar-runtime";
+} from "../services/pi/runtime/sidecar-runtime";
 import {
   parallelSubagentSchema,
   subagentStartReceiptSchema,
@@ -25,7 +25,7 @@ import {
   type SubagentProfile,
   type SubagentTask,
   type SubagentTaskInput,
-} from "../agent/subagent-contract";
+} from "../services/pi/runtime/subagent-contract";
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
 import type { SourceLocation } from "../ipc/source-location";
 import type { ModelPreset, SessionUsage, UiPart, UtilityModel } from "../ipc/session-contract";

@@ -27,25 +27,25 @@ import type {
   ToolOutputContent,
   UiPart,
   UtilityModel,
-} from "../ipc/session-contract";
+} from "../../../ipc/session-contract";
 import {
   SESSION_TITLE_MAX_LENGTH,
   parsePiBuiltinCommand,
   piBuiltinSlashCommands,
   slashCommandSchema,
-} from "../ipc/session-contract";
+} from "../../../ipc/session-contract";
 import {
   jsonObjectSchema,
   jsonValueSchema,
   type JsonObject,
   type JsonValue,
-} from "../ipc/json-contract";
+} from "../../../ipc/json-contract";
 import {
   artifactRecordSchema,
   type ArtifactRecord,
   type ArtifactPointer,
   type CakeArtifactV1,
-} from "../ipc/artifact-contract";
+} from "../../../ipc/artifact-contract";
 import type { TSchema } from "@earendil-works/pi-ai";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import {
@@ -53,9 +53,9 @@ import {
   FastModePayload,
   supportsFastMode,
   type FastModeModel,
-} from "../services/pi/fast-mode";
-import { compatibilityCatalog } from "../services/pi/live/PiCompatibilityProjection";
-import { projectModelCatalog } from "../services/pi/live/PiModelsLive";
+} from "../fast-mode";
+import { compatibilityCatalog } from "../live/PiCompatibilityProjection";
+import { projectModelCatalog } from "../live/PiModelsLive";
 import { createCakeArtifactExtension } from "./artifact-extension";
 import { createCakeArtifactOperations } from "./cake-artifact-operations";
 import { createCakeModelOperations } from "./cake-model-operations";

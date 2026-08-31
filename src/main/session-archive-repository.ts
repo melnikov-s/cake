@@ -1,6 +1,9 @@
 import { access, mkdir, rename, rm } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
-import { cakeWorkspaceSessionDirectory, findSessionFile } from "../agent/session-discovery";
+import {
+  cakeWorkspaceSessionDirectory,
+  findSessionFile,
+} from "../services/pi/runtime/session-discovery";
 
 export interface SessionArchiveLocation {
   cwd: string;

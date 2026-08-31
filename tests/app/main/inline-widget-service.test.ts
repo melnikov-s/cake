@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inlineWidgetLayoutRequirements } from "../../../src/agent/sidecar-runtime";
+import { inlineWidgetLayoutRequirements } from "../../../src/services/pi/runtime/sidecar-runtime";
 import {
   compileInlineWidget,
   extractRepairedWidget,

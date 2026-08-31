@@ -6,7 +6,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { artifactPointerSchema, type ArtifactPointer } from "../ipc/artifact-contract";
+import { artifactPointerSchema, type ArtifactPointer } from "../../../ipc/artifact-contract";
 import {
   attachmentSchema,
   toolOutputContentArraySchema,
@@ -14,7 +14,7 @@ import {
   type SessionTreeEntry,
   type ToolOutputContent,
   type UiPart,
-} from "../ipc/session-contract";
+} from "../../../ipc/session-contract";
 
 export const reviewRunEntryType = "cake.review-run/v1";
 export const userMessagePresentationEntryType = "cake.user-message-presentation/v1";

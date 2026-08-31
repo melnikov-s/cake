@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { JsonObject } from "../ipc/json-contract";
-import type { SourceLocation, SourcePosition } from "../ipc/source-location";
+import type { JsonObject } from "../../../ipc/json-contract";
+import type { SourceLocation, SourcePosition } from "../../../ipc/source-location";
 import type { CakeOperationDefinition } from "./cake-operation-registry";
 
 const vscodeOpenInputSchema = z

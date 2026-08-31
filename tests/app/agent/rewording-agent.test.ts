@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { rewordSelectionWithProjectContext } from "../../../src/agent/rewording-agent";
-import { runIsolatedSession } from "../../../src/agent/isolated-session-runner";
+import { rewordSelectionWithProjectContext } from "../../../src/services/pi/runtime/rewording-agent";
+import { runIsolatedSession } from "../../../src/services/pi/runtime/isolated-session-runner";
 import { REWORD_CHARACTER_LIMIT } from "../../../src/domain/utilityWork";
-import type { IsolatedSessionResult } from "../../../src/agent/isolated-session-runner";
+import type { IsolatedSessionResult } from "../../../src/services/pi/runtime/isolated-session-runner";
 
-vi.mock("../../../src/agent/isolated-session-runner", () => ({
+vi.mock("../../../src/services/pi/runtime/isolated-session-runner", () => ({
   runIsolatedSession: vi.fn(),
 }));
 

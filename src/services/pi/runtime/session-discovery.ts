@@ -11,7 +11,7 @@ import {
   type FileSuggestion,
   type SessionPreview,
   type SessionSummary,
-} from "../ipc/session-contract";
+} from "../../../ipc/session-contract";
 import { projectSessionEntries } from "./session-projection";
 
 export function loadPiChangelog() {

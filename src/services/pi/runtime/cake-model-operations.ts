@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ModelPreset } from "../ipc/session-contract";
+import type { ModelPreset } from "../../../ipc/session-contract";
 import type { CakeOperationDefinition } from "./cake-operation-registry";
 
 /** Exposes only the preset lookup fields an agent needs to name a model. */

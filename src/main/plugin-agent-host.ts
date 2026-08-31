@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { WebContents } from "electron";
 import { z } from "zod";
 import type { BoundedCompletionInput } from "../services/pi/model-data";
-import type { CakeRuntimeEvent } from "../agent/cake-runtime";
+import type { CakeRuntimeEvent } from "../services/pi/runtime/cake-runtime";
 import {
   PLUGIN_COMPLETION_INPUT_MAX,
   type AgentModelPreference,

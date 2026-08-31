@@ -6,7 +6,7 @@ import {
   isEmptyAssistantTurn,
   shouldAutoResumeInterruptedTurn,
   turnRecoveryPrompt,
-} from "../../../src/agent/turn-recovery";
+} from "../../../src/services/pi/runtime/turn-recovery";
 
 function assistantMessage(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
   const base = {

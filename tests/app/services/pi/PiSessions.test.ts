@@ -1,0 +1,156 @@
+import assert from "node:assert/strict";
+import { it } from "@effect/vitest";
+import { Context, Effect, Exit, Fiber, Layer, Ref, Scope, Stream } from "effect";
+import { describe } from "vitest";
+import {
+  makePiSessionsLayer,
+  PiSessions,
+  type PiSessionAcquireOptions,
+  type PiSessionsAdapter,
+} from "../../../../src/services/pi/PiSessions";
+import type {
+  CakeRuntime,
+  CakeRuntimeOptions,
+} from "../../../../src/services/pi/runtime/cake-runtime";
+import type { SessionSnapshot } from "../../../../src/ipc/session-contract";
+
+const snapshot: SessionSnapshot = {
+  workspacePath: "/project",
+  sessionId: "session-1",
+  sessionFile: "/sessions/session-1.jsonl",
+  parts: [],
+  models: [],
+  thinkingLevel: "off",
+  availableThinkingLevels: ["off"],
+  streaming: false,
+  diagnostics: [],
+  commands: [],
+  compatibility: { resources: [], diagnostics: [] },
+  extensionUi: { statuses: [] },
+  sessions: [],
+  tree: [],
+};
+
+const options = (overrides: Partial<PiSessionAcquireOptions["runtime"]> = {}) =>
+  ({
+    profile: { _tag: "ProjectSession" },
+    runtime: {
+      cwd: "/project",
+      trusted: true,
+      agentDir: "/agent",
+      sessionDir: "/sessions",
+      sessionId: "session-1",
+      requestUi: async () => undefined,
+      ...overrides,
+    },
+  }) satisfies PiSessionAcquireOptions;
+
+function fakeRuntime(runtimeOptions: CakeRuntimeOptions, onDispose: () => void): CakeRuntime {
+  return {
+    sessionId: snapshot.sessionId,
+    sessionFile: snapshot.sessionFile,
+    snapshot: async () => {
+      runtimeOptions.onEvent({
+        type: "streaming",
+        sessionId: snapshot.sessionId,
+        streaming: true,
+      });
+      return snapshot;
+    },
+    prompt: async () => undefined,
+    compact: async () => undefined,
+    abort: async () => undefined,
+    setModel: async () => undefined,
+    setThinkingLevel: async () => undefined,
+    applyConfiguration: async () => undefined,
+    setPiSetting: async () => undefined,
+    recordReviewRun: () => undefined,
+    login: async () => undefined,
+    logout: async () => undefined,
+    rename: async () => undefined,
+    fork: async () => ({ sessionId: "fork", sessionFile: "/sessions/fork.jsonl" }),
+    handoff: async () => ({ sessionId: "handoff", sessionFile: "/sessions/handoff.jsonl" }),
+    navigate: async () => undefined,
+    dispose: onDispose,
+  };
+}
+
+const adapter = (
+  acquisitions: Ref.Ref<number>,
+  finalizations: Ref.Ref<number>,
+): PiSessionsAdapter => ({
+  list: () => Effect.succeed([]),
+  inspect: () => Effect.succeed(undefined),
+  createRuntime: (runtimeOptions) =>
+    Ref.update(acquisitions, (count) => count + 1).pipe(
+      Effect.as(
+        fakeRuntime(runtimeOptions, () => {
+          Ref.update(finalizations, (count) => count + 1).pipe(Effect.runSync);
+        }),
+      ),
+    ),
+  changelog: () => Effect.succeed("# Changelog"),
+});
+
+describe("PiSessions", () => {
+  it.effect("shares one keyed runtime and finalizes it after the last Scope releases", () =>
+    Effect.gen(function* () {
+      const acquisitions = yield* Ref.make(0);
+      const finalizations = yield* Ref.make(0);
+      const context = yield* Layer.build(makePiSessionsLayer(adapter(acquisitions, finalizations)));
+      const sessions = Context.get(context, PiSessions);
+      const firstScope = yield* Scope.make();
+      const secondScope = yield* Scope.make();
+
+      const first = yield* sessions
+        .acquire(options())
+        .pipe(Effect.provideService(Scope.Scope, firstScope));
+      const second = yield* sessions
+        .acquire(options())
+        .pipe(Effect.provideService(Scope.Scope, secondScope));
+      assert.equal(yield* Ref.get(acquisitions), 1);
+      assert.notEqual(first, second);
+
+      yield* Scope.close(firstScope, Exit.void);
+      assert.equal(yield* Ref.get(finalizations), 0);
+      yield* Scope.close(secondScope, Exit.void);
+      assert.equal(yield* Ref.get(finalizations), 1);
+    }),
+  );
+
+  it.effect("rejects conflicting runtime-defining options for an acquired Pi Session", () =>
+    Effect.gen(function* () {
+      const acquisitions = yield* Ref.make(0);
+      const finalizations = yield* Ref.make(0);
+      const context = yield* Layer.build(makePiSessionsLayer(adapter(acquisitions, finalizations)));
+      const sessions = Context.get(context, PiSessions);
+      const retained = yield* Scope.make();
+      yield* sessions.acquire(options()).pipe(Effect.provideService(Scope.Scope, retained));
+      const conflictScope = yield* Scope.make();
+      const conflict = yield* Effect.flip(
+        sessions
+          .acquire(options({ trusted: false }))
+          .pipe(Effect.provideService(Scope.Scope, conflictScope)),
+      );
+      assert.equal(conflict._tag, "PiSessionError");
+      assert.match(conflict.message, /conflicting runtime options/);
+      yield* Scope.close(conflictScope, Exit.void);
+      yield* Scope.close(retained, Exit.void);
+    }),
+  );
+
+  it.effect("emits one authoritative snapshot before buffered live events", () =>
+    Effect.gen(function* () {
+      const acquisitions = yield* Ref.make(0);
+      const finalizations = yield* Ref.make(0);
+      const context = yield* Layer.build(makePiSessionsLayer(adapter(acquisitions, finalizations)));
+      const sessions = Context.get(context, PiSessions);
+      const handle = yield* sessions.acquire(options());
+      const fiber = yield* handle.updates.pipe(Stream.take(2), Stream.runCollect, Effect.forkChild);
+      const updates = [...(yield* Fiber.join(fiber))];
+      assert.equal(updates[0]?._tag, "Snapshot");
+      assert.equal(updates[1]?._tag, "Event");
+      if (updates[1]?._tag === "Event") assert.equal(updates[1].event.type, "streaming");
+    }),
+  );
+});

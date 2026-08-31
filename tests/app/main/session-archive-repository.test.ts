@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   cakeWorkspaceSessionDirectory,
   listWorkspaceSessions,
-} from "../../../src/agent/session-discovery";
+} from "../../../src/services/pi/runtime/session-discovery";
 import { SessionArchiveRepository } from "../../../src/main/session-archive-repository";
 
 const directories: string[] = [];

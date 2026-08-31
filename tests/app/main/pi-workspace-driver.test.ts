@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { CakeRuntime, CakeRuntimeOptions } from "../../../src/agent/cake-runtime";
-import type { ReviewTurnOptions } from "../../../src/agent/sidecar-runtime";
+import type {
+  CakeRuntime,
+  CakeRuntimeOptions,
+} from "../../../src/services/pi/runtime/cake-runtime";
+import type { ReviewTurnOptions } from "../../../src/services/pi/runtime/sidecar-runtime";
 import type { DesktopEvent } from "../../../src/ipc/desktop-ipc";
 import type { SourceLocation } from "../../../src/ipc/source-location";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";

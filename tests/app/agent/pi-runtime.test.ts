@@ -20,11 +20,11 @@ import {
   piRuntimeVersion,
   type CakeRuntime,
   type CakeRuntimeEvent,
-} from "../../../src/agent/cake-runtime";
+} from "../../../src/services/pi/runtime/cake-runtime";
 import {
   createFoundationRuntime,
   type FoundationRuntime,
-} from "../../../src/agent/foundation-runtime";
+} from "../../../src/services/pi/runtime/foundation-runtime";
 import {
   cakePluginAuthoringSkillPath,
   cakeWorkspaceSessionDirectory,
@@ -33,7 +33,7 @@ import {
   loadWorkspaceSessionPreview,
   listWorkspaceSessions,
   suggestProjectFiles,
-} from "../../../src/agent/session-discovery";
+} from "../../../src/services/pi/runtime/session-discovery";
 import {
   createLiveMessageProjector,
   formatToolResult,
@@ -43,8 +43,11 @@ import {
   projectQueuedMessages,
   projectSessionEntries,
   toolResultContent,
-} from "../../../src/agent/session-projection";
-import { loadReviewSessionProjection, runReviewTurn } from "../../../src/agent/sidecar-runtime";
+} from "../../../src/services/pi/runtime/session-projection";
+import {
+  loadReviewSessionProjection,
+  runReviewTurn,
+} from "../../../src/services/pi/runtime/sidecar-runtime";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { sessionSnapshotSchema, type SessionSnapshot } from "../../../src/ipc/session-contract";
 

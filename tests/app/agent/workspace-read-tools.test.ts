@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, realpath, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createWorkspaceReadTools } from "../../../src/agent/workspace-read-tools";
+import { createWorkspaceReadTools } from "../../../src/services/pi/runtime/workspace-read-tools";
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "cake-reword-tools-"));

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import type { CakeRuntime, CakeRuntimeOptions } from "../../../src/agent/cake-runtime";
+import type {
+  CakeRuntime,
+  CakeRuntimeOptions,
+} from "../../../src/services/pi/runtime/cake-runtime";
 import type { DesktopEvent } from "../../../src/ipc/desktop-ipc";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
 import { GlobalChatDriver } from "../../../src/main/global-chat-driver";

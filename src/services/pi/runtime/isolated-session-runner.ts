@@ -13,7 +13,7 @@ import type {
   ThinkingLevel,
   ToolOutputContent,
   UiPart,
-} from "../ipc/session-contract";
+} from "../../../ipc/session-contract";
 import {
   boundedProjectionKey,
   createLiveMessageProjector,

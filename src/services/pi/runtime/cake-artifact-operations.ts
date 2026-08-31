@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { jsonValueSchema, type JsonValue } from "../ipc/json-contract";
+import { jsonValueSchema, type JsonValue } from "../../../ipc/json-contract";
 import {
   MAX_ARTIFACT_INPUT_BYTES,
   artifactPointerSchema,
@@ -7,8 +7,8 @@ import {
   validateArtifactResponse,
   type ArtifactRecord,
   type CakeArtifactV1,
-} from "../ipc/artifact-contract";
-import { cakeRequestV1Schema, parseRequestInput } from "../ipc/request-contract";
+} from "../../../ipc/artifact-contract";
+import { cakeRequestV1Schema, parseRequestInput } from "../../../ipc/request-contract";
 import type {
   InlineWidgetGenerationRequest,
   InlineWidgetGenerationResult,

@@ -6,7 +6,7 @@ import {
 } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
-import { ResponseRetryController } from "../../../src/agent/response-retry";
+import { ResponseRetryController } from "../../../src/services/pi/runtime/response-retry";
 
 type StreamFunction = AgentSession["agent"]["streamFunction"];
 

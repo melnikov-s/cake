@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { detectGitWorktree, worktreeSystemPrompt } from "../../../src/agent/worktree-system-prompt";
+import {
+  detectGitWorktree,
+  worktreeSystemPrompt,
+} from "../../../src/services/pi/runtime/worktree-system-prompt";
 
 const execFileAsync = promisify(execFile);
 const temporaryDirectories: string[] = [];

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { CakeOperationRegistry } from "../../../src/agent/cake-operation-registry";
-import { createCakeModelOperations } from "../../../src/agent/cake-model-operations";
+import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
+import { createCakeModelOperations } from "../../../src/services/pi/runtime/cake-model-operations";
 
 describe("Cake model operations", () => {
   it("lists only preset names, model IDs, and the current default", async () => {
