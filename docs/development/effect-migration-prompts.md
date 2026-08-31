@@ -1,147 +1,82 @@
-# Effect migration work packets
+# Effect migration bulk-pass prompts
 
-These prompts implement [`effect-migration.md`](./effect-migration.md). Read
-`AGENTS.md`, the normative architecture documents, the migration handoff, Cake's
-Effect skill, and the installed Effect guide before changing Effect code.
+Phases 0–6 are complete. These prompts optimize remaining work for speed,
+context reuse, and token efficiency—not a runnable application at each internal
+step.
 
 ## Common execution contract
 
-For every packet:
+1. Read required architecture and installed API guidance once at pass start.
+2. Inventory the complete pass and record the final dependency/file shape.
+3. Work in dependency order; temporary compile/test/lint/runtime failures are
+   acceptable.
+4. Do not add aliases, dual protocols, forwarding facades, duplicate state, or
+   temporary adapters solely for intermediate executability.
+5. Preserve Pi authority, renderer sandboxing, one RPC protocol, and the final
+   r-state-tree/`RendererClient`/projection boundary.
+6. Group mechanical edits and delete old paths after all callers move.
+7. Run broad formatting/verification once at the checkpoint. Run an earlier
+   focused check only to answer a concrete implementation question.
+8. Do not update progress or hand off internal substeps. Savepoint commits may be
+   broken and exist only for recovery.
 
-1. Verify current source and tests; do not assume the handoff inventory is exact.
-2. Name authority, owner, lifetime, persistence boundary, and repeated-call
-   concurrency policy for every changed state/resource.
-3. Work vertically through Service/domain/RPC/renderer integration and delete the
-   replaced path in the same slice.
-4. Keep one Effect RPC protocol. Never introduce a second renderer wire schema.
-5. Keep the renderer sandboxed.
-6. Preserve Pi as transcript/model authority.
-7. Keep ordinary r-state-tree Stores and Models free of Effect, Layers, Fibers,
-   Streams, `CakeIpcClient`, and RPC envelopes.
-8. Use the permanent Promise `RendererClient` for Store commands and focused
-   projection synchronizers for authoritative Streams.
-9. Run focused tests, typecheck, Oxlint, formatting, build, and affected Electron
-   coverage in proportion to the change.
-10. Update the progress table and next executable step.
+## Bulk Pass A — Final renderer boundary
 
-## Packet 0 — Effect dependency
+Establish final renderer infrastructure in one pass:
 
-Pin Cake's exact Effect 4 release, verify one production Effect instance, retain
-`r-state-tree`, and record the baseline. Do not add effect-state-tree or change
-renderer behavior.
+- one window-owned `RendererRuntime` and semantic Promise `RendererClient`;
+- all Effect command adaptation moved out of `DesktopClient`, with cancellation
+  propagation and stable renderer failures;
+- generic projection registry primitives for keyed ownership, generation and
+  revision filtering, Snapshot reconnect, disposal, and synchronous reducers;
+- final dependency injection for Stores and projection owners;
+- every renderer caller moved mechanically to the final client;
+- replaced Promise methods, duplicate runtime helpers, and migrated raw bridge
+  operations deleted without forwarding aliases.
 
-## Packet 1 — Main runtime
+Do not preserve compilation during the caller sweep. Checkpoint only after it is
+complete: format, Oxlint, typecheck, focused client/runtime tests, and Effect RPC
+Electron smoke coverage.
 
-Establish one main `ManagedRuntime`, `MainLive`, `MainApplication`, and minimal
-bootstrap/shutdown wiring. Move no unrelated capabilities.
+## Bulk Pass B — All renderer state and persistence
 
-## Packet 2 — Effect RPC over Electron
+Convert the whole renderer state layer in dependency order:
 
-Implement shared Effect RPC groups/Schemas, the narrow preload transport, server
-handlers, connection Scopes, typed failure, streaming, interruption, and window
-cleanup. Add the permanent typed Promise renderer adapter over the generated
-client. It is an architecture boundary, not a temporary compatibility facade.
+- all r-state-tree projection Models moved/created in final locations;
+- every authoritative Project, Session, Cake Chat, Discussion, Subagent, review,
+  artifact, extension UI, and related Stream wired through Bulk Pass A
+  projection primitives;
+- all Stores changed to read stable Models and call `RendererClient`;
+- broad `DesktopClientEvent`, root projection routing, per-Store authoritative
+  subscriptions, and duplicate state removed;
+- final versioned r-state-tree hydration/persistence implemented after the Store
+  tree shape is final;
+- superseded renderer helpers, fixtures, schemas, events, and facades deleted.
 
-## Packet 3 — Typed application storage
+Preserve one observation per identity, stable Model identity, Snapshot/Event
+ordering, stale-generation rejection, and one transaction per logical Update.
+Checkpoint once with full renderer lint/typecheck/tests, build, and affected
+chat/sidebar Electron tests.
 
-Replace main-owned r-state-tree application authority with focused Effect Schema
-storage, version migrations, atomic writes, typed failures, and free domain
-operations. Keep renderer Models out of main.
+## Bulk Pass C — Remaining privileged capabilities
 
-## Packet 4 — Model Presets vertical slice
+Migrate in one pass: Electron/filesystem; Git/Managed Worktrees/storage; VS Code
+Server/Terminal; reviews/artifacts/Discussion; plugins/storage/activation/
+recovery.
 
-Migrate Pi model capability, Model Preset storage/domain/RPC, and old protocol
-removal. Keep `ModelPresetSettingsStore` in r-state-tree; make it invoke semantic
-Promise operations on the renderer client. Preserve unresolved presets and
-serialized optimistic command policy.
+Define final Services, free domain Effects, RPC groups, renderer wiring, and all
+callers first; then delete old Zod desktop operations, imperative handlers,
+drivers, registries, and superseded tests together. Do not verify each
+capability as a runnable slice. Use focused checks only for uncertain
+boundaries, then run one full checkpoint at pass end.
 
-## Packet 5 — Pi Services
+Custom Renderer remains out of scope.
 
-Complete `PiSessions`, `PiModels`, and `PiAgentResources`; move all Pi package
-imports below `src/services/pi`; implement keyed scoped runtime acquisition and
-initial Snapshot plus ordered Events.
+## Bulk Pass D — Final cleanup and release verification
 
-## Packet 6 — Cake Session domain
-
-Move Project Sessions, Cake Chat Sessions, Discussion Sessions, and Subagents to
-shared conversation/domain operations above `PiSessions`. Preserve stable
-handles, distinct kind policy, current-first observation, cancellation, and Pi
-transcript authority. Remove replaced driver policy vertically.
-
-## Packet 7A — Permanent RendererClient
-
-Extract the broad renderer Promise adapter into focused semantic
-`RendererClient` capability groups. Own one renderer Effect runtime for the
-window. Translate optional `AbortSignal` to Fiber/RPC interruption and expose
-stable renderer-facing errors. Stores must not import Effect or raw RPC.
-
-Delete each replaced `DesktopClient` method and old desktop request/event member
-as its capability moves; do not add aliases.
-
-## Packet 7B — Project and Session catalog projections
-
-Create r-state-tree Project and Session summary Models plus focused projection
-synchronizers. Consume current-first catalog Streams in projection
-infrastructure, not Stores. Preserve stable identity, one observation per
-window, ordered revisions, reconnect Snapshots, collision rejection, Project
-group indexes, renderer-owned pending sessions, resolved/unread status, and
-recent Project ordering.
-
-Store tests inject Promise commands. Projection tests drive controlled Streams
-and verify interruption, stale generations, identity, and one-transaction
-updates.
-
-## Packet 7C — Loaded conversation projection registries
-
-Create keyed Project Session and Cake Chat projection registries. Each loaded
-identity owns exactly one observation and stable r-state-tree Session Model.
-Reduce Snapshot plus Events atomically; reconnect from fresh authority; never
-persist transcript projections. Keep composer, configuration, panels, and local
-workflow policy in focused r-state-tree Stores using `RendererClient` commands.
-
-Then migrate Discussion, Subagent, review, artifact, and extension projections
-in dependency-safe vertical slices. Every chat still uses shared `Chat` and
-`ChatStore`.
-
-## Packet 7D — Remove broad renderer event routing
-
-After projection registries cover migrated capabilities, remove corresponding
-broad `DesktopClientEvent` translation and root event routing. Keep `RootStore`
-as application-intent/composition boundary, not projection subscription owner.
-Enforce imports:
-
-```text
-components → Stores/Models
-Stores → RendererClient
-projections → CakeIpcClient + Models
-```
-
-## Packet 8 — r-state-tree window persistence
-
-Define versioned renderer snapshot data, migrate and validate before mounting or
-activating workflow effects, persist only explicit Cake-owned fields after
-hydration, and exclude authoritative projections/resources/operations. Verify
-startup defaults cannot overwrite stored state.
-
-## Packet 9 — Remaining capabilities
-
-For Git/worktrees, filesystem observation, VS Code, terminal, Electron native
-operations, reviews/artifacts, and plugins:
-
-1. define the outside-world Effect Service;
-2. move Cake policy to free domain Effects;
-3. replace its Effect RPC group;
-4. add focused `RendererClient` commands and projection synchronization;
-5. update owning r-state-tree Models/Stores;
-6. remove the replaced implementation and protocol;
-7. run focused main, projection, Store, and Electron verification.
-
-Custom Renderer remains explicitly out of scope.
-
-## Packet 10 — Final enforcement
-
-Remove broad `DesktopClient`, superseded Zod desktop unions/routes, obsolete main
-drivers/handlers, direct Effect usage from ordinary Stores/Models, and migration
-facades. Keep r-state-tree, one renderer infrastructure Effect runtime, generated
-`CakeIpcClient`, permanent Promise `RendererClient`, and projection
-synchronizers. Add lint/import boundaries and run full final verification.
+Remove broad `DesktopClient`/events, obsolete routes/drivers/handlers/resource
+maps, forwarding APIs, migration helpers, stale tests, and terminology. Keep
+r-state-tree, one renderer Effect runtime, generated `CakeIpcClient`, permanent
+`RendererClient`, and projection registries. Add final import boundaries,
+reconcile docs, and run the release matrix once. Never restore compatibility
+code to satisfy a failure.
