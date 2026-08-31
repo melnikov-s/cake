@@ -187,7 +187,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
       require: "undefined",
       process: "undefined",
       rawElectron: "undefined",
-      bridgeKeys: ["request", "subscribe"],
+      bridgeKeys: ["request", "rpc", "subscribe"],
     });
 
     await page.getByLabel("Message").fill("Persist this draft");
