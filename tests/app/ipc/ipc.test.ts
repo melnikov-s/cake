@@ -51,16 +51,8 @@ describe("process IPC", () => {
     ).toEqual({ type: "reword-composer-selection", selection: "selected words" });
   });
 
-  it("accepts session lifecycle and prompt requests", () => {
+  it("accepts remaining desktop and Cake Chat requests", () => {
     const requestId = crypto.randomUUID();
-    expect(
-      desktopRequestSchema.parse({
-        type: "open-workspace",
-        requestId,
-        path: "/project",
-        newSession: true,
-      }),
-    ).toMatchObject({ type: "open-workspace", requestId, newSession: true });
     expect(
       desktopRequestSchema.parse({
         type: "respond-workspace-trust",
@@ -71,38 +63,6 @@ describe("process IPC", () => {
     ).toMatchObject({ approved: true });
     expect(
       desktopRequestSchema.parse({
-        type: "prompt",
-        requestId,
-        sessionId: "session",
-        text: "hello",
-        delivery: "prompt",
-        attachments: [],
-      }),
-    ).toMatchObject({ text: "hello" });
-    expect(
-      desktopRequestSchema.parse({
-        type: "prompt",
-        requestId,
-        sessionId: "session",
-        text: "",
-        delivery: "prompt",
-        attachments: [
-          { kind: "image", name: "paste.png", mimeType: "image/png", data: "aW1hZ2U=" },
-        ],
-      }),
-    ).toMatchObject({ text: "", attachments: [{ kind: "image" }] });
-    expect(() =>
-      desktopRequestSchema.parse({
-        type: "prompt",
-        requestId,
-        sessionId: "session",
-        text: "",
-        delivery: "prompt",
-        attachments: [],
-      }),
-    ).toThrow();
-    expect(
-      desktopRequestSchema.parse({
         type: "prompt-global-chat",
         requestId,
         sessionId: "cake-chat",
@@ -121,9 +81,6 @@ describe("process IPC", () => {
         attachments: [],
       }),
     ).toThrow();
-    expect(desktopRequestSchema.parse({ type: "list-sessions" })).toEqual({
-      type: "list-sessions",
-    });
     expect(
       desktopRequestSchema.parse({
         type: "set-utility-model",
@@ -135,23 +92,6 @@ describe("process IPC", () => {
     });
     expect(desktopRequestSchema.parse({ type: "set-utility-model" })).toEqual({
       type: "set-utility-model",
-    });
-    expect(
-      desktopRequestSchema.parse({
-        type: "resolve-sessions",
-        sessionIds: ["session"],
-        resolved: true,
-        workspacePath: "/managed/worktree",
-      }),
-    ).toEqual({
-      type: "resolve-sessions",
-      sessionIds: ["session"],
-      resolved: true,
-      workspacePath: "/managed/worktree",
-    });
-    expect(desktopRequestSchema.parse({ type: "load-session", sessionId: "session" })).toEqual({
-      type: "load-session",
-      sessionId: "session",
     });
     expect(
       desktopRequestSchema.parse({
@@ -297,24 +237,6 @@ describe("process IPC", () => {
     });
     expect(ui.type === "ui-request" && ui.title).toHaveLength(512);
     expect(ui.type === "ui-request" && ui.message).toHaveLength(4_096);
-
-    const response = desktopResponseSchema.parse({
-      type: "sessions-listed",
-      sessions: [
-        {
-          id: "session",
-          title: "s".repeat(2_048),
-          created: new Date(0).toISOString(),
-          modified: new Date(0).toISOString(),
-          messageCount: 1,
-          resolved: false,
-          workspacePath: "/project",
-          workspaceName: "Project",
-        },
-      ],
-      reviewThreads: [],
-    });
-    expect(response.type === "sessions-listed" && response.sessions[0]?.title).toHaveLength(1_024);
   });
 
   it("validates correlated secret UI responses without logging them", () => {
@@ -344,8 +266,11 @@ describe("process IPC", () => {
 
   it("rejects malformed project and UI requests", () => {
     expect(
-      desktopRequestSchema.safeParse({ type: "open-workspace", requestId: "bad", path: "/project" })
-        .success,
+      desktopRequestSchema.safeParse({
+        type: "inspect-workspace",
+        requestId: "bad",
+        path: "/project",
+      }).success,
     ).toBe(false);
     expect(
       desktopRequestSchema.safeParse({

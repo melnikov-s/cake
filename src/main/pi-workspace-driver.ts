@@ -60,16 +60,11 @@ const MAX_ACTIVE_SUBAGENTS = 4;
 const SUBAGENT_RESULT_TTL_MS = 5 * 60_000;
 
 type PiCommandType =
-  | "open-workspace"
-  | "rename-session"
-  | "fork-session"
   | "handoff-session"
   | "navigate-session"
   | "get-changelog"
-  | "prompt"
   | "edit-session-message"
   | "submit-review-thread"
-  | "abort"
   | "compact-session"
   | "set-model"
   | "set-chat-configuration"
@@ -100,6 +95,17 @@ interface PendingArtifact {
 interface RuntimeReference {
   current?: CakeRuntime;
 }
+
+type ProjectSessionRuntimeIntegrations = Pick<
+  CakeRuntimeOptions,
+  | "agentControl"
+  | "generateInlineWidget"
+  | "listArtifacts"
+  | "persistArtifact"
+  | "requestArtifact"
+  | "requestUi"
+  | "reviewContextPath"
+>;
 
 interface SubagentHandle {
   parentSessionId: string;
@@ -327,24 +333,6 @@ export class PiWorkspaceDriver {
         pending.settle(command.cancelled ? undefined : command.value);
       return;
     }
-    if (command.type === "open-workspace") {
-      void this.run(command.requestId, async () => {
-        this.trusted ||= this.isTrusted();
-        const existing = command.sessionId ? this.runtimes.get(command.sessionId) : undefined;
-        const runtime =
-          existing ?? (await this.createRuntime(command.newSession, command.sessionId));
-        if (!existing && command.newSession && command.configuration)
-          await runtime.applyConfiguration(command.configuration);
-        this.emit({
-          type: "session-snapshot",
-          requestId: command.requestId,
-          snapshot: await runtime.snapshot(command.requestId),
-        });
-        this.emitSessionBackgroundWork(runtime.sessionId);
-        this.replayPendingArtifacts(runtime.sessionId);
-      });
-      return;
-    }
     if (command.type === "get-changelog") {
       void this.run(
         command.requestId,
@@ -369,36 +357,16 @@ export class PiWorkspaceDriver {
     void this.run(
       command.requestId,
       async () => {
-        let runtime: CakeRuntime;
-        if (command.type === "prompt" && command.newSession) {
-          runtime =
-            this.runtimes.get(command.sessionId) ??
-            (await this.createRuntime(true, command.sessionId));
-          if (command.newSession.configuration)
-            await runtime.applyConfiguration(command.newSession.configuration);
-          if (command.newSession.name) await runtime.rename(command.newSession.name);
-        } else {
-          runtime =
-            command.type === "rename-session" ||
-            command.type === "prompt" ||
-            command.type === "edit-session-message" ||
-            command.type === "compact-session" ||
-            command.type === "set-model" ||
-            command.type === "set-chat-configuration"
-              ? (this.runtimes.get(command.sessionId) ??
-                (await this.createRuntime(false, command.sessionId)))
-              : this.runtimeFor(command.sessionId);
-        }
-        if (command.type === "abort") await this.agentAbort(command.sessionId);
-        else if (command.type === "prompt") {
-          await runtime.prompt(
-            command.text,
-            command.delivery,
-            command.attachments,
-            command.renderUserMessageAsMarkdown,
-          );
-          this.emit({ type: "session-snapshot", snapshot: await runtime.snapshot() });
-        } else if (command.type === "edit-session-message") {
+        this.trusted ||= this.isTrusted();
+        const runtime =
+          command.type === "edit-session-message" ||
+          command.type === "compact-session" ||
+          command.type === "set-model" ||
+          command.type === "set-chat-configuration"
+            ? (this.runtimes.get(command.sessionId) ??
+              (await this.createRuntime(false, command.sessionId)))
+            : this.runtimeFor(command.sessionId);
+        if (command.type === "edit-session-message") {
           if (!runtime.editMessage)
             throw new Error("This Pi runtime does not support message editing");
           await runtime.editMessage(
@@ -429,18 +397,8 @@ export class PiWorkspaceDriver {
         } else if (command.type === "reload-pi") await this.reloadRuntime(runtime);
         else if (command.type === "login") await runtime.login(command.provider, command.authType);
         else if (command.type === "logout") await runtime.logout(command.provider);
-        else if (command.type === "rename-session") await runtime.rename(command.name);
         else if (command.type === "navigate-session") await runtime.navigate(command.entryId);
-        else if (command.type === "fork-session") {
-          const forked = await runtime.fork(command.entryId);
-          const next = await this.createRuntime(false, forked.sessionId, forked.sessionFile);
-          this.emit({
-            type: "session-snapshot",
-            requestId: command.requestId,
-            snapshot: await next.snapshot(command.requestId),
-          });
-          if (command.resolveSource) await this.setSessionResolved(command.sessionId, true);
-        } else if (command.type === "handoff-session") {
+        else if (command.type === "handoff-session") {
           const configuration = runtime.currentConfiguration?.();
           const handedOff = await runtime.handoff(command.entryId);
           const next = await this.createRuntime(false, handedOff.sessionId, handedOff.sessionFile);
@@ -732,8 +690,7 @@ export class PiWorkspaceDriver {
   }
 
   private requestUi(request: RuntimeUiRequest) {
-    const operationId = this.operationContext.getStore()?.operationId;
-    if (!operationId) throw new Error("Pi requested UI without an active Cake operation");
+    const operationId = this.operationContext.getStore()?.operationId ?? crypto.randomUUID();
     const uiRequestId = crypto.randomUUID();
     return new Promise<string | undefined>((resolve) => {
       let settled = false;
@@ -790,9 +747,7 @@ export class PiWorkspaceDriver {
 
   private requestArtifact(record: ArtifactRecord, signal: AbortSignal) {
     if (signal.aborted) return Promise.resolve(undefined);
-    const operationId = this.operationContext.getStore()?.operationId;
-    if (!operationId)
-      throw new Error("Pi requested an artifact response without an active Cake operation");
+    const operationId = this.operationContext.getStore()?.operationId ?? crypto.randomUUID();
     const artifactRequestId = crypto.randomUUID();
     return new Promise<JsonValue | undefined>((resolve) => {
       let settled = false;
@@ -836,6 +791,54 @@ export class PiWorkspaceDriver {
   private reloadRuntime(runtime: CakeRuntime) {
     if (!runtime.reload) throw new Error("This Pi runtime does not support reloading");
     return runtime.reload();
+  }
+
+  /**
+   * Supplies the temporary non-lifecycle integrations still coordinated by the
+   * driver while Project Session runtime ownership lives in PiSessions.
+   * Packets 6B/6C and the artifact/review slices remove these callbacks.
+   */
+  projectSessionRuntimeIntegrations(sessionId: string): ProjectSessionRuntimeIntegrations {
+    const reviewContextPath = this.reviewRepository.reviewContextPath;
+    return {
+      agentControl: {
+        run: (input, parentSessionId, signal, onUpdate, anchorPartId) =>
+          this.runSubagent(input, parentSessionId, signal, onUpdate, anchorPartId),
+        start: (input, parentSessionId, signal, anchorPartId) =>
+          this.startBackgroundSubagent(input, parentSessionId, signal, anchorPartId),
+        parallel: (input, parentSessionId, signal, onUpdate, anchorPartId) =>
+          this.parallelSubagents(input, parentSessionId, signal, onUpdate, anchorPartId),
+        prompt: (input, parentSessionId, signal) =>
+          this.promptSubagent(input, parentSessionId, signal),
+        wait: (handleId, parentSessionId, signal, onUpdate) =>
+          this.waitSubagent(handleId, parentSessionId, signal, onUpdate),
+        abort: (handleId, parentSessionId) => this.abortSubagent(handleId, parentSessionId),
+        close: (handleId, parentSessionId) => this.closeSubagent(handleId, parentSessionId),
+      },
+      requestUi: (request) => this.requestUi(request),
+      persistArtifact: (artifact) => this.persistArtifact(artifact),
+      requestArtifact: (record, signal) => this.requestArtifact(record, signal),
+      generateInlineWidget: (input) => this.generateInlineWidget(input),
+      reviewContextPath: reviewContextPath
+        ? (activeSessionId) => reviewContextPath(this.workspacePath, activeSessionId)
+        : undefined,
+      listArtifacts: async (pointers) => {
+        const direct = await Promise.all(
+          pointers.map((pointer) =>
+            this.artifactRepository.get(this.workspacePath, pointer.sessionId, pointer.artifactId),
+          ),
+        );
+        const indexed = await this.artifactRepository.listSession(this.workspacePath, sessionId);
+        const records = new Map<string, ArtifactRecord>();
+        for (const record of [...direct, ...indexed]) {
+          if (!record) continue;
+          const current = records.get(record.artifact.id);
+          if (!current || record.artifact.revision > current.artifact.revision)
+            records.set(record.artifact.id, record);
+        }
+        return [...records.values()];
+      },
+    };
   }
 
   /**

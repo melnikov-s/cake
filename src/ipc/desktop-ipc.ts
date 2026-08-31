@@ -35,7 +35,6 @@ import {
   attachmentSchema,
   extensionUiEventSchema,
   fileSuggestionSchema,
-  globalSessionSummarySchema,
   chatConfigurationSchema,
   piSettingUpdateSchema,
   sessionPreviewSchema,
@@ -545,10 +544,8 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("load-window-state") }),
   z.object({ type: z.literal("save-window-state"), state: windowViewStateSchema }),
   z.object({ type: z.literal("set-utility-model"), model: utilityModelSchema.optional() }),
-  z.object({ type: z.literal("list-sessions") }),
   z.object({ type: z.literal("list-cake-chat-sessions") }),
   z.object({ type: z.literal("load-cake-chat-session"), sessionId: z.string().min(1).max(256) }),
-  z.object({ type: z.literal("load-session"), sessionId: z.string().min(1).max(256) }),
   z.object({
     type: z.literal("open-global-chat"),
     requestId: z.uuid(),
@@ -673,18 +670,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     deleteSessions: z.boolean(),
   }),
   z.object({
-    type: z.literal("resolve-session"),
-    sessionId: z.string().min(1).max(256),
-    resolved: z.boolean(),
-  }),
-  z.object({
-    type: z.literal("resolve-sessions"),
-    sessionIds: z.array(z.string().min(1).max(256)).min(1).max(10_000),
-    resolved: z.boolean(),
-    /** Known workspace for a batch whose checkout may be removed during the operation. */
-    workspacePath: z.string().min(1).max(4_096).optional(),
-  }),
-  z.object({
     type: z.literal("delete-session"),
     sessionId: z.string().min(1).max(256),
   }),
@@ -729,15 +714,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     keepBranch: z.boolean().default(false),
   }),
   z.object({
-    type: z.literal("fork-session-to-workspace"),
-    requestId: z.uuid(),
-    sessionId: z.string().min(1).max(256),
-    entryId: z.string().max(256),
-    sourceWorkspacePath: z.string().min(1).max(4_096),
-    destinationWorkspacePath: z.string().min(1).max(4_096),
-    resolveSource: z.boolean().default(false),
-  }),
-  z.object({
     type: z.literal("inspect-workspace"),
     requestId: z.uuid(),
     path: z.string().max(4_096),
@@ -747,14 +723,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     requestId: z.uuid(),
     path: z.string().max(4_096),
     approved: z.boolean(),
-  }),
-  z.object({
-    type: z.literal("open-workspace"),
-    requestId: z.uuid(),
-    path: z.string().max(4_096),
-    newSession: z.boolean().default(false),
-    sessionId: z.string().min(1).max(256).optional(),
-    configuration: chatConfigurationSchema.optional(),
   }),
   z.object({
     type: z.literal("steer-subagent"),
@@ -769,26 +737,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     parentSessionId: z.string().min(1).max(256),
     handleId: z.uuid(),
   }),
-  z
-    .object({
-      type: z.literal("prompt"),
-      requestId: z.uuid(),
-      text: z.string().max(262_144),
-      delivery: z.enum(["prompt", "steer", "follow-up"]),
-      renderUserMessageAsMarkdown: z.boolean().default(false),
-      attachments: z.array(attachmentSchema).max(20),
-      sessionId: z.string().max(256),
-      newSession: z
-        .object({
-          path: z.string().max(4_096),
-          configuration: chatConfigurationSchema.optional(),
-          name: z.string().trim().min(1).max(500).optional(),
-        })
-        .optional(),
-    })
-    .refine((request) => Boolean(request.text.trim() || request.attachments.length), {
-      message: "A prompt requires text or an attachment",
-    }),
   z.object({
     type: z.literal("edit-session-message"),
     requestId: z.uuid(),
@@ -806,7 +754,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     model: z.object({ provider: z.string().max(256), id: z.string().max(512) }).optional(),
     thinkingLevel: thinkingLevelSchema.optional(),
   }),
-  z.object({ type: z.literal("abort"), requestId: z.uuid(), sessionId: z.string().max(256) }),
   z.object({
     type: z.literal("compact-session"),
     requestId: z.uuid(),
@@ -862,19 +809,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     requestId: z.uuid(),
     provider: z.string(),
     sessionId: z.string().max(256),
-  }),
-  z.object({
-    type: z.literal("rename-session"),
-    requestId: z.uuid(),
-    sessionId: z.string().max(256),
-    name: z.string().min(1).max(512),
-  }),
-  z.object({
-    type: z.literal("fork-session"),
-    requestId: z.uuid(),
-    sessionId: z.string().max(256),
-    entryId: z.string().max(256),
-    resolveSource: z.boolean().optional(),
   }),
   z.object({
     type: z.literal("handoff-session"),
@@ -1014,11 +948,6 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("window-state-loaded"), state: windowViewStateSchema }),
   z.object({ type: z.literal("window-state-saved") }),
   z.object({
-    type: z.literal("sessions-listed"),
-    sessions: ipcProjectionArray(globalSessionSummarySchema, 50_000),
-    reviewThreads: ipcProjectionArray(reviewThreadSchema, 100_000),
-  }),
-  z.object({
     type: z.literal("cake-chat-sessions-listed"),
     sessions: ipcProjectionArray(sessionSummarySchema, 10_000),
   }),
@@ -1042,11 +971,6 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
     type: z.literal("worktree-landed"),
     requestId: z.uuid(),
     result: worktreeLandOutcomeSchema,
-  }),
-  z.object({
-    type: z.literal("session-forked-to-workspace"),
-    requestId: z.uuid(),
-    sessionId: z.string().min(1).max(256),
   }),
   z.object({ type: z.literal("accepted"), requestId: z.uuid() }),
   z.object({ type: z.literal("ui-response-accepted"), uiRequestId: z.uuid() }),

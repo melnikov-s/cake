@@ -6,8 +6,25 @@ import type {
   DesktopResponse,
 } from "../../../src/ipc/desktop-ipc";
 import { createDesktopClient } from "../../../src/renderer/desktop-client";
+import { TurnId } from "../../../src/domain/conversation-data";
 
 function createBridge() {
+  const conversationSnapshot = {
+    workingDirectory: "/project",
+    sessionId: "session",
+    sessionFile: "/sessions/session.jsonl",
+    parts: [],
+    models: [],
+    thinkingLevel: "off",
+    availableThinkingLevels: ["off"],
+    streaming: false,
+    diagnostics: [],
+    commands: [],
+    compatibility: { resources: [], diagnostics: [] },
+    extensionUi: { statuses: [] },
+    sessions: [],
+    tree: [],
+  };
   let listener: ((event: DesktopEvent) => void) | undefined;
   const request = vi.fn(async (input: DesktopRequest): Promise<DesktopResponse> => {
     if ("requestId" in input && input.type !== "respond-ui")
@@ -63,11 +80,8 @@ function createBridge() {
           pendingProjectSessions: [],
         },
       };
-    if (input.type === "list-sessions")
-      return { type: "sessions-listed", sessions: [], reviewThreads: [] };
     if (input.type === "list-cake-chat-sessions")
       return { type: "cake-chat-sessions-listed", sessions: [] };
-    if (input.type === "load-session") return { type: "session-loaded", session: undefined };
     if (
       input.type === "list-plugins" ||
       input.type === "set-plugin-enabled" ||
@@ -107,6 +121,28 @@ function createBridge() {
       },
       models: {
         list: async () => [],
+      },
+      projectSessions: {
+        list: vi.fn(async () => []),
+        inspect: vi.fn(async (target: { sessionId: string }) => ({
+          sessionId: target.sessionId,
+          projectPath: "/project",
+          workingDirectory: "/project",
+          sessionFile: "/sessions/session.jsonl",
+          parts: [],
+          resolved: false,
+        })),
+        create: vi.fn(async () => conversationSnapshot),
+        open: vi.fn(async () => conversationSnapshot),
+        observe: vi.fn(() => () => undefined),
+        prompt: vi.fn(async () => TurnId.make(crypto.randomUUID())),
+        steer: vi.fn(async () => TurnId.make(crypto.randomUUID())),
+        followUp: vi.fn(async () => TurnId.make(crypto.randomUUID())),
+        abort: vi.fn(async () => undefined),
+        rename: vi.fn(async () => undefined),
+        fork: vi.fn(async () => ({ sessionId: "forked-session" })),
+        resolve: vi.fn(async () => undefined),
+        restore: vi.fn(async () => undefined),
       },
     },
     request,
@@ -215,13 +251,13 @@ describe("desktop client", () => {
     });
     expect(await client.listSessions()).toEqual({ sessions: [], reviewThreads: [] });
     expect(await client.listCakeChatSessions()).toEqual([]);
-    expect(await client.loadSession("session")).toBeUndefined();
+    expect(await client.loadSession("session")).toMatchObject({ sessionId: "session" });
     expect(await client.suggestFiles("/project", "app")).toEqual([
       { value: "@src/app.ts", label: "app.ts", description: "src/app.ts" },
     ]);
     expect(await client.deletePlugin("example.calendar")).toEqual([]);
     await client.respondToWorkspaceTrust({ operationId, path: "/project", approved: true });
-    await client.openWorkspace({ operationId, path: "/project" });
+    await client.openWorkspace({ operationId, path: "/project", sessionId: "session" });
     await client.openEmbeddedEditorSourceControl("/project");
     await client.getChangelog({ operationId, sessionId: "session" });
     await client.reloadPi({ operationId, sessionId: "session" });
@@ -280,12 +316,9 @@ describe("desktop client", () => {
       path: "/project",
       approved: true,
     });
-    expect(desktop.request).toHaveBeenCalledWith({
-      type: "open-workspace",
-      requestId: operationId,
-      path: "/project",
-      newSession: false,
-      sessionId: undefined,
+    expect(desktop.rpcClient.projectSessions.open).toHaveBeenCalledWith({
+      sessionId: "session",
+      workingDirectory: "/project",
     });
     expect(desktop.request).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -349,7 +382,9 @@ describe("desktop client", () => {
       prompt: "Continue here",
       resolveSource: true,
     });
-    expect(desktop.request).toHaveBeenCalledWith({ type: "load-session", sessionId: "session" });
+    expect(desktop.rpcClient.projectSessions.inspect).toHaveBeenCalledWith({
+      sessionId: "session",
+    });
     expect(desktop.request).toHaveBeenCalledWith({
       type: "steer-subagent",
       requestId: expect.any(String),

@@ -17,6 +17,7 @@ type RpcHarness = {
     projects: ReadonlyArray<unknown>;
     resolvedSessionIds: ReadonlyArray<string>;
   }>;
+  listProjectSessions(): Promise<ReadonlyArray<unknown>>;
   typedFailureTag(): Promise<string>;
   stream(count: number, intervalMs: number): Promise<ReadonlyArray<number>>;
   startDelay(durationMs: number): void;
@@ -96,6 +97,7 @@ test("Effect RPC crosses Electron with schemas, streams, interruption, and conne
       projects: [],
       resolvedSessionIds: [],
     });
+    expect(await callHarness(observer, "listProjectSessions")).toEqual([]);
     expect(await callHarness<string>(observer, "typedFailureTag")).toBe("FoundationFailure");
     expect(await callHarness<ReadonlyArray<number>>(observer, "stream", 3, 1)).toEqual([1, 2, 3]);
 

@@ -41,6 +41,7 @@ import {
   runInlineWidgetRepair,
 } from "../services/pi/runtime/sidecar-runtime";
 import { PiModels } from "../services/pi/PiModels";
+import { ProjectSessionEnvironmentError } from "../services/project-sessions/ProjectSessionEnvironment";
 import { rewordSelectionWithProjectContext } from "../services/pi/runtime/rewording-agent";
 import {
   generateSessionTitle,
@@ -436,11 +437,6 @@ async function deleteProjectSessions(projectPath: string, records: readonly Work
 async function restoreCakeChatSessionForUse(sessionId: string) {
   if (applicationState().resolvedCakeChatSessionIds.includes(sessionId))
     await setCakeChatSessionResolution(sessionId, false);
-}
-
-async function restoreProjectSessionForUse(workspacePath: string, sessionId: string) {
-  if (applicationState().resolvedSessionIds.includes(sessionId))
-    await setProjectSessionResolution(sessionId, false, workspacePath);
 }
 
 function rememberSessionLocation(workspacePath: string, sessionId: string) {
@@ -1867,103 +1863,6 @@ async function handleCakeRequest(
       ),
     });
   }
-  if (request.type === "list-sessions") {
-    const resolvedSessionIds = new Set(applicationState().resolvedSessionIds);
-    const unreadSessionIds = new Set(applicationState().unreadSessionIds);
-    const projectSessions = (
-      await Promise.all(
-        applicationState().projects.map(async (project) => {
-          try {
-            return (
-              await listWorkspaceSessions(project.path, cakePaths.piSessions, {
-                resolvedSessionDir: cakePaths.piResolvedSessions,
-              })
-            ).map((session) => {
-              rememberSessionLocation(project.path, session.id);
-              return {
-                ...session,
-                resolved: resolvedSessionIds.has(session.id),
-                unread: unreadSessionIds.has(session.id),
-                workspacePath: project.path,
-                workspaceName: project.name,
-              };
-            });
-          } catch {
-            return [];
-          }
-        }),
-      )
-    ).flat();
-    const worktreeSessions = (
-      await Promise.all(
-        (await worktrees.records()).map(async (record) => {
-          const project = applicationState().projects.find(
-            (entry) => entry.path === record.projectPath,
-          );
-          if (!project || !allowedProjectPaths.has(record.worktreePath)) return [];
-          try {
-            return (
-              await listWorkspaceSessions(record.worktreePath, cakePaths.piSessions, {
-                resolvedSessionDir: cakePaths.piResolvedSessions,
-              })
-            ).map((session) => {
-              rememberSessionLocation(record.worktreePath, session.id);
-              return {
-                ...session,
-                resolved: resolvedSessionIds.has(session.id),
-                unread: unreadSessionIds.has(session.id),
-                workspacePath: record.worktreePath,
-                projectPath: project.path,
-                managedWorktree: record,
-                workspaceName: project.name,
-              };
-            });
-          } catch {
-            return [];
-          }
-        }),
-      )
-    ).flat();
-    const sessions = [...projectSessions, ...worktreeSessions].sort((left, right) =>
-      right.modified.localeCompare(left.modified),
-    );
-    const reviewThreads = (
-      await Promise.all(
-        sessions.map((session) => reviewRepository.listSession(session.workspacePath, session.id)),
-      )
-    ).flat();
-    return desktopResponseSchema.parse({ type: "sessions-listed", sessions, reviewThreads });
-  }
-  if (request.type === "fork-session-to-workspace") {
-    const records = await worktrees.records();
-    const destination = records.find(
-      (entry) =>
-        (entry.state ?? "active") === "active" &&
-        resolve(entry.worktreePath) === resolve(request.destinationWorkspacePath),
-    );
-    if (!destination) throw new Error("Cake could not find the destination worktree");
-    const sourceWorktree = records.find(
-      (entry) => resolve(entry.worktreePath) === resolve(request.sourceWorkspacePath),
-    );
-    const sourceProjectPath = sourceWorktree?.projectPath ?? request.sourceWorkspacePath;
-    if (resolve(sourceProjectPath) !== resolve(destination.projectPath))
-      throw new Error("The session and destination worktree belong to different projects");
-    const sourceFile = await findSessionFile(
-      request.sourceWorkspacePath,
-      request.sessionId,
-      cakePaths.piSessions,
-    );
-    if (!sourceFile) throw new Error("Cake could not find the session to fork");
-    const forked = forkWorkspaceSession(sourceFile, destination.worktreePath, cakePaths.piSessions);
-    rememberSessionLocation(destination.worktreePath, forked.sessionId);
-    if (request.resolveSource)
-      await setProjectSessionResolution(request.sessionId, true, request.sourceWorkspacePath);
-    return desktopResponseSchema.parse({
-      type: "session-forked-to-workspace",
-      requestId: request.requestId,
-      sessionId: forked.sessionId,
-    });
-  }
   if (request.type === "register-project") {
     if (!allowedProjectPaths.has(request.path))
       throw new Error("Project path was not selected by the user");
@@ -2011,36 +1910,6 @@ async function handleCakeRequest(
       if (projectWorkspacePaths.has(workspacePath)) windowWorkspaces.delete(webContentsId);
     const state = await runMainEffect(removeProject(request.path));
     return desktopResponseSchema.parse({ type: "application-state-updated", state });
-  }
-  if (request.type === "resolve-session") {
-    await setProjectSessionResolution(request.sessionId, request.resolved);
-    return desktopResponseSchema.parse({
-      type: "application-state-updated",
-      state: applicationState(),
-    });
-  }
-  if (request.type === "resolve-sessions") {
-    if (request.workspacePath && !allowedProjectPaths.has(request.workspacePath))
-      throw new Error("Project path was not selected by the user");
-    const outcomes = await Promise.allSettled(
-      request.sessionIds.map((sessionId) =>
-        setProjectSessionResolution(sessionId, request.resolved, request.workspacePath),
-      ),
-    );
-    const failures = outcomes.filter((outcome) => outcome.status === "rejected");
-    if (failures.length > 0) {
-      const firstReason = failures[0]!.reason;
-      const cause = firstReason instanceof Error ? firstReason.message : String(firstReason);
-      throw new Error(
-        `Cake could not update ${failures.length} of ${request.sessionIds.length} sessions: ${cause}`,
-      );
-    }
-    if (request.resolved && request.workspacePath)
-      await worktrees.cleanupResolved(request.workspacePath);
-    return desktopResponseSchema.parse({
-      type: "application-state-updated",
-      state: applicationState(),
-    });
   }
   if (request.type === "resolve-cake-chat-session") {
     await setCakeChatSessionResolution(request.sessionId, request.resolved);
@@ -2152,11 +2021,9 @@ async function handleCakeRequest(
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
   const path =
-    request.type === "open-workspace" || request.type === "inspect-workspace"
+    request.type === "inspect-workspace"
       ? request.path
-      : request.type === "prompt" && request.newSession
-        ? request.newSession.path
-        : await resolveSessionWorkspacePath(request.sessionId);
+      : await resolveSessionWorkspacePath(request.sessionId);
   if (!allowedProjectPaths.has(path)) throw new Error("Project path was not selected by the user");
   if (request.type === "repair-inline-widget") {
     const repaired = await runInlineWidgetRepair({
@@ -2183,6 +2050,7 @@ async function handleCakeRequest(
     const trustRequired = inspection.trustRequired && !isProjectTrusted(path);
     const key = `${event.sender.id}:${request.requestId}`;
     clearPendingTrustRequests(event.sender.id);
+    windowWorkspaces.set(event.sender.id, path);
     if (trustRequired) pendingTrustRequests.set(key, path);
     sendTo(event.sender, {
       type: "workspace-inspected",
@@ -2191,17 +2059,6 @@ async function handleCakeRequest(
       trustRequired,
     });
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
-  }
-  if (request.type === "load-session") {
-    return desktopResponseSchema.parse({
-      type: "session-loaded",
-      session: await loadWorkspaceSessionPreview(
-        path,
-        request.sessionId,
-        cakePaths.piSessions,
-        cakePaths.piResolvedSessions,
-      ),
-    });
   }
   if (request.type === "list-review-threads") {
     return desktopResponseSchema.parse({
@@ -2239,16 +2096,6 @@ async function handleCakeRequest(
     broadcast({ type: "review-thread-updated", thread });
     return desktopResponseSchema.parse({ type: "review-thread-saved", thread });
   }
-  if (request.type === "open-workspace" || (request.type === "prompt" && request.newSession)) {
-    if (inspectWorkspace(path).trustRequired && !isProjectTrusted(path)) {
-      throw new Error("Project-local executable resources have not been trusted by the user");
-    }
-  }
-  if (request.type === "open-workspace") {
-    clearPendingTrustRequests(event.sender.id);
-    windowWorkspaces.set(event.sender.id, path);
-    if (request.sessionId) await restoreProjectSessionForUse(path, request.sessionId);
-  }
   if (request.type === "respond-ui") {
     dispatchToPi(path, request);
     return desktopResponseSchema.parse({
@@ -2269,7 +2116,6 @@ async function handleCakeRequest(
       markdown: await artifactRepository.exportMarkdown(path, request.sessionId),
     });
   }
-  if (request.type === "prompt") await restoreProjectSessionForUse(path, request.sessionId);
   dispatchToPi(path, request);
   return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
 }
@@ -2316,6 +2162,176 @@ launchMainApplication({
       const path = homedir();
       allowedProjectPaths.add(path);
       return path;
+    },
+    projectSessions: {
+      locations: Effect.fn("ProjectSessionEnvironment.locations")(function* () {
+        const records = yield* Effect.tryPromise({
+          try: () => worktrees.records(),
+          catch: (cause) =>
+            new ProjectSessionEnvironmentError({
+              operation: "locations",
+              message: cause instanceof Error ? cause.message : String(cause),
+            }),
+        });
+        const state = applicationState();
+        return [
+          ...state.projects.map((project) => ({
+            projectPath: project.path,
+            projectName: project.name,
+            workingDirectory: project.path,
+            sessionDirectory: cakePaths.piSessions,
+            resolvedSessionDirectory: cakePaths.piResolvedSessions,
+          })),
+          ...records.flatMap((record) => {
+            const project = state.projects.find((item) => item.path === record.projectPath);
+            return project
+              ? [
+                  {
+                    projectPath: project.path,
+                    projectName: project.name,
+                    workingDirectory: record.worktreePath,
+                    sessionDirectory: cakePaths.piSessions,
+                    resolvedSessionDirectory: cakePaths.piResolvedSessions,
+                    managedWorktree: record,
+                  },
+                ]
+              : [];
+          }),
+        ];
+      }),
+      runtimeOptions: Effect.fn("ProjectSessionEnvironment.runtimeOptions")(function* ({
+        location,
+        sessionId,
+        newSession,
+      }) {
+        yield* Effect.sync(() => rememberSessionLocation(location.workingDirectory, sessionId));
+        const openedSessionId = sessionId;
+        const integrations = launchPi(
+          location.workingDirectory,
+        ).driver.projectSessionRuntimeIntegrations(sessionId);
+        return {
+          profile: { _tag: "ProjectSession" as const },
+          runtime: {
+            ...integrations,
+            cwd: location.workingDirectory,
+            trusted: isProjectTrusted(location.workingDirectory),
+            agentDir: cakePaths.piAgent,
+            sessionDir: cakePaths.piSessions,
+            resolvedSessionDir: cakePaths.piResolvedSessions,
+            newSession,
+            sessionId,
+            pluginResources: pluginAgentResources,
+            utilityModel: () => applicationState().utilityModel,
+            generateSessionTitle: ({ utilityModel, firstUserMessage, signal }) =>
+              runMainEffect(
+                generateSessionTitle({
+                  selection: utilityModelSelection(utilityModel),
+                  firstUserMessage,
+                }),
+                signal,
+              ),
+            modelPresets: modelPresetAgentProjection,
+            fastMode: {
+              get: () => hasSessionFastMode(openedSessionId),
+              set: (enabled) =>
+                runMainEffect(setSessionFastMode(openedSessionId, enabled)).then(() => undefined),
+            },
+            currentSessionControl: {
+              resolved: () => applicationState().resolvedSessionIds.includes(openedSessionId),
+              setResolved: (resolved) =>
+                setProjectSessionResolution(openedSessionId, resolved, location.workingDirectory),
+            },
+            worktreeLandingControl: location.managedWorktree
+              ? {
+                  proposeSquashMessage: (message) =>
+                    worktrees.proposeSquashMessage({
+                      workspacePath: location.workingDirectory,
+                      ...message,
+                    }),
+                }
+              : undefined,
+            vscodeControl: {
+              open: (sourceLocation, signal) =>
+                openProjectLocationInEditor(location.workingDirectory, sourceLocation, signal),
+            },
+            openExternal: async (url) => {
+              const protocol = new URL(url).protocol;
+              if (protocol !== "https:" && protocol !== "http:")
+                throw new Error("Authentication URL must use HTTP or HTTPS");
+              await shell.openExternal(url);
+            },
+          },
+        };
+      }),
+      archive: Effect.fn("ProjectSessionEnvironment.archive")(function* (sessionId, location) {
+        yield* Effect.tryPromise({
+          try: async () => {
+            terminals.closeSession("project", sessionId);
+            await piHosts
+              .get(location.workingDirectory)
+              ?.driver.releaseSessionForArchive(sessionId);
+            await sessionArchive.resolve(sessionId, {
+              cwd: location.workingDirectory,
+              activeRoot: cakePaths.piSessions,
+              resolvedRoot: cakePaths.piResolvedSessions,
+            });
+          },
+          catch: (cause) =>
+            new ProjectSessionEnvironmentError({
+              operation: "archive",
+              message: cause instanceof Error ? cause.message : String(cause),
+            }),
+        });
+      }),
+      restore: Effect.fn("ProjectSessionEnvironment.restore")(function* (sessionId, location) {
+        return yield* Effect.tryPromise({
+          try: async () => {
+            const restoredWorktree = await worktrees.restoreResolved(location.workingDirectory);
+            const workingDirectory = restoredWorktree?.worktreePath ?? location.workingDirectory;
+            if (restoredWorktree) allowedProjectPaths.add(workingDirectory);
+            await sessionArchive.restore(sessionId, {
+              cwd: workingDirectory,
+              activeRoot: cakePaths.piSessions,
+              resolvedRoot: cakePaths.piResolvedSessions,
+            });
+            const restored = { ...location, workingDirectory };
+            if (restoredWorktree !== undefined)
+              Object.assign(restored, { managedWorktree: restoredWorktree });
+            return restored;
+          },
+          catch: (cause) =>
+            new ProjectSessionEnvironmentError({
+              operation: "restore",
+              message: cause instanceof Error ? cause.message : String(cause),
+            }),
+        });
+      }),
+      forkToWorkingDirectory: Effect.fn("ProjectSessionEnvironment.forkToWorkingDirectory")(
+        function* ({ sessionId, source, destination }) {
+          return yield* Effect.tryPromise({
+            try: async () => {
+              const sourceFile = await findSessionFile(
+                source.workingDirectory,
+                sessionId,
+                cakePaths.piSessions,
+              );
+              if (!sourceFile) throw new Error("Cake could not find the Project Session to fork");
+              const forked = forkWorkspaceSession(
+                sourceFile,
+                destination.workingDirectory,
+                cakePaths.piSessions,
+              );
+              rememberSessionLocation(destination.workingDirectory, forked.sessionId);
+              return forked.sessionId;
+            },
+            catch: (cause) =>
+              new ProjectSessionEnvironmentError({
+                operation: "forkToWorkingDirectory",
+                message: cause instanceof Error ? cause.message : String(cause),
+              }),
+          });
+        },
+      ),
     },
   },
   start: startApplicationCapabilities,

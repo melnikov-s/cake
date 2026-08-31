@@ -20,6 +20,7 @@ const harness = {
   getApplicationState: () => client.application.getState(),
   listModels: () => client.models.list(),
   listModelPresets: () => withClient((client) => client.modelPresets.list()),
+  listProjectSessions: () => client.projectSessions.list(),
   createModelPreset: (input: {
     name: string;
     provider: string;

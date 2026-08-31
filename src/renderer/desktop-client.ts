@@ -1,5 +1,7 @@
 import type { CakeDesktopBridge, DesktopEvent } from "../ipc/desktop-ipc";
 import type { CakeIpcPromiseClient } from "../ipc/client/CakeIpcClient";
+import type { ConversationSnapshot } from "../domain/conversation-data";
+import { sessionPreviewSchema, sessionSnapshotSchema, uiPartSchema } from "../ipc/session-contract";
 import type {
   Attachment,
   ApplicationState,
@@ -711,8 +713,89 @@ async function accept(
 
 export function createDesktopClient(
   bridge: CakeDesktopBridge,
-  rpcClient: Pick<CakeIpcPromiseClient, "application" | "models">,
+  rpcClient: Pick<CakeIpcPromiseClient, "application" | "models" | "projectSessions">,
 ): DesktopClient {
+  const listeners = new Set<(event: DesktopClientEvent) => void>();
+  const sessionSubscriptions = new Map<string, () => void>();
+  const turnOperations = new Map<string, string>();
+  const settledTurns = new Map<
+    string,
+    { readonly outcome: "complete" | "failed" | "aborted"; readonly message?: string }
+  >();
+  const publish = (event: DesktopClientEvent) => {
+    for (const listener of listeners) listener(event);
+  };
+  const legacySnapshot = (snapshot: ConversationSnapshot) =>
+    sessionSnapshotSchema.parse({
+      ...snapshot,
+      workspacePath: snapshot.workingDirectory,
+    });
+  const settleTurn = (
+    turnId: string,
+    settlement: { readonly outcome: "complete" | "failed" | "aborted"; readonly message?: string },
+  ) => {
+    const operationId = turnOperations.get(turnId);
+    if (!operationId) {
+      settledTurns.set(turnId, settlement);
+      return;
+    }
+    turnOperations.delete(turnId);
+    settledTurns.delete(turnId);
+    publish(
+      settlement.outcome === "failed"
+        ? {
+            type: "operation-failed",
+            operationId,
+            message: settlement.message ?? "Project Session turn failed",
+          }
+        : { type: "operation-completed", operationId },
+    );
+  };
+  const rememberTurn = (turnId: string, operationId: string) => {
+    turnOperations.set(turnId, operationId);
+    const settled = settledTurns.get(turnId);
+    if (settled) settleTurn(turnId, settled);
+  };
+  const observeProjectSession = (
+    sessionId: string,
+    workingDirectory: string,
+    newSession = false,
+  ) => {
+    sessionSubscriptions.get(sessionId)?.();
+    const target = { sessionId, workingDirectory };
+    if (newSession) Object.assign(target, { newSession: true });
+    const unsubscribe = rpcClient.projectSessions.observe(target, (update) => {
+      if (update._tag === "Snapshot") {
+        publish({
+          type: "session-snapshot-received",
+          snapshot: legacySnapshot(update.snapshot.conversation),
+        });
+        return;
+      }
+      const event = update.event;
+      if (event._tag === "SnapshotUpdated")
+        publish({ type: "session-snapshot-received", snapshot: legacySnapshot(event.snapshot) });
+      else if (event._tag === "PartUpdated")
+        publish({
+          type: "part-updated",
+          sessionId: event.sessionId,
+          part: uiPartSchema.parse(event.part),
+        });
+      else if (event._tag === "PartRemoved")
+        publish({ type: "part-removed", sessionId: event.sessionId, partId: event.partId });
+      else if (event._tag === "StreamingChanged")
+        publish({
+          type: "streaming-changed",
+          sessionId: event.sessionId,
+          streaming: event.streaming,
+        });
+      else if (event._tag === "ExtensionUi") {
+        // Extension UI remains on the legacy desktop event bridge until its
+        // focused renderer Store migrates in Phase 7.
+      } else if (event._tag === "TurnSettled") settleTurn(event.turnId, event);
+    });
+    sessionSubscriptions.set(sessionId, unsubscribe);
+  };
   return {
     async chooseProject() {
       const response = await bridge.request({ type: "choose-project" });
@@ -1069,10 +1152,38 @@ export function createDesktopClient(
       return response.state;
     },
     async listSessions() {
-      const response = await bridge.request({ type: "list-sessions" });
-      if (response.type !== "sessions-listed")
-        throw new Error("Cake received an invalid session index");
-      return { sessions: response.sessions, reviewThreads: response.reviewThreads };
+      const sessions = (await rpcClient.projectSessions.list()).map((session) => {
+        const projected: GlobalSessionSummary = {
+          id: session.sessionId,
+          title: session.title,
+          created: session.createdAt,
+          modified: session.modifiedAt,
+          messageCount: session.messageCount,
+          resolved: session.resolved,
+          unread: session.unread,
+          workspacePath: session.workingDirectory,
+          workspaceName: session.projectName,
+        };
+        if (session.parentSessionId !== undefined)
+          Object.assign(projected, { parentSessionId: session.parentSessionId });
+        if (session.workingDirectory !== session.projectPath)
+          Object.assign(projected, { projectPath: session.projectPath });
+        if (session.managedWorktree !== undefined)
+          Object.assign(projected, { managedWorktree: session.managedWorktree });
+        return projected;
+      });
+      const reviewThreads = (
+        await Promise.all(
+          sessions.map(async (session) => {
+            const response = await bridge.request({
+              type: "list-review-threads",
+              sessionId: session.id,
+            });
+            return response.type === "review-threads-loaded" ? response.threads : [];
+          }),
+        )
+      ).flat();
+      return { sessions, reviewThreads };
     },
     async listCakeChatSessions() {
       const response = await bridge.request({ type: "list-cake-chat-sessions" });
@@ -1087,10 +1198,13 @@ export function createDesktopClient(
       return response.session;
     },
     async loadSession(sessionId) {
-      const response = await bridge.request({ type: "load-session", sessionId });
-      if (response.type !== "session-loaded")
-        throw new Error("Cake received invalid session content");
-      return response.session;
+      const preview = await rpcClient.projectSessions.inspect({ sessionId });
+      return sessionPreviewSchema.parse({
+        workspacePath: preview.workingDirectory,
+        sessionId: preview.sessionId,
+        sessionFile: preview.sessionFile,
+        parts: preview.parts,
+      });
     },
     openGlobalChat: (input) =>
       accept(bridge, {
@@ -1244,21 +1358,29 @@ export function createDesktopClient(
       return response.state;
     },
     async resolveSession(sessionId, resolved) {
-      const response = await bridge.request({ type: "resolve-session", sessionId, resolved });
-      if (response.type !== "application-state-updated")
-        throw new Error("Cake could not resolve the session");
-      return response.state;
+      const target = { sessionId };
+      if (resolved) await rpcClient.projectSessions.resolve(target);
+      else await rpcClient.projectSessions.restore(target);
+      sessionSubscriptions.get(sessionId)?.();
+      sessionSubscriptions.delete(sessionId);
+      return rpcClient.application.getState();
     },
     async resolveSessions(sessionIds, resolved, workspacePath) {
-      const response = await bridge.request({
-        type: "resolve-sessions",
-        sessionIds: [...sessionIds],
-        resolved,
-        workspacePath,
-      });
-      if (response.type !== "application-state-updated")
-        throw new Error("Cake could not resolve the sessions");
-      return response.state;
+      await Promise.all(
+        sessionIds.map((sessionId) => {
+          const target = { sessionId };
+          if (workspacePath !== undefined)
+            Object.assign(target, { workingDirectory: workspacePath });
+          return resolved
+            ? rpcClient.projectSessions.resolve(target)
+            : rpcClient.projectSessions.restore(target);
+        }),
+      );
+      for (const sessionId of sessionIds) {
+        sessionSubscriptions.get(sessionId)?.();
+        sessionSubscriptions.delete(sessionId);
+      }
+      return rpcClient.application.getState();
     },
     async deleteSession(sessionId) {
       const response = await bridge.request({ type: "delete-session", sessionId });
@@ -1300,15 +1422,32 @@ export function createDesktopClient(
         path: input.path,
         approved: input.approved,
       }),
-    openWorkspace: (input) =>
-      accept(bridge, {
-        type: "open-workspace",
-        requestId: input.operationId,
-        path: input.path,
-        newSession: input.newSession ?? false,
-        sessionId: input.sessionId,
-        configuration: input.configuration,
-      }),
+    async openWorkspace(input) {
+      const sessionId = input.sessionId ?? crypto.randomUUID();
+      const create = input.newSession === true || input.sessionId === undefined;
+      observeProjectSession(sessionId, input.path, create);
+      if (create) {
+        const createInput = { sessionId, workingDirectory: input.path };
+        if (input.configuration !== undefined)
+          Object.assign(createInput, { configuration: input.configuration });
+        const snapshot = await rpcClient.projectSessions.create(createInput);
+        publish({
+          type: "session-snapshot-received",
+          operationId: input.operationId,
+          snapshot: legacySnapshot(snapshot),
+        });
+        return;
+      }
+      const snapshot = await rpcClient.projectSessions.open({
+        sessionId,
+        workingDirectory: input.path,
+      });
+      publish({
+        type: "session-snapshot-received",
+        operationId: input.operationId,
+        snapshot: legacySnapshot(snapshot),
+      });
+    },
     async createWorktree(input) {
       const response = await bridge.request({
         type: "create-worktree",
@@ -1347,18 +1486,13 @@ export function createDesktopClient(
         keepBranch: input.keepBranch,
       }),
     async forkSessionToWorkspace(input) {
-      const response = await bridge.request({
-        type: "fork-session-to-workspace",
-        requestId: input.operationId,
+      return rpcClient.projectSessions.fork({
         sessionId: input.sessionId,
+        workingDirectory: input.sourceWorkspacePath,
         entryId: input.entryId,
-        sourceWorkspacePath: input.sourceWorkspacePath,
-        destinationWorkspacePath: input.destinationWorkspacePath,
+        destinationWorkingDirectory: input.destinationWorkspacePath,
         resolveSource: input.resolveSource,
       });
-      if (response.type !== "session-forked-to-workspace")
-        throw new Error("Cake could not fork the session into the selected workspace");
-      return { sessionId: response.sessionId };
     },
     steerSubagent: (input) =>
       accept(bridge, {
@@ -1372,17 +1506,33 @@ export function createDesktopClient(
         requestId: crypto.randomUUID(),
         ...input,
       }),
-    submit: (input) =>
-      accept(bridge, {
-        type: "prompt",
-        requestId: input.operationId,
+    async submit(input) {
+      if (input.newSession) {
+        observeProjectSession(input.sessionId, input.newSession.path, true);
+        const createInput = {
+          sessionId: input.sessionId,
+          workingDirectory: input.newSession.path,
+        };
+        if (input.newSession.configuration !== undefined)
+          Object.assign(createInput, { configuration: input.newSession.configuration });
+        if (input.newSession.name !== undefined)
+          Object.assign(createInput, { name: input.newSession.name });
+        await rpcClient.projectSessions.create(createInput);
+      }
+      const command =
+        input.delivery === "steer"
+          ? rpcClient.projectSessions.steer
+          : input.delivery === "follow-up"
+            ? rpcClient.projectSessions.followUp
+            : rpcClient.projectSessions.prompt;
+      const turnId = await command({
         sessionId: input.sessionId,
         text: input.text,
-        delivery: input.delivery,
-        renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
         attachments: input.attachments,
-        newSession: input.newSession,
-      }),
+        renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
+      });
+      rememberTurn(turnId, input.operationId);
+    },
     editSessionMessage: (input) =>
       accept(bridge, {
         type: "edit-session-message",
@@ -1402,8 +1552,10 @@ export function createDesktopClient(
         model: input.model,
         thinkingLevel: input.thinkingLevel,
       }),
-    abort: (input) =>
-      accept(bridge, { type: "abort", requestId: input.operationId, sessionId: input.sessionId }),
+    async abort(input) {
+      await rpcClient.projectSessions.abort({ sessionId: input.sessionId });
+      publish({ type: "operation-completed", operationId: input.operationId });
+    },
     compactSession: (input) =>
       accept(bridge, {
         type: "compact-session",
@@ -1474,21 +1626,22 @@ export function createDesktopClient(
         sessionId: input.sessionId,
         provider: input.provider,
       }),
-    renameSession: (input) =>
-      accept(bridge, {
-        type: "rename-session",
-        requestId: input.operationId,
-        sessionId: input.sessionId,
-        name: input.name,
-      }),
-    forkSession: (input) =>
-      accept(bridge, {
-        type: "fork-session",
-        requestId: input.operationId,
+    async renameSession(input) {
+      await rpcClient.projectSessions.rename({ sessionId: input.sessionId, name: input.name });
+      publish({ type: "operation-completed", operationId: input.operationId });
+    },
+    async forkSession(input) {
+      const forked = await rpcClient.projectSessions.fork({
         sessionId: input.sessionId,
         entryId: input.entryId,
         resolveSource: input.resolveSource ?? false,
-      }),
+      });
+      publish({ type: "operation-completed", operationId: input.operationId });
+      const source = (await rpcClient.projectSessions.list()).find(
+        (session) => session.sessionId === forked.sessionId,
+      );
+      if (source) observeProjectSession(forked.sessionId, source.workingDirectory);
+    },
     handoffSession: (input) =>
       accept(bridge, {
         type: "handoff-session",
@@ -1545,10 +1698,19 @@ export function createDesktopClient(
       return response.markdown;
     },
     subscribe(listener) {
-      return bridge.subscribe((event) => {
+      listeners.add(listener);
+      const unsubscribeBridge = bridge.subscribe((event) => {
         const mapped = toClientEvent(event);
         if (mapped) listener(mapped);
       });
+      return () => {
+        listeners.delete(listener);
+        unsubscribeBridge();
+        if (listeners.size === 0) {
+          for (const unsubscribe of sessionSubscriptions.values()) unsubscribe();
+          sessionSubscriptions.clear();
+        }
+      };
     },
   };
 }

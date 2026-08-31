@@ -1,0 +1,128 @@
+import { Schema } from "effect";
+import { ThinkingLevel } from "../services/pi/model-data";
+import { ManagedWorktreeContext } from "../services/project-sessions/ProjectSessionEnvironment";
+import { CakeSessionIdentity, ConversationEvent, ConversationSnapshot } from "./conversation-data";
+
+const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
+const boundedPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
+const boundedText = Schema.String.check(Schema.isMaxLength(262_144));
+
+export const ProjectSessionSummary = Schema.Struct({
+  sessionId: boundedId,
+  title: Schema.String,
+  createdAt: Schema.String,
+  modifiedAt: Schema.String,
+  messageCount: Schema.Int,
+  parentSessionId: Schema.optionalKey(boundedId),
+  resolved: Schema.Boolean,
+  unread: Schema.Boolean,
+  projectPath: boundedPath,
+  projectName: Schema.String,
+  workingDirectory: boundedPath,
+  managedWorktree: Schema.optionalKey(ManagedWorktreeContext),
+});
+export interface ProjectSessionSummary extends Schema.Schema.Type<typeof ProjectSessionSummary> {}
+
+export const ProjectSessionPreview = Schema.Struct({
+  sessionId: boundedId,
+  projectPath: boundedPath,
+  workingDirectory: boundedPath,
+  sessionFile: boundedPath,
+  parts: Schema.Array(Schema.Json),
+  resolved: Schema.Boolean,
+  managedWorktree: Schema.optionalKey(ManagedWorktreeContext),
+});
+export interface ProjectSessionPreview extends Schema.Schema.Type<typeof ProjectSessionPreview> {}
+
+export const ProjectSessionSnapshot = Schema.Struct({
+  identity: CakeSessionIdentity,
+  projectName: Schema.String,
+  resolved: Schema.Boolean,
+  unread: Schema.Boolean,
+  managedWorktree: Schema.optionalKey(ManagedWorktreeContext),
+  conversation: ConversationSnapshot,
+});
+export interface ProjectSessionSnapshot extends Schema.Schema.Type<typeof ProjectSessionSnapshot> {}
+
+export const ProjectSessionUpdate = Schema.TaggedUnion({
+  Snapshot: { revision: Schema.Int, snapshot: ProjectSessionSnapshot },
+  Event: { revision: Schema.Int, sessionId: boundedId, event: ConversationEvent },
+});
+export type ProjectSessionUpdate = Schema.Schema.Type<typeof ProjectSessionUpdate>;
+
+export const ProjectSessionTarget = Schema.Struct({
+  sessionId: boundedId,
+  workingDirectory: Schema.optionalKey(boundedPath),
+  newSession: Schema.optionalKey(Schema.Boolean),
+});
+export interface ProjectSessionTarget extends Schema.Schema.Type<typeof ProjectSessionTarget> {}
+
+const ChatConfiguration = Schema.Struct({
+  provider: Schema.String,
+  modelId: Schema.String,
+  thinkingLevel: ThinkingLevel,
+  fastMode: Schema.Boolean,
+});
+
+export const ProjectSessionCreateInput = Schema.Struct({
+  sessionId: boundedId,
+  projectPath: Schema.optionalKey(boundedPath),
+  workingDirectory: boundedPath,
+  configuration: Schema.optionalKey(ChatConfiguration),
+  name: Schema.optionalKey(Schema.String),
+});
+export interface ProjectSessionCreateInput extends Schema.Schema.Type<
+  typeof ProjectSessionCreateInput
+> {}
+
+const Attachment = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("file"), name: Schema.String, path: Schema.String }),
+  Schema.Struct({
+    kind: Schema.Literal("image"),
+    name: Schema.String,
+    mimeType: Schema.String,
+    data: Schema.String,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("source"),
+    name: Schema.String,
+    location: Schema.Struct({
+      path: Schema.String,
+      range: Schema.Struct({
+        start: Schema.Struct({ line: Schema.Int }),
+        end: Schema.Struct({ line: Schema.Int }),
+      }),
+    }),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("annotation"),
+    annotations: Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        messageId: Schema.String,
+        entryId: Schema.optionalKey(Schema.String),
+        selectedText: Schema.String,
+        startOffset: Schema.Int,
+        endOffset: Schema.Int,
+        contextBefore: Schema.String,
+        contextAfter: Schema.String,
+        comment: Schema.optionalKey(Schema.String),
+      }),
+    ),
+  }),
+]);
+
+export const ProjectSessionPromptInput = Schema.Struct({
+  sessionId: boundedId,
+  text: boundedText,
+  attachments: Schema.Array(Attachment).check(Schema.isMaxLength(20)),
+  renderUserMessageAsMarkdown: Schema.Boolean,
+});
+export interface ProjectSessionPromptInput extends Schema.Schema.Type<
+  typeof ProjectSessionPromptInput
+> {}
+
+export class ProjectSessionError extends Schema.TaggedError<ProjectSessionError>()(
+  "ProjectSessionError",
+  { operation: Schema.String, message: Schema.String },
+) {}

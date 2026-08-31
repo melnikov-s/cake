@@ -1,0 +1,74 @@
+import { Context, Layer, Schema } from "effect";
+import type { Effect } from "effect";
+import type { PiSessionAcquireOptions } from "../pi/PiSessions";
+
+export const ManagedWorktreeContext = Schema.Struct({
+  projectPath: Schema.String,
+  worktreePath: Schema.String,
+  branch: Schema.String,
+  baseBranch: Schema.String,
+  parentWorktreePath: Schema.optionalKey(Schema.String),
+  baseCommit: Schema.optionalKey(Schema.String),
+  state: Schema.optionalKey(
+    Schema.Literals(["active", "landed", "resolved", "discarded", "missing"]),
+  ),
+  pendingStrategy: Schema.optionalKey(Schema.Literals(["preserve", "squash"])),
+  createdAt: Schema.String,
+});
+export interface ManagedWorktreeContext extends Schema.Schema.Type<typeof ManagedWorktreeContext> {}
+
+export const ProjectSessionLocation = Schema.Struct({
+  projectPath: Schema.String,
+  projectName: Schema.String,
+  workingDirectory: Schema.String,
+  sessionDirectory: Schema.String,
+  resolvedSessionDirectory: Schema.String,
+  managedWorktree: Schema.optionalKey(ManagedWorktreeContext),
+});
+export interface ProjectSessionLocation extends Schema.Schema.Type<typeof ProjectSessionLocation> {}
+
+export class ProjectSessionEnvironmentError extends Schema.TaggedError<ProjectSessionEnvironmentError>()(
+  "ProjectSessionEnvironmentError",
+  { operation: Schema.String, message: Schema.String },
+) {}
+
+export interface ProjectSessionEnvironmentService {
+  readonly locations: () => Effect.Effect<
+    ReadonlyArray<ProjectSessionLocation>,
+    ProjectSessionEnvironmentError
+  >;
+  readonly runtimeOptions: (input: {
+    readonly location: ProjectSessionLocation;
+    readonly sessionId: string;
+    readonly newSession: boolean;
+  }) => Effect.Effect<PiSessionAcquireOptions, ProjectSessionEnvironmentError>;
+  readonly archive: (
+    sessionId: string,
+    location: ProjectSessionLocation,
+  ) => Effect.Effect<void, ProjectSessionEnvironmentError>;
+  readonly restore: (
+    sessionId: string,
+    location: ProjectSessionLocation,
+  ) => Effect.Effect<ProjectSessionLocation, ProjectSessionEnvironmentError>;
+  readonly forkToWorkingDirectory: (input: {
+    readonly sessionId: string;
+    readonly entryId: string;
+    readonly source: ProjectSessionLocation;
+    readonly destination: ProjectSessionLocation;
+  }) => Effect.Effect<string, ProjectSessionEnvironmentError>;
+}
+
+/**
+ * Temporary outside-world adapter for Project Session paths, archive moves, and
+ * Managed Worktree integration. Phase 9 replaces its worktree portion with the
+ * Git/WorktreeStorage Services; it contains no Cake Session business policy.
+ */
+export class ProjectSessionEnvironment extends Context.Service<
+  ProjectSessionEnvironment,
+  ProjectSessionEnvironmentService
+>()("cake/services/project-sessions/ProjectSessionEnvironment") {}
+
+export const makeProjectSessionEnvironmentLayer = (
+  service: ProjectSessionEnvironmentService,
+): Layer.Layer<ProjectSessionEnvironment> =>
+  Layer.succeed(ProjectSessionEnvironment, ProjectSessionEnvironment.of(service));

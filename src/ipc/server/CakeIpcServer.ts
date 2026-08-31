@@ -2,6 +2,7 @@ import { Duration, Effect, Layer, Stream } from "effect";
 import { RpcServer } from "effect/unstable/rpc";
 import { getState } from "../../domain/application";
 import * as modelPresets from "../../domain/modelPresets";
+import * as projectSessions from "../../domain/projectSessions";
 import { PiModels } from "../../services/pi/PiModels";
 import { CakeRpc, FoundationFailure } from "../protocol/CakeRpc";
 import {
@@ -9,9 +10,11 @@ import {
   RendererConnectionMiddlewareLive,
 } from "../protocol/RendererConnectionMiddleware";
 import { ElectronRpcServerProtocolLive } from "../transport/ElectronRpcServerProtocol";
+import type { ProjectSessionEnvironmentService } from "../../services/project-sessions/ProjectSessionEnvironment";
 
 export interface CakeIpcServerOperations {
   readonly getHomeDirectory: () => string | Promise<string>;
+  readonly projectSessions: ProjectSessionEnvironmentService;
 }
 
 export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
@@ -34,6 +37,30 @@ export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
     "modelPresets.remove": ({ id }) => modelPresets.remove(id),
     "modelPresets.setDefault": ({ id }) => modelPresets.setDefault(id),
     "modelPresets.resolve": ({ id }) => modelPresets.resolve(id),
+    "projectSessions.list": () => projectSessions.list(),
+    "projectSessions.inspect": (target) => projectSessions.inspect(target),
+    "projectSessions.create": (input) => projectSessions.create(input),
+    "projectSessions.open": (target) => projectSessions.open(target),
+    "projectSessions.observe": (target) => Stream.unwrap(projectSessions.observe(target)),
+    "projectSessions.prompt": (input) => projectSessions.prompt(input),
+    "projectSessions.steer": (input) => projectSessions.steer(input),
+    "projectSessions.followUp": (input) => projectSessions.followUp(input),
+    "projectSessions.abort": (target) => projectSessions.abort(target),
+    "projectSessions.rename": ({ name, ...target }) => projectSessions.rename(target, name),
+    "projectSessions.fork": ({
+      entryId,
+      destinationWorkingDirectory,
+      resolveSource,
+      ...target
+    }) => {
+      const input: Parameters<typeof projectSessions.fork>[0] = { target, entryId };
+      if (destinationWorkingDirectory !== undefined)
+        Object.assign(input, { destinationWorkingDirectory });
+      if (resolveSource !== undefined) Object.assign(input, { resolveSource });
+      return projectSessions.fork(input);
+    },
+    "projectSessions.resolve": (target) => projectSessions.resolve(target).pipe(Effect.asVoid),
+    "projectSessions.restore": (target) => projectSessions.restore(target).pipe(Effect.asVoid),
     "foundation.typedFailure": () =>
       Effect.fail(new FoundationFailure({ message: "Schema-decoded foundation failure" })),
     "foundation.stream": ({ count, intervalMs }) =>

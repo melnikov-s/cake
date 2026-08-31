@@ -7,6 +7,7 @@ import {
   Layer,
   PubSub,
   RcMap,
+  Ref,
   Schedule,
   Schema,
   Scope,
@@ -65,7 +66,20 @@ export class PiSessionError extends Schema.TaggedError<PiSessionError>()("PiSess
 
 export type PiSessionEvent =
   | Exclude<CakeRuntimeEvent, { readonly type: "snapshot" }>
-  | { readonly type: "snapshot-updated"; readonly snapshot: SessionSnapshot };
+  | { readonly type: "snapshot-updated"; readonly snapshot: SessionSnapshot }
+  | {
+      readonly type: "turn-accepted";
+      readonly sessionId: string;
+      readonly turnId: string;
+      readonly delivery: "prompt" | "steer" | "follow-up";
+    }
+  | {
+      readonly type: "turn-settled";
+      readonly sessionId: string;
+      readonly turnId: string;
+      readonly outcome: "complete" | "failed" | "aborted";
+      readonly message?: string;
+    };
 
 export type PiSessionUpdate =
   | { readonly _tag: "Snapshot"; readonly snapshot: SessionSnapshot }
@@ -88,15 +102,15 @@ export interface PiSessionHandle {
     text: string,
     attachments?: ReadonlyArray<Attachment>,
     renderUserMessageAsMarkdown?: boolean,
-  ) => Effect.Effect<void, PiSessionError>;
+  ) => Effect.Effect<string, PiSessionError>;
   readonly steer: (
     text: string,
     attachments?: ReadonlyArray<Attachment>,
-  ) => Effect.Effect<void, PiSessionError>;
+  ) => Effect.Effect<string, PiSessionError>;
   readonly followUp: (
     text: string,
     attachments?: ReadonlyArray<Attachment>,
-  ) => Effect.Effect<void, PiSessionError>;
+  ) => Effect.Effect<string, PiSessionError>;
   readonly abort: () => Effect.Effect<void, PiSessionError>;
   readonly executeCommand: (
     command: string,
@@ -109,6 +123,7 @@ export interface PiSessionHandle {
   readonly setThinkingLevel: (level: ThinkingLevel) => Effect.Effect<void, PiSessionError>;
   readonly setPiSetting: (update: PiSettingUpdate) => Effect.Effect<void, PiSessionError>;
   readonly compact: (instructions?: string) => Effect.Effect<void, PiSessionError>;
+  readonly rename: (name: string) => Effect.Effect<void, PiSessionError>;
   readonly fork: (
     entryId: string,
   ) => Effect.Effect<{ readonly sessionId: string; readonly sessionFile: string }, PiSessionError>;
@@ -139,6 +154,7 @@ interface SharedRuntime {
   readonly fingerprint: string;
   readonly runtime: CakeRuntime;
   readonly events: PubSub.PubSub<PiSessionEvent>;
+  readonly activeTurns: Ref.Ref<ReadonlyMap<string, "prompt" | "steer" | "follow-up">>;
 }
 
 class RuntimeKey implements Equal.Equal {
@@ -178,7 +194,9 @@ const runtimeFingerprint = (options: PiSessionAcquireOptions): string => {
     agentDir: runtime.agentDir,
     sessionDir: runtime.sessionDir,
     resolvedSessionDir: runtime.resolvedSessionDir,
-    newSession: runtime.newSession ?? false,
+    // Once a caller creates an explicit session ID, later open/command
+    // acquisitions address that same runtime. Creation mode is not a lasting
+    // runtime policy and therefore is not part of the conflict fingerprint.
     sessionId: runtime.sessionId,
     sessionFile: runtime.sessionFile,
     trusted: runtime.trusted,
@@ -220,6 +238,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
   Layer.effect(
     PiSessions,
     Effect.gen(function* () {
+      const layerScope = yield* Effect.scope;
       // RcMap is the process-local keyed resource owner. Each acquire retains a
       // reference in its caller Scope; the final release disposes the one Pi
       // runtime. Equal/Hash intentionally key only by Pi Session target, while
@@ -229,6 +248,9 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           Effect.acquireRelease(
             Effect.gen(function* () {
               const events = yield* PubSub.unbounded<PiSessionEvent>();
+              const activeTurns = yield* Ref.make<
+                ReadonlyMap<string, "prompt" | "steer" | "follow-up">
+              >(new Map());
               const runtime = yield* adapter.createRuntime({
                 ...key.options.runtime,
                 onEvent(event) {
@@ -239,7 +261,12 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
                   PubSub.publishUnsafe(events, projected);
                 },
               });
-              return { fingerprint: key.fingerprint, runtime, events } satisfies SharedRuntime;
+              return {
+                fingerprint: key.fingerprint,
+                runtime,
+                events,
+                activeTurns,
+              } satisfies SharedRuntime;
             }),
             ({ runtime, events }) =>
               Effect.tryPromise({
@@ -322,16 +349,81 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           }),
         );
 
+        const startTurn = Effect.fn("PiSessions.startTurn")(function* (
+          delivery: "prompt" | "steer" | "follow-up",
+          text: string,
+          attachments: ReadonlyArray<Attachment>,
+          markdown = false,
+        ) {
+          const turnId = crypto.randomUUID();
+          const turnScope = yield* Scope.make();
+          const retained = yield* RcMap.get(runtimes, key).pipe(
+            Effect.provideService(Scope.Scope, turnScope),
+            sessionError(delivery),
+          );
+          yield* Ref.update(retained.activeTurns, (turns) => new Map(turns).set(turnId, delivery));
+          yield* PubSub.publish(retained.events, {
+            type: "turn-accepted",
+            sessionId: retained.runtime.sessionId,
+            turnId,
+            delivery,
+          });
+          const settle = Effect.fn("PiSessions.settleTurn")(function* (
+            outcome: "complete" | "failed",
+            message?: string,
+          ) {
+            const active = yield* Ref.modify(retained.activeTurns, (turns) => {
+              if (!turns.has(turnId)) return [false, turns] as const;
+              const next = new Map(turns);
+              next.delete(turnId);
+              return [true, next] as const;
+            });
+            if (active) {
+              const event: PiSessionEvent = {
+                type: "turn-settled",
+                sessionId: retained.runtime.sessionId,
+                turnId,
+                outcome,
+              };
+              if (message !== undefined) Object.assign(event, { message });
+              yield* PubSub.publish(retained.events, event);
+            }
+          });
+          const run = runtimeOperation(delivery, () =>
+            retained.runtime.prompt(text, delivery, [...attachments], markdown),
+          ).pipe(
+            Effect.matchEffect({
+              onSuccess: () => settle("complete"),
+              onFailure: (error) => settle("failed", error.message),
+            }),
+            Effect.ensuring(Scope.close(turnScope, Exit.void)),
+          );
+          yield* run.pipe(Effect.forkIn(layerScope));
+          return turnId;
+        });
+
         return {
           updates,
           snapshot: () => call("snapshot", (runtime) => runtime.snapshot()),
           prompt: (text, attachments = [], markdown = false) =>
-            call("prompt", (runtime) => runtime.prompt(text, "prompt", [...attachments], markdown)),
-          steer: (text, attachments = []) =>
-            call("steer", (runtime) => runtime.prompt(text, "steer", [...attachments])),
-          followUp: (text, attachments = []) =>
-            call("followUp", (runtime) => runtime.prompt(text, "follow-up", [...attachments])),
-          abort: () => call("abort", (runtime) => runtime.abort()),
+            startTurn("prompt", text, attachments, markdown),
+          steer: (text, attachments = []) => startTurn("steer", text, attachments),
+          followUp: (text, attachments = []) => startTurn("follow-up", text, attachments),
+          abort: Effect.fn("PiSessions.abort")(function* () {
+            const active = yield* Ref.getAndSet(shared.activeTurns, new Map());
+            yield* call("abort", (runtime) => runtime.abort());
+            yield* Effect.forEach(
+              active,
+              ([turnId]) =>
+                PubSub.publish(shared.events, {
+                  type: "turn-settled",
+                  sessionId: shared.runtime.sessionId,
+                  turnId,
+                  outcome: "aborted",
+                }),
+              { discard: true },
+            );
+          }),
           executeCommand: (command, arguments_) =>
             command === "changelog"
               ? adapter.changelog().pipe(
@@ -355,6 +447,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
             call("setThinkingLevel", (runtime) => runtime.setThinkingLevel(level)),
           setPiSetting: (update) => call("setPiSetting", (runtime) => runtime.setPiSetting(update)),
           compact: (instructions) => call("compact", (runtime) => runtime.compact(instructions)),
+          rename: (name) => call("rename", (runtime) => runtime.rename(name)),
           fork: (entryId) => call("fork", (runtime) => runtime.fork(entryId)),
           reload: () =>
             shared.runtime.reload

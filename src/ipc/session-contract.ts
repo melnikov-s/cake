@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { worktreeRecordSchema } from "./worktree-contract";
+import type { WorktreeRecord } from "./worktree-contract";
 import { artifactRecordSchema } from "./artifact-contract";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { sourceLocationSchema } from "./source-location";
@@ -340,16 +340,6 @@ export const sessionSummarySchema = z.object({
   draft: z.boolean().optional(),
 });
 
-export const globalSessionSummarySchema = sessionSummarySchema.extend({
-  /** User-marked reminder state shown as the unread activity badge. */
-  unread: z.boolean().default(false),
-  workspacePath: z.string().min(1).max(4_096),
-  workspaceName: ipcProjectionString(512).pipe(z.string().min(1)),
-  /** Set when the session works inside a managed worktree belonging to this project. */
-  projectPath: z.string().min(1).max(4_096).optional(),
-  managedWorktree: worktreeRecordSchema.optional(),
-});
-
 const sessionTreeEntrySchema = z.object({
   id: z.string().min(1).max(256),
   parentId: z.string().max(256).optional(),
@@ -602,7 +592,15 @@ export type PiSettingUpdate = z.infer<typeof piSettingUpdateSchema>;
 export type SessionSnapshot = z.infer<typeof sessionSnapshotSchema>;
 export type SessionPreview = z.infer<typeof sessionPreviewSchema>;
 export type SessionSummary = z.infer<typeof sessionSummarySchema>;
-export type GlobalSessionSummary = z.infer<typeof globalSessionSummarySchema>;
+export type GlobalSessionSummary = SessionSummary & {
+  /** User-marked reminder state shown as the unread activity badge. */
+  unread: boolean;
+  workspacePath: string;
+  workspaceName: string;
+  /** Set when the session works inside a managed worktree belonging to this project. */
+  projectPath?: string;
+  managedWorktree?: WorktreeRecord;
+};
 export type SessionTreeEntry = z.infer<typeof sessionTreeEntrySchema>;
 export type CompatibilityResource = z.infer<typeof compatibilityResourceSchema>;
 export type ResourceDiagnostic = z.infer<typeof resourceDiagnosticSchema>;

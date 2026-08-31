@@ -12,6 +12,16 @@ import {
   ModelPresetValidationError,
 } from "../../domain/modelPresets";
 import {
+  ProjectSessionCreateInput,
+  ProjectSessionError,
+  ProjectSessionPreview,
+  ProjectSessionPromptInput,
+  ProjectSessionSummary,
+  ProjectSessionTarget,
+  ProjectSessionUpdate,
+} from "../../domain/project-session-data";
+import { ConversationSnapshot, TurnId } from "../../domain/conversation-data";
+import {
   ModelSelection,
   PiModel,
   PiModelCatalogError,
@@ -93,6 +103,72 @@ export const CakeRpc = RpcGroup.make(
     payload: { id: Schema.String.check(Schema.isUUID(4)) },
     success: ModelSelection,
     error: ModelResolutionError,
+  }),
+  Rpc.make("projectSessions.list", {
+    success: Schema.Array(ProjectSessionSummary),
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.inspect", {
+    payload: ProjectSessionTarget,
+    success: ProjectSessionPreview,
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.create", {
+    payload: ProjectSessionCreateInput,
+    success: ConversationSnapshot,
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.open", {
+    payload: ProjectSessionTarget,
+    success: ConversationSnapshot,
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.observe", {
+    payload: ProjectSessionTarget,
+    success: ProjectSessionUpdate,
+    error: ProjectSessionError,
+    stream: true,
+  }),
+  Rpc.make("projectSessions.prompt", {
+    payload: ProjectSessionPromptInput,
+    success: TurnId,
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.steer", {
+    payload: ProjectSessionPromptInput,
+    success: TurnId,
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.followUp", {
+    payload: ProjectSessionPromptInput,
+    success: TurnId,
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.abort", {
+    payload: ProjectSessionTarget,
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.rename", {
+    payload: { ...ProjectSessionTarget.fields, name: Schema.String },
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.fork", {
+    payload: {
+      ...ProjectSessionTarget.fields,
+      entryId: Schema.String,
+      destinationWorkingDirectory: Schema.optionalKey(Schema.String),
+      resolveSource: Schema.optionalKey(Schema.Boolean),
+    },
+    success: Schema.Struct({ sessionId: Schema.String }),
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.resolve", {
+    payload: ProjectSessionTarget,
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.restore", {
+    payload: ProjectSessionTarget,
+    error: ProjectSessionError,
   }),
   Rpc.make("foundation.typedFailure", {
     error: FoundationFailure,
