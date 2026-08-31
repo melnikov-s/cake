@@ -6,7 +6,7 @@ import { BackIcon, FolderPlusIcon, ForwardIcon, SettingsIcon, SidebarIcon } from
 import { SidebarCakeChatGroup } from "./sidebar-cake-chat-group";
 import { SidebarProjectGroup } from "./sidebar-project-group";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
-import type { ProjectCatalogStoreInstance } from "../stores/ProjectCatalogStore";
+import type { ProjectCatalogStore } from "../stores/ProjectCatalogStore";
 import type { SidebarStore } from "../stores/SidebarStore";
 import type { GlobalChatStore } from "../stores/GlobalChatStore";
 import type { AppShellStore } from "../stores/AppShellStore";
@@ -28,10 +28,9 @@ export const Sidebar = observer(function Sidebar({
   onGoBack,
   onGoForward,
   onToggle,
-  catalogRevision,
 }: {
   store: SidebarStore;
-  projects: ProjectCatalogStoreInstance;
+  projects: ProjectCatalogStore;
   chat: ProjectWorkbenchStore;
   cakeChat: GlobalChatStore;
   shell: AppShellStore;
@@ -45,9 +44,7 @@ export const Sidebar = observer(function Sidebar({
   onGoBack(): void;
   onGoForward(): void;
   onToggle: () => void;
-  catalogRevision?: number;
 }) {
-  void catalogRevision;
   const projectPaths = projects.orderedProjectPaths;
   return (
     <aside className="flex h-full min-w-0 flex-col overflow-hidden border-r border-border/72 bg-sidebar select-none">
@@ -112,7 +109,6 @@ export const Sidebar = observer(function Sidebar({
               onCreateSession={onCreateSession}
               onOpenSession={onOpenSession}
               onRemoveProject={onRemoveProject}
-              catalogRevision={catalogRevision}
             />
           ))
         )}
@@ -157,7 +153,6 @@ export const Sidebar = observer(function Sidebar({
                     onCreateSession={onCreateSession}
                     onOpenSession={onOpenSession}
                     onRemoveProject={onRemoveProject}
-                    catalogRevision={catalogRevision}
                   />
                 ))}
               </div>

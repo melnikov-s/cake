@@ -102,7 +102,7 @@ export const SettingsPage = observer(function SettingsPage({
         )}
       </section>
 
-      <ModelPresetSettings />
+      <ModelPresetSettings settings={settings.modelPresets} />
 
       <section className="border-t border-border py-5" aria-labelledby="default-model-title">
         <header className="mb-4 flex items-start justify-between gap-4">

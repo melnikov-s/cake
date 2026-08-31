@@ -116,6 +116,14 @@ function createBridge() {
       models: {
         list: async () => [],
       },
+      modelPresets: {
+        list: vi.fn(async () => ({ presets: [] })),
+        create: vi.fn(),
+        update: vi.fn(),
+        remove: vi.fn(),
+        setDefault: vi.fn(),
+        resolve: vi.fn(),
+      },
       cakeChats: {
         list: vi.fn(async () => []),
         inspect: vi.fn(async (sessionId: string) => ({
@@ -152,6 +160,12 @@ function createBridge() {
         prompt: vi.fn(),
         abort: vi.fn(async () => undefined),
         setResolved: vi.fn(),
+      },
+      subagents: {
+        observe: vi.fn(() => () => undefined),
+        steer: vi.fn(async () => undefined),
+        abort: vi.fn(async () => undefined),
+        close: vi.fn(async () => undefined),
       },
       projectSessions: {
         list: vi.fn(async () => []),
@@ -396,16 +410,12 @@ describe("desktop client", () => {
     expect(desktop.rpcClient.projectSessions.inspect).toHaveBeenCalledWith({
       sessionId: "session",
     });
-    expect(desktop.request).toHaveBeenCalledWith({
-      type: "steer-subagent",
-      requestId: expect.any(String),
+    expect(desktop.rpcClient.subagents.steer).toHaveBeenCalledWith({
       parentSessionId: "session",
       handleId,
       text: "Check cancellation too",
     });
-    expect(desktop.request).toHaveBeenCalledWith({
-      type: "abort-subagent",
-      requestId: expect.any(String),
+    expect(desktop.rpcClient.subagents.abort).toHaveBeenCalledWith({
       parentSessionId: "session",
       handleId,
     });

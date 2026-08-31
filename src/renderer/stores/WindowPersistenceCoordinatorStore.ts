@@ -2,12 +2,12 @@ import { Store } from "r-state-tree";
 import type { WindowViewState } from "../../ipc/session-contract";
 import type { DesktopClient } from "../desktop-client";
 import { describeError } from "../error-details";
-import type { ProjectCatalogStoreInstance } from "./ProjectCatalogStore";
+import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { AppShellStore } from "./AppShellStore";
 import type { GlobalChatStore } from "./GlobalChatStore";
 import type { ProjectSessionStore } from "./ProjectSessionStore";
 import type { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
-import type { SessionCatalogStoreInstance } from "./SessionCatalogStore";
+import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SettingsStore } from "./SettingsStore";
 import type { SidebarStore } from "./SidebarStore";
@@ -17,8 +17,8 @@ export interface WindowPersistenceCoordinatorStoreProps {
     DesktopClient,
     "listSessions" | "loadApplicationState" | "loadWindowState" | "saveWindowState"
   >;
-  projects: ProjectCatalogStoreInstance;
-  sessions: SessionCatalogStoreInstance;
+  projects: ProjectCatalogStore;
+  sessions: SessionCatalogStore;
   registry: SessionRegistryStore;
   sidebar(): SidebarStore;
   settings(): SettingsStore;
@@ -87,7 +87,8 @@ export class WindowPersistenceCoordinatorStore extends Store<WindowPersistenceCo
         this.props.client.listSessions(),
       ]);
       if (this.signal.aborted) return;
-      // Focused catalog Stores hydrate independently through current-first Effect RPC Streams.
+      this.props.sessions.replace(sessionIndex.sessions);
+      this.props.projects.applyApplicationState(application);
       const listedSessionIds = new Set(sessionIndex.sessions.map((session) => session.id));
       for (const pending of state.pendingProjectSessions) {
         // A starting session may have reached Pi before Cake committed its next window-state

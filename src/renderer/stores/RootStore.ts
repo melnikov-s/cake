@@ -8,7 +8,6 @@ import { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
 import { SidebarStore } from "./SidebarStore";
 import { ReviewsStore } from "./ReviewsStore";
 import { SettingsStore } from "./SettingsStore";
-import type { ModelPresetSettingsStoreInstance } from "./ModelPresetSettingsStore";
 import { ExtensionUiStore } from "./ExtensionUiStore";
 import { AppControlBridge } from "../app-control-bridge";
 import { GlobalChatStore } from "./GlobalChatStore";
@@ -16,23 +15,16 @@ import { AppShellStore } from "./AppShellStore";
 import { CustomizationStore } from "./CustomizationStore";
 import { PluginCommandStore } from "./PluginCommandStore";
 import { InlineWidgetStore } from "./InlineWidgetStore";
-import type { SessionCatalogStoreInstance } from "./SessionCatalogStore";
+import { SessionCatalogStore } from "./SessionCatalogStore";
 import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { AppControlOperationStore } from "./AppControlOperationStore";
-import type { ProjectCatalogStoreInstance } from "./ProjectCatalogStore";
-import type { CatalogOperationRunner } from "../catalog-operation-runner";
+import { ProjectCatalogStore } from "./ProjectCatalogStore";
 import { WindowPersistenceCoordinatorStore } from "./WindowPersistenceCoordinatorStore";
 import { ToastStore } from "./ToastStore";
 import { TerminalStore, type TerminalTarget } from "./TerminalStore";
 import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
 
-export class RootStore extends Store<{
-  client: DesktopClient;
-  modelPresets: ModelPresetSettingsStoreInstance;
-  projectCatalog: ProjectCatalogStoreInstance;
-  sessionCatalog: SessionCatalogStoreInstance;
-  runCatalog: CatalogOperationRunner;
-}> {
+export class RootStore extends Store<{ client: DesktopClient }> {
   readonly appControl: AppControlBridge;
   private readonly pendingProjectPartUpdates = new Map<string, Map<string, UiPart>>();
   private projectPartFlushFrame: number | undefined;
@@ -301,7 +293,6 @@ export class RootStore extends Store<{
     return createStore(SessionRegistryStore, {
       client: this.client,
       catalog: this.sessionCatalogStore,
-      runCatalog: this.props.runCatalog,
       operations: this.sessionOperationCoordinator,
       reviews: () => this.reviewsStore,
       pluginCommands: () => this.pluginCommandStore,
@@ -375,12 +366,14 @@ export class RootStore extends Store<{
     return createStore(ToastStore, {});
   }
 
-  get sessionCatalogStore(): SessionCatalogStoreInstance {
-    return this.props.sessionCatalog;
+  @child
+  get sessionCatalogStore(): SessionCatalogStore {
+    return createStore(SessionCatalogStore);
   }
 
-  get projectCatalogStore(): ProjectCatalogStoreInstance {
-    return this.props.projectCatalog;
+  @child
+  get projectCatalogStore(): ProjectCatalogStore {
+    return createStore(ProjectCatalogStore, { sessions: this.sessionCatalogStore });
   }
 
   @child
@@ -430,7 +423,6 @@ export class RootStore extends Store<{
       client: this.client,
       sessionContext: () => this.projectWorkbenchStore.sessionContext(),
       operations: this.sessionOperationCoordinator,
-      modelPresets: this.props.modelPresets,
     });
   }
 
@@ -472,7 +464,6 @@ export class RootStore extends Store<{
       pluginCommands: () => this.pluginCommandStore,
       persistence: () => this.windowPersistence,
       catalog: this.sessionCatalogStore,
-      runCatalog: this.props.runCatalog,
       startCakeChat: (prompt) => this.startCakeChat(prompt),
       onWorktreeSessionsResolved: (sessionIds, projectPath) =>
         this.forgetResolvedSessions(sessionIds, projectPath),
@@ -727,7 +718,7 @@ export class RootStore extends Store<{
       const activeCakeChatSessionWasResolved = activeCakeChatSessionId
         ? this.globalChatStore.isSessionResolved(activeCakeChatSessionId)
         : false;
-      // Project and Project Session catalogs consume their focused current-first RPC Streams.
+      this.projectCatalogStore.applyApplicationState(event.state);
       this.globalChatStore.applyApplicationState(event.state);
       this.settingsStore.applyApplicationState(event.state);
       this.terminalStore.discardResolvedSessions([

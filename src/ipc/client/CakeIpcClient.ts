@@ -1,7 +1,9 @@
-import { Context, Effect, Layer, Stream, type ManagedRuntime, type Schema } from "effect";
+import { Context, Effect, Layer, ManagedRuntime, Stream, type Schema } from "effect";
 import { RpcClient } from "effect/unstable/rpc";
 import type { RpcClientError } from "effect/unstable/rpc";
 import { CakeRpc, type FoundationFailure } from "../protocol/CakeRpc";
+import { makeElectronRpcClientProtocol } from "../transport/ElectronRpcClientProtocol";
+import type { ElectronRpcTransport } from "../transport/ElectronRpcTransport";
 import type { RendererApplicationState } from "../../domain/application-data";
 import type {
   ProjectSessionCreateInput,
@@ -31,6 +33,7 @@ import type {
   DiscussionThread,
 } from "../../domain/discussion-session-data";
 import type { ProjectCatalogUpdate, SessionCatalogUpdate } from "../../domain/catalog-data";
+import type { SubagentError, SubagentHandleId, SubagentUpdate } from "../../domain/subagent-data";
 import type {
   DefaultModelPresetNotFoundError,
   DuplicateModelPresetIdError,
@@ -233,6 +236,24 @@ export interface CakeIpcClientService {
       target: ProjectSessionTarget,
     ) => Effect.Effect<void, ProjectSessionError | TransportError>;
   };
+  readonly subagents: {
+    readonly observe: (
+      parentSessionId: string,
+    ) => Stream.Stream<SubagentUpdate, SubagentError | TransportError>;
+    readonly steer: (input: {
+      readonly parentSessionId: string;
+      readonly handleId: SubagentHandleId;
+      readonly text: string;
+    }) => Effect.Effect<void, SubagentError | TransportError>;
+    readonly abort: (input: {
+      readonly parentSessionId: string;
+      readonly handleId: SubagentHandleId;
+    }) => Effect.Effect<void, SubagentError | TransportError>;
+    readonly close: (input: {
+      readonly parentSessionId: string;
+      readonly handleId: SubagentHandleId;
+    }) => Effect.Effect<void, SubagentError | TransportError>;
+  };
   readonly foundation: {
     readonly typedFailure: () => Effect.Effect<void, FoundationFailure | TransportError>;
     readonly stream: (input: {
@@ -401,6 +422,18 @@ export const CakeIpcClientLive = Layer.effect(
           client("projectSessions.restore", target),
         ),
       },
+      subagents: {
+        observe: (parentSessionId) => client("subagents.observe", { parentSessionId }),
+        steer: Effect.fn("CakeIpcClient.subagents.steer")((input) =>
+          client("subagents.steer", input),
+        ),
+        abort: Effect.fn("CakeIpcClient.subagents.abort")((input) =>
+          client("subagents.abort", input),
+        ),
+        close: Effect.fn("CakeIpcClient.subagents.close")((input) =>
+          client("subagents.close", input),
+        ),
+      },
       foundation: {
         typedFailure: Effect.fn("CakeIpcClient.foundation.typedFailure")(() =>
           client("foundation.typedFailure", undefined),
@@ -424,6 +457,14 @@ export interface CakeIpcPromiseClient {
   };
   readonly models: {
     readonly list: () => Promise<ReadonlyArray<PiModel>>;
+  };
+  readonly modelPresets: {
+    readonly list: () => Promise<ModelPresetProjection>;
+    readonly create: (input: ModelPresetCreateInput) => Promise<ModelPresetProjection>;
+    readonly update: (input: ModelPresetUpdateInput) => Promise<ModelPresetProjection>;
+    readonly remove: (id: string) => Promise<ModelPresetProjection>;
+    readonly setDefault: (id?: string) => Promise<ModelPresetProjection>;
+    readonly resolve: (id: string) => Promise<ModelSelection>;
   };
   readonly cakeChats: {
     readonly list: () => Promise<ReadonlyArray<CakeChatSummary>>;
@@ -507,6 +548,25 @@ export interface CakeIpcPromiseClient {
     readonly resolve: (target: ProjectSessionTarget) => Promise<void>;
     readonly restore: (target: ProjectSessionTarget) => Promise<void>;
   };
+  readonly subagents: {
+    readonly observe: (
+      parentSessionId: string,
+      listener: (update: SubagentUpdate) => void,
+    ) => () => void;
+    readonly steer: (input: {
+      readonly parentSessionId: string;
+      readonly handleId: SubagentHandleId;
+      readonly text: string;
+    }) => Promise<void>;
+    readonly abort: (input: {
+      readonly parentSessionId: string;
+      readonly handleId: SubagentHandleId;
+    }) => Promise<void>;
+    readonly close: (input: {
+      readonly parentSessionId: string;
+      readonly handleId: SubagentHandleId;
+    }) => Promise<void>;
+  };
   readonly foundation: {
     readonly typedFailure: () => Promise<void>;
     readonly stream: (input: {
@@ -516,11 +576,12 @@ export interface CakeIpcPromiseClient {
     readonly delay: (durationMs: number, signal?: AbortSignal) => Promise<void>;
     readonly activeRequests: () => Promise<{ readonly delays: number; readonly streams: number }>;
   };
+  readonly dispose: () => Promise<void>;
 }
 
-export type CakeIpcRuntime = ManagedRuntime.ManagedRuntime<CakeIpcClient, never>;
-
-export function makeCakeIpcPromiseClient(runtime: CakeIpcRuntime): CakeIpcPromiseClient {
+export function makeCakeIpcPromiseClient(transport: ElectronRpcTransport): CakeIpcPromiseClient {
+  const live = CakeIpcClientLive.pipe(Layer.provide(makeElectronRpcClientProtocol(transport)));
+  const runtime = ManagedRuntime.make(live);
   const run = <A, E>(effect: Effect.Effect<A, E, CakeIpcClient>, signal?: AbortSignal) =>
     runtime.runPromise(effect, signal ? { signal } : undefined);
   const withClient = <A, E>(
@@ -534,6 +595,14 @@ export function makeCakeIpcPromiseClient(runtime: CakeIpcRuntime): CakeIpcPromis
     },
     models: {
       list: () => run(withClient((client) => client.models.list())),
+    },
+    modelPresets: {
+      list: () => run(withClient((client) => client.modelPresets.list())),
+      create: (input) => run(withClient((client) => client.modelPresets.create(input))),
+      update: (input) => run(withClient((client) => client.modelPresets.update(input))),
+      remove: (id) => run(withClient((client) => client.modelPresets.remove(id))),
+      setDefault: (id) => run(withClient((client) => client.modelPresets.setDefault(id))),
+      resolve: (id) => run(withClient((client) => client.modelPresets.resolve(id))),
     },
     cakeChats: {
       list: () => run(withClient((client) => client.cakeChats.list())),
@@ -616,6 +685,23 @@ export function makeCakeIpcPromiseClient(runtime: CakeIpcRuntime): CakeIpcPromis
       resolve: (target) => run(withClient((client) => client.projectSessions.resolve(target))),
       restore: (target) => run(withClient((client) => client.projectSessions.restore(target))),
     },
+    subagents: {
+      observe: (parentSessionId, listener) => {
+        const controller = new AbortController();
+        void run(
+          withClient((client) =>
+            client.subagents
+              .observe(parentSessionId)
+              .pipe(Stream.runForEach((update) => Effect.sync(() => listener(update)))),
+          ),
+          controller.signal,
+        ).catch(() => undefined);
+        return () => controller.abort();
+      },
+      steer: (input) => run(withClient((client) => client.subagents.steer(input))),
+      abort: (input) => run(withClient((client) => client.subagents.abort(input))),
+      close: (input) => run(withClient((client) => client.subagents.close(input))),
+    },
     foundation: {
       typedFailure: () => run(withClient((client) => client.foundation.typedFailure())),
       stream: (input) =>
@@ -627,5 +713,6 @@ export function makeCakeIpcPromiseClient(runtime: CakeIpcRuntime): CakeIpcPromis
         ),
       activeRequests: () => run(withClient((client) => client.foundation.activeRequests())),
     },
+    dispose: () => runtime.dispose(),
   };
 }

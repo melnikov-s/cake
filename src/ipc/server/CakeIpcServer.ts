@@ -6,6 +6,7 @@ import * as discussionSessions from "../../domain/discussionSessions";
 import * as modelPresets from "../../domain/modelPresets";
 import * as projectSessions from "../../domain/projectSessions";
 import * as projects from "../../domain/projects";
+import * as subagents from "../../domain/subagents";
 import { PiModels } from "../../services/pi/PiModels";
 import { CakeRpc, FoundationFailure } from "../protocol/CakeRpc";
 import {
@@ -16,12 +17,14 @@ import { ElectronRpcServerProtocolLive } from "../transport/ElectronRpcServerPro
 import type { ProjectSessionEnvironmentService } from "../../services/project-sessions/ProjectSessionEnvironment";
 import type { CakeChatEnvironmentOperations } from "../../services/cake-chats/CakeChatEnvironment";
 import type { DiscussionSessionEnvironmentService } from "../../services/discussion-sessions/DiscussionSessionEnvironment";
+import type { SubagentEnvironmentService } from "../../services/subagents/SubagentEnvironment";
 
 export interface CakeIpcServerOperations {
   readonly getHomeDirectory: () => string | Promise<string>;
   readonly projectSessions: ProjectSessionEnvironmentService;
   readonly cakeChats: CakeChatEnvironmentOperations;
   readonly discussionSessions: DiscussionSessionEnvironmentService;
+  readonly subagents: SubagentEnvironmentService;
 }
 
 export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
@@ -104,6 +107,13 @@ export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
     },
     "projectSessions.resolve": (target) => projectSessions.resolve(target).pipe(Effect.asVoid),
     "projectSessions.restore": (target) => projectSessions.restore(target).pipe(Effect.asVoid),
+    "subagents.observe": ({ parentSessionId }) => Stream.unwrap(subagents.observe(parentSessionId)),
+    "subagents.steer": ({ parentSessionId, handleId, text }) =>
+      subagents.steer(parentSessionId, handleId, text),
+    "subagents.abort": ({ parentSessionId, handleId }) =>
+      subagents.abort(parentSessionId, handleId),
+    "subagents.close": ({ parentSessionId, handleId }) =>
+      subagents.close(parentSessionId, handleId).pipe(Effect.asVoid),
     "foundation.typedFailure": () =>
       Effect.fail(new FoundationFailure({ message: "Schema-decoded foundation failure" })),
     "foundation.stream": ({ count, intervalMs }) =>

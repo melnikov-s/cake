@@ -68,9 +68,6 @@ importers:
       effect:
         specifier: 4.0.0-rc.111
         version: 4.0.0-rc.111
-      effect-state-tree:
-        specifier: file:../effect-state-tree
-        version: file:../effect-state-tree(effect@4.0.0-rc.111)(react@19.2.8)
       esbuild:
         specifier: 0.28.1
         version: 0.28.1
@@ -2392,12 +2389,6 @@ packages:
 
   ecdsa-sig-formatter@1.0.11:
     resolution: {integrity: sha512-nagl3RYrbNv6kQkeJIpt6NJZy8twLB/2vtz6yN9Z4vRKHN4/QZJIEbqohALSgwKdnksuY3k5Addp5lg8sVoVcQ==}
-
-  effect-state-tree@file:../effect-state-tree:
-    resolution: {directory: ../effect-state-tree, type: directory}
-    peerDependencies:
-      effect: 4.0.0-rc.111
-      react: ^19.2.8
 
   effect@4.0.0-rc.111:
     resolution: {integrity: sha512-ASd5L58EIR0CUNueZNKKjSsyOCd+2alxOAIaTcHaqkJkPsaYSsw5Cg/cfANk5K4Jr2YsX756xvX11shzqsreWA==}
@@ -5911,11 +5902,6 @@ snapshots:
   ecdsa-sig-formatter@1.0.11:
     dependencies:
       safe-buffer: 5.2.1
-
-  effect-state-tree@file:../effect-state-tree(effect@4.0.0-rc.111)(react@19.2.8):
-    dependencies:
-      effect: 4.0.0-rc.111
-      react: 19.2.8
 
   effect@4.0.0-rc.111:
     dependencies:

@@ -9,8 +9,9 @@ Cake's architecture decides what is a Service, domain operation, RPC operation,
 or renderer Store:
 
 ```text
-renderer Store → CakeIpcClient → Effect RPC → CakeIpcServer
-               → free Cake domain Effects → outside-world Services
+renderer Store → RendererClient Promise adapter → CakeIpcClient → Effect RPC
+renderer projection synchronizer → CakeIpcClient Stream → r-state-tree Model
+CakeIpcServer → free Cake domain Effects → outside-world Services
 ```
 
 - Services represent outside-world, native, persistence, process, or transport
@@ -18,8 +19,10 @@ renderer Store → CakeIpcClient → Effect RPC → CakeIpcServer
 - Cake business policy belongs in cohesive free domain `Effect.fn` operations.
   Domain modules are not Context Services.
 - RPC handlers delegate. They do not implement Cake business policy.
-- Renderer Stores consume `CakeIpcClient`; renderer code never imports main
-  Services or domain implementations.
+- Ordinary renderer Stores consume the Promise-based `RendererClient` and never
+  import Effect, `CakeIpcClient`, RPC contracts, main Services, or domain
+  implementations. Projection synchronizers are the renderer Effect/Stream
+  boundary and update r-state-tree Models transactionally.
 - Pi packages stop beneath `src/services/pi`. Raw Pi values do not cross RPC.
 - Pi remains transcript authority. Effect Streams and renderer Models are
   projections, not new durable authorities.
@@ -52,9 +55,11 @@ compose naturally in test Services.
 
 Promise APIs are permitted only at an external or framework adapter boundary.
 Wrap them with `Effect.tryPromise`, pass the supplied `AbortSignal`, map expected
-failures to `Schema.TaggedError`, and expose Effect from the Service. A temporary
-Promise facade for legacy renderer callers may execute the authoritative Effect
-client; it must not define another protocol or domain abstraction.
+failures to `Schema.TaggedError`, and expose Effect from a main-side Service. In
+the renderer, the permanent typed `RendererClient` deliberately executes the
+authoritative Effect client as Promises for r-state-tree Stores. It must
+propagate cancellation and must not define another protocol or domain
+abstraction.
 
 ## Layers and runtime wiring
 

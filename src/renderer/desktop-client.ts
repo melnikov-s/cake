@@ -13,7 +13,9 @@ import type {
   SessionSummary,
   PiSettingUpdate,
   ThinkingLevel,
+  ModelPreset,
   UtilityModel,
+  SessionUsage,
   ExtensionUiEvent,
   UiPart,
   WindowViewState,
@@ -36,7 +38,10 @@ import type {
   RepairedInlineWidget,
 } from "../ipc/inline-widget-contract";
 import { jsonValueSchema, type JsonObject, type JsonValue } from "../ipc/json-contract";
-import type { SubagentActivity } from "../ipc/subagent-activity-contract";
+import {
+  SubagentHandleId,
+  type SubagentActivity as DomainSubagentActivity,
+} from "../domain/subagent-data";
 import type { ModelOption } from "../ipc/session-contract";
 import type {
   PluginAgentOpenOptions,
@@ -45,6 +50,23 @@ import type {
   PluginCompletionResult,
   SessionRef,
 } from "../ipc/plugin-agent-contract";
+
+export type SubagentActivity = Omit<
+  DomainSubagentActivity,
+  "handleId" | "parts" | "resolvedModel" | "usage"
+> & {
+  readonly handleId: string;
+  readonly parts: UiPart[];
+  readonly resolvedModel: {
+    requested: DomainSubagentActivity["resolvedModel"]["requested"];
+    source: DomainSubagentActivity["resolvedModel"]["source"];
+    provider: string;
+    modelId: string;
+    thinkingLevel: DomainSubagentActivity["resolvedModel"]["thinkingLevel"];
+    fallbacks: Array<DomainSubagentActivity["resolvedModel"]["fallbacks"][number]>;
+  };
+  readonly usage?: SessionUsage;
+};
 
 export type PiState = "starting" | "ready" | "stopped" | "failed";
 
@@ -315,6 +337,26 @@ export interface DesktopClient {
     snapshot: EditorAnnotationSnapshot,
   ): Promise<void>;
   setUtilityModel(model: UtilityModel | undefined): Promise<ApplicationState>;
+  listModelPresets(): Promise<{
+    presets: readonly ModelPreset[];
+    defaultPresetId?: string;
+  }>;
+  createModelPreset(preset: Omit<ModelPreset, "id">): Promise<{
+    presets: readonly ModelPreset[];
+    defaultPresetId?: string;
+  }>;
+  updateModelPreset(preset: ModelPreset): Promise<{
+    presets: readonly ModelPreset[];
+    defaultPresetId?: string;
+  }>;
+  removeModelPreset(id: string): Promise<{
+    presets: readonly ModelPreset[];
+    defaultPresetId?: string;
+  }>;
+  setDefaultModelPreset(id?: string): Promise<{
+    presets: readonly ModelPreset[];
+    defaultPresetId?: string;
+  }>;
   listSessions(): Promise<{ sessions: GlobalSessionSummary[]; reviewThreads: ReviewThread[] }>;
   listCakeChatSessions(): Promise<SessionSummary[]>;
   loadCakeChatSession(sessionId: string): Promise<SessionPreview | undefined>;
@@ -587,11 +629,6 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
   if (event.type === "part-updated" || event.type === "part-removed") return event;
   if (event.type === "session-streaming")
     return { type: "streaming-changed", sessionId: event.sessionId, streaming: event.streaming };
-  if (event.type === "session-background-work")
-    return { type: "background-work-changed", sessionId: event.sessionId, active: event.active };
-  if (event.type === "subagent-activity")
-    return { type: "subagent-activity-received", activity: event.activity };
-  if (event.type === "subagent-activity-removed") return event;
   if (event.type === "extension-ui")
     return { type: "extension-ui-received", sessionId: event.sessionId, event: event.event };
   if (event.type === "plugin-agent-event") return event;
@@ -672,13 +709,21 @@ export function createDesktopClient(
   bridge: CakeDesktopBridge,
   rpcClient: Pick<
     CakeIpcPromiseClient,
-    "application" | "models" | "projectSessions" | "cakeChats" | "discussionSessions"
+    | "application"
+    | "models"
+    | "modelPresets"
+    | "projectSessions"
+    | "cakeChats"
+    | "discussionSessions"
+    | "subagents"
   >,
 ): DesktopClient {
   const listeners = new Set<(event: DesktopClientEvent) => void>();
   const sessionSubscriptions = new Map<string, () => void>();
   const cakeChatSubscriptions = new Map<string, () => void>();
   const discussionSubscriptions = new Map<string, () => void>();
+  const subagentSubscriptions = new Map<string, () => void>();
+  const subagentHandlesBySession = new Map<string, Set<SubagentHandleId>>();
   const projectWorkingDirectories = new Map<string, string>();
   const cakeChatTools = new Map<
     string,
@@ -901,6 +946,60 @@ export function createDesktopClient(
       } else if (event._tag === "TurnSettled") settleTurn(event.turnId, event);
     });
     sessionSubscriptions.set(sessionId, unsubscribe);
+    subagentSubscriptions.get(sessionId)?.();
+    subagentSubscriptions.set(
+      sessionId,
+      rpcClient.subagents.observe(sessionId, (update) => {
+        const projectActivity = (activity: DomainSubagentActivity): SubagentActivity => ({
+          ...activity,
+          resolvedModel: {
+            ...activity.resolvedModel,
+            fallbacks: [...activity.resolvedModel.fallbacks],
+          },
+          parts: activity.parts.map((part) => uiPartSchema.parse(part)),
+          usage:
+            activity.usage === undefined
+              ? undefined
+              : sessionSnapshotSchema.shape.usage.parse(activity.usage),
+        });
+        if (update._tag === "Snapshot") {
+          const currentHandles = new Set(update.activities.map((activity) => activity.handleId));
+          for (const handleId of subagentHandlesBySession.get(sessionId) ?? [])
+            if (!currentHandles.has(handleId))
+              publish({
+                type: "subagent-activity-removed",
+                parentSessionId: sessionId,
+                handleId,
+              });
+          subagentHandlesBySession.set(sessionId, currentHandles);
+          for (const activity of update.activities)
+            publish({
+              type: "subagent-activity-received",
+              activity: projectActivity(activity),
+            });
+          publish({
+            type: "background-work-changed",
+            sessionId,
+            active: update.backgroundActive,
+          });
+        } else if (update._tag === "Activity") {
+          const handles = subagentHandlesBySession.get(sessionId) ?? new Set();
+          handles.add(update.activity.handleId);
+          subagentHandlesBySession.set(sessionId, handles);
+          publish({
+            type: "subagent-activity-received",
+            activity: projectActivity(update.activity),
+          });
+        } else if (update._tag === "Removed") {
+          subagentHandlesBySession.get(sessionId)?.delete(update.handleId);
+          publish({
+            type: "subagent-activity-removed",
+            parentSessionId: sessionId,
+            handleId: update.handleId,
+          });
+        } else publish({ type: "background-work-changed", sessionId, active: update.active });
+      }),
+    );
   };
   return {
     async chooseProject() {
@@ -1257,6 +1356,21 @@ export function createDesktopClient(
         throw new Error("Cake could not update the utility model");
       return response.state;
     },
+    listModelPresets() {
+      return rpcClient.modelPresets.list();
+    },
+    createModelPreset(preset) {
+      return rpcClient.modelPresets.create(preset);
+    },
+    updateModelPreset(preset) {
+      return rpcClient.modelPresets.update(preset);
+    },
+    removeModelPreset(id) {
+      return rpcClient.modelPresets.remove(id);
+    },
+    setDefaultModelPreset(id) {
+      return rpcClient.modelPresets.setDefault(id);
+    },
     async listSessions() {
       const sessions = (await rpcClient.projectSessions.list()).map((session) => {
         projectWorkingDirectories.set(session.sessionId, session.workingDirectory);
@@ -1559,6 +1673,8 @@ export function createDesktopClient(
       else await rpcClient.projectSessions.restore(target);
       sessionSubscriptions.get(sessionId)?.();
       sessionSubscriptions.delete(sessionId);
+      subagentSubscriptions.get(sessionId)?.();
+      subagentSubscriptions.delete(sessionId);
       return rpcClient.application.getState();
     },
     async resolveSessions(sessionIds, resolved, workspacePath) {
@@ -1575,6 +1691,8 @@ export function createDesktopClient(
       for (const sessionId of sessionIds) {
         sessionSubscriptions.get(sessionId)?.();
         sessionSubscriptions.delete(sessionId);
+        subagentSubscriptions.get(sessionId)?.();
+        subagentSubscriptions.delete(sessionId);
       }
       return rpcClient.application.getState();
     },
@@ -1692,16 +1810,14 @@ export function createDesktopClient(
       });
     },
     steerSubagent: (input) =>
-      accept(bridge, {
-        type: "steer-subagent",
-        requestId: crypto.randomUUID(),
+      rpcClient.subagents.steer({
         ...input,
+        handleId: SubagentHandleId.make(input.handleId),
       }),
     abortSubagent: (input) =>
-      accept(bridge, {
-        type: "abort-subagent",
-        requestId: crypto.randomUUID(),
+      rpcClient.subagents.abort({
         ...input,
+        handleId: SubagentHandleId.make(input.handleId),
       }),
     async submit(input) {
       if (input.newSession) {
@@ -1918,6 +2034,8 @@ export function createDesktopClient(
         if (listeners.size === 0) {
           for (const unsubscribe of sessionSubscriptions.values()) unsubscribe();
           sessionSubscriptions.clear();
+          for (const unsubscribe of subagentSubscriptions.values()) unsubscribe();
+          subagentSubscriptions.clear();
         }
       };
     },

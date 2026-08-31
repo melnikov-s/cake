@@ -6,14 +6,14 @@ import { ChevronIcon, FolderIcon, PlusIcon } from "./ui/icons";
 import { IconButton } from "./ui/icon-button";
 import { SidebarSessionItem } from "./sidebar-session-item";
 import type { AppShellStore } from "../stores/AppShellStore";
-import type { ProjectCatalogStoreInstance } from "../stores/ProjectCatalogStore";
+import type { ProjectCatalogStore } from "../stores/ProjectCatalogStore";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { SidebarStore } from "../stores/SidebarStore";
 import { ProjectActionDialog, type ProjectAction } from "./project-action-dialog";
 
 export interface SidebarProjectGroupProps {
   store: SidebarStore;
-  projects: ProjectCatalogStoreInstance;
+  projects: ProjectCatalogStore;
   chat: ProjectWorkbenchStore;
   shell: AppShellStore;
   path: string;
@@ -21,7 +21,6 @@ export interface SidebarProjectGroupProps {
   onCreateSession(workspacePath: string): void;
   onOpenSession(sessionId: string): void;
   onRemoveProject(path: string, deleteSessions: boolean): Promise<boolean>;
-  catalogRevision?: number;
 }
 
 /** One project section in the sidebar: header row plus its visible session rows. */
@@ -35,9 +34,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
   onCreateSession,
   onOpenSession,
   onRemoveProject,
-  catalogRevision,
 }: SidebarProjectGroupProps) {
-  void catalogRevision;
   const [projectAction, setProjectAction] = useState<ProjectAction>();
   const [actionBusy, setActionBusy] = useState(false);
   const collapseKey = `${resolved ? "resolved" : "active"}:${path}`;

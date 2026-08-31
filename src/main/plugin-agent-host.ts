@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { WebContents } from "electron";
 import { z } from "zod";
 import type { BoundedCompletionInput } from "../services/pi/model-data";
+import { resolveModel } from "../domain/subagents";
 import type { CakeRuntimeEvent } from "../services/pi/runtime/cake-runtime";
 import {
   PLUGIN_COMPLETION_INPUT_MAX,
@@ -16,7 +17,7 @@ import {
   type WorkspaceRef,
 } from "../ipc/plugin-agent-contract";
 import type { DesktopEvent } from "../ipc/desktop-ipc";
-import type { SessionSnapshot, ThinkingLevel, UiPart, UtilityModel } from "../ipc/session-contract";
+import type { SessionSnapshot, UiPart, UtilityModel } from "../ipc/session-contract";
 import type { PiWorkspaceDriver } from "./pi-workspace-driver";
 
 interface Handle {
@@ -64,73 +65,13 @@ export function resolveSessionRef(ref: SessionRef) {
   return sessionRefValueSchema.parse(JSON.parse(ref.id)).sessionId;
 }
 
-function fallbackReason(snapshot: SessionSnapshot, provider: string, modelId: string) {
-  const model = snapshot.models.find((item) => item.provider === provider && item.id === modelId);
-  if (!model) return "unknown-model" as const;
-  if (!model.authenticated) return "not-authenticated" as const;
-  return undefined;
-}
-
 export function resolveAgentModel(
   preference: AgentModelPreference,
   snapshot: SessionSnapshot,
   utility: UtilityModel | undefined,
 ): ResolvedAgentModel {
-  const fallbacks: ResolvedAgentModel["fallbacks"] = [];
-  const accept = (
-    source: ResolvedAgentModel["source"],
-    provider: string | undefined,
-    modelId: string | undefined,
-    thinkingLevel: ThinkingLevel | undefined,
-  ) => {
-    if (!provider || !modelId) {
-      if (source !== "exact") fallbacks.push({ source, reason: "not-configured" });
-      return undefined;
-    }
-    const reason = fallbackReason(snapshot, provider, modelId);
-    if (reason) {
-      if (source === "exact")
-        throw new Error(
-          `Requested model ${provider}/${modelId} is ${reason === "unknown-model" ? "unknown" : "not authenticated"}`,
-        );
-      fallbacks.push({ source, reason });
-      return undefined;
-    }
-    return {
-      requested: preference.prefer,
-      source,
-      provider,
-      modelId,
-      thinkingLevel: thinkingLevel ?? "medium",
-      fallbacks,
-    } satisfies ResolvedAgentModel;
-  };
-  if (preference.prefer === "exact") {
-    return accept(
-      "exact",
-      preference.provider,
-      preference.modelId,
-      preference.thinkingLevel ?? snapshot.thinkingLevel,
-    )!;
-  }
-  if (preference.prefer === "utility") {
-    const resolved = accept("utility", utility?.provider, utility?.modelId, utility?.thinkingLevel);
-    if (resolved) return resolved;
-  }
-  if (preference.prefer === "utility" || preference.prefer === "default") {
-    const resolved = accept(
-      "default",
-      snapshot.piSettings?.defaultProvider,
-      snapshot.piSettings?.defaultModel,
-      snapshot.piSettings?.defaultThinkingLevel,
-    );
-    if (resolved) return resolved;
-  }
-  const current =
-    snapshot.model &&
-    accept("current", snapshot.model.provider, snapshot.model.id, snapshot.thinkingLevel);
-  if (current) return current;
-  throw new Error("The calling session has no available current model");
+  const resolved = resolveModel(preference, snapshot, utility);
+  return { ...resolved, fallbacks: [...resolved.fallbacks] };
 }
 
 function activity(snapshot: SessionSnapshot): PluginSessionActivity {

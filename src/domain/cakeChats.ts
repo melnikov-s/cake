@@ -1,4 +1,5 @@
 import { Effect, Schema, Stream } from "effect";
+import * as subagents from "./subagents";
 import type { Annotation, Attachment, SessionSummary } from "../ipc/session-contract";
 import { jsonValueSchema } from "../ipc/json-contract";
 import { PiSessionError, PiSessions, type PiSessionHandle } from "../services/pi/PiSessions";
@@ -251,6 +252,7 @@ export const prompt = Effect.fn("CakeChats.prompt")(function* (input: CakeChatPr
 });
 
 export const abort = Effect.fn("CakeChats.abort")(function* (target: CakeChatTarget) {
+  yield* subagents.abortParentChildren(target.sessionId).pipe(asError("abort"));
   yield* withHandle(target, (handle) => handle.abort()).pipe(asError("abort"));
 });
 
@@ -358,6 +360,7 @@ export const resolve = Effect.fn("CakeChats.resolve")(function* (target: CakeCha
       operation: "resolve",
       message: "Cake Chat cannot resolve an empty session before it has been persisted",
     });
+  yield* subagents.releaseParent(target.sessionId).pipe(asError("resolve"));
   const environment = yield* CakeChatEnvironment;
   yield* environment.archive(target.sessionId).pipe(asError("resolve"));
   yield* setCakeChatSessionResolved(target.sessionId, true).pipe(asError("resolve"));

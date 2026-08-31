@@ -48,7 +48,6 @@ import {
   worktreeRecordSchema,
   worktreeStatusSchema,
 } from "./worktree-contract";
-import { subagentActivitySchema } from "./subagent-activity-contract";
 
 export const desktopEventSchema = z.discriminatedUnion("type", [
   z.object({
@@ -74,17 +73,6 @@ export const desktopEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("part-updated"), sessionId: z.string(), part: uiPartSchema }),
   z.object({ type: z.literal("part-removed"), sessionId: z.string(), partId: z.string().max(256) }),
   z.object({ type: z.literal("session-streaming"), sessionId: z.string(), streaming: z.boolean() }),
-  z.object({
-    type: z.literal("session-background-work"),
-    sessionId: z.string().min(1).max(256),
-    active: z.boolean(),
-  }),
-  z.object({ type: z.literal("subagent-activity"), activity: subagentActivitySchema }),
-  z.object({
-    type: z.literal("subagent-activity-removed"),
-    parentSessionId: z.string().min(1).max(256),
-    handleId: z.uuid(),
-  }),
   z.object({
     type: z.literal("extension-ui"),
     sessionId: z.string().max(256),
@@ -518,19 +506,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
     requestId: z.uuid(),
     path: z.string().max(4_096),
     approved: z.boolean(),
-  }),
-  z.object({
-    type: z.literal("steer-subagent"),
-    requestId: z.uuid(),
-    parentSessionId: z.string().min(1).max(256),
-    handleId: z.uuid(),
-    text: z.string().min(1).max(262_144),
-  }),
-  z.object({
-    type: z.literal("abort-subagent"),
-    requestId: z.uuid(),
-    parentSessionId: z.string().min(1).max(256),
-    handleId: z.uuid(),
   }),
   z.object({
     type: z.literal("edit-session-message"),

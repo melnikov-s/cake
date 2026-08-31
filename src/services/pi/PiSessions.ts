@@ -13,6 +13,7 @@ import {
   Scope,
   Stream,
 } from "effect";
+import { jsonValueSchema } from "../../ipc/json-contract";
 import type {
   Attachment,
   ChatConfiguration,
@@ -140,6 +141,9 @@ export interface PiSessionHandle {
     entryId: string,
   ) => Effect.Effect<{ readonly sessionId: string; readonly sessionFile: string }, PiSessionError>;
   readonly reviewParentContext: () => Effect.Effect<ReviewParentContext, PiSessionError>;
+  readonly notifySubagentCompletion: (
+    result: Schema.Schema.Type<typeof Schema.Json>,
+  ) => Effect.Effect<void, PiSessionError>;
   readonly reload: () => Effect.Effect<void, PiSessionError>;
 }
 
@@ -526,6 +530,20 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
                     ),
               ),
             ),
+          notifySubagentCompletion: (result) =>
+            shared.runtime.notifySubagentCompletion
+              ? call(
+                  "notifySubagentCompletion",
+                  (runtime) =>
+                    runtime.notifySubagentCompletion?.(jsonValueSchema.parse(result)) ??
+                    Promise.resolve(),
+                )
+              : Effect.fail(
+                  new PiSessionError({
+                    operation: "notifySubagentCompletion",
+                    message: "Subagent completion delivery is unavailable",
+                  }),
+                ),
           reload: () =>
             shared.runtime.reload
               ? call("reload", (runtime) => runtime.reload?.() ?? Promise.resolve())

@@ -105,10 +105,12 @@ capabilities. It contains no Cake business logic.
 ### Renderer
 
 The renderer is sandboxed and has no Node integration. It owns React views, one
-window-local effect-state-tree, reactive projections, and renderer application
-state and logic. Its `CakeIpcClient` is one Effect Service grouped by semantic
-capability. Stores invoke that client and consume its Streams rather than
-constructing transport envelopes or importing privileged implementations.
+window-local r-state-tree, reactive projections, and renderer application state
+and logic. Renderer infrastructure owns one Effect runtime and generated
+`CakeIpcClient`, then exposes a typed Promise-based `RendererClient` for commands
+and focused projection synchronizers for Streams. Ordinary Stores and Models do
+not import Effect, construct transport envelopes, or import privileged
+implementations.
 
 Every cross-process request, success, typed failure, and stream element is
 parsed by shared Effect Schemas at the receiving boundary. Raw Pi event and
@@ -215,11 +217,14 @@ not the owner of every workflow merely because its lifetime matches the window.
 Named product surfaces receive named Stores with cohesive behavior, lifecycle,
 async policy, and persistence responsibility.
 
-Models are validated reactive projections of entities. Stores own renderer
-application state and logic: RPC subscriptions, timers, cancellation,
-concurrency, snapshot coordination, and application intents. Cake business
-logic lives in main-process domain Effect modules. React keeps only truly local
-DOM, focus, measurement, hover, or isolated input state.
+Models are validated reactive projections of entities. Focused projection
+synchronizers own authoritative RPC Stream subscriptions, reconnect and
+revision policy, and atomic reduction into stable Models. Stores own
+window-local application/UI state and logic: workflow timers, cancellation,
+concurrency, snapshot coordination, and application intents. They invoke
+semantic Promise operations on `RendererClient`; Cake business logic lives in
+main-process domain Effect modules. React keeps only truly local DOM, focus,
+measurement, hover, or isolated input state.
 
 Parent Stores coordinate cross-Store behavior without copying child state or
 publishing one-for-one forwarding facades. Store providers are lookup scopes,

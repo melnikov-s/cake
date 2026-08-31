@@ -1,15 +1,11 @@
-import { Effect, Option, Schema } from "effect";
-import { CakeIpcClient, makeCakeIpcPromiseClient } from "../ipc/client/CakeIpcClient";
+import { Option, Schema } from "effect";
+import { makeCakeIpcPromiseClient } from "../ipc/client/CakeIpcClient";
 import { FoundationFailure } from "../ipc/protocol/CakeRpc";
-import { makeRendererRuntime } from "./RendererLive";
 
 const bridge = window.cake;
 if (!bridge) throw new Error("Cake preload bridge is unavailable");
 
-const runtime = makeRendererRuntime(bridge.rpc);
-const client = makeCakeIpcPromiseClient(runtime);
-const withClient = <A, E>(operation: (client: CakeIpcClient["Service"]) => Effect.Effect<A, E>) =>
-  runtime.runPromise(Effect.flatMap(CakeIpcClient, operation));
+const client = makeCakeIpcPromiseClient(bridge.rpc);
 const TaggedFailure = Schema.Struct({ _tag: Schema.String });
 let delayController: AbortController | undefined;
 let runningDelay: Promise<void> | undefined;
@@ -19,7 +15,7 @@ const harness = {
   getHomeDirectory: () => client.application.getHomeDirectory(),
   getApplicationState: () => client.application.getState(),
   listModels: () => client.models.list(),
-  listModelPresets: () => withClient((client) => client.modelPresets.list()),
+  listModelPresets: () => client.modelPresets.list(),
   listProjectSessions: () => client.projectSessions.list(),
   listCakeChats: () => client.cakeChats.list(),
   listDiscussionSessions: () =>
@@ -33,7 +29,7 @@ const harness = {
     modelId: string;
     thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
     fastMode: boolean;
-  }) => withClient((client) => client.modelPresets.create(input)),
+  }) => client.modelPresets.create(input),
   updateModelPreset: (input: {
     id: string;
     name: string;
@@ -41,13 +37,12 @@ const harness = {
     modelId: string;
     thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
     fastMode: boolean;
-  }) => withClient((client) => client.modelPresets.update(input)),
-  removeModelPreset: (id: string) => withClient((client) => client.modelPresets.remove(id)),
-  setDefaultModelPreset: (id?: string) =>
-    withClient((client) => client.modelPresets.setDefault(id)),
+  }) => client.modelPresets.update(input),
+  removeModelPreset: (id: string) => client.modelPresets.remove(id),
+  setDefaultModelPreset: (id?: string) => client.modelPresets.setDefault(id),
   async resolveModelPresetFailureTag(id: string) {
     try {
-      await withClient((client) => client.modelPresets.resolve(id));
+      await client.modelPresets.resolve(id);
       return "success";
     } catch (error) {
       const failure = Schema.decodeUnknownOption(TaggedFailure)(error);
@@ -88,6 +83,6 @@ const harness = {
 
 Reflect.set(globalThis, "cakeRpcHarness", harness);
 window.addEventListener("pagehide", () => {
-  void runtime.dispose();
+  void client.dispose();
 });
 document.documentElement.dataset.rpcReady = "true";

@@ -218,19 +218,36 @@ Window-local state needed to operate Cake's UI: selection, loaded surfaces,
 pending operations, drafts, loading and failure states, panel state, and
 workflow coordination.
 
+### Renderer Client
+
+A renderer-local, typed Promise API grouped by semantic Cake capability. It is
+the imperative adapter over the window's generated Effect RPC client and
+runtime. It propagates `AbortSignal` cancellation into Effect interruption and
+hides Layers, Fibers, transport envelopes, and RPC implementation details from
+Stores and React.
+
+### Projection synchronizer
+
+A renderer-infrastructure owner for one authoritative observation boundary. It
+consumes a current-first Effect RPC Stream, handles revision and reconnect
+policy, and atomically reduces validated Updates into stable r-state-tree
+Models. It is scoped to the window, registry, or loaded entity that actually
+owns the projection—not to whichever Store currently displays it.
+
 ### Store
 
-An effect-state-tree behavioral component owning renderer application state,
-application/UI logic, subscriptions, resources, operations, cancellation, and
-concurrency policy. Stores consume `CakeIpcClient`; they do not contain Cake
-business rules or privileged implementations.
+An r-state-tree behavioral component owning window-local renderer application
+state, application/UI logic, workflow operations, cancellation, and concurrency
+policy. Stores read projection Models and invoke `RendererClient`; they do not
+consume Effect directly or contain Cake business rules or privileged
+implementations.
 
 ### Model
 
-An effect-state-tree reactive representation of a validated entity such as a
+An r-state-tree reactive representation of a validated entity such as a
 Project, Cake Session, Message, Artifact, or Review Thread. Models represent
-current state and synchronous invariants. Streams feed Stores; Stores reduce
-Updates into Models; React renders Models.
+current projected state and synchronous invariants. Projection synchronizers
+reduce Updates into Models; Stores and React read Models.
 
 ### React-local state
 

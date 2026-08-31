@@ -8,7 +8,7 @@ import {
 import { CakeIpcClient } from "../../../src/ipc/client/CakeIpcClient";
 import { desktopRequestSchema } from "../../../src/ipc/desktop-ipc";
 import { ModelSelection } from "../../../src/services/pi/model-data";
-import { makeRendererRuntime } from "../../../src/renderer/RendererLive";
+import { makeRendererRuntime } from "../../../src/renderer/RendererRuntime";
 
 const preset = {
   id: "00000000-0000-4000-8000-000000000001",

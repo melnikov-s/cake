@@ -1,7 +1,7 @@
 import { Store, observable } from "r-state-tree";
 import type { ApplicationState } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
-import type { SessionCatalogStoreInstance } from "./SessionCatalogStore";
+import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 
@@ -11,7 +11,7 @@ export interface SessionManagementStoreProps {
     "renameSession" | "resolveSession" | "resolveSessions" | "deleteSession" | "setSessionUnread"
   >;
   operations: SessionOperationCoordinatorStore;
-  catalog: SessionCatalogStoreInstance;
+  catalog: SessionCatalogStore;
   registry: SessionRegistryStore;
   prepareResolution?(sessionIds: readonly string[]): Promise<boolean>;
   applyApplicationState(state: ApplicationState): void;

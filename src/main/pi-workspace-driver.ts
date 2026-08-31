@@ -7,32 +7,17 @@ import {
   type CakeRuntimeOptions,
   type RuntimeUiRequest,
 } from "../services/pi/runtime/cake-runtime";
-import { supportsFastMode } from "../services/pi/fast-mode";
 import { forkWorkspaceSession, loadPiChangelog } from "../services/pi/runtime/session-discovery";
 import {
   runInlineWidgetGeneration,
   runInlineWidgetRepair,
   type InlineWidgetGenerationRequest,
 } from "../services/pi/runtime/sidecar-runtime";
-import {
-  parallelSubagentSchema,
-  subagentStartReceiptSchema,
-  subagentSystemPrompt,
-  subagentTaskSchema,
-  toolsForSubagentProfile,
-  type ParallelSubagentTasksInput,
-  type SubagentProfile,
-  type SubagentTask,
-  type SubagentTaskInput,
-} from "../services/pi/runtime/subagent-contract";
 import type { DesktopEvent, DesktopRequest } from "../ipc/desktop-ipc";
 import type { SourceLocation } from "../ipc/source-location";
-import type { ModelPreset, SessionUsage, UiPart, UtilityModel } from "../ipc/session-contract";
+import type { ModelPreset, UtilityModel } from "../ipc/session-contract";
 import type { WorktreeLandingCoordinator } from "../ipc/worktree-contract";
-import { subagentActivitySchema } from "../ipc/subagent-activity-contract";
 import type { JsonValue } from "../ipc/json-contract";
-import { jsonValueSchema } from "../ipc/json-contract";
-import type { AgentModelPreference, ResolvedAgentModel } from "../ipc/plugin-agent-contract";
 import {
   parseArtifactInput,
   type ArtifactRecord,
@@ -49,9 +34,6 @@ type ArtifactRepositoryPort = Pick<
 type ReviewRepositoryPort = Partial<Pick<ReviewRepository, "reviewContextPath">>;
 
 const MAX_LIVE_PRIVATE_AGENT_RUNTIMES = 32;
-const MAX_SUBAGENT_HANDLES_PER_PARENT = 8;
-const MAX_ACTIVE_SUBAGENTS = 4;
-const SUBAGENT_RESULT_TTL_MS = 5 * 60_000;
 
 type PiCommandType =
   | "handoff-session"
@@ -91,7 +73,6 @@ interface RuntimeReference {
 
 type ProjectSessionRuntimeIntegrations = Pick<
   CakeRuntimeOptions,
-  | "agentControl"
   | "generateInlineWidget"
   | "listArtifacts"
   | "persistArtifact"
@@ -99,40 +80,6 @@ type ProjectSessionRuntimeIntegrations = Pick<
   | "requestUi"
   | "reviewContextPath"
 >;
-
-interface SubagentHandle {
-  parentSessionId: string;
-  anchorPartId: string;
-  sessionId?: string;
-  releaseRuntime: boolean;
-  taskDescription: string;
-  profile: SubagentProfile;
-  resolvedModel: ResolvedAgentModel;
-  fastMode: boolean;
-  retain: boolean;
-  status: "queued" | "running" | "complete" | "error" | "aborted";
-  revision: number;
-  controller: AbortController;
-  task?: Promise<void>;
-  error?: string;
-  result?: JsonValue;
-  usage?: SessionUsage;
-  cleanupTimer?: ReturnType<typeof setTimeout>;
-  activityTimer?: ReturnType<typeof setTimeout>;
-  liveParts: Map<string, UiPart>;
-  liveStreaming: boolean;
-  unsubscribe?: () => void;
-  observers: Set<() => void>;
-  activeWaiters: number;
-  completionDisposition: "pending" | "waited" | "notifying" | "notified";
-}
-
-interface PreparedSubagentTask {
-  input: SubagentTask;
-  resolvedModel: ResolvedAgentModel;
-  tools: string[];
-  remainingSubagentDepth: number;
-}
 
 export interface PiWorkspaceDriverOptions {
   workspacePath: string;
@@ -163,10 +110,6 @@ export interface PiWorkspaceDriverOptions {
   sessionResolved?(sessionId: string): boolean;
   setSessionResolved?(sessionId: string, resolved: boolean): Promise<void>;
   pluginResources?: { skills: string[]; prompts: string[]; extensions: string[] };
-  resolveAgentModel?: (
-    preference: AgentModelPreference,
-    snapshot: Awaited<ReturnType<CakeRuntime["snapshot"]>>,
-  ) => ResolvedAgentModel;
 }
 
 export class PiWorkspaceDriver {
@@ -202,11 +145,6 @@ export class PiWorkspaceDriver {
   private readonly privateRuntimeLeases = new Map<string, number>();
   private privateRuntimeReservations = 0;
   private readonly activeAgentTurns = new Set<string>();
-  private readonly subagentHandles = new Map<string, SubagentHandle>();
-  private readonly runtimeSubagentDepth = new Map<string, number>();
-  private activeSubagents = 0;
-  private readonly subagentQueue: Array<() => void> = [];
-  private readonly resolveAgentModel: NonNullable<PiWorkspaceDriverOptions["resolveAgentModel"]>;
   private readonly pendingUi = new Map<string, PendingUi>();
   private readonly pendingArtifacts = new Map<string, PendingArtifact>();
   private readonly operationContext = new AsyncLocalStorage<{
@@ -242,31 +180,6 @@ export class PiWorkspaceDriver {
     this.sessionResolved = options.sessionResolved ?? (() => false);
     this.setSessionResolved = options.setSessionResolved ?? (async () => undefined);
     this.pluginResources = options.pluginResources ?? { skills: [], prompts: [], extensions: [] };
-    this.resolveAgentModel =
-      options.resolveAgentModel ??
-      ((preference, snapshot) => {
-        if (preference.prefer === "exact")
-          return {
-            requested: "exact",
-            source: "exact",
-            provider: preference.provider,
-            modelId: preference.modelId,
-            thinkingLevel: preference.thinkingLevel ?? snapshot.thinkingLevel,
-            fallbacks: [],
-          };
-        if (!snapshot.model) throw new Error("The calling session has no current model");
-        return {
-          requested: preference.prefer,
-          source: "current",
-          provider: snapshot.model.provider,
-          modelId: snapshot.model.id,
-          thinkingLevel: snapshot.thinkingLevel,
-          fallbacks:
-            preference.prefer === "current"
-              ? []
-              : [{ source: preference.prefer, reason: "not-configured" }],
-        };
-      });
     this.artifactRepository = options.artifactRepository ?? {
       async upsert(workspacePath, artifact) {
         const now = new Date().toISOString();
@@ -393,17 +306,9 @@ export class PiWorkspaceDriver {
     if (snapshot.streaming) throw new Error("Cake cannot resolve a session while it is running");
     if (!snapshot.sessionFile)
       throw new Error("Cake cannot resolve an empty session before it has been persisted");
-    for (const [handleId, handle] of this.subagentHandles) {
-      if (handle.parentSessionId !== sessionId) continue;
-      this.removeSubagentHandle(handleId, handle);
-      handle.controller.abort(new Error("Parent session resolved"));
-      if (handle.cleanupTimer) clearTimeout(handle.cleanupTimer);
-      if (handle.releaseRuntime && handle.sessionId) this.releaseAgent(handle.sessionId);
-    }
     runtime.dispose();
     this.runtimes.delete(sessionId);
     this.runtimeListeners.delete(sessionId);
-    this.runtimeSubagentDepth.delete(sessionId);
     this.activeAgentTurns.delete(sessionId);
   }
 
@@ -413,17 +318,10 @@ export class PiWorkspaceDriver {
     for (const pending of this.pendingUi.values()) pending.settle(undefined);
     this.pendingUi.clear();
     this.cancelPendingRequests();
-    for (const handle of this.subagentHandles.values()) {
-      handle.controller.abort(new Error("Workspace driver disposed"));
-      if (handle.cleanupTimer) clearTimeout(handle.cleanupTimer);
-      if (handle.activityTimer) clearTimeout(handle.activityTimer);
-    }
     for (const runtime of this.runtimes.values()) runtime.dispose();
     this.runtimes.clear();
     this.privateRuntimeIds.clear();
     this.privateRuntimeLeases.clear();
-    this.subagentHandles.clear();
-    this.runtimeSubagentDepth.clear();
   }
 
   cancelPendingRequests() {
@@ -438,7 +336,6 @@ export class PiWorkspaceDriver {
       | { kind: "fork"; sessionId: string; entryId?: string; visibility: "private" | "project" };
     instructions?: string;
     tools?: string[];
-    remainingSubagentDepth?: number;
     auxiliary?: boolean;
     fastMode?: boolean;
   }) {
@@ -468,7 +365,6 @@ export class PiWorkspaceDriver {
           input.target.visibility === "private" ? this.pluginAgentSessionDir : this.sessionDir,
           {
             tools: input.tools,
-            remainingSubagentDepth: input.remainingSubagentDepth,
             auxiliary: input.auxiliary,
             fastMode: input.fastMode,
           },
@@ -505,7 +401,6 @@ export class PiWorkspaceDriver {
           targetRoot,
           {
             tools: input.tools,
-            remainingSubagentDepth: input.remainingSubagentDepth,
             auxiliary: input.auxiliary,
             fastMode: input.fastMode,
           },
@@ -520,8 +415,6 @@ export class PiWorkspaceDriver {
         );
         leaseAcquired = true;
       }
-      if (input.remainingSubagentDepth !== undefined)
-        this.runtimeSubagentDepth.set(runtime.sessionId, input.remainingSubagentDepth);
       return await runtime.snapshot();
     } catch (error) {
       if (leaseAcquired && runtime) this.releaseAgent(runtime.sessionId);
@@ -545,19 +438,11 @@ export class PiWorkspaceDriver {
       return;
     }
     this.privateRuntimeLeases.delete(sessionId);
-    for (const [handleId, handle] of this.subagentHandles) {
-      if (handle.parentSessionId !== sessionId) continue;
-      this.removeSubagentHandle(handleId, handle);
-      handle.controller.abort(new Error("Parent subagent released"));
-      if (handle.cleanupTimer) clearTimeout(handle.cleanupTimer);
-      if (handle.releaseRuntime && handle.sessionId) this.releaseAgent(handle.sessionId);
-    }
     this.runtimeListeners.delete(sessionId);
     this.activeAgentTurns.delete(sessionId);
     this.runtimes.get(sessionId)?.dispose();
     this.runtimes.delete(sessionId);
     this.privateRuntimeIds.delete(sessionId);
-    this.runtimeSubagentDepth.delete(sessionId);
   }
 
   async agentSnapshot(sessionId: string) {
@@ -579,27 +464,7 @@ export class PiWorkspaceDriver {
 
   async agentAbort(sessionId: string) {
     const runtime = this.runtimeFor(sessionId);
-    const ownedHandles = [...this.subagentHandles.values()].filter(
-      (handle) =>
-        handle.parentSessionId === sessionId &&
-        (handle.status === "queued" || handle.status === "running"),
-    );
-    for (const handle of ownedHandles) {
-      handle.controller.abort(new Error("Parent session aborted"));
-      handle.status = "aborted";
-      const handleId = [...this.subagentHandles].find(([, candidate]) => candidate === handle)?.[0];
-      if (handleId) this.emitSubagentActivity(handleId, handle);
-      for (const observer of handle.observers) observer();
-    }
-    await Promise.all([
-      runtime.abort(),
-      ...ownedHandles.flatMap((handle) =>
-        handle.sessionId && this.privateRuntimeIds.has(handle.sessionId)
-          ? [this.agentAbort(handle.sessionId).then(() => undefined)]
-          : [],
-      ),
-    ]);
-    this.emitSessionBackgroundWork(sessionId);
+    await runtime.abort();
     return runtime.snapshot();
   }
 
@@ -767,20 +632,6 @@ export class PiWorkspaceDriver {
   projectSessionRuntimeIntegrations(sessionId: string): ProjectSessionRuntimeIntegrations {
     const reviewContextPath = this.reviewRepository.reviewContextPath;
     return {
-      agentControl: {
-        run: (input, parentSessionId, signal, onUpdate, anchorPartId) =>
-          this.runSubagent(input, parentSessionId, signal, onUpdate, anchorPartId),
-        start: (input, parentSessionId, signal, anchorPartId) =>
-          this.startBackgroundSubagent(input, parentSessionId, signal, anchorPartId),
-        parallel: (input, parentSessionId, signal, onUpdate, anchorPartId) =>
-          this.parallelSubagents(input, parentSessionId, signal, onUpdate, anchorPartId),
-        prompt: (input, parentSessionId, signal) =>
-          this.promptSubagent(input, parentSessionId, signal),
-        wait: (handleId, parentSessionId, signal, onUpdate) =>
-          this.waitSubagent(handleId, parentSessionId, signal, onUpdate),
-        abort: (handleId, parentSessionId) => this.abortSubagent(handleId, parentSessionId),
-        close: (handleId, parentSessionId) => this.closeSubagent(handleId, parentSessionId),
-      },
       requestUi: (request) => this.requestUi(request),
       persistArtifact: (artifact) => this.persistArtifact(artifact),
       requestArtifact: (record, signal) => this.requestArtifact(record, signal),
@@ -831,7 +682,6 @@ export class PiWorkspaceDriver {
     sessionRoot = this.sessionDir,
     policy?: {
       tools?: string[];
-      remainingSubagentDepth?: number;
       auxiliary?: boolean;
       fastMode?: boolean;
     },
@@ -867,7 +717,6 @@ export class PiWorkspaceDriver {
     sessionRoot = this.sessionDir,
     policy?: {
       tools?: string[];
-      remainingSubagentDepth?: number;
       auxiliary?: boolean;
       fastMode?: boolean;
     },
@@ -888,23 +737,6 @@ export class PiWorkspaceDriver {
       additionalSystemPrompt,
       tools: policy?.tools,
       auxiliary: policy?.auxiliary,
-      agentControl:
-        policy?.remainingSubagentDepth === 0
-          ? undefined
-          : {
-              run: (input, parentSessionId, signal, onUpdate, anchorPartId) =>
-                this.runSubagent(input, parentSessionId, signal, onUpdate, anchorPartId),
-              start: (input, parentSessionId, signal, anchorPartId) =>
-                this.startBackgroundSubagent(input, parentSessionId, signal, anchorPartId),
-              parallel: (input, parentSessionId, signal, onUpdate, anchorPartId) =>
-                this.parallelSubagents(input, parentSessionId, signal, onUpdate, anchorPartId),
-              prompt: (input, parentSessionId, signal) =>
-                this.promptSubagent(input, parentSessionId, signal),
-              wait: (handleId, parentSessionId, signal, onUpdate) =>
-                this.waitSubagent(handleId, parentSessionId, signal, onUpdate),
-              abort: (handleId, parentSessionId) => this.abortSubagent(handleId, parentSessionId),
-              close: (handleId, parentSessionId) => this.closeSubagent(handleId, parentSessionId),
-            },
       requestUi: (request) => this.requestUi(request),
       persistArtifact: (artifact) => this.persistArtifact(artifact),
       requestArtifact: (record, signal) => this.requestArtifact(record, signal),
@@ -985,7 +817,6 @@ export class PiWorkspaceDriver {
             requestId: event.requestId,
             snapshot: event.snapshot,
           });
-          this.emitSubagentActivities(event.snapshot.sessionId);
         } else if (
           event.type === "part-updated" ||
           event.type === "part-removed" ||
@@ -1054,621 +885,6 @@ export class PiWorkspaceDriver {
       await this.compileWidget(language, source, "display");
       return { language, source, generationSessionId: generated.sessionId };
     }
-  }
-
-  private async prepareSingleSubagent(
-    rawInput: SubagentTaskInput,
-    parentSessionId: string,
-    signal: AbortSignal,
-  ) {
-    const [prepared] = await this.prepareSubagentTasks(
-      [subagentTaskSchema.parse(rawInput)],
-      parentSessionId,
-      signal,
-    );
-    if (!prepared) throw new Error("Subagent preflight did not produce a task");
-    return prepared;
-  }
-
-  private async runSubagent(
-    rawInput: SubagentTaskInput,
-    parentSessionId: string,
-    signal: AbortSignal,
-    onUpdate?: (value: JsonValue) => void,
-    anchorPartId = `subagent-${crypto.randomUUID()}`,
-  ) {
-    const prepared = await this.prepareSingleSubagent(rawInput, parentSessionId, signal);
-    const { handleId } = this.startSubagent(prepared, parentSessionId, anchorPartId, false);
-    try {
-      return await this.waitSubagent(handleId, parentSessionId, signal, onUpdate);
-    } catch (error) {
-      await this.closeSubagent(handleId, parentSessionId).catch(() => undefined);
-      throw error;
-    }
-  }
-
-  private async startBackgroundSubagent(
-    rawInput: SubagentTaskInput,
-    parentSessionId: string,
-    signal: AbortSignal,
-    anchorPartId = `subagent-${crypto.randomUUID()}`,
-  ) {
-    const prepared = await this.prepareSingleSubagent(rawInput, parentSessionId, signal);
-    return this.startSubagent(prepared, parentSessionId, anchorPartId, true).receipt;
-  }
-
-  private startSubagent(
-    { input, resolvedModel, tools, remainingSubagentDepth }: PreparedSubagentTask,
-    parentSessionId: string,
-    anchorPartId: string,
-    notifyOnCompletion: boolean,
-  ) {
-    const handleId = crypto.randomUUID();
-    const handle: SubagentHandle = {
-      parentSessionId,
-      anchorPartId,
-      releaseRuntime: false,
-      taskDescription: input.task,
-      profile: input.profile,
-      resolvedModel,
-      fastMode: input.fastMode,
-      retain: input.retain,
-      status: this.activeSubagents < MAX_ACTIVE_SUBAGENTS ? "running" : "queued",
-      revision: 0,
-      controller: new AbortController(),
-      liveParts: new Map(),
-      liveStreaming: false,
-      observers: new Set(),
-      activeWaiters: 0,
-      completionDisposition: notifyOnCompletion ? "pending" : "waited",
-    };
-    this.subagentHandles.set(handleId, handle);
-    this.emitSubagentActivity(handleId, handle);
-    this.emitSessionBackgroundWork(parentSessionId);
-    handle.task = this.withSubagentSlot(handleId, handle, async () => {
-      let snapshot = await this.openAgent({
-        target: { kind: "new", visibility: "private" },
-        instructions: subagentSystemPrompt(input.profile, input.instructions),
-        tools,
-        remainingSubagentDepth,
-        auxiliary: true,
-        fastMode: input.fastMode,
-      });
-      handle.sessionId = snapshot.sessionId;
-      handle.releaseRuntime = this.privateRuntimeIds.has(snapshot.sessionId);
-      if (handle.controller.signal.aborted) throw handle.controller.signal.reason;
-      const modelAlreadySelected =
-        snapshot.model?.provider === resolvedModel.provider &&
-        snapshot.model.id === resolvedModel.modelId &&
-        snapshot.thinkingLevel === resolvedModel.thinkingLevel;
-      if (!modelAlreadySelected)
-        snapshot = await this.configureAgent(
-          snapshot.sessionId,
-          resolvedModel.provider,
-          resolvedModel.modelId,
-          resolvedModel.thinkingLevel,
-        );
-      handle.liveParts = new Map(snapshot.parts.map((part) => [part.id, part]));
-      handle.liveStreaming = snapshot.streaming;
-      handle.unsubscribe = this.subscribeAgent(snapshot.sessionId, (event) => {
-        if (event.type === "part-updated") handle.liveParts.set(event.part.id, event.part);
-        else if (event.type === "part-removed") handle.liveParts.delete(event.partId);
-        else if (event.type === "streaming") handle.liveStreaming = event.streaming;
-        this.scheduleSubagentActivity(handleId, handle);
-        for (const observer of handle.observers) observer();
-      });
-      const finalSnapshot = await this.agentPrompt(snapshot.sessionId, input.task, "prompt");
-      if (handle.controller.signal.aborted) throw handle.controller.signal.reason;
-      handle.status = "complete";
-      handle.liveParts = new Map(finalSnapshot.parts.map((part) => [part.id, part]));
-      handle.liveStreaming = finalSnapshot.streaming;
-      handle.usage = finalSnapshot.usage;
-      handle.result = this.subagentResult(handleId, handle, finalSnapshot);
-      this.emitSubagentActivity(handleId, handle);
-      this.deliverSubagentCompletion(handleId, handle);
-    })
-      .catch((error) => {
-        handle.error = error instanceof Error ? error.message : String(error);
-        handle.status = handle.controller.signal.aborted ? "aborted" : "error";
-        handle.result = jsonValueSchema.parse({
-          handleId,
-          task: handle.taskDescription,
-          profile: handle.profile,
-          status: handle.status,
-          resolvedModel: handle.resolvedModel,
-          error: handle.error,
-        });
-        this.emitSubagentActivity(handleId, handle);
-        this.deliverSubagentCompletion(handleId, handle);
-      })
-      .finally(() => {
-        this.emitSessionBackgroundWork(parentSessionId);
-        if (!handle.retain) handle.unsubscribe?.();
-        if (
-          !handle.retain &&
-          handle.releaseRuntime &&
-          handle.sessionId &&
-          this.privateRuntimeIds.has(handle.sessionId)
-        )
-          this.releaseAgent(handle.sessionId);
-        if (!handle.retain) this.scheduleSubagentResultExpiry(handleId, handle);
-      });
-    const receipt = jsonValueSchema.parse({
-      handleId,
-      task: input.task,
-      profile: input.profile,
-      status: handle.status,
-      retained: input.retain,
-      fastMode: input.fastMode,
-      maxDepth: remainingSubagentDepth,
-      resolvedModel,
-    });
-    return { handleId, receipt };
-  }
-
-  private deliverSubagentCompletion(handleId: string, handle: SubagentHandle) {
-    if (handle.completionDisposition !== "pending" || !handle.result) return;
-    if (handle.activeWaiters > 0) {
-      handle.completionDisposition = "waited";
-      return;
-    }
-    handle.completionDisposition = "notifying";
-    const parent = this.runtimes.get(handle.parentSessionId);
-    if (!parent?.notifySubagentCompletion) {
-      handle.completionDisposition = "notified";
-      return;
-    }
-    void parent
-      .notifySubagentCompletion(handle.result)
-      .then(() => {
-        if (this.subagentHandles.get(handleId) === handle)
-          handle.completionDisposition = "notified";
-      })
-      .catch(() => undefined);
-  }
-
-  private async prepareSubagentTasks(
-    inputs: SubagentTask[],
-    parentSessionId: string,
-    signal: AbortSignal,
-  ): Promise<PreparedSubagentTask[]> {
-    if (signal.aborted) throw signal.reason;
-    const existingHandles = [...this.subagentHandles.values()].filter(
-      (handle) => handle.parentSessionId === parentSessionId,
-    ).length;
-    if (existingHandles + inputs.length > MAX_SUBAGENT_HANDLES_PER_PARENT) {
-      throw new Error(
-        `An agent may own at most ${MAX_SUBAGENT_HANDLES_PER_PARENT} subagent handles. Close an unused subagent before starting another.`,
-      );
-    }
-    const parentRuntime = this.runtimeFor(parentSessionId);
-    const parentSnapshot = await parentRuntime.snapshot();
-    if (signal.aborted) throw signal.reason;
-    const parentTools = parentRuntime.getReviewParentContext?.().activeTools ?? [
-      "read",
-      "bash",
-      "edit",
-      "write",
-      "grep",
-      "find",
-      "ls",
-    ];
-    const parentDepth = this.runtimeSubagentDepth.get(parentSessionId);
-    return inputs.map((input) => {
-      const remainingSubagentDepth = Math.min(
-        input.maxDepth,
-        parentDepth === undefined ? 1 : Math.max(0, parentDepth - 1),
-      );
-      const resolvedModel = this.resolveAgentModel(input.model, parentSnapshot);
-      if (
-        input.fastMode &&
-        !supportsFastMode({ provider: resolvedModel.provider, id: resolvedModel.modelId })
-      )
-        throw new Error(
-          `Fast mode is unavailable for ${resolvedModel.provider}/${resolvedModel.modelId}`,
-        );
-      return {
-        input,
-        resolvedModel,
-        tools: toolsForSubagentProfile(input.profile, parentTools),
-        remainingSubagentDepth,
-      };
-    });
-  }
-
-  private async parallelSubagents(
-    input: ParallelSubagentTasksInput,
-    parentSessionId: string,
-    signal: AbortSignal,
-    onUpdate?: (value: JsonValue) => void,
-    anchorPartId = `subagent-${crypto.randomUUID()}`,
-  ) {
-    const parsedInput = parallelSubagentSchema.parse(input);
-    const preparedTasks = await this.prepareSubagentTasks(
-      parsedInput.tasks,
-      parentSessionId,
-      signal,
-    );
-    const handles: string[] = [];
-    try {
-      for (const task of preparedTasks) {
-        const started = this.startSubagent(task, parentSessionId, anchorPartId, false);
-        handles.push(subagentStartReceiptSchema.parse(started.receipt).handleId);
-      }
-      const results = await Promise.all(
-        handles.map((handleId) =>
-          this.waitSubagent(
-            handleId,
-            parentSessionId,
-            signal,
-            (update) => {
-              onUpdate?.(
-                jsonValueSchema.parse({
-                  mode: "parallel",
-                  completed: handles.filter((id) => this.subagentHandles.get(id)?.result).length,
-                  total: handles.length,
-                  latest: update,
-                }),
-              );
-            },
-            false,
-          ),
-        ),
-      );
-      const output = jsonValueSchema.parse({
-        mode: "parallel",
-        completed: results.length,
-        total: results.length,
-        results,
-      });
-      for (const handleId of handles) {
-        const handle = this.subagentHandles.get(handleId);
-        if (handle && !handle.retain) this.removeSubagentHandle(handleId, handle, 500);
-      }
-      return output;
-    } catch (error) {
-      await Promise.all(
-        handles.map((handleId) =>
-          this.closeSubagent(handleId, parentSessionId).catch(() => undefined),
-        ),
-      );
-      throw error;
-    }
-  }
-
-  private async promptSubagent(
-    input: { handleId: string; text: string; delivery: "prompt" | "follow-up" },
-    parentSessionId: string,
-    signal: AbortSignal,
-  ) {
-    const handle = this.subagentHandle(input.handleId, parentSessionId);
-    if (!handle.retain)
-      throw new Error(
-        "This subagent was created for one-shot work. Spawn with retain: true to use multi-turn prompts.",
-      );
-    const sessionId = handle.sessionId;
-    if (!sessionId) throw new Error("The retained subagent is still starting");
-    if (sessionId === parentSessionId)
-      throw new Error("An agent cannot synchronously prompt or wait on itself");
-    const onAbort = () => {
-      void this.agentAbort(sessionId);
-    };
-    signal.addEventListener("abort", onAbort, { once: true });
-    try {
-      handle.status = this.activeSubagents < MAX_ACTIVE_SUBAGENTS ? "running" : "queued";
-      this.emitSubagentActivity(input.handleId, handle);
-      this.emitSessionBackgroundWork(parentSessionId);
-      let snapshot: Awaited<ReturnType<CakeRuntime["snapshot"]>> | undefined;
-      handle.task = this.withSubagentSlot(input.handleId, handle, async () => {
-        try {
-          snapshot = await this.agentPrompt(sessionId, input.text, input.delivery);
-          if (handle.controller.signal.aborted) throw handle.controller.signal.reason;
-          handle.status = "complete";
-        } catch (error) {
-          handle.status = handle.controller.signal.aborted ? "aborted" : "error";
-          handle.error = error instanceof Error ? error.message : String(error);
-          this.emitSubagentActivity(input.handleId, handle);
-          throw error;
-        }
-      });
-      await handle.task;
-      if (!snapshot) throw new Error("The retained subagent turn did not produce a snapshot");
-      handle.liveParts = new Map(snapshot.parts.map((part) => [part.id, part]));
-      handle.liveStreaming = snapshot.streaming;
-      handle.usage = snapshot.usage;
-      handle.result = this.subagentResult(input.handleId, handle, snapshot);
-      this.emitSubagentActivity(input.handleId, handle);
-      return handle.result;
-    } finally {
-      signal.removeEventListener("abort", onAbort);
-      this.emitSessionBackgroundWork(parentSessionId);
-    }
-  }
-
-  private async waitSubagent(
-    handleId: string,
-    parentSessionId: string,
-    signal: AbortSignal,
-    onUpdate?: (value: JsonValue) => void,
-    releaseOnComplete = true,
-  ) {
-    const handle = this.subagentHandle(handleId, parentSessionId);
-    if (handle.sessionId === parentSessionId)
-      throw new Error("An agent cannot synchronously wait on itself");
-    const claimedCompletion = handle.completionDisposition === "pending";
-    if (claimedCompletion) handle.activeWaiters += 1;
-    let updateTimer: ReturnType<typeof setTimeout> | undefined;
-    const emitUpdate = () => {
-      if (updateTimer || !onUpdate) return;
-      updateTimer = setTimeout(() => {
-        updateTimer = undefined;
-        onUpdate(this.liveSubagentResult(handleId, handle));
-      }, 150);
-    };
-    if (onUpdate) handle.observers.add(emitUpdate);
-    onUpdate?.(
-      jsonValueSchema.parse({
-        handleId,
-        task: handle.taskDescription,
-        profile: handle.profile,
-        status: handle.status,
-      }),
-    );
-    try {
-      if (handle.task) await this.waitForSubagentTask(handle, signal);
-    } finally {
-      handle.observers.delete(emitUpdate);
-      if (updateTimer) clearTimeout(updateTimer);
-      if (claimedCompletion) handle.activeWaiters -= 1;
-    }
-    if (handle.result) {
-      const result = handle.result;
-      if (!handle.retain && releaseOnComplete) {
-        if (handle.cleanupTimer) clearTimeout(handle.cleanupTimer);
-        this.removeSubagentHandle(handleId, handle, 500);
-      }
-      return result;
-    }
-    const sessionId = handle.sessionId;
-    if (!sessionId) throw new Error("The subagent did not start a runtime");
-    let snapshot = await this.agentSnapshot(sessionId);
-    if (snapshot.streaming) {
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(
-          () => finish(new Error("Timed out waiting for the subagent")),
-          5 * 60_000,
-        );
-        const unsubscribe = this.subscribeAgent(sessionId, (event) => {
-          if (event.type === "streaming" && !event.streaming) finish();
-        });
-        const onAbort = () =>
-          finish(
-            signal.reason instanceof Error ? signal.reason : new Error("Subagent wait aborted"),
-          );
-        const finish = (error?: Error) => {
-          clearTimeout(timeout);
-          unsubscribe();
-          signal.removeEventListener("abort", onAbort);
-          if (error) reject(error);
-          else resolve();
-        };
-        signal.addEventListener("abort", onAbort, { once: true });
-        if (signal.aborted) onAbort();
-      });
-      snapshot = await this.agentSnapshot(sessionId);
-    }
-    return this.subagentResult(handleId, handle, snapshot);
-  }
-
-  private async waitForSubagentTask(handle: SubagentHandle, signal: AbortSignal) {
-    const task = handle.task;
-    if (!task) return;
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(
-        () => finish(new Error("Timed out waiting for the subagent")),
-        5 * 60_000,
-      );
-      const onAbort = () =>
-        finish(signal.reason instanceof Error ? signal.reason : new Error("Subagent wait aborted"));
-      const finish = (error?: Error) => {
-        clearTimeout(timeout);
-        signal.removeEventListener("abort", onAbort);
-        if (error) reject(error);
-        else resolve();
-      };
-      signal.addEventListener("abort", onAbort, { once: true });
-      if (signal.aborted) onAbort();
-      else void task.then(() => finish());
-    });
-  }
-
-  steerSubagent(handleId: string, parentSessionId: string, text: string) {
-    const handle = this.subagentHandle(handleId, parentSessionId);
-    if (handle.status !== "running" || !handle.sessionId)
-      throw new Error("That subagent is no longer available to steer");
-    void this.agentPrompt(handle.sessionId, text, "steer").catch((error) => {
-      if (this.subagentHandles.get(handleId) !== handle) return;
-      handle.error = error instanceof Error ? error.message : String(error);
-      this.emitSubagentActivity(handleId, handle);
-    });
-  }
-
-  async abortSubagent(handleId: string, parentSessionId: string) {
-    const handle = this.subagentHandle(handleId, parentSessionId);
-    handle.controller.abort(new Error("Subagent aborted"));
-    handle.status = "aborted";
-    this.emitSubagentActivity(handleId, handle);
-    if (!handle.sessionId || !this.privateRuntimeIds.has(handle.sessionId))
-      return jsonValueSchema.parse({ handleId, streaming: false, status: handle.status });
-    const snapshot = await this.agentAbort(handle.sessionId);
-    return jsonValueSchema.parse({
-      handleId,
-      streaming: snapshot.streaming,
-      status: handle.status,
-    });
-  }
-
-  private async closeSubagent(handleId: string, parentSessionId: string) {
-    const handle = this.subagentHandle(handleId, parentSessionId);
-    this.removeSubagentHandle(handleId, handle);
-    handle.controller.abort(new Error("Subagent closed"));
-    if (handle.cleanupTimer) clearTimeout(handle.cleanupTimer);
-    handle.unsubscribe?.();
-    if (handle.releaseRuntime && handle.sessionId && this.privateRuntimeIds.has(handle.sessionId))
-      this.releaseAgent(handle.sessionId);
-    return jsonValueSchema.parse({ handleId, closed: true });
-  }
-
-  private subagentHandle(handleId: string, parentSessionId: string) {
-    const handle = this.subagentHandles.get(handleId);
-    if (!handle || handle.parentSessionId !== parentSessionId)
-      throw new Error("That subagent handle does not belong to this parent session");
-    return handle;
-  }
-
-  private subagentResult(
-    handleId: string,
-    handle: SubagentHandle,
-    snapshot: Awaited<ReturnType<CakeRuntime["snapshot"]>>,
-  ) {
-    const result = {
-      handleId,
-      task: handle.taskDescription,
-      profile: handle.profile,
-      status: handle.status,
-      resolvedModel: handle.resolvedModel,
-      fastMode: handle.fastMode,
-      streaming: snapshot.streaming,
-      parts: snapshot.parts,
-    };
-    // UiPart permits optional properties, while Pi tool results must contain strict JSON values.
-    return jsonValueSchema.parse(
-      JSON.parse(JSON.stringify(snapshot.usage ? { ...result, usage: snapshot.usage } : result)),
-    );
-  }
-
-  private liveSubagentResult(handleId: string, handle: SubagentHandle) {
-    return jsonValueSchema.parse(
-      JSON.parse(
-        JSON.stringify({
-          handleId,
-          task: handle.taskDescription,
-          profile: handle.profile,
-          status: handle.status,
-          resolvedModel: handle.resolvedModel,
-          fastMode: handle.fastMode,
-          streaming: handle.liveStreaming,
-          parts: [...handle.liveParts.values()],
-        }),
-      ),
-    );
-  }
-
-  private async withSubagentSlot(
-    handleId: string,
-    handle: SubagentHandle,
-    run: () => Promise<void>,
-  ) {
-    if (this.activeSubagents >= MAX_ACTIVE_SUBAGENTS) {
-      await new Promise<void>((resolve, reject) => {
-        const start = () => {
-          handle.controller.signal.removeEventListener("abort", abort);
-          resolve();
-        };
-        const abort = () => {
-          this.subagentQueue.splice(this.subagentQueue.indexOf(start), 1);
-          reject(handle.controller.signal.reason);
-        };
-        this.subagentQueue.push(start);
-        handle.controller.signal.addEventListener("abort", abort, { once: true });
-      });
-    }
-    if (handle.controller.signal.aborted) throw handle.controller.signal.reason;
-    this.activeSubagents += 1;
-    handle.status = "running";
-    this.emitSubagentActivity(handleId, handle);
-    try {
-      await run();
-    } finally {
-      this.activeSubagents -= 1;
-      this.subagentQueue.shift()?.();
-    }
-  }
-
-  private scheduleSubagentActivity(handleId: string, handle: SubagentHandle) {
-    if (handle.activityTimer) return;
-    handle.activityTimer = setTimeout(() => {
-      handle.activityTimer = undefined;
-      if (this.subagentHandles.get(handleId) === handle)
-        this.emitSubagentActivity(handleId, handle);
-    }, 150);
-  }
-
-  private emitSubagentActivity(handleId: string, handle: SubagentHandle) {
-    if (handle.activityTimer) {
-      clearTimeout(handle.activityTimer);
-      handle.activityTimer = undefined;
-    }
-    handle.revision += 1;
-    this.emit({
-      type: "subagent-activity",
-      activity: subagentActivitySchema.parse({
-        parentSessionId: handle.parentSessionId,
-        anchorPartId: handle.anchorPartId,
-        handleId,
-        revision: handle.revision,
-        task: handle.taskDescription,
-        profile: handle.profile,
-        status: handle.status,
-        resolvedModel: handle.resolvedModel,
-        fastMode: handle.fastMode,
-        retained: handle.retain,
-        streaming: handle.liveStreaming,
-        parts: [...handle.liveParts.values()],
-        usage: handle.usage,
-        error: handle.error,
-      }),
-    });
-  }
-
-  private emitSubagentActivities(parentSessionId: string) {
-    for (const [handleId, handle] of this.subagentHandles)
-      if (handle.parentSessionId === parentSessionId) this.emitSubagentActivity(handleId, handle);
-  }
-
-  private removeSubagentHandle(handleId: string, handle: SubagentHandle, projectionDelayMs = 0) {
-    if (this.subagentHandles.get(handleId) !== handle) return;
-    this.subagentHandles.delete(handleId);
-    if (handle.cleanupTimer) clearTimeout(handle.cleanupTimer);
-    if (handle.activityTimer) clearTimeout(handle.activityTimer);
-    const emitRemoval = () =>
-      this.emit({
-        type: "subagent-activity-removed",
-        parentSessionId: handle.parentSessionId,
-        handleId,
-      });
-    if (projectionDelayMs === 0) emitRemoval();
-    else {
-      const timer = setTimeout(emitRemoval, projectionDelayMs);
-      timer.unref?.();
-    }
-  }
-
-  private emitSessionBackgroundWork(sessionId: string) {
-    const active = [...this.subagentHandles.values()].some(
-      (handle) =>
-        handle.parentSessionId === sessionId &&
-        (handle.status === "queued" || handle.status === "running"),
-    );
-    this.emit({ type: "session-background-work", sessionId, active });
-  }
-
-  private scheduleSubagentResultExpiry(handleId: string, handle: SubagentHandle) {
-    if (handle.cleanupTimer) clearTimeout(handle.cleanupTimer);
-    handle.cleanupTimer = setTimeout(() => {
-      this.removeSubagentHandle(handleId, handle);
-    }, SUBAGENT_RESULT_TTL_MS);
-    handle.cleanupTimer.unref?.();
   }
 }
 

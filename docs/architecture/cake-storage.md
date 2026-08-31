@@ -102,12 +102,12 @@ high write concurrency, or scale that files cannot support.
 
 ## Renderer snapshots
 
-Effect-state-tree snapshots serialize renderer-owned application state:
+r-state-tree snapshots serialize renderer-owned application state:
 
 ```text
-Store.snapshot fields
-→ toSnapshot / onSnapshot
-→ CakeIpcClient.windowState
+explicit snapshot fields
+→ r-state-tree snapshot capture/change observation
+→ RendererClient.windowState
 → WindowStateStorage
 → versioned file
 ```
@@ -131,13 +131,16 @@ Do not persist:
 Hydration order is mandatory:
 
 1. main reads, migrates, and validates the stored document;
-2. the renderer applies the complete effect-state-tree snapshot;
+2. the renderer creates and mounts the r-state-tree root with the complete
+   snapshot, or atomically applies it before ordinary workflow effects begin;
 3. the owner selects an explicit fallback if application fails;
-4. Store autoruns activate after hydration;
-5. a scoped, debounced `onSnapshot` Stream persists future commits.
+4. Store effects and projection attachment activate after hydration;
+5. a scoped, debounced snapshot observer persists future commits through
+   `RendererClient`.
 
-Defaults must never overwrite a saved document before hydration. Applying a
-Store snapshot must not realize lazy child Stores.
+Defaults must never overwrite a saved document before hydration. Projection
+Models reconstructed from authoritative Streams are excluded from the window
+snapshot.
 
 ## Pi-owned storage
 

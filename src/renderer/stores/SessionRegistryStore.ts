@@ -13,8 +13,7 @@ import type { DesktopClient } from "../desktop-client";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { PluginCommandStore } from "./PluginCommandStore";
-import type { SessionCatalogStoreInstance } from "./SessionCatalogStore";
-import type { CatalogOperationRunner } from "../catalog-operation-runner";
+import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ProjectSessionStore, type SessionTarget } from "./ProjectSessionStore";
 import { toSessionPreviewSnapshot, toSessionSnapshot } from "../../utils/session-snapshot";
@@ -23,8 +22,7 @@ import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeC
 
 export interface SessionRegistryStoreProps {
   client: DesktopClient;
-  catalog?: SessionCatalogStoreInstance;
-  runCatalog?: CatalogOperationRunner;
+  catalog?: SessionCatalogStore;
   operations: SessionOperationCoordinatorStore;
   reviews(): ReviewsStore;
   pluginCommands(): PluginCommandStore;
@@ -227,15 +225,12 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
       resolved: false,
     };
     if (this.stagedSessionId === sessionId) this.stagedSessionId = undefined;
-    if (this.props.catalog && this.props.runCatalog)
-      await this.props.runCatalog(
-        this.props.catalog.upsertPending(
-          sessionId,
-          session.workspacePath,
-          this.props.projectName(session.workspacePath),
-          { draft: true },
-        ),
-      );
+    this.props.catalog?.upsertPending(
+      sessionId,
+      session.workspacePath,
+      this.props.projectName(session.workspacePath),
+      { draft: true },
+    );
     await this.props.persistNow();
   }
 
@@ -280,20 +275,16 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     this.sessionWorkspacePaths.set(sessionId, workspacePath);
     this.targets.splice(index, 1, { sessionId, workspacePath });
     updateStore(session, { ...session.props, workspacePath });
-    if (this.isDraftSession(sessionId) && this.props.catalog && this.props.runCatalog)
-      void this.props
-        .runCatalog(
-          this.props.catalog.upsertPending(
-            sessionId,
-            workspacePath,
-            this.props.projectName(workspacePath),
-            {
-              draft: true,
-              resolved: this.draftSessionPrompt(sessionId)?.resolved,
-            },
-          ),
-        )
-        .catch(() => undefined);
+    if (this.isDraftSession(sessionId))
+      this.props.catalog?.upsertPending(
+        sessionId,
+        workspacePath,
+        this.props.projectName(workspacePath),
+        {
+          draft: true,
+          resolved: this.draftSessionPrompt(sessionId)?.resolved,
+        },
+      );
   }
 
   pendingConfiguration(sessionId: string) {
@@ -402,17 +393,13 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
       session.chatStore.setDraft("");
       session.composerStore.restoreStagedAttachments([]);
     }
-    if (state.lifecycle !== "staged" && this.props.catalog && this.props.runCatalog)
-      void this.props
-        .runCatalog(
-          this.props.catalog.upsertPending(
-            state.sessionId,
-            workspacePath,
-            this.props.projectName(workspacePath),
-            { draft: isSavedDraft, resolved: state.resolved },
-          ),
-        )
-        .catch(() => undefined);
+    if (state.lifecycle !== "staged")
+      this.props.catalog?.upsertPending(
+        state.sessionId,
+        workspacePath,
+        this.props.projectName(workspacePath),
+        { draft: isSavedDraft, resolved: state.resolved },
+      );
     if (state.name) this.setPendingName(state.sessionId, state.name);
     return session;
   }

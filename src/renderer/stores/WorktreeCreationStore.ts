@@ -1,7 +1,7 @@
 import { Store, observable } from "r-state-tree";
 import type { WorktreeRecord } from "../../ipc/worktree-contract";
 import type { DesktopClient } from "../desktop-client";
-import type { SessionCatalogStoreInstance } from "./SessionCatalogStore";
+import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
 export type WorktreeDraftChoice =
@@ -14,7 +14,7 @@ export type ExistingWorktreeCandidate = WorktreeRecord & { sessionTitle: string 
 export interface WorktreeCreationStoreProps {
   client: Pick<DesktopClient, "createWorktree">;
   operations: SessionOperationCoordinatorStore;
-  catalog: SessionCatalogStoreInstance;
+  catalog: SessionCatalogStore;
   relocateTemporarySession(sessionId: string, workspacePath: string): void;
   reportError(error: unknown): void;
 }

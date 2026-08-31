@@ -27,7 +27,7 @@ import {
   type WindowViewState,
 } from "../ipc/session-contract";
 import type { SourceLocation } from "../ipc/source-location";
-import { jsonObjectSchema } from "../ipc/json-contract";
+import { jsonObjectSchema, jsonValueSchema } from "../ipc/json-contract";
 import type { WorktreeRecord } from "../ipc/worktree-contract";
 import {
   findSessionFile,
@@ -43,7 +43,8 @@ import {
   writeDiscussionParentContext,
 } from "../services/pi/runtime/sidecar-runtime";
 import { PiModels } from "../services/pi/PiModels";
-import { PiSessions } from "../services/pi/PiSessions";
+import { PiSessions, type PiSessionAcquireOptions } from "../services/pi/PiSessions";
+import type { CakeRuntimeOptions } from "../services/pi/runtime/cake-runtime";
 import { ProjectSessionEnvironmentError } from "../services/project-sessions/ProjectSessionEnvironment";
 import { CakeChatEnvironmentError } from "../services/cake-chats/CakeChatEnvironment";
 import {
@@ -51,6 +52,7 @@ import {
   type DiscussionSessionRecord,
 } from "../services/discussion-sessions/DiscussionSessionEnvironment";
 import { rewordSelectionWithProjectContext } from "../services/pi/runtime/rewording-agent";
+import * as subagents from "../domain/subagents";
 import {
   generateSessionTitle,
   generateWorktreeName,
@@ -96,7 +98,7 @@ import {
   publishInlineWidget,
   registerInlineWidgetScheme,
 } from "./inline-widget-protocol";
-import { PluginAgentHost, resolveAgentModel } from "./plugin-agent-host";
+import { PluginAgentHost } from "./plugin-agent-host";
 import { TerminalManager } from "./terminal-manager";
 import { launchMainApplication, runMainEffect } from "./MainLive";
 import cakeIconPath from "../assets/cake.png?asset";
@@ -587,6 +589,67 @@ async function openProjectLocationInEditor(
   return normalizedLocation;
 }
 
+function subagentControl(
+  options: () => PiSessionAcquireOptions,
+  workingDirectory: string,
+  remainingDepth = 1,
+): NonNullable<CakeRuntimeOptions["agentControl"]> {
+  const parent = (parentSessionId: string): subagents.SubagentParentRuntime => ({
+    parentSessionId,
+    workingDirectory,
+    remainingDepth,
+    options: options(),
+  });
+  return {
+    run: (input, parentSessionId, signal, onUpdate, anchorPartId) =>
+      runMainEffect(
+        subagents.run(
+          input,
+          parent(parentSessionId),
+          onUpdate ? (value) => onUpdate(jsonValueSchema.parse(value)) : undefined,
+          anchorPartId,
+        ),
+        signal,
+      ).then((value) => jsonValueSchema.parse(value)),
+    start: (input, parentSessionId, signal, anchorPartId) =>
+      runMainEffect(subagents.start(input, parent(parentSessionId), anchorPartId), signal).then(
+        (value) => jsonValueSchema.parse(value),
+      ),
+    parallel: (input, parentSessionId, signal, onUpdate, anchorPartId) =>
+      runMainEffect(
+        subagents.parallel(
+          input,
+          parent(parentSessionId),
+          onUpdate ? (value) => onUpdate(jsonValueSchema.parse(value)) : undefined,
+          anchorPartId,
+        ),
+        signal,
+      ).then((value) => jsonValueSchema.parse(value)),
+    prompt: (input, parentSessionId, signal) =>
+      runMainEffect(
+        subagents.prompt(parentSessionId, input.handleId, input.text, input.delivery),
+        signal,
+      ).then((value) => jsonValueSchema.parse(value)),
+    wait: (handleId, parentSessionId, signal, onUpdate) =>
+      runMainEffect(
+        subagents.wait(
+          parentSessionId,
+          handleId,
+          onUpdate ? (value) => onUpdate(jsonValueSchema.parse(value)) : undefined,
+        ),
+        signal,
+      ).then((value) => jsonValueSchema.parse(value)),
+    abort: (handleId, parentSessionId) =>
+      runMainEffect(subagents.abort(parentSessionId, handleId)).then(() =>
+        jsonValueSchema.parse({ handleId, status: "aborted", streaming: false }),
+      ),
+    close: (handleId, parentSessionId) =>
+      runMainEffect(subagents.close(parentSessionId, handleId)).then((value) =>
+        jsonValueSchema.parse(value),
+      ),
+  };
+}
+
 function launchPi(path: string) {
   const existing = piHosts.get(path);
   if (existing && existing.state !== "failed" && existing.state !== "stopped") return existing;
@@ -623,8 +686,6 @@ function launchPi(path: string) {
     sessionResolved: (sessionId) => applicationState().resolvedSessionIds.includes(sessionId),
     setSessionResolved: (sessionId, resolved) =>
       setProjectSessionResolution(sessionId, resolved, path),
-    resolveAgentModel: (preference, snapshot) =>
-      resolveAgentModel(preference, snapshot, applicationState().utilityModel),
     openInEditor: (location, signal) => openProjectLocationInEditor(path, location, signal),
     openExternal: async (url) => {
       const protocol = new URL(url).protocol;
@@ -1888,16 +1949,6 @@ async function handleCakeRequest(
     await worktrees.discard(request.workspacePath, request.keepBranch);
     return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
   }
-  if (request.type === "steer-subagent" || request.type === "abort-subagent") {
-    const path = await resolveSessionWorkspacePath(request.parentSessionId);
-    if (!allowedProjectPaths.has(path))
-      throw new Error("Project path was not selected by the user");
-    const driver = launchPi(path).driver;
-    if (request.type === "steer-subagent")
-      driver.steerSubagent(request.handleId, request.parentSessionId, request.text);
-    else await driver.abortSubagent(request.handleId, request.parentSessionId);
-    return desktopResponseSchema.parse({ type: "accepted", requestId: request.requestId });
-  }
   // Model refresh is an app-global operation: it reaches every live runtime —
   // project sessions in any open workspace and Cake Chat — plus the shared
   // session-less catalog, not just the session whose settings page triggered it.
@@ -2022,43 +2073,50 @@ launchMainApplication({
         }),
       ),
       runtimeOptions: Effect.fn("CakeChatEnvironment.runtimeOptions")((input, invoke) =>
-        Effect.succeed({
-          profile: { _tag: "CakeChatSession" as const },
-          runtime: {
-            cwd: homedir(),
-            trusted: true,
-            agentDir: cakePaths.piAgent,
-            sessionDir: cakePaths.piGlobalChatSessions,
-            resolvedSessionDir: cakePaths.piGlobalChatResolvedSessions,
-            newSession: input.newSession,
-            sessionId: input.sessionId,
-            slashCommands: ["compact", "model", "handoff", "handoffandresolve"],
-            requestUi: async () => undefined,
-            modelPresets: modelPresetAgentProjection,
-            fastMode: {
-              get: () => hasSessionFastMode(input.sessionId),
-              set: (enabled) =>
-                runMainEffect(setSessionFastMode(input.sessionId, enabled)).then(() => undefined),
-            },
-            currentSessionControl: {
-              resolved: () =>
-                applicationState().resolvedCakeChatSessionIds.includes(input.sessionId),
-              setResolved: (resolved) => setCakeChatSessionResolution(input.sessionId, resolved),
-            },
-            globalControl: {
-              tools: input.tools.map((tool) => ({
-                ...tool,
-                parameters: jsonObjectSchema.parse(tool.parameters),
-                examples: tool.examples?.map((example) => ({
-                  ...example,
-                  input:
-                    example.input === undefined ? undefined : jsonObjectSchema.parse(example.input),
+        Effect.sync(() => {
+          const getOptions = () => options;
+          const options: PiSessionAcquireOptions = {
+            profile: { _tag: "CakeChatSession" as const },
+            runtime: {
+              cwd: homedir(),
+              trusted: true,
+              agentDir: cakePaths.piAgent,
+              sessionDir: cakePaths.piGlobalChatSessions,
+              resolvedSessionDir: cakePaths.piGlobalChatResolvedSessions,
+              newSession: input.newSession,
+              sessionId: input.sessionId,
+              slashCommands: ["compact", "model", "handoff", "handoffandresolve"],
+              requestUi: async () => undefined,
+              modelPresets: modelPresetAgentProjection,
+              fastMode: {
+                get: () => hasSessionFastMode(input.sessionId),
+                set: (enabled) =>
+                  runMainEffect(setSessionFastMode(input.sessionId, enabled)).then(() => undefined),
+              },
+              currentSessionControl: {
+                resolved: () =>
+                  applicationState().resolvedCakeChatSessionIds.includes(input.sessionId),
+                setResolved: (resolved) => setCakeChatSessionResolution(input.sessionId, resolved),
+              },
+              agentControl: subagentControl(getOptions, homedir()),
+              globalControl: {
+                tools: input.tools.map((tool) => ({
+                  ...tool,
+                  parameters: jsonObjectSchema.parse(tool.parameters),
+                  examples: tool.examples?.map((example) => ({
+                    ...example,
+                    input:
+                      example.input === undefined
+                        ? undefined
+                        : jsonObjectSchema.parse(example.input),
+                  })),
                 })),
-              })),
-              recoveryContext: cakeChatRecoveryContext(),
-              invoke: (invocation, signal) => invoke(input.sessionId, invocation, signal),
+                recoveryContext: cakeChatRecoveryContext(),
+                invoke: (invocation, signal) => invoke(input.sessionId, invocation, signal),
+              },
             },
-          },
+          };
+          return options;
         }),
       ),
       archive: Effect.fn("CakeChatEnvironment.archive")(function* (sessionId) {
@@ -2224,6 +2282,16 @@ launchMainApplication({
         },
       ),
     },
+    subagents: {
+      location: Effect.fn("SubagentEnvironment.location")((workingDirectory) =>
+        Effect.succeed({
+          workingDirectory,
+          agentDirectory: cakePaths.piAgent,
+          sessionDirectory: cakePaths.piPluginAgentSessions,
+          trusted: isProjectTrusted(workingDirectory) || workingDirectory === homedir(),
+        }),
+      ),
+    },
     projectSessions: {
       locations: Effect.fn("ProjectSessionEnvironment.locations")(function* () {
         const records = yield* Effect.tryPromise({
@@ -2270,10 +2338,12 @@ launchMainApplication({
         const integrations = launchPi(
           location.workingDirectory,
         ).driver.projectSessionRuntimeIntegrations(sessionId);
-        return {
+        const getOptions = () => options;
+        const options: PiSessionAcquireOptions = {
           profile: { _tag: "ProjectSession" as const },
           runtime: {
             ...integrations,
+            agentControl: subagentControl(getOptions, location.workingDirectory),
             cwd: location.workingDirectory,
             trusted: isProjectTrusted(location.workingDirectory),
             agentDir: cakePaths.piAgent,
@@ -2323,6 +2393,7 @@ launchMainApplication({
             },
           },
         };
+        return options;
       }),
       archive: Effect.fn("ProjectSessionEnvironment.archive")(function* (sessionId, location) {
         yield* Effect.tryPromise({

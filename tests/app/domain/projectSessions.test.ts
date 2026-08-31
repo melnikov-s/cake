@@ -15,6 +15,7 @@ import type {
 } from "../../../src/services/pi/runtime/cake-runtime";
 import { makeProjectSessionEnvironmentLayer } from "../../../src/services/project-sessions/ProjectSessionEnvironment";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
 
 const snapshot: SessionSnapshot = {
@@ -119,6 +120,7 @@ const makeLayer = (
   return Layer.mergeAll(
     application,
     makePiSessionsLayer(adapter),
+    SubagentCoordinatorLive,
     makeProjectSessionEnvironmentLayer({
       locations: () =>
         Effect.succeed([

@@ -14,6 +14,7 @@ import type {
   CakeRuntimeOptions,
 } from "../../../src/services/pi/runtime/cake-runtime";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
 
 const snapshot: SessionSnapshot = {
@@ -124,6 +125,7 @@ const makeLayer = () => {
       Layer.succeed(ApplicationState, application),
       makePiSessionsLayer(adapter),
       environment,
+      SubagentCoordinatorLive,
     ),
     created: () => created,
     archived: () => archived,

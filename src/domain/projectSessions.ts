@@ -1,4 +1,5 @@
 import { Effect, Schema, Stream } from "effect";
+import * as subagents from "./subagents";
 import type {
   Annotation,
   Attachment,
@@ -407,6 +408,7 @@ export const followUp = Effect.fn("ProjectSessions.followUp")(function* (
 });
 
 export const abort = Effect.fn("ProjectSessions.abort")(function* (target: ProjectSessionTarget) {
+  yield* subagents.abortParentChildren(target.sessionId).pipe(asError("abort"));
   yield* withHandle(target, (handle) => handle.abort()).pipe(asError("abort"));
 });
 
@@ -487,6 +489,7 @@ export const resolve = Effect.fn("ProjectSessions.resolve")(function* (
       operation: "resolve",
       message: "Cake cannot resolve an empty Project Session",
     });
+  yield* subagents.releaseParent(target.sessionId).pipe(asError("resolve"));
   const environment = yield* ProjectSessionEnvironment;
   yield* environment.archive(target.sessionId, location).pipe(asError("resolve"));
   return yield* setSessionsResolved([target.sessionId], true).pipe(asError("resolve"));

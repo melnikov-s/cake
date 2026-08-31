@@ -3,7 +3,7 @@ name: effect-ts
 description: |
   Production Effect v4 conventions for Cake. Use whenever implementing or reviewing Effect workflows, Services, Layers, Schemas, configuration, schedules, caches, Streams, HTTP clients, tests, or Effect repository setup.
 license: MIT
-compatibility: Cake's pinned Effect v4 release and the local effect-state-tree package.
+compatibility: Cake's pinned Effect v4 release and Effect RPC architecture.
 metadata:
   upstream: https://github.com/kitlangton/skills/tree/main/skills/effect
   upstream-revision: 22c35cb7fd29f931789253fc3c8eb142f2863a8a
@@ -26,8 +26,9 @@ Before writing or reviewing Effect code:
 3. Read this skill and every branch reference selected below.
 4. Read the project-pinned Effect source in `node_modules/effect/src` rather
    than guessing when the installed guide does not answer a question.
-5. For renderer state, also read the complete local effect-state-tree guidance
-   required by Cake's `AGENTS.md`.
+5. For renderer infrastructure, preserve Cake's boundary: ordinary r-state-tree
+   Stores and Models do not import Effect; only `RendererClient` and projection
+   infrastructure adapt Effects and Streams.
 
 Cake's ownership, process, security, and state architecture takes precedence.
 The installed Effect package is the API authority. This skill supplies coding
@@ -36,10 +37,10 @@ a generic example.
 
 ## Repository setup
 
-Cake pins one exact Effect version shared with effect-state-tree. Do not use a
-floating `effect@rc` command in this repository. Preserve the versions and local
-peer-instance rules in `docs/development/effect-migration.md` and do not install
-`@effect/rpc`; Cake uses `effect/unstable/rpc`.
+Cake pins one exact Effect version. Do not use a floating `effect@rc` command in
+this repository. Preserve the version in
+`docs/development/effect-migration.md` and do not install `@effect/rpc`; Cake
+uses `effect/unstable/rpc`.
 
 A repository adopting this skill must include the Effect learning instructions
 in `AGENTS.md` and must make this skill required reading before Effect changes.

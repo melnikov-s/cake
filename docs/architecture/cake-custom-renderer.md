@@ -40,7 +40,7 @@ cannot replace:
 
 - Electron main;
 - preload;
-- the host-provided `CakeIpcClient`, Electron RPC transport, shared protocol
+- the host-provided `RendererClient`, internal `CakeIpcClient`, Electron RPC transport, shared protocol
   definitions, or privileged handlers;
 - Cake domain operations or outside-world Service implementations;
 - customization source storage, build service, or activation journal;
@@ -52,7 +52,7 @@ cannot replace:
 ```mermaid
 flowchart LR
   Custom[User-owned Custom Renderer]
-  Client[CakeIpcClient]
+  Client[RendererClient]
   Protocol[Validated Effect RPC]
   Main[Immutable Cake main]
 
@@ -62,7 +62,7 @@ flowchart LR
 ```
 
 The Custom Renderer receives exactly the capabilities exposed through
-`CakeIpcClient` and approved plugin APIs. Rewriting renderer code does not grant
+`RendererClient` and approved plugin APIs. Rewriting renderer code does not grant
 raw IPC or Node access. Main revalidates every privileged request.
 
 ## Source model
@@ -126,7 +126,7 @@ A candidate is valid only when all applicable checks pass:
 - TypeScript typecheck;
 - production renderer bundle;
 - Effect RPC protocol compatibility;
-- effect-state-tree snapshot migration checks;
+- r-state-tree snapshot migration checks;
 - focused unit and renderer tests;
 - renderer import and first render under a health boundary;
 - focused Electron smoke tests for changed authoritative surfaces;
@@ -140,7 +140,7 @@ hydration selects immutable recovery.
 ## Persistence compatibility
 
 Renderer persistence is a versioned Cake-owned document decoded and migrated
-before effect-state-tree snapshot application. A Custom Renderer may extend its
+before r-state-tree snapshot application. A Custom Renderer may extend its
 own renderer snapshot only through a namespaced, versioned section. It must
 provide migrations for its saved state when changing that section.
 

@@ -1,4 +1,0 @@
-interface:
-  display_name: "effect-state-tree"
-  short_description: "Build and review effect-state-tree applications"
-  default_prompt: "Use $effect-state-tree to design or review this application state architecture."

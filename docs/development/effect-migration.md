@@ -29,78 +29,46 @@ the installed `node_modules/effect/AGENTS.md`. Cake's architecture remains the
 authority for ownership and process boundaries, while the installed package is
 the API authority and the local skill defines implementation conventions.
 
-The unpublished local package at `/Users/user/dev/effect-state-tree` is the
-authority for effect-state-tree behavior during this migration. Before changing
-renderer state, read its complete `README.md`, Cake's vendored
-`.agents/skills/effect-state-tree/SKILL.md`, and every reference routed by that
-skill. Its tests are the executable edge-case contract.
+Before changing renderer Models, Stores, snapshots, or lifecycle, read the
+installed `node_modules/r-state-tree/README.md`,
+`node_modules/r-state-tree/skills/r-state-tree/SKILL.md`, and every reference it
+routes to.
 
-Cake and effect-state-tree use exactly the same Effect 4 version. At the time of
-this handoff that version is `4.0.0-rc.111`. Cake uses
-`effect/unstable/rpc` from that package; it does not install the Effect 3
-`@effect/rpc` package.
+Cake keeps `r-state-tree@0.10.2` as the renderer state system. Effect remains
+the main/domain/RPC runtime and is also used privately by renderer
+infrastructure. Ordinary renderer Models and Stores do not import Effect.
 
-The local effect-state-tree package deliberately remains unpublished. It has
-explicit `.` and `./react` exports and declares Effect and React as peers.
-Cake must provide the single Effect and React instances.
-
-### Local dependency path caveat
-
-From the main checkout `/Users/user/dev/cake`, the intended dependency is:
-
-```json
-{
-  "effect": "4.0.0-rc.111",
-  "effect-state-tree": "file:../effect-state-tree"
-}
-```
-
-A Cake worktree under `/Users/user/dev/.cake-worktrees/<name>` has a different
-relative path, so `file:../effect-state-tree` does not resolve there. Do not
-commit a worktree-only relative path such as `file:../../effect-state-tree`.
-During worktree development, arrange an uncommitted local symlink at the
-expected sibling path or use a temporary absolute local override without
-committing it. Before landing, verify that the committed dependency resolves
-from the main checkout.
-Do not use a configuration that installs a second Effect copy.
+The renderer has one window-local Effect runtime behind a permanent typed
+Promise `RendererClient`. Focused projection synchronizers consume Effect RPC
+Streams and reduce Updates into r-state-tree Models. This adapter is an
+intentional architecture boundary, not a temporary compatibility facade.
 
 ## Current implementation baseline
 
-Verify these facts again before each phase; they describe the repository at the
-creation of this handoff:
+Verify these facts again before each phase; the migration is active and the
+repository changes vertically:
 
-- Cake has no direct `effect` dependency and uses `r-state-tree@0.10.2`.
-- Approximately 94 source files import `r-state-tree`.
-- `src/models` contains 11 r-state-tree Models, including an authoritative
-  main-process `Application` model mixed with renderer projection Models.
-- `src/renderer/stores` contains 37 Store files.
-- Approximately 30 renderer files consume the Promise-based `DesktopClient`.
-- `src/renderer/desktop-client.ts` adapts the frozen `window.cake` bridge.
-- `src/ipc` uses Zod contracts and `src/ipc/desktop-ipc.ts` contains a large
-  request/event union.
-- `src/preload/preload.ts` exposes `request` and `subscribe` over
-  `cake:request` and `cake:event`.
-- `src/main/main.ts` is over 2,300 lines and combines Electron lifecycle,
-  mutable registries, IPC dispatch, and application coordination.
-- `src/main/pi-workspace-driver.ts` is over 1,800 lines;
-  `src/main/global-chat-driver.ts` separately implements Cake Chat runtime
-  behavior.
-- Pi packages are imported by focused `src/services/pi/runtime` modules, while main drivers
-  consume those adapters.
-- Storage is split among the `Application` r-state-tree Model and imperative
-  repositories/services in `src/main`.
-- Terminal infrastructure exists in `src/main/terminal-manager.ts` and
-  `src/renderer/stores/TerminalStore.ts`, but the intended Session Terminal
-  product remains incomplete.
+- Effect 4 and Effect RPC are established in main and renderer infrastructure.
+- Main-owned application state and Model Presets use typed Effect storage and
+  domain operations.
+- `PiSessions`, `PiModels`, and `PiAgentResources` form the target Pi boundary.
+- Project Sessions, Cake Chat Sessions, Discussion Sessions, and Subagents have
+  Effect domain/RPC paths, while focused legacy renderer adapters remain.
+- The renderer remains r-state-tree. `DesktopClient` is still broad migration
+  debt and must become the focused permanent `RendererClient`.
+- Renderer projection synchronization is not yet consistently separated from
+  Stores and the broad desktop event adapter.
+- `src/main/main.ts` and `src/main/pi-workspace-driver.ts` still contain legacy
+  capability paths that later vertical slices must remove.
 
 Useful inventory commands:
 
 ```sh
-rg -l 'r-state-tree' src
+rg -l 'r-state-tree' src/renderer src/models
 rg -l 'DesktopClient' src/renderer
+rg -l 'CakeIpcClient|effect/unstable/rpc' src/renderer src/ipc
 rg -l '@earendil-works/pi-(coding-agent|ai)' src
-find src/renderer/stores src/models src/ipc src/services/pi/runtime -type f | sort
-wc -l src/main/*.ts | sort -n
+find src/renderer/stores src/renderer/models src/models src/ipc src/services/pi -type f | sort
 ```
 
 Preserve behavior described by focused architecture contracts even when the
@@ -113,15 +81,16 @@ ownership boundaries; it does not silently discard product behavior.
    renderer state where applicable, tests, and removal of its replaced path.
 2. **Keep one authority.** Never persist Pi transcripts or create a second
    conversation engine while introducing Streams or Models.
-3. **Use one protocol.** A temporary Promise facade may call the Effect RPC
-   client, but it must not retain a separate Zod IPC contract for migrated
-   operations.
+3. **Use one protocol.** The permanent Promise `RendererClient` executes the
+   generated Effect RPC client; it must not retain a separate Zod IPC contract
+   for migrated operations.
 4. **Use Effect all the way through main.** Do not wrap an Effect domain
    operation in a new Promise service abstraction.
 5. **Keep the renderer sandboxed.** No migration shortcut may expose raw
    Electron IPC, Node, Pi, Git, filesystem, or main implementations.
-6. **Translate concepts, not r-state-tree syntax.** Use effect-state-tree's
-   factories, Refs, Scope, autoruns, child projections, and snapshot semantics.
+6. **Keep renderer Effect mechanics isolated.** Ordinary r-state-tree Models and
+   Stores never import Effect, Layers, Fibers, Streams, or RPC envelopes.
+   `RendererClient` adapts commands; projection synchronizers adapt Streams.
 7. **No permanent compatibility layer.** Remove transitional facades and old
    operations as soon as their migration slice has no callers.
 8. **Name lifetimes and concurrency.** Every resource gets a Scope owner; every
@@ -133,27 +102,23 @@ ownership boundaries; it does not silently discard product behavior.
 
 ## Target construction order
 
-### Phase 0 — Baseline and dependency setup
+### Phase 0 — Baseline and Effect dependency setup
 
-Goal: make Effect 4 and effect-state-tree available without changing product
-behavior.
+Goal: make the pinned Effect 4 runtime available without changing renderer
+state management.
 
 Work:
 
-- Add the exact Effect 4 dependency used by effect-state-tree.
-- Add local effect-state-tree consumption with one Effect/React instance.
-- Add Vite deduplication for `effect`, `react`, and `react-dom` if linked-module
-  resolution demonstrates duplicate instances.
-- Run effect-state-tree's own typecheck and tests against the local checkout.
-- Record a focused baseline for Cake typecheck, unit tests, build, and Electron
-  smoke tests relevant to the first slice.
-- Add import-boundary lint rules only when their target directories exist.
+- Add the exact Effect 4 dependency used by Cake's RPC and main runtime.
+- Verify the production build resolves one Effect instance.
+- Record a focused baseline for typecheck, tests, build, and Electron RPC smoke
+  coverage.
+- Keep `r-state-tree` as the renderer state dependency.
 
 Exit criteria:
 
-- Cake imports Effect 4 and the effect-state-tree core/React entrypoints.
-- The production build resolves one Effect and one React instance.
-- No application behavior has changed.
+- Cake imports the pinned Effect 4 release.
+- Existing renderer behavior is unchanged.
 
 ### Phase 1 — Main Effect runtime
 
@@ -208,15 +173,17 @@ Work:
   request through the real Electron boundary.
 - Scope requests/subscriptions to the renderer connection.
 - Keep preload narrow and transport-only.
-- Implement a temporary Promise facade over the generated Effect RPC client so
-  current `DesktopClient` consumers can migrate later.
+- Establish the permanent typed Promise renderer adapter over the generated
+  Effect RPC client. It may initially live inside `DesktopClient`, but the
+  target surface is the focused semantic `RendererClient`.
 - Do not maintain two schemas for a migrated operation.
 
 Exit criteria:
 
 - Electron UI tests prove decoding, typed failure, streaming, cancellation, and
   window-close cleanup.
-- The temporary Promise facade uses Effect RPC internally.
+- The Promise renderer adapter uses Effect RPC internally and owns one
+  window-local runtime.
 - At least one old `desktop-ipc` operation is removed end-to-end.
 
 ### Phase 3 — Typed file storage and application state
@@ -288,10 +255,8 @@ Work:
 - Preserve unresolved presets and report typed resolution failures.
 - Use `thinkingLevel` consistently in new contracts.
 - Replace the old preset operations in `DesktopClient` and main dispatch.
-- Migrate `ModelPresetSettingsStore` to effect-state-tree after the RPC path is
-  working, or keep the temporary facade for this slice if main-first sequencing
-  is intentionally being proven. Do not keep both Store implementations after
-  the renderer portion lands.
+- Keep `ModelPresetSettingsStore` in r-state-tree. It invokes semantic Promise
+  operations on the renderer client and never imports Effect or RPC definitions.
 
 Exit criteria:
 
@@ -382,77 +347,106 @@ Exit criteria:
   moved or are explicitly reduced to temporary adapters with named removal
   tasks.
 
-### Phase 7 — Renderer effect-state-tree foundation
+### Phase 7 — Renderer client and projection architecture
 
-Goal: replace r-state-tree incrementally without duplicating renderer authority.
+Goal: retain r-state-tree as the renderer state system while removing Effect and
+transport mechanics from ordinary Models and Stores.
 
-Create:
+Create the target structure as vertical slices require it:
 
 ```text
-src/renderer/RendererLive.ts
+src/renderer/RendererRuntime.ts
+src/renderer/client/
+  RendererClient.ts
+  RendererClientLive.ts
+src/renderer/projections/
 src/renderer/models/
-src/renderer/stores/  # existing location, new factories
+src/renderer/stores/
 ```
 
-Work:
+Renderer runtime and client work:
 
-- Mount one root Store outside React with `CakeIpcClientLive` available.
-- Move renderer projection Models from `src/models` to
-  `src/renderer/models` as each slice migrates.
-- Translate Model classes/decorators to `createModel` and Effect Schema.
-- Translate Store classes to `createStore` and `Store.schema`.
-- Acquire `CakeIpcClient` synchronously in Store initializers.
-- Put subscriptions in `autorun` and bind them to Store Scope.
-- Keep raw Store methods as lazy Effects and use the React facade only through
-  `useStore`.
-- Use immutable Ref updates and `batch` for logical projection transitions.
-- Use projected child Stores only for keyed, state-selected behavioral
-  children; compose always-present children directly.
-- Keep Models inert and service-free.
+- Own one `ManagedRuntime` for the renderer window and dispose it on teardown.
+- Make `RendererClient` a permanent typed Promise API grouped by semantic Cake
+  capability. It privately executes `CakeIpcClient` Effects.
+- Accept `AbortSignal` for cancellable commands and map it to Fiber/RPC
+  interruption.
+- Expose stable renderer-facing discriminated failures; do not leak transport
+  envelopes or arbitrary rejected values.
+- Replace the broad `DesktopClient` incrementally; do not preserve duplicate
+  operation names or protocols.
 
-Suggested renderer order:
+Projection work:
 
-1. settings and Model Presets;
-2. Project and Session catalogs;
-3. leaf chat configuration/composer Stores;
-4. `ProjectSessionStore` and Cake Chat session Store;
-5. registries and workbench;
-6. root event routing and shell;
-7. reviews, artifacts, plugins, and remaining surfaces.
+- Add focused projection synchronizers/registries for Project catalogs, Session
+  catalogs, loaded Project Sessions, Cake Chat Sessions, discussions, and other
+  independently observed authorities.
+- Consume current-first Effect RPC Streams only in projection infrastructure.
+- Own one observation per loaded identity, with an explicit window/registry/entity
+  lifetime.
+- Apply Snapshot then ordered Events, filter stale revisions and generations,
+  reconnect from a fresh Snapshot, and commit each logical Update in one
+  r-state-tree transaction.
+- Preserve stable Model identity across views and reconnects.
+- Never let arbitrary Fibers retain and mutate Stores or Models directly; enter
+  projection state through one synchronous reducer boundary.
+
+Store and Model work:
+
+- Keep r-state-tree Models as inert reactive projections and synchronous
+  invariants.
+- Keep r-state-tree Stores as focused owners of window-local application/UI
+  state, workflow policy, and semantic intents.
+- Stores read projection Models and invoke `RendererClient`; they do not import
+  Effect, `CakeIpcClient`, Streams, Layers, Fibers, or RPC contracts.
+- Store disposal aborts its cancellable operations and prevents stale local
+  commits. Every repeated intent still declares queue/reject/latest-wins/share/
+  independent policy.
+- Moving Models from `src/models` to `src/renderer/models` is an ownership move,
+  not a state-framework conversion.
+
+Suggested order:
+
+1. extract the permanent `RendererClient` from the broad desktop facade;
+2. Model Preset Promise commands;
+3. Project and Project Session catalog synchronizers;
+4. keyed Project Session and Cake Chat projection registries;
+5. discussions, Subagents, reviews, artifacts, and extension UI;
+6. remove broad desktop events and remaining raw bridge calls per capability.
 
 Exit criteria per slice:
 
-- one state owner and one Store implementation remain;
-- current-first Stream subscription hydrates the correct Models;
-- Store disposal interrupts subscriptions and operations;
-- React uses `observer`, `StoreProvider`, and `useStore` correctly;
-- focused Store and Electron tests pass.
+- one projection authority and one Store implementation remain;
+- ordinary Stores/Models contain no Effect imports;
+- stream lifetime, revision, reconnect, identity, and cancellation behavior are
+  tested;
+- the replaced legacy desktop request/event operations are deleted;
+- focused Store, projection, and Electron tests pass.
 
 ### Phase 8 — Renderer snapshot persistence
 
-Goal: persist only Cake-owned renderer application state through
-Effect-state-tree snapshots.
+Goal: persist only Cake-owned r-state-tree application state.
 
 Work:
 
-- Mark persisted fields explicitly with `Store.snapshot`.
+- Mark persisted r-state-tree fields explicitly.
 - Define the versioned `WindowStateSnapshot` document and migrations.
-- Load and migrate before Store hydration.
-- Apply the complete snapshot before Store autoruns activate.
-- Start debounced `onSnapshot` persistence only after hydration.
+- Load, migrate, and validate before mounting the root with its snapshot or
+  before activating ordinary Store effects.
+- Start debounced snapshot persistence through `RendererClient` only after
+  successful hydration.
 - Preserve staged unsent chats, drafts, selection, panel state, and other
   explicitly Cake-owned values.
-- Exclude Pi transcript projections, live operations, resources, Fibers,
-  subscriptions, and terminal output.
-- Verify applying a snapshot does not realize lazy child Stores.
+- Exclude Pi transcript projections, authoritative catalog/session Models, live
+  operations, resources, subscriptions, timers, handles, and terminal output.
 
 Exit criteria:
 
 - defaults never overwrite saved state during startup;
-- malformed snapshots roll back or use the documented fallback;
-- one batch produces one persistence emission;
-- window reload and restart restore application state while transcript state is
-  reconstructed from Pi.
+- malformed snapshots have a documented tested fallback;
+- one logical transaction produces one persistence update;
+- reload restores renderer application state while authoritative projections are
+  reconstructed from Streams.
 
 ### Phase 9 — Remaining native and product capabilities
 
@@ -474,7 +468,8 @@ For each capability:
 1. define the outside-world Service;
 2. move Cake policy to free domain Effects;
 3. add/replace its RPC group;
-4. migrate its renderer Store/Models;
+4. add/update `RendererClient` operations and projection synchronizers, then
+   update the owning r-state-tree Store/Models;
 5. delete the replaced implementation and protocol operations;
 6. run focused verification.
 
@@ -491,24 +486,33 @@ project and acceptance plan.
 
 Remove:
 
-- `r-state-tree` and all imports;
-- `src/models` after all projection Models move and `Application` becomes
-  stored/domain data;
-- the Promise `DesktopClient` facade;
+- the broad legacy `DesktopClient` after focused `RendererClient` capabilities
+  replace it;
 - superseded Zod IPC request/event unions and preload routes;
-- manual runtime/subscription maps replaced by scoped resources;
+- direct Effect/`CakeIpcClient` usage from ordinary renderer Stores and Models;
+- manual runtime/subscription maps replaced by scoped Effect resources or
+  focused projection registries;
 - obsolete main drivers and handlers;
-- compatibility forwarding APIs introduced only for this migration.
+- compatibility forwarding APIs introduced only for migration.
+
+Keep:
+
+- `r-state-tree` for renderer Models, Stores, snapshots, and React integration;
+- one internal renderer Effect runtime;
+- Effect RPC and generated `CakeIpcClient`;
+- the permanent typed Promise `RendererClient`;
+- focused projection synchronization infrastructure.
 
 Do not remove Zod merely because Effect Schema owns Cake's internal RPC and
 storage boundaries. The trusted plugin public API currently uses Zod as an
-explicit user-facing dependency; changing that contract is a separate product
-decision.
+explicit user-facing dependency; changing that contract is separate.
 
 Add lint/import boundaries enforcing:
 
 ```text
-renderer → CakeIpcClient, never main/services/domain implementations
+renderer components → Stores/Models only
+renderer Stores → RendererClient, never Effect/CakeIpcClient/RPC/main/domain
+renderer projections → CakeIpcClient + renderer Models
 IPC server → domain
 domain → Services
 Services ↛ domain
@@ -557,8 +561,8 @@ Important focused acceptance areas during migration:
 - VS Code focus/annotations and terminal process cleanup.
 
 Use Effect `TestClock` for retry, debounce, and timer policy. Domain tests use
-real domain operations with Test Layers. Store tests use a controlled
-`CakeIpcClient` Layer and Streams. Electron tests prove the real boundary.
+real domain operations with Test Layers. Store tests use a controlled Promise `RendererClient`. Projection tests use
+controlled Streams. Electron tests prove the real boundary.
 
 ## Handoff protocol for each agent
 
@@ -566,8 +570,8 @@ At the start of a migration task:
 
 1. read `AGENTS.md` and all architecture documents relevant to the slice;
 2. read this document's current progress notes;
-3. verify repository and local effect-state-tree state rather than assuming the
-   inventory remains current;
+3. verify repository state and the installed r-state-tree API rather than
+   assuming the inventory remains current;
 4. name the authority, owner, lifetime, persistence boundary, and concurrency
    policy of every state/resource being changed;
 5. identify exactly which old path will be removed by the slice.
@@ -585,17 +589,17 @@ At the end:
 
 ## Progress table
 
-| Phase                     | Status      | Notes / next executable step                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Effect conventions gate   | Complete    | Aligned every landed Effect path through Packet 5A and the current Packet 7A renderer foundation with the complete local conventions. Service operations are function-valued and named; persisted/RPC optionality now matches absent-key versus explicit-`undefined` contracts; Pi catalogs/resources and Electron RPC envelopes validate unknown values without throwing; the session-less `ModelRuntime` uses one process-lifetime Effect `Cache` that deduplicates initialization, retains successes, and evicts failures; Layer dependencies are intentionally hidden or exposed; and touched Effect tests use `@effect/vitest`, deterministic synchronization, and `TestClock`. Authority remains unchanged: Pi owns models/resources, main `ApplicationState` owns one process-lifetime projection persisted only by `ApplicationStorage`, renderer state remains window-scoped, and RPC probes remain connection/request-scoped with independent concurrency. Local effect-state-tree typecheck and 99 tests pass. Next migration entry remains Packet 5B at `createCakeRuntime` in `src/services/pi/runtime/cake-runtime.ts`; implement scoped keyed `PiSessions` before Packet 7B catalogs.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| 0. Dependencies           | Complete    | Effect `4.0.0-rc.111` and local effect-state-tree resolve through single Effect/React peers; no Vite dedupe was needed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| 1. Main runtime           | Complete    | One `ManagedRuntime` owns the scoped Electron lifecycle; bootstrap provides only Node filesystem/path/process and HTTP capabilities, with named logs/spans and top-level defect reporting.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| 2. Effect RPC             | Complete    | `effect/unstable/rpc` now crosses the real sandboxed renderer/preload/main boundary with shared envelope Schemas, trusted connection/correlation middleware, scoped cancellation, and a temporary generated-client Promise facade. Electron coverage proves query success, decoded typed failure, streaming, interruption, and request/subscription cleanup on renderer closure. `get-home-directory` was removed from the legacy Zod union and now uses `application.getHomeDirectory`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| 3. Typed storage          | Complete    | `ApplicationStorage` now owns the versioned `application.json` envelope, legacy/version-zero migration, Effect Schema decoding, typed failures, restrictive atomic replacement, temporary-file cleanup, and serialized writes. One main-Scope `ApplicationState` owner publishes only persisted transactions; free `application.ts` Effects preserve Project, trust, resolution/unread, Cake Chat, Fast mode, utility model, preset, VS Code path, and startup archive-reconciliation policy. `application.getState` is the sole renderer load protocol, and the r-state-tree `Application` Model is deleted. Phase 4 starts at `set-model-presets` in `desktop-ipc.ts`/`main.ts`, `DesktopClient.setModelPresets`, `ModelPresetSettingsStore` (via `SettingsStore` and `model-preset-settings.tsx`), and the currently unreferenced `src/models/ModelPreset.ts`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| 4. Model Presets slice    | Complete    | `PiModels` now owns the process-scoped session-less catalog, authentication/availability projection, supported thinking levels, Fast support, exact no-fallback resolution, refresh, and bounded completion. Free `modelPresets.ts` Effects perform semantic CRUD/default/resolve operations through transactional `ApplicationState`; focused Effect RPC and the generated client replaced legacy `set-model-presets` and `list-models`. At Phase 4 completion, the r-state-tree Store hydrated through `modelPresets.list`, serialized optimistic semantic commands, preserved unresolved presets, and no longer read presets from broad Application projection; Packet 7A has now replaced that renderer path with `RendererLive` and effect-state-tree. Cake agents receive the current validated preset/default projection through `models.list`, not raw storage instructions. Packet 5A moved all transcript-free utility completion callers behind `PiModels.complete` and removed `src/services/pi/runtime/utility-model.ts` while preserving plugin-specific fallback policy. The live-session catalog projection used by `src/services/pi/runtime/cake-runtime.ts` and live-runtime portions of `refreshModelsEverywhere` remain for the Phase 5B `PiSessions` boundary, not as another model authority.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| 5. Pi Services            | Complete    | Packet 5B added `PiSessions` with Schema-owned semantic capability profiles, list/inspect, an `RcMap`-backed keyed scoped runtime owner, conflicting-option rejection, one initial Pi-authoritative snapshot followed by buffered typed live events, the complete prompt/steer/follow-up/abort/command/model/thinking/settings/compact/fork/reload handle surface, and final-release disposal. Extension loading, supported UI adaptation, retry/recovery, command projection, session discovery/projection, isolated runtimes, and all ordinary Pi package imports now live beneath `src/services/pi`; ESLint enforces the import boundary. Existing main drivers remain temporary Cake Session policy adapters to be removed vertically in Phase 6 rather than moving Cake business policy into this Service. Deterministic tests cover sharing, finalization, conflicting acquisition, and snapshot/event ordering. Packet 6A begins with `projectSessions.list`, then shared acquisition/observation in `conversations.ts` and `projectSessions.ts`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| 6. Cake Session domain    | In progress | Packet 6A added free `conversations.ts` and `projectSessions.ts` domain modules above `PiSessions`, Cake-owned Snapshot/Event/Update projection with revisions and Turn IDs, Project/Working Directory and Managed Worktree association, trust-aware runtime acquisition that disables unapproved project-local executable resources, settled-turn archive policy, list/inspect/create/open/observe/prompt/steer/follow-up/abort/fork/rename/resolve/restore operations, and the `projectSessions.*` Effect RPC query/command/Stream group. The temporary renderer Promise facade now consumes this RPC group and reduces Updates into the existing event-facing Stores; replaced Project Session Zod request/response discriminants and the matching `PiWorkspaceDriver` open/prompt/abort/rename/fork dispatch paths were removed. `ProjectSessionEnvironment` is a temporary outside-world adapter for archive and legacy Managed Worktree integration; Phase 9 replaces its worktree portion. `PiWorkspaceDriver` remains only for not-yet-migrated Project Session authentication/UI/artifact/handoff behavior plus Packet 6C Subagents. Packet 6B added free `cakeChats.ts` and `discussionSessions.ts` domains over the same `conversations.ts`/`PiSessions` boundary; Cake Chat preserves its separate catalog, pending-first creation, curated controls, handoff, and resolved archive policy, while Discussion Sessions keep Cake-owned anchors and sidecar references, Pi-owned replies, read-only capabilities, and one bounded parent projection regenerated before each reply. Their query/command/stream RPC groups now back the temporary renderer facade, `GlobalChatDriver` and legacy review-turn execution are deleted, and `ReviewRepository` no longer persists reply transcripts. Packet 6C starts at Subagent spawning/activity in `src/main/pi-workspace-driver.ts`, the parent-scoped protocol in `src/services/pi/runtime/subagent-contract.ts`, `agentControl` coordination in `src/services/pi/runtime/cake-runtime.ts`, and the existing `SubagentActivityStore` renderer projection; it must introduce stable public handles without exposing private Pi session IDs or migrating renderer Stores early. |
-| 7. Renderer state tree    | In progress | Packets 7A and 7B are complete. One window-scoped `RendererLive` now owns the Model Preset, Project catalog, and flat Project Session catalog Stores. Packet 7B moved the Project projection to `src/renderer/models`, added stable-identity Session summary Models, and replaced both catalog Stores with effect-state-tree factories that acquire `CakeIpcClient`, consume current-first catalog Updates in scoped autoruns, preserve immutable flat activity ordering and cached ID/Project indexes, apply resolved/unread state, accept reconnect Snapshots, reject identity collisions, and filter stale revisions/targets. Project registration remains main-owned domain policy; recent Project selection/order remains ephemeral renderer state. The obsolete r-state-tree `src/models/Project.ts` and catalog Store implementations are deleted; a narrow Effect runner and revision-prop bridge keep not-yet-migrated aggregate Stores/React surfaces operating without duplicating catalog authority and are removed with those aggregates. Full Project Session/Chat Models remain intentionally unmigrated. Packet 7C starts at `src/models/Session.ts` and its leaf dependencies: `Message`, `ModelOption`, `CompatibilityResource`, `ResourceDiagnostic`, `SessionTreeEntry`, `Artifact`, and `ReviewThread`, plus `ChatConfigurationStore`, `MessageComposerStore`, `ArtifactInteractionStore`, `MessageCommentsStore`, `ExtensionUiStore`, `SubagentActivityStore`, and shared `ChatStore`. Cake typecheck now passes with the file-linked effect-state-tree package while retaining one Effect copy.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| 8. Renderer persistence   | Not started | Version and hydrate effect-state-tree window snapshots.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| 9. Remaining capabilities | Not started | Migrate Git/worktrees, VS Code, terminal, Electron, reviews, artifacts, plugins vertically.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| 10. Final removal         | Not started | Remove legacy state tree, DesktopClient, old IPC, drivers, and transitional APIs.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Phase                          | Status                   | Notes / next executable step                                                                                                                                                                                                                                       |
+| ------------------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Effect conventions gate        | Complete through Phase 6 | Main/domain/RPC paths use named Effects, Schema boundaries, explicit Scope ownership, and deterministic Stream/concurrency primitives.                                                                                                                             |
+| 0. Dependencies                | Complete                 | Effect `4.0.0-rc.111` is pinned. r-state-tree remains the renderer state system; effect-state-tree was removed.                                                                                                                                                    |
+| 1. Main runtime                | Complete                 | One `ManagedRuntime` owns scoped Electron lifecycle and shutdown.                                                                                                                                                                                                  |
+| 2. Effect RPC                  | Complete                 | Effect RPC crosses sandboxed renderer/preload/main with Schema validation, typed failures, Streams, interruption, and connection cleanup. The Promise adapter is now a permanent renderer boundary, though its broad `DesktopClient` shape still needs extraction. |
+| 3. Typed storage               | Complete                 | Main-owned application state uses focused Effect storage and no main r-state-tree authority.                                                                                                                                                                       |
+| 4. Model Presets               | Complete                 | Domain/storage/RPC are Effect-native; `ModelPresetSettingsStore` remains r-state-tree and calls the Promise adapter.                                                                                                                                               |
+| 5. Pi Services                 | Complete                 | `PiSessions`, `PiModels`, and `PiAgentResources` own the Pi boundary and scoped runtimes.                                                                                                                                                                          |
+| 6. Cake Session domain         | Complete                 | Project, Cake Chat, Discussion, and Subagent domain/RPC paths share `PiSessions`; current Subagent completion is preserved.                                                                                                                                        |
+| 7. Renderer client/projections | Not started              | Prior effect-state-tree Packets 7A, 7B, and partial 7C were removed. Next: extract focused `RendererClient`, then implement r-state-tree catalog projection synchronizers without changing renderer state framework.                                               |
+| 8. Renderer persistence        | Not started              | Version and hydrate explicit r-state-tree window snapshots.                                                                                                                                                                                                        |
+| 9. Remaining capabilities      | Not started              | Migrate Git/worktrees, VS Code, terminal, Electron, reviews, artifacts, and plugins vertically through Services/domain/RPC/client/projections.                                                                                                                     |
+| 10. Final removal              | Not started              | Remove broad DesktopClient, old IPC/drivers, and transitional adapters; keep r-state-tree plus renderer infrastructure Effect runtime.                                                                                                                             |

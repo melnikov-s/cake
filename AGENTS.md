@@ -29,11 +29,11 @@ state, and development boundaries behind these principles.
   `docs/architecture/effect-architecture.md` before changing architecture or
   feature ownership. During the Effect migration, also read
   `docs/development/effect-migration.md`.
-- Before implementing or changing renderer behavior that introduces, reads,
-  writes, persists, or coordinates application state, read the local
-  effect-state-tree package's `README.md`, Cake's vendored
-  `.agents/skills/effect-state-tree/SKILL.md`, and every reference it routes to
-  before editing.
+- Before implementing or changing renderer state, read r-state-tree's installed
+  `README.md`, `node_modules/r-state-tree/skills/r-state-tree/SKILL.md`, and every
+  reference that skill routes to, plus the existing Cake Models/Stores.
+  Classify authority, owner, lifetime, persistence, and concurrency before
+  editing.
 - For plugins, scenes, widgets, or plugin recovery, read the available
   `cake-plugin-authoring` skill before editing.
 - Custom Renderer is a future, unimplemented design and is explicitly outside
@@ -105,9 +105,10 @@ Before implementing renderer UI:
 2. Identify the existing primitive, product component, Store, and Model that
    own the behavior. Existing one-off implementations are migration debt, not
    precedent.
-3. If the work touches application state, read the effect-state-tree package
-   guidance before editing and classify every state value by authority, owner,
-   lifetime, persistence boundary, and concurrency policy.
+3. If the work touches application state, classify every state value by
+   authority, owner, lifetime, persistence boundary, and concurrency policy.
+   Keep Effect and transport mechanics behind renderer client and projection
+   infrastructure rather than importing them into ordinary Stores.
 
 ### Tailwind and styling
 
@@ -181,18 +182,19 @@ Before implementing renderer UI:
 - Compose Stores according to ownership and lifetime. Put a shared Store near the root; nest it only when its lifetime and behavior are truly owned by one parent surface.
 - Parent Stores coordinate cross-Store work. They must not duplicate child state or expose one-for-one forwarding facades for a child's API.
 - Existing concentration of unrelated state is a refactoring signal, not precedent for adding the next field or method there.
-- Keep only tiny DOM, focus, hover, measurement, or isolated input state in React. Workflow state, async policy, persistence, subscriptions, and timers belong to a Store.
+- Keep only tiny DOM, focus, hover, measurement, or isolated input state in React. Workflow state, async policy, persistence, and workflow timers belong to a Store. Authoritative RPC Stream subscriptions and revision/reconnect handling belong to focused projection synchronizers, which update Models in one r-state-tree transaction.
+- Ordinary Stores and Models do not import Effect, Effect RPC, Layers, Fibers, or raw transport contracts. Stores invoke the typed Promise-based `RendererClient`; projection synchronizers alone adapt Effect Streams into Models.
 
 Before adding state, identify its authority, cohesive owner, lifetime, persistence boundary, and concurrency policy. If the proposed owner cannot be described without saying "everything in this window" or listing unrelated surfaces, introduce or use a focused Store instead.
 
 ## Strict Model and Store organization
 
-- Every effect-state-tree Model and Store lives in its own file. Never colocate
+- Every r-state-tree Model and Store lives in its own file. Never colocate
   multiple Models or Stores or mix them with utilities or unrelated code.
-- Renderer projection Models live in `src/renderer/models/`, which contains only
-  effect-state-tree Model files. Model names and filenames are PascalCase and
-  never end in `Model`. Legacy r-state-tree files remain in `src/models/` only
-  until their vertical migration slice moves or replaces them.
+- Renderer projection Models target `src/renderer/models/`, which contains only
+  r-state-tree Model files. Model names and filenames are PascalCase and never
+  end in `Model`. Existing files may remain in `src/models/` until their vertical
+  ownership move; do not convert their state framework while relocating them.
 - Stores live in `src/renderer/stores/`, which contains only Store files. Store
   names and filenames are PascalCase and end in `Store`.
 - Main-owned application/storage data is ordinary Effect Schema data and must

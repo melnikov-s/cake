@@ -1,5 +1,5 @@
 import { Store, child, createStore, observable } from "r-state-tree";
-import type { SubagentActivity } from "../../ipc/subagent-activity-contract";
+import type { SubagentActivity } from "../desktop-client";
 import type { UiPart } from "../../ipc/session-contract";
 import { toolOperationName } from "../../utils/cake-tool";
 import {

@@ -20,6 +20,14 @@ import {
   makeDiscussionSessionEnvironmentLayer,
   type DiscussionSessionEnvironment,
 } from "../services/discussion-sessions/DiscussionSessionEnvironment";
+import {
+  SubagentCoordinatorLive,
+  type SubagentCoordinator,
+} from "../services/subagents/SubagentCoordinator";
+import {
+  makeSubagentEnvironmentLayer,
+  type SubagentEnvironment,
+} from "../services/subagents/SubagentEnvironment";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import { makeApplicationStorageLive } from "../services/storage/ApplicationStorage";
 import { BootstrapLive } from "./BootstrapLive";
@@ -42,6 +50,8 @@ const makeMainLive = (
     makeProjectSessionEnvironmentLayer(rpcOperations.projectSessions),
     makeCakeChatEnvironmentLayer(rpcOperations.cakeChats),
     makeDiscussionSessionEnvironmentLayer(rpcOperations.discussionSessions),
+    SubagentCoordinatorLive,
+    makeSubagentEnvironmentLayer(rpcOperations.subagents),
   );
   const serverLive = makeCakeIpcServerLive(rpcOperations).pipe(Layer.provide(servicesLive));
   return Layer.merge(servicesLive, serverLive);
@@ -62,7 +72,9 @@ type MainService =
   | PiSessions
   | ProjectSessionEnvironment
   | CakeChatEnvironment
-  | DiscussionSessionEnvironment;
+  | DiscussionSessionEnvironment
+  | SubagentCoordinator
+  | SubagentEnvironment;
 let runEffect:
   | (<A, E>(effect: Effect.Effect<A, E, MainService>, signal?: AbortSignal) => Promise<A>)
   | undefined;

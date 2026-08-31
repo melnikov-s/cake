@@ -1,215 +1,243 @@
-import { Effect, Layer, Queue, Ref } from "effect";
-import { mount } from "effect-state-tree";
-import { it } from "@effect/vitest";
-import { describe, expect } from "vitest";
-import type { ProjectSessionSummary } from "../../../../src/domain/project-session-data";
-import { CakeIpcClient } from "../../../../src/ipc/client/CakeIpcClient";
-import { SessionCatalogStoreFactory } from "../../../../src/renderer/stores/SessionCatalogStore";
-import { makeCatalogTestClient, type CatalogTestClient } from "./catalog-test-client";
+import { createStore, mount } from "r-state-tree";
+import { describe, expect, it } from "vitest";
+import { SessionCatalogStore } from "../../../../src/renderer/stores/SessionCatalogStore";
 
-const summary = (
-  sessionId: string,
-  modifiedAt: string,
-  projectPath = "/project",
-): ProjectSessionSummary => ({
-  sessionId,
-  title: sessionId,
-  createdAt: modifiedAt,
-  modifiedAt,
+const summary = (id: string, modified: string) => ({
+  id,
+  title: id,
+  created: modified,
+  modified,
   messageCount: 1,
   resolved: false,
   unread: false,
-  projectPath,
-  projectName: projectPath.slice(1),
-  workingDirectory: projectPath,
-});
-
-const mountStore = Effect.fn("Test.mountSessionCatalog")(function* (controlled: CatalogTestClient) {
-  return yield* mount(SessionCatalogStoreFactory, {
-    managedWorktrees: [],
-    loading: true,
-    revision: 0,
-    sourceRevision: -1,
-  }).pipe(Effect.provide(Layer.succeed(CakeIpcClient)(controlled.client)));
+  workspacePath: "/project",
+  workspaceName: "Project",
 });
 
 describe("SessionCatalogStore", () => {
-  it.effect("hydrates the initial Snapshot in flat activity order and preserves identity", () =>
-    Effect.gen(function* () {
-      const controlled = yield* makeCatalogTestClient();
-      const handle = yield* mountStore(controlled);
-      yield* Queue.offer(controlled.sessionUpdates, {
-        _tag: "Snapshot",
-        revision: 4,
-        sessions: [
-          summary("older", "2026-08-15T00:00:00.000Z"),
-          summary("latest", "2026-08-16T00:00:00.000Z"),
-        ],
-      });
-      yield* handle.instance.awaitHydrated();
-      expect(handle.instance.sessions.map((session) => session.id)).toEqual(["latest", "older"]);
-      const latest = handle.instance.find("latest");
+  it("sorts the initial Pi session index by latest activity", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    store.replace([
+      summary("older", "2026-08-15T12:00:00.000Z"),
+      summary("latest", "2026-08-16T12:00:00.000Z"),
+    ]);
 
-      yield* Queue.offer(controlled.sessionUpdates, {
-        _tag: "Event",
-        revision: 5,
-        event: {
-          _tag: "Replaced",
-          sessions: [summary("latest", "2026-08-17T00:00:00.000Z")],
-        },
-      });
-      yield* Effect.yieldNow;
-      expect(handle.instance.find("latest")).toBe(latest);
-      expect(latest?.modified).toBe("2026-08-17T00:00:00.000Z");
-      yield* handle.dispose;
-    }),
-  );
+    expect(store.sessions.map((session) => session.id)).toEqual(["latest", "older"]);
+    store[Symbol.dispose]();
+  });
 
-  it.effect("filters out-of-order Events", () =>
-    Effect.gen(function* () {
-      const controlled = yield* makeCatalogTestClient();
-      const handle = yield* mountStore(controlled);
-      yield* Queue.offer(controlled.sessionUpdates, {
-        _tag: "Snapshot",
-        revision: 10,
-        sessions: [summary("current", "2026-08-16T00:00:00.000Z")],
-      });
-      yield* handle.instance.awaitHydrated();
-      yield* Queue.offer(controlled.sessionUpdates, {
-        _tag: "Event",
-        revision: 9,
-        event: { _tag: "Removed", sessionId: "current" },
-      });
-      yield* Effect.yieldNow;
-      expect(handle.instance.find("current")).toBeDefined();
-      expect(handle.instance.sourceRevision.value).toBe(10);
-      yield* handle.dispose;
-    }),
-  );
+  it("moves a session to the front when Pi reports newer activity", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    store.replace([
+      summary("first", "2026-08-16T12:00:00.000Z"),
+      summary("second", "2026-08-15T12:00:00.000Z"),
+    ]);
+    store.applyWorkspace("/project", "Project", [
+      { ...summary("first", "2026-08-16T12:00:00.000Z") },
+      { ...summary("second", "2026-08-17T12:00:00.000Z") },
+    ]);
 
-  it.effect("accepts a reconnect Snapshot as a complete replacement", () =>
-    Effect.gen(function* () {
-      const controlled = yield* makeCatalogTestClient();
-      const handle = yield* mountStore(controlled);
-      yield* Queue.offer(controlled.sessionUpdates, {
-        _tag: "Snapshot",
-        revision: 8,
-        sessions: [summary("before", "2026-08-16T00:00:00.000Z")],
-      });
-      yield* handle.instance.awaitHydrated();
-      yield* handle.instance.upsertPending("pending", "/project", "Project");
-      yield* Queue.offer(controlled.sessionUpdates, {
-        _tag: "Snapshot",
-        revision: 1,
-        sessions: [summary("after", "2026-08-17T00:00:00.000Z")],
-      });
-      yield* Effect.yieldNow;
-      expect(handle.instance.sessions.map((session) => session.id)).toEqual(["pending", "after"]);
-      expect(handle.instance.sourceRevision.value).toBe(1);
-      yield* handle.dispose;
-    }),
-  );
+    expect(store.sessions.map((session) => session.id)).toEqual(["second", "first"]);
+    store[Symbol.dispose]();
+  });
 
-  it.effect("ignores a stale target while advancing observation order", () =>
-    Effect.gen(function* () {
-      const controlled = yield* makeCatalogTestClient();
-      const handle = yield* mountStore(controlled);
-      yield* Queue.offer(controlled.sessionUpdates, {
-        _tag: "Snapshot",
-        revision: 2,
-        sessions: [summary("kept", "2026-08-16T00:00:00.000Z")],
-      });
-      yield* handle.instance.awaitHydrated();
-      yield* Queue.offer(controlled.sessionUpdates, {
-        _tag: "Event",
-        revision: 3,
-        event: { _tag: "StatusChanged", sessionId: "gone", resolved: true, unread: false },
-      });
-      yield* Effect.yieldNow;
-      expect(handle.instance.sessions.map((session) => session.id)).toEqual(["kept"]);
-      expect(handle.instance.sourceRevision.value).toBe(3);
-      yield* handle.dispose;
-    }),
-  );
+  it("pins unsubmitted 'New chat' sessions above all submitted sessions", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    store.replace([
+      summary("latest", "2026-08-16T12:00:00.000Z"),
+      summary("older", "2026-08-15T12:00:00.000Z"),
+      { ...summary("fresh", "2026-08-14T12:00:00.000Z"), messageCount: 0 },
+    ]);
 
-  it.effect("rejects identity collisions without replacing the current projection", () =>
-    Effect.gen(function* () {
-      const controlled = yield* makeCatalogTestClient();
-      const handle = yield* mountStore(controlled);
-      yield* Queue.offer(controlled.sessionUpdates, {
-        _tag: "Snapshot",
-        revision: 1,
-        sessions: [summary("kept", "2026-08-16T00:00:00.000Z")],
-      });
-      yield* handle.instance.awaitHydrated();
-      const duplicate = {
-        id: "duplicate",
-        title: "duplicate",
-        created: "2026-08-17T00:00:00.000Z",
-        modified: "2026-08-17T00:00:00.000Z",
-        messageCount: 1,
-        resolved: false,
-        unread: false,
-        workspacePath: "/project",
-        workspaceName: "Project",
-      };
-      const error = yield* Effect.flip(handle.instance.replace([duplicate, duplicate]));
-      expect(error._tag).toBe("IdentityCollisionError");
-      expect(handle.instance.sessions.map((session) => session.id)).toEqual(["kept"]);
-      yield* handle.dispose;
-    }),
-  );
+    expect(store.sessions.map((session) => session.id)).toEqual(["fresh", "latest", "older"]);
+    store[Symbol.dispose]();
+  });
 
-  it.effect("groups Projects and derives resolved landed worktrees", () =>
-    Effect.gen(function* () {
-      const controlled = yield* makeCatalogTestClient();
-      const handle = yield* mountStore(controlled);
-      const worktree = {
+  it("keeps newly created unsubmitted sessions on top when a workspace refreshes", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    store.replace([summary("active", "2026-08-16T12:00:00.000Z")]);
+    store.applyWorkspace("/project", "Project", [
+      summary("active", "2026-08-16T12:00:00.000Z"),
+      { ...summary("new-chat", "2026-08-10T00:00:00.000Z"), messageCount: 0 },
+    ]);
+
+    expect(store.projectSessions("/project").map((session) => session.id)).toEqual([
+      "new-chat",
+      "active",
+    ]);
+    store[Symbol.dispose]();
+  });
+
+  it("retains an unlisted pending session during workspace refresh", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    store.replace([
+      summary("persisted", "2026-08-16T12:00:00.000Z"),
+      { ...summary("pending", "2026-08-17T12:00:00.000Z"), messageCount: 0 },
+    ]);
+
+    store.applyWorkspace(
+      "/project",
+      "Project",
+      [summary("persisted", "2026-08-16T12:00:00.000Z")],
+      ["pending"],
+    );
+
+    expect(store.projectSessions("/project").map((session) => session.id)).toEqual([
+      "pending",
+      "persisted",
+    ]);
+    store[Symbol.dispose]();
+  });
+
+  it("projects durable worktree landing state into existing session summaries", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    const activeWorktree = {
+      projectPath: "/project",
+      worktreePath: "/project-worktree",
+      branch: "agent/feature",
+      baseBranch: "main",
+      state: "active" as const,
+      createdAt: "2026-08-16T12:00:00.000Z",
+    };
+    store.replace([
+      {
+        ...summary("worktree-session", "2026-08-16T12:00:00.000Z"),
+        workspacePath: activeWorktree.worktreePath,
+        managedWorktree: activeWorktree,
+        projectPath: activeWorktree.projectPath,
+      },
+    ]);
+
+    store.noteManagedWorktree({ ...activeWorktree, state: "landed" });
+
+    expect(store.find("worktree-session")?.managedWorktree?.state).toBe("landed");
+    expect(store.managedWorktree(activeWorktree.worktreePath)?.state).toBe("landed");
+    store[Symbol.dispose]();
+  });
+
+  it("finds only landed worktrees whose sessions are all resolved", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    const landedWorktree = {
+      projectPath: "/project",
+      worktreePath: "/landed-worktree",
+      branch: "agent/landed",
+      baseBranch: "main",
+      state: "landed" as const,
+      createdAt: "2026-08-16T12:00:00.000Z",
+    };
+    const activeWorktree = {
+      ...landedWorktree,
+      worktreePath: "/active-worktree",
+      branch: "agent/active",
+      state: "active" as const,
+    };
+    store.replace([
+      {
+        ...summary("resolved-one", "2026-08-16T12:00:00.000Z"),
+        resolved: true,
+        workspacePath: landedWorktree.worktreePath,
         projectPath: "/project",
-        worktreePath: "/worktree",
-        branch: "agent/task",
-        baseBranch: "main",
-        state: "landed" as const,
-        createdAt: "2026-08-16T00:00:00.000Z",
-      };
-      yield* Queue.offer(controlled.sessionUpdates, {
-        _tag: "Snapshot",
-        revision: 1,
-        sessions: [
-          {
-            ...summary("resolved", "2026-08-16T00:00:00.000Z"),
-            resolved: true,
-            workingDirectory: worktree.worktreePath,
-            managedWorktree: worktree,
-          },
-          summary("other", "2026-08-15T00:00:00.000Z", "/other"),
-        ],
-      });
-      yield* handle.instance.awaitHydrated();
-      expect(handle.instance.projectSessions("/project").map((session) => session.id)).toEqual([
-        "resolved",
-      ]);
-      expect(handle.instance.resolvedWorktrees("/project")).toEqual([worktree]);
-      yield* handle.dispose;
-    }),
-  );
+        managedWorktree: landedWorktree,
+      },
+      {
+        ...summary("resolved-two", "2026-08-15T12:00:00.000Z"),
+        resolved: true,
+        workspacePath: landedWorktree.worktreePath,
+        projectPath: "/project",
+        managedWorktree: landedWorktree,
+      },
+      {
+        ...summary("active-state", "2026-08-14T12:00:00.000Z"),
+        resolved: true,
+        workspacePath: activeWorktree.worktreePath,
+        projectPath: "/project",
+        managedWorktree: activeWorktree,
+      },
+    ]);
 
-  it.effect("interrupts its catalog subscription when its Scope closes", () =>
-    Effect.gen(function* () {
-      const finalized = yield* Ref.make(false);
-      const controlled = yield* makeCatalogTestClient({
-        sessionFinalizer: Ref.set(finalized, true),
-      });
-      const handle = yield* mountStore(controlled);
-      yield* Queue.offer(controlled.sessionUpdates, {
-        _tag: "Snapshot",
-        revision: 1,
-        sessions: [],
-      });
-      yield* handle.instance.awaitHydrated();
-      yield* handle.dispose;
-      yield* Effect.yieldNow;
-      expect(yield* Ref.get(finalized)).toBe(true);
-    }),
-  );
+    expect(store.resolvedWorktrees("/project")).toEqual([landedWorktree]);
+    store.setResolved("resolved-two", false);
+    expect(store.resolvedWorktrees("/project")).toEqual([]);
+    store[Symbol.dispose]();
+  });
+
+  it("indexes sessions by ID and project without duplicating session records", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    store.replace([
+      summary("first", "2026-08-16T12:00:00.000Z"),
+      {
+        ...summary("second", "2026-08-15T12:00:00.000Z"),
+        workspacePath: "/other",
+        workspaceName: "Other",
+      },
+    ]);
+
+    expect(store.sessionsById.get("first")).toBe(store.sessions[0]);
+    expect(store.sessionsByProject.get("/other")).toEqual([store.sessions[1]]);
+    expect(store.projectSessions("/project")).toEqual([store.sessions[0]]);
+    store[Symbol.dispose]();
+  });
+
+  it("rejects duplicate session IDs across projects", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    expect(() =>
+      store.replace([
+        summary("duplicate", "2026-08-16T12:00:00.000Z"),
+        {
+          ...summary("duplicate", "2026-08-15T12:00:00.000Z"),
+          workspacePath: "/other",
+          workspaceName: "Other",
+        },
+      ]),
+    ).toThrow("Session ID collision detected: duplicate");
+    store[Symbol.dispose]();
+  });
+
+  it("keeps Cake-owned resolved state when Pi refreshes workspace summaries", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    store.replace([{ ...summary("resolved", "2026-08-16T12:00:00.000Z"), resolved: true }]);
+    store.applyWorkspace("/project", "Project", [
+      { ...summary("resolved", "2026-08-17T12:00:00.000Z"), resolved: false },
+    ]);
+
+    expect(store.sessions[0]?.resolved).toBe(true);
+    store.applyResolvedState([]);
+    expect(store.sessions[0]?.resolved).toBe(false);
+    store[Symbol.dispose]();
+  });
+
+  it("applies the global resolved index to sessions discovered after hydration", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    store.applyResolvedState(["discovered"]);
+    store.applyWorkspace("/project", "Project", [
+      { ...summary("discovered", "2026-08-17T12:00:00.000Z"), resolved: false },
+    ]);
+
+    expect(store.find("discovered")?.resolved).toBe(true);
+    store[Symbol.dispose]();
+  });
+
+  it("keeps Cake-owned unread reminders when Pi refreshes workspace summaries", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    store.replace([{ ...summary("unread", "2026-08-16T12:00:00.000Z"), unread: true }]);
+    store.applyWorkspace("/project", "Project", [
+      { ...summary("unread", "2026-08-17T12:00:00.000Z"), resolved: false },
+    ]);
+
+    expect(store.sessions[0]?.unread).toBe(true);
+    store.applyUnreadState([]);
+    expect(store.sessions[0]?.unread).toBe(false);
+    store[Symbol.dispose]();
+  });
+
+  it("applies the global unread index to sessions discovered after hydration", () => {
+    const store = mount(createStore(SessionCatalogStore));
+    store.applyUnreadState(["discovered"]);
+    store.applyWorkspace("/project", "Project", [
+      { ...summary("discovered", "2026-08-17T12:00:00.000Z"), resolved: false },
+    ]);
+
+    expect(store.find("discovered")?.unread).toBe(true);
+    store[Symbol.dispose]();
+  });
 });
