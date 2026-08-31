@@ -7,7 +7,6 @@ import {
   BrowserWindow,
   clipboard,
   dialog,
-  ipcMain,
   Menu,
   nativeImage,
   nativeTheme,
@@ -291,10 +290,26 @@ const pluginAgents = new PluginAgentHost({
   emit: sendTo,
 });
 
+const privilegedEventListeners = new Map<number, Set<(event: DesktopEvent) => void>>();
+
+function subscribePrivilegedEvents(
+  connectionId: number,
+  listener: (event: DesktopEvent) => void,
+): () => void {
+  const listeners = privilegedEventListeners.get(connectionId) ?? new Set();
+  listeners.add(listener);
+  privilegedEventListeners.set(connectionId, listeners);
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0) privilegedEventListeners.delete(connectionId);
+  };
+}
+
 function sendTo(target: WebContents, event: DesktopEvent) {
   if (event.type === "session-snapshot")
     rememberSessionLocation(event.snapshot.workspacePath, event.snapshot.sessionId);
-  if (!target.isDestroyed()) target.send("cake:event", event);
+  if (target.isDestroyed()) return;
+  for (const listener of privilegedEventListeners.get(target.id) ?? []) listener(event);
 }
 
 function broadcast(event: DesktopEvent) {
@@ -1057,14 +1072,15 @@ async function chooseAttachments(window: BrowserWindow): Promise<Attachment[]> {
   );
 }
 
-ipcMain.handle("cake:request", async (event, untrustedInput: unknown) => {
-  try {
-    return await handleCakeRequest(event, untrustedInput);
-  } catch (error) {
-    console.error("[cake] Renderer request failed:", error);
-    throw error;
-  }
-});
+async function invokePrivilegedRequest(
+  connectionId: number,
+  untrustedInput: unknown,
+): Promise<DesktopResponse> {
+  const sender = webContents.fromId(connectionId);
+  if (!sender || sender.isDestroyed()) throw new Error("Renderer connection is no longer active");
+  // SAFETY: handleCakeRequest reads only the trusted sender field supplied here.
+  return handleCakeRequest({ sender } as Electron.IpcMainInvokeEvent, untrustedInput);
+}
 
 async function handleCakeRequest(
   event: Electron.IpcMainInvokeEvent,
@@ -2014,6 +2030,7 @@ function stopApplicationCapabilities() {
   pluginBackends[Symbol.dispose]();
   vscodeEditor.disposeAll();
   terminals.disposeAll();
+  privilegedEventListeners.clear();
   for (const host of piHosts.values()) host.driver[Symbol.dispose]();
   piHosts.clear();
 }
@@ -2021,6 +2038,12 @@ function stopApplicationCapabilities() {
 launchMainApplication({
   application: app,
   piAgentDirectory: cakePaths.piAgent,
+  privilegedOperations: {
+    invoke: async (connectionId, request) =>
+      jsonValueSchema.parse(await invokePrivilegedRequest(connectionId, request)),
+    subscribe: (connectionId, listener) =>
+      subscribePrivilegedEvents(connectionId, (event) => listener(jsonValueSchema.parse(event))),
+  },
   rpcOperations: {
     getHomeDirectory() {
       const path = homedir();

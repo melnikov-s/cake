@@ -63,6 +63,7 @@ import {
 import { MessageCommentsStore } from "../../../src/renderer/stores/MessageCommentsStore";
 import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
+import { RendererInfrastructureFixture } from "./renderer-infrastructure";
 
 interface TranscriptHarness {
   visibleParts: UiPart[];
@@ -1931,25 +1932,27 @@ describe("Transcript scrolling", () => {
     const contextMenu = mountedContextMenuAction();
     act(() =>
       root.render(
-        <Transcript
-          parts={[
-            {
-              id: "assistant-1",
-              kind: "text",
-              role: "assistant",
-              entryId: "entry-1",
-              text: "Alpha important detail.",
-              status: "complete",
-            },
-          ]}
-          sessionId="session-1"
-          isStreaming={false}
-          behavior={{
-            messageComments: comments,
-            showSelectionContextMenu: contextMenu.showSelectionContextMenu,
-          }}
-          empty={<div />}
-        />,
+        <RendererInfrastructureFixture>
+          <Transcript
+            parts={[
+              {
+                id: "assistant-1",
+                kind: "text",
+                role: "assistant",
+                entryId: "entry-1",
+                text: "Alpha important detail.",
+                status: "complete",
+              },
+            ]}
+            sessionId="session-1"
+            isStreaming={false}
+            behavior={{
+              messageComments: comments,
+              showSelectionContextMenu: contextMenu.showSelectionContextMenu,
+            }}
+            empty={<div />}
+          />
+        </RendererInfrastructureFixture>,
       ),
     );
 
@@ -2116,25 +2119,27 @@ describe("Transcript scrolling", () => {
   it("opens every assistant response in a fullscreen reader regardless of text length or streaming state", () => {
     act(() =>
       root.render(
-        <TestTranscript
-          sessionId="session-1"
-          store={storeWith([
-            {
-              id: "short",
-              kind: "text",
-              role: "assistant",
-              text: "Short answer",
-              status: "complete",
-            },
-            {
-              id: "streaming",
-              kind: "text",
-              role: "assistant",
-              text: "Working",
-              status: "streaming",
-            },
-          ])}
-        />,
+        <RendererInfrastructureFixture>
+          <TestTranscript
+            sessionId="session-1"
+            store={storeWith([
+              {
+                id: "short",
+                kind: "text",
+                role: "assistant",
+                text: "Short answer",
+                status: "complete",
+              },
+              {
+                id: "streaming",
+                kind: "text",
+                role: "assistant",
+                text: "Working",
+                status: "streaming",
+              },
+            ])}
+          />
+        </RendererInfrastructureFixture>,
       ),
     );
 

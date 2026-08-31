@@ -7,10 +7,18 @@ import { RendererErrorBoundary } from "./components/renderer-error-boundary";
 import { CustomizationRecovery } from "./components/customization-recovery";
 import { LoadingState } from "./components/ui/loading-state";
 import { MarkdownLinkProvider } from "./components/ai-elements/markdown";
+import {
+  desktopResponseSchema,
+  type DesktopRequest,
+  type DesktopResponse,
+} from "../ipc/desktop-ipc";
 import { createDesktopClient } from "./desktop-client";
 import { makeRendererRuntime } from "./RendererRuntime";
+import type { RendererClient } from "./client/RendererClient";
 import { makeRendererClient } from "./client/RendererClientLive";
 import { RendererModelSynchronizer } from "./RendererModelSynchronizer";
+import { RendererPrivilegedEvents } from "./RendererPrivilegedEvents";
+import { RendererInfrastructureProvider } from "./RendererInfrastructureContext";
 import { installStaleAssetRecovery } from "./stale-asset-recovery";
 import { mountRootStore } from "./mount-root-store";
 import { storeSnapshotSchema } from "./store-snapshot";
@@ -31,14 +39,10 @@ const customizationRevision =
     ? undefined
     : __CAKE_CUSTOMIZATION_REVISION__;
 
-function CustomizationHealth() {
+function CustomizationHealth({ report }: { report(revision: string): Promise<void> }) {
   useEffect(() => {
-    if (customizationRevision)
-      void window.cake?.request({
-        type: "customization-rendered",
-        revision: customizationRevision,
-      });
-  }, []);
+    if (customizationRevision) void report(customizationRevision);
+  }, [report]);
   return null;
 }
 
@@ -57,11 +61,69 @@ if (!window.cake) {
   void bootstrap(window.cake);
 }
 
+const requestTypes = {
+  terminals: new Set([
+    "open-terminal",
+    "write-terminal",
+    "resize-terminal",
+    "get-terminal-status",
+    "close-terminal",
+  ]),
+  vscode: new Set([
+    "set-vscode-server-path",
+    "get-embedded-editor-state",
+    "install-embedded-editor",
+    "open-embedded-editor",
+    "update-embedded-editor-bounds",
+    "reveal-in-embedded-editor",
+    "open-embedded-editor-source-control",
+    "update-embedded-editor-annotations",
+  ]),
+  filesystem: new Set(["choose-attachments", "suggest-files", "read-workspace-file"]),
+  managedWorktrees: new Set([
+    "create-worktree",
+    "get-worktree-status",
+    "land-worktree",
+    "discard-worktree",
+  ]),
+  artifacts: new Set(["respond-artifact", "export-artifacts", "respond-ui"]),
+  workspaces: new Set([
+    "set-utility-model",
+    "register-project",
+    "rename-project",
+    "remove-project",
+    "delete-session",
+    "set-session-unread",
+    "restart-pi",
+    "inspect-workspace",
+    "respond-workspace-trust",
+  ]),
+} as const;
+
+function invokeDesktopRequest(client: RendererClient, request: DesktopRequest) {
+  const type = request.type;
+  if (requestTypes.terminals.has(type)) return client.terminals.invoke(request);
+  if (requestTypes.vscode.has(type)) return client.vscode.invoke(request);
+  if (requestTypes.filesystem.has(type)) return client.filesystem.invoke(request);
+  if (requestTypes.managedWorktrees.has(type)) return client.managedWorktrees.invoke(request);
+  if (requestTypes.artifacts.has(type)) return client.artifacts.invoke(request);
+  if (requestTypes.workspaces.has(type)) return client.workspaces.invoke(request);
+  if (type.includes("plugin") || type.includes("customization") || type.includes("inline-widget"))
+    return client.plugins.invoke(request);
+  return client.electron.invoke(request);
+}
+
 async function bootstrap(bridge: NonNullable<typeof window.cake>) {
   const rendererRuntime = makeRendererRuntime(bridge.rpc);
   const rendererClient = makeRendererClient(rendererRuntime);
   const synchronizer = new RendererModelSynchronizer(rendererRuntime);
-  const desktopClient = createDesktopClient(bridge);
+  const privilegedEvents = new RendererPrivilegedEvents(rendererRuntime);
+  await privilegedEvents.ready;
+  const desktopClient = createDesktopClient(privilegedEvents, (request) =>
+    invokeDesktopRequest(rendererClient, request).then((response): DesktopResponse =>
+      desktopResponseSchema.parse(response),
+    ),
+  );
   let hydrationError: unknown;
   const snapshot = await rendererClient.windowState
     .load()
@@ -108,26 +170,49 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
     },
   };
   root.render(
-    <RendererErrorBoundary>
+    <RendererErrorBoundary
+      onCustomizationFailure={(revision, message) =>
+        rendererClient.plugins
+          .invoke({
+            type: "customization-runtime-failed",
+            revision,
+            message,
+          })
+          .then(() => undefined)
+      }
+    >
       <StrictMode>
-        <StoreProvider store={rootStore}>
-          <MarkdownLinkProvider actions={markdownLinkActions}>
-            <Suspense
-              fallback={
-                <main className="grid h-screen place-items-center bg-background text-foreground">
-                  <span className="grid size-12 place-items-center rounded-2xl bg-primary text-xl font-bold text-primary-foreground shadow-lg">
-                    C
-                  </span>
-                  <LoadingState label="Hydrating customization" />
-                </main>
-              }
-            >
-              <Scene />
-              <CustomizationHealth />
-            </Suspense>
-            <CustomizationRecovery />
-          </MarkdownLinkProvider>
-        </StoreProvider>
+        <RendererInfrastructureProvider
+          value={{
+            client: rendererClient,
+            subscribe: (listener) => privilegedEvents.subscribe(listener),
+          }}
+        >
+          <StoreProvider store={rootStore}>
+            <MarkdownLinkProvider actions={markdownLinkActions}>
+              <Suspense
+                fallback={
+                  <main className="grid h-screen place-items-center bg-background text-foreground">
+                    <span className="grid size-12 place-items-center rounded-2xl bg-primary text-xl font-bold text-primary-foreground shadow-lg">
+                      C
+                    </span>
+                    <LoadingState label="Hydrating customization" />
+                  </main>
+                }
+              >
+                <Scene />
+                <CustomizationHealth
+                  report={(revision) =>
+                    rendererClient.plugins
+                      .invoke({ type: "customization-rendered", revision })
+                      .then(() => undefined)
+                  }
+                />
+              </Suspense>
+              <CustomizationRecovery />
+            </MarkdownLinkProvider>
+          </StoreProvider>
+        </RendererInfrastructureProvider>
       </StrictMode>
     </RendererErrorBoundary>,
   );
@@ -138,6 +223,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
       persistence?.[Symbol.dispose]();
       rootStore[Symbol.dispose]();
       synchronizer[Symbol.dispose]();
+      privilegedEvents[Symbol.dispose]();
       void rendererRuntime.dispose();
     },
     { once: true },

@@ -6,6 +6,7 @@ import * as discussionSessions from "../../domain/discussionSessions";
 import * as modelPresets from "../../domain/modelPresets";
 import * as projectSessions from "../../domain/projectSessions";
 import * as projects from "../../domain/projects";
+import * as privileged from "../../domain/privileged";
 import * as subagents from "../../domain/subagents";
 import { PiModels } from "../../services/pi/PiModels";
 import { CakeRpc, FoundationFailure } from "../protocol/CakeRpc";
@@ -20,6 +21,7 @@ import type { DiscussionSessionEnvironmentService } from "../../services/discuss
 import type { SubagentEnvironmentService } from "../../services/subagents/SubagentEnvironment";
 import { piSettingUpdateSchema } from "../session-contract";
 import { WindowStateStorage } from "../../services/storage/WindowStateStorage";
+import type { PrivilegedCapabilities } from "../../services/privileged/PrivilegedCapabilities";
 
 export interface CakeIpcServerOperations {
   readonly getHomeDirectory: () => string | Promise<string>;
@@ -34,6 +36,11 @@ export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
   // request runs independently; RPC interruption and connection closure own cleanup.
   let activeDelays = 0;
   let activeStreams = 0;
+  const invokePrivileged = (request: Parameters<PrivilegedCapabilities["Service"]["invoke"]>[1]) =>
+    Effect.gen(function* () {
+      const connection = yield* RendererConnection;
+      return yield* privileged.invoke(connection.connectionId, request);
+    });
 
   const handlers = CakeRpc.toLayer({
     "application.getHomeDirectory": () =>
@@ -149,6 +156,21 @@ export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
       subagents.abort(parentSessionId, handleId),
     "subagents.close": ({ parentSessionId, handleId }) =>
       subagents.close(parentSessionId, handleId).pipe(Effect.asVoid),
+    "electron.invoke": ({ request }) => invokePrivileged(request),
+    "filesystem.invoke": ({ request }) => invokePrivileged(request),
+    "workspaces.invoke": ({ request }) => invokePrivileged(request),
+    "managedWorktrees.invoke": ({ request }) => invokePrivileged(request),
+    "terminals.invoke": ({ request }) => invokePrivileged(request),
+    "vscode.invoke": ({ request }) => invokePrivileged(request),
+    "artifacts.invoke": ({ request }) => invokePrivileged(request),
+    "plugins.invoke": ({ request }) => invokePrivileged(request),
+    "privileged.observe": () =>
+      Stream.unwrap(
+        Effect.gen(function* () {
+          const connection = yield* RendererConnection;
+          return yield* privileged.observe(connection.connectionId);
+        }),
+      ),
     "foundation.typedFailure": () =>
       Effect.fail(new FoundationFailure({ message: "Schema-decoded foundation failure" })),
     "foundation.stream": ({ count, intervalMs }) =>

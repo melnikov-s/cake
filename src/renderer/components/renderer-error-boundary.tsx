@@ -5,6 +5,7 @@ import { CopyErrorDetailsButton } from "./copy-error-details-button";
 interface RendererErrorBoundaryProps {
   children: ReactNode;
   onReload?: () => void;
+  onCustomizationFailure?: (revision: string, message: string) => Promise<void>;
 }
 
 interface RendererErrorBoundaryState {
@@ -37,11 +38,7 @@ export class RendererErrorBoundary extends Component<
     console.error("[cake] Renderer crashed:", details);
     this.setState({ componentStack: info.componentStack ?? undefined });
     if (typeof __CAKE_CUSTOMIZATION_REVISION__ !== "undefined" && __CAKE_CUSTOMIZATION_REVISION__) {
-      void window.cake?.request({
-        type: "customization-runtime-failed",
-        revision: __CAKE_CUSTOMIZATION_REVISION__,
-        message: details,
-      });
+      void this.props.onCustomizationFailure?.(__CAKE_CUSTOMIZATION_REVISION__, details);
     }
   }
 

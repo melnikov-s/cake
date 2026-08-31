@@ -35,6 +35,14 @@ export interface RendererClient {
   readonly cakeChats: CommandGroup<CakeIpcClientService["cakeChats"]>;
   readonly discussionSessions: CommandGroup<CakeIpcClientService["discussionSessions"]>;
   readonly subagents: CommandGroup<CakeIpcClientService["subagents"]>;
+  readonly electron: CommandGroup<CakeIpcClientService["electron"]>;
+  readonly filesystem: CommandGroup<CakeIpcClientService["filesystem"]>;
+  readonly workspaces: CommandGroup<CakeIpcClientService["workspaces"]>;
+  readonly managedWorktrees: CommandGroup<CakeIpcClientService["managedWorktrees"]>;
+  readonly terminals: CommandGroup<CakeIpcClientService["terminals"]>;
+  readonly vscode: CommandGroup<CakeIpcClientService["vscode"]>;
+  readonly artifacts: CommandGroup<CakeIpcClientService["artifacts"]>;
+  readonly plugins: CommandGroup<CakeIpcClientService["plugins"]>;
   readonly foundation: CommandGroup<CakeIpcClientService["foundation"]>;
 }
 

@@ -20,6 +20,8 @@ type RpcHarness = {
   listProjectSessions(): Promise<ReadonlyArray<unknown>>;
   listCakeChats(): Promise<ReadonlyArray<unknown>>;
   listDiscussionSessions(): Promise<ReadonlyArray<unknown>>;
+  invokeElectronProbe(): Promise<{ type: string }>;
+  privilegedReady(): Promise<{ type: string }>;
   typedFailureTag(): Promise<string>;
   stream(count: number, intervalMs: number): Promise<ReadonlyArray<number>>;
   startDelay(durationMs: number): void;
@@ -102,6 +104,12 @@ test("Effect RPC crosses Electron with schemas, streams, interruption, and conne
     expect(await callHarness(observer, "listProjectSessions")).toEqual([]);
     expect(await callHarness(observer, "listCakeChats")).toEqual([]);
     expect(await callHarness(observer, "listDiscussionSessions")).toEqual([]);
+    expect(await callHarness<{ type: string }>(observer, "invokeElectronProbe")).toMatchObject({
+      type: "accepted",
+    });
+    expect(await callHarness<{ type: string }>(observer, "privilegedReady")).toEqual({
+      type: "privileged-stream-ready",
+    });
     expect(await callHarness<string>(observer, "typedFailureTag")).toBe("FoundationFailure");
     expect(await callHarness<ReadonlyArray<number>>(observer, "stream", 3, 1)).toEqual([1, 2, 3]);
 

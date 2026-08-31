@@ -1,4 +1,4 @@
-import type { CakeDesktopBridge, DesktopEvent } from "../ipc/desktop-ipc";
+import type { DesktopEvent, DesktopRequest, DesktopResponse } from "../ipc/desktop-ipc";
 import type {
   Attachment,
   ApplicationState,
@@ -40,7 +40,13 @@ export interface EmbeddedEditorStateSnapshot {
   customPath?: string;
 }
 
+type PrivilegedPassthroughEvent = Extract<
+  DesktopEvent,
+  { type: "plugin-backend-event" | "fullscreen-surface-close-requested" }
+>;
+
 export type DesktopClientEvent =
+  | PrivilegedPassthroughEvent
   | { type: "pi-state-changed"; state: PiState; workspacePath?: string }
   | { type: "workspace-inspected"; operationId: string; path: string; trustRequired: boolean }
   | {
@@ -351,6 +357,8 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
       status: event.status,
       message: event.message,
     };
+  if (event.type === "plugin-backend-event" || event.type === "fullscreen-surface-close-requested")
+    return event;
   if (
     event.type === "embedded-editor-selection" ||
     event.type === "embedded-editor-annotation-opened" ||
@@ -363,16 +371,29 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
   return undefined;
 }
 
+type DesktopRequestClient = (request: DesktopRequest) => Promise<DesktopResponse>;
+interface DesktopCommandBridge {
+  readonly request: DesktopRequestClient;
+  readonly subscribe: (listener: (event: DesktopEvent) => void) => () => void;
+}
+
 async function accept(
-  bridge: CakeDesktopBridge,
-  request: Parameters<CakeDesktopBridge["request"]>[0] & { requestId: string },
+  bridge: Pick<DesktopCommandBridge, "request">,
+  request: DesktopRequest & { requestId: string },
 ) {
   const response = await bridge.request(request);
   if (response.type !== "accepted" || response.requestId !== request.requestId)
     throw new Error("Cake received a mismatched operation response");
 }
 
-export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
+export function createDesktopClient(
+  events: Pick<DesktopCommandBridge, "subscribe">,
+  request: DesktopRequestClient,
+): DesktopClient {
+  const bridge: DesktopCommandBridge = {
+    request,
+    subscribe: (listener) => events.subscribe(listener),
+  };
   return {
     async chooseProject() {
       const response = await bridge.request({ type: "choose-project" });

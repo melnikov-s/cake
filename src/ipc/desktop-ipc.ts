@@ -731,6 +731,4 @@ export type DesktopResponse = z.infer<typeof desktopResponseSchema>;
 
 export interface CakeDesktopBridge {
   readonly rpc: ElectronRpcTransport;
-  request(input: DesktopRequest): Promise<DesktopResponse>;
-  subscribe(listener: (event: DesktopEvent) => void): () => void;
 }

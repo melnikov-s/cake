@@ -245,7 +245,11 @@ Effect RPC client protocol
 
 Preload is deliberately mechanical. It exposes no raw `ipcRenderer`, performs
 no Cake business logic, and accepts only the protocol transport messages.
-Both receiving boundaries decode untrusted values.
+Both receiving boundaries decode untrusted values. Remaining outside-world
+commands are partitioned into the `electron`, `filesystem`, `workspaces`,
+`managedWorktrees`, `terminals`, `vscode`, `artifacts`, and `plugins` RPC groups;
+the main `PrivilegedCapabilities` Service owns their renderer-connection-aware
+invocation and event observation.
 
 Main RPC handlers are thin adapters to domain operations. They do not own
 business logic. Each renderer connection owns the Scope of its streaming RPCs

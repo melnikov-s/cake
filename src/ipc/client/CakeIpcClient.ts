@@ -2,6 +2,7 @@ import { Context, Effect, Layer, type Schema, type Stream } from "effect";
 import { RpcClient } from "effect/unstable/rpc";
 import type { RpcClientError } from "effect/unstable/rpc";
 import { CakeRpc, type FoundationFailure } from "../protocol/CakeRpc";
+import type { PrivilegedCapabilityError } from "../../services/privileged/PrivilegedCapabilities";
 import type { RendererApplicationState } from "../../domain/application-data";
 import type { PiSettingUpdate } from "../session-contract";
 import type {
@@ -67,6 +68,14 @@ import type {
 } from "../../services/storage/WindowStateStorage";
 
 type TransportError = RpcClientError.RpcClientError;
+type PrivilegedCommandGroup = {
+  readonly invoke: (
+    request: Schema.Schema.Type<typeof Schema.Json>,
+  ) => Effect.Effect<
+    Schema.Schema.Type<typeof Schema.Json>,
+    PrivilegedCapabilityError | TransportError
+  >;
+};
 type ModelPresetMutationError =
   | ModelPresetValidationError
   | ModelPresetNotFoundError
@@ -339,6 +348,17 @@ export interface CakeIpcClientService {
       readonly handleId: SubagentHandleId;
     }) => Effect.Effect<void, SubagentError | TransportError>;
   };
+  readonly electron: PrivilegedCommandGroup;
+  readonly filesystem: PrivilegedCommandGroup;
+  readonly workspaces: PrivilegedCommandGroup;
+  readonly managedWorktrees: PrivilegedCommandGroup;
+  readonly terminals: PrivilegedCommandGroup;
+  readonly vscode: PrivilegedCommandGroup;
+  readonly artifacts: PrivilegedCommandGroup;
+  readonly plugins: PrivilegedCommandGroup;
+  readonly privileged: {
+    readonly observe: () => Stream.Stream<Schema.Schema.Type<typeof Schema.Json>, TransportError>;
+  };
   readonly foundation: {
     readonly typedFailure: () => Effect.Effect<void, FoundationFailure | TransportError>;
     readonly stream: (input: {
@@ -570,6 +590,49 @@ export const CakeIpcClientLive = Layer.effect(
         close: Effect.fn("CakeIpcClient.subagents.close")((input) =>
           client("subagents.close", input),
         ),
+      },
+      electron: {
+        invoke: Effect.fn("CakeIpcClient.electron.invoke")((request) =>
+          client("electron.invoke", { request }),
+        ),
+      },
+      filesystem: {
+        invoke: Effect.fn("CakeIpcClient.filesystem.invoke")((request) =>
+          client("filesystem.invoke", { request }),
+        ),
+      },
+      workspaces: {
+        invoke: Effect.fn("CakeIpcClient.workspaces.invoke")((request) =>
+          client("workspaces.invoke", { request }),
+        ),
+      },
+      managedWorktrees: {
+        invoke: Effect.fn("CakeIpcClient.managedWorktrees.invoke")((request) =>
+          client("managedWorktrees.invoke", { request }),
+        ),
+      },
+      terminals: {
+        invoke: Effect.fn("CakeIpcClient.terminals.invoke")((request) =>
+          client("terminals.invoke", { request }),
+        ),
+      },
+      vscode: {
+        invoke: Effect.fn("CakeIpcClient.vscode.invoke")((request) =>
+          client("vscode.invoke", { request }),
+        ),
+      },
+      artifacts: {
+        invoke: Effect.fn("CakeIpcClient.artifacts.invoke")((request) =>
+          client("artifacts.invoke", { request }),
+        ),
+      },
+      plugins: {
+        invoke: Effect.fn("CakeIpcClient.plugins.invoke")((request) =>
+          client("plugins.invoke", { request }),
+        ),
+      },
+      privileged: {
+        observe: () => client("privileged.observe", undefined),
       },
       foundation: {
         typedFailure: Effect.fn("CakeIpcClient.foundation.typedFailure")(() =>

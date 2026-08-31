@@ -47,6 +47,10 @@ State and lifetime ownership:
 - Closing a renderer connection interrupts its RPC requests and subscriptions;
   it does not automatically destroy independently retained domain work.
 
-Preload remains intentionally mechanical. Adding a renderer capability means
-adding it to the shared Effect RPC protocol and a privileged main handler, not
-adding an ad hoc `window.cake` method.
+Preload remains intentionally mechanical and exposes only the frozen Effect RPC
+transport. Privileged Electron, filesystem, worktree, terminal, VS Code,
+artifact, and plugin commands use grouped RPC operations backed by the
+main-owned `PrivilegedCapabilities` Effect Service. Non-authoritative native
+lifecycle events use one renderer-connection-scoped RPC Stream. Adding a
+renderer capability means adding it to that shared protocol and main Service
+boundary, never adding an ad hoc `window.cake` method or Electron channel.

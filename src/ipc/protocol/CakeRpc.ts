@@ -72,6 +72,7 @@ import {
   WindowStateUnsupportedVersionError,
   WindowStateWriteError,
 } from "../../services/storage/WindowStateStorage";
+import { PrivilegedCapabilityError } from "../../services/privileged/PrivilegedCapabilities";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 
 export class FoundationFailure extends Schema.TaggedError<FoundationFailure>()(
@@ -472,6 +473,50 @@ export const CakeRpc = RpcGroup.make(
   Rpc.make("subagents.close", {
     payload: { ...SubagentParent.fields, handleId: SubagentHandleId },
     error: SubagentError,
+  }),
+  Rpc.make("electron.invoke", {
+    payload: { request: Schema.Json },
+    success: Schema.Json,
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("filesystem.invoke", {
+    payload: { request: Schema.Json },
+    success: Schema.Json,
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("workspaces.invoke", {
+    payload: { request: Schema.Json },
+    success: Schema.Json,
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("managedWorktrees.invoke", {
+    payload: { request: Schema.Json },
+    success: Schema.Json,
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("terminals.invoke", {
+    payload: { request: Schema.Json },
+    success: Schema.Json,
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("vscode.invoke", {
+    payload: { request: Schema.Json },
+    success: Schema.Json,
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("artifacts.invoke", {
+    payload: { request: Schema.Json },
+    success: Schema.Json,
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("plugins.invoke", {
+    payload: { request: Schema.Json },
+    success: Schema.Json,
+    error: PrivilegedCapabilityError,
+  }),
+  Rpc.make("privileged.observe", {
+    success: Schema.Json,
+    stream: true,
   }),
   Rpc.make("foundation.typedFailure", {
     error: FoundationFailure,

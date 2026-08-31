@@ -456,6 +456,70 @@ export function makeRendererClient(runtime: RendererRuntime): RendererClient {
           options,
         ),
     },
+    electron: {
+      invoke: (request, options) =>
+        run(
+          "electron.invoke",
+          withClient((client) => client.electron.invoke(request)),
+          options,
+        ),
+    },
+    filesystem: {
+      invoke: (request, options) =>
+        run(
+          "filesystem.invoke",
+          withClient((client) => client.filesystem.invoke(request)),
+          options,
+        ),
+    },
+    workspaces: {
+      invoke: (request, options) =>
+        run(
+          "workspaces.invoke",
+          withClient((client) => client.workspaces.invoke(request)),
+          options,
+        ),
+    },
+    managedWorktrees: {
+      invoke: (request, options) =>
+        run(
+          "managedWorktrees.invoke",
+          withClient((client) => client.managedWorktrees.invoke(request)),
+          options,
+        ),
+    },
+    terminals: {
+      invoke: (request, options) =>
+        run(
+          "terminals.invoke",
+          withClient((client) => client.terminals.invoke(request)),
+          options,
+        ),
+    },
+    vscode: {
+      invoke: (request, options) =>
+        run(
+          "vscode.invoke",
+          withClient((client) => client.vscode.invoke(request)),
+          options,
+        ),
+    },
+    artifacts: {
+      invoke: (request, options) =>
+        run(
+          "artifacts.invoke",
+          withClient((client) => client.artifacts.invoke(request)),
+          options,
+        ),
+    },
+    plugins: {
+      invoke: (request, options) =>
+        run(
+          "plugins.invoke",
+          withClient((client) => client.plugins.invoke(request)),
+          options,
+        ),
+    },
     foundation: {
       typedFailure: (options) =>
         run(

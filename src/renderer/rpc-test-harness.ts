@@ -30,6 +30,23 @@ const harness = {
   listModelPresets: () => run(withClient((client) => client.modelPresets.list())),
   listProjectSessions: () => run(withClient((client) => client.projectSessions.list())),
   listCakeChats: () => run(withClient((client) => client.cakeChats.list())),
+  invokeElectronProbe: () =>
+    run(
+      withClient((client) =>
+        client.electron.invoke({
+          type: "set-fullscreen-surface-open",
+          requestId: crypto.randomUUID(),
+          surfaceId: crypto.randomUUID(),
+          open: false,
+        }),
+      ),
+    ),
+  privilegedReady: () =>
+    collect(
+      Stream.unwrap(Effect.map(CakeIpcClient, (client) => client.privileged.observe())).pipe(
+        Stream.take(1),
+      ),
+    ).then(([event]) => event),
   listDiscussionSessions: () =>
     run(
       withClient((client) =>

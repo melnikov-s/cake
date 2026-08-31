@@ -23,6 +23,14 @@ describe("RendererClient", () => {
       "cakeChats",
       "discussionSessions",
       "subagents",
+      "electron",
+      "filesystem",
+      "workspaces",
+      "managedWorktrees",
+      "terminals",
+      "vscode",
+      "artifacts",
+      "plugins",
       "foundation",
     ]);
     expect("observe" in client.projectSessions).toBe(false);

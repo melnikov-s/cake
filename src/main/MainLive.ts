@@ -34,12 +34,18 @@ import {
   makeWindowStateStorageLive,
   type WindowStateStorage,
 } from "../services/storage/WindowStateStorage";
+import {
+  makePrivilegedCapabilitiesLive,
+  type PrivilegedCapabilities,
+  type PrivilegedCapabilityOperations,
+} from "../services/privileged/PrivilegedCapabilities";
 import { BootstrapLive } from "./BootstrapLive";
 import { MainApplication, type MainApplicationHooks } from "./MainApplication";
 
 const makeMainLive = (
   application: App,
   rpcOperations: CakeIpcServerOperations,
+  privilegedOperations: PrivilegedCapabilityOperations,
   piAgentDirectory: string,
 ) => {
   const storageLive = makeApplicationStorageLive(application.getPath("userData")).pipe(
@@ -60,6 +66,7 @@ const makeMainLive = (
     makeDiscussionSessionEnvironmentLayer(rpcOperations.discussionSessions),
     SubagentCoordinatorLive,
     makeSubagentEnvironmentLayer(rpcOperations.subagents),
+    makePrivilegedCapabilitiesLive(privilegedOperations),
   );
   const serverLive = makeCakeIpcServerLive(rpcOperations).pipe(Layer.provide(servicesLive));
   return Layer.merge(servicesLive, serverLive);
@@ -68,6 +75,7 @@ const makeMainLive = (
 export interface LaunchMainApplicationOptions extends Omit<MainApplicationHooks, "start"> {
   readonly application: App;
   readonly rpcOperations: CakeIpcServerOperations;
+  readonly privilegedOperations: PrivilegedCapabilityOperations;
   readonly piAgentDirectory: string;
   readonly start: (applicationState: ApplicationState["Service"]) => Promise<void>;
 }
@@ -83,7 +91,8 @@ type MainService =
   | CakeChatEnvironment
   | DiscussionSessionEnvironment
   | SubagentCoordinator
-  | SubagentEnvironment;
+  | SubagentEnvironment
+  | PrivilegedCapabilities;
 let runEffect:
   | (<A, E>(effect: Effect.Effect<A, E, MainService>, signal?: AbortSignal) => Promise<A>)
   | undefined;
@@ -103,7 +112,12 @@ export function launchMainApplication(options: LaunchMainApplicationOptions): vo
   // The main process has exactly one Effect runtime. Feature modules use this
   // application graph rather than constructing parallel runtimes.
   const mainRuntime = ManagedRuntime.make(
-    makeMainLive(options.application, options.rpcOperations, options.piAgentDirectory),
+    makeMainLive(
+      options.application,
+      options.rpcOperations,
+      options.privilegedOperations,
+      options.piAgentDirectory,
+    ),
   );
   runEffect = (effect, signal) => mainRuntime.runPromise(effect, { signal });
 

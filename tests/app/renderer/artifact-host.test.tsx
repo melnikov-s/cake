@@ -13,6 +13,7 @@ import type { ArtifactRecord } from "../../../src/ipc/artifact-contract";
 import type { DesktopClient } from "../../../src/renderer/desktop-client";
 import { InlineWidgetStore } from "../../../src/renderer/stores/InlineWidgetStore";
 import type { ProjectSessionStore } from "../../../src/renderer/stores/ProjectSessionStore";
+import { RendererInfrastructureFixture } from "./renderer-infrastructure";
 
 function record(artifact: ArtifactRecord["artifact"]): ArtifactRecord {
   return {
@@ -205,7 +206,13 @@ describe("ArtifactHost", () => {
       interaction: { mode: "request", responseSchema: request.responseSchema },
     });
 
-    act(() => root.render(<ArtifactHost record={artifact} requested onSubmit={submit} />));
+    act(() =>
+      root.render(
+        <RendererInfrastructureFixture>
+          <ArtifactHost record={artifact} requested onSubmit={submit} />
+        </RendererInfrastructureFixture>,
+      ),
+    );
     const radios = [...container.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
     const customInput = container.querySelector<HTMLInputElement>(
       'input[aria-label="Choice other option"]',
@@ -322,7 +329,9 @@ describe("ArtifactHost", () => {
 
     await act(async () => {
       root.render(
-        <ArtifactHost record={artifact} requested onSubmit={submit} inlineWidgets={widgets} />,
+        <RendererInfrastructureFixture>
+          <ArtifactHost record={artifact} requested onSubmit={submit} inlineWidgets={widgets} />
+        </RendererInfrastructureFixture>,
       );
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
@@ -394,7 +403,11 @@ describe("ArtifactHost", () => {
     });
 
     await act(async () => {
-      root.render(<ArtifactHost record={artifact} inlineWidgets={widgets} />);
+      root.render(
+        <RendererInfrastructureFixture>
+          <ArtifactHost record={artifact} inlineWidgets={widgets} />
+        </RendererInfrastructureFixture>,
+      );
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 

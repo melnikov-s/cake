@@ -54,16 +54,18 @@ repository changes vertically:
 - Main-owned application state and Model Presets use typed Effect storage and
   domain operations.
 - `PiSessions`, `PiModels`, and `PiAgentResources` form the target Pi boundary.
-- Project Sessions, Cake Chat Sessions, Discussion Sessions, and Subagents have
-  Effect domain/RPC paths, while focused legacy renderer adapters remain.
+- Project Sessions, Cake Chat Sessions, Discussion Sessions, Subagents, and all
+  privileged native capabilities now cross the Effect RPC boundary.
 - The renderer remains r-state-tree. The permanent `RendererClient` owns every
-  migrated Effect command; `DesktopClient` now contains only capabilities awaiting
-  later privileged-capability passes.
-- One window-owned Model synchronizer is the only renderer Effect Stream consumer.
-  Renderer bootstrap attaches it to the mounted Root Store; feature Stores do
-  not access it.
-- `src/main/main.ts` and `src/main/pi-workspace-driver.ts` still contain legacy
-  capability paths that later vertical slices must remove.
+  command. The broad `DesktopClient` is now only final-cleanup scaffolding over
+  grouped RPC commands and one scoped privileged event Stream; preload exposes
+  only the frozen RPC transport.
+- One window-owned Model synchronizer is the only authoritative Model Stream
+  consumer. `RendererPrivilegedEvents` temporarily adapts non-authoritative
+  native lifecycle events for legacy consumers until Bulk Pass D removes broad
+  event routing.
+- `src/main/main.ts`, `src/main/pi-workspace-driver.ts`, and the old desktop
+  unions still contain final-cleanup paths to remove together in Bulk Pass D.
 
 Useful inventory commands:
 
@@ -505,10 +507,10 @@ every document or rerunning inventory.
 
 ## Progress table
 
-| Work                                  | Status      | Notes / next executable step                                                                                                                                                                                                  |
-| ------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phases 0–6                            | Complete    | Effect dependency, main runtime, RPC, typed storage, Model Presets, Pi Services, and Cake Session domain are established.                                                                                                     |
-| Bulk Pass A — renderer boundary       | Complete    | One window runtime, semantic `RendererClient`, Store Context injection, and the Root-only Model synchronizer are established; replaced Effect adapters and migrated event routes are removed.                                 |
-| Bulk Pass B — renderer state          | Complete    | Catalogs, loaded conversations, Discussions, Subagents, artifacts, and extension UI now synchronize into passive Models; Store hydration is one-time before mount and external one-way snapshot persistence owns later saves. |
-| Bulk Pass C — privileged capabilities | Not started | Migrate all remaining native/product Services, domain operations, RPC, renderer wiring, and legacy driver/handler removal as one broad pass.                                                                                  |
-| Bulk Pass D — final enforcement       | Not started | Remove migration scaffolding, add import boundaries, update final docs, and run the release verification matrix once.                                                                                                         |
+| Work                                  | Status      | Notes / next executable step                                                                                                                                                                                                                  |
+| ------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phases 0–6                            | Complete    | Effect dependency, main runtime, RPC, typed storage, Model Presets, Pi Services, and Cake Session domain are established.                                                                                                                     |
+| Bulk Pass A — renderer boundary       | Complete    | One window runtime, semantic `RendererClient`, Store Context injection, and the Root-only Model synchronizer are established; replaced Effect adapters and migrated event routes are removed.                                                 |
+| Bulk Pass B — renderer state          | Complete    | Catalogs, loaded conversations, Discussions, Subagents, artifacts, and extension UI now synchronize into passive Models; Store hydration is one-time before mount and external one-way snapshot persistence owns later saves.                 |
+| Bulk Pass C — privileged capabilities | Complete    | Electron/filesystem, worktrees/storage, VS Code/terminal, artifacts/UI, and plugin commands and events now use the main `PrivilegedCapabilities` Effect Service, free domain Effects, grouped RPC commands, and scoped RPC event observation. |
+| Bulk Pass D — final enforcement       | Not started | Remove migration scaffolding, add import boundaries, update final docs, and run the release verification matrix once.                                                                                                                         |
