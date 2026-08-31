@@ -2,15 +2,16 @@ import {
   Context,
   Effect,
   Equal,
+  Exit,
   Hash,
   Layer,
   PubSub,
   RcMap,
   Schedule,
   Schema,
+  Scope,
   Stream,
 } from "effect";
-import type { Scope } from "effect";
 import type {
   Attachment,
   ChatConfiguration,
@@ -241,7 +242,12 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
               return { fingerprint: key.fingerprint, runtime, events } satisfies SharedRuntime;
             }),
             ({ runtime, events }) =>
-              Effect.sync(() => runtime.dispose()).pipe(Effect.andThen(PubSub.shutdown(events))),
+              Effect.tryPromise({
+                try: async () => {
+                  await runtime.dispose();
+                },
+                catch: (cause) => cause,
+              }).pipe(Effect.orDie, Effect.ensuring(PubSub.shutdown(events))),
           ),
       });
 
@@ -267,12 +273,34 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
       const acquire = Effect.fn("PiSessions.acquire")(function* (options: PiSessionAcquireOptions) {
         yield* validateProfile(options);
         const key = new RuntimeKey(runtimeTarget(options), options);
-        const shared = yield* RcMap.get(runtimes, key).pipe(sessionError("acquire"));
-        if (shared.fingerprint !== key.fingerprint)
-          return yield* new PiSessionError({
-            operation: "acquire",
-            message: "That Pi Session is already acquired with conflicting runtime options",
-          });
+        const ownerScope = yield* Effect.scope;
+        const shared = yield* Effect.uninterruptibleMask((restore) =>
+          Effect.gen(function* () {
+            // Retain through a private lease Scope until the options have been
+            // checked. A rejected acquisition must not leave a reference in the
+            // caller's longer-lived Scope.
+            const leaseScope = yield* Scope.make();
+            const retained = yield* restore(
+              RcMap.get(runtimes, key).pipe(
+                Effect.provideService(Scope.Scope, leaseScope),
+                sessionError("acquire"),
+              ),
+            ).pipe(
+              Effect.onExit((exit) =>
+                Exit.isFailure(exit) ? Scope.close(leaseScope, Exit.void) : Effect.void,
+              ),
+            );
+            if (retained.fingerprint !== key.fingerprint) {
+              yield* Scope.close(leaseScope, Exit.void);
+              return yield* new PiSessionError({
+                operation: "acquire",
+                message: "That Pi Session is already acquired with conflicting runtime options",
+              });
+            }
+            yield* Scope.addFinalizer(ownerScope, Scope.close(leaseScope, Exit.void));
+            return retained;
+          }),
+        );
 
         const call = <A>(operation: string, evaluate: (runtime: CakeRuntime) => Promise<A>) =>
           runtimeOperation(operation, () => evaluate(shared.runtime));

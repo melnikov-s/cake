@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
-import { Context, Effect, Exit, Fiber, Layer, Ref, Scope, Stream } from "effect";
+import { Context, Deferred, Effect, Exit, Fiber, Layer, Ref, Scope, Stream } from "effect";
 import { describe } from "vitest";
 import {
   makePiSessionsLayer,
@@ -45,7 +45,10 @@ const options = (overrides: Partial<PiSessionAcquireOptions["runtime"]> = {}) =>
     },
   }) satisfies PiSessionAcquireOptions;
 
-function fakeRuntime(runtimeOptions: CakeRuntimeOptions, onDispose: () => void): CakeRuntime {
+function fakeRuntime(
+  runtimeOptions: CakeRuntimeOptions,
+  onDispose: () => void | Promise<void>,
+): CakeRuntime {
   return {
     sessionId: snapshot.sessionId,
     sessionFile: snapshot.sessionFile,
@@ -118,7 +121,43 @@ describe("PiSessions", () => {
     }),
   );
 
-  it.effect("rejects conflicting runtime-defining options for an acquired Pi Session", () =>
+  it.effect("awaits asynchronous runtime finalization after the last Scope releases", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const finalizations = yield* Ref.make(0);
+      const layer = makePiSessionsLayer({
+        list: () => Effect.succeed([]),
+        inspect: () => Effect.succeed(undefined),
+        createRuntime: (runtimeOptions) =>
+          Effect.succeed(
+            fakeRuntime(runtimeOptions, () =>
+              Deferred.succeed(started, undefined).pipe(
+                Effect.andThen(Deferred.await(release)),
+                Effect.andThen(Ref.update(finalizations, (count) => count + 1)),
+                Effect.runPromise,
+              ),
+            ),
+          ),
+        changelog: () => Effect.succeed("# Changelog"),
+      });
+      const context = yield* Layer.build(layer);
+      const sessions = Context.get(context, PiSessions);
+      const owner = yield* Scope.make();
+      yield* sessions.acquire(options()).pipe(Effect.provideService(Scope.Scope, owner));
+
+      const closing = yield* Scope.close(owner, Exit.void).pipe(Effect.forkChild);
+      yield* Deferred.await(started);
+      assert.equal(closing.pollUnsafe(), undefined);
+      assert.equal(yield* Ref.get(finalizations), 0);
+
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(closing);
+      assert.equal(yield* Ref.get(finalizations), 1);
+    }),
+  );
+
+  it.effect("releases a rejected conflicting acquisition immediately", () =>
     Effect.gen(function* () {
       const acquisitions = yield* Ref.make(0);
       const finalizations = yield* Ref.make(0);
@@ -134,8 +173,12 @@ describe("PiSessions", () => {
       );
       assert.equal(conflict._tag, "PiSessionError");
       assert.match(conflict.message, /conflicting runtime options/);
-      yield* Scope.close(conflictScope, Exit.void);
+
+      // The failed acquisition must not retain the runtime for conflictScope.
       yield* Scope.close(retained, Exit.void);
+      assert.equal(yield* Ref.get(finalizations), 1);
+      yield* Scope.close(conflictScope, Exit.void);
+      assert.equal(yield* Ref.get(finalizations), 1);
     }),
   );
 

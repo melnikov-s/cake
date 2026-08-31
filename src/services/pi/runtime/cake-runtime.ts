@@ -644,7 +644,7 @@ export interface CakeRuntime {
   fork(entryId: string): Promise<{ sessionId: string; sessionFile: string }>;
   handoff(entryId: string): Promise<{ sessionId: string; sessionFile: string }>;
   navigate(entryId: string): Promise<void>;
-  dispose(): void;
+  dispose(): void | Promise<void>;
 }
 
 export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<CakeRuntime> {
@@ -1024,6 +1024,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     }
   }
   let disposed = false;
+  let disposePromise: Promise<void> | undefined;
   let turnRecoveryFailureDetail: string | undefined;
   let reloadRequested = 0;
   let reloadCompleted = 0;
@@ -2228,27 +2229,26 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
       await emitSnapshot();
     },
     dispose() {
-      if (disposed) return;
+      if (disposed) return disposePromise;
       disposed = true;
       sessionNamingController.abort();
       responseRetries.cancel();
       unsubscribe();
-      const finish = () => {
+      const finish = async () => {
         session.dispose();
-        void settingsManager.flush();
+        await settingsManager.flush();
       };
       // Graceful teardown: while a run is active, abort first so Pi unwinds
       // through its normal failure path and persists the "aborted" marker.
-      // Disposing immediately would kill the request silently and leave the
-      // session ending in dangling tool results with no trace of the stop.
-      if (session.isStreaming) {
-        void session
-          .abort()
-          .catch(() => undefined)
-          .then(finish, finish);
-        return;
-      }
-      finish();
+      // The returned Promise settles only after Pi disposal and settings flush,
+      // so a scoped owner cannot reacquire this transcript during teardown.
+      disposePromise = session.isStreaming
+        ? session
+            .abort()
+            .catch(() => undefined)
+            .then(finish)
+        : finish();
+      return disposePromise;
     },
   };
 }
