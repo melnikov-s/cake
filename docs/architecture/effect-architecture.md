@@ -123,9 +123,10 @@ parallel conversation engines.
 The window's renderer infrastructure owns `CakeIpcClient` and the Effect
 runtime. A permanent typed `RendererClient` executes semantic commands as
 Promises and propagates optional `AbortSignal` cancellation to Effect Fiber and
-RPC interruption. One window-owned Model synchronizer consumes RPC Streams,
-maps validated Updates to snapshots, and applies them to stable r-state-tree
-Models with `applySnapshot`.
+RPC interruption. One window-owned Model synchronizer consumes RPC Streams, maps validated Updates
+to snapshots, and applies them to stable r-state-tree Models with
+`applySnapshot`. Renderer bootstrap attaches both the Model synchronizer and
+window snapshot persistence to the mounted Root Store; neither is a Store.
 
 Renderer Stores read those Models, invoke `RendererClient`, and own window-local
 application/UI logic and repeated-call policy. They do not import Effect,
@@ -493,12 +494,12 @@ Effect Schema`. Saving is `encode current value → add version → temporary wr
 r-state-tree snapshots are the serialization boundary for renderer-owned state:
 
 ```text
-Explicit r-state-tree snapshot
-→ RendererClient.windowState
-→ WindowStateStorage RPC
-→ main typed storage Service
-→ versioned file
+startup: versioned file → WindowStateStorage RPC → mount RootStore with snapshot once
+runtime: onSnapshot(RootStore) → RendererClient.windowState → versioned file
 ```
+
+Window snapshot persistence is renderer infrastructure outside the Store tree.
+It never applies storage to an already-mounted Store.
 
 Only fields explicitly marked with r-state-tree snapshot metadata persist. Full
 Pi transcript projections, live resources, projection subscriptions, pending
@@ -527,8 +528,9 @@ Renderer Stores live in `src/renderer/stores`. They own:
 The single Model synchronizer lives in renderer infrastructure. It owns RPC
 Stream subscriptions, observation generations, and revision/reconnect policy.
 It maps each validated Update to an ordinary Model snapshot and calls
-`applySnapshot`; it is not a second application state system. Only `RootStore`
-supplies it the current loaded Models. Feature Stores and Models never access it.
+`applySnapshot`; it is not a second application state system. Renderer bootstrap
+attaches it to the mounted Root Store so it can watch the loaded Model set.
+Feature Stores and Models never access it.
 
 The normal data and command paths are:
 

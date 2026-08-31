@@ -1,7 +1,9 @@
-import { createStore, mount } from "r-state-tree";
+import { child, createStore, mount, Store } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { ModelOption, ModelPreset } from "../../../../src/ipc/session-contract";
 import { ModelPresetSettingsStore } from "../../../../src/renderer/stores/ModelPresetSettingsStore";
+import type { RendererClient } from "../../../../src/renderer/client/RendererClient";
+import { RendererClientContext } from "../../../../src/renderer/client/RendererClientContext";
 
 interface Projection {
   presets: readonly ModelPreset[];
@@ -92,50 +94,69 @@ function createClient(initial: Projection = { presets: [] }, models = [catalogMo
   return { client, state: () => state };
 }
 
+class HarnessStore extends Store<{ client: RendererClient }> {
+  [RendererClientContext.provide]() {
+    return this.props.client;
+  }
+
+  @child get settings() {
+    return createStore(ModelPresetSettingsStore);
+  }
+}
+
 function mountStore(initial?: Projection, models?: ModelOption[]) {
   const controlled = createClient(initial, models);
-  const store = mount(
-    createStore(ModelPresetSettingsStore, {
-      client: controlled.client,
-      modelPresets: {
-        list: controlled.client.listModelPresets,
-        create: controlled.client.createModelPreset,
-        update: controlled.client.updateModelPreset,
-        remove: controlled.client.removeModelPreset,
-        setDefault: controlled.client.setDefaultModelPreset,
-        resolve: vi.fn(),
-      },
-    }),
-  );
-  return { ...controlled, store };
+  const rendererClient = {
+    models: {
+      list: controlled.client.listModels,
+      refresh: vi.fn(),
+    },
+    modelPresets: {
+      list: controlled.client.listModelPresets,
+      create: controlled.client.createModelPreset,
+      update: controlled.client.updateModelPreset,
+      remove: controlled.client.removeModelPreset,
+      setDefault: controlled.client.setDefaultModelPreset,
+      resolve: vi.fn(),
+    },
+  } as unknown as RendererClient;
+  const root = mount(createStore(HarnessStore, { client: rendererClient }));
+  return {
+    ...controlled,
+    store: root.settings,
+    dispose: () => root[Symbol.dispose](),
+  };
 }
 
 describe("ModelPresetSettingsStore", () => {
   it("hydrates presets and the session-less model catalog through focused queries", async () => {
     const existing = preset();
-    const { client, store } = mountStore({ presets: [existing], defaultPresetId: existing.id });
+    const { client, store, dispose } = mountStore({
+      presets: [existing],
+      defaultPresetId: existing.id,
+    });
     await store.hydrate();
     expect(client.listModelPresets).toHaveBeenCalledOnce();
     expect(client.listModels).toHaveBeenCalledOnce();
     expect(store.presets).toEqual([existing]);
     expect(store.defaultPresetId).toBe(existing.id);
     expect(store.loading).toBe(false);
-    store[Symbol.dispose]();
+    dispose();
   });
 
   it("keeps stored presets visible when catalog loading fails", async () => {
     const existing = preset({ provider: "missing", modelId: "gone" });
-    const { client, store } = mountStore({ presets: [existing] });
+    const { client, store, dispose } = mountStore({ presets: [existing] });
     client.listModels.mockRejectedValueOnce(new Error("catalog failed"));
     await store.hydrate();
     expect(store.presets).toEqual([existing]);
     expect(store.resolutionStatus(existing)).toBe("unknown");
     expect(store.error).toMatch(/catalog failed/);
-    store[Symbol.dispose]();
+    dispose();
   });
 
   it("creates, edits, duplicates, deletes, and reconciles authoritative IDs", async () => {
-    const { client, store } = mountStore();
+    const { client, store, dispose } = mountStore();
     await store.hydrate();
     const create = store.createPreset(presetDraft());
     expect(store.presets).toHaveLength(1);
@@ -153,14 +174,14 @@ describe("ModelPresetSettingsStore", () => {
     expect(client.createModelPreset).toHaveBeenCalledTimes(2);
     expect(client.updateModelPreset).toHaveBeenCalledOnce();
     expect(client.removeModelPreset).toHaveBeenCalledOnce();
-    store[Symbol.dispose]();
+    dispose();
   });
 
   it("sets and clears the default and derives last-used fallback", async () => {
     const existing = preset();
-    const { store } = mountStore({ presets: [existing] });
+    const { store, dispose } = mountStore({ presets: [existing] });
     await store.hydrate();
-    store.restoreLastUsed({
+    store.recordUsage({
       provider: "other",
       modelId: "fallback",
       thinkingLevel: "low",
@@ -176,12 +197,12 @@ describe("ModelPresetSettingsStore", () => {
     });
     await store.setDefaultPreset(undefined);
     expect(store.defaultConfiguration?.modelId).toBe("fallback");
-    store[Symbol.dispose]();
+    dispose();
   });
 
   it("keeps optimistic state while serializing commands and rejects stale responses", async () => {
     const first = deferred<Projection>();
-    const { client, store } = mountStore();
+    const { client, store, dispose } = mountStore();
     client.createModelPreset.mockReturnValueOnce(first.promise);
     await store.hydrate();
 
@@ -198,12 +219,12 @@ describe("ModelPresetSettingsStore", () => {
     await secondSave;
     expect(client.createModelPreset).toHaveBeenCalledTimes(2);
     expect(store.presets.at(-1)?.name).toBe("Latest");
-    store[Symbol.dispose]();
+    dispose();
   });
 
   it("rolls the latest failed command back to the authoritative projection", async () => {
     const existing = preset();
-    const { client, store } = mountStore({ presets: [existing] });
+    const { client, store, dispose } = mountStore({ presets: [existing] });
     await store.hydrate();
     client.updateModelPreset.mockRejectedValueOnce(new Error("save failed"));
     const save = store.updatePreset({ ...existing, name: "Optimistic" });
@@ -211,17 +232,17 @@ describe("ModelPresetSettingsStore", () => {
     await save;
     expect(store.presets[0]!.name).toBe(existing.name);
     expect(store.error).toMatch(/save failed/);
-    store[Symbol.dispose]();
+    dispose();
   });
 
   it("does not publish a pending command result after disposal", async () => {
     const pending = deferred<Projection>();
     const existing = preset();
-    const { client, store } = mountStore({ presets: [existing] });
+    const { client, store, dispose } = mountStore({ presets: [existing] });
     await store.hydrate();
     client.updateModelPreset.mockReturnValueOnce(pending.promise);
     const save = store.updatePreset({ ...existing, name: "Optimistic" });
-    store[Symbol.dispose]();
+    dispose();
     pending.resolve({ presets: [{ ...existing, name: "Late" }] });
     await save;
     expect(store.presets[0]!.name).toBe("Optimistic");
@@ -229,11 +250,11 @@ describe("ModelPresetSettingsStore", () => {
 
   it("keeps unresolved presets visible and editable", async () => {
     const unresolved = preset({ provider: "missing", modelId: "gone" });
-    const { store } = mountStore({ presets: [unresolved] });
+    const { store, dispose } = mountStore({ presets: [unresolved] });
     await store.hydrate();
     expect(store.resolutionStatus(store.presets[0]!)).toBe("unknown");
     await store.updatePreset({ ...unresolved, name: "Still editable" });
     expect(store.presets[0]!.name).toBe("Still editable");
-    store[Symbol.dispose]();
+    dispose();
   });
 });

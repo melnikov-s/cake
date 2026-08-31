@@ -1,19 +1,15 @@
-import { Store, child, createStore, observable } from "r-state-tree";
+import { Store, child, createStore, observable, snapshot } from "r-state-tree";
 import type { DesktopClient } from "../desktop-client";
 import { RendererClientContext } from "../client/RendererClientContext";
 import type { JsonObject } from "../../ipc/json-contract";
-import type {
-  ApplicationState,
-  Attachment,
-  ChatConfiguration,
-  ModelPreset,
-} from "../../ipc/session-contract";
+import type { Attachment, ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
 import type { CakeChatSummary } from "../../domain/cake-chat-data";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { CakeChatSessionStore } from "./CakeChatSessionStore";
 import { describeError } from "../error-details";
+import type { CakeChatCatalog } from "../models/CakeChatCatalog";
 
 type CakeChatSummaryProjection = CakeChatSummary & { draft?: boolean };
 
@@ -29,6 +25,7 @@ interface CakeControlTool {
 }
 
 export interface GlobalChatStoreProps {
+  catalog: CakeChatCatalog;
   nativeClient: Pick<
     DesktopClient,
     "showComposerContextMenu" | "rewordComposerSelection" | "generateSessionTitle"
@@ -38,24 +35,24 @@ export interface GlobalChatStoreProps {
   defaultConfiguration?(): ChatConfiguration | undefined;
   openModelPresetSettings?(): void;
   settings?(): AppearanceSettingsStore | undefined;
-  persist?(): void;
   prepareSessionResolution?(sessionIds: readonly string[]): Promise<boolean>;
 }
 
 /** Owns the Cake Chat session collection, selection, and per-session Store instances. */
 export class GlobalChatStore extends Store<GlobalChatStoreProps> {
-  selectedSessionId: string | undefined;
+  @snapshot selectedSessionId: string | undefined;
   hydrated = false;
   error: string | undefined;
   errorDetails: string | undefined;
-  readonly summaries: CakeChatSummaryProjection[] = observable([]);
-  readonly targets: string[] = observable([]);
-  readonly resolvedSessionIds: string[] = observable([]);
+  @snapshot readonly targets: string[] = observable([]);
   private initialization: Promise<void> | undefined;
-  private pendingSessionId: string | undefined;
-  private pendingConfiguration: ChatConfiguration | undefined;
-  private pendingName: string | undefined;
-  private pendingDraftPrompt:
+  private resolveInitialization: (() => void) | undefined;
+  private initializing = false;
+  @snapshot private pendingSummary: CakeChatSummaryProjection | undefined;
+  @snapshot private pendingSessionId: string | undefined;
+  @snapshot private pendingConfiguration: ChatConfiguration | undefined;
+  @snapshot private pendingName: string | undefined;
+  @snapshot private pendingDraftPrompt:
     | { text: string; attachments: Attachment[]; resolved: boolean }
     | undefined;
   private resolutionQueue: Promise<void> = Promise.resolve();
@@ -70,6 +67,17 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   }
   get sessionId() {
     return this.selectedSessionId;
+  }
+  get summaries(): readonly CakeChatSummaryProjection[] {
+    const authoritative: CakeChatSummaryProjection[] = this.props.catalog.sessions.map(
+      (session) => session,
+    );
+    if (
+      this.pendingSummary &&
+      !authoritative.some((session) => session.sessionId === this.pendingSummary?.sessionId)
+    )
+      authoritative.push(this.pendingSummary);
+    return authoritative.sort(compareSessionSummariesForSidebar);
   }
   get nativeClient() {
     return this.props.nativeClient;
@@ -86,7 +94,6 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
         modelPresets: () => this.props.modelPresets?.() ?? [],
         openModelPresetSettings: () => this.props.openModelPresetSettings?.(),
         settings: () => this.props.settings?.(),
-        persist: () => this.props.persist?.(),
       }),
     );
   }
@@ -103,35 +110,36 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     return { sessionId, tools: this.props.tools() };
   }
 
-  /** Explicit application startup. Repeated callers share the same initialization. */
+  /** Explicit application startup. Repeated callers wait for the synchronized catalog. */
   initialize() {
-    if (!this.initialization) this.initialization = this.performInitialization();
+    if (!this.initialization)
+      this.initialization = new Promise<void>((resolve) => {
+        this.resolveInitialization = resolve;
+      });
+    if (this.props.catalog.loaded) void this.performInitialization();
     return this.initialization;
   }
 
   private async performInitialization() {
+    if (this.initializing || this.hydrated || !this.props.catalog.loaded) return;
+    this.initializing = true;
     try {
-      const summaries: CakeChatSummaryProjection[] = [
-        ...(await this.client.cakeChats.list({ signal: this.signal })),
-      ];
-      if (this.signal.aborted) return;
       const persistedPendingSessionId = this.pendingSessionId;
-      if (
-        persistedPendingSessionId &&
-        summaries.some((summary) => summary.sessionId === persistedPendingSessionId)
-      )
+      if (persistedPendingSessionId && this.props.catalog.find(persistedPendingSessionId))
         this.markSessionStarted(persistedPendingSessionId);
-      this.replaceSummaries(summaries);
       this.hydrated = true;
-      if (this.pendingSessionId) {
-        this.selectedSessionId = this.pendingSessionId;
-        return;
+      if (this.pendingSessionId) this.selectedSessionId = this.pendingSessionId;
+      else {
+        const recent = this.summaries.find((summary) => !summary.resolved);
+        if (recent) await this.open(recent.sessionId);
+        else this.prepareNewSession();
       }
-      const recent = summaries.find((summary) => !summary.resolved);
-      if (recent) await this.open(recent.sessionId);
-      else this.prepareNewSession();
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error, "Cake Chat could not load sessions");
+    } finally {
+      this.initializing = false;
+      this.resolveInitialization?.();
+      this.resolveInitialization = undefined;
     }
   }
 
@@ -170,7 +178,6 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   setPendingSessionConfiguration(sessionId: string, configuration: ChatConfiguration) {
     if (!this.isPendingSession(sessionId)) return;
     this.pendingConfiguration = configuration;
-    this.props.persist?.();
   }
 
   isDraftSession(sessionId: string) {
@@ -189,7 +196,6 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       draft: true,
       modifiedAt: new Date().toISOString(),
     }));
-    this.props.persist?.();
     return true;
   }
 
@@ -200,7 +206,6 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       attachments: attachments.slice(),
       resolved: this.pendingDraftPrompt?.resolved ?? false,
     };
-    this.props.persist?.();
     return true;
   }
 
@@ -209,7 +214,6 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     const prompt = this.pendingDraftPrompt;
     this.pendingDraftPrompt = undefined;
     this.updateSummary(sessionId, (summary) => ({ ...summary, draft: false, resolved: false }));
-    this.props.persist?.();
     return prompt;
   }
 
@@ -217,7 +221,6 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     if (!this.isDraftSession(sessionId) || this.pendingName) return;
     this.pendingName = name;
     this.updateSummary(sessionId, (summary) => ({ ...summary, title: name }));
-    this.props.persist?.();
   }
 
   newSessionRequest(sessionId: string) {
@@ -235,59 +238,7 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     this.pendingConfiguration = undefined;
     this.pendingName = undefined;
     this.pendingDraftPrompt = undefined;
-    this.props.persist?.();
-  }
-
-  pendingSessionState() {
-    if (!this.pendingSessionId) return undefined;
-    return {
-      sessionId: this.pendingSessionId,
-      draft: this.findSession(this.pendingSessionId)?.chatStore.draft ?? "",
-      configuration: this.pendingConfiguration,
-      name: this.pendingName,
-      draftSession: this.pendingDraftPrompt !== undefined,
-      resolved: this.pendingDraftPrompt?.resolved ?? false,
-      stagedPrompt: this.pendingDraftPrompt
-        ? {
-            text: this.pendingDraftPrompt.text,
-            attachments: this.pendingDraftPrompt.attachments,
-          }
-        : undefined,
-    };
-  }
-
-  restorePendingSession(input: {
-    sessionId: string;
-    draft: string;
-    configuration?: ChatConfiguration;
-    name?: string;
-    draftSession?: boolean;
-    resolved?: boolean;
-    stagedPrompt?: { text: string; attachments: Attachment[] };
-  }) {
-    if (this.pendingSessionId && this.pendingSessionId !== input.sessionId) {
-      const targetIndex = this.targets.indexOf(this.pendingSessionId);
-      if (targetIndex >= 0) this.targets.splice(targetIndex, 1);
-      const summaryIndex = this.summaries.findIndex(
-        (summary) => summary.sessionId === this.pendingSessionId,
-      );
-      if (summaryIndex >= 0) this.summaries.splice(summaryIndex, 1);
-      this.pendingSessionId = undefined;
-    }
-    const session = this.prepareNewSession(input.sessionId, input.name);
-    this.pendingConfiguration = input.configuration;
-    this.pendingName = input.name;
-    this.pendingDraftPrompt =
-      input.draftSession && input.stagedPrompt
-        ? { ...input.stagedPrompt, resolved: input.resolved ?? false }
-        : undefined;
-    if (this.pendingDraftPrompt)
-      this.updateSummary(input.sessionId, (summary) => ({
-        ...summary,
-        draft: true,
-        resolved: this.pendingDraftPrompt?.resolved ?? false,
-      }));
-    session.chatStore.setDraft(input.draft);
+    if (this.pendingSummary?.sessionId === sessionId) this.pendingSummary = undefined;
   }
 
   async handoff(sessionId: string, entryId: string, prompt?: string, resolveSource = false) {
@@ -320,7 +271,6 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
         title: name,
         modifiedAt: new Date().toISOString(),
       }));
-      this.props.persist?.();
       return true;
     }
     try {
@@ -335,15 +285,6 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     }
   }
 
-  applyApplicationState(state: ApplicationState) {
-    this.resolvedSessionIds.splice(
-      0,
-      this.resolvedSessionIds.length,
-      ...state.resolvedCakeChatSessionIds,
-    );
-    this.applyResolvedState();
-  }
-
   /** Resolution mutations are queued so an older response cannot overwrite newer application state. */
   async resolveSession(sessionId: string, resolved: boolean) {
     if (resolved && !(await (this.props.prepareSessionResolution?.([sessionId]) ?? true))) return;
@@ -351,7 +292,6 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     if (this.isDraftSession(sessionId) && this.pendingDraftPrompt) {
       this.pendingDraftPrompt = { ...this.pendingDraftPrompt, resolved };
       this.updateSummary(sessionId, (summary) => ({ ...summary, resolved }));
-      this.props.persist?.();
       return;
     }
     if (resolved && this.isPendingSession(sessionId)) {
@@ -377,7 +317,7 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   }
 
   isSessionResolved(sessionId: string) {
-    return this.resolvedSessionIds.includes(sessionId);
+    return this.summaries.find((session) => session.sessionId === sessionId)?.resolved ?? false;
   }
 
   async resolveSessions(sessionIds: readonly string[], resolved: boolean) {
@@ -388,7 +328,6 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
       if (this.isDraftSession(sessionId) && this.pendingDraftPrompt) {
         this.pendingDraftPrompt = { ...this.pendingDraftPrompt, resolved };
         this.updateSummary(sessionId, (summary) => ({ ...summary, resolved }));
-        this.props.persist?.();
         return false;
       }
       if (!resolved || !this.isPendingSession(sessionId)) return true;
@@ -407,9 +346,6 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
           if (resolved) await this.client.cakeChats.resolve(target, { signal: this.signal });
           else await this.client.cakeChats.restore(target, { signal: this.signal });
           if (this.signal.aborted) return;
-          const index = this.resolvedSessionIds.indexOf(sessionId);
-          if (resolved && index < 0) this.resolvedSessionIds.push(sessionId);
-          if (!resolved && index >= 0) this.resolvedSessionIds.splice(index, 1);
           this.updateSummary(sessionId, (summary) => ({ ...summary, resolved }));
         }
       } catch (error) {
@@ -447,14 +383,14 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
     this.pendingConfiguration = undefined;
     this.pendingName = name;
     this.targets.push(sessionId);
-    this.summaries.unshift({
+    this.pendingSummary = {
       sessionId,
       title: name ?? "New chat",
       createdAt: now,
       modifiedAt: now,
       messageCount: 0,
       resolved: false,
-    });
+    };
     this.selectedSessionId = sessionId;
     return this.findSession(sessionId)!;
   }
@@ -475,42 +411,21 @@ export class GlobalChatStore extends Store<GlobalChatStoreProps> {
   private removeSession(sessionId: string) {
     const targetIndex = this.targets.indexOf(sessionId);
     if (targetIndex >= 0) this.targets.splice(targetIndex, 1);
-    const summaryIndex = this.summaries.findIndex((summary) => summary.sessionId === sessionId);
-    if (summaryIndex >= 0) this.summaries.splice(summaryIndex, 1);
-    this.props.persist?.();
-  }
-
-  private replaceSummaries(summaries: readonly CakeChatSummaryProjection[]) {
-    const resolvedIds = new Set(this.resolvedSessionIds);
-    const pending = this.pendingSessionId
-      ? this.summaries.find((summary) => summary.sessionId === this.pendingSessionId)
-      : undefined;
-    const next = summaries.map((summary) => ({
-      ...summary,
-      resolved: resolvedIds.has(summary.sessionId),
-    }));
-    if (pending && !next.some((summary) => summary.sessionId === pending.sessionId))
-      next.push(pending);
-    next.sort(compareSessionSummariesForSidebar);
-    this.summaries.splice(0, this.summaries.length, ...next);
+    if (this.pendingSummary?.sessionId === sessionId) this.pendingSummary = undefined;
   }
 
   private updateSummary(
     sessionId: string,
     update: (summary: CakeChatSummaryProjection) => CakeChatSummaryProjection,
   ) {
-    const index = this.summaries.findIndex((summary) => summary.sessionId === sessionId);
-    const summary = this.summaries[index];
-    if (index >= 0 && summary) this.summaries.splice(index, 1, update(summary));
+    if (this.pendingSummary?.sessionId === sessionId)
+      this.pendingSummary = update(this.pendingSummary);
   }
 
-  private applyResolvedState() {
-    const resolvedIds = new Set(this.resolvedSessionIds);
-    for (let index = 0; index < this.summaries.length; index += 1) {
-      const summary = this.summaries[index]!;
-      if (summary.draft) continue;
-      const resolved = resolvedIds.has(summary.sessionId);
-      if (summary.resolved !== resolved) this.summaries.splice(index, 1, { ...summary, resolved });
-    }
+  constructor(props: GlobalChatStore["props"]) {
+    super(props);
+    this.effect(() => {
+      if (this.props.catalog.loaded) void this.performInitialization();
+    });
   }
 }

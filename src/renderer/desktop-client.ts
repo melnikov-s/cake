@@ -4,10 +4,6 @@ import type {
   ApplicationState,
   FileSuggestion,
   UtilityModel,
-  SessionUsage,
-  ExtensionUiEvent,
-  UiPart,
-  WindowViewState,
 } from "../ipc/session-contract";
 import type { ArtifactRecord } from "../ipc/artifact-contract";
 import type { SourceLocation } from "../ipc/source-location";
@@ -26,7 +22,6 @@ import type {
   RepairedInlineWidget,
 } from "../ipc/inline-widget-contract";
 import type { JsonValue } from "../ipc/json-contract";
-import type { SubagentActivity as DomainSubagentActivity } from "../domain/subagent-data";
 import type {
   PluginAgentOpenOptions,
   PluginAgentSnapshot,
@@ -34,23 +29,6 @@ import type {
   PluginCompletionResult,
   SessionRef,
 } from "../ipc/plugin-agent-contract";
-
-export type SubagentActivity = Omit<
-  DomainSubagentActivity,
-  "handleId" | "parts" | "resolvedModel" | "usage"
-> & {
-  readonly handleId: string;
-  readonly parts: UiPart[];
-  readonly resolvedModel: {
-    requested: DomainSubagentActivity["resolvedModel"]["requested"];
-    source: DomainSubagentActivity["resolvedModel"]["source"];
-    provider: string;
-    modelId: string;
-    thinkingLevel: DomainSubagentActivity["resolvedModel"]["thinkingLevel"];
-    fallbacks: Array<DomainSubagentActivity["resolvedModel"]["fallbacks"][number]>;
-  };
-  readonly usage?: SessionUsage;
-};
 
 export type PiState = "starting" | "ready" | "stopped" | "failed";
 
@@ -65,10 +43,6 @@ export interface EmbeddedEditorStateSnapshot {
 export type DesktopClientEvent =
   | { type: "pi-state-changed"; state: PiState; workspacePath?: string }
   | { type: "workspace-inspected"; operationId: string; path: string; trustRequired: boolean }
-  | { type: "background-work-changed"; sessionId: string; active: boolean }
-  | { type: "subagent-activity-received"; activity: SubagentActivity }
-  | { type: "subagent-activity-removed"; parentSessionId: string; handleId: string }
-  | { type: "extension-ui-received"; sessionId: string; event: ExtensionUiEvent }
   | {
       type: "changelog-received";
       operationId: string;
@@ -76,7 +50,6 @@ export type DesktopClientEvent =
       sessionId: string;
       markdown: string;
     }
-  | { type: "artifact-updated"; record: ArtifactRecord }
   | {
       type: "artifact-requested";
       operationId: string;
@@ -250,8 +223,6 @@ export interface DesktopClient {
     diagnostic?: string;
     model?: { provider: string; id: string };
   }): Promise<RepairedInlineWidget>;
-  loadWindowState(): Promise<WindowViewState>;
-  saveWindowState(state: WindowViewState): Promise<void>;
   setVscodeServerPath(path: string | undefined): Promise<ApplicationState>;
   getEmbeddedEditorState(): Promise<EmbeddedEditorStateSnapshot>;
   installEmbeddedEditor(): Promise<void>;
@@ -328,10 +299,7 @@ function toClientEvent(event: DesktopEvent): DesktopClientEvent | undefined {
       path: event.path,
       trustRequired: event.trustRequired,
     };
-  if (event.type === "extension-ui")
-    return { type: "extension-ui-received", sessionId: event.sessionId, event: event.event };
   if (event.type === "plugin-agent-event") return event;
-  if (event.type === "artifact-updated") return event;
   if (event.type === "artifact-requested")
     return {
       type: "artifact-requested",
@@ -674,17 +642,6 @@ export function createDesktopClient(bridge: CakeDesktopBridge): DesktopClient {
       if (response.type !== "inline-widget-repaired")
         throw new Error("Cake could not repair the inline widget");
       return response.widget;
-    },
-    async loadWindowState() {
-      const response = await bridge.request({ type: "load-window-state" });
-      if (response.type !== "window-state-loaded")
-        throw new Error("Cake received invalid window state");
-      return response.state;
-    },
-    async saveWindowState(state) {
-      const response = await bridge.request({ type: "save-window-state", state });
-      if (response.type !== "window-state-saved")
-        throw new Error("Cake could not persist window state");
     },
     async setVscodeServerPath(path) {
       const response = await bridge.request({ type: "set-vscode-server-path", path });

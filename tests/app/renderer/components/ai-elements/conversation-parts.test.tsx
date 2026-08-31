@@ -10,7 +10,7 @@ import { Reasoning } from "../../../../../src/renderer/components/ai-elements/re
 import { ShellCommand } from "../../../../../src/renderer/components/ai-elements/shell-command";
 import { Tool } from "../../../../../src/renderer/components/ai-elements/tool";
 import { WorkLogDiff } from "../../../../../src/renderer/components/ai-elements/work-log-diff";
-import type { DesktopClient } from "../../../../../src/renderer/desktop-client";
+import { Session } from "../../../../../src/renderer/models/Session";
 import { SubagentActivityStore } from "../../../../../src/renderer/stores/SubagentActivityStore";
 
 describe("Cake-owned conversation components", () => {
@@ -492,46 +492,43 @@ describe("Cake-owned conversation components", () => {
 
   it("renders first-class live activity without a subagent wait call", () => {
     const handleId = crypto.randomUUID();
-    // SAFETY: This focused renderer test exercises only the two subagent intents supplied here.
-    const client = {
-      steerSubagent: async () => undefined,
-      abortSubagent: async () => undefined,
-    } as unknown as DesktopClient;
-    const subagents = mount(
-      createStore(SubagentActivityStore, { sessionId: "parent", client, parts: () => [] }),
-    );
-    subagents.receive({
-      type: "subagent-activity-received",
-      activity: {
-        parentSessionId: "parent",
-        anchorPartId: "tool-live-spawn",
-        handleId,
-        revision: 1,
-        task: "Inspect the live boundary",
-        profile: "reviewer",
-        status: "running",
-        resolvedModel: {
-          requested: "current",
-          source: "current",
-          provider: "openai-codex",
-          modelId: "gpt-5.6-sol",
-          thinkingLevel: "medium",
-          fallbacks: [],
-        },
-        fastMode: false,
-        retained: false,
-        streaming: true,
-        parts: [
-          {
-            id: "child-read",
-            kind: "tool",
-            name: "read",
-            input: "src/main.ts",
-            state: "running",
+    const model = Session.create({
+      sessionId: "parent",
+      subagentActivities: [
+        {
+          parentSessionId: "parent",
+          anchorPartId: "tool-live-spawn",
+          handleId,
+          revision: 1,
+          task: "Inspect the live boundary",
+          profile: "reviewer",
+          status: "running",
+          resolvedModel: {
+            requested: "current",
+            source: "current",
+            provider: "openai-codex",
+            modelId: "gpt-5.6-sol",
+            thinkingLevel: "medium",
+            fallbacks: [],
           },
-        ],
-      },
+          fastMode: false,
+          retained: false,
+          streaming: true,
+          parts: [
+            {
+              id: "child-read",
+              kind: "tool",
+              name: "read",
+              input: "src/main.ts",
+              state: "running",
+            },
+          ],
+        },
+      ],
     });
+    const subagents = mount(
+      createStore(SubagentActivityStore, { sessionId: "parent", model, parts: () => [] }),
+    );
 
     const html = renderToStaticMarkup(
       <Tool
@@ -554,6 +551,7 @@ describe("Cake-owned conversation components", () => {
     expect(html).toContain("Running read");
     expect(html).toContain("running");
     subagents[Symbol.dispose]();
+    model[Symbol.dispose]();
   });
 
   it("renders every recorded child from a historical parallel delegation", () => {

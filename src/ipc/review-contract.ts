@@ -75,7 +75,7 @@ export const reviewThreadRecordSchema = z.object({
   resolvedAt: z.string().datetime().optional(),
 });
 
-export const reviewThreadSchema = z.object({
+const reviewThreadSchema = z.object({
   id: z.string().min(1).max(256),
   workspacePath: z.string().min(1).max(4_096),
   sessionId: z.string().min(1).max(256),

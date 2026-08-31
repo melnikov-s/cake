@@ -1,5 +1,5 @@
-import { Store, child, createStore, observable } from "r-state-tree";
-import type { SubagentActivity } from "../desktop-client";
+import { Store, child, createStore } from "r-state-tree";
+import type { Session } from "../models/Session";
 import type { UiPart } from "../../ipc/session-contract";
 import { toolOperationName } from "../../utils/cake-tool";
 import {
@@ -7,7 +7,6 @@ import {
   subagentHandleFromTool,
   type SubagentRun,
 } from "../../utils/subagent-runs";
-import type { DesktopClientEvent } from "../desktop-client";
 import { RendererClientContext } from "../client/RendererClientContext";
 import { ChatStore } from "./ChatStore";
 import { SubagentHandleId } from "../../domain/subagent-data";
@@ -17,37 +16,18 @@ type ToolPart = Extract<UiPart, { kind: "tool" }>;
 /** Owns live and historical subagent chats belonging to one parent session. */
 export class SubagentActivityStore extends Store<{
   sessionId: string;
+  model: Session;
   parts(): readonly UiPart[];
 }> {
-  private readonly activitiesByHandle: Record<string, SubagentActivity> = observable({});
-  private readonly releasedHandles: Set<string> = observable(new Set<string>());
-
   get client() {
     return RendererClientContext.consume(this)!;
-  }
-
-  receive(event: DesktopClientEvent) {
-    if (event.type === "subagent-activity-received") {
-      const activity = event.activity;
-      if (activity.parentSessionId !== this.props.sessionId) return;
-      const current = this.activitiesByHandle[activity.handleId];
-      if (current && current.revision >= activity.revision) return;
-      this.activitiesByHandle[activity.handleId] = activity;
-      this.releasedHandles.delete(activity.handleId);
-      return;
-    }
-    if (
-      event.type === "subagent-activity-removed" &&
-      event.parentSessionId === this.props.sessionId
-    )
-      this.releasedHandles.add(event.handleId);
   }
 
   get runs(): SubagentRun[] {
     const runs = new Map(
       historicalSubagentRuns(this.props.parts()).map((run) => [run.key, run] as const),
     );
-    for (const activity of Object.values(this.activitiesByHandle)) {
+    for (const activity of this.props.model.subagentActivities) {
       runs.set(activity.handleId, {
         key: activity.handleId,
         anchorPartId: activity.anchorPartId,
@@ -55,12 +35,15 @@ export class SubagentActivityStore extends Store<{
         task: activity.task,
         profile: activity.profile,
         status: activity.status,
-        resolvedModel: activity.resolvedModel,
+        resolvedModel: {
+          ...activity.resolvedModel,
+          fallbacks: [...activity.resolvedModel.fallbacks],
+        },
         streaming: activity.streaming,
         parts: activity.parts,
         usage: activity.usage,
         error: activity.error,
-        released: this.releasedHandles.has(activity.handleId),
+        released: this.props.model.releasedSubagentHandleIds.includes(activity.handleId),
       });
     }
     return [...runs.values()];

@@ -1,26 +1,57 @@
-import { Store, observable } from "r-state-tree";
+import { Store, observable, snapshot } from "r-state-tree";
 import type { SessionCatalog } from "../models/SessionCatalog";
 import type { SessionSummary } from "../models/SessionSummary";
 import type { WorktreeRecord } from "../../ipc/worktree-contract";
 
+export interface PendingSessionSummary {
+  sessionId: string;
+  title: string;
+  createdAt: string;
+  modifiedAt: string;
+  messageCount: number;
+  parentSessionId?: string;
+  resolved: boolean;
+  unread: boolean;
+  projectPath: string;
+  projectName: string;
+  workingDirectory: string;
+  managedWorktree?: WorktreeRecord;
+  pending: true;
+  draft: boolean;
+}
+
 /** Owns renderer-local pending-session and Managed Worktree policy over the catalog projection. */
 export class SessionCatalogStore extends Store<{ model: SessionCatalog }> {
+  @snapshot private readonly pendingSessions: PendingSessionSummary[] = observable([]);
   private readonly managedWorktrees = observable(new Map<string, WorktreeRecord>());
 
-  get sessions() {
-    return this.props.model.sessions;
+  get sessions(): ReadonlyArray<SessionSummary | PendingSessionSummary> {
+    const authoritativeIds = new Set(this.props.model.sessions.map((session) => session.sessionId));
+    return [
+      ...this.props.model.sessions,
+      ...this.pendingSessions.filter((session) => !authoritativeIds.has(session.sessionId)),
+    ].sort((left, right) => {
+      if (left.resolved !== right.resolved) return left.resolved ? 1 : -1;
+      return right.modifiedAt.localeCompare(left.modifiedAt);
+    });
   }
 
   find(sessionId: string) {
-    return this.props.model.find(sessionId);
+    return (
+      this.props.model.find(sessionId) ??
+      this.pendingSessions.find((session) => session.sessionId === sessionId)
+    );
   }
 
-  get sessionsById(): ReadonlyMap<string, SessionSummary> {
+  get sessionsById(): ReadonlyMap<string, SessionSummary | PendingSessionSummary> {
     return new Map(this.sessions.map((session) => [session.sessionId, session]));
   }
 
-  get sessionsByProject(): ReadonlyMap<string, readonly SessionSummary[]> {
-    const grouped = new Map<string, SessionSummary[]>();
+  get sessionsByProject(): ReadonlyMap<
+    string,
+    ReadonlyArray<SessionSummary | PendingSessionSummary>
+  > {
+    const grouped = new Map<string, Array<SessionSummary | PendingSessionSummary>>();
     for (const session of this.sessions) {
       const sessions = grouped.get(session.projectPath) ?? [];
       sessions.push(session);
@@ -30,7 +61,7 @@ export class SessionCatalogStore extends Store<{ model: SessionCatalog }> {
   }
 
   projectSessions(projectPath: string) {
-    return this.props.model.projectSessions(projectPath);
+    return this.sessions.filter((session) => session.projectPath === projectPath);
   }
 
   noteManagedWorktree(record: WorktreeRecord) {
@@ -50,7 +81,7 @@ export class SessionCatalogStore extends Store<{ model: SessionCatalog }> {
   }
 
   resolvedWorktrees(projectPath: string) {
-    const sessionsByWorktree = new Map<string, SessionSummary[]>();
+    const sessionsByWorktree = new Map<string, Array<SessionSummary | PendingSessionSummary>>();
     for (const session of this.projectSessions(projectPath)) {
       const record = session.managedWorktree;
       if (!record || record.state !== "landed") continue;
@@ -69,34 +100,63 @@ export class SessionCatalogStore extends Store<{ model: SessionCatalog }> {
     projectName: string,
     options: { draft?: boolean; resolved?: boolean } = {},
   ) {
-    this.props.model.upsertPending({
-      sessionId,
-      projectPath: this.projectOfManagedWorktree(workingDirectory) ?? workingDirectory,
-      projectName,
-      workingDirectory,
-      ...options,
-    });
+    if (this.props.model.find(sessionId))
+      throw new Error(`Session ID collision detected: ${sessionId}`);
+    const now = new Date().toISOString();
+    const index = this.pendingSessions.findIndex((session) => session.sessionId === sessionId);
+    const current = this.pendingSessions[index];
+    const next: PendingSessionSummary = current
+      ? {
+          ...current,
+          modifiedAt: now,
+          resolved: options.resolved ?? current.resolved,
+          draft: options.draft ?? current.draft,
+        }
+      : {
+          sessionId,
+          title: "New chat",
+          createdAt: now,
+          modifiedAt: now,
+          messageCount: 0,
+          resolved: options.resolved ?? false,
+          unread: false,
+          projectPath: this.projectOfManagedWorktree(workingDirectory) ?? workingDirectory,
+          projectName,
+          workingDirectory,
+          pending: true,
+          draft: options.draft ?? false,
+        };
+    if (index >= 0) this.pendingSessions.splice(index, 1, next);
+    else this.pendingSessions.push(next);
   }
 
   setDraft(sessionId: string, draft: boolean) {
-    const session = this.find(sessionId);
-    if (session?.pending) session.draft = draft;
+    this.updatePending(sessionId, (session) => ({ ...session, draft }));
   }
 
   setResolved(sessionId: string, resolved: boolean) {
-    const session = this.find(sessionId);
-    if (session) session.resolved = resolved;
+    this.updatePending(sessionId, (session) => ({ ...session, resolved }));
   }
 
   remove(sessionId: string) {
-    this.props.model.removePending(sessionId);
+    const index = this.pendingSessions.findIndex((session) => session.sessionId === sessionId);
+    if (index >= 0) this.pendingSessions.splice(index, 1);
   }
 
   rename(sessionId: string, title: string) {
-    const session = this.find(sessionId);
+    const session = this.pendingSessions.find((candidate) => candidate.sessionId === sessionId);
     if (!session) return undefined;
     const previousTitle = session.title;
-    session.title = title;
+    this.updatePending(sessionId, (current) => ({ ...current, title }));
     return previousTitle;
+  }
+
+  private updatePending(
+    sessionId: string,
+    update: (session: PendingSessionSummary) => PendingSessionSummary,
+  ) {
+    const index = this.pendingSessions.findIndex((session) => session.sessionId === sessionId);
+    const session = this.pendingSessions[index];
+    if (index >= 0 && session) this.pendingSessions.splice(index, 1, update(session));
   }
 }

@@ -36,8 +36,9 @@ State and lifetime ownership:
 
 - `RootStore` owns window composition and event routing, not every workflow.
 - Focused Stores own renderer workflows, local operations, and concurrency
-  policy. Only `RootStore` supplies loaded Models to the window-owned Model
-  synchronizer, which owns authoritative Stream subscriptions.
+  policy. Renderer bootstrap attaches the window-owned Model synchronizer and
+  one-way Store snapshot persistence to the mounted Root Store; neither
+  infrastructure owner participates in the Store tree.
 - Effect Scope owns main resources, renderer connections, renderer-infrastructure
   subscriptions, and RPC cancellation. r-state-tree Store disposal owns local
   workflow cleanup and supplies abort signals to the client adapter.

@@ -31,7 +31,6 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   canSubmit(): boolean;
   isActive(): boolean;
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
-  persist(): void;
   projectName(): string;
   abort(): Promise<void>;
   renameSession(name: string): Promise<void>;
@@ -57,11 +56,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
 export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   readonly model: Session;
   activity: "running" | "unread" | "error" | undefined;
-  backgroundWorkActive = false;
   private artifactRequestActive = false;
-  // Drafts and review threads can create this Store before its transcript is loaded.
-  private locallyHydrated = false;
-
   constructor(props: ProjectSessionStore["props"]) {
     super(props);
     this.model = Session.create({
@@ -95,10 +90,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
 
   /** Routes an event only to the session subsystem that authoritatively owns it. */
   receive(event: DesktopClientEvent) {
-    if (event.type === "subagent-activity-received" || event.type === "subagent-activity-removed") {
-      this.subagentActivityStore.receive(event);
-      return;
-    }
     if (event.type === "artifact-requested") {
       if (event.record.artifact.sessionId !== this.sessionId) return;
       this.artifactRequestActive = true;
@@ -124,11 +115,9 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
 
   get hydrated() {
-    return this.locallyHydrated || Boolean(this.model.sessionFile);
-  }
-
-  markHydrated() {
-    this.locallyHydrated = true;
+    return (
+      this.props.registry.isTemporarySession(this.sessionId) || Boolean(this.model.sessionFile)
+    );
   }
 
   get canSubmit() {
@@ -170,10 +159,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return false;
   }
 
-  setBackgroundWorkActive(active: boolean) {
-    this.backgroundWorkActive = active;
-  }
-
   @child
   get worktreeStore(): WorktreeStore {
     return createStore(WorktreeStore, {
@@ -192,6 +177,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   get subagentActivityStore(): SubagentActivityStore {
     return createStore(SubagentActivityStore, {
       sessionId: this.sessionId,
+      model: this.model,
       parts: () => this.canonicalParts,
     });
   }
@@ -207,7 +193,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       canonicalParts: () => this.canonicalParts,
       draft: () => this.chatStore.draft,
       setDraft: (value) => this.chatStore.setDraft(value),
-      persist: () => this.props.persist(),
       canSubmit: () => this.canSubmit,
       isStreaming: () => this.isStreaming,
       openCommandPane: (pane) => this.props.openCommandPane(pane),
@@ -266,9 +251,12 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       parts: () => this.composerStore.parts,
       streaming: () => this.isStreaming,
       submitting: () => this.composerStore.activeOperations.length > 0,
-      stoppable: () => this.backgroundWorkActive,
+      stoppable: () => this.model.backgroundWorkActive,
       configuration: () => this.configurationStore,
-      commands: () => [...this.model.commands, ...this.props.pluginCommands().commands],
+      commands: () => [
+        ...this.props.registry.commandsForSession(this.sessionId, this.workspacePath),
+        ...this.props.pluginCommands().commands,
+      ],
       placeholder: () =>
         this.isStreaming
           ? "Add the next instruction…"
@@ -321,16 +309,13 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         message: this.composerStore.error ?? this.configurationStore.error,
         details: this.composerStore.errorDetails ?? this.configurationStore.errorDetails,
       }),
-      persist: () => this.props.persist(),
       workLogViewMode: () => this.props.settings?.()?.workLogViewMode,
       setWorkLogViewMode: (mode) => {
         this.props.settings?.()?.setWorkLogViewMode(mode);
-        this.props.persist();
       },
       workLogsExpansion: () => this.props.settings?.()?.workLogsExpansion,
       setWorkLogsExpansion: (expansion) => {
         this.props.settings?.()?.setWorkLogsExpansion(expansion);
-        this.props.persist();
       },
     });
   }

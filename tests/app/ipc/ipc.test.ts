@@ -4,7 +4,6 @@ import {
   desktopRequestSchema,
   desktopResponseSchema,
 } from "../../../src/ipc/desktop-ipc";
-import { windowViewStateSchema } from "../../../src/ipc/session-contract";
 
 describe("process IPC", () => {
   it("requires an actual selection before opening the composer reword menu", () => {
@@ -235,34 +234,5 @@ describe("process IPC", () => {
         cancelled: false,
       }).success,
     ).toBe(false);
-  });
-
-  it("persists session selection without an absolute Pi session filename", () => {
-    expect(
-      windowViewStateSchema.parse({
-        projectPath: "/project",
-        selectedSessionId: "session",
-      }),
-    ).toEqual({
-      projectPath: "/project",
-      selectedSessionId: "session",
-      recentProjectPaths: [],
-      draft: "",
-      theme: "system",
-      workLogViewMode: "auto",
-      workLogsExpansion: "collapsed",
-      draftsBySession: {},
-      pendingProjectSessions: [],
-    });
-  });
-
-  it("persists the active Cake Chat separately from the background project", () => {
-    expect(
-      windowViewStateSchema.parse({
-        projectPath: "/project",
-        selectedSessionId: "project-session",
-        activeConversation: { kind: "cake-chat", sessionId: "cake-chat-session" },
-      }).activeConversation,
-    ).toEqual({ kind: "cake-chat", sessionId: "cake-chat-session" });
   });
 });

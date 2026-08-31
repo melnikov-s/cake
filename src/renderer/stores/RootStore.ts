@@ -23,22 +23,22 @@ import { SessionCatalogStore } from "./SessionCatalogStore";
 import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { AppControlOperationStore } from "./AppControlOperationStore";
 import { ProjectCatalogStore } from "./ProjectCatalogStore";
-import { WindowPersistenceCoordinatorStore } from "./WindowPersistenceCoordinatorStore";
 import { ToastStore } from "./ToastStore";
 import { TerminalStore, type TerminalTarget } from "./TerminalStore";
 import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
-import type { RendererModelSynchronizer } from "../RendererModelSynchronizer";
 import { ProjectCatalog } from "../models/ProjectCatalog";
 import { SessionCatalog } from "../models/SessionCatalog";
+import { CakeChatCatalog } from "../models/CakeChatCatalog";
 
 export class RootStore extends Store<{
   nativeClient: DesktopClient;
   rendererClient: RendererClient;
-  synchronizer: RendererModelSynchronizer;
+  flushWindowState(): Promise<void>;
 }> {
   readonly appControl: AppControlBridge;
   readonly projectCatalogModel = ProjectCatalog.create();
   readonly sessionCatalogModel = SessionCatalog.create();
+  readonly cakeChatCatalogModel = CakeChatCatalog.create();
 
   [RendererClientContext.provide]() {
     return this.client;
@@ -201,14 +201,12 @@ export class RootStore extends Store<{
   showGlobalChat(sessionId = this.globalChatStore.sessionId) {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.appShellStore.selectCakeChat(sessionId);
-    this.windowPersistence.schedule();
   }
   async openCakeChat(sessionId?: string) {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     if (sessionId && this.globalChatStore.isSessionResolved(sessionId))
       this.appShellStore.previewResolvedCakeChat(sessionId);
     else this.appShellStore.selectCakeChat(sessionId);
-    this.windowPersistence.schedule();
     if (sessionId) await this.globalChatStore.openSession(sessionId);
   }
   async startCakeChat(prompt?: string) {
@@ -216,7 +214,6 @@ export class RootStore extends Store<{
     this.appShellStore.selectCakeChat();
     await this.globalChatStore.startNewSession(prompt);
     this.appShellStore.selectCakeChat(this.globalChatStore.sessionId);
-    this.windowPersistence.schedule();
   }
   showTranscriptSelectionContextMenu(input: { canChat: boolean; canAnnotate: boolean }) {
     return this.nativeClient.showTranscriptSelectionContextMenu(input);
@@ -250,7 +247,6 @@ export class RootStore extends Store<{
       sessionIds.includes(this.appShellStore.selection.sessionId)
     )
       this.showEmptyWorkbench();
-    this.windowPersistence.schedule();
     return true;
   }
 
@@ -299,7 +295,6 @@ export class RootStore extends Store<{
       this.appShellStore.activeConversation.sessionId === sessionId
     ) {
       this.appShellStore.selectCakeChat(this.globalChatStore.sessionId);
-      this.windowPersistence.schedule();
     }
   }
 
@@ -332,8 +327,7 @@ export class RootStore extends Store<{
       canSubmit: (sessionId) => this.projectWorkbenchStore.canSubmitSession(sessionId),
       isActive: (sessionId) => this.projectWorkbenchStore.isActiveSession(sessionId),
       openCommandPane: (pane) => this.projectWorkbenchStore.commandPaneStore.open(pane),
-      persist: () => this.windowPersistence.schedule(),
-      persistNow: () => this.windowPersistence.flush(),
+      persistNow: () => this.props.flushWindowState(),
       projectName: (workspacePath) => this.projectCatalogStore.nameForPath(workspacePath),
       abort: () => this.projectWorkbenchStore.abort(),
       renameSession: (sessionId, name) =>
@@ -459,7 +453,7 @@ export class RootStore extends Store<{
   get extensionUiStore(): ExtensionUiStore {
     return createStore(ExtensionUiStore, {
       client: this.nativeClient,
-      activeSessionId: () => this.projectWorkbenchStore.session?.sessionId,
+      activeSessionModel: () => this.projectWorkbenchStore.activeSession?.model,
       sessionContext: () => this.projectWorkbenchStore.sessionContext(),
       operationActive: (operationId) => this.sessionOperationCoordinator.includes(operationId),
       setDraft: (value) => {
@@ -489,7 +483,6 @@ export class RootStore extends Store<{
       reviews: () => this.reviewsStore,
       extensionUi: () => this.extensionUiStore,
       pluginCommands: () => this.pluginCommandStore,
-      persistence: () => this.windowPersistence,
       catalog: this.sessionCatalogStore,
       startCakeChat: (prompt) => this.startCakeChat(prompt),
       onWorktreeSessionsResolved: (sessionIds, projectPath) =>
@@ -501,30 +494,15 @@ export class RootStore extends Store<{
   }
 
   @child
-  get windowPersistence(): WindowPersistenceCoordinatorStore {
-    return createStore(WindowPersistenceCoordinatorStore, {
-      nativeClient: this.nativeClient,
-      projects: this.projectCatalogStore,
-      sessions: this.sessionCatalogStore,
-      registry: this.sessionRegistry,
-      sidebar: () => this.sidebarStore,
-      settings: () => this.settingsStore,
-      workbench: () => this.projectWorkbenchStore,
-      shell: () => this.appShellStore,
-      globalChat: () => this.globalChatStore,
-    });
-  }
-
-  @child
   get globalChatStore(): GlobalChatStore {
     return createStore(GlobalChatStore, {
       nativeClient: this.nativeClient,
+      catalog: this.cakeChatCatalogModel,
       tools: () => this.appControl.listTools(),
       modelPresets: () => this.settingsStore.modelPresets.presets,
       defaultConfiguration: () => this.settingsStore.modelPresets.defaultConfiguration,
       openModelPresetSettings: () => this.showModelPresetSettings(),
       settings: () => this.settingsStore.appearance,
-      persist: () => this.windowPersistence.schedule(),
       prepareSessionResolution: (sessionIds) =>
         this.terminalStore.prepareResolution(
           sessionIds.map((sessionId) => ({ kind: "cake-chat", sessionId })),
@@ -546,40 +524,11 @@ export class RootStore extends Store<{
     this.effect(() => () => {
       this.projectCatalogModel[Symbol.dispose]();
       this.sessionCatalogModel[Symbol.dispose]();
+      this.cakeChatCatalogModel[Symbol.dispose]();
     });
     this.effect(() => {
-      const projectSessions = this.sessionRegistry.materializedSessions.map((session) => ({
-        target: {
-          sessionId: session.sessionId,
-          workingDirectory: session.model.workingDirectory,
-        },
-        model: session.model,
-      }));
-      const cakeChats = this.globalChatStore.loadedSessions
-        .filter((session) => !this.globalChatStore.isPendingSession(session.sessionId))
-        .map((session) => ({
-          target: this.globalChatStore.target(session.sessionId),
-          model: session.model,
-        }));
-      const discussions = projectSessions.flatMap(({ model: parent }) =>
-        parent.reviewThreads.map((thread) => ({
-          target: {
-            parentSessionId: thread.parentSessionId,
-            workingDirectory: thread.workingDirectory,
-            threadId: thread.id,
-          },
-          parent,
-        })),
-      );
-      this.props.synchronizer.sync({
-        projects: this.projectCatalogModel,
-        sessionCatalog: this.sessionCatalogModel,
-        projectSessions,
-        cakeChats,
-        discussions,
-      });
-      for (const { model } of cakeChats)
-        for (const request of model.controlRequests)
+      for (const session of this.globalChatStore.loadedSessions)
+        for (const request of session.model.controlRequests)
           if (!this.respondedCakeChatControlIds.has(request.controlRequestId)) {
             this.respondedCakeChatControlIds.add(request.controlRequestId);
             void this.respondCakeChatControl(request);
@@ -773,7 +722,6 @@ export class RootStore extends Store<{
       return;
     }
     this.extensionUiStore.receive(event);
-    if (event.type === "artifact-updated") return;
     if (event.type === "artifact-requested")
       this.sessionRegistry.findSession(event.record.artifact.sessionId)?.receive(event);
     this.projectWorkbenchStore.receive(event);

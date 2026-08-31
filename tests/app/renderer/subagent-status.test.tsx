@@ -3,9 +3,9 @@
  */
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { createStore, mount } from "r-state-tree";
+import { applySnapshot, createStore, mount } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { DesktopClient } from "../../../src/renderer/desktop-client";
+import { Session } from "../../../src/renderer/models/Session";
 import { SubagentStatus } from "../../../src/renderer/components/subagent-status";
 import { SubagentActivityStore } from "../../../src/renderer/stores/SubagentActivityStore";
 
@@ -15,18 +15,17 @@ describe("SubagentStatus", () => {
   let container: HTMLDivElement;
   let root: Root;
   let store: SubagentActivityStore;
+  let model: Session;
 
   beforeEach(() => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
+    model = Session.create({ sessionId: "parent" });
     store = mount(
       createStore(SubagentActivityStore, {
         sessionId: "parent",
-        client: {
-          steerSubagent: async () => undefined,
-          abortSubagent: async () => undefined,
-        } as unknown as DesktopClient,
+        model,
         parts: () => [],
       }),
     );
@@ -35,43 +34,45 @@ describe("SubagentStatus", () => {
   afterEach(() => {
     act(() => root.unmount());
     store[Symbol.dispose]();
+    model[Symbol.dispose]();
     container.remove();
   });
 
   it("opens an active handle's unified log from the persistent running count", () => {
     const handleId = crypto.randomUUID();
     act(() => {
-      store.receive({
-        type: "subagent-activity-received",
-        activity: {
-          parentSessionId: "parent",
-          anchorPartId: "spawn",
-          handleId,
-          revision: 1,
-          task: "Inspect activity projection",
-          profile: "reviewer",
-          status: "running",
-          resolvedModel: {
-            requested: "current",
-            source: "current",
-            provider: "test",
-            modelId: "model",
-            thinkingLevel: "medium",
-            fallbacks: [],
-          },
-          fastMode: false,
-          retained: false,
-          streaming: true,
-          parts: [
-            {
-              id: "child-read",
-              kind: "tool",
-              name: "read",
-              input: "src/renderer",
-              state: "running",
+      applySnapshot(model, {
+        subagentActivities: [
+          {
+            parentSessionId: "parent",
+            anchorPartId: "spawn",
+            handleId,
+            revision: 1,
+            task: "Inspect activity projection",
+            profile: "reviewer",
+            status: "running",
+            resolvedModel: {
+              requested: "current",
+              source: "current",
+              provider: "test",
+              modelId: "model",
+              thinkingLevel: "medium",
+              fallbacks: [],
             },
-          ],
-        },
+            fastMode: false,
+            retained: false,
+            streaming: true,
+            parts: [
+              {
+                id: "child-read",
+                kind: "tool",
+                name: "read",
+                input: "src/renderer",
+                state: "running",
+              },
+            ],
+          },
+        ],
       });
       root.render(
         <SubagentStatus
@@ -101,7 +102,7 @@ describe("SubagentStatus", () => {
     );
 
     act(() => {
-      store.receive({ type: "subagent-activity-removed", parentSessionId: "parent", handleId });
+      applySnapshot(model, { releasedSubagentHandleIds: [handleId] });
     });
     expect(container.querySelector('button[aria-label="1 subagents running"]')).toBeNull();
     expect(

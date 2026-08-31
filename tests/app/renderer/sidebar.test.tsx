@@ -100,7 +100,7 @@ describe("Sidebar projects", () => {
       sessionActivity: vi.fn(() => undefined),
       sessionDisplayTitle,
       chatReviewCommentCountForSession: vi.fn(() => 0),
-      projectSessions: () => [{ id: "session-1", title: "Add project collapsing" }],
+      projectSessions: () => [{ sessionId: "session-1", title: "Add project collapsing" }],
       sessionLimit: () => 8,
       nameFromPath: () => "cake",
       startOneOffChat: vi.fn(),
@@ -145,9 +145,9 @@ describe("Sidebar projects", () => {
       projects: [{ path: "/work/cake", name: "Cake" }],
       session: { sessionId: "running" },
       projectSessions: () => [
-        { id: "running", title: "Still working" },
-        { id: "ready", title: "Finished in background" },
-        { id: "error", title: "Failed in background" },
+        { sessionId: "running", title: "Still working" },
+        { sessionId: "ready", title: "Finished in background" },
+        { sessionId: "error", title: "Failed in background" },
       ],
       sessionLimit: () => 8,
       sessionActivity: (id: string) =>
@@ -186,8 +186,8 @@ describe("Sidebar projects", () => {
       recentProjectPaths: ["/work/cake"],
       projects: [{ path: "/work/cake", name: "Cake" }],
       projectSessions: () => [
-        { id: "running", title: "Still working", modified },
-        { id: "ready", title: "Finished work", modified },
+        { sessionId: "running", title: "Still working", modifiedAt: modified },
+        { sessionId: "ready", title: "Finished work", modifiedAt: modified },
       ],
       sessionLimit: () => 8,
       sessionActivity: (id: string) =>
@@ -259,9 +259,9 @@ describe("Sidebar projects", () => {
       projects: [{ path: "/work/cake", name: "Cake" }],
       projectSessions: () => [
         {
-          id: "session-1",
+          sessionId: "session-1",
           title,
-          modified,
+          modifiedAt: modified,
           managedWorktree: { branch: "agent/feature", baseBranch: "main" },
         },
       ],
@@ -293,21 +293,21 @@ describe("Sidebar projects", () => {
       projects: [{ path: "/work/cake", name: "Cake" }],
       projectSessions: () => [
         {
-          id: "open",
+          sessionId: "open",
           title: "Open worktree",
-          modified: "2026-08-16T12:00:00.000Z",
+          modifiedAt: "2026-08-16T12:00:00.000Z",
           managedWorktree: { branch: "agent/open", baseBranch: "main", state: "active" },
         },
         {
-          id: "merged",
+          sessionId: "merged",
           title: "Merged worktree",
-          modified: "2026-08-16T11:00:00.000Z",
+          modifiedAt: "2026-08-16T11:00:00.000Z",
           managedWorktree: { branch: "agent/merged", baseBranch: "main", state: "landed" },
         },
         {
-          id: "main",
+          sessionId: "main",
           title: "Main checkout",
-          modified: "2026-08-16T10:00:00.000Z",
+          modifiedAt: "2026-08-16T10:00:00.000Z",
         },
       ],
       sessionLimit: () => 8,
@@ -342,8 +342,8 @@ describe("Sidebar projects", () => {
       projects: [{ path: "/work/cake", name: "Cake" }],
       session: { sessionId: "pending" },
       projectSessions: () => [
-        { id: "pending", title: "Needs review" },
-        { id: "answered", title: "Already answered" },
+        { sessionId: "pending", title: "Needs review" },
+        { sessionId: "answered", title: "Already answered" },
       ],
       sessionLimit: () => 8,
       sessionActivity: vi.fn(() => undefined),
@@ -436,7 +436,7 @@ describe("Sidebar projects", () => {
     const store = {
       recentProjectPaths: ["/work/cake"],
       projects: [{ path: "/work/cake", name: "Cake" }],
-      projectSessions: () => [{ id: "one" }, { id: "two" }],
+      projectSessions: () => [{ sessionId: "one" }, { sessionId: "two" }],
       sessionLimit: () => 8,
       sessionActivity: vi.fn(),
       nameFromPath: () => "cake",
@@ -525,16 +525,16 @@ describe("Sidebar projects", () => {
       showMoreSessions: vi.fn(),
       cakeChatSummaries: [
         {
-          id: "cake-chat-1",
+          sessionId: "cake-chat-1",
           title: "Repair the sidebar",
-          modified: new Date(0).toISOString(),
+          modifiedAt: new Date(0).toISOString(),
           resolved: false,
         },
       ],
     } as unknown as ProjectWorkbenchStore;
     const props = sidebarProps(store);
     props.cakeChat = {
-      summaries: [{ id: "cake-chat-1", title: "Repair the sidebar" }],
+      summaries: [{ sessionId: "cake-chat-1", title: "Repair the sidebar" }],
       sessionId: "cake-chat-1",
       findSession: vi.fn(),
     } as any;
@@ -563,7 +563,7 @@ describe("Sidebar projects", () => {
         resolved
           ? [
               {
-                id: "resolved-project",
+                sessionId: "resolved-project",
                 title: "Finished work",
                 managedWorktree: { branch: "agent/resolved-feature", baseBranch: "main" },
               },
@@ -577,15 +577,15 @@ describe("Sidebar projects", () => {
       hasResolvedSessions: true,
       cakeChatSummaries: [
         {
-          id: "active-cake",
+          sessionId: "active-cake",
           title: "Current Cake Chat",
-          modified: new Date(0).toISOString(),
+          modifiedAt: new Date(0).toISOString(),
           resolved: false,
         },
         {
-          id: "resolved-cake",
+          sessionId: "resolved-cake",
           title: "Finished Cake Chat",
-          modified: new Date(0).toISOString(),
+          modifiedAt: new Date(0).toISOString(),
           resolved: true,
         },
       ],
@@ -623,7 +623,7 @@ describe("Sidebar projects", () => {
     const store = {
       recentProjectPaths: ["/work/cake"],
       projects: [{ path: "/work/cake", name: "Cake" }],
-      projectSessions: () => [{ id: "session-1", title: "History work" }],
+      projectSessions: () => [{ sessionId: "session-1", title: "History work" }],
       sessionLimit: () => 8,
       sessionActivity: vi.fn(),
       sessionDisplayTitle,
@@ -686,7 +686,7 @@ describe("Sidebar projects", () => {
       projectPath: "/work/cake",
       projects: [{ path: "/work/cake", name: "Cake" }],
       session: { sessionId: "project-session" },
-      projectSessions: () => [{ id: "project-session", title: "Project work" }],
+      projectSessions: () => [{ sessionId: "project-session", title: "Project work" }],
       sessionLimit: () => 8,
       sessionActivity: vi.fn(),
       sessionDisplayTitle,
@@ -698,16 +698,16 @@ describe("Sidebar projects", () => {
       renameSession: vi.fn(),
       cakeChatSummaries: [
         {
-          id: "cake-session",
+          sessionId: "cake-session",
           title: "Meta work",
-          modified: new Date(0).toISOString(),
+          modifiedAt: new Date(0).toISOString(),
           resolved: false,
         },
       ],
     } as unknown as ProjectWorkbenchStore;
     const props = sidebarProps(store);
     props.cakeChat = {
-      summaries: [{ id: "cake-session", title: "Meta work" }],
+      summaries: [{ sessionId: "cake-session", title: "Meta work" }],
       sessionId: "cake-session",
       findSession: vi.fn(),
     } as any;
@@ -772,7 +772,7 @@ describe("Sidebar projects", () => {
       projectSessions: (_path: string, resolved = false) =>
         resolved
           ? []
-          : [{ id: "active", title: "Current work", modified: new Date(0).toISOString() }],
+          : [{ sessionId: "active", title: "Current work", modifiedAt: new Date(0).toISOString() }],
       sessionLimit: () => 8,
       sessionActivity: vi.fn(),
       sessionActivityTime: vi.fn(() => "Today"),
@@ -802,7 +802,13 @@ describe("Sidebar projects", () => {
       projects: [{ path: "/work/cake", name: "Cake" }],
       projectSessions: (_path: string, resolved = false) =>
         resolved
-          ? [{ id: "resolved", title: "Finished work", modified: new Date(0).toISOString() }]
+          ? [
+              {
+                sessionId: "resolved",
+                title: "Finished work",
+                modifiedAt: new Date(0).toISOString(),
+              },
+            ]
           : [],
       sessionLimit: () => 8,
       sessionActivity: vi.fn(),
@@ -848,8 +854,8 @@ describe("Sidebar projects", () => {
       projects: [{ path: "/work/cake", name: "Cake" }],
       projectSessions: (_path: string, resolved = false) =>
         resolved
-          ? [{ id: "resolved", title: "Finished work", modified }]
-          : [{ id: "active", title: "Current work", modified }],
+          ? [{ sessionId: "resolved", title: "Finished work", modifiedAt: modified }]
+          : [{ sessionId: "active", title: "Current work", modifiedAt: modified }],
       sessionLimit: () => 8,
       sessionActivity: vi.fn(),
       sessionActivityTime: vi.fn(() => "Today"),
@@ -921,8 +927,8 @@ describe("Sidebar projects", () => {
       recentProjectPaths: ["/work/cake"],
       projects: [{ path: "/work/cake", name: "Cake" }],
       projectSessions: () => [
-        { id: "other", title: "Other work" },
-        { id: "selected", title: "Current work" },
+        { sessionId: "other", title: "Other work" },
+        { sessionId: "selected", title: "Current work" },
       ],
       sessionLimit: () => 8,
       sessionActivity: vi.fn(() => undefined),
@@ -976,7 +982,7 @@ describe("Sidebar projects", () => {
       recentProjectPaths: ["/work/cake"],
       projects: [{ path: "/work/cake", name: "Cake" }],
       projectSessions: () => [
-        { id: "session-1", title: "Original title", modified: new Date(0).toISOString() },
+        { sessionId: "session-1", title: "Original title", modifiedAt: new Date(0).toISOString() },
       ],
       sessionLimit: () => 8,
       sessionActivity: vi.fn(),
@@ -1015,7 +1021,7 @@ describe("Sidebar projects", () => {
       recentProjectPaths: ["/work/cake"],
       projects: [{ path: "/work/cake", name: "Cake" }],
       projectSessions: () => [
-        { id: "session-1", title: "Follow up", modified: new Date(0).toISOString() },
+        { sessionId: "session-1", title: "Follow up", modifiedAt: new Date(0).toISOString() },
       ],
       sessionLimit: () => 8,
       sessionActivity: vi.fn(),
@@ -1052,7 +1058,7 @@ describe("Sidebar projects", () => {
       recentProjectPaths: ["/work/cake"],
       projects: [{ path: "/work/cake", name: "Cake" }],
       projectSessions: () => [
-        { id: "session-1", title: "Follow up", modified: new Date(0).toISOString() },
+        { sessionId: "session-1", title: "Follow up", modifiedAt: new Date(0).toISOString() },
       ],
       sessionLimit: () => 8,
       sessionActivity: vi.fn(() => "unread"),
@@ -1089,7 +1095,9 @@ describe("Sidebar projects", () => {
       recentProjectPaths: ["/work/cake"],
       projects: [{ path: "/work/cake", name: "Cake" }],
       projectSessions: (_path: string, resolved: boolean) =>
-        resolved ? [{ id: "session-1", title: "Done", modified: new Date(0).toISOString() }] : [],
+        resolved
+          ? [{ sessionId: "session-1", title: "Done", modifiedAt: new Date(0).toISOString() }]
+          : [],
       hasResolvedSessions: true,
       sessionLimit: () => 8,
       sessionActivity: vi.fn(),
@@ -1135,9 +1143,9 @@ describe("Sidebar projects", () => {
       showMoreSessions: vi.fn(),
       cakeChatSummaries: [
         {
-          id: "cake-chat-1",
+          sessionId: "cake-chat-1",
           title: "Original Cake Chat",
-          modified: new Date(0).toISOString(),
+          modifiedAt: new Date(0).toISOString(),
           resolved: false,
         },
       ],
@@ -1182,7 +1190,11 @@ describe("Sidebar projects", () => {
       recentProjectPaths: ["/work/cake"],
       projects: [{ path: "/work/cake", name: "Cake" }],
       projectSessions: () => [
-        { id: "unread", title: "Finished in background", modified: new Date(0).toISOString() },
+        {
+          sessionId: "unread",
+          title: "Finished in background",
+          modifiedAt: new Date(0).toISOString(),
+        },
       ],
       sessionLimit: () => 8,
       sessionActivity: () => "unread",
@@ -1222,8 +1234,18 @@ describe("Sidebar projects", () => {
       showMoreSessions: vi.fn(),
       hasResolvedSessions: true,
       cakeChatSummaries: [
-        { id: "active-cake", title: "Active Cake Chat", modified, resolved: false },
-        { id: "resolved-cake", title: "Resolved Cake Chat", modified, resolved: true },
+        {
+          sessionId: "active-cake",
+          title: "Active Cake Chat",
+          modifiedAt: modified,
+          resolved: false,
+        },
+        {
+          sessionId: "resolved-cake",
+          title: "Resolved Cake Chat",
+          modifiedAt: modified,
+          resolved: true,
+        },
       ],
       setCakeChatSessionResolved,
     } as unknown as ProjectWorkbenchStore;

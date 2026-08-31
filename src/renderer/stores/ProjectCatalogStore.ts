@@ -1,4 +1,4 @@
-import { Store, observable } from "r-state-tree";
+import { Store, observable, snapshot } from "r-state-tree";
 import type { ProjectCatalog } from "../models/ProjectCatalog";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 
@@ -7,7 +7,7 @@ export class ProjectCatalogStore extends Store<{
   sessions: SessionCatalogStore;
   model: ProjectCatalog;
 }> {
-  readonly recentProjectPaths: string[] = observable([]);
+  @snapshot readonly recentProjectPaths: string[] = observable([]);
 
   get projects() {
     return this.props.model.projects;
@@ -40,7 +40,11 @@ export class ProjectCatalogStore extends Store<{
         lastSessionByProject.set(session.projectPath, session.modifiedAt);
     }
 
-    return [...this.recentProjectPaths].sort((left, right) => {
+    const registeredPaths = new Set(this.projects.map((project) => project.path));
+    const paths = this.recentProjectPaths.filter((path) => registeredPaths.has(path));
+    for (const project of this.projects)
+      if (!paths.includes(project.path)) paths.push(project.path);
+    return paths.sort((left, right) => {
       const leftLastSession = lastSessionByProject.get(left);
       const rightLastSession = lastSessionByProject.get(right);
       if (leftLastSession && rightLastSession && leftLastSession !== rightLastSession)
@@ -54,20 +58,7 @@ export class ProjectCatalogStore extends Store<{
     });
   }
 
-  restoreRecentPaths(paths: readonly string[]) {
-    this.recentProjectPaths.splice(0, this.recentProjectPaths.length, ...paths);
-    this.reconcileRecentPaths();
-  }
-
   recordOpened(path: string) {
     if (!this.recentProjectPaths.includes(path)) this.recentProjectPaths.push(path);
-  }
-
-  reconcileRecentPaths() {
-    const registeredPaths = new Set(this.projects.map((project) => project.path));
-    const paths = this.recentProjectPaths.filter((path) => registeredPaths.has(path));
-    for (const project of this.projects)
-      if (!paths.includes(project.path)) paths.push(project.path);
-    this.recentProjectPaths.splice(0, this.recentProjectPaths.length, ...paths);
   }
 }

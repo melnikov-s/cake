@@ -31,7 +31,12 @@ import type {
   DiscussionSessionUpdate,
   DiscussionThread,
 } from "../../domain/discussion-session-data";
-import type { ProjectCatalogUpdate, SessionCatalogUpdate } from "../../domain/catalog-data";
+import type {
+  CakeChatCatalogUpdate,
+  DiscussionCatalogUpdate,
+  ProjectCatalogUpdate,
+  SessionCatalogUpdate,
+} from "../../domain/catalog-data";
 import type { SubagentError, SubagentHandleId, SubagentUpdate } from "../../domain/subagent-data";
 import type {
   DefaultModelPresetNotFoundError,
@@ -53,6 +58,13 @@ import type {
   ApplicationEncodeError,
   ApplicationWriteError,
 } from "../../services/storage/ApplicationStorage";
+import type {
+  WindowStateEncodeError,
+  WindowStateMalformedDocumentError,
+  WindowStateReadError,
+  WindowStateUnsupportedVersionError,
+  WindowStateWriteError,
+} from "../../services/storage/WindowStateStorage";
 
 type TransportError = RpcClientError.RpcClientError;
 type ModelPresetMutationError =
@@ -74,6 +86,20 @@ export interface CakeIpcClientService {
   readonly application: {
     readonly getHomeDirectory: () => Effect.Effect<string, TransportError>;
     readonly getState: () => Effect.Effect<RendererApplicationState, TransportError>;
+  };
+  readonly windowState: {
+    readonly load: () => Effect.Effect<
+      Schema.Schema.Type<typeof Schema.Json>,
+      | WindowStateReadError
+      | WindowStateMalformedDocumentError
+      | WindowStateUnsupportedVersionError
+      | WindowStateEncodeError
+      | WindowStateWriteError
+      | TransportError
+    >;
+    readonly save: (
+      snapshot: Schema.Schema.Type<typeof Schema.Json>,
+    ) => Effect.Effect<void, WindowStateEncodeError | WindowStateWriteError | TransportError>;
   };
   readonly projects: {
     readonly observeCatalog: () => Stream.Stream<ProjectCatalogUpdate, TransportError>;
@@ -102,6 +128,10 @@ export interface CakeIpcClientService {
   readonly cakeChats: {
     readonly list: () => Effect.Effect<
       ReadonlyArray<CakeChatSummary>,
+      CakeChatError | TransportError
+    >;
+    readonly observeCatalog: () => Stream.Stream<
+      CakeChatCatalogUpdate,
       CakeChatError | TransportError
     >;
     readonly inspect: (
@@ -163,6 +193,10 @@ export interface CakeIpcClientService {
     ) => Effect.Effect<void, CakeChatError | TransportError>;
   };
   readonly discussionSessions: {
+    readonly observeCatalog: (input: {
+      readonly workingDirectory: string;
+      readonly parentSessionId: string;
+    }) => Stream.Stream<DiscussionCatalogUpdate, DiscussionSessionError | TransportError>;
     readonly list: (input: {
       readonly workingDirectory: string;
       readonly parentSessionId: string;
@@ -336,6 +370,14 @@ export const CakeIpcClientLive = Layer.effect(
           client("application.getState", undefined),
         ),
       },
+      windowState: {
+        load: Effect.fn("CakeIpcClient.windowState.load")(() =>
+          client("windowState.load", undefined),
+        ),
+        save: Effect.fn("CakeIpcClient.windowState.save")((snapshot) =>
+          client("windowState.save", { snapshot }),
+        ),
+      },
       projects: {
         observeCatalog: () => client("projects.observeCatalog", undefined),
       },
@@ -367,6 +409,7 @@ export const CakeIpcClientLive = Layer.effect(
       },
       cakeChats: {
         list: Effect.fn("CakeIpcClient.cakeChats.list")(() => client("cakeChats.list", undefined)),
+        observeCatalog: () => client("cakeChats.observeCatalog", undefined),
         inspect: Effect.fn("CakeIpcClient.cakeChats.inspect")((sessionId) =>
           client("cakeChats.inspect", { sessionId }),
         ),
@@ -419,6 +462,7 @@ export const CakeIpcClientLive = Layer.effect(
         ),
       },
       discussionSessions: {
+        observeCatalog: (input) => client("discussionSessions.observeCatalog", input),
         list: Effect.fn("CakeIpcClient.discussionSessions.list")((input) =>
           client("discussionSessions.list", input),
         ),

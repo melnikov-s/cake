@@ -81,7 +81,7 @@ describe("Model Preset Effect RPC contract", () => {
       },
     });
     const client = await runtime.runPromise(Effect.service(CakeIpcClient));
-    expect(Object.keys(client.models)).toEqual(["list"]);
+    expect(Object.keys(client.models)).toEqual(["list", "refresh"]);
     expect(Object.keys(client.modelPresets)).toEqual([
       "list",
       "create",

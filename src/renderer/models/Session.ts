@@ -8,6 +8,8 @@ import { ModelOption } from "./ModelOption";
 import { ReviewThread } from "./ReviewThread";
 import { ResourceDiagnostic } from "./ResourceDiagnostic";
 import { SessionTreeEntry } from "./SessionTreeEntry";
+import { SubagentActivity } from "./SubagentActivity";
+import { ExtensionUi } from "./ExtensionUi";
 
 export class Session extends Model {
   workingDirectory = "";
@@ -30,6 +32,10 @@ export class Session extends Model {
   @child(SessionTreeEntry) tree: SessionTreeEntry[] = observable([]);
   @child(Artifact) artifacts: Artifact[] = observable([]);
   @child(ReviewThread) reviewThreads: ReviewThread[] = observable([]);
+  @child(SubagentActivity) subagentActivities: SubagentActivity[] = observable([]);
+  releasedSubagentHandleIds: string[] = observable([]);
+  backgroundWorkActive = false;
+  @child(ExtensionUi) extensionUi = ExtensionUi.create();
   controlRequests: CakeChatControlRequest[] = observable([]);
 
   get loaded() {

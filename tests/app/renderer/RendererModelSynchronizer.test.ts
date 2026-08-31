@@ -5,6 +5,7 @@ import { CakeIpcClient, type CakeIpcClientService } from "../../../src/ipc/clien
 import { RendererModelSynchronizer } from "../../../src/renderer/RendererModelSynchronizer";
 import type { RendererRuntime } from "../../../src/renderer/RendererRuntime";
 import { ProjectCatalog } from "../../../src/renderer/models/ProjectCatalog";
+import { CakeChatCatalog } from "../../../src/renderer/models/CakeChatCatalog";
 import { SessionCatalog } from "../../../src/renderer/models/SessionCatalog";
 
 function runtimeFor(client: CakeIpcClientService): RendererRuntime {
@@ -27,6 +28,13 @@ function clientWithProjectStream(
     projects: { observeCatalog },
     projectSessions: {
       observeCatalog: () => Stream.concat(Stream.make(emptySessionCatalog), Stream.never),
+    },
+    cakeChats: {
+      observeCatalog: () =>
+        Stream.concat(
+          Stream.make({ _tag: "Snapshot" as const, revision: 1, sessions: [] }),
+          Stream.never,
+        ),
     },
   } as unknown as CakeIpcClientService;
 }
@@ -60,14 +68,15 @@ describe("RendererModelSynchronizer", () => {
     );
     const projects = ProjectCatalog.create();
     const sessions = SessionCatalog.create();
+    const cakeChats = CakeChatCatalog.create();
     const synchronizer = new RendererModelSynchronizer(runtimeFor(client));
 
     synchronizer.sync({
       projects,
       sessionCatalog: sessions,
+      cakeChatCatalog: cakeChats,
       projectSessions: [],
       cakeChats: [],
-      discussions: [],
     });
 
     await vi.waitFor(() => expect(projects.projects[0]?.name).toBe("Cake Desktop"));
@@ -77,6 +86,7 @@ describe("RendererModelSynchronizer", () => {
     synchronizer[Symbol.dispose]();
     projects[Symbol.dispose]();
     sessions[Symbol.dispose]();
+    cakeChats[Symbol.dispose]();
   });
 
   it("reconnects from a fresh Snapshot after a revision gap", async () => {
@@ -117,14 +127,15 @@ describe("RendererModelSynchronizer", () => {
     });
     const projects = ProjectCatalog.create();
     const sessions = SessionCatalog.create();
+    const cakeChats = CakeChatCatalog.create();
     const synchronizer = new RendererModelSynchronizer(runtimeFor(client));
 
     synchronizer.sync({
       projects,
       sessionCatalog: sessions,
+      cakeChatCatalog: cakeChats,
       projectSessions: [],
       cakeChats: [],
-      discussions: [],
     });
 
     await vi.waitFor(() =>
@@ -135,5 +146,6 @@ describe("RendererModelSynchronizer", () => {
     synchronizer[Symbol.dispose]();
     projects[Symbol.dispose]();
     sessions[Symbol.dispose]();
+    cakeChats[Symbol.dispose]();
   });
 });

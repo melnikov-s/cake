@@ -1,4 +1,4 @@
-import { Store, observable } from "r-state-tree";
+import { Store, observable, snapshot } from "r-state-tree";
 import type { ChatConfiguration, ModelOption, ModelPreset } from "../../ipc/session-contract";
 import { RendererClientContext } from "../client/RendererClientContext";
 import { describeError } from "../error-details";
@@ -24,7 +24,7 @@ export class ModelPresetSettingsStore extends Store {
   readonly presets: ModelPreset[] = observable([]);
   readonly catalogModels: ModelOption[] = observable([]);
   defaultPresetId: string | undefined;
-  lastUsedConfiguration: ChatConfiguration | undefined;
+  @snapshot lastUsedConfiguration: ChatConfiguration | undefined;
   loading = true;
   saving = false;
   sectionRequestRevision = 0;
@@ -93,10 +93,6 @@ export class ModelPresetSettingsStore extends Store {
     )
       return;
     this.lastUsedConfiguration = { ...configuration };
-  }
-
-  restoreLastUsed(configuration: ChatConfiguration | undefined) {
-    this.lastUsedConfiguration = configuration ? { ...configuration } : undefined;
   }
 
   requestSection() {

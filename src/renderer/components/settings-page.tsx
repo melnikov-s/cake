@@ -24,13 +24,11 @@ export const SettingsPage = observer(function SettingsPage({
   settings,
   configuration,
   customization,
-  onViewStateChange,
 }: {
   store: ProjectWorkbenchStore;
   settings: SettingsStore;
   configuration?: ChatConfigurationStore;
   customization: CustomizationStore;
-  onViewStateChange(): void;
 }) {
   const pi = store.session?.piSettings;
   const authNotice = store.activeSession?.canonicalParts.find(
@@ -560,7 +558,7 @@ export const SettingsPage = observer(function SettingsPage({
         providerGroups={providerGroups}
         hasSession={Boolean(store.session)}
       />
-      <SettingsAppearanceSection appearance={appearance} onViewStateChange={onViewStateChange} />
+      <SettingsAppearanceSection appearance={appearance} />
     </div>
   );
 });

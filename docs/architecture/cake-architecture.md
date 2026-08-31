@@ -221,8 +221,9 @@ async policy, and persistence responsibility.
 Models are validated reactive projections of entities. One window-owned Model
 synchronizer owns authoritative RPC Stream subscriptions, reconnect and revision
 policy, maps updates to Model snapshots, and applies them with `applySnapshot`.
-Only `RootStore` supplies it the current loaded Models; feature Stores and Models
-never access synchronization machinery. Stores own window-local application/UI
+Window bootstrap attaches it to the mounted Root Store so it can discover the
+current loaded Models reactively; feature Stores and Models never access
+synchronization machinery. Stores own window-local application/UI
 state and logic: workflow timers, cancellation,
 concurrency, snapshot coordination, and application intents. They invoke
 semantic Promise operations on `RendererClient`; Cake business logic lives in
@@ -248,9 +249,10 @@ The window Store hierarchy mirrors the product surfaces:
   projection plus cached ID and project-group indexes. Session IDs are the
   canonical identity; duplicate IDs are rejected. Resolved status derives from
   Cake's active or archived transcript namespace and is projected into those summaries.
-- `WindowPersistenceCoordinatorStore` hydrates and saves view state that spans the
-  shell, sidebar, workbench, settings, and loaded sessions. It coordinates
-  those owners without absorbing their state.
+- Window-owned persistence infrastructure loads one versioned Store snapshot before
+  mounting the Root Store, then watches the mounted Store tree and saves later
+  snapshots through `RendererClient`. Persistence is not a Store and never
+  synchronizes storage back into an already-mounted Store tree.
 - `ProjectWorkbenchStore` coordinates project activation and its focused
   workflow children: `CommandPaneStore`, `SessionManagementStore`,
   `SessionContinuationStore`, `WorktreeCreationStore`, and `EmbeddedEditorStore`.
@@ -321,7 +323,7 @@ flowchart TD
   CakeChat --> CakeSession["CakeChatSessionStore per loaded meta-session"]
   CakeSession --> MetaChat["ChatStore"]
   Root --> Settings["SettingsStore"]
-  Root --> Persistence["WindowPersistenceCoordinatorStore"]
+  Persistence["Window snapshot persistence (infrastructure)"] -. watches .-> Root
   Workbench -. selects from .-> Registry
   Workbench --> IDE["EmbeddedEditorStore"]
   Registry --> Session["ProjectSessionStore (one per loaded target)"]

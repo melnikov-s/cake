@@ -40,7 +40,6 @@ import {
   thinkingLevelSchema,
   utilityModelSchema,
   uiPartSchema,
-  windowViewStateSchema,
 } from "./session-contract";
 import {
   worktreeLandOutcomeSchema,
@@ -443,8 +442,6 @@ export const desktopRequestSchema = z.discriminatedUnion("type", [
       .object({ provider: z.string().min(1).max(256), id: z.string().min(1).max(512) })
       .optional(),
   }),
-  z.object({ type: z.literal("load-window-state") }),
-  z.object({ type: z.literal("save-window-state"), state: windowViewStateSchema }),
   z.object({ type: z.literal("set-utility-model"), model: utilityModelSchema.optional() }),
   z.object({
     type: z.literal("register-project"),
@@ -707,8 +704,6 @@ export const desktopResponseSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("workspace-file"), content: z.string().max(2_000_000) }),
   z.object({ type: z.literal("inline-widget-compiled"), widget: compiledInlineWidgetSchema }),
   z.object({ type: z.literal("inline-widget-repaired"), widget: repairedInlineWidgetSchema }),
-  z.object({ type: z.literal("window-state-loaded"), state: windowViewStateSchema }),
-  z.object({ type: z.literal("window-state-saved") }),
   z.object({ type: z.literal("application-state-updated"), state: applicationStateSchema }),
   z.object({
     type: z.literal("worktree-created"),

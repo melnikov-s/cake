@@ -1,6 +1,6 @@
-import { Store, child, createStore } from "r-state-tree";
+import { Store, child, createStore, snapshot } from "r-state-tree";
 import type { SourceLocation } from "../../ipc/source-location";
-import type { ChatConfiguration, WindowViewState } from "../../ipc/session-contract";
+import type { ChatConfiguration } from "../../ipc/session-contract";
 import { reviewThreadAnnotations } from "../../utils/review-thread-annotations";
 import type { DesktopClient, DesktopClientEvent, PiState } from "../desktop-client";
 import { EmbeddedEditorStore, type EmbeddedEditorStoreProps } from "./EmbeddedEditorStore";
@@ -10,9 +10,7 @@ import type { PluginCommandStore } from "./PluginCommandStore";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
-import type { SessionSummary } from "../models/SessionSummary";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
-import type { WindowPersistenceCoordinatorStore } from "./WindowPersistenceCoordinatorStore";
 import { describeError } from "../error-details";
 import { RendererClientContext } from "../client/RendererClientContext";
 import { CommandPaneStore } from "./CommandPaneStore";
@@ -47,7 +45,6 @@ export interface ProjectWorkbenchStoreProps {
   reviews(): ReviewsStore;
   extensionUi(): ExtensionUiStore;
   pluginCommands(): PluginCommandStore;
-  persistence(): WindowPersistenceCoordinatorStore;
   catalog: SessionCatalogStore;
   startCakeChat(prompt?: string): Promise<void>;
   /** Removes resolved worktree sessions from history and chooses the next conversation. */
@@ -64,8 +61,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return RendererClientContext.consume(this)!;
   }
   piState: PiState = "starting";
-  projectPath: string | undefined;
-  selectedSessionId: string | undefined;
+  @snapshot projectPath: string | undefined;
+  @snapshot selectedSessionId: string | undefined;
   pendingTrustPath: string | undefined;
   private pendingOpen:
     | {
@@ -237,26 +234,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       void this.sessionManagementStore.setSessionUnread(sessionId, false);
   }
 
-  async restoreSelection(state: WindowViewState, sessions: readonly SessionSummary[]) {
-    const selectedSession = state.selectedSessionId
-      ? sessions.find((session) => session.sessionId === state.selectedSessionId)
-      : undefined;
-    const projectPath = selectedSession?.workingDirectory ?? state.projectPath;
-    this.projectPath = projectPath;
-    if (!projectPath) return;
-    if (
-      state.selectedSessionId &&
-      this.sessionRegistry.isTemporarySession(state.selectedSessionId) &&
-      this.showCachedSession(state.selectedSessionId)
-    )
-      return;
-    if (selectedSession) {
-      await this.openSession(selectedSession.sessionId);
-      return;
-    }
-    await this.inspectPath(projectPath, Boolean(state.selectedSessionId), state.selectedSessionId);
-  }
-
   startOperation() {
     const operationId = this.props.operations.start("project-workbench");
     this.error = undefined;
@@ -337,7 +314,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         this.projectPath = undefined;
         this.selectedSessionId = undefined;
       }
-      this.props.persistence().schedule();
       return true;
     } catch (error) {
       if (!this.signal.aborted) this.setError(error);
@@ -438,7 +414,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       .map((session) => session.sessionId);
     const resolvedCount =
       sessionIds.length > 0
-        ? await this.sessionManagementStore.resolveSessionsById(sessionIds, true, workspacePath)
+        ? await this.sessionManagementStore.resolveSessionsById(sessionIds, true)
         : 0;
     if (resolvedCount === sessionIds.length)
       await this.props.onWorktreeSessionsResolved(sessionIds, projectPath);
@@ -454,14 +430,12 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const session = staged
       ? this.sessionRegistry.prepareStagedSession(path, sessionId)
       : this.sessionRegistry.prepareNewSession(path, sessionId);
-    this.props.persistence().applySessionRestore(session, this.selectedSessionId);
     this.closeEmbeddedEditor();
     this.projectPath = path;
     this.selectedSessionId = sessionId;
     this.markSessionRead(sessionId);
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
-    this.props.persistence().schedule();
     session.composerStore.requestFocus();
     void this.refreshRegisteredProject(path);
   }
@@ -501,7 +475,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.markSessionRead(sessionId);
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
-    this.props.persistence().schedule();
     session.composerStore.requestFocus();
     return true;
   }
@@ -585,7 +558,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       await this.nativeClient.registerProject(path, this.props.projects.nameFromPath(path));
       if (this.signal.aborted || (openRevision !== undefined && openRevision !== this.openRevision))
         return;
-      this.props.projects.reconcileRecentPaths();
     } catch (error) {
       if (
         !this.signal.aborted &&
@@ -777,9 +749,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       else void this.openPath(event.path, false, pending.sessionId);
       return;
     }
-    if (event.type === "background-work-changed") return;
-    if (event.type === "artifact-updated") return;
-    if (event.type === "artifact-requested" || event.type === "extension-ui-received") return;
+    if (event.type === "artifact-requested") return;
     if (event.type === "changelog-received") {
       return;
     }

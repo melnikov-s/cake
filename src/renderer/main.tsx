@@ -13,6 +13,8 @@ import { makeRendererClient } from "./client/RendererClientLive";
 import { RendererModelSynchronizer } from "./RendererModelSynchronizer";
 import { installStaleAssetRecovery } from "./stale-asset-recovery";
 import { mountRootStore } from "./mount-root-store";
+import { storeSnapshotSchema } from "./store-snapshot";
+import { WindowStatePersistence } from "./WindowStatePersistence";
 import "katex/dist/katex.min.css";
 import "streamdown/styles.css";
 import "@xterm/xterm/css/xterm.css";
@@ -20,6 +22,10 @@ import "./styles.css";
 
 const root = createRoot(document.getElementById("root")!);
 const disposeStaleAssetRecovery = installStaleAssetRecovery();
+interface PersistenceRef {
+  current?: WindowStatePersistence;
+}
+
 const customizationRevision =
   typeof __CAKE_CUSTOMIZATION_REVISION__ === "undefined"
     ? undefined
@@ -48,11 +54,45 @@ if (!window.cake) {
     </main>,
   );
 } else {
-  const rendererRuntime = makeRendererRuntime(window.cake.rpc);
+  void bootstrap(window.cake);
+}
+
+async function bootstrap(bridge: NonNullable<typeof window.cake>) {
+  const rendererRuntime = makeRendererRuntime(bridge.rpc);
   const rendererClient = makeRendererClient(rendererRuntime);
   const synchronizer = new RendererModelSynchronizer(rendererRuntime);
-  const desktopClient = createDesktopClient(window.cake);
-  const rootStore = mountRootStore(desktopClient, rendererClient, synchronizer);
+  const desktopClient = createDesktopClient(bridge);
+  let hydrationError: unknown;
+  const snapshot = await rendererClient.windowState
+    .load()
+    .then(storeSnapshotSchema.parse)
+    .catch((error) => {
+      hydrationError = error;
+      return { state: {}, children: {} };
+    });
+  const persistenceRef: PersistenceRef = {};
+  const rootStore = mountRootStore(
+    desktopClient,
+    rendererClient,
+    snapshot,
+    () => persistenceRef.current?.flush() ?? Promise.resolve(),
+  );
+  const persistence = new WindowStatePersistence(rendererClient, (error) =>
+    rootStore.toastStore.show({
+      tone: "error",
+      title: "Window state could not be saved",
+      message: error instanceof Error ? error.message : String(error),
+    }),
+  );
+  persistenceRef.current = persistence;
+  persistence.observe(rootStore);
+  synchronizer.observe(rootStore);
+  if (hydrationError)
+    rootStore.toastStore.show({
+      tone: "warning",
+      title: "Window state could not be restored",
+      message: hydrationError instanceof Error ? hydrationError.message : String(hydrationError),
+    });
   const reportLinkError = (error: unknown) =>
     rootStore.toastStore.show({
       tone: "error",
@@ -95,6 +135,7 @@ if (!window.cake) {
     "pagehide",
     () => {
       disposeStaleAssetRecovery();
+      persistence?.[Symbol.dispose]();
       rootStore[Symbol.dispose]();
       synchronizer[Symbol.dispose]();
       void rendererRuntime.dispose();

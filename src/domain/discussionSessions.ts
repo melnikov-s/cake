@@ -1,4 +1,6 @@
 import { Effect, Schema, Stream } from "effect";
+import { observeState, refreshProjection } from "./application";
+import type { DiscussionCatalogUpdate } from "./catalog-data";
 import { PiSessionError, PiSessions } from "../services/pi/PiSessions";
 import { ProjectSessionEnvironment } from "../services/project-sessions/ProjectSessionEnvironment";
 import {
@@ -162,6 +164,38 @@ export const list = Effect.fn("DiscussionSessions.list")(function* (input: {
   );
 });
 
+/** Current-first catalog of Cake-owned Discussion metadata for one parent session. */
+export const observeCatalog = Effect.fn("DiscussionSessions.observeCatalog")(function* (input: {
+  readonly workingDirectory: string;
+  readonly parentSessionId: string;
+}) {
+  const changes = yield* observeState();
+  let initialized = false;
+  return changes.pipe(
+    Stream.mapEffect((projection) =>
+      list(input).pipe(
+        Effect.map((threads): DiscussionCatalogUpdate => {
+          if (!initialized) {
+            initialized = true;
+            return {
+              _tag: "Snapshot",
+              revision: projection.revision,
+              parentSessionId: input.parentSessionId,
+              threads,
+            };
+          }
+          return {
+            _tag: "Event",
+            revision: projection.revision,
+            parentSessionId: input.parentSessionId,
+            event: { _tag: "Replaced", threads },
+          };
+        }),
+      ),
+    ),
+  );
+});
+
 export const create = Effect.fn("DiscussionSessions.create")(function* (
   input: DiscussionSessionCreateInput,
 ) {
@@ -169,6 +203,7 @@ export const create = Effect.fn("DiscussionSessions.create")(function* (
   const record = yield* environment
     .create(input.workingDirectory, input.parentSessionId, input.anchor)
     .pipe(asError("create"));
+  yield* refreshProjection();
   return projectThread(record);
 });
 
@@ -235,6 +270,7 @@ export const prompt = Effect.fn("DiscussionSessions.prompt")(function* (
   const turnId = TurnId.make(
     yield* prepared.handle.prompt(input.text.trim()).pipe(asError("prompt")),
   );
+  yield* refreshProjection();
   return { turnId, thread: projectThread(prepared.record) };
 });
 
@@ -257,7 +293,9 @@ export const setResolved = Effect.fn("DiscussionSessions.setResolved")(function*
   const record = yield* environment
     .get(target.workingDirectory, target.parentSessionId, target.threadId)
     .pipe(asError("setResolved"));
-  return projectThread(
+  const thread = projectThread(
     yield* environment.setResolved(record, resolved).pipe(asError("setResolved")),
   );
+  yield* refreshProjection();
+  return thread;
 });

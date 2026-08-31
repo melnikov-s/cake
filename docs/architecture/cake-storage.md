@@ -131,12 +131,18 @@ Do not persist:
 Hydration order is mandatory:
 
 1. main reads, migrates, and validates the stored document;
-2. the renderer creates and mounts the r-state-tree root with the complete
-   snapshot, or atomically applies it before ordinary workflow effects begin;
-3. the owner selects an explicit fallback if application fails;
-4. Store effects and projection attachment activate after hydration;
-5. a scoped, debounced snapshot observer persists future commits through
+2. renderer bootstrap selects an explicit fallback if loading or snapshot
+   validation fails;
+3. the renderer mounts the r-state-tree Root Store once with the complete
+   snapshot;
+4. Store effects activate only after that one-time hydration;
+5. bootstrap attaches the external Model synchronizer and a scoped, debounced
+   `onSnapshot` observer that persists future Store commits through
    `RendererClient`.
+
+Window persistence is not a Store and never applies a storage value to an
+already-mounted Store. Storage-to-Store flow occurs exactly once at mount;
+afterward the flow is only Store snapshots to storage.
 
 Defaults must never overwrite a saved document before hydration. Projection
 Models reconstructed from authoritative Streams are excluded from the window

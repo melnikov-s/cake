@@ -1,6 +1,8 @@
 import { Schema } from "effect";
 import { ProjectRecord } from "./application-data";
 import { ProjectSessionSummary } from "./project-session-data";
+import { CakeChatSummary } from "./cake-chat-data";
+import { DiscussionThread } from "./discussion-session-data";
 
 const ProjectCatalogEvent = Schema.TaggedUnion({
   Replaced: { projects: Schema.Array(ProjectRecord) },
@@ -42,3 +44,31 @@ export const SessionCatalogUpdate = Schema.TaggedUnion({
   },
 });
 export type SessionCatalogUpdate = Schema.Schema.Type<typeof SessionCatalogUpdate>;
+
+const CakeChatCatalogEvent = Schema.TaggedUnion({
+  Replaced: { sessions: Schema.Array(CakeChatSummary) },
+});
+
+export const CakeChatCatalogUpdate = Schema.TaggedUnion({
+  Snapshot: { revision: Schema.Int, sessions: Schema.Array(CakeChatSummary) },
+  Event: { revision: Schema.Int, event: CakeChatCatalogEvent },
+});
+export type CakeChatCatalogUpdate = Schema.Schema.Type<typeof CakeChatCatalogUpdate>;
+
+const DiscussionCatalogEvent = Schema.TaggedUnion({
+  Replaced: { threads: Schema.Array(DiscussionThread) },
+});
+
+export const DiscussionCatalogUpdate = Schema.TaggedUnion({
+  Snapshot: {
+    revision: Schema.Int,
+    parentSessionId: Schema.String,
+    threads: Schema.Array(DiscussionThread),
+  },
+  Event: {
+    revision: Schema.Int,
+    parentSessionId: Schema.String,
+    event: DiscussionCatalogEvent,
+  },
+});
+export type DiscussionCatalogUpdate = Schema.Schema.Type<typeof DiscussionCatalogUpdate>;

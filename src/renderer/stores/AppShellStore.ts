@@ -1,7 +1,10 @@
-import { Store, observable } from "r-state-tree";
-import type { WindowConversationSelection } from "../../ipc/session-contract";
+import { Store, observable, snapshot } from "r-state-tree";
 
 export type AppSurface = "workbench" | "global-chat" | "settings";
+
+export type WindowConversationSelection =
+  | { kind: "project-session"; workspacePath: string; sessionId: string }
+  | { kind: "cake-chat"; sessionId: string };
 
 export type AppSelection =
   | { kind: "workbench" }
@@ -23,10 +26,10 @@ const sameSessionEntry = (left: SessionHistoryEntry, right: SessionHistoryEntry)
   left.kind === right.kind && left.sessionId === right.sessionId;
 
 export class AppShellStore extends Store<AppShellStoreProps> {
-  selection: AppSelection = { kind: "workbench" };
-  activeConversation: WindowConversationSelection | undefined;
-  private readonly sessionHistory: SessionHistoryEntry[] = observable([]);
-  private sessionHistoryCursor = -1;
+  @snapshot selection: AppSelection = { kind: "workbench" };
+  @snapshot activeConversation: WindowConversationSelection | undefined;
+  @snapshot private readonly sessionHistory: SessionHistoryEntry[] = observable([]);
+  @snapshot private sessionHistoryCursor = -1;
   private pendingTraversal: { entry: SessionHistoryEntry; cursor: number } | undefined;
 
   get surface(): AppSurface {
@@ -124,11 +127,6 @@ export class AppShellStore extends Store<AppShellStoreProps> {
   showSettings() {
     this.selection = { kind: "settings" };
   }
-  restoreConversation(selection: WindowConversationSelection) {
-    this.activeConversation = selection;
-    this.selection = selection;
-  }
-
   /**
    * Records a visit to the top of the history, truncating any forward branch. A pending
    * traversal commits once its target selection actually lands; any other selection

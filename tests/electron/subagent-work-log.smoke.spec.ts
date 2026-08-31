@@ -263,6 +263,8 @@ test("opens a released subagent in a read-only popup chat", async () => {
     await expect(popup).toContainText("The loop opened a bakery because it knew how to roll.");
     await expect(popup.locator("textarea")).toHaveCount(0);
     await popup.getByRole("button", { name: "Close worker subagent" }).click();
+
+    await expect(page.getByRole("button", { name: /subagents running/ })).toHaveCount(0);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

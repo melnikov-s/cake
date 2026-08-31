@@ -21,11 +21,7 @@ import {
   type DesktopEvent,
   type DesktopResponse,
 } from "../ipc/desktop-ipc";
-import {
-  windowViewStateSchema,
-  type Attachment,
-  type WindowViewState,
-} from "../ipc/session-contract";
+import { type Attachment } from "../ipc/session-contract";
 import type { SourceLocation } from "../ipc/source-location";
 import { jsonObjectSchema, jsonValueSchema } from "../ipc/json-contract";
 import type { WorktreeRecord } from "../ipc/worktree-contract";
@@ -84,7 +80,6 @@ import {
 import { VsCodeServerManager } from "./vscode-server-manager";
 import { ArtifactRepository } from "./artifact-repository";
 import { ReviewRepository } from "./review-repository";
-import { AtomicFileWriter } from "./atomic-file-writer";
 import { WorktreeService } from "./worktree-service";
 import { resolveCakePaths } from "./cake-paths";
 import { SessionArchiveRepository } from "./session-archive-repository";
@@ -149,7 +144,6 @@ const customizationHealthTimers = new Map<number, ReturnType<typeof setTimeout>>
 const fullscreenSurfaces = new Map<number, Set<string>>();
 const composerRewordControllers = new Map<number, Set<AbortController>>();
 let applicationStateOwner: ApplicationStateOwner["Service"] | undefined;
-const windowStateFileWriter = new AtomicFileWriter();
 
 function applicationState() {
   if (!applicationStateOwner) throw new Error("Application state has not initialized");
@@ -277,11 +271,7 @@ const vscodeEditor = new VsCodeServerManager({
     { path: "./themes/cake-dark-color-theme.json", content: cakeDarkThemeSource },
   ],
   customPath: () => applicationState().vscodeServerPath,
-  preferredTheme: async () => {
-    const preference = (await loadWindowState()).theme;
-    if (preference === "dark" || preference === "light") return preference;
-    return nativeTheme.shouldUseDarkColors ? "dark" : "light";
-  },
+  preferredTheme: async () => (nativeTheme.shouldUseDarkColors ? "dark" : "light"),
   broadcast,
 });
 // The embedded editor follows Cake's appearance: push theme changes whenever the
@@ -525,23 +515,6 @@ async function reconcileApplicationSessions() {
       [...cakeChatSessionIds].sort().join("\n");
   if (changed)
     await runMainEffect(reconcileResolvedSessions(projectSessionIds, cakeChatSessionIds));
-}
-
-function statePath() {
-  return join(app.getPath("userData"), "window-state.json");
-}
-
-async function loadWindowState(): Promise<WindowViewState> {
-  try {
-    return windowViewStateSchema.parse(JSON.parse(await readFile(statePath(), "utf8")));
-  } catch {
-    return windowViewStateSchema.parse({});
-  }
-}
-
-async function saveWindowState(state: WindowViewState) {
-  const parsed = windowViewStateSchema.parse(state);
-  await windowStateFileWriter.write(statePath(), `${JSON.stringify(parsed, null, 2)}\n`);
 }
 
 function setPiState(host: PiHost, state: PiHost["state"]) {
@@ -1808,16 +1781,6 @@ async function handleCakeRequest(
       type: "inline-widget-compiled",
       widget: publishInlineWidget(compiled),
     });
-  }
-  if (request.type === "load-window-state")
-    return desktopResponseSchema.parse({
-      type: "window-state-loaded",
-      state: await loadWindowState(),
-    });
-  if (request.type === "save-window-state") {
-    await saveWindowState(request.state);
-    void vscodeEditor.updateTheme();
-    return desktopResponseSchema.parse({ type: "window-state-saved" });
   }
   if (request.type === "set-utility-model") {
     const state = await runMainEffect(setUtilityModel(request.model));

@@ -1,4 +1,4 @@
-import { Store, observable } from "r-state-tree";
+import { Store, observable, snapshot } from "r-state-tree";
 import type {
   Annotation,
   Attachment,
@@ -45,7 +45,6 @@ export interface MessageComposerStoreProps {
   canonicalParts(): UiPart[];
   draft(): string;
   setDraft(value: string): void;
-  persist(): void;
   canSubmit(): boolean;
   isStreaming(): boolean;
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
@@ -64,9 +63,9 @@ export interface MessageComposerStoreProps {
 
 /** Owns attachments, the local prompt queue, optimistic immediate prompts, and prompt delivery. */
 export class MessageComposerStore extends Store<MessageComposerStoreProps> {
-  attachments: Attachment[] = observable([]);
-  annotations: Annotation[] = observable([]);
-  editorContextAttachment: Extract<Attachment, { kind: "source" }> | undefined;
+  @snapshot attachments: Attachment[] = observable([]);
+  @snapshot annotations: Annotation[] = observable([]);
+  @snapshot editorContextAttachment: Extract<Attachment, { kind: "source" }> | undefined;
   pendingUserMessages: PendingUserMessage[] = observable([]);
   queuedPrompts: QueuedPrompt[] = observable([]);
   focusRequestRevision = 0;
@@ -167,7 +166,6 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
             ),
         ),
       );
-      this.props.persist();
     } catch (error) {
       if (this.signal.aborted) return;
       this.reportError(error);
@@ -195,7 +193,6 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       return;
     }
     this.annotations.push({ id: crypto.randomUUID(), ...annotation });
-    this.props.persist();
     this.requestFocus();
   }
 
@@ -205,7 +202,6 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       const annotation = this.annotations[index];
       if (!annotation) return;
       this.annotations.splice(index, 1, { ...annotation, ...update });
-      this.props.persist();
     }
   }
 
@@ -213,13 +209,11 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     const index = this.annotations.findIndex((annotation) => annotation.id === id);
     if (index >= 0) {
       this.annotations.splice(index, 1);
-      this.props.persist();
     }
   }
 
   setEditorContextAttachment(attachment: Extract<Attachment, { kind: "source" }> | undefined) {
     this.editorContextAttachment = attachment;
-    this.props.persist();
   }
 
   addSourceAttachment(attachment: Extract<Attachment, { kind: "source" }>) {
@@ -231,7 +225,6 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     );
     if (!duplicate) {
       this.attachments.push(attachment);
-      this.props.persist();
     }
     this.requestFocus();
   }
@@ -243,7 +236,6 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
       const attachments = await pastedImageAttachments(files, 20 - this.attachments.length);
       if (this.signal.aborted) return;
       this.attachments.push(...attachments);
-      this.props.persist();
     } catch (error) {
       if (this.signal.aborted) return;
       this.reportError(error);
@@ -261,13 +253,11 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     if (this.editorContextAttachment) {
       if (index === 0) {
         this.editorContextAttachment = undefined;
-        this.props.persist();
         return;
       }
       index -= 1;
     }
     this.attachments.splice(index, 1);
-    this.props.persist();
   }
 
   async submit(deliveryOverride?: "steer", renderUserMessageAsMarkdown = false) {
@@ -643,11 +633,6 @@ export class MessageComposerStore extends Store<MessageComposerStoreProps> {
     this.attachments.splice(0);
     this.annotations.splice(0);
     this.editorContextAttachment = undefined;
-  }
-
-  restoreStagedAttachments(attachments: readonly Attachment[]) {
-    this.restoreAttachments(attachments);
-    this.props.persist();
   }
 
   private restoreAttachments(attachments: readonly Attachment[]) {

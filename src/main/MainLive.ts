@@ -30,6 +30,10 @@ import {
 } from "../services/subagents/SubagentEnvironment";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import { makeApplicationStorageLive } from "../services/storage/ApplicationStorage";
+import {
+  makeWindowStateStorageLive,
+  type WindowStateStorage,
+} from "../services/storage/WindowStateStorage";
 import { BootstrapLive } from "./BootstrapLive";
 import { MainApplication, type MainApplicationHooks } from "./MainApplication";
 
@@ -42,8 +46,12 @@ const makeMainLive = (
     Layer.provide(BootstrapLive),
   );
   const applicationLive = ApplicationState.layer.pipe(Layer.provide(storageLive));
+  const windowStateLive = makeWindowStateStorageLive(application.getPath("userData")).pipe(
+    Layer.provide(BootstrapLive),
+  );
   const servicesLive = Layer.mergeAll(
     applicationLive,
+    windowStateLive,
     makePiModelsLive(piAgentDirectory),
     makePiAgentResourcesLive(piAgentDirectory),
     makePiSessionsLive(),
@@ -67,6 +75,7 @@ export interface LaunchMainApplicationOptions extends Omit<MainApplicationHooks,
 let launched = false;
 type MainService =
   | ApplicationState
+  | WindowStateStorage
   | PiAgentResources
   | PiModels
   | PiSessions

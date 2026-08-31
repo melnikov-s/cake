@@ -39,7 +39,12 @@ import {
   DiscussionSessionUpdate,
   DiscussionThread,
 } from "../../domain/discussion-session-data";
-import { ProjectCatalogUpdate, SessionCatalogUpdate } from "../../domain/catalog-data";
+import {
+  CakeChatCatalogUpdate,
+  DiscussionCatalogUpdate,
+  ProjectCatalogUpdate,
+  SessionCatalogUpdate,
+} from "../../domain/catalog-data";
 import {
   SubagentError,
   SubagentHandleId,
@@ -60,6 +65,13 @@ import {
   ApplicationEncodeError,
   ApplicationWriteError,
 } from "../../services/storage/ApplicationStorage";
+import {
+  WindowStateEncodeError,
+  WindowStateMalformedDocumentError,
+  WindowStateReadError,
+  WindowStateUnsupportedVersionError,
+  WindowStateWriteError,
+} from "../../services/storage/WindowStateStorage";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 
 export class FoundationFailure extends Schema.TaggedError<FoundationFailure>()(
@@ -79,6 +91,16 @@ const ModelPresetMutationError = Schema.Union([
   ApplicationWriteError,
 ]);
 
+const WindowStateLoadError = Schema.Union([
+  WindowStateReadError,
+  WindowStateMalformedDocumentError,
+  WindowStateUnsupportedVersionError,
+  WindowStateEncodeError,
+  WindowStateWriteError,
+]);
+
+const WindowStateSaveError = Schema.Union([WindowStateEncodeError, WindowStateWriteError]);
+
 const ModelResolutionError = Schema.Union([
   ModelPresetNotFoundError,
   PiModelCatalogError,
@@ -95,6 +117,14 @@ export const CakeRpc = RpcGroup.make(
   }),
   Rpc.make("application.getState", {
     success: RendererApplicationState,
+  }),
+  Rpc.make("windowState.load", {
+    success: Schema.Json,
+    error: WindowStateLoadError,
+  }),
+  Rpc.make("windowState.save", {
+    payload: { snapshot: Schema.Json },
+    error: WindowStateSaveError,
   }),
   Rpc.make("projects.observeCatalog", {
     success: ProjectCatalogUpdate,
@@ -137,6 +167,11 @@ export const CakeRpc = RpcGroup.make(
   Rpc.make("cakeChats.list", {
     success: Schema.Array(CakeChatSummary),
     error: CakeChatError,
+  }),
+  Rpc.make("cakeChats.observeCatalog", {
+    success: CakeChatCatalogUpdate,
+    error: CakeChatError,
+    stream: true,
   }),
   Rpc.make("cakeChats.inspect", {
     payload: { sessionId: CakeChatTarget.fields.sessionId },
@@ -220,6 +255,15 @@ export const CakeRpc = RpcGroup.make(
       result: Schema.Json,
     },
     error: CakeChatError,
+  }),
+  Rpc.make("discussionSessions.observeCatalog", {
+    payload: {
+      workingDirectory: DiscussionSessionTarget.fields.workingDirectory,
+      parentSessionId: DiscussionSessionTarget.fields.parentSessionId,
+    },
+    success: DiscussionCatalogUpdate,
+    error: DiscussionSessionError,
+    stream: true,
   }),
   Rpc.make("discussionSessions.list", {
     payload: {

@@ -71,6 +71,20 @@ export function makeRendererClient(runtime: RendererRuntime): RendererClient {
           options,
         ),
     },
+    windowState: {
+      load: (options) =>
+        run(
+          "windowState.load",
+          withClient((client) => client.windowState.load()),
+          options,
+        ),
+      save: (snapshot, options) =>
+        run(
+          "windowState.save",
+          withClient((client) => client.windowState.save(snapshot)),
+          options,
+        ),
+    },
     models: {
       list: (options) =>
         run(

@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { WorktreeRecord } from "./worktree-contract";
 import { artifactRecordSchema } from "./artifact-contract";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { sourceLocationSchema } from "./source-location";
@@ -488,13 +487,6 @@ export const sessionSnapshotSchema = z.object({
   artifacts: ipcProjectionArray(artifactRecordSchema, 10_000).optional(),
 });
 
-export const sessionPreviewSchema = z.object({
-  workspacePath: z.string().max(4_096),
-  sessionId: z.string().min(1).max(256),
-  sessionFile: z.string().max(4_096),
-  parts: ipcProjectionArray(uiPartSchema, 50_000),
-});
-
 const projectRecordSchema = z.object({
   path: z.string().min(1).max(4_096),
   name: z.string().min(1).max(512),
@@ -513,70 +505,8 @@ export const applicationStateSchema = z.object({
   vscodeServerPath: z.string().max(4_096).optional(),
 });
 
-const windowConversationSelectionSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("project-session"),
-    workspacePath: z.string().min(1).max(4_096),
-    sessionId: z.string().min(1).max(256),
-  }),
-  z.object({ kind: z.literal("cake-chat"), sessionId: z.string().min(1).max(256) }),
-]);
-
-const workLogViewModeSchema = z.enum(["auto", "diff", "log"]);
-const workLogsExpansionSchema = z.enum(["collapsed", "expanded", "fully-expanded"]);
-
-export const windowViewStateSchema = z.object({
-  projectPath: z.string().max(4_096).optional(),
-  selectedSessionId: z.string().max(256).optional(),
-  activeConversation: windowConversationSelectionSchema.optional(),
-  recentProjectPaths: z.array(z.string().max(4_096)).max(50).default([]),
-  draft: z.string().max(262_144).default(""),
-  theme: z.enum(["system", "light", "dark"]).default("system"),
-  workLogViewMode: workLogViewModeSchema.default("auto"),
-  workLogsExpansion: workLogsExpansionSchema.default("collapsed"),
-  draftsBySession: z.record(z.string(), z.string().max(262_144)).default({}),
-  pendingProjectSessions: z
-    .array(
-      z.object({
-        sessionId: z.string().min(1).max(256),
-        workspacePath: z.string().min(1).max(4_096),
-        lifecycle: z.enum(["staged", "saved-draft", "starting"]),
-        draft: z.string().max(262_144),
-        attachments: z.array(attachmentSchema).max(20).optional(),
-        configuration: chatConfigurationSchema.optional(),
-        name: z.string().min(1).max(512).optional(),
-        resolved: z.boolean().optional(),
-        stagedPrompt: z
-          .object({
-            text: z.string().max(262_144),
-            attachments: z.array(attachmentSchema).max(20),
-          })
-          .optional(),
-      }),
-    )
-    .max(1_000)
-    .default([]),
-  pendingCakeChat: z
-    .object({
-      sessionId: z.string().min(1).max(256),
-      draft: z.string().max(262_144),
-      configuration: chatConfigurationSchema.optional(),
-      name: z.string().min(1).max(512).optional(),
-      draftSession: z.boolean().optional(),
-      resolved: z.boolean().optional(),
-      stagedPrompt: z
-        .object({
-          text: z.string().max(262_144),
-          attachments: z.array(attachmentSchema).max(20),
-        })
-        .optional(),
-    })
-    .optional(),
-  lastChatConfiguration: chatConfigurationSchema.optional(),
-});
-
-export type WorkLogViewMode = z.infer<typeof workLogViewModeSchema>;
-export type WorkLogsExpansion = z.infer<typeof workLogsExpansionSchema>;
+export type WorkLogViewMode = "auto" | "diff" | "log";
+export type WorkLogsExpansion = "collapsed" | "expanded" | "fully-expanded";
 export type FileSuggestion = z.infer<typeof fileSuggestionSchema>;
 export type Annotation = z.infer<typeof annotationSchema>;
 export type Attachment = z.infer<typeof attachmentSchema>;
@@ -590,17 +520,13 @@ export type ChatConfiguration = z.infer<typeof chatConfigurationSchema>;
 export type PiSettings = z.infer<typeof piSettingsSchema>;
 export type PiSettingUpdate = z.infer<typeof piSettingUpdateSchema>;
 export type SessionSnapshot = z.infer<typeof sessionSnapshotSchema>;
-export type SessionPreview = z.infer<typeof sessionPreviewSchema>;
-export type SessionSummary = z.infer<typeof sessionSummarySchema>;
-export type GlobalSessionSummary = SessionSummary & {
-  /** User-marked reminder state shown as the unread activity badge. */
-  unread: boolean;
+export interface SessionPreview {
   workspacePath: string;
-  workspaceName: string;
-  /** Set when the session works inside a managed worktree belonging to this project. */
-  projectPath?: string;
-  managedWorktree?: WorktreeRecord;
-};
+  sessionId: string;
+  sessionFile: string;
+  parts: UiPart[];
+}
+export type SessionSummary = z.infer<typeof sessionSummarySchema>;
 export type SessionTreeEntry = z.infer<typeof sessionTreeEntrySchema>;
 export type CompatibilityResource = z.infer<typeof compatibilityResourceSchema>;
 export type ResourceDiagnostic = z.infer<typeof resourceDiagnosticSchema>;
@@ -609,5 +535,3 @@ export type ExtensionUiState = z.infer<typeof extensionUiStateSchema>;
 export type ExtensionUiEvent = z.infer<typeof extensionUiEventSchema>;
 export type ProjectRecord = z.infer<typeof projectRecordSchema>;
 export type ApplicationState = z.infer<typeof applicationStateSchema>;
-export type WindowConversationSelection = z.infer<typeof windowConversationSelectionSchema>;
-export type WindowViewState = z.infer<typeof windowViewStateSchema>;

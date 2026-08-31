@@ -14,7 +14,6 @@ export class SessionSummary extends Model {
   projectName = "";
   workingDirectory = "";
   managedWorktree: ManagedWorktreeContext | undefined;
-  /** Renderer-owned catalog entry that does not yet have a Pi Session. */
   pending = false;
   draft = false;
 }

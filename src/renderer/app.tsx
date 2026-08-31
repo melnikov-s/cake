@@ -52,7 +52,6 @@ export const App = observer(function App() {
   const store = root.projectWorkbenchStore;
   const sidebar = root.sidebarStore;
   const projects = root.projectCatalogStore;
-  const persistence = root.windowPersistence;
   const reviews = root.reviewsStore;
   const settings = root.settingsStore;
   const session = store.activeSession;
@@ -70,26 +69,23 @@ export const App = observer(function App() {
       : undefined;
   const workbenchError = store.contextError(session?.sessionId);
   const chatError =
-    persistence.error ??
     workbenchError?.message ??
     composer?.error ??
     reviews.error ??
     chatConfiguration?.error ??
     extensionUi.error ??
     artifactInteractions?.error;
-  const chatErrorDetails = persistence.error
-    ? persistence.errorDetails
-    : workbenchError
-      ? workbenchError.details
-      : composer?.error
-        ? composer.errorDetails
-        : reviews.error
-          ? reviews.errorDetails
-          : chatConfiguration?.error
-            ? chatConfiguration.errorDetails
-            : extensionUi.error
-              ? extensionUi.errorDetails
-              : artifactInteractions?.errorDetails;
+  const chatErrorDetails = workbenchError
+    ? workbenchError.details
+    : composer?.error
+      ? composer.errorDetails
+      : reviews.error
+        ? reviews.errorDetails
+        : chatConfiguration?.error
+          ? chatConfiguration.errorDetails
+          : extensionUi.error
+            ? extensionUi.errorDetails
+            : artifactInteractions?.errorDetails;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(292);
   const [commandPaneWidth, setCommandPaneWidth] = useState(420);
@@ -217,15 +213,6 @@ export const App = observer(function App() {
         }
       : undefined;
 
-  if (!persistence.hydrated)
-    return (
-      <main className="flex h-screen flex-col items-center justify-center gap-3.5 bg-background text-muted-foreground">
-        <span className="grid size-[27px] select-none place-items-center rounded-bl-[6px] rounded-br-[9px] rounded-tl-[9px] rounded-tr-[6px] bg-foreground text-sm font-black tracking-tighter text-background -rotate-2">
-          C
-        </span>
-        <LoadingState label="Restoring Cake" />
-      </main>
-    );
   if (store.embeddedEditorStore.visible && session && projectTranscriptBehavior)
     return (
       <>
@@ -374,7 +361,6 @@ export const App = observer(function App() {
               settings={settings}
               configuration={chatConfiguration}
               customization={root.customizationStore}
-              onViewStateChange={() => persistence.schedule()}
             />
           </div>
         ) : globalChat ? (

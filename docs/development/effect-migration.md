@@ -39,9 +39,10 @@ the main/domain/RPC runtime and is also used privately by renderer
 infrastructure. Ordinary renderer Models and Stores do not import Effect.
 
 The renderer has one window-local Effect runtime behind a permanent typed
-Promise `RendererClient`. One window-owned Model synchronizer consumes Effect
-RPC Streams, maps Updates to snapshots, and applies them to r-state-tree Models.
-This adapter is an
+Promise `RendererClient`. One window-owned Model synchronizer consumes Effect RPC Streams, maps Updates to
+snapshots, and applies them to r-state-tree Models. Renderer bootstrap attaches
+that synchronizer and one-way Store snapshot persistence outside the Store tree.
+These adapters are
 intentional architecture boundary, not a temporary compatibility facade.
 
 ## Current implementation baseline
@@ -59,7 +60,8 @@ repository changes vertically:
   migrated Effect command; `DesktopClient` now contains only capabilities awaiting
   later privileged-capability passes.
 - One window-owned Model synchronizer is the only renderer Effect Stream consumer.
-  `RootStore` supplies loaded Models; feature Stores do not access it.
+  Renderer bootstrap attaches it to the mounted Root Store; feature Stores do
+  not access it.
 - `src/main/main.ts` and `src/main/pi-workspace-driver.ts` still contain legacy
   capability paths that later vertical slices must remove.
 
@@ -93,8 +95,8 @@ ownership boundaries; it does not silently discard product behavior.
    Electron IPC, Node, Pi, Git, filesystem, or main implementations.
 6. **Keep renderer Effect mechanics isolated.** Ordinary r-state-tree Models and
    Stores never import Effect, Layers, Fibers, Streams, or RPC envelopes.
-   `RendererClient` adapts commands; the Model synchronizer adapts Streams and is
-   supplied loaded Models only by `RootStore`.
+   `RendererClient` adapts commands; renderer bootstrap attaches the Model
+   synchronizer to the mounted Root Store outside the Store tree.
 7. **Avoid transitional compatibility work.** Change all callers in one bulk
    pass and delete the old path once. Introduce an adapter only when it is part
    of the final architecture.
@@ -377,8 +379,9 @@ state:
 - create one small window-owned Model synchronizer that subscribes to current-first
   Streams, maps Updates to snapshots, applies them with `applySnapshot`, filters
   stale revisions/generations, reconnects from Snapshots, and cleans up;
-- define final Store/client injection; only `RootStore` supplies loaded Models to
-  the synchronizer, and feature Stores never access synchronization machinery;
+- define final Store/client injection; renderer bootstrap attaches the
+  synchronizer outside the Store tree, and feature Stores never access
+  synchronization machinery;
 - update all renderer call sites mechanically to the final client surface;
 - remove replaced Promise-client APIs, raw bridge calls for migrated
   capabilities, and temporary runtime helpers in one sweep.
@@ -401,8 +404,8 @@ Convert the entire renderer projection/state layer together:
 3. update all Stores to read stable Models and call `RendererClient` commands;
 4. remove broad `DesktopClientEvent` translation, root projection routing,
    per-Store authoritative subscriptions, and duplicate state;
-5. implement versioned r-state-tree hydration/persistence after the final Store
-   tree is known;
+5. implement versioned one-time r-state-tree Store hydration before mount and
+   external one-way snapshot persistence after the final Store tree is known;
 6. delete superseded renderer helpers, tests, events, and facades in one sweep.
 
 Preserve stable Model identity, Snapshot/Event ordering, one observation per
@@ -502,10 +505,10 @@ every document or rerunning inventory.
 
 ## Progress table
 
-| Work                                  | Status      | Notes / next executable step                                                                                                                                                                  |
-| ------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phases 0–6                            | Complete    | Effect dependency, main runtime, RPC, typed storage, Model Presets, Pi Services, and Cake Session domain are established.                                                                     |
-| Bulk Pass A — renderer boundary       | Complete    | One window runtime, semantic `RendererClient`, Store Context injection, and the Root-only Model synchronizer are established; replaced Effect adapters and migrated event routes are removed. |
-| Bulk Pass B — renderer state          | Not started | Convert every authoritative projection and Store dependency together, then implement final r-state-tree hydration/persistence and remove broad event routing.                                 |
-| Bulk Pass C — privileged capabilities | Not started | Migrate all remaining native/product Services, domain operations, RPC, renderer wiring, and legacy driver/handler removal as one broad pass.                                                  |
-| Bulk Pass D — final enforcement       | Not started | Remove migration scaffolding, add import boundaries, update final docs, and run the release verification matrix once.                                                                         |
+| Work                                  | Status      | Notes / next executable step                                                                                                                                                                                                  |
+| ------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phases 0–6                            | Complete    | Effect dependency, main runtime, RPC, typed storage, Model Presets, Pi Services, and Cake Session domain are established.                                                                                                     |
+| Bulk Pass A — renderer boundary       | Complete    | One window runtime, semantic `RendererClient`, Store Context injection, and the Root-only Model synchronizer are established; replaced Effect adapters and migrated event routes are removed.                                 |
+| Bulk Pass B — renderer state          | Complete    | Catalogs, loaded conversations, Discussions, Subagents, artifacts, and extension UI now synchronize into passive Models; Store hydration is one-time before mount and external one-way snapshot persistence owns later saves. |
+| Bulk Pass C — privileged capabilities | Not started | Migrate all remaining native/product Services, domain operations, RPC, renderer wiring, and legacy driver/handler removal as one broad pass.                                                                                  |
+| Bulk Pass D — final enforcement       | Not started | Remove migration scaffolding, add import boundaries, update final docs, and run the release verification matrix once.                                                                                                         |

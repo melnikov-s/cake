@@ -4,10 +4,8 @@ import type { AppearanceSettingsStore } from "../stores/AppearanceSettingsStore"
 
 export const SettingsAppearanceSection = observer(function SettingsAppearanceSection({
   appearance,
-  onViewStateChange,
 }: {
   appearance: AppearanceSettingsStore;
-  onViewStateChange(): void;
 }) {
   return (
     <section className="border-t border-border py-5" aria-labelledby="appearance-title">
@@ -38,7 +36,6 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
                 (candidate) => candidate === event.target.value,
               );
               if (theme) appearance.setTheme(theme);
-              onViewStateChange();
             }}
           >
             <option value="system">System</option>

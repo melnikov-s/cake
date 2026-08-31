@@ -182,8 +182,8 @@ Before implementing renderer UI:
 - Compose Stores according to ownership and lifetime. Put a shared Store near the root; nest it only when its lifetime and behavior are truly owned by one parent surface.
 - Parent Stores coordinate cross-Store work. They must not duplicate child state or expose one-for-one forwarding facades for a child's API.
 - Existing concentration of unrelated state is a refactoring signal, not precedent for adding the next field or method there.
-- Keep only tiny DOM, focus, hover, measurement, or isolated input state in React. Workflow state, async policy, persistence, and workflow timers belong to a Store. One window-owned Model synchronizer owns authoritative RPC Stream subscriptions and revision/reconnect handling, maps Updates to snapshots, and applies them with `applySnapshot`.
-- Ordinary Stores and Models do not import Effect, Effect RPC, Layers, Fibers, raw transport contracts, or the Model synchronizer. Stores invoke the typed Promise-based `RendererClient` and read Models. Only `RootStore`, as composition boundary, supplies the synchronizer with the current loaded Models.
+- Keep only tiny DOM, focus, hover, measurement, or isolated input state in React. Workflow state, async policy, persistence policy, and workflow timers belong to a Store. One window-owned Model synchronizer owns authoritative RPC Stream subscriptions and revision/reconnect handling, maps Updates to snapshots, and applies them with `applySnapshot`. One-way window snapshot transport is renderer infrastructure outside the Store tree.
+- Ordinary Stores and Models do not import Effect, Effect RPC, Layers, Fibers, raw transport contracts, the Model synchronizer, or window snapshot transport. Stores invoke the typed Promise-based `RendererClient` and read Models. Renderer bootstrap attaches synchronization and persistence infrastructure to the mounted Root Store.
 
 Before adding state, identify its authority, cohesive owner, lifetime, persistence boundary, and concurrency policy. If the proposed owner cannot be described without saying "everything in this window" or listing unrelated surfaces, introduce or use a focused Store instead.
 

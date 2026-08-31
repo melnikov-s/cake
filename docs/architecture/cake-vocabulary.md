@@ -231,9 +231,16 @@ Stores and React.
 The renderer's single window-owned Stream-to-Model boundary. It listens to
 current-first Effect RPC Streams, maps validated Updates to ordinary r-state-tree
 snapshots, and applies them with `applySnapshot`. It owns subscription,
-revision, reconnect, and interruption mechanics. Only the Root Store composition
-boundary supplies the current loaded Models; feature Stores and Models never
-access the synchronizer.
+revision, reconnect, and interruption mechanics. Renderer bootstrap attaches it
+to the mounted Root Store so it can reactively discover current loaded Models;
+feature Stores and Models never access the synchronizer.
+
+### Window state persistence
+
+Window-owned renderer infrastructure that loads one versioned r-state-tree Store
+snapshot before the Root Store mounts, then observes snapshots from the mounted
+Store tree and saves them through `RendererClient`. It is not a Store, does not
+participate in Store Context, and never reapplies storage to a mounted Store.
 
 ### Store
 

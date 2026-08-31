@@ -25,6 +25,7 @@ type CommandGroup<Group> = {
  */
 export interface RendererClient {
   readonly application: CommandGroup<CakeIpcClientService["application"]>;
+  readonly windowState: CommandGroup<CakeIpcClientService["windowState"]>;
   readonly models: {
     readonly list: (options?: RendererCommandOptions) => Promise<ReadonlyArray<ModelOption>>;
     readonly refresh: (options?: RendererCommandOptions) => Promise<void>;

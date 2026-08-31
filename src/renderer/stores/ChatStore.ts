@@ -1,4 +1,4 @@
-import { observable, Store, untracked } from "r-state-tree";
+import { observable, snapshot, Store, untracked } from "r-state-tree";
 import type { StateSnapshot } from "react-virtuoso";
 import type {
   Annotation,
@@ -61,7 +61,6 @@ export interface ChatStoreProps {
   rewordComposerSelection?(selection: string, prompt?: string): Promise<string>;
   hideThinking?(): boolean;
   error?(): { message?: string; details?: string; title?: string };
-  persist?(): void;
   workLogViewMode?(): WorkLogViewMode | undefined;
   setWorkLogViewMode?(mode: WorkLogViewMode): void;
   workLogsExpansion?(): WorkLogsExpansion | undefined;
@@ -82,7 +81,7 @@ export type { WorkLogViewMode, WorkLogsExpansion };
 
 /** Common state and behavior contract for every Cake conversation surface. */
 export class ChatStore extends Store<ChatStoreProps> {
-  draft = "";
+  @snapshot draft = "";
   renderUserMessageAsMarkdown = false;
   private localWorkLogViewMode: WorkLogViewMode = "auto";
   private localWorkLogsExpansion: WorkLogsExpansion = "collapsed";
@@ -311,7 +310,6 @@ export class ChatStore extends Store<ChatStoreProps> {
     if (this.draft !== value) this.draftRevision += 1;
     this.draft = value;
     this.rewordError = undefined;
-    this.props.persist?.();
   }
 
   showComposerContextMenu(selection: string, x: number, y: number) {

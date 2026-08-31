@@ -1,4 +1,4 @@
-import { Store, child, createStore, observable, updateStore } from "r-state-tree";
+import { Store, child, createStore, observable, snapshot, updateStore } from "r-state-tree";
 import type { Attachment, ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
 import type { DesktopClient } from "../desktop-client";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -19,7 +19,6 @@ export interface SessionRegistryStoreProps {
   canSubmit(sessionId: string): boolean;
   isActive(sessionId: string): boolean;
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
-  persist(): void;
   persistNow(): Promise<void>;
   projectName(workspacePath: string): string;
   abort(): Promise<void>;
@@ -42,24 +41,23 @@ export interface SessionRegistryStoreProps {
 
 /** Owns the keyed collection of loaded per-session Store instances for a window. */
 export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
-  readonly targets: SessionTarget[] = observable([]);
+  @snapshot readonly targets: SessionTarget[] = observable([]);
   // Pi may take time to include a newly started session in its disk-backed listing.
   // Retain all such sessions independently from unsent renderer-owned sessions.
-  private readonly unlistedNewSessionIds: Set<string> = observable(new Set<string>());
-  private readonly materializedSessionIds: Set<string> = observable(new Set<string>());
+  @snapshot private readonly unlistedNewSessionIds: string[] = observable([]);
+  @snapshot private readonly materializedSessionIds: string[] = observable([]);
   // A deferred new session has no runtime yet, so configuration changes are kept
   // locally and delivered with the first prompt instead of runtime commands.
-  private readonly pendingConfigurationsBySession: Record<string, ChatConfiguration> = observable(
-    {},
-  );
-  private readonly pendingNamesBySession: Record<string, string> = observable({});
-  private readonly draftSessionsById: Record<
+  @snapshot private readonly pendingConfigurationsBySession: Record<string, ChatConfiguration> =
+    observable({});
+  @snapshot private readonly pendingNamesBySession: Record<string, string> = observable({});
+  @snapshot private readonly draftSessionsById: Record<
     string,
     { text: string; attachments: Attachment[]; resolved: boolean }
   > = observable({});
-  private readonly temporarySessionIds: Set<string> = observable(new Set<string>());
+  @snapshot private readonly temporarySessionIds: string[] = observable([]);
   /** The one unsent, unsaved project chat. Explicit drafts are not staged chats. */
-  private stagedSessionId: string | undefined;
+  @snapshot private stagedSessionId: string | undefined;
   private readonly sessionsById = new Map<string, ProjectSessionStore>();
   private readonly sessionWorkspacePaths = new Map<string, string>();
 
@@ -77,7 +75,6 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         canSubmit: () => this.props.canSubmit(target.sessionId),
         isActive: () => this.props.isActive(target.sessionId),
         openCommandPane: (pane) => this.props.openCommandPane(pane),
-        persist: () => this.props.persist(),
         projectName: () => this.props.projectName(target.workspacePath),
         abort: () => this.props.abort(),
         renameSession: (name) => this.props.renameSession(target.sessionId, name),
@@ -117,28 +114,29 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   load(sessionId: string, workingDirectory: string) {
     this.rememberSessionLocation(sessionId, workingDirectory);
     const session = this.addTarget(sessionId, workingDirectory);
-    this.materializedSessionIds.add(sessionId);
+    addUnique(this.materializedSessionIds, sessionId);
     return session;
   }
 
   get materializedSessions() {
-    return this.sessions.filter((session) => this.materializedSessionIds.has(session.sessionId));
+    return this.sessions.filter((session) =>
+      this.materializedSessionIds.includes(session.sessionId),
+    );
   }
 
   markNewSessionStarted(sessionId: string) {
-    if (!this.temporarySessionIds.delete(sessionId)) return;
+    if (!removeValue(this.temporarySessionIds, sessionId)) return;
     if (this.stagedSessionId === sessionId) this.stagedSessionId = undefined;
     delete this.pendingConfigurationsBySession[sessionId];
     delete this.pendingNamesBySession[sessionId];
     delete this.draftSessionsById[sessionId];
     this.props.catalog?.setDraft(sessionId, false);
-    this.unlistedNewSessionIds.add(sessionId);
-    this.props.persist();
+    addUnique(this.unlistedNewSessionIds, sessionId);
   }
 
   retainedNewSessionIds(workspacePath: string) {
     return [
-      ...[...this.temporarySessionIds].filter((sessionId) => !this.isStagedSession(sessionId)),
+      ...this.temporarySessionIds.filter((sessionId) => !this.isStagedSession(sessionId)),
       ...this.unlistedNewSessionIds,
     ].filter((sessionId) => this.sessionWorkspacePaths.get(sessionId) === workspacePath);
   }
@@ -146,26 +144,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   prepareNewSession(workspacePath: string, sessionId: string) {
     this.rememberSessionLocation(sessionId, workspacePath);
     const session = this.addTarget(sessionId, workspacePath);
-    // Deferred sessions have no Pi runtime snapshot until their first prompt. Seed
-    // their workspace-scoped menu from a loaded sibling so skills remain invokable.
-    if (session.model.commands.length === 0) {
-      const source = this.sessions.find(
-        (candidate) =>
-          candidate.sessionId !== sessionId &&
-          candidate.workspacePath === workspacePath &&
-          candidate.hydrated &&
-          candidate.model.commands.length > 0,
-      );
-      if (source)
-        session.model.commands.push(
-          ...source.model.commands.map((command) => ({
-            ...command,
-            sourceInfo: { ...command.sourceInfo },
-          })),
-        );
-    }
-    session.markHydrated();
-    this.temporarySessionIds.add(sessionId);
+    addUnique(this.temporarySessionIds, sessionId);
     return session;
   }
 
@@ -190,7 +169,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   }
 
   isTemporarySession(sessionId: string) {
-    return this.temporarySessionIds.has(sessionId);
+    return this.temporarySessionIds.includes(sessionId);
   }
 
   isDraftSession(sessionId: string) {
@@ -202,7 +181,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   }
 
   async createDraftSession(sessionId: string, text: string, attachments: Attachment[]) {
-    if (!this.temporarySessionIds.has(sessionId))
+    if (!this.temporarySessionIds.includes(sessionId))
       throw new Error("Only a new session can be saved as a draft");
     const session = this.findSession(sessionId)!;
     const projectPath =
@@ -240,7 +219,6 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     delete this.draftSessionsById[sessionId];
     this.props.catalog?.setDraft(sessionId, false);
     this.props.catalog?.setResolved(sessionId, false);
-    this.props.persist();
     return current;
   }
 
@@ -249,12 +227,11 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     if (!current) return false;
     this.draftSessionsById[sessionId] = { ...current, resolved };
     this.props.catalog?.setResolved(sessionId, resolved);
-    this.props.persist();
     return true;
   }
 
   relocateTemporarySession(sessionId: string, workspacePath: string) {
-    if (!this.temporarySessionIds.has(sessionId))
+    if (!this.temporarySessionIds.includes(sessionId))
       throw new Error("Only an unsent session can choose another worktree.");
     const session = this.findSession(sessionId);
     const index = this.targets.findIndex((target) => target.sessionId === sessionId);
@@ -276,6 +253,20 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
       );
   }
 
+  commandsForSession(sessionId: string, workspacePath: string) {
+    const session = this.findSession(sessionId);
+    if (session?.model.commands.length) return session.model.commands;
+    return (
+      this.sessions.find(
+        (candidate) =>
+          candidate.sessionId !== sessionId &&
+          candidate.workspacePath === workspacePath &&
+          candidate.hydrated &&
+          candidate.model.commands.length > 0,
+      )?.model.commands ?? []
+    );
+  }
+
   pendingConfiguration(sessionId: string) {
     return this.pendingConfigurationsBySession[sessionId];
   }
@@ -285,11 +276,10 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   }
 
   setPendingName(sessionId: string, name: string) {
-    if (!this.temporarySessionIds.has(sessionId))
+    if (!this.temporarySessionIds.includes(sessionId))
       throw new Error("Only an unsent session can receive an initial name.");
     this.pendingNamesBySession[sessionId] = name;
     this.props.catalog?.rename(sessionId, name);
-    this.props.persist();
   }
 
   applyGeneratedDraftName(sessionId: string, name: string) {
@@ -305,90 +295,15 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     const index = this.targets.findIndex((target) => target.sessionId === sessionId);
     if (index >= 0) this.targets.splice(index, 1);
     this.sessionsById.delete(sessionId);
-    this.temporarySessionIds.delete(sessionId);
+    removeValue(this.temporarySessionIds, sessionId);
     if (this.stagedSessionId === sessionId) this.stagedSessionId = undefined;
-    this.unlistedNewSessionIds.delete(sessionId);
-    this.materializedSessionIds.delete(sessionId);
+    removeValue(this.unlistedNewSessionIds, sessionId);
+    removeValue(this.materializedSessionIds, sessionId);
     delete this.pendingConfigurationsBySession[sessionId];
     delete this.pendingNamesBySession[sessionId];
     delete this.draftSessionsById[sessionId];
     this.sessionWorkspacePaths.delete(sessionId);
     this.props.catalog?.remove(sessionId);
-    this.props.persist();
-  }
-
-  pendingNewSessions() {
-    return [...this.temporarySessionIds].flatMap((sessionId) => {
-      const session = this.findSession(sessionId);
-      if (!session) return [];
-      return [
-        {
-          sessionId,
-          workspacePath: session.workspacePath,
-          lifecycle: this.isDraftSession(sessionId)
-            ? ("saved-draft" as const)
-            : this.isStagedSession(sessionId)
-              ? ("staged" as const)
-              : ("starting" as const),
-          draft: session.chatStore.draft,
-          attachments: session.composerStore.stagedAttachments,
-          configuration: this.pendingConfiguration(sessionId),
-          name: this.pendingName(sessionId),
-          resolved: this.draftSessionPrompt(sessionId)?.resolved ?? false,
-          stagedPrompt: this.draftSessionPrompt(sessionId)
-            ? {
-                text: this.draftSessionPrompt(sessionId)!.text,
-                attachments: this.draftSessionPrompt(sessionId)!.attachments,
-              }
-            : undefined,
-        },
-      ];
-    });
-  }
-
-  restorePendingNewSession(state: {
-    sessionId: string;
-    workspacePath: string;
-    draft: string;
-    attachments?: Attachment[];
-    configuration?: ChatConfiguration;
-    name?: string;
-    lifecycle: "staged" | "saved-draft" | "starting";
-    resolved?: boolean;
-    stagedPrompt?: { text: string; attachments: Attachment[] };
-  }) {
-    const isSavedDraft = state.lifecycle === "saved-draft";
-    const workspacePath = isSavedDraft
-      ? (this.props.catalog?.projectOfManagedWorktree(state.workspacePath) ?? state.workspacePath)
-      : state.workspacePath;
-    const session =
-      state.lifecycle === "staged"
-        ? this.prepareStagedSession(workspacePath, state.sessionId)
-        : this.prepareNewSession(workspacePath, state.sessionId);
-    session.chatStore.setDraft(state.draft);
-    session.composerStore.restoreStagedAttachments(state.attachments ?? []);
-    if (state.configuration) this.setPendingConfiguration(state.sessionId, state.configuration);
-    if (isSavedDraft) {
-      const prompt = state.stagedPrompt ?? {
-        text: state.draft,
-        attachments: state.attachments ?? [],
-      };
-      this.draftSessionsById[state.sessionId] = {
-        ...prompt,
-        resolved: state.resolved ?? false,
-      };
-      session.chatStore.setDraft("");
-      session.composerStore.restoreStagedAttachments([]);
-    }
-    if (state.lifecycle !== "staged")
-      this.props.catalog?.upsertPending(
-        state.sessionId,
-        workspacePath,
-        this.props.projectName(workspacePath),
-        { draft: isSavedDraft, resolved: state.resolved },
-      );
-    if (state.name) this.setPendingName(state.sessionId, state.name);
-    return session;
   }
 
   private addTarget(sessionId: string, workspacePath: string) {
@@ -406,4 +321,15 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
       throw new Error(`Session ID collision detected: ${sessionId}`);
     this.sessionWorkspacePaths.set(sessionId, workspacePath);
   }
+}
+
+function addUnique(values: string[], value: string) {
+  if (!values.includes(value)) values.push(value);
+}
+
+function removeValue(values: string[], value: string) {
+  const index = values.indexOf(value);
+  if (index < 0) return false;
+  values.splice(index, 1);
+  return true;
 }

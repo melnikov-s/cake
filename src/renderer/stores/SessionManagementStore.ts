@@ -28,12 +28,9 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
       return;
     }
     const operationId = this.props.operations.start("project-workbench");
-    const previousTitle = this.props.catalog.rename(sessionId, title);
     try {
       await this.client.projectSessions.rename({ sessionId, name: title }, { signal: this.signal });
     } catch (error) {
-      if (!this.signal.aborted && previousTitle !== undefined)
-        this.props.catalog.rename(sessionId, previousTitle);
       if (!this.signal.aborted) this.props.reportError(error);
     } finally {
       this.props.operations.finish(operationId);
@@ -79,11 +76,7 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     }
   }
 
-  async resolveSessionsById(
-    sessionIds: readonly string[],
-    resolved: boolean,
-    _workingDirectory?: string,
-  ) {
+  async resolveSessionsById(sessionIds: readonly string[], resolved: boolean) {
     if (resolved && !(await (this.props.prepareResolution?.(sessionIds) ?? true))) return 0;
     if (this.signal.aborted) return 0;
     let resolvedCount = 0;

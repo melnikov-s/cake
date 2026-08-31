@@ -2,6 +2,7 @@ import type { Snapshot } from "r-state-tree";
 import type { ConversationSnapshot } from "../domain/conversation-data";
 import { sessionSnapshotSchema } from "../ipc/session-contract";
 import { modelOptionKey } from "./model-option-key";
+import type { ArtifactRecord } from "../ipc/artifact-contract";
 import type { Session } from "../renderer/models/Session";
 
 /** Validates one authoritative conversation Snapshot into Session's canonical Model shape. */
@@ -30,5 +31,24 @@ export function toSessionSnapshot(snapshot: ConversationSnapshot): Snapshot<Sess
     resources: parsed.compatibility.resources,
     resourceDiagnostics: parsed.compatibility.diagnostics,
     tree: parsed.tree,
+    artifacts: (parsed.artifacts ?? []).map(artifactSnapshot),
+    extensionUi: {
+      title: parsed.extensionUi.title,
+      statuses: parsed.extensionUi.statuses,
+      notifications: [],
+      compatibilityDiagnostics: [],
+      editorText: undefined,
+      editorTextRevision: 0,
+    },
   } as Snapshot<Session>;
+}
+
+function artifactSnapshot(record: ArtifactRecord) {
+  return {
+    ...record.artifact,
+    workspacePath: record.workspacePath,
+    digest: record.digest,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
 }

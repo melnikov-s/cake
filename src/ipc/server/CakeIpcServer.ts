@@ -19,6 +19,7 @@ import type { CakeChatEnvironmentOperations } from "../../services/cake-chats/Ca
 import type { DiscussionSessionEnvironmentService } from "../../services/discussion-sessions/DiscussionSessionEnvironment";
 import type { SubagentEnvironmentService } from "../../services/subagents/SubagentEnvironment";
 import { piSettingUpdateSchema } from "../session-contract";
+import { WindowStateStorage } from "../../services/storage/WindowStateStorage";
 
 export interface CakeIpcServerOperations {
   readonly getHomeDirectory: () => string | Promise<string>;
@@ -41,6 +42,9 @@ export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
         return yield* Effect.promise(() => Promise.resolve(operations.getHomeDirectory()));
       }),
     "application.getState": () => getState(),
+    "windowState.load": () => Effect.flatMap(WindowStateStorage, (storage) => storage.load()),
+    "windowState.save": ({ snapshot }) =>
+      Effect.flatMap(WindowStateStorage, (storage) => storage.save(snapshot)),
     "projects.observeCatalog": () => Stream.unwrap(projects.observeCatalog()),
     "models.list": () => Effect.flatMap(PiModels, (models) => models.list()),
     "models.refresh": () => Effect.flatMap(PiModels, (models) => models.refreshCatalog()),
@@ -51,6 +55,7 @@ export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
     "modelPresets.setDefault": ({ id }) => modelPresets.setDefault(id),
     "modelPresets.resolve": ({ id }) => modelPresets.resolve(id),
     "cakeChats.list": () => cakeChats.list(),
+    "cakeChats.observeCatalog": () => Stream.unwrap(cakeChats.observeCatalog()),
     "cakeChats.inspect": ({ sessionId }) => cakeChats.inspect(sessionId),
     "cakeChats.open": (target) => cakeChats.open(target),
     "cakeChats.observe": (target) => Stream.unwrap(cakeChats.observe(target)),
@@ -77,6 +82,8 @@ export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
     "cakeChats.deleteResolved": (target) => cakeChats.deleteResolved(target),
     "cakeChats.respondControl": ({ controlRequestId, result }) =>
       cakeChats.respondControl(controlRequestId, result),
+    "discussionSessions.observeCatalog": (input) =>
+      Stream.unwrap(discussionSessions.observeCatalog(input)),
     "discussionSessions.list": (input) => discussionSessions.list(input),
     "discussionSessions.create": (input) => discussionSessions.create(input),
     "discussionSessions.observe": (target) => Stream.unwrap(discussionSessions.observe(target)),

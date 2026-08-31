@@ -1,4 +1,4 @@
-import { Store, observable } from "r-state-tree";
+import { Store, observable, snapshot } from "r-state-tree";
 import { formatRelativeSessionTime } from "../../utils/format-relative-session-time";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
@@ -21,9 +21,9 @@ export interface SidebarStoreProps {
 
 /** Owns project navigation, session pagination, and activity badges. */
 export class SidebarStore extends Store<SidebarStoreProps> {
-  limitsByProject: Record<string, number> = observable({});
-  collapsedGroups: Record<string, boolean> = observable({});
-  resolvedLaneExpanded = false;
+  @snapshot limitsByProject: Record<string, number> = observable({});
+  @snapshot collapsedGroups: Record<string, boolean> = observable({});
+  @snapshot resolvedLaneExpanded = false;
   now = Date.now();
 
   constructor(props: SidebarStore["props"]) {

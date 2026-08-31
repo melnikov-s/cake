@@ -7,7 +7,13 @@ import {
   CakeChatEnvironment,
   CakeChatEnvironmentError,
 } from "../services/cake-chats/CakeChatEnvironment";
-import { getState, setCakeChatSessionResolved } from "./application";
+import {
+  getState,
+  observeState,
+  refreshProjection,
+  setCakeChatSessionResolved,
+} from "./application";
+import type { CakeChatCatalogUpdate } from "./catalog-data";
 import {
   acquire as acquireConversation,
   observe as observeConversation,
@@ -72,6 +78,29 @@ export const list = Effect.fn("CakeChats.list")(function* () {
   return items
     .map((item) => summary(item, resolved))
     .sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt));
+});
+
+/** Current-first Cake Chat catalog observation driven by main-owned application revisions. */
+export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* () {
+  const changes = yield* observeState();
+  let initialized = false;
+  return changes.pipe(
+    Stream.mapEffect((projection) =>
+      list().pipe(
+        Effect.map((sessions): CakeChatCatalogUpdate => {
+          if (!initialized) {
+            initialized = true;
+            return { _tag: "Snapshot", revision: projection.revision, sessions };
+          }
+          return {
+            _tag: "Event",
+            revision: projection.revision,
+            event: { _tag: "Replaced", sessions },
+          };
+        }),
+      ),
+    ),
+  );
 });
 
 export const inspect = Effect.fn("CakeChats.inspect")(function* (sessionId: string) {
@@ -153,6 +182,11 @@ export const observe = Effect.fn("CakeChats.observe")(function* (target: CakeCha
   );
   return conversation.pipe(
     Stream.merge(controls),
+    Stream.tap((update) =>
+      update._tag === "Event" && update.event._tag === "TurnSettled"
+        ? refreshProjection()
+        : Effect.void,
+    ),
     Stream.mapAccum(
       () => 0,
       (revision, update) => {
@@ -248,7 +282,9 @@ export const prompt = Effect.fn("CakeChats.prompt")(function* (input: CakeChatPr
   const accepted = snapshot.streaming
     ? handle.followUp(input.text, attachments)
     : handle.prompt(input.text, attachments, input.renderUserMessageAsMarkdown);
-  return TurnId.make(yield* accepted.pipe(asError("prompt")));
+  const turnId = TurnId.make(yield* accepted.pipe(asError("prompt")));
+  yield* refreshProjection();
+  return turnId;
 });
 
 export const abort = Effect.fn("CakeChats.abort")(function* (target: CakeChatTarget) {
@@ -261,6 +297,7 @@ export const compact = Effect.fn("CakeChats.compact")(function* (
   instructions?: string,
 ) {
   yield* withHandle(target, (handle) => handle.compact(instructions)).pipe(asError("compact"));
+  yield* refreshProjection();
 });
 
 export const editMessage = Effect.fn("CakeChats.editMessage")(function* (
@@ -274,6 +311,7 @@ export const editMessage = Effect.fn("CakeChats.editMessage")(function* (
       input.renderUserMessageAsMarkdown,
     ),
   ).pipe(asError("editMessage"));
+  yield* refreshProjection();
 });
 
 export const applyConfiguration = Effect.fn("CakeChats.applyConfiguration")(function* (
@@ -319,6 +357,7 @@ export const rename = Effect.fn("CakeChats.rename")(function* (
   if (!normalized)
     return yield* new CakeChatError({ operation: "rename", message: "Name is required" });
   yield* withHandle(target, (handle) => handle.rename(normalized)).pipe(asError("rename"));
+  yield* refreshProjection();
 });
 
 export const handoff = Effect.fn("CakeChats.handoff")(function* (input: {
@@ -340,6 +379,7 @@ export const handoff = Effect.fn("CakeChats.handoff")(function* (input: {
   if (input.prompt?.trim())
     turnId = TurnId.make(yield* next.prompt(input.prompt.trim()).pipe(asError("handoff")));
   if (input.resolveSource) yield* resolve(input.target);
+  else yield* refreshProjection();
   return turnId ? { sessionId: handedOff.sessionId, turnId } : { sessionId: handedOff.sessionId };
 });
 

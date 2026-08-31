@@ -16,6 +16,7 @@ describe("RendererClient", () => {
 
     expect(Object.keys(client)).toEqual([
       "application",
+      "windowState",
       "models",
       "modelPresets",
       "projectSessions",

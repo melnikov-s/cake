@@ -14,6 +14,8 @@ import type {
 } from "../../../src/services/pi/runtime/cake-runtime";
 import { makeProjectSessionEnvironmentLayer } from "../../../src/services/project-sessions/ProjectSessionEnvironment";
 import type { SessionSnapshot } from "../../../src/ipc/session-contract";
+import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { defaultApplicationState } from "../../../src/domain/application-data";
 
 const makeSnapshot = (sessionId: string, sessionFile: string): SessionSnapshot => ({
   workspacePath: "/project",
@@ -161,7 +163,15 @@ const makeLayer = () => {
     forkToWorkingDirectory: () => Effect.succeed("fork"),
   });
   return {
-    layer: Layer.mergeAll(makePiSessionsLayer(adapter), discussions, projects),
+    layer: Layer.mergeAll(
+      makePiSessionsLayer(adapter),
+      discussions,
+      projects,
+      Layer.mock(ApplicationState, {
+        unsafeCurrent: defaultApplicationState,
+        refreshProjection: () => Effect.void,
+      }),
+    ),
     options: runtimeOptions,
     preparedContexts: () => preparedContexts,
     record: () => record,

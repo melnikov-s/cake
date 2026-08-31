@@ -1,10 +1,7 @@
 import { Store, observable } from "r-state-tree";
-import type {
-  ExtensionUiEvent,
-  ExtensionUiState,
-  ResourceDiagnostic,
-} from "../../ipc/session-contract";
+import type { ResourceDiagnostic } from "../../ipc/session-contract";
 import type { DesktopClient, DesktopClientEvent } from "../desktop-client";
+import type { Session } from "../models/Session";
 import { describeError } from "../error-details";
 
 export interface UiRequestState {
@@ -27,7 +24,7 @@ export interface ExtensionNotification {
 
 export interface ExtensionUiStoreProps {
   client: Pick<DesktopClient, "respondToUi">;
-  activeSessionId(): string | undefined;
+  activeSessionModel(): Session | undefined;
   sessionContext(): { sessionId: string } | undefined;
   operationActive(operationId: string): boolean;
   setDraft(value: string | ((current: string) => string)): void;
@@ -37,12 +34,57 @@ export interface ExtensionUiStoreProps {
 /** Owns extension-provided dialogs and transient renderer presentation. */
 export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
   request: UiRequestState | undefined;
-  title: string | undefined;
-  statuses: ExtensionUiState["statuses"] = observable([]);
-  notifications: ExtensionNotification[] = observable([]);
-  compatibilityDiagnostics: ResourceDiagnostic[] = observable([]);
+  private readonly dismissedNotificationIds: Set<string> = observable(new Set<string>());
   error: string | undefined;
   errorDetails: string | undefined;
+
+  constructor(props: ExtensionUiStore["props"]) {
+    super(props);
+    this.reaction(
+      () => {
+        const model = this.props.activeSessionModel();
+        return model ? `${model.sessionId}\u0000${model.extensionUi.editorTextRevision}` : "";
+      },
+      (current, previous) => {
+        const separator = current.lastIndexOf("\u0000");
+        const previousSeparator = previous.lastIndexOf("\u0000");
+        if (
+          separator < 0 ||
+          previousSeparator < 0 ||
+          current.slice(0, separator) !== previous.slice(0, previousSeparator)
+        )
+          return;
+        const event = this.props.activeSessionModel()?.extensionUi.editorText;
+        if (!event) return;
+        this.props.setDraft(
+          event.mode === "insert" ? (draft) => `${draft}${event.text}` : event.text,
+        );
+        this.props.requestComposerFocus();
+      },
+    );
+  }
+
+  get title() {
+    return this.props.activeSessionModel()?.extensionUi.title;
+  }
+
+  get statuses() {
+    return this.props.activeSessionModel()?.extensionUi.statuses ?? [];
+  }
+
+  get notifications(): readonly ExtensionNotification[] {
+    return (
+      this.props
+        .activeSessionModel()
+        ?.extensionUi.notifications.filter(
+          (notification) => !this.dismissedNotificationIds.has(notification.id),
+        ) ?? []
+    );
+  }
+
+  get compatibilityDiagnostics(): readonly ResourceDiagnostic[] {
+    return this.props.activeSessionModel()?.extensionUi.compatibilityDiagnostics ?? [];
+  }
 
   async respond(value?: string, cancelled = false) {
     const request = this.request;
@@ -69,28 +111,14 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
   }
 
   dismissNotification(id: string) {
-    const index = this.notifications.findIndex((item) => item.id === id);
-    if (index >= 0) this.notifications.splice(index, 1);
+    this.dismissedNotificationIds.add(id);
   }
 
   clear() {
     this.request = undefined;
-    this.title = undefined;
-    this.statuses.splice(0);
-    this.notifications.splice(0);
-    this.compatibilityDiagnostics.splice(0);
-  }
-
-  applyState(state: ExtensionUiState) {
-    this.title = state.title;
-    this.statuses.splice(0, this.statuses.length, ...state.statuses);
   }
 
   receive(event: DesktopClientEvent) {
-    if (event.type === "extension-ui-received") {
-      if (event.sessionId === this.props.activeSessionId()) this.receiveExtensionEvent(event.event);
-      return;
-    }
     if (event.type === "ui-requested") {
       if (this.props.operationActive(event.operationId)) this.request = event;
       return;
@@ -100,35 +128,5 @@ export class ExtensionUiStore extends Store<ExtensionUiStoreProps> {
       (event.state === "failed" || event.state === "stopped")
     )
       this.request = undefined;
-  }
-
-  private receiveExtensionEvent(event: ExtensionUiEvent) {
-    if (event.kind === "notify") {
-      this.notifications.push(event);
-      if (this.notifications.length > 8)
-        this.notifications.splice(0, this.notifications.length - 8);
-      return;
-    }
-    if (event.kind === "status") {
-      const index = this.statuses.findIndex((item) => item.key === event.key);
-      if (event.text === undefined) {
-        if (index >= 0) this.statuses.splice(index, 1);
-      } else if (index >= 0) this.statuses.splice(index, 1, { key: event.key, text: event.text });
-      else this.statuses.push({ key: event.key, text: event.text });
-      return;
-    }
-    if (event.kind === "title") {
-      this.title = event.title;
-      return;
-    }
-    if (event.kind === "editor-text") {
-      this.props.setDraft(
-        event.mode === "insert" ? (current) => `${current}${event.text}` : event.text,
-      );
-      this.props.requestComposerFocus();
-      return;
-    }
-    if (!this.compatibilityDiagnostics.some((item) => item.id === event.diagnostic.id))
-      this.compatibilityDiagnostics.push(event.diagnostic);
   }
 }

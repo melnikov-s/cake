@@ -165,11 +165,21 @@ const appControlInvocationSchema = z.discriminatedUnion("name", [
 ]);
 
 type AppControlInvocation = z.infer<typeof appControlInvocationSchema>;
+type SessionSummaryView = Pick<
+  SessionSummary,
+  | "workingDirectory"
+  | "projectName"
+  | "sessionId"
+  | "title"
+  | "modifiedAt"
+  | "messageCount"
+  | "resolved"
+>;
 
 export interface AppControlHost {
   currentSession(): { workspacePath: string; sessionId: string } | undefined;
   projects(): readonly ProjectRecord[];
-  sessions(): readonly SessionSummary[];
+  sessions(): readonly SessionSummaryView[];
   cakeChatSessions(): readonly CakeChatSummary[];
   sessionActivity(sessionId: string): "running" | "unread" | "error" | undefined;
   openSession(sessionId: string, messageId?: string): Promise<boolean | void>;
@@ -890,7 +900,7 @@ export class AppControlBridge {
     };
   }
 
-  private toControlSession(session: SessionSummary): AppControlSession {
+  private toControlSession(session: SessionSummaryView): AppControlSession {
     const activity = this.host.sessionActivity(session.sessionId);
     const result = {
       workspacePath: session.workingDirectory,
