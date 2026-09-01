@@ -2,10 +2,11 @@ import { Effect, Option, Schema, Stream } from "effect";
 import { CakeIpcClient, type CakeIpcClientService } from "../ipc/client/CakeIpcClient";
 import { FoundationFailure } from "../ipc/protocol/CakeRpc";
 import {
-  privilegedRequestSchema,
-  type PrivilegedRequest,
-  type PrivilegedRouteType,
-} from "../ipc/privileged-contract";
+  nativeCommandSchema,
+  type NativeCommand,
+  type NativeCommandResult,
+  type NativeCommandType,
+} from "../ipc/native-contract";
 import { makeRendererRuntime } from "./RendererRuntime";
 
 const bridge = window.cake;
@@ -28,19 +29,123 @@ let delayController: AbortController | undefined;
 let runningDelay: Promise<void> | undefined;
 let runningStream: Promise<ReadonlyArray<number>> | undefined;
 
-type RoutedPrivilegedRequest = Extract<PrivilegedRequest, { type: PrivilegedRouteType }>;
+type RoutedNativeCommand = Extract<NativeCommand, { type: NativeCommandType }>;
+const widenNativeCommandResult = (response: NativeCommandResult): NativeCommandResult => response;
+
+const routeGroups = {
+  electron: new Set<string>([
+    "choose-project",
+    "open-external-url",
+    "show-transcript-selection-context-menu",
+    "show-composer-context-menu",
+    "show-session-context-menu",
+    "show-project-context-menu",
+    "set-fullscreen-surface-open",
+  ]),
+  filesystem: new Set<string>(["choose-attachments", "suggest-files", "read-workspace-file"]),
+  workspaces: new Set<string>([
+    "reword-composer-selection",
+    "generate-session-title",
+    "set-utility-model",
+    "register-project",
+    "rename-project",
+    "remove-project",
+    "delete-session",
+    "set-session-unread",
+    "restart-pi",
+    "inspect-workspace",
+    "respond-workspace-trust",
+  ]),
+  managedWorktrees: new Set<string>([
+    "create-worktree",
+    "get-worktree-status",
+    "land-worktree",
+    "discard-worktree",
+  ]),
+  terminals: new Set<string>([
+    "open-terminal",
+    "write-terminal",
+    "resize-terminal",
+    "get-terminal-status",
+    "close-terminal",
+  ]),
+  vscode: new Set<string>([
+    "get-embedded-editor-state",
+    "set-vscode-server-path",
+    "install-embedded-editor",
+    "open-embedded-editor",
+    "update-embedded-editor-bounds",
+    "reveal-in-embedded-editor",
+    "open-embedded-editor-source-control",
+    "update-embedded-editor-annotations",
+  ]),
+  artifacts: new Set<string>(["respond-artifact", "respond-ui", "export-artifacts"]),
+  plugins: new Set<string>([
+    "get-customization-state",
+    "get-plugin-authoring-reference",
+    "list-plugin-files",
+    "create-plugin",
+    "read-plugin-file",
+    "write-plugin-file",
+    "validate-customization",
+    "activate-customization",
+    "rollback-customization",
+    "use-factory-customization",
+    "list-plugins",
+    "set-plugin-enabled",
+    "set-active-scene",
+    "delete-plugin",
+    "compile-inline-widget",
+    "repair-inline-widget",
+    "open-plugin-agent",
+    "prompt-plugin-agent",
+    "abort-plugin-agent",
+    "detach-plugin-agent",
+    "run-plugin-completion",
+    "cancel-plugin-completion",
+    "load-plugin-state",
+    "save-plugin-state",
+    "call-plugin-backend",
+    "cancel-plugin-backend-call",
+    "customization-rendered",
+    "customization-runtime-failed",
+  ]),
+} as const;
+
+function routeGroup(type: NativeCommandType): keyof typeof routeGroups | undefined {
+  if (routeGroups.electron.has(type)) return "electron";
+  if (routeGroups.filesystem.has(type)) return "filesystem";
+  if (routeGroups.workspaces.has(type)) return "workspaces";
+  if (routeGroups.managedWorktrees.has(type)) return "managedWorktrees";
+  if (routeGroups.terminals.has(type)) return "terminals";
+  if (routeGroups.vscode.has(type)) return "vscode";
+  if (routeGroups.artifacts.has(type)) return "artifacts";
+  if (routeGroups.plugins.has(type)) return "plugins";
+  return undefined;
+}
 
 const harness = {
-  invokePrivileged: (input: PrivilegedRequest) => {
-    const parsed = Schema.decodeUnknownSync(privilegedRequestSchema)(input);
+  invokeNative: (input: NativeCommand) => {
+    const parsed = Schema.decodeUnknownSync(nativeCommandSchema)(input);
     return run(
       withClient((client) => {
-        if (!(parsed.type in client.privileged))
-          throw new Error(`The RPC test harness cannot invoke ${parsed.type}`);
-        // SAFETY: membership in the generated route map proves this parsed request is routable.
-        const request = parsed as RoutedPrivilegedRequest;
-        // SAFETY: the route key and request discriminant are correlated by RoutedPrivilegedRequest.
-        return client.privileged[request.type](request as never);
+        const request: RoutedNativeCommand = parsed;
+        const group = routeGroup(request.type);
+        if (!group) throw new Error(`The RPC test harness cannot invoke ${parsed.type}`);
+        const { type: _type, ...payload } = request;
+        const commands = {
+          ...client.electron,
+          ...client.filesystem,
+          ...client.workspaces,
+          ...client.managedWorktrees,
+          ...client.terminals,
+          ...client.vscode,
+          ...client.artifacts,
+          ...client.plugins,
+        };
+        // SAFETY: nativeCommandSchema correlates the route discriminant and payload;
+        // this smoke-only dynamic dispatcher preserves that validated pair.
+        return commands[request.type](payload as never).pipe(Effect.map(widenNativeCommandResult));
       }),
     );
   },
@@ -53,17 +158,16 @@ const harness = {
   invokeElectronProbe: () =>
     run(
       withClient((client) =>
-        client.privileged["set-fullscreen-surface-open"]({
-          type: "set-fullscreen-surface-open",
+        client.electron["set-fullscreen-surface-open"]({
           requestId: crypto.randomUUID(),
           surfaceId: crypto.randomUUID(),
           open: false,
         }),
       ),
     ),
-  privilegedReady: () =>
+  nativeReady: () =>
     collect(
-      Stream.unwrap(Effect.map(CakeIpcClient, (client) => client.privileged.observe())).pipe(
+      Stream.unwrap(Effect.map(CakeIpcClient, (client) => client.events.application())).pipe(
         Stream.take(1),
       ),
     ).then(([event]) => event),

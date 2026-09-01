@@ -2,13 +2,14 @@ import { Context, Effect, Layer, type Schema, type Stream } from "effect";
 import { RpcClient } from "effect/unstable/rpc";
 import type { RpcClientError } from "effect/unstable/rpc";
 import { CakeRpc, type FoundationFailure } from "../protocol/CakeRpc";
-import type { PrivilegedCapabilityError } from "../../services/privileged/PrivilegedCapabilities";
+import type { NativeCapabilityError } from "../../services/native/NativeCapabilities";
 import type {
-  PrivilegedEvent,
-  PrivilegedRequest,
-  PrivilegedResponse,
-  PrivilegedRouteType,
-} from "../privileged-contract";
+  NativeEvent as NativeEventEnvelope,
+  NativeCommand as NativeCommandEnvelope,
+  NativeCommandResult,
+  NativeCommandType,
+} from "../native-contract";
+
 import type { RendererApplicationState } from "../../domain/application-data";
 import type { PiSettingUpdate } from "../session-contract";
 import type {
@@ -74,11 +75,23 @@ import type {
 } from "../../services/storage/WindowStateStorage";
 
 type TransportError = RpcClientError.RpcClientError;
-type PrivilegedCommand<Type extends PrivilegedRouteType> = (
-  request: Extract<PrivilegedRequest, { type: Type }>,
-) => Effect.Effect<PrivilegedResponse, PrivilegedCapabilityError | TransportError>;
-type PrivilegedCommands = {
-  readonly [Type in PrivilegedRouteType]: PrivilegedCommand<Type>;
+type NativeStreamReady = { readonly type: "native-stream-ready" };
+type FocusedNativeEvent<Type extends NativeEventEnvelope["type"]> =
+  | Extract<NativeEventEnvelope, { readonly type: Type }>
+  | NativeStreamReady;
+type NativeRpcCommand<Type extends NativeCommandType> = (
+  payload: Omit<Extract<NativeCommandEnvelope, { type: Type }>, "type">,
+) => Effect.Effect<
+  Extract<
+    NativeCommandResult,
+    {
+      type: (typeof import("../native-contract").nativeCommandSuccessSchemas)[Type]["Type"]["type"];
+    }
+  >,
+  NativeCapabilityError | TransportError
+>;
+type NativeCommands<Types extends NativeCommandType> = {
+  readonly [Type in Types]: NativeRpcCommand<Type>;
 };
 type ModelPresetMutationError =
   | ModelPresetValidationError
@@ -352,9 +365,123 @@ export interface CakeIpcClientService {
       readonly handleId: SubagentHandleId;
     }) => Effect.Effect<void, SubagentError | TransportError>;
   };
-  readonly privileged: PrivilegedCommands & {
-    readonly observe: () => Stream.Stream<
-      PrivilegedEvent | { readonly type: "privileged-stream-ready" },
+  readonly electron: NativeCommands<
+    | "choose-project"
+    | "open-external-url"
+    | "show-transcript-selection-context-menu"
+    | "show-composer-context-menu"
+    | "show-session-context-menu"
+    | "show-project-context-menu"
+    | "set-fullscreen-surface-open"
+  >;
+  readonly filesystem: NativeCommands<
+    "choose-attachments" | "suggest-files" | "read-workspace-file"
+  >;
+  readonly workspaces: NativeCommands<
+    | "reword-composer-selection"
+    | "generate-session-title"
+    | "set-utility-model"
+    | "register-project"
+    | "rename-project"
+    | "remove-project"
+    | "delete-session"
+    | "set-session-unread"
+    | "restart-pi"
+    | "inspect-workspace"
+    | "respond-workspace-trust"
+  >;
+  readonly managedWorktrees: NativeCommands<
+    "create-worktree" | "get-worktree-status" | "land-worktree" | "discard-worktree"
+  >;
+  readonly terminals: NativeCommands<
+    | "open-terminal"
+    | "write-terminal"
+    | "resize-terminal"
+    | "get-terminal-status"
+    | "close-terminal"
+  >;
+  readonly vscode: NativeCommands<
+    | "get-embedded-editor-state"
+    | "set-vscode-server-path"
+    | "install-embedded-editor"
+    | "open-embedded-editor"
+    | "update-embedded-editor-bounds"
+    | "reveal-in-embedded-editor"
+    | "open-embedded-editor-source-control"
+    | "update-embedded-editor-annotations"
+  >;
+  readonly artifacts: NativeCommands<"respond-artifact" | "respond-ui" | "export-artifacts">;
+  readonly plugins: NativeCommands<
+    | "get-customization-state"
+    | "get-plugin-authoring-reference"
+    | "list-plugin-files"
+    | "create-plugin"
+    | "read-plugin-file"
+    | "write-plugin-file"
+    | "validate-customization"
+    | "activate-customization"
+    | "rollback-customization"
+    | "use-factory-customization"
+    | "list-plugins"
+    | "set-plugin-enabled"
+    | "set-active-scene"
+    | "delete-plugin"
+    | "compile-inline-widget"
+    | "repair-inline-widget"
+    | "open-plugin-agent"
+    | "prompt-plugin-agent"
+    | "abort-plugin-agent"
+    | "detach-plugin-agent"
+    | "run-plugin-completion"
+    | "cancel-plugin-completion"
+    | "load-plugin-state"
+    | "save-plugin-state"
+    | "call-plugin-backend"
+    | "cancel-plugin-backend-call"
+    | "customization-rendered"
+    | "customization-runtime-failed"
+  >;
+  readonly events: {
+    readonly application: () => Stream.Stream<
+      FocusedNativeEvent<
+        | "pi-state"
+        | "workspace-inspected"
+        | "changelog-snapshot"
+        | "complete"
+        | "fatal"
+        | "application-state-changed"
+        | "notification"
+      >,
+      TransportError
+    >;
+    readonly artifacts: () => Stream.Stream<
+      FocusedNativeEvent<"artifact-updated" | "artifact-requested" | "ui-request">,
+      TransportError
+    >;
+    readonly plugins: () => Stream.Stream<
+      FocusedNativeEvent<
+        "plugin-backend-event" | "customization-state-changed" | "plugin-agent-event"
+      >,
+      TransportError
+    >;
+    readonly terminals: () => Stream.Stream<
+      FocusedNativeEvent<"terminal-data" | "terminal-exited" | "terminal-toggle-requested">,
+      TransportError
+    >;
+    readonly vscode: () => Stream.Stream<
+      FocusedNativeEvent<
+        | "embedded-editor-state"
+        | "embedded-editor-selection"
+        | "embedded-editor-back-to-agent"
+        | "embedded-editor-annotation-opened"
+        | "embedded-editor-toggle-chat"
+        | "embedded-editor-selection-cleared"
+        | "embedded-editor-location-opened"
+      >,
+      TransportError
+    >;
+    readonly surfaces: () => Stream.Stream<
+      FocusedNativeEvent<"fullscreen-surface-close-requested">,
       TransportError
     >;
   };
@@ -590,215 +717,237 @@ export const CakeIpcClientLive = Layer.effect(
           client("subagents.close", input),
         ),
       },
-      privileged: {
-        "choose-project": Effect.fn("CakeIpcClient.electron.choose-project")((request) =>
-          client("electron.choose-project", { request }),
+
+      electron: {
+        "choose-project": Effect.fn("CakeIpcClient.electron.choose-project")((payload) =>
+          client("electron.choose-project", payload),
         ),
-        "open-external-url": Effect.fn("CakeIpcClient.electron.open-external-url")((request) =>
-          client("electron.open-external-url", { request }),
+        "open-external-url": Effect.fn("CakeIpcClient.electron.open-external-url")((payload) =>
+          client("electron.open-external-url", payload),
         ),
         "show-transcript-selection-context-menu": Effect.fn(
           "CakeIpcClient.electron.show-transcript-selection-context-menu",
-        )((request) => client("electron.show-transcript-selection-context-menu", { request })),
+        )((payload) => client("electron.show-transcript-selection-context-menu", payload)),
         "show-composer-context-menu": Effect.fn(
           "CakeIpcClient.electron.show-composer-context-menu",
-        )((request) => client("electron.show-composer-context-menu", { request })),
+        )((payload) => client("electron.show-composer-context-menu", payload)),
         "show-session-context-menu": Effect.fn("CakeIpcClient.electron.show-session-context-menu")(
-          (request) => client("electron.show-session-context-menu", { request }),
+          (payload) => client("electron.show-session-context-menu", payload),
         ),
         "show-project-context-menu": Effect.fn("CakeIpcClient.electron.show-project-context-menu")(
-          (request) => client("electron.show-project-context-menu", { request }),
+          (payload) => client("electron.show-project-context-menu", payload),
         ),
-        "choose-attachments": Effect.fn("CakeIpcClient.filesystem.choose-attachments")((request) =>
-          client("filesystem.choose-attachments", { request }),
-        ),
-        "suggest-files": Effect.fn("CakeIpcClient.filesystem.suggest-files")((request) =>
-          client("filesystem.suggest-files", { request }),
-        ),
-        "read-workspace-file": Effect.fn("CakeIpcClient.filesystem.read-workspace-file")(
-          (request) => client("filesystem.read-workspace-file", { request }),
-        ),
-        "reword-composer-selection": Effect.fn(
-          "CakeIpcClient.workspaces.reword-composer-selection",
-        )((request) => client("workspaces.reword-composer-selection", { request })),
-        "generate-session-title": Effect.fn("CakeIpcClient.workspaces.generate-session-title")(
-          (request) => client("workspaces.generate-session-title", { request }),
-        ),
-        "set-utility-model": Effect.fn("CakeIpcClient.workspaces.set-utility-model")((request) =>
-          client("workspaces.set-utility-model", { request }),
-        ),
-        "register-project": Effect.fn("CakeIpcClient.workspaces.register-project")((request) =>
-          client("workspaces.register-project", { request }),
-        ),
-        "rename-project": Effect.fn("CakeIpcClient.workspaces.rename-project")((request) =>
-          client("workspaces.rename-project", { request }),
-        ),
-        "remove-project": Effect.fn("CakeIpcClient.workspaces.remove-project")((request) =>
-          client("workspaces.remove-project", { request }),
-        ),
-        "delete-session": Effect.fn("CakeIpcClient.workspaces.delete-session")((request) =>
-          client("workspaces.delete-session", { request }),
-        ),
-        "set-session-unread": Effect.fn("CakeIpcClient.workspaces.set-session-unread")((request) =>
-          client("workspaces.set-session-unread", { request }),
-        ),
-        "restart-pi": Effect.fn("CakeIpcClient.workspaces.restart-pi")((request) =>
-          client("workspaces.restart-pi", { request }),
-        ),
-        "create-worktree": Effect.fn("CakeIpcClient.managedWorktrees.create-worktree")((request) =>
-          client("managedWorktrees.create-worktree", { request }),
-        ),
-        "get-worktree-status": Effect.fn("CakeIpcClient.managedWorktrees.get-worktree-status")(
-          (request) => client("managedWorktrees.get-worktree-status", { request }),
-        ),
-        "land-worktree": Effect.fn("CakeIpcClient.managedWorktrees.land-worktree")((request) =>
-          client("managedWorktrees.land-worktree", { request }),
-        ),
-        "open-terminal": Effect.fn("CakeIpcClient.terminals.open-terminal")((request) =>
-          client("terminals.open-terminal", { request }),
-        ),
-        "get-terminal-status": Effect.fn("CakeIpcClient.terminals.get-terminal-status")((request) =>
-          client("terminals.get-terminal-status", { request }),
-        ),
-        "get-embedded-editor-state": Effect.fn("CakeIpcClient.vscode.get-embedded-editor-state")(
-          (request) => client("vscode.get-embedded-editor-state", { request }),
-        ),
-        "set-vscode-server-path": Effect.fn("CakeIpcClient.vscode.set-vscode-server-path")(
-          (request) => client("vscode.set-vscode-server-path", { request }),
-        ),
-        "respond-artifact": Effect.fn("CakeIpcClient.artifacts.respond-artifact")((request) =>
-          client("artifacts.respond-artifact", { request }),
-        ),
-        "respond-ui": Effect.fn("CakeIpcClient.artifacts.respond-ui")((request) =>
-          client("artifacts.respond-ui", { request }),
-        ),
-        "export-artifacts": Effect.fn("CakeIpcClient.artifacts.export-artifacts")((request) =>
-          client("artifacts.export-artifacts", { request }),
-        ),
-        "get-customization-state": Effect.fn("CakeIpcClient.plugins.get-customization-state")(
-          (request) => client("plugins.get-customization-state", { request }),
-        ),
-        "get-plugin-authoring-reference": Effect.fn(
-          "CakeIpcClient.plugins.get-plugin-authoring-reference",
-        )((request) => client("plugins.get-plugin-authoring-reference", { request })),
-        "list-plugin-files": Effect.fn("CakeIpcClient.plugins.list-plugin-files")((request) =>
-          client("plugins.list-plugin-files", { request }),
-        ),
-        "create-plugin": Effect.fn("CakeIpcClient.plugins.create-plugin")((request) =>
-          client("plugins.create-plugin", { request }),
-        ),
-        "read-plugin-file": Effect.fn("CakeIpcClient.plugins.read-plugin-file")((request) =>
-          client("plugins.read-plugin-file", { request }),
-        ),
-        "write-plugin-file": Effect.fn("CakeIpcClient.plugins.write-plugin-file")((request) =>
-          client("plugins.write-plugin-file", { request }),
-        ),
-        "validate-customization": Effect.fn("CakeIpcClient.plugins.validate-customization")(
-          (request) => client("plugins.validate-customization", { request }),
-        ),
-        "activate-customization": Effect.fn("CakeIpcClient.plugins.activate-customization")(
-          (request) => client("plugins.activate-customization", { request }),
-        ),
-        "rollback-customization": Effect.fn("CakeIpcClient.plugins.rollback-customization")(
-          (request) => client("plugins.rollback-customization", { request }),
-        ),
-        "use-factory-customization": Effect.fn("CakeIpcClient.plugins.use-factory-customization")(
-          (request) => client("plugins.use-factory-customization", { request }),
-        ),
-        "list-plugins": Effect.fn("CakeIpcClient.plugins.list-plugins")((request) =>
-          client("plugins.list-plugins", { request }),
-        ),
-        "set-plugin-enabled": Effect.fn("CakeIpcClient.plugins.set-plugin-enabled")((request) =>
-          client("plugins.set-plugin-enabled", { request }),
-        ),
-        "set-active-scene": Effect.fn("CakeIpcClient.plugins.set-active-scene")((request) =>
-          client("plugins.set-active-scene", { request }),
-        ),
-        "delete-plugin": Effect.fn("CakeIpcClient.plugins.delete-plugin")((request) =>
-          client("plugins.delete-plugin", { request }),
-        ),
-        "compile-inline-widget": Effect.fn("CakeIpcClient.plugins.compile-inline-widget")(
-          (request) => client("plugins.compile-inline-widget", { request }),
-        ),
-        "repair-inline-widget": Effect.fn("CakeIpcClient.plugins.repair-inline-widget")((request) =>
-          client("plugins.repair-inline-widget", { request }),
-        ),
-        "open-plugin-agent": Effect.fn("CakeIpcClient.plugins.open-plugin-agent")((request) =>
-          client("plugins.open-plugin-agent", { request }),
-        ),
-        "prompt-plugin-agent": Effect.fn("CakeIpcClient.plugins.prompt-plugin-agent")((request) =>
-          client("plugins.prompt-plugin-agent", { request }),
-        ),
-        "abort-plugin-agent": Effect.fn("CakeIpcClient.plugins.abort-plugin-agent")((request) =>
-          client("plugins.abort-plugin-agent", { request }),
-        ),
-        "detach-plugin-agent": Effect.fn("CakeIpcClient.plugins.detach-plugin-agent")((request) =>
-          client("plugins.detach-plugin-agent", { request }),
-        ),
-        "run-plugin-completion": Effect.fn("CakeIpcClient.plugins.run-plugin-completion")(
-          (request) => client("plugins.run-plugin-completion", { request }),
-        ),
-        "cancel-plugin-completion": Effect.fn("CakeIpcClient.plugins.cancel-plugin-completion")(
-          (request) => client("plugins.cancel-plugin-completion", { request }),
-        ),
-        "load-plugin-state": Effect.fn("CakeIpcClient.plugins.load-plugin-state")((request) =>
-          client("plugins.load-plugin-state", { request }),
-        ),
-        "save-plugin-state": Effect.fn("CakeIpcClient.plugins.save-plugin-state")((request) =>
-          client("plugins.save-plugin-state", { request }),
-        ),
-        "call-plugin-backend": Effect.fn("CakeIpcClient.plugins.call-plugin-backend")((request) =>
-          client("plugins.call-plugin-backend", { request }),
-        ),
-        "cancel-plugin-backend-call": Effect.fn("CakeIpcClient.plugins.cancel-plugin-backend-call")(
-          (request) => client("plugins.cancel-plugin-backend-call", { request }),
-        ),
-        "customization-rendered": Effect.fn("CakeIpcClient.plugins.customization-rendered")(
-          (request) => client("plugins.customization-rendered", { request }),
-        ),
-        "customization-runtime-failed": Effect.fn(
-          "CakeIpcClient.plugins.customization-runtime-failed",
-        )((request) => client("plugins.customization-runtime-failed", { request })),
         "set-fullscreen-surface-open": Effect.fn(
           "CakeIpcClient.electron.set-fullscreen-surface-open",
-        )((request) => client("electron.set-fullscreen-surface-open", { request })),
-        "inspect-workspace": Effect.fn("CakeIpcClient.workspaces.inspect-workspace")((request) =>
-          client("workspaces.inspect-workspace", { request }),
+        )((payload) => client("electron.set-fullscreen-surface-open", payload)),
+      },
+      filesystem: {
+        "choose-attachments": Effect.fn("CakeIpcClient.filesystem.choose-attachments")((payload) =>
+          client("filesystem.choose-attachments", payload),
+        ),
+        "suggest-files": Effect.fn("CakeIpcClient.filesystem.suggest-files")((payload) =>
+          client("filesystem.suggest-files", payload),
+        ),
+        "read-workspace-file": Effect.fn("CakeIpcClient.filesystem.read-workspace-file")(
+          (payload) => client("filesystem.read-workspace-file", payload),
+        ),
+      },
+      workspaces: {
+        "reword-composer-selection": Effect.fn(
+          "CakeIpcClient.workspaces.reword-composer-selection",
+        )((payload) => client("workspaces.reword-composer-selection", payload)),
+        "generate-session-title": Effect.fn("CakeIpcClient.workspaces.generate-session-title")(
+          (payload) => client("workspaces.generate-session-title", payload),
+        ),
+        "set-utility-model": Effect.fn("CakeIpcClient.workspaces.set-utility-model")((payload) =>
+          client("workspaces.set-utility-model", payload),
+        ),
+        "register-project": Effect.fn("CakeIpcClient.workspaces.register-project")((payload) =>
+          client("workspaces.register-project", payload),
+        ),
+        "rename-project": Effect.fn("CakeIpcClient.workspaces.rename-project")((payload) =>
+          client("workspaces.rename-project", payload),
+        ),
+        "remove-project": Effect.fn("CakeIpcClient.workspaces.remove-project")((payload) =>
+          client("workspaces.remove-project", payload),
+        ),
+        "delete-session": Effect.fn("CakeIpcClient.workspaces.delete-session")((payload) =>
+          client("workspaces.delete-session", payload),
+        ),
+        "set-session-unread": Effect.fn("CakeIpcClient.workspaces.set-session-unread")((payload) =>
+          client("workspaces.set-session-unread", payload),
+        ),
+        "restart-pi": Effect.fn("CakeIpcClient.workspaces.restart-pi")((payload) =>
+          client("workspaces.restart-pi", payload),
+        ),
+        "inspect-workspace": Effect.fn("CakeIpcClient.workspaces.inspect-workspace")((payload) =>
+          client("workspaces.inspect-workspace", payload),
         ),
         "respond-workspace-trust": Effect.fn("CakeIpcClient.workspaces.respond-workspace-trust")(
-          (request) => client("workspaces.respond-workspace-trust", { request }),
+          (payload) => client("workspaces.respond-workspace-trust", payload),
+        ),
+      },
+      managedWorktrees: {
+        "create-worktree": Effect.fn("CakeIpcClient.managedWorktrees.create-worktree")((payload) =>
+          client("managedWorktrees.create-worktree", payload),
+        ),
+        "get-worktree-status": Effect.fn("CakeIpcClient.managedWorktrees.get-worktree-status")(
+          (payload) => client("managedWorktrees.get-worktree-status", payload),
+        ),
+        "land-worktree": Effect.fn("CakeIpcClient.managedWorktrees.land-worktree")((payload) =>
+          client("managedWorktrees.land-worktree", payload),
         ),
         "discard-worktree": Effect.fn("CakeIpcClient.managedWorktrees.discard-worktree")(
-          (request) => client("managedWorktrees.discard-worktree", { request }),
+          (payload) => client("managedWorktrees.discard-worktree", payload),
         ),
-        "write-terminal": Effect.fn("CakeIpcClient.terminals.write-terminal")((request) =>
-          client("terminals.write-terminal", { request }),
+      },
+      terminals: {
+        "open-terminal": Effect.fn("CakeIpcClient.terminals.open-terminal")((payload) =>
+          client("terminals.open-terminal", payload),
         ),
-        "resize-terminal": Effect.fn("CakeIpcClient.terminals.resize-terminal")((request) =>
-          client("terminals.resize-terminal", { request }),
+        "write-terminal": Effect.fn("CakeIpcClient.terminals.write-terminal")((payload) =>
+          client("terminals.write-terminal", payload),
         ),
-        "close-terminal": Effect.fn("CakeIpcClient.terminals.close-terminal")((request) =>
-          client("terminals.close-terminal", { request }),
+        "resize-terminal": Effect.fn("CakeIpcClient.terminals.resize-terminal")((payload) =>
+          client("terminals.resize-terminal", payload),
+        ),
+        "get-terminal-status": Effect.fn("CakeIpcClient.terminals.get-terminal-status")((payload) =>
+          client("terminals.get-terminal-status", payload),
+        ),
+        "close-terminal": Effect.fn("CakeIpcClient.terminals.close-terminal")((payload) =>
+          client("terminals.close-terminal", payload),
+        ),
+      },
+      vscode: {
+        "get-embedded-editor-state": Effect.fn("CakeIpcClient.vscode.get-embedded-editor-state")(
+          (payload) => client("vscode.get-embedded-editor-state", payload),
+        ),
+        "set-vscode-server-path": Effect.fn("CakeIpcClient.vscode.set-vscode-server-path")(
+          (payload) => client("vscode.set-vscode-server-path", payload),
         ),
         "install-embedded-editor": Effect.fn("CakeIpcClient.vscode.install-embedded-editor")(
-          (request) => client("vscode.install-embedded-editor", { request }),
+          (payload) => client("vscode.install-embedded-editor", payload),
         ),
-        "open-embedded-editor": Effect.fn("CakeIpcClient.vscode.open-embedded-editor")((request) =>
-          client("vscode.open-embedded-editor", { request }),
+        "open-embedded-editor": Effect.fn("CakeIpcClient.vscode.open-embedded-editor")((payload) =>
+          client("vscode.open-embedded-editor", payload),
         ),
         "update-embedded-editor-bounds": Effect.fn(
           "CakeIpcClient.vscode.update-embedded-editor-bounds",
-        )((request) => client("vscode.update-embedded-editor-bounds", { request })),
+        )((payload) => client("vscode.update-embedded-editor-bounds", payload)),
         "reveal-in-embedded-editor": Effect.fn("CakeIpcClient.vscode.reveal-in-embedded-editor")(
-          (request) => client("vscode.reveal-in-embedded-editor", { request }),
+          (payload) => client("vscode.reveal-in-embedded-editor", payload),
         ),
         "open-embedded-editor-source-control": Effect.fn(
           "CakeIpcClient.vscode.open-embedded-editor-source-control",
-        )((request) => client("vscode.open-embedded-editor-source-control", { request })),
+        )((payload) => client("vscode.open-embedded-editor-source-control", payload)),
         "update-embedded-editor-annotations": Effect.fn(
           "CakeIpcClient.vscode.update-embedded-editor-annotations",
-        )((request) => client("vscode.update-embedded-editor-annotations", { request })),
-        observe: () => client("privileged.observe", undefined),
+        )((payload) => client("vscode.update-embedded-editor-annotations", payload)),
+      },
+      events: {
+        application: () => client("application.observeEvents", undefined),
+        artifacts: () => client("artifacts.observeEvents", undefined),
+        plugins: () => client("plugins.observeEvents", undefined),
+        terminals: () => client("terminals.observeEvents", undefined),
+        vscode: () => client("vscode.observeEvents", undefined),
+        surfaces: () => client("electron.observeSurfaceEvents", undefined),
+      },
+      artifacts: {
+        "respond-artifact": Effect.fn("CakeIpcClient.artifacts.respond-artifact")((payload) =>
+          client("artifacts.respond-artifact", payload),
+        ),
+        "respond-ui": Effect.fn("CakeIpcClient.artifacts.respond-ui")((payload) =>
+          client("artifacts.respond-ui", payload),
+        ),
+        "export-artifacts": Effect.fn("CakeIpcClient.artifacts.export-artifacts")((payload) =>
+          client("artifacts.export-artifacts", payload),
+        ),
+      },
+      plugins: {
+        "get-customization-state": Effect.fn("CakeIpcClient.plugins.get-customization-state")(
+          (payload) => client("plugins.get-customization-state", payload),
+        ),
+        "get-plugin-authoring-reference": Effect.fn(
+          "CakeIpcClient.plugins.get-plugin-authoring-reference",
+        )((payload) => client("plugins.get-plugin-authoring-reference", payload)),
+        "list-plugin-files": Effect.fn("CakeIpcClient.plugins.list-plugin-files")((payload) =>
+          client("plugins.list-plugin-files", payload),
+        ),
+        "create-plugin": Effect.fn("CakeIpcClient.plugins.create-plugin")((payload) =>
+          client("plugins.create-plugin", payload),
+        ),
+        "read-plugin-file": Effect.fn("CakeIpcClient.plugins.read-plugin-file")((payload) =>
+          client("plugins.read-plugin-file", payload),
+        ),
+        "write-plugin-file": Effect.fn("CakeIpcClient.plugins.write-plugin-file")((payload) =>
+          client("plugins.write-plugin-file", payload),
+        ),
+        "validate-customization": Effect.fn("CakeIpcClient.plugins.validate-customization")(
+          (payload) => client("plugins.validate-customization", payload),
+        ),
+        "activate-customization": Effect.fn("CakeIpcClient.plugins.activate-customization")(
+          (payload) => client("plugins.activate-customization", payload),
+        ),
+        "rollback-customization": Effect.fn("CakeIpcClient.plugins.rollback-customization")(
+          (payload) => client("plugins.rollback-customization", payload),
+        ),
+        "use-factory-customization": Effect.fn("CakeIpcClient.plugins.use-factory-customization")(
+          (payload) => client("plugins.use-factory-customization", payload),
+        ),
+        "list-plugins": Effect.fn("CakeIpcClient.plugins.list-plugins")((payload) =>
+          client("plugins.list-plugins", payload),
+        ),
+        "set-plugin-enabled": Effect.fn("CakeIpcClient.plugins.set-plugin-enabled")((payload) =>
+          client("plugins.set-plugin-enabled", payload),
+        ),
+        "set-active-scene": Effect.fn("CakeIpcClient.plugins.set-active-scene")((payload) =>
+          client("plugins.set-active-scene", payload),
+        ),
+        "delete-plugin": Effect.fn("CakeIpcClient.plugins.delete-plugin")((payload) =>
+          client("plugins.delete-plugin", payload),
+        ),
+        "compile-inline-widget": Effect.fn("CakeIpcClient.plugins.compile-inline-widget")(
+          (payload) => client("plugins.compile-inline-widget", payload),
+        ),
+        "repair-inline-widget": Effect.fn("CakeIpcClient.plugins.repair-inline-widget")((payload) =>
+          client("plugins.repair-inline-widget", payload),
+        ),
+        "open-plugin-agent": Effect.fn("CakeIpcClient.plugins.open-plugin-agent")((payload) =>
+          client("plugins.open-plugin-agent", payload),
+        ),
+        "prompt-plugin-agent": Effect.fn("CakeIpcClient.plugins.prompt-plugin-agent")((payload) =>
+          client("plugins.prompt-plugin-agent", payload),
+        ),
+        "abort-plugin-agent": Effect.fn("CakeIpcClient.plugins.abort-plugin-agent")((payload) =>
+          client("plugins.abort-plugin-agent", payload),
+        ),
+        "detach-plugin-agent": Effect.fn("CakeIpcClient.plugins.detach-plugin-agent")((payload) =>
+          client("plugins.detach-plugin-agent", payload),
+        ),
+        "run-plugin-completion": Effect.fn("CakeIpcClient.plugins.run-plugin-completion")(
+          (payload) => client("plugins.run-plugin-completion", payload),
+        ),
+        "cancel-plugin-completion": Effect.fn("CakeIpcClient.plugins.cancel-plugin-completion")(
+          (payload) => client("plugins.cancel-plugin-completion", payload),
+        ),
+        "load-plugin-state": Effect.fn("CakeIpcClient.plugins.load-plugin-state")((payload) =>
+          client("plugins.load-plugin-state", payload),
+        ),
+        "save-plugin-state": Effect.fn("CakeIpcClient.plugins.save-plugin-state")((payload) =>
+          client("plugins.save-plugin-state", payload),
+        ),
+        "call-plugin-backend": Effect.fn("CakeIpcClient.plugins.call-plugin-backend")((payload) =>
+          client("plugins.call-plugin-backend", payload),
+        ),
+        "cancel-plugin-backend-call": Effect.fn("CakeIpcClient.plugins.cancel-plugin-backend-call")(
+          (payload) => client("plugins.cancel-plugin-backend-call", payload),
+        ),
+        "customization-rendered": Effect.fn("CakeIpcClient.plugins.customization-rendered")(
+          (payload) => client("plugins.customization-rendered", payload),
+        ),
+        "customization-runtime-failed": Effect.fn(
+          "CakeIpcClient.plugins.customization-runtime-failed",
+        )((payload) => client("plugins.customization-runtime-failed", payload)),
       },
       foundation: {
         typedFailure: Effect.fn("CakeIpcClient.foundation.typedFailure")(() =>

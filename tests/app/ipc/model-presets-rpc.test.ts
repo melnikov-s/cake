@@ -6,7 +6,6 @@ import {
   ModelPresetUpdateInput,
 } from "../../../src/domain/modelPresets";
 import { CakeIpcClient } from "../../../src/ipc/client/CakeIpcClient";
-import { privilegedRequestSchema } from "../../../src/ipc/privileged-contract";
 import { ModelSelection } from "../../../src/services/pi/model-data";
 import { makeRendererRuntime } from "../../../src/renderer/RendererRuntime";
 
@@ -91,17 +90,5 @@ describe("Model Preset Effect RPC contract", () => {
       "resolve",
     ]);
     await runtime.dispose();
-  });
-
-  it("has no legacy bulk preset or session-less model-list request", () => {
-    expect(() =>
-      Schema.decodeUnknownSync(privilegedRequestSchema)({ type: "set-model-presets", presets: [] }),
-    ).toThrow();
-    expect(() =>
-      Schema.decodeUnknownSync(privilegedRequestSchema)({
-        type: "list-models",
-        requestId: crypto.randomUUID(),
-      }),
-    ).toThrow();
   });
 });

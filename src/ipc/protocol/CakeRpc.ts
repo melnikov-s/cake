@@ -72,12 +72,18 @@ import {
   WindowStateUnsupportedVersionError,
   WindowStateWriteError,
 } from "../../services/storage/WindowStateStorage";
-import { PrivilegedCapabilityError } from "../../services/privileged/PrivilegedCapabilities";
+import { NativeCapabilityError } from "../../services/native/NativeCapabilities";
 import {
-  privilegedEventSchema,
-  privilegedRequestSchemas,
-  privilegedSuccessSchemas,
-} from "../privileged-contract";
+  applicationEventSchema,
+  artifactEventSchema,
+  embeddedEditorEventSchema,
+  pluginEventSchema,
+  nativeCommandSchemas,
+  nativeCommandSuccessSchemas,
+  surfaceEventSchema,
+  terminalEventSchema,
+} from "../native-contract";
+import { piSettingUpdateSchema } from "../session-contract";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 
 export class FoundationFailure extends Schema.TaggedError<FoundationFailure>()(
@@ -116,6 +122,10 @@ const ModelResolutionError = Schema.Union([
   UnsupportedThinkingLevelError,
   UnsupportedFastModeError,
 ]);
+
+const NativeEventStreamReady = Schema.Struct({
+  type: Schema.Literal("native-stream-ready"),
+});
 
 export const CakeRpc = RpcGroup.make(
   Rpc.make("application.getHomeDirectory", {
@@ -406,7 +416,7 @@ export const CakeRpc = RpcGroup.make(
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.setPiSetting", {
-    payload: { ...ProjectSessionTarget.fields, update: Schema.Json },
+    payload: { ...ProjectSessionTarget.fields, update: piSettingUpdateSchema },
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.reload", {
@@ -480,355 +490,504 @@ export const CakeRpc = RpcGroup.make(
     error: SubagentError,
   }),
   Rpc.make("electron.choose-project", {
-    payload: { request: privilegedRequestSchemas["choose-project"] },
-    success: privilegedSuccessSchemas["choose-project"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["choose-project"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["choose-project"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("electron.open-external-url", {
-    payload: { request: privilegedRequestSchemas["open-external-url"] },
-    success: privilegedSuccessSchemas["open-external-url"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["open-external-url"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["open-external-url"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("electron.show-transcript-selection-context-menu", {
-    payload: { request: privilegedRequestSchemas["show-transcript-selection-context-menu"] },
-    success: privilegedSuccessSchemas["show-transcript-selection-context-menu"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["show-transcript-selection-context-menu"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["show-transcript-selection-context-menu"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("electron.show-composer-context-menu", {
-    payload: { request: privilegedRequestSchemas["show-composer-context-menu"] },
-    success: privilegedSuccessSchemas["show-composer-context-menu"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["show-composer-context-menu"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["show-composer-context-menu"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("electron.show-session-context-menu", {
-    payload: { request: privilegedRequestSchemas["show-session-context-menu"] },
-    success: privilegedSuccessSchemas["show-session-context-menu"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["show-session-context-menu"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["show-session-context-menu"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("electron.show-project-context-menu", {
-    payload: { request: privilegedRequestSchemas["show-project-context-menu"] },
-    success: privilegedSuccessSchemas["show-project-context-menu"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["show-project-context-menu"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["show-project-context-menu"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("filesystem.choose-attachments", {
-    payload: { request: privilegedRequestSchemas["choose-attachments"] },
-    success: privilegedSuccessSchemas["choose-attachments"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["choose-attachments"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["choose-attachments"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("filesystem.suggest-files", {
-    payload: { request: privilegedRequestSchemas["suggest-files"] },
-    success: privilegedSuccessSchemas["suggest-files"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["suggest-files"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["suggest-files"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("filesystem.read-workspace-file", {
-    payload: { request: privilegedRequestSchemas["read-workspace-file"] },
-    success: privilegedSuccessSchemas["read-workspace-file"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["read-workspace-file"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["read-workspace-file"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("workspaces.reword-composer-selection", {
-    payload: { request: privilegedRequestSchemas["reword-composer-selection"] },
-    success: privilegedSuccessSchemas["reword-composer-selection"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["reword-composer-selection"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["reword-composer-selection"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("workspaces.generate-session-title", {
-    payload: { request: privilegedRequestSchemas["generate-session-title"] },
-    success: privilegedSuccessSchemas["generate-session-title"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["generate-session-title"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["generate-session-title"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("workspaces.set-utility-model", {
-    payload: { request: privilegedRequestSchemas["set-utility-model"] },
-    success: privilegedSuccessSchemas["set-utility-model"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["set-utility-model"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["set-utility-model"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("workspaces.register-project", {
-    payload: { request: privilegedRequestSchemas["register-project"] },
-    success: privilegedSuccessSchemas["register-project"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["register-project"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["register-project"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("workspaces.rename-project", {
-    payload: { request: privilegedRequestSchemas["rename-project"] },
-    success: privilegedSuccessSchemas["rename-project"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["rename-project"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["rename-project"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("workspaces.remove-project", {
-    payload: { request: privilegedRequestSchemas["remove-project"] },
-    success: privilegedSuccessSchemas["remove-project"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["remove-project"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["remove-project"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("workspaces.delete-session", {
-    payload: { request: privilegedRequestSchemas["delete-session"] },
-    success: privilegedSuccessSchemas["delete-session"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["delete-session"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["delete-session"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("workspaces.set-session-unread", {
-    payload: { request: privilegedRequestSchemas["set-session-unread"] },
-    success: privilegedSuccessSchemas["set-session-unread"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["set-session-unread"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["set-session-unread"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("workspaces.restart-pi", {
-    payload: { request: privilegedRequestSchemas["restart-pi"] },
-    success: privilegedSuccessSchemas["restart-pi"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["restart-pi"].mapFields(({ type: _type, ...fields }) => fields),
+    success: nativeCommandSuccessSchemas["restart-pi"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("managedWorktrees.create-worktree", {
-    payload: { request: privilegedRequestSchemas["create-worktree"] },
-    success: privilegedSuccessSchemas["create-worktree"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["create-worktree"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["create-worktree"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("managedWorktrees.get-worktree-status", {
-    payload: { request: privilegedRequestSchemas["get-worktree-status"] },
-    success: privilegedSuccessSchemas["get-worktree-status"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["get-worktree-status"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["get-worktree-status"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("managedWorktrees.land-worktree", {
-    payload: { request: privilegedRequestSchemas["land-worktree"] },
-    success: privilegedSuccessSchemas["land-worktree"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["land-worktree"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["land-worktree"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("terminals.open-terminal", {
-    payload: { request: privilegedRequestSchemas["open-terminal"] },
-    success: privilegedSuccessSchemas["open-terminal"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["open-terminal"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["open-terminal"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("terminals.get-terminal-status", {
-    payload: { request: privilegedRequestSchemas["get-terminal-status"] },
-    success: privilegedSuccessSchemas["get-terminal-status"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["get-terminal-status"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["get-terminal-status"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("vscode.get-embedded-editor-state", {
-    payload: { request: privilegedRequestSchemas["get-embedded-editor-state"] },
-    success: privilegedSuccessSchemas["get-embedded-editor-state"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["get-embedded-editor-state"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["get-embedded-editor-state"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("vscode.set-vscode-server-path", {
-    payload: { request: privilegedRequestSchemas["set-vscode-server-path"] },
-    success: privilegedSuccessSchemas["set-vscode-server-path"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["set-vscode-server-path"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["set-vscode-server-path"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("artifacts.respond-artifact", {
-    payload: { request: privilegedRequestSchemas["respond-artifact"] },
-    success: privilegedSuccessSchemas["respond-artifact"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["respond-artifact"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["respond-artifact"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("artifacts.respond-ui", {
-    payload: { request: privilegedRequestSchemas["respond-ui"] },
-    success: privilegedSuccessSchemas["respond-ui"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["respond-ui"].mapFields(({ type: _type, ...fields }) => fields),
+    success: nativeCommandSuccessSchemas["respond-ui"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("artifacts.export-artifacts", {
-    payload: { request: privilegedRequestSchemas["export-artifacts"] },
-    success: privilegedSuccessSchemas["export-artifacts"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["export-artifacts"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["export-artifacts"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.get-customization-state", {
-    payload: { request: privilegedRequestSchemas["get-customization-state"] },
-    success: privilegedSuccessSchemas["get-customization-state"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["get-customization-state"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["get-customization-state"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.get-plugin-authoring-reference", {
-    payload: { request: privilegedRequestSchemas["get-plugin-authoring-reference"] },
-    success: privilegedSuccessSchemas["get-plugin-authoring-reference"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["get-plugin-authoring-reference"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["get-plugin-authoring-reference"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.list-plugin-files", {
-    payload: { request: privilegedRequestSchemas["list-plugin-files"] },
-    success: privilegedSuccessSchemas["list-plugin-files"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["list-plugin-files"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["list-plugin-files"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.create-plugin", {
-    payload: { request: privilegedRequestSchemas["create-plugin"] },
-    success: privilegedSuccessSchemas["create-plugin"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["create-plugin"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["create-plugin"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.read-plugin-file", {
-    payload: { request: privilegedRequestSchemas["read-plugin-file"] },
-    success: privilegedSuccessSchemas["read-plugin-file"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["read-plugin-file"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["read-plugin-file"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.write-plugin-file", {
-    payload: { request: privilegedRequestSchemas["write-plugin-file"] },
-    success: privilegedSuccessSchemas["write-plugin-file"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["write-plugin-file"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["write-plugin-file"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.validate-customization", {
-    payload: { request: privilegedRequestSchemas["validate-customization"] },
-    success: privilegedSuccessSchemas["validate-customization"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["validate-customization"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["validate-customization"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.activate-customization", {
-    payload: { request: privilegedRequestSchemas["activate-customization"] },
-    success: privilegedSuccessSchemas["activate-customization"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["activate-customization"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["activate-customization"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.rollback-customization", {
-    payload: { request: privilegedRequestSchemas["rollback-customization"] },
-    success: privilegedSuccessSchemas["rollback-customization"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["rollback-customization"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["rollback-customization"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.use-factory-customization", {
-    payload: { request: privilegedRequestSchemas["use-factory-customization"] },
-    success: privilegedSuccessSchemas["use-factory-customization"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["use-factory-customization"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["use-factory-customization"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.list-plugins", {
-    payload: { request: privilegedRequestSchemas["list-plugins"] },
-    success: privilegedSuccessSchemas["list-plugins"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["list-plugins"].mapFields(({ type: _type, ...fields }) => fields),
+    success: nativeCommandSuccessSchemas["list-plugins"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.set-plugin-enabled", {
-    payload: { request: privilegedRequestSchemas["set-plugin-enabled"] },
-    success: privilegedSuccessSchemas["set-plugin-enabled"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["set-plugin-enabled"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["set-plugin-enabled"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.set-active-scene", {
-    payload: { request: privilegedRequestSchemas["set-active-scene"] },
-    success: privilegedSuccessSchemas["set-active-scene"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["set-active-scene"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["set-active-scene"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.delete-plugin", {
-    payload: { request: privilegedRequestSchemas["delete-plugin"] },
-    success: privilegedSuccessSchemas["delete-plugin"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["delete-plugin"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["delete-plugin"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.compile-inline-widget", {
-    payload: { request: privilegedRequestSchemas["compile-inline-widget"] },
-    success: privilegedSuccessSchemas["compile-inline-widget"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["compile-inline-widget"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["compile-inline-widget"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.repair-inline-widget", {
-    payload: { request: privilegedRequestSchemas["repair-inline-widget"] },
-    success: privilegedSuccessSchemas["repair-inline-widget"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["repair-inline-widget"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["repair-inline-widget"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.open-plugin-agent", {
-    payload: { request: privilegedRequestSchemas["open-plugin-agent"] },
-    success: privilegedSuccessSchemas["open-plugin-agent"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["open-plugin-agent"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["open-plugin-agent"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.prompt-plugin-agent", {
-    payload: { request: privilegedRequestSchemas["prompt-plugin-agent"] },
-    success: privilegedSuccessSchemas["prompt-plugin-agent"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["prompt-plugin-agent"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["prompt-plugin-agent"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.abort-plugin-agent", {
-    payload: { request: privilegedRequestSchemas["abort-plugin-agent"] },
-    success: privilegedSuccessSchemas["abort-plugin-agent"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["abort-plugin-agent"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["abort-plugin-agent"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.detach-plugin-agent", {
-    payload: { request: privilegedRequestSchemas["detach-plugin-agent"] },
-    success: privilegedSuccessSchemas["detach-plugin-agent"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["detach-plugin-agent"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["detach-plugin-agent"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.run-plugin-completion", {
-    payload: { request: privilegedRequestSchemas["run-plugin-completion"] },
-    success: privilegedSuccessSchemas["run-plugin-completion"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["run-plugin-completion"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["run-plugin-completion"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.cancel-plugin-completion", {
-    payload: { request: privilegedRequestSchemas["cancel-plugin-completion"] },
-    success: privilegedSuccessSchemas["cancel-plugin-completion"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["cancel-plugin-completion"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["cancel-plugin-completion"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.load-plugin-state", {
-    payload: { request: privilegedRequestSchemas["load-plugin-state"] },
-    success: privilegedSuccessSchemas["load-plugin-state"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["load-plugin-state"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["load-plugin-state"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.save-plugin-state", {
-    payload: { request: privilegedRequestSchemas["save-plugin-state"] },
-    success: privilegedSuccessSchemas["save-plugin-state"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["save-plugin-state"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["save-plugin-state"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.call-plugin-backend", {
-    payload: { request: privilegedRequestSchemas["call-plugin-backend"] },
-    success: privilegedSuccessSchemas["call-plugin-backend"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["call-plugin-backend"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["call-plugin-backend"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.cancel-plugin-backend-call", {
-    payload: { request: privilegedRequestSchemas["cancel-plugin-backend-call"] },
-    success: privilegedSuccessSchemas["cancel-plugin-backend-call"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["cancel-plugin-backend-call"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["cancel-plugin-backend-call"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.customization-rendered", {
-    payload: { request: privilegedRequestSchemas["customization-rendered"] },
-    success: privilegedSuccessSchemas["customization-rendered"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["customization-rendered"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["customization-rendered"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("plugins.customization-runtime-failed", {
-    payload: { request: privilegedRequestSchemas["customization-runtime-failed"] },
-    success: privilegedSuccessSchemas["customization-runtime-failed"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["customization-runtime-failed"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["customization-runtime-failed"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("electron.set-fullscreen-surface-open", {
-    payload: { request: privilegedRequestSchemas["set-fullscreen-surface-open"] },
-    success: privilegedSuccessSchemas["set-fullscreen-surface-open"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["set-fullscreen-surface-open"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["set-fullscreen-surface-open"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("workspaces.inspect-workspace", {
-    payload: { request: privilegedRequestSchemas["inspect-workspace"] },
-    success: privilegedSuccessSchemas["inspect-workspace"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["inspect-workspace"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["inspect-workspace"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("workspaces.respond-workspace-trust", {
-    payload: { request: privilegedRequestSchemas["respond-workspace-trust"] },
-    success: privilegedSuccessSchemas["respond-workspace-trust"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["respond-workspace-trust"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["respond-workspace-trust"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("managedWorktrees.discard-worktree", {
-    payload: { request: privilegedRequestSchemas["discard-worktree"] },
-    success: privilegedSuccessSchemas["discard-worktree"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["discard-worktree"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["discard-worktree"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("terminals.write-terminal", {
-    payload: { request: privilegedRequestSchemas["write-terminal"] },
-    success: privilegedSuccessSchemas["write-terminal"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["write-terminal"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["write-terminal"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("terminals.resize-terminal", {
-    payload: { request: privilegedRequestSchemas["resize-terminal"] },
-    success: privilegedSuccessSchemas["resize-terminal"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["resize-terminal"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["resize-terminal"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("terminals.close-terminal", {
-    payload: { request: privilegedRequestSchemas["close-terminal"] },
-    success: privilegedSuccessSchemas["close-terminal"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["close-terminal"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["close-terminal"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("vscode.install-embedded-editor", {
-    payload: { request: privilegedRequestSchemas["install-embedded-editor"] },
-    success: privilegedSuccessSchemas["install-embedded-editor"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["install-embedded-editor"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["install-embedded-editor"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("vscode.open-embedded-editor", {
-    payload: { request: privilegedRequestSchemas["open-embedded-editor"] },
-    success: privilegedSuccessSchemas["open-embedded-editor"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["open-embedded-editor"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["open-embedded-editor"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("vscode.update-embedded-editor-bounds", {
-    payload: { request: privilegedRequestSchemas["update-embedded-editor-bounds"] },
-    success: privilegedSuccessSchemas["update-embedded-editor-bounds"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["update-embedded-editor-bounds"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["update-embedded-editor-bounds"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("vscode.reveal-in-embedded-editor", {
-    payload: { request: privilegedRequestSchemas["reveal-in-embedded-editor"] },
-    success: privilegedSuccessSchemas["reveal-in-embedded-editor"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["reveal-in-embedded-editor"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["reveal-in-embedded-editor"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("vscode.open-embedded-editor-source-control", {
-    payload: { request: privilegedRequestSchemas["open-embedded-editor-source-control"] },
-    success: privilegedSuccessSchemas["open-embedded-editor-source-control"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["open-embedded-editor-source-control"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["open-embedded-editor-source-control"],
+    error: NativeCapabilityError,
   }),
   Rpc.make("vscode.update-embedded-editor-annotations", {
-    payload: { request: privilegedRequestSchemas["update-embedded-editor-annotations"] },
-    success: privilegedSuccessSchemas["update-embedded-editor-annotations"],
-    error: PrivilegedCapabilityError,
+    payload: nativeCommandSchemas["update-embedded-editor-annotations"].mapFields(
+      ({ type: _type, ...fields }) => fields,
+    ),
+    success: nativeCommandSuccessSchemas["update-embedded-editor-annotations"],
+    error: NativeCapabilityError,
   }),
-  Rpc.make("privileged.observe", {
-    success: Schema.Union([
-      privilegedEventSchema,
-      Schema.Struct({ type: Schema.Literal("privileged-stream-ready") }),
-    ]),
+  Rpc.make("application.observeEvents", {
+    success: Schema.Union([applicationEventSchema, NativeEventStreamReady]),
+    stream: true,
+  }),
+  Rpc.make("artifacts.observeEvents", {
+    success: Schema.Union([artifactEventSchema, NativeEventStreamReady]),
+    stream: true,
+  }),
+  Rpc.make("plugins.observeEvents", {
+    success: Schema.Union([pluginEventSchema, NativeEventStreamReady]),
+    stream: true,
+  }),
+  Rpc.make("terminals.observeEvents", {
+    success: Schema.Union([terminalEventSchema, NativeEventStreamReady]),
+    stream: true,
+  }),
+  Rpc.make("vscode.observeEvents", {
+    success: Schema.Union([embeddedEditorEventSchema, NativeEventStreamReady]),
+    stream: true,
+  }),
+  Rpc.make("electron.observeSurfaceEvents", {
+    success: Schema.Union([surfaceEventSchema, NativeEventStreamReady]),
     stream: true,
   }),
   Rpc.make("foundation.typedFailure", {

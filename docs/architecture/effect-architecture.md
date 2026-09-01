@@ -244,13 +244,16 @@ Preload is deliberately mechanical. It exposes no raw `ipcRenderer`, performs
 no Cake business logic, and accepts only the protocol transport messages.
 Both receiving boundaries decode untrusted values. Remaining outside-world
 commands are partitioned into the `electron`, `filesystem`, `workspaces`,
-`managedWorktrees`, `terminals`, `vscode`, `artifacts`, and `plugins` RPC groups;
-the main `PrivilegedCapabilities` Service owns their renderer-connection-aware
-invocation and event observation.
+`managedWorktrees`, `terminals`, `vscode`, `artifacts`, and `plugins` RPC groups.
+Each operation carries its semantic payload directly; there is no generic request
+envelope or second dispatcher protocol inside Effect RPC. Focused application, artifact, plugin, terminal, embedded-editor, and surface Streams
+carry renderer-connection-scoped native events to their window-owned consumers.
 
 Main RPC handlers are thin adapters to domain operations. They do not own
-business logic. Each renderer connection owns the Scope of its streaming RPCs
-and in-flight requests. Closing a window interrupts those subscriptions and
+business logic. Effect Schema decodes requests, results, failures, and Stream
+elements once at the process boundary; already-decoded values use ordinary
+TypeScript types internally and are not reparsed at each function call. Each
+renderer connection owns the Scope of its streaming RPCs and in-flight requests. Closing a window interrupts those subscriptions and
 requests.
 
 A long-lived operation with independent domain lifetime returns a stable ID or

@@ -1,15 +1,13 @@
-import { Effect, Option, Schema, Stream } from "effect";
+import { Effect, Stream } from "effect";
 import { CakeIpcClient } from "../ipc/client/CakeIpcClient";
-import { privilegedEventSchema } from "../ipc/privileged-contract";
+import type { NativeEvent } from "../ipc/native-contract";
 import { toRendererEvent, type RendererEvent } from "./RendererEvent";
 import type { RendererRuntime } from "./RendererRuntime";
-import type { RootStore } from "./stores/RootStore";
 import type { RendererModelSynchronizer } from "./RendererModelSynchronizer";
+import type { RootStore } from "./stores/RootStore";
 
-const privilegedReadySchema = Schema.Struct({ type: Schema.Literal("privileged-stream-ready") });
-
-/** Window-owned bridge from the privileged RPC event Stream to legacy event consumers. */
-export class RendererPrivilegedEvents implements Disposable {
+/** Window-owned bridge from focused native RPC Streams to their renderer owners. */
+export class RendererNativeEvents implements Disposable {
   private readonly abort = new AbortController();
   private readonly listeners = new Set<(event: RendererEvent) => void>();
   private disposed = false;
@@ -22,21 +20,36 @@ export class RendererPrivilegedEvents implements Disposable {
       resolveReady = resolve;
       rejectReady = reject;
     });
-    const consume = Effect.flatMap(CakeIpcClient, (client) =>
-      client.privileged.observe().pipe(
-        Stream.runForEach((input) =>
-          Effect.sync(() => {
-            if (Option.isSome(Schema.decodeUnknownOption(privilegedReadySchema)(input))) {
-              resolveReady();
-              return;
-            }
-            const event = toRendererEvent(Schema.decodeUnknownSync(privilegedEventSchema)(input));
-            if (event) for (const listener of this.listeners) listener(event);
-          }),
-        ),
+
+    let pendingStreams = 6;
+    const consume = <Event extends NativeEvent | { readonly type: "native-stream-ready" }>(
+      events: Stream.Stream<Event, unknown>,
+    ) =>
+      Stream.runForEach(events, (event) =>
+        Effect.sync(() => {
+          if (event.type === "native-stream-ready") {
+            pendingStreams -= 1;
+            if (pendingStreams === 0) resolveReady();
+            return;
+          }
+          const rendererEvent = toRendererEvent(event);
+          if (rendererEvent) for (const listener of this.listeners) listener(rendererEvent);
+        }),
+      );
+    const program = Effect.flatMap(CakeIpcClient, (client) =>
+      Effect.all(
+        [
+          consume(client.events.application()),
+          consume(client.events.artifacts()),
+          consume(client.events.plugins()),
+          consume(client.events.terminals()),
+          consume(client.events.vscode()),
+          consume(client.events.surfaces()),
+        ],
+        { concurrency: "unbounded", discard: true },
       ),
     );
-    void runtime.runPromise(consume, { signal: this.abort.signal }).catch(rejectReady);
+    void runtime.runPromise(program, { signal: this.abort.signal }).catch(rejectReady);
   }
 
   subscribe(listener: (event: RendererEvent) => void) {

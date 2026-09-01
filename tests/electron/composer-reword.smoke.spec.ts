@@ -124,7 +124,7 @@ test("rewords a composer selection and records one undo step", async () => {
     const harness = await openRpcHarness(application, "composer-reword");
     const rewritten = await callRpcHarness<{ type: string; text: string }>(
       harness,
-      "invokePrivileged",
+      "invokeNative",
       {
         type: "reword-composer-selection",
         selection: "rough ramble",

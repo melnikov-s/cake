@@ -1,9 +1,6 @@
 import { Effect, Predicate } from "effect";
 import { CakeIpcClient, type CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
-import type { PrivilegedRequest, PrivilegedRouteType } from "../../ipc/privileged-contract";
-
-type RoutedPrivilegedRequest = Extract<PrivilegedRequest, { type: PrivilegedRouteType }>;
-import { makeRendererNativeClient } from "./RendererNativeClient";
+import { makeRendererClientCapabilities } from "./RendererClientCapabilities";
 import type { RendererRuntime } from "../RendererRuntime";
 import {
   RendererClientError,
@@ -59,41 +56,6 @@ export function makeRendererClient(runtime: RendererRuntime): RendererClient {
     runtime
       .runPromise(effect, options?.signal ? { signal: options.signal } : undefined)
       .catch((error: unknown) => Promise.reject(rendererError(operation, error, options?.signal)));
-
-  const invoke = (
-    group:
-      | "electron"
-      | "filesystem"
-      | "workspaces"
-      | "managedWorktrees"
-      | "terminals"
-      | "vscode"
-      | "artifacts"
-      | "plugins",
-    request: RoutedPrivilegedRequest,
-    options?: RendererCommandOptions,
-  ) =>
-    run(
-      `${group}.${request.type}`,
-      // SAFETY: the route key and request discriminant are correlated by RoutedPrivilegedRequest.
-      withClient((client) => client.privileged[request.type](request as never)),
-      options,
-    );
-
-  const accept = async (
-    group: Parameters<typeof invoke>[0],
-    request: RoutedPrivilegedRequest & { requestId: string },
-    options?: RendererCommandOptions,
-  ) => {
-    const response = await invoke(group, request, options);
-    if (response.type !== "accepted" || response.requestId !== request.requestId)
-      throw new RendererClientError(
-        "unexpected",
-        `${group}.${request.type}`,
-        "Cake received a mismatched operation response",
-        `Expected accepted response for ${request.requestId}`,
-      );
-  };
 
   return {
     application: {
@@ -495,7 +457,9 @@ export function makeRendererClient(runtime: RendererRuntime): RendererClient {
           options,
         ),
     },
-    ...makeRendererNativeClient(invoke, accept),
+    ...makeRendererClientCapabilities((operation, command, options) =>
+      run(operation, withClient(command), options),
+    ),
     foundation: {
       typedFailure: (options) =>
         run(

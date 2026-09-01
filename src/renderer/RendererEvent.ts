@@ -1,4 +1,4 @@
-import type { PrivilegedEvent } from "../ipc/privileged-contract";
+import type { NativeEvent } from "../ipc/native-contract";
 import type { ApplicationState } from "../ipc/session-contract";
 import type { ArtifactRecord } from "../ipc/artifact-contract";
 import type { SourceLocation } from "../ipc/source-location";
@@ -8,15 +8,15 @@ import type { EmbeddedEditorStatus } from "./client/RendererClient";
 
 export type PiState = "starting" | "ready" | "stopped" | "failed";
 
-type PrivilegedPassthroughEvent = Extract<
-  PrivilegedEvent,
+type NativePassthroughEvent = Extract<
+  NativeEvent,
   {
     type: "plugin-backend-event" | "fullscreen-surface-close-requested" | "artifact-updated";
   }
 >;
 
 export type RendererEvent =
-  | PrivilegedPassthroughEvent
+  | NativePassthroughEvent
   | { type: "pi-state-changed"; state: PiState; workspacePath?: string }
   | { type: "workspace-inspected"; operationId: string; path: string; trustRequired: boolean }
   | {
@@ -81,7 +81,7 @@ export type RendererEvent =
   | { type: "embedded-editor-toggle-chat"; workspacePath: string }
   | { type: "embedded-editor-selection-cleared"; workspacePath: string };
 
-export function toRendererEvent(event: PrivilegedEvent): RendererEvent | undefined {
+export function toRendererEvent(event: NativeEvent): RendererEvent | undefined {
   if (event.type === "pi-state")
     return { type: "pi-state-changed", state: event.state, workspacePath: event.workspacePath };
   if (event.type === "workspace-inspected")

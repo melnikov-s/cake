@@ -1,13 +1,13 @@
-import type {
-  PrivilegedRequest,
-  PrivilegedResponse,
-  PrivilegedRouteType,
-} from "../../ipc/privileged-contract";
-
-type RoutedPrivilegedRequest = Extract<PrivilegedRequest, { type: PrivilegedRouteType }>;
+import { Effect } from "effect";
+import type { CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
+import {
+  nativeCommandSchemas,
+  type NativeCommandResult,
+  type NativeCommandType,
+} from "../../ipc/native-contract";
 import type { RendererClient, RendererCommandOptions } from "./RendererClient";
 
-export type RendererNativeClient = Pick<
+export type RendererClientCapabilities = Pick<
   RendererClient,
   | "electron"
   | "filesystem"
@@ -19,91 +19,128 @@ export type RendererNativeClient = Pick<
   | "plugins"
 >;
 
-type Group = keyof RendererNativeClient;
-type Invoke = (
-  group: Group,
-  request: RoutedPrivilegedRequest,
+type Group = keyof RendererClientCapabilities;
+type Payload<Type extends NativeCommandType> = Omit<
+  (typeof nativeCommandSchemas)[Type]["Type"],
+  "type"
+>;
+type Execute = <Success, Failure>(
+  operation: string,
+  command: (client: CakeIpcClientService) => Effect.Effect<Success, Failure>,
   options?: RendererCommandOptions,
-) => Promise<PrivilegedResponse>;
-type Accept = (
-  group: Group,
-  request: RoutedPrivilegedRequest & { requestId: string },
-  options?: RendererCommandOptions,
-) => Promise<void>;
+) => Promise<Success>;
 
-function expectResponse<Type extends PrivilegedResponse["type"]>(
-  response: PrivilegedResponse,
+function expectResponse<Type extends NativeCommandResult["type"]>(
+  response: NativeCommandResult,
   type: Type,
-): Extract<PrivilegedResponse, { type: Type }> {
+): Extract<NativeCommandResult, { type: Type }> {
   if (response.type !== type) throw new Error(`Cake returned ${response.type}; expected ${type}`);
   // SAFETY: the discriminant check narrows the union to the requested response variant.
-  return response as Extract<PrivilegedResponse, { type: Type }>;
+  return response as Extract<NativeCommandResult, { type: Type }>;
 }
 
-export function makeRendererNativeClient(invoke: Invoke, accept: Accept): RendererNativeClient {
+const widenResponse = (response: NativeCommandResult): NativeCommandResult => response;
+
+export function makeRendererClientCapabilities(execute: Execute): RendererClientCapabilities {
+  const command = <Type extends NativeCommandType>(
+    group: Group,
+    type: Type,
+    payload: Payload<Type>,
+    options?: RendererCommandOptions,
+  ): Promise<NativeCommandResult> =>
+    execute(
+      `${group}.${type}`,
+      (client) => {
+        const commands = {
+          ...client.electron,
+          ...client.filesystem,
+          ...client.workspaces,
+          ...client.managedWorktrees,
+          ...client.terminals,
+          ...client.vscode,
+          ...client.artifacts,
+          ...client.plugins,
+        };
+        // SAFETY: Type selects both the protocol payload and generated command;
+        // the mapped command table preserves that compile-time correlation.
+        return commands[type](payload as never).pipe(Effect.map(widenResponse));
+      },
+      options,
+    );
+
+  const accept = async <Type extends NativeCommandType>(
+    group: Group,
+    type: Type,
+    payload: Payload<Type> & { readonly requestId: string },
+    options?: RendererCommandOptions,
+  ) => {
+    const response = await command(group, type, payload, options);
+    if (response.type !== "accepted" || response.requestId !== payload.requestId)
+      throw new Error(`Cake returned ${response.type}; expected acceptance for ${type}`);
+  };
+
   return {
     electron: {
       chooseProject: (options) =>
-        invoke("electron", { type: "choose-project" }, options).then(
+        command("electron", "choose-project", {}, options).then(
           (response) => expectResponse(response, "project-chosen").path,
         ),
       openExternalUrl: (url, options) =>
-        invoke("electron", { type: "open-external-url", url }, options).then((response) => {
+        command("electron", "open-external-url", { url }, options).then((response) => {
           expectResponse(response, "external-url-opened");
         }),
       showTranscriptSelectionContextMenu: (input, options) =>
-        invoke(
-          "electron",
-          { type: "show-transcript-selection-context-menu", ...input },
-          options,
-        ).then(
+        command("electron", "show-transcript-selection-context-menu", { ...input }, options).then(
           (response) => expectResponse(response, "transcript-selection-context-menu-closed").action,
         ),
       showComposerContextMenu: (input, options) =>
-        invoke("electron", { type: "show-composer-context-menu", ...input }, options).then(
+        command("electron", "show-composer-context-menu", { ...input }, options).then(
           (response) => expectResponse(response, "composer-context-menu-closed").action,
         ),
       showSessionContextMenu: (input, options) =>
-        invoke("electron", { type: "show-session-context-menu", ...input }, options).then(
+        command("electron", "show-session-context-menu", { ...input }, options).then(
           (response) => expectResponse(response, "session-context-menu-closed").action,
         ),
       showProjectContextMenu: (input, options) =>
-        invoke("electron", { type: "show-project-context-menu", ...input }, options).then(
+        command("electron", "show-project-context-menu", { ...input }, options).then(
           (response) => expectResponse(response, "project-context-menu-closed").action,
         ),
       setFullscreenSurfaceOpen: (surfaceId, open, options) => {
         const requestId = crypto.randomUUID();
         return accept(
           "electron",
-          { type: "set-fullscreen-surface-open", requestId, surfaceId, open },
+          "set-fullscreen-surface-open",
+          { requestId, surfaceId, open },
           options,
         );
       },
     },
     filesystem: {
       chooseAttachments: (options) =>
-        invoke("filesystem", { type: "choose-attachments" }, options).then(
+        command("filesystem", "choose-attachments", {}, options).then(
           (response) => expectResponse(response, "attachments-chosen").attachments,
         ),
       suggestFiles: (workingDirectory, prefix, options) =>
-        invoke(
+        command(
           "filesystem",
-          { type: "suggest-files", workspacePath: workingDirectory, prefix },
+          "suggest-files",
+          { workspacePath: workingDirectory, prefix },
           options,
         ).then((response) => expectResponse(response, "file-suggestions").suggestions),
       readFile: (workingDirectory, path, options) =>
-        invoke(
+        command(
           "filesystem",
-          { type: "read-workspace-file", workspacePath: workingDirectory, path },
+          "read-workspace-file",
+          { workspacePath: workingDirectory, path },
           options,
         ).then((response) => expectResponse(response, "workspace-file").content),
     },
     workspaces: {
       rewordComposerSelection: (input, options) =>
-        invoke(
+        command(
           "workspaces",
+          "reword-composer-selection",
           {
-            type: "reword-composer-selection",
             selection: input.selection,
             prompt: input.prompt,
             workspacePath: input.workingDirectory,
@@ -111,46 +148,47 @@ export function makeRendererNativeClient(invoke: Invoke, accept: Accept): Render
           options,
         ).then((response) => expectResponse(response, "composer-selection-reworded").text),
       generateSessionTitle: (firstUserMessage, options) =>
-        invoke("workspaces", { type: "generate-session-title", firstUserMessage }, options).then(
+        command("workspaces", "generate-session-title", { firstUserMessage }, options).then(
           (response) => expectResponse(response, "session-title-generated").title,
         ),
       setUtilityModel: (model, options) =>
-        invoke("workspaces", { type: "set-utility-model", model }, options).then(
+        command("workspaces", "set-utility-model", { model }, options).then(
           (response) => expectResponse(response, "application-state-updated").state,
         ),
       registerProject: (path, name, options) =>
-        invoke("workspaces", { type: "register-project", path, name }, options).then(
+        command("workspaces", "register-project", { path, name }, options).then(
           (response) => expectResponse(response, "application-state-updated").state,
         ),
       renameProject: (path, name, options) =>
-        invoke("workspaces", { type: "rename-project", path, name }, options).then(
+        command("workspaces", "rename-project", { path, name }, options).then(
           (response) => expectResponse(response, "application-state-updated").state,
         ),
       removeProject: (path, deleteSessions, options) =>
-        invoke("workspaces", { type: "remove-project", path, deleteSessions }, options).then(
+        command("workspaces", "remove-project", { path, deleteSessions }, options).then(
           (response) => expectResponse(response, "application-state-updated").state,
         ),
       deleteSession: (sessionId, options) =>
-        invoke("workspaces", { type: "delete-session", sessionId }, options).then(
+        command("workspaces", "delete-session", { sessionId }, options).then(
           (response) => expectResponse(response, "application-state-updated").state,
         ),
       setSessionUnread: (sessionId, unread, options) =>
-        invoke("workspaces", { type: "set-session-unread", sessionId, unread }, options).then(
+        command("workspaces", "set-session-unread", { sessionId, unread }, options).then(
           (response) => expectResponse(response, "application-state-updated").state,
         ),
       restartPi: (path, options) =>
-        invoke("workspaces", { type: "restart-pi", path }, options).then(() => undefined),
+        command("workspaces", "restart-pi", { path }, options).then(() => undefined),
       inspect: (input, options) =>
         accept(
           "workspaces",
-          { type: "inspect-workspace", requestId: input.operationId, path: input.path },
+          "inspect-workspace",
+          { requestId: input.operationId, path: input.path },
           options,
         ),
       respondToTrust: (input, options) =>
         accept(
           "workspaces",
+          "respond-workspace-trust",
           {
-            type: "respond-workspace-trust",
             requestId: input.operationId,
             path: input.path,
             approved: input.approved,
@@ -160,10 +198,10 @@ export function makeRendererNativeClient(invoke: Invoke, accept: Accept): Render
     },
     managedWorktrees: {
       create: (input, options) =>
-        invoke(
+        command(
           "managedWorktrees",
+          "create-worktree",
           {
-            type: "create-worktree",
             requestId: input.operationId,
             path: input.path,
             baseWorktreePath: input.baseWorktreePath,
@@ -173,14 +211,14 @@ export function makeRendererNativeClient(invoke: Invoke, accept: Accept): Render
           options,
         ).then((response) => expectResponse(response, "worktree-created").record),
       status: (input, options) =>
-        invoke("managedWorktrees", { type: "get-worktree-status", ...input }, options).then(
+        command("managedWorktrees", "get-worktree-status", { ...input }, options).then(
           (response) => expectResponse(response, "worktree-status-loaded").status,
         ),
       land: (input, options) =>
-        invoke(
+        command(
           "managedWorktrees",
+          "land-worktree",
           {
-            type: "land-worktree",
             requestId: input.operationId,
             workspacePath: input.workspacePath,
             request: input.request,
@@ -190,8 +228,8 @@ export function makeRendererNativeClient(invoke: Invoke, accept: Accept): Render
       discard: (input, options) =>
         accept(
           "managedWorktrees",
+          "discard-worktree",
           {
-            type: "discard-worktree",
             requestId: input.operationId,
             workspacePath: input.workspacePath,
             keepBranch: input.keepBranch,
@@ -202,7 +240,7 @@ export function makeRendererNativeClient(invoke: Invoke, accept: Accept): Render
     terminals: {
       open: (input, options) => {
         const requestId = crypto.randomUUID();
-        return invoke("terminals", { type: "open-terminal", requestId, ...input }, options).then(
+        return command("terminals", "open-terminal", { requestId, ...input }, options).then(
           (response) => {
             const opened = expectResponse(response, "terminal-opened");
             if (opened.requestId !== requestId) throw new Error("Cake returned the wrong terminal");
@@ -212,73 +250,65 @@ export function makeRendererNativeClient(invoke: Invoke, accept: Accept): Render
       },
       write: (terminalId, data, options) => {
         const requestId = crypto.randomUUID();
-        return accept(
-          "terminals",
-          { type: "write-terminal", requestId, terminalId, data },
-          options,
-        );
+        return accept("terminals", "write-terminal", { requestId, terminalId, data }, options);
       },
       resize: (terminalId, cols, rows, options) => {
         const requestId = crypto.randomUUID();
         return accept(
           "terminals",
-          { type: "resize-terminal", requestId, terminalId, cols, rows },
+          "resize-terminal",
+          { requestId, terminalId, cols, rows },
           options,
         );
       },
       status: (terminalId, options) => {
         const requestId = crypto.randomUUID();
-        return invoke(
-          "terminals",
-          { type: "get-terminal-status", requestId, terminalId },
-          options,
-        ).then((response) => {
-          const status = expectResponse(response, "terminal-status");
-          if (status.requestId !== requestId) throw new Error("Cake returned the wrong terminal");
-          return { runningProgram: status.runningProgram };
-        });
+        return command("terminals", "get-terminal-status", { requestId, terminalId }, options).then(
+          (response) => {
+            const status = expectResponse(response, "terminal-status");
+            if (status.requestId !== requestId) throw new Error("Cake returned the wrong terminal");
+            return { runningProgram: status.runningProgram };
+          },
+        );
       },
       close: (terminalId, options) => {
         const requestId = crypto.randomUUID();
-        return accept("terminals", { type: "close-terminal", requestId, terminalId }, options);
+        return accept("terminals", "close-terminal", { requestId, terminalId }, options);
       },
     },
     vscode: {
       getState: (options) =>
-        invoke("vscode", { type: "get-embedded-editor-state" }, options).then((response) => {
+        command("vscode", "get-embedded-editor-state", {}, options).then((response) => {
           const state = expectResponse(response, "embedded-editor-state-loaded");
           return { status: state.status, message: state.message, customPath: state.customPath };
         }),
       install: (options) => {
         const requestId = crypto.randomUUID();
-        return accept("vscode", { type: "install-embedded-editor", requestId }, options);
+        return accept("vscode", "install-embedded-editor", { requestId }, options);
       },
       setServerPath: (path, options) =>
-        invoke("vscode", { type: "set-vscode-server-path", path }, options).then(
+        command("vscode", "set-vscode-server-path", { path }, options).then(
           (response) => expectResponse(response, "application-state-updated").state,
         ),
       open: (workingDirectory, options) => {
         const requestId = crypto.randomUUID();
         return accept(
           "vscode",
-          { type: "open-embedded-editor", requestId, workspacePath: workingDirectory },
+          "open-embedded-editor",
+          { requestId, workspacePath: workingDirectory },
           options,
         );
       },
       updateBounds: (input, options) => {
         const requestId = crypto.randomUUID();
-        return accept(
-          "vscode",
-          { type: "update-embedded-editor-bounds", requestId, ...input },
-          options,
-        );
+        return accept("vscode", "update-embedded-editor-bounds", { requestId, ...input }, options);
       },
       reveal: (workingDirectory, location, options) => {
         const requestId = crypto.randomUUID();
         return accept(
           "vscode",
+          "reveal-in-embedded-editor",
           {
-            type: "reveal-in-embedded-editor",
             requestId,
             workspacePath: workingDirectory,
             location,
@@ -290,8 +320,8 @@ export function makeRendererNativeClient(invoke: Invoke, accept: Accept): Render
         const requestId = crypto.randomUUID();
         return accept(
           "vscode",
+          "open-embedded-editor-source-control",
           {
-            type: "open-embedded-editor-source-control",
             requestId,
             workspacePath: workingDirectory,
           },
@@ -302,8 +332,8 @@ export function makeRendererNativeClient(invoke: Invoke, accept: Accept): Render
         const requestId = crypto.randomUUID();
         return accept(
           "vscode",
+          "update-embedded-editor-annotations",
           {
-            type: "update-embedded-editor-annotations",
             requestId,
             workspacePath: workingDirectory,
             snapshot,
@@ -314,10 +344,10 @@ export function makeRendererNativeClient(invoke: Invoke, accept: Accept): Render
     },
     artifacts: {
       respond: (input, options) =>
-        invoke(
+        command(
           "artifacts",
+          "respond-artifact",
           {
-            type: "respond-artifact",
             requestId: input.operationId,
             sessionId: input.sessionId,
             artifactRequestId: input.artifactRequestId,
@@ -329,10 +359,10 @@ export function makeRendererNativeClient(invoke: Invoke, accept: Accept): Render
           expectResponse(response, "artifact-response-accepted");
         }),
       respondToUi: (input, options) =>
-        invoke(
+        command(
           "artifacts",
+          "respond-ui",
           {
-            type: "respond-ui",
             requestId: input.operationId,
             sessionId: input.sessionId,
             uiRequestId: input.uiRequestId,
@@ -344,144 +374,144 @@ export function makeRendererNativeClient(invoke: Invoke, accept: Accept): Render
           expectResponse(response, "ui-response-accepted");
         }),
       export: (sessionId, options) =>
-        invoke("artifacts", { type: "export-artifacts", sessionId }, options).then(
+        command("artifacts", "export-artifacts", { sessionId }, options).then(
           (response) => expectResponse(response, "artifacts-exported").markdown,
         ),
     },
     plugins: {
       getCustomizationState: (options) =>
-        invoke("plugins", { type: "get-customization-state" }, options).then(
+        command("plugins", "get-customization-state", {}, options).then(
           (response) => expectResponse(response, "customization-state").state,
         ),
       getAuthoringReference: (options) =>
-        invoke("plugins", { type: "get-plugin-authoring-reference" }, options).then(
+        command("plugins", "get-plugin-authoring-reference", {}, options).then(
           (response) => expectResponse(response, "plugin-authoring-reference").reference,
         ),
       listFiles: (options) =>
-        invoke("plugins", { type: "list-plugin-files" }, options).then((response) =>
+        command("plugins", "list-plugin-files", {}, options).then((response) =>
           expectResponse(response, "plugin-files"),
         ),
       create: (input, options) =>
-        invoke("plugins", { type: "create-plugin", ...input }, options).then((response) =>
+        command("plugins", "create-plugin", { ...input }, options).then((response) =>
           expectResponse(response, "plugin-files"),
         ),
       readFile: (pluginId, path, options) =>
-        invoke("plugins", { type: "read-plugin-file", pluginId, path }, options).then(
+        command("plugins", "read-plugin-file", { pluginId, path }, options).then(
           (response) => expectResponse(response, "plugin-file").content,
         ),
       writeFile: (pluginId, path, content, expectedWorkingRevision, options) =>
-        invoke(
+        command(
           "plugins",
-          { type: "write-plugin-file", pluginId, path, content, expectedWorkingRevision },
+          "write-plugin-file",
+          { pluginId, path, content, expectedWorkingRevision },
           options,
         ).then((response) => expectResponse(response, "plugin-files")),
       validate: (expectedBaseRevision, request, expectedSourceRevision, options) =>
-        invoke(
+        command(
           "plugins",
-          { type: "validate-customization", expectedBaseRevision, request, expectedSourceRevision },
+          "validate-customization",
+          { expectedBaseRevision, request, expectedSourceRevision },
           options,
         ).then((response) => expectResponse(response, "customization-validation")),
       activate: (revision, expectedSourceRevision, request, options) =>
-        invoke(
+        command(
           "plugins",
-          { type: "activate-customization", revision, expectedSourceRevision, request },
+          "activate-customization",
+          { revision, expectedSourceRevision, request },
           options,
         ).then((response) => expectResponse(response, "customization-activation")),
       rollback: (options) =>
-        invoke("plugins", { type: "rollback-customization" }, options).then(
+        command("plugins", "rollback-customization", {}, options).then(
           (response) => expectResponse(response, "customization-state").state,
         ),
       useFactory: (options) =>
-        invoke("plugins", { type: "use-factory-customization" }, options).then(
+        command("plugins", "use-factory-customization", {}, options).then(
           (response) => expectResponse(response, "customization-state").state,
         ),
       list: (options) =>
-        invoke("plugins", { type: "list-plugins" }, options).then(
+        command("plugins", "list-plugins", {}, options).then(
           (response) => expectResponse(response, "plugins-listed").plugins,
         ),
       setEnabled: (pluginId, enabled, options) =>
-        invoke("plugins", { type: "set-plugin-enabled", pluginId, enabled }, options).then(
+        command("plugins", "set-plugin-enabled", { pluginId, enabled }, options).then(
           (response) => expectResponse(response, "plugins-listed").plugins,
         ),
       setActiveScene: (pluginId, options) =>
-        invoke("plugins", { type: "set-active-scene", pluginId }, options).then(
+        command("plugins", "set-active-scene", { pluginId }, options).then(
           (response) => expectResponse(response, "plugins-listed").plugins,
         ),
       delete: (pluginId, options) =>
-        invoke("plugins", { type: "delete-plugin", pluginId }, options).then(
+        command("plugins", "delete-plugin", { pluginId }, options).then(
           (response) => expectResponse(response, "plugins-listed").plugins,
         ),
       compileInlineWidget: (language, source, capability, options) =>
-        invoke(
-          "plugins",
-          { type: "compile-inline-widget", language, source, capability },
-          options,
-        ).then((response) => expectResponse(response, "inline-widget-compiled").widget),
+        command("plugins", "compile-inline-widget", { language, source, capability }, options).then(
+          (response) => expectResponse(response, "inline-widget-compiled").widget,
+        ),
       repairInlineWidget: (input, options) =>
-        invoke("plugins", { type: "repair-inline-widget", ...input }, options).then(
+        command("plugins", "repair-inline-widget", { ...input }, options).then(
           (response) => expectResponse(response, "inline-widget-repaired").widget,
         ),
       openAgent: (pluginId, input, implicitSession, options) =>
-        invoke(
+        command(
           "plugins",
-          { type: "open-plugin-agent", pluginId, options: input, implicitSession },
+          "open-plugin-agent",
+          { pluginId, options: input, implicitSession },
           options,
         ).then((response) => expectResponse(response, "plugin-agent-snapshot").snapshot),
       promptAgent: (pluginId, handleId, delivery, text, options) =>
-        invoke(
+        command(
           "plugins",
-          { type: "prompt-plugin-agent", pluginId, handleId, delivery, text },
+          "prompt-plugin-agent",
+          { pluginId, handleId, delivery, text },
           options,
         ).then((response) => expectResponse(response, "plugin-agent-snapshot").snapshot),
       abortAgent: (pluginId, handleId, options) =>
-        invoke("plugins", { type: "abort-plugin-agent", pluginId, handleId }, options).then(
+        command("plugins", "abort-plugin-agent", { pluginId, handleId }, options).then(
           (response) => expectResponse(response, "plugin-agent-snapshot").snapshot,
         ),
       detachAgent: (pluginId, handleId, options) =>
-        invoke("plugins", { type: "detach-plugin-agent", pluginId, handleId }, options).then(
+        command("plugins", "detach-plugin-agent", { pluginId, handleId }, options).then(
           (response) => {
             expectResponse(response, "plugin-agent-detached");
           },
         ),
       runCompletion: (pluginId, requestId, request, implicitSession, options) =>
-        invoke(
+        command(
           "plugins",
-          { type: "run-plugin-completion", pluginId, requestId, request, implicitSession },
+          "run-plugin-completion",
+          { pluginId, requestId, request, implicitSession },
           options,
         ).then((response) => expectResponse(response, "plugin-completion-result").result),
       cancelCompletion: (pluginId, requestId, options) =>
-        invoke("plugins", { type: "cancel-plugin-completion", pluginId, requestId }, options).then(
+        command("plugins", "cancel-plugin-completion", { pluginId, requestId }, options).then(
           () => undefined,
         ),
       loadState: (pluginId, key, scope, options) =>
-        invoke("plugins", { type: "load-plugin-state", pluginId, key, scope }, options).then(
+        command("plugins", "load-plugin-state", { pluginId, key, scope }, options).then(
           (response) => expectResponse(response, "plugin-state").record,
         ),
       saveState: (input, options) =>
-        invoke("plugins", { type: "save-plugin-state", ...input }, options).then((response) => {
+        command("plugins", "save-plugin-state", { ...input }, options).then((response) => {
           const record = expectResponse(response, "plugin-state").record;
           if (!record) throw new Error("Cake did not persist plugin state");
           return record;
         }),
       callBackend: (input, options) =>
-        invoke("plugins", { type: "call-plugin-backend", ...input }, options).then((response) => {
+        command("plugins", "call-plugin-backend", { ...input }, options).then((response) => {
           const result = expectResponse(response, "plugin-backend-result");
           return { ok: result.ok, value: result.value, error: result.error };
         }),
       cancelBackendCall: (pluginId, callId, options) =>
-        invoke("plugins", { type: "cancel-plugin-backend-call", pluginId, callId }, options).then(
+        command("plugins", "cancel-plugin-backend-call", { pluginId, callId }, options).then(
           () => undefined,
         ),
       reportRendered: (revision, options) =>
-        invoke("plugins", { type: "customization-rendered", revision }, options).then(
+        command("plugins", "customization-rendered", { revision }, options).then(() => undefined),
+      reportRuntimeFailure: (revision, message, options) =>
+        command("plugins", "customization-runtime-failed", { revision, message }, options).then(
           () => undefined,
         ),
-      reportRuntimeFailure: (revision, message, options) =>
-        invoke(
-          "plugins",
-          { type: "customization-runtime-failed", revision, message },
-          options,
-        ).then(() => undefined),
     },
   };
 }

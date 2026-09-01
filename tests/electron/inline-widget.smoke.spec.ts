@@ -31,7 +31,7 @@ test("executes a compiled React widget in its sandboxed document origin", async 
     const response = await callRpcHarness<{
       type: string;
       widget: { url: string };
-    }>(harness, "invokePrivileged", {
+    }>(harness, "invokeNative", {
       type: "compile-inline-widget",
       language: "react",
       capability: "display",

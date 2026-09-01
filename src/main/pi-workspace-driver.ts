@@ -7,13 +7,13 @@ import {
   type CakeRuntimeOptions,
   type RuntimeUiRequest,
 } from "../services/pi/runtime/cake-runtime";
-import { forkWorkspaceSession, loadPiChangelog } from "../services/pi/runtime/session-discovery";
+import { forkWorkspaceSession } from "../services/pi/runtime/session-discovery";
 import {
   runInlineWidgetGeneration,
   runInlineWidgetRepair,
   type InlineWidgetGenerationRequest,
 } from "../services/pi/runtime/sidecar-runtime";
-import type { PrivilegedEvent, PrivilegedRequest } from "../ipc/privileged-contract";
+import { type NativeEvent, type nativeCommandSchemas } from "../ipc/native-contract";
 import type { SourceLocation } from "../ipc/source-location";
 import type { ModelPreset, UtilityModel } from "../ipc/session-contract";
 import type { WorktreeLandingCoordinator } from "../ipc/worktree-contract";
@@ -35,25 +35,9 @@ type ReviewRepositoryPort = Partial<Pick<ReviewRepository, "reviewContextPath">>
 
 const MAX_LIVE_PRIVATE_AGENT_RUNTIMES = 32;
 
-type PiCommandType =
-  | "handoff-session"
-  | "navigate-session"
-  | "get-changelog"
-  | "edit-session-message"
-  | "compact-session"
-  | "set-model"
-  | "set-chat-configuration"
-  | "set-thinking"
-  | "set-fast-mode"
-  | "set-pi-setting"
-  | "reload-pi"
-  | "login"
-  | "logout"
-  | "respond-ui"
-  | "respond-artifact";
-
-type PiCommandRequest = Extract<PrivilegedRequest, { type: PiCommandType }>;
-export type PiWorkspaceCommand = PiCommandRequest;
+export type PiWorkspaceCommand =
+  | (typeof nativeCommandSchemas)["respond-ui"]["Type"]
+  | (typeof nativeCommandSchemas)["respond-artifact"]["Type"];
 
 interface PendingUi {
   operationId: string;
@@ -88,7 +72,7 @@ export interface PiWorkspaceDriverOptions {
   resolvedSessionDir?: string;
   widgetSessionDir?: string;
   pluginAgentSessionDir?: string;
-  emit(event: PrivilegedEvent): void;
+  emit(event: NativeEvent): void;
   createRuntime?: typeof createCakeRuntime;
   runWidgetGeneration?: typeof runInlineWidgetGeneration;
   runWidgetRepair?: typeof runInlineWidgetRepair;
@@ -212,89 +196,9 @@ export class PiWorkspaceDriver {
         pending.settle(command.cancelled ? undefined : command.value);
       return;
     }
-    if (command.type === "respond-artifact") {
-      const pending = this.pendingArtifacts.get(command.artifactRequestId);
-      if (pending?.operationId === command.requestId)
-        pending.settle(command.cancelled ? undefined : command.value);
-      return;
-    }
-    if (command.type === "get-changelog") {
-      void this.run(
-        command.requestId,
-        async () => {
-          this.runtimeFor(command.sessionId);
-          this.emit({
-            type: "changelog-snapshot",
-            requestId: command.requestId,
-            workspacePath: this.workspacePath,
-            sessionId: command.sessionId,
-            markdown: loadPiChangelog(),
-          });
-        },
-        command.sessionId,
-      );
-      return;
-    }
-    void this.run(
-      command.requestId,
-      async () => {
-        this.trusted ||= this.isTrusted();
-        const runtime =
-          command.type === "edit-session-message" ||
-          command.type === "compact-session" ||
-          command.type === "set-model" ||
-          command.type === "set-chat-configuration"
-            ? (this.runtimes.get(command.sessionId) ??
-              (await this.createRuntime(false, command.sessionId)))
-            : this.runtimeFor(command.sessionId);
-        if (command.type === "edit-session-message") {
-          if (!runtime.editMessage)
-            throw new Error("This Pi runtime does not support message editing");
-          await runtime.editMessage(
-            command.entryId,
-            command.text,
-            [...command.attachments],
-            command.renderUserMessageAsMarkdown,
-          );
-          this.emit({ type: "session-snapshot", snapshot: await runtime.snapshot() });
-        } else if (command.type === "compact-session") {
-          await runtime.compact(command.instructions);
-          this.emit({ type: "session-snapshot", snapshot: await runtime.snapshot() });
-        } else if (command.type === "set-model")
-          await runtime.setModel(command.provider, command.modelId);
-        else if (command.type === "set-chat-configuration")
-          await runtime.applyConfiguration(command.configuration);
-        else if (command.type === "set-thinking") await runtime.setThinkingLevel(command.level);
-        else if (command.type === "set-fast-mode") {
-          if (!runtime.setFastMode) throw new Error("This Pi runtime does not support Fast mode");
-          await runtime.setFastMode(command.enabled);
-        } else if (command.type === "set-pi-setting") {
-          await runtime.setPiSetting(command.update);
-          if (["packages", "extensions", "skills", "prompts"].includes(command.update.key)) {
-            await Promise.all(
-              [...this.runtimes.values()].map((activeRuntime) => this.reloadRuntime(activeRuntime)),
-            );
-          }
-        } else if (command.type === "reload-pi") await this.reloadRuntime(runtime);
-        else if (command.type === "login") await runtime.login(command.provider, command.authType);
-        else if (command.type === "logout") await runtime.logout(command.provider);
-        else if (command.type === "navigate-session") await runtime.navigate(command.entryId);
-        else if (command.type === "handoff-session") {
-          const configuration = runtime.currentConfiguration?.();
-          const handedOff = await runtime.handoff(command.entryId);
-          const next = await this.createRuntime(false, handedOff.sessionId, handedOff.sessionFile);
-          if (configuration) await next.applyConfiguration(configuration);
-          this.emit({
-            type: "session-snapshot",
-            requestId: command.requestId,
-            snapshot: await next.snapshot(command.requestId),
-          });
-          if (command.resolveSource) await this.setSessionResolved(command.sessionId, true);
-          if (command.prompt?.trim()) await next.prompt(command.prompt.trim(), "prompt", []);
-        }
-      },
-      command.sessionId,
-    );
+    const pending = this.pendingArtifacts.get(command.artifactRequestId);
+    if (pending?.operationId === command.requestId)
+      pending.settle(command.cancelled ? undefined : command.value);
   }
 
   async releaseSessionForArchive(sessionId: string) {
@@ -490,7 +394,7 @@ export class PiWorkspaceDriver {
     };
   }
 
-  private emit(event: PrivilegedEvent) {
+  private emit(event: NativeEvent) {
     if (!this.disposed) this.emitEvent(event);
   }
 
@@ -656,22 +560,6 @@ export class PiWorkspaceDriver {
         return [...records.values()];
       },
     };
-  }
-
-  /**
-   * Syncs every live runtime's in-memory model catalog from the shared models
-   * store on disk, so already-open sessions accept models surfaced by a refresh.
-   * The network pass happens once on the shared agent catalog in the main
-   * process, which calls this across every live driver.
-   */
-  async refreshModels(): Promise<void> {
-    await Promise.all(
-      [...this.runtimes.values()].map(async (runtime) => {
-        if (!runtime.refreshModels)
-          throw new Error("This Pi runtime does not support refreshing models");
-        await runtime.refreshModels();
-      }),
-    );
   }
 
   private async createRuntime(

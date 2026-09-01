@@ -55,7 +55,7 @@ test("builds, activates, persists, recovers, and disables a failed plugin render
     const page = await application.firstWindow();
     await page.waitForLoadState("domcontentloaded");
     const harness = await openRpcHarness(application, "plugin-customization");
-    const request = (input: unknown) => callRpcHarness<unknown>(harness, "invokePrivileged", input);
+    const request = (input: unknown) => callRpcHarness<unknown>(harness, "invokeNative", input);
     const validateAndActivate = async (input: Record<string, unknown> = {}) => {
       const validation = (await request({ type: "validate-customization", ...input })) as {
         revision: string;

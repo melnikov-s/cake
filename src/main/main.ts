@@ -15,12 +15,11 @@ import {
   type WebContents,
 } from "electron";
 import {
-  privilegedEventSchema,
-  privilegedRequestSchema,
-  privilegedResponseSchema,
-  type PrivilegedEvent,
-  type PrivilegedResponse,
-} from "../ipc/privileged-contract";
+  nativeEventSchema,
+  type NativeEvent,
+  type NativeCommand,
+  type NativeCommandResult,
+} from "../ipc/native-contract";
 import { type Attachment } from "../ipc/session-contract";
 import type { SourceLocation } from "../ipc/source-location";
 import { jsonObjectSchema, jsonValueSchema } from "../ipc/json-contract";
@@ -72,11 +71,7 @@ import {
 import type { ApplicationState as ApplicationStateOwner } from "../services/storage/ApplicationState";
 import { shouldAllowNavigation } from "./navigation-policy";
 import { resolveRewordingWorkspace } from "./rewording-workspace";
-import {
-  PiWorkspaceDriver,
-  describeOperationError,
-  type PiWorkspaceCommand,
-} from "./pi-workspace-driver";
+import { PiWorkspaceDriver, type PiWorkspaceCommand } from "./pi-workspace-driver";
 import { VsCodeServerManager } from "./vscode-server-manager";
 import { ArtifactRepository } from "./artifact-repository";
 import { ReviewRepository } from "./review-repository";
@@ -291,29 +286,29 @@ const pluginAgents = new PluginAgentHost({
   emit: sendTo,
 });
 
-const privilegedEventListeners = new Map<number, Set<(event: PrivilegedEvent) => void>>();
+const nativeEventListeners = new Map<number, Set<(event: NativeEvent) => void>>();
 
-function subscribePrivilegedEvents(
+function subscribeNativeEvents(
   connectionId: number,
-  listener: (event: PrivilegedEvent) => void,
+  listener: (event: NativeEvent) => void,
 ): () => void {
-  const listeners = privilegedEventListeners.get(connectionId) ?? new Set();
+  const listeners = nativeEventListeners.get(connectionId) ?? new Set();
   listeners.add(listener);
-  privilegedEventListeners.set(connectionId, listeners);
+  nativeEventListeners.set(connectionId, listeners);
   return () => {
     listeners.delete(listener);
-    if (listeners.size === 0) privilegedEventListeners.delete(connectionId);
+    if (listeners.size === 0) nativeEventListeners.delete(connectionId);
   };
 }
 
-function sendTo(target: WebContents, event: PrivilegedEvent) {
+function sendTo(target: WebContents, event: NativeEvent) {
   if (event.type === "session-snapshot")
     rememberSessionLocation(event.snapshot.workspacePath, event.snapshot.sessionId);
   if (target.isDestroyed()) return;
-  for (const listener of privilegedEventListeners.get(target.id) ?? []) listener(event);
+  for (const listener of nativeEventListeners.get(target.id) ?? []) listener(event);
 }
 
-function broadcast(event: PrivilegedEvent) {
+function broadcast(event: NativeEvent) {
   if (event.type === "session-snapshot")
     rememberSessionLocation(event.snapshot.workspacePath, event.snapshot.sessionId);
   for (const window of windows.values()) sendTo(window.webContents, event);
@@ -712,36 +707,6 @@ function refreshCakeChatApplicationContext() {
   ).catch((error) => console.error("[cake] Cake Chat context refresh failed", error));
 }
 
-/**
- * Refreshes the model catalog everywhere without a restart. The shared
- * agent-directory catalog performs the single network pass and writes the
- * refreshed catalogs to the shared models store on disk; every live runtime —
- * project sessions in any open workspace and Cake Chat — then syncs its
- * in-memory catalog from that store so all sources agree immediately. Completion
- * is reported with the same complete/fatal events a driver operation emits.
- */
-function refreshModelsEverywhere(requestId: string) {
-  void (async () => {
-    try {
-      await runMainEffect(Effect.flatMap(PiModels, (models) => models.refreshCatalog()));
-      await Promise.all([
-        ...[...piHosts.values()].map((host) => host.driver.refreshModels()),
-        runMainEffect(Effect.flatMap(PiSessions, (sessions) => sessions.refreshModels())),
-      ]);
-      broadcast({ type: "complete", requestId });
-    } catch (error) {
-      const described = describeOperationError(error);
-      console.error("[cake] Model refresh failed:", described.details ?? described.message);
-      broadcast({
-        type: "fatal",
-        requestId,
-        message: described.message,
-        details: described.details,
-      });
-    }
-  })();
-}
-
 function configureApplicationBranding() {
   const windowMenuTail: Electron.MenuItemConstructorOptions[] =
     process.platform === "darwin"
@@ -1085,21 +1050,20 @@ async function chooseAttachments(window: BrowserWindow): Promise<Attachment[]> {
   );
 }
 
-async function invokePrivilegedRequest(
+async function invokeNativeCommand(
   connectionId: number,
-  untrustedInput: unknown,
-): Promise<PrivilegedResponse> {
+  request: NativeCommand,
+): Promise<NativeCommandResult> {
   const sender = webContents.fromId(connectionId);
   if (!sender || sender.isDestroyed()) throw new Error("Renderer connection is no longer active");
-  // SAFETY: handleCakeRequest reads only the trusted sender field supplied here.
-  return handleCakeRequest({ sender } as Electron.IpcMainInvokeEvent, untrustedInput);
+  // SAFETY: executeNativeCommand reads only the trusted sender field supplied here.
+  return executeNativeCommand({ sender } as Electron.IpcMainInvokeEvent, request);
 }
 
-async function handleCakeRequest(
+async function executeNativeCommand(
   event: Electron.IpcMainInvokeEvent,
-  untrustedInput: unknown,
-): Promise<PrivilegedResponse> {
-  const request = Schema.decodeUnknownSync(privilegedRequestSchema)(untrustedInput);
+  request: NativeCommand,
+): Promise<NativeCommandResult> {
   const owner = BrowserWindow.fromWebContents(event.sender);
   if (request.type === "open-terminal") {
     if (request.target.kind === "project" && !allowedProjectPaths.has(request.target.workspacePath))
@@ -1113,52 +1077,52 @@ async function handleCakeRequest(
       request.cols,
       request.rows,
     );
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "terminal-opened",
       requestId: request.requestId,
       ...opened,
-    });
+    };
   }
   if (request.type === "write-terminal") {
     terminals.write(event.sender.id, request.terminalId, request.data);
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "accepted",
       requestId: request.requestId,
-    });
+    };
   }
   if (request.type === "resize-terminal") {
     terminals.resize(event.sender.id, request.terminalId, request.cols, request.rows);
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "accepted",
       requestId: request.requestId,
-    });
+    };
   }
   if (request.type === "get-terminal-status") {
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "terminal-status",
       requestId: request.requestId,
       runningProgram: terminals.hasRunningProgram(event.sender.id, request.terminalId),
-    });
+    };
   }
   if (request.type === "close-terminal") {
     terminals.close(event.sender.id, request.terminalId);
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "accepted",
       requestId: request.requestId,
-    });
+    };
   }
   if (request.type === "open-external-url") {
     const url = new URL(request.url);
     if (url.protocol !== "https:" && url.protocol !== "http:")
       throw new Error("External links must use HTTP or HTTPS");
     await shell.openExternal(url.href);
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({ type: "external-url-opened" });
+    return { type: "external-url-opened" };
   }
   if (request.type === "show-transcript-selection-context-menu") {
     if (!owner)
-      return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      return {
         type: "transcript-selection-context-menu-closed",
-      });
+      };
     const action = await new Promise<"chat-about-selection" | "add-annotation" | undefined>(
       (resolve) => {
         let completed = false;
@@ -1188,16 +1152,16 @@ async function handleCakeRequest(
         Menu.buildFromTemplate(template).popup({ window: owner, callback: () => finish() });
       },
     );
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "transcript-selection-context-menu-closed",
       action,
-    });
+    };
   }
   if (request.type === "show-composer-context-menu") {
     if (!owner)
-      return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      return {
         type: "composer-context-menu-closed",
-      });
+      };
     const action = await new Promise<"reword" | "reword-with-prompt" | undefined>((resolve) => {
       let completed = false;
       const finish = (selected?: "reword" | "reword-with-prompt") => {
@@ -1230,10 +1194,10 @@ async function handleCakeRequest(
         callback: () => finish(),
       });
     });
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "composer-context-menu-closed",
       action,
-    });
+    };
   }
   if (request.type === "reword-composer-selection") {
     const utilityModel = applicationState().utilityModel;
@@ -1270,10 +1234,10 @@ async function handleCakeRequest(
             }),
             signal,
           );
-      return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      return {
         type: "composer-selection-reworded",
         text,
-      });
+      };
     } finally {
       controllers.delete(controller);
       if (controllers.size === 0) composerRewordControllers.delete(event.sender.id);
@@ -1282,19 +1246,19 @@ async function handleCakeRequest(
   if (request.type === "generate-session-title") {
     const utilityModel = applicationState().utilityModel;
     if (!utilityModel)
-      return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      return {
         type: "session-title-generated",
-      });
+      };
     const title = await runMainEffect(
       generateSessionTitle({
         selection: utilityModelSelection(utilityModel),
         firstUserMessage: request.firstUserMessage,
       }),
     );
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "session-title-generated",
       title,
-    });
+    };
   }
   if (request.type === "set-fullscreen-surface-open") {
     let surfaceIds = fullscreenSurfaces.get(event.sender.id);
@@ -1308,16 +1272,16 @@ async function handleCakeRequest(
       surfaceIds.delete(request.surfaceId);
       if (surfaceIds.size === 0) fullscreenSurfaces.delete(event.sender.id);
     }
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "accepted",
       requestId: request.requestId,
-    });
+    };
   }
   if (request.type === "show-project-context-menu") {
     if (!owner)
-      return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      return {
         type: "project-context-menu-closed",
-      });
+      };
     type ProjectMenuAction = "remove-project" | "delete-resolved-worktrees";
     const action = await new Promise<ProjectMenuAction | undefined>((resolve) => {
       let completed = false;
@@ -1343,16 +1307,16 @@ async function handleCakeRequest(
         callback: () => finish(),
       });
     });
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "project-context-menu-closed",
       action,
-    });
+    };
   }
   if (request.type === "show-session-context-menu") {
     if (!owner)
-      return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      return {
         type: "session-context-menu-closed",
-      });
+      };
     type SessionMenuAction = "rename" | "mark-unread" | "resolve" | "unresolve" | "delete";
     const action = await new Promise<SessionMenuAction | undefined>((resolve) => {
       let completed = false;
@@ -1400,38 +1364,38 @@ async function handleCakeRequest(
         },
       });
     });
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "session-context-menu-closed",
       action,
-    });
+    };
   }
   if (request.type === "set-session-unread") {
     const state = await runMainEffect(setSessionUnread(request.sessionId, request.unread));
     broadcast({ type: "application-state-changed", state });
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "application-state-updated",
       state,
-    });
+    };
   }
   if (request.type === "set-vscode-server-path") {
     const state = await runMainEffect(setVscodeServerPath(request.path));
     await vscodeEditor.refreshStatus();
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "application-state-updated",
       state,
-    });
+    };
   }
   if (request.type === "get-embedded-editor-state")
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "embedded-editor-state-loaded",
       ...vscodeEditor.snapshotState(),
-    });
+    };
   if (request.type === "install-embedded-editor") {
     await vscodeEditor.install();
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "accepted",
       requestId: request.requestId,
-    });
+    };
   }
   if (request.type === "open-embedded-editor") {
     if (!allowedProjectPaths.has(request.workspacePath))
@@ -1441,10 +1405,10 @@ async function handleCakeRequest(
       () => BrowserWindow.fromWebContents(event.sender),
       request.workspacePath,
     );
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "accepted",
       requestId: request.requestId,
-    });
+    };
   }
   if (request.type === "update-embedded-editor-bounds") {
     const window = BrowserWindow.fromWebContents(event.sender);
@@ -1454,10 +1418,10 @@ async function handleCakeRequest(
         request.visible ? VSCODE_TITLE_BAR_HEIGHT : CAKE_TITLE_BAR_HEIGHT,
       );
     vscodeEditor.updateBounds(event.sender.id, request);
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "accepted",
       requestId: request.requestId,
-    });
+    };
   }
   if (request.type === "reveal-in-embedded-editor") {
     if (!allowedProjectPaths.has(request.workspacePath))
@@ -1470,19 +1434,19 @@ async function handleCakeRequest(
       ...request.location,
       path: relative(workspace, target),
     });
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "accepted",
       requestId: request.requestId,
-    });
+    };
   }
   if (request.type === "open-embedded-editor-source-control") {
     if (!allowedProjectPaths.has(request.workspacePath))
       throw new Error("Project path was not selected by the user");
     await vscodeEditor.openSourceControl(request.workspacePath);
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "accepted",
       requestId: request.requestId,
-    });
+    };
   }
   if (request.type === "update-embedded-editor-annotations") {
     if (!allowedProjectPaths.has(request.workspacePath))
@@ -1504,28 +1468,28 @@ async function handleCakeRequest(
       sessionId: request.snapshot.sessionId,
       annotations: normalized.flatMap((item) => (item.status === "fulfilled" ? [item.value] : [])),
     });
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "accepted",
       requestId: request.requestId,
-    });
+    };
   }
   if (request.type === "get-customization-state")
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "customization-state",
       state: pluginActivation.snapshot(),
-    });
+    };
   if (request.type === "get-plugin-authoring-reference")
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "plugin-authoring-reference",
       reference: await pluginActivation.builder.authoringReference(),
-    });
+    };
   if (request.type === "list-plugin-files")
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "plugin-files",
       ...(await pluginActivation.builder.repository.authoringSnapshot()),
-    });
+    };
   if (request.type === "create-plugin")
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "plugin-files",
       ...(await pluginActivation.builder.repository.createPlugin(
         {
@@ -1537,9 +1501,9 @@ async function handleCakeRequest(
         },
         request.expectedWorkingRevision,
       )),
-    });
+    };
   if (request.type === "read-plugin-file")
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "plugin-file",
       pluginId: request.pluginId,
       path: request.path,
@@ -1547,9 +1511,9 @@ async function handleCakeRequest(
         request.pluginId,
         request.path,
       ),
-    });
+    };
   if (request.type === "write-plugin-file")
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "plugin-files",
       ...(await pluginActivation.builder.repository.writePluginFile(
         request.pluginId,
@@ -1557,20 +1521,20 @@ async function handleCakeRequest(
         request.content,
         request.expectedWorkingRevision,
       )),
-    });
+    };
   if (request.type === "validate-customization") {
     const candidate = await pluginActivation.validate(
       request.expectedBaseRevision,
       request.request,
       request.expectedSourceRevision,
     );
-    const response = Schema.decodeUnknownSync(privilegedResponseSchema)({
+    const response = {
       type: "customization-validation",
       revision: candidate.revision,
       sourceRevision: candidate.sourceRevision,
       diagnostics: candidate.diagnostics,
       valid: candidate.diagnostics.length === 0,
-    });
+    } satisfies NativeCommandResult;
     broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
     if (candidate.diagnostics.length) refreshCakeChatApplicationContext();
     return response;
@@ -1593,11 +1557,11 @@ async function handleCakeRequest(
       refreshCakeChatApplicationContext();
       throw error;
     }
-    const response = Schema.decodeUnknownSync(privilegedResponseSchema)({
+    const response = {
       type: "customization-activation",
       revision: candidate.revision,
       activating: true,
-    });
+    } satisfies NativeCommandResult;
     broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
     await refreshPluginAgentResources();
     reloadAllAfterResponse({
@@ -1620,10 +1584,10 @@ async function handleCakeRequest(
     customizationHealthTimers.delete(event.sender.id);
     if (activating) refreshCakeChatApplicationContext();
     broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "customization-state",
       state: pluginActivation.snapshot(),
-    });
+    };
   }
   if (request.type === "customization-runtime-failed") {
     await pluginBackends.stop();
@@ -1631,10 +1595,10 @@ async function handleCakeRequest(
     refreshCakeChatApplicationContext();
     broadcast({ type: "customization-state-changed", state: pluginActivation.snapshot() });
     reloadAllAfterResponse({ kind: "factory" });
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "customization-state",
       state: pluginActivation.snapshot(),
-    });
+    };
   }
   if (request.type === "rollback-customization") {
     const revision = await pluginActivation.rollback();
@@ -1647,41 +1611,41 @@ async function handleCakeRequest(
       });
       refreshCakeChatApplicationContext();
       reloadAllAfterResponse({ kind: "factory" });
-      return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      return {
         type: "customization-state",
         state: pluginActivation.snapshot(),
-      });
+      };
     }
     refreshCakeChatApplicationContext();
     const renderer = revision
       ? { kind: "custom" as const, revision, path: pluginActivation.buildPath(revision) }
       : { kind: "factory" as const };
     reloadAllAfterResponse(renderer);
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "customization-state",
       state: pluginActivation.snapshot(),
-    });
+    };
   }
   if (request.type === "use-factory-customization") {
     await pluginActivation.useFactory();
     await pluginBackends.stop();
     refreshCakeChatApplicationContext();
     reloadAllAfterResponse({ kind: "factory" });
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "customization-state",
       state: pluginActivation.snapshot(),
-    });
+    };
   }
   if (request.type === "list-plugins")
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "plugins-listed",
       plugins: await pluginActivation.builder.repository.listPluginStatuses(),
-    });
+    };
   if (request.type === "set-active-scene")
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "plugins-listed",
       plugins: await pluginActivation.builder.repository.setActiveScene(request.pluginId),
-    });
+    };
   if (request.type === "set-plugin-enabled") {
     const plugins = await pluginActivation.builder.repository.setEnabled(
       request.pluginId,
@@ -1691,7 +1655,7 @@ async function handleCakeRequest(
     await rebuildAfterPluginConfigurationChange(
       `${request.enabled ? "Enable" : "Disable"} plugin ${request.pluginId}`,
     );
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({ type: "plugins-listed", plugins });
+    return { type: "plugins-listed", plugins };
   }
   if (request.type === "delete-plugin") {
     const { wasEnabled, plugins } = await pluginActivation.builder.repository.deletePlugin(
@@ -1708,19 +1672,19 @@ async function handleCakeRequest(
       refreshCakeChatApplicationContext();
       reloadAllAfterResponse({ kind: "factory" });
     }
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({ type: "plugins-listed", plugins });
+    return { type: "plugins-listed", plugins };
   }
   if (request.type === "load-plugin-state") {
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "plugin-state",
       record: await pluginPersistence.read(request.pluginId, request.key, request.scope),
-    });
+    };
   }
   if (request.type === "save-plugin-state") {
     const rendererRevision =
       windowCustomizationRevisions.get(event.sender.id) ??
       pluginActivation.snapshot().activeRevision;
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "plugin-state",
       record: await pluginPersistence.write(
         request.pluginId,
@@ -1730,7 +1694,7 @@ async function handleCakeRequest(
         request.expectedVersion,
         rendererRevision,
       ),
-    });
+    };
   }
   if (request.type === "call-plugin-backend") {
     try {
@@ -1740,31 +1704,31 @@ async function handleCakeRequest(
         request.method,
         request.input,
       );
-      return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      return {
         type: "plugin-backend-result",
         callId: request.callId,
         ok: true,
         value,
-      });
+      };
     } catch (error) {
-      return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      return {
         type: "plugin-backend-result",
         callId: request.callId,
         ok: false,
         error: error instanceof Error ? error.message : String(error),
-      });
+      };
     }
   }
   if (request.type === "cancel-plugin-backend-call") {
     pluginBackends.cancel(request.pluginId, request.callId);
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "accepted",
       requestId: request.callId,
-    });
+    };
   }
   if (request.type === "open-plugin-agent") {
     if (!owner) throw new Error("Plugin agents require an application window");
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "plugin-agent-snapshot",
       snapshot: await pluginAgents.open(
         event.sender,
@@ -1772,11 +1736,11 @@ async function handleCakeRequest(
         request.options,
         request.implicitSession,
       ),
-    });
+    };
   }
   if (request.type === "prompt-plugin-agent") {
     if (!owner) throw new Error("Plugin agents require an application window");
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "plugin-agent-snapshot",
       snapshot: await pluginAgents.command(
         event.sender,
@@ -1785,22 +1749,22 @@ async function handleCakeRequest(
         request.delivery,
         request.text,
       ),
-    });
+    };
   }
   if (request.type === "abort-plugin-agent") {
     if (!owner) throw new Error("Plugin agents require an application window");
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "plugin-agent-snapshot",
       snapshot: await pluginAgents.abort(event.sender, request.pluginId, request.handleId),
-    });
+    };
   }
   if (request.type === "detach-plugin-agent") {
     if (!owner) throw new Error("Plugin agents require an application window");
     pluginAgents.detach(event.sender, request.pluginId, request.handleId);
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "plugin-agent-detached",
       handleId: request.handleId,
-    });
+    };
   }
   if (request.type === "run-plugin-completion") {
     const key = `${event.sender.id}:${request.pluginId}:${request.requestId}`;
@@ -1813,11 +1777,11 @@ async function handleCakeRequest(
         request.implicitSession,
         controller.signal,
       );
-      return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      return {
         type: "plugin-completion-result",
         requestId: request.requestId,
         result,
-      });
+      };
     } finally {
       if (pluginCompletionControllers.get(key) === controller)
         pluginCompletionControllers.delete(key);
@@ -1827,35 +1791,34 @@ async function handleCakeRequest(
     pluginCompletionControllers
       .get(`${event.sender.id}:${request.pluginId}:${request.requestId}`)
       ?.abort();
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "accepted",
       requestId: request.requestId,
-    });
+    };
   }
   if (request.type === "choose-project") {
-    if (!owner)
-      return Schema.decodeUnknownSync(privilegedResponseSchema)({ type: "project-chosen" });
+    if (!owner) return { type: "project-chosen" };
     const result = await dialog.showOpenDialog(owner, { properties: ["openDirectory"] });
     const path = result.canceled ? undefined : result.filePaths[0];
     if (path) allowedProjectPaths.add(path);
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({ type: "project-chosen", path });
+    return { type: "project-chosen", path };
   }
   if (request.type === "choose-attachments")
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "attachments-chosen",
       attachments: owner ? await chooseAttachments(owner) : [],
-    });
+    };
   if (request.type === "suggest-files") {
     if (!allowedProjectPaths.has(request.workspacePath))
       throw new Error("Project path was not selected by the user");
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "file-suggestions",
       suggestions: await suggestProjectFiles({
         cwd: request.workspacePath,
         prefix: request.prefix,
         agentDir: cakePaths.piAgent,
       }),
-    });
+    };
   }
   if (request.type === "read-workspace-file") {
     if (!allowedProjectPaths.has(request.workspacePath))
@@ -1868,7 +1831,7 @@ async function handleCakeRequest(
       throw new Error("File is outside the selected project");
     const content = await readFile(target, "utf8");
     if (content.length > 2_000_000) throw new Error("File is too large to display");
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({ type: "workspace-file", content });
+    return { type: "workspace-file", content };
   }
   if (request.type === "compile-inline-widget") {
     const compiled = await compileInlineWidget(
@@ -1876,17 +1839,17 @@ async function handleCakeRequest(
       request.source,
       request.capability,
     );
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "inline-widget-compiled",
       widget: publishInlineWidget(compiled),
-    });
+    };
   }
   if (request.type === "set-utility-model") {
     const state = await runMainEffect(setUtilityModel(request.model));
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "application-state-updated",
       state,
-    });
+    };
   }
   if (request.type === "register-project") {
     if (!allowedProjectPaths.has(request.path))
@@ -1894,26 +1857,26 @@ async function handleCakeRequest(
     const worktreeRecords = await worktrees.records();
     // Managed worktrees belong to their parent project; never register them as projects.
     if (worktreeRecords.some((entry) => entry.worktreePath === request.path))
-      return Schema.decodeUnknownSync(privilegedResponseSchema)({
+      return {
         type: "application-state-updated",
         state: applicationState(),
-      });
+      };
     const state = await runMainEffect(upsertProject(request.path, request.name));
     for (const record of worktreeRecords)
       if (record.projectPath === request.path) allowedProjectPaths.add(record.worktreePath);
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "application-state-updated",
       state,
-    });
+    };
   }
   if (request.type === "rename-project") {
     if (!allowedProjectPaths.has(request.path))
       throw new Error("Project path was not selected by the user");
     const state = await runMainEffect(renameProject(request.path, request.name));
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "application-state-updated",
       state,
-    });
+    };
   }
   if (request.type === "remove-project") {
     if (!allowedProjectPaths.has(request.path))
@@ -1940,17 +1903,17 @@ async function handleCakeRequest(
     for (const [webContentsId, workspacePath] of windowWorkspaces)
       if (projectWorkspacePaths.has(workspacePath)) windowWorkspaces.delete(webContentsId);
     const state = await runMainEffect(removeProject(request.path));
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "application-state-updated",
       state,
-    });
+    };
   }
   if (request.type === "delete-session") {
     await deleteProjectSession(request.sessionId);
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "application-state-updated",
       state: applicationState(),
-    });
+    };
   }
   if (request.type === "restart-pi") {
     if (!allowedProjectPaths.has(request.path))
@@ -1962,10 +1925,10 @@ async function handleCakeRequest(
       setPiState(old, "stopped");
     }
     launchPi(request.path);
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "accepted",
       requestId: crypto.randomUUID(),
-    });
+    };
   }
   if (request.type === "respond-workspace-trust") {
     if (!allowedProjectPaths.has(request.path))
@@ -1975,10 +1938,10 @@ async function handleCakeRequest(
       throw new Error("Workspace trust request is no longer pending");
     pendingTrustRequests.delete(key);
     if (request.approved) await runMainEffect(trustProject(request.path));
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "accepted",
       requestId: request.requestId,
-    });
+    };
   }
   if (request.type === "create-worktree") {
     if (!allowedProjectPaths.has(request.path))
@@ -2003,44 +1966,34 @@ async function handleCakeRequest(
     allowedProjectPaths.add(record.worktreePath);
     if (isProjectTrusted(record.projectPath))
       await runMainEffect(trustProject(record.worktreePath));
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "worktree-created",
       requestId: request.requestId,
       record,
-    });
+    };
   }
   if (request.type === "get-worktree-status") {
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "worktree-status-loaded",
       status: await worktrees.status(request.workspacePath),
-    });
+    };
   }
   if (request.type === "land-worktree") {
     await requireWorktreeRecord(request.workspacePath);
     const result = await worktrees.land(request.workspacePath, { request: request.request });
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "worktree-landed",
       requestId: request.requestId,
       result,
-    });
+    };
   }
   if (request.type === "discard-worktree") {
     await requireWorktreeRecord(request.workspacePath, new Set(["active", "landed"]));
     await worktrees.discard(request.workspacePath, request.keepBranch);
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "accepted",
       requestId: request.requestId,
-    });
-  }
-  // Model refresh is an app-global operation: it reaches every live runtime —
-  // project sessions in any open workspace and Cake Chat — plus the shared
-  // session-less catalog, not just the session whose settings page triggered it.
-  if (request.type === "refresh-models") {
-    void refreshModelsEverywhere(request.requestId);
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
-      type: "accepted",
-      requestId: request.requestId,
-    });
+    };
   }
   const path =
     request.type === "inspect-workspace"
@@ -2059,13 +2012,13 @@ async function handleCakeRequest(
       diagnostic: request.diagnostic,
       model: request.model,
     });
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "inline-widget-repaired",
       widget: {
         source: extractRepairedWidget(repaired.response, request.language),
         repairSessionId: repaired.sessionId,
       },
-    });
+    };
   }
   if (request.type === "inspect-workspace") {
     const inspection = inspectWorkspace(path);
@@ -2080,36 +2033,32 @@ async function handleCakeRequest(
       path,
       trustRequired,
     });
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "accepted",
       requestId: request.requestId,
-    });
+    };
   }
   if (request.type === "respond-ui") {
     dispatchToPi(path, request);
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "ui-response-accepted",
       uiRequestId: request.uiRequestId,
-    });
+    };
   }
   if (request.type === "respond-artifact") {
     dispatchToPi(path, request);
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "artifact-response-accepted",
       artifactRequestId: request.artifactRequestId,
-    });
+    };
   }
   if (request.type === "export-artifacts") {
-    return Schema.decodeUnknownSync(privilegedResponseSchema)({
+    return {
       type: "artifacts-exported",
       markdown: await artifactRepository.exportMarkdown(path, request.sessionId),
-    });
+    };
   }
-  dispatchToPi(path, request);
-  return Schema.decodeUnknownSync(privilegedResponseSchema)({
-    type: "accepted",
-    requestId: request.requestId,
-  });
+  throw new Error("Unsupported native operation");
 }
 
 async function startApplicationCapabilities(owner: ApplicationStateOwner["Service"]) {
@@ -2143,7 +2092,7 @@ function stopApplicationCapabilities() {
   pluginBackends[Symbol.dispose]();
   vscodeEditor.disposeAll();
   terminals.disposeAll();
-  privilegedEventListeners.clear();
+  nativeEventListeners.clear();
   for (const host of piHosts.values()) host.driver[Symbol.dispose]();
   piHosts.clear();
 }
@@ -2151,9 +2100,9 @@ function stopApplicationCapabilities() {
 launchMainApplication({
   application: app,
   piAgentDirectory: cakePaths.piAgent,
-  privilegedOperations: {
-    invoke: (connectionId, request) => invokePrivilegedRequest(connectionId, request),
-    subscribe: (connectionId, listener) => subscribePrivilegedEvents(connectionId, listener),
+  nativeOperations: {
+    invoke: (connectionId, request) => invokeNativeCommand(connectionId, request),
+    subscribe: (connectionId, listener) => subscribeNativeEvents(connectionId, listener),
   },
   rpcOperations: {
     getHomeDirectory() {
@@ -2574,8 +2523,8 @@ launchMainApplication({
 
 if (process.env.CAKE_ELECTRON_SMOKE === "1") {
   Object.assign(globalThis, {
-    cakeSmokeEmitRendererEvent(input: PrivilegedEvent) {
-      broadcast(Schema.decodeUnknownSync(privilegedEventSchema)(input));
+    cakeSmokeEmitRendererEvent(input: NativeEvent) {
+      broadcast(Schema.decodeUnknownSync(nativeEventSchema)(input));
     },
     cakeSmokeResetPi() {
       const host = [...piHosts.values()][0];

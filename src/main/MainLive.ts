@@ -35,17 +35,17 @@ import {
   type WindowStateStorage,
 } from "../services/storage/WindowStateStorage";
 import {
-  makePrivilegedCapabilitiesLive,
-  type PrivilegedCapabilities,
-  type PrivilegedCapabilityOperations,
-} from "../services/privileged/PrivilegedCapabilities";
+  makeNativeCapabilitiesLive,
+  type NativeCapabilities,
+  type NativeCapabilityOperations,
+} from "../services/native/NativeCapabilities";
 import { BootstrapLive } from "./BootstrapLive";
 import { MainApplication, type MainApplicationHooks } from "./MainApplication";
 
 const makeMainLive = (
   application: App,
   rpcOperations: CakeIpcServerOperations,
-  privilegedOperations: PrivilegedCapabilityOperations,
+  nativeOperations: NativeCapabilityOperations,
   piAgentDirectory: string,
 ) => {
   const storageLive = makeApplicationStorageLive(application.getPath("userData")).pipe(
@@ -66,7 +66,7 @@ const makeMainLive = (
     makeDiscussionSessionEnvironmentLayer(rpcOperations.discussionSessions),
     SubagentCoordinatorLive,
     makeSubagentEnvironmentLayer(rpcOperations.subagents),
-    makePrivilegedCapabilitiesLive(privilegedOperations),
+    makeNativeCapabilitiesLive(nativeOperations),
   );
   const serverLive = makeCakeIpcServerLive(rpcOperations).pipe(Layer.provide(servicesLive));
   return Layer.merge(servicesLive, serverLive);
@@ -75,7 +75,7 @@ const makeMainLive = (
 export interface LaunchMainApplicationOptions extends Omit<MainApplicationHooks, "start"> {
   readonly application: App;
   readonly rpcOperations: CakeIpcServerOperations;
-  readonly privilegedOperations: PrivilegedCapabilityOperations;
+  readonly nativeOperations: NativeCapabilityOperations;
   readonly piAgentDirectory: string;
   readonly start: (applicationState: ApplicationState["Service"]) => Promise<void>;
 }
@@ -92,7 +92,7 @@ type MainService =
   | DiscussionSessionEnvironment
   | SubagentCoordinator
   | SubagentEnvironment
-  | PrivilegedCapabilities;
+  | NativeCapabilities;
 let runEffect:
   | (<A, E>(effect: Effect.Effect<A, E, MainService>, signal?: AbortSignal) => Promise<A>)
   | undefined;
@@ -115,7 +115,7 @@ export function launchMainApplication(options: LaunchMainApplicationOptions): vo
     makeMainLive(
       options.application,
       options.rpcOperations,
-      options.privilegedOperations,
+      options.nativeOperations,
       options.piAgentDirectory,
     ),
   );

@@ -48,9 +48,10 @@ State and lifetime ownership:
   it does not automatically destroy independently retained domain work.
 
 Preload remains intentionally mechanical and exposes only the frozen Effect RPC
-transport. Privileged Electron, filesystem, worktree, terminal, VS Code,
-artifact, and plugin commands use grouped RPC operations backed by the
-main-owned `PrivilegedCapabilities` Effect Service. Non-authoritative native
-lifecycle events use one renderer-connection-scoped RPC Stream. Adding a
-renderer capability means adding it to that shared protocol and main Service
-boundary, never adding an ad hoc `window.cake` method or Electron channel.
+transport. Electron, filesystem, worktree, terminal, VS Code, artifact, and
+plugin commands use semantic grouped RPC operations with direct payloads.
+Non-authoritative native lifecycle events use focused, renderer-connection-scoped
+application, artifact, plugin, terminal, embedded-editor, and
+surface Streams. Adding a renderer capability means adding it to that shared
+protocol and its focused main Service or domain boundary, never adding a generic
+request envelope, ad hoc `window.cake` method, or Electron channel.

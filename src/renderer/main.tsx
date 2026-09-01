@@ -11,7 +11,7 @@ import { MarkdownLinkProvider } from "./components/ai-elements/markdown";
 import { makeRendererRuntime } from "./RendererRuntime";
 import { makeRendererClient } from "./client/RendererClientLive";
 import { RendererModelSynchronizer } from "./RendererModelSynchronizer";
-import { RendererPrivilegedEvents } from "./RendererPrivilegedEvents";
+import { RendererNativeEvents } from "./RendererNativeEvents";
 import { RendererInfrastructureProvider } from "./RendererInfrastructureContext";
 import { installStaleAssetRecovery } from "./stale-asset-recovery";
 import { mountRootStore } from "./mount-root-store";
@@ -65,8 +65,8 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
   const rendererRuntime = makeRendererRuntime(bridge.rpc);
   const rendererClient = makeRendererClient(rendererRuntime);
   const synchronizer = new RendererModelSynchronizer(rendererRuntime);
-  const privilegedEvents = new RendererPrivilegedEvents(rendererRuntime);
-  await privilegedEvents.ready;
+  const nativeEvents = new RendererNativeEvents(rendererRuntime);
+  await nativeEvents.ready;
   let hydrationError: unknown;
   const snapshot = await rendererClient.windowState
     .load()
@@ -82,7 +82,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
     () => persistenceRef.current?.flush() ?? Promise.resolve(),
   );
   await rootStore.settingsStore.modelPresets.hydrate();
-  privilegedEvents.observe(rootStore, synchronizer);
+  nativeEvents.observe(rootStore, synchronizer);
   void rootStore.projectWorkbenchStore.initialize();
   const persistence = new WindowStatePersistence(rendererClient, (error) =>
     rootStore.toastStore.show({
@@ -153,7 +153,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
         <RendererInfrastructureProvider
           value={{
             client: rendererClient,
-            subscribe: (listener) => privilegedEvents.subscribe(listener),
+            subscribe: (listener) => nativeEvents.subscribe(listener),
           }}
         >
           <StoreProvider store={rootStore}>
@@ -187,7 +187,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
       persistence?.[Symbol.dispose]();
       rootStore[Symbol.dispose]();
       synchronizer[Symbol.dispose]();
-      privilegedEvents[Symbol.dispose]();
+      nativeEvents[Symbol.dispose]();
       void rendererRuntime.dispose();
     },
     { once: true },

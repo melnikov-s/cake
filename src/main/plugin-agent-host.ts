@@ -16,7 +16,7 @@ import {
   type SessionRef,
   type WorkspaceRef,
 } from "../ipc/plugin-agent-contract";
-import type { PrivilegedEvent } from "../ipc/privileged-contract";
+import type { NativeEvent } from "../ipc/native-contract";
 import type { SessionSnapshot, UiPart, UtilityModel } from "../ipc/session-contract";
 import type { PiWorkspaceDriver } from "./pi-workspace-driver";
 
@@ -140,7 +140,7 @@ export class PluginAgentHost {
       completeModel(input: BoundedCompletionInput, signal?: AbortSignal): Promise<string>;
       driver(workspacePath: string): PiWorkspaceDriver;
       resolveSessionWorkspacePath(sessionId: string): Promise<string>;
-      emit(owner: WebContents, event: PrivilegedEvent): void;
+      emit(owner: WebContents, event: NativeEvent): void;
     },
   ) {}
 

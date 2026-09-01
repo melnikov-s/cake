@@ -1,4 +1,4 @@
-import { Duration, Effect, Layer, Schema, Stream } from "effect";
+import { Duration, Effect, Layer, Stream } from "effect";
 import { RpcServer } from "effect/unstable/rpc";
 import { getState } from "../../domain/application";
 import * as cakeChats from "../../domain/cakeChats";
@@ -6,7 +6,6 @@ import * as discussionSessions from "../../domain/discussionSessions";
 import * as modelPresets from "../../domain/modelPresets";
 import * as projectSessions from "../../domain/projectSessions";
 import * as projects from "../../domain/projects";
-import * as privileged from "../../domain/privileged";
 import * as subagents from "../../domain/subagents";
 import { PiModels } from "../../services/pi/PiModels";
 import { CakeRpc, FoundationFailure } from "../protocol/CakeRpc";
@@ -19,16 +18,25 @@ import type { ProjectSessionEnvironmentService } from "../../services/project-se
 import type { CakeChatEnvironmentOperations } from "../../services/cake-chats/CakeChatEnvironment";
 import type { DiscussionSessionEnvironmentService } from "../../services/discussion-sessions/DiscussionSessionEnvironment";
 import type { SubagentEnvironmentService } from "../../services/subagents/SubagentEnvironment";
-import { piSettingUpdateSchema } from "../session-contract";
 import { WindowStateStorage } from "../../services/storage/WindowStateStorage";
-import type { PrivilegedCapabilities } from "../../services/privileged/PrivilegedCapabilities";
-import type { PrivilegedResponse } from "../privileged-contract";
+import { NativeCapabilities } from "../../services/native/NativeCapabilities";
+import type { NativeEvent, NativeCommandResult } from "../native-contract";
 
-function hasResponseType<Type extends PrivilegedResponse["type"]>(
-  response: PrivilegedResponse,
+function hasResponseType<Type extends NativeCommandResult["type"]>(
+  response: NativeCommandResult,
   type: Type,
-): response is Extract<PrivilegedResponse, { readonly type: Type }> {
+): response is Extract<NativeCommandResult, { readonly type: Type }> {
   return response.type === type;
+}
+
+type ObservedNativeEvent = NativeEvent | { readonly type: "native-stream-ready" };
+
+function eventIs<const Types extends ReadonlyArray<ObservedNativeEvent["type"]>>(...types: Types) {
+  const accepted = new Set<string>([...types, "native-stream-ready"]);
+  return (
+    event: ObservedNativeEvent,
+  ): event is Extract<ObservedNativeEvent, { type: Types[number] | "native-stream-ready" }> =>
+    accepted.has(event.type);
 }
 
 export interface CakeIpcServerOperations {
@@ -44,16 +52,17 @@ export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
   // request runs independently; RPC interruption and connection closure own cleanup.
   let activeDelays = 0;
   let activeStreams = 0;
-  const invokePrivileged = <Type extends PrivilegedResponse["type"]>(
-    request: Parameters<PrivilegedCapabilities["Service"]["invoke"]>[1],
+  const invokeNative = <Type extends NativeCommandResult["type"]>(
+    request: Parameters<NativeCapabilities["Service"]["invoke"]>[1],
     expectedType: Type,
   ) =>
     Effect.gen(function* () {
       const connection = yield* RendererConnection;
-      const response = yield* privileged.invoke(connection.connectionId, request);
+      const capabilities = yield* NativeCapabilities;
+      const response = yield* capabilities.invoke(connection.connectionId, request);
       if (!hasResponseType(response, expectedType))
         return yield* Effect.die(
-          new Error(`Privileged operation returned ${response.type}; expected ${expectedType}`),
+          new Error(`Native operation returned ${response.type}; expected ${expectedType}`),
         );
       return response;
     });
@@ -139,7 +148,7 @@ export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
     "projectSessions.navigate": ({ entryId, ...target }) =>
       projectSessions.navigate(target, entryId),
     "projectSessions.setPiSetting": ({ update, ...target }) =>
-      projectSessions.setPiSetting(target, Schema.decodeUnknownSync(piSettingUpdateSchema)(update)),
+      projectSessions.setPiSetting(target, update),
     "projectSessions.reload": (target) => projectSessions.reload(target),
     "projectSessions.login": ({ provider, authType, ...target }) =>
       projectSessions.login(target, provider, authType),
@@ -172,116 +181,249 @@ export const makeCakeIpcServerLive = (operations: CakeIpcServerOperations) => {
       subagents.abort(parentSessionId, handleId),
     "subagents.close": ({ parentSessionId, handleId }) =>
       subagents.close(parentSessionId, handleId).pipe(Effect.asVoid),
-    "electron.choose-project": ({ request }) => invokePrivileged(request, "project-chosen"),
-    "electron.open-external-url": ({ request }) => invokePrivileged(request, "external-url-opened"),
-    "electron.show-transcript-selection-context-menu": ({ request }) =>
-      invokePrivileged(request, "transcript-selection-context-menu-closed"),
-    "electron.show-composer-context-menu": ({ request }) =>
-      invokePrivileged(request, "composer-context-menu-closed"),
-    "electron.show-session-context-menu": ({ request }) =>
-      invokePrivileged(request, "session-context-menu-closed"),
-    "electron.show-project-context-menu": ({ request }) =>
-      invokePrivileged(request, "project-context-menu-closed"),
-    "filesystem.choose-attachments": ({ request }) =>
-      invokePrivileged(request, "attachments-chosen"),
-    "filesystem.suggest-files": ({ request }) => invokePrivileged(request, "file-suggestions"),
-    "filesystem.read-workspace-file": ({ request }) => invokePrivileged(request, "workspace-file"),
-    "workspaces.reword-composer-selection": ({ request }) =>
-      invokePrivileged(request, "composer-selection-reworded"),
-    "workspaces.generate-session-title": ({ request }) =>
-      invokePrivileged(request, "session-title-generated"),
-    "workspaces.set-utility-model": ({ request }) =>
-      invokePrivileged(request, "application-state-updated"),
-    "workspaces.register-project": ({ request }) =>
-      invokePrivileged(request, "application-state-updated"),
-    "workspaces.rename-project": ({ request }) =>
-      invokePrivileged(request, "application-state-updated"),
-    "workspaces.remove-project": ({ request }) =>
-      invokePrivileged(request, "application-state-updated"),
-    "workspaces.delete-session": ({ request }) =>
-      invokePrivileged(request, "application-state-updated"),
-    "workspaces.set-session-unread": ({ request }) =>
-      invokePrivileged(request, "application-state-updated"),
-    "workspaces.restart-pi": ({ request }) => invokePrivileged(request, "accepted"),
-    "managedWorktrees.create-worktree": ({ request }) =>
-      invokePrivileged(request, "worktree-created"),
-    "managedWorktrees.get-worktree-status": ({ request }) =>
-      invokePrivileged(request, "worktree-status-loaded"),
-    "managedWorktrees.land-worktree": ({ request }) => invokePrivileged(request, "worktree-landed"),
-    "terminals.open-terminal": ({ request }) => invokePrivileged(request, "terminal-opened"),
-    "terminals.get-terminal-status": ({ request }) => invokePrivileged(request, "terminal-status"),
-    "vscode.get-embedded-editor-state": ({ request }) =>
-      invokePrivileged(request, "embedded-editor-state-loaded"),
-    "vscode.set-vscode-server-path": ({ request }) =>
-      invokePrivileged(request, "application-state-updated"),
-    "artifacts.respond-artifact": ({ request }) =>
-      invokePrivileged(request, "artifact-response-accepted"),
-    "artifacts.respond-ui": ({ request }) => invokePrivileged(request, "ui-response-accepted"),
-    "artifacts.export-artifacts": ({ request }) => invokePrivileged(request, "artifacts-exported"),
-    "plugins.get-customization-state": ({ request }) =>
-      invokePrivileged(request, "customization-state"),
-    "plugins.get-plugin-authoring-reference": ({ request }) =>
-      invokePrivileged(request, "plugin-authoring-reference"),
-    "plugins.list-plugin-files": ({ request }) => invokePrivileged(request, "plugin-files"),
-    "plugins.create-plugin": ({ request }) => invokePrivileged(request, "plugin-files"),
-    "plugins.read-plugin-file": ({ request }) => invokePrivileged(request, "plugin-file"),
-    "plugins.write-plugin-file": ({ request }) => invokePrivileged(request, "plugin-files"),
-    "plugins.validate-customization": ({ request }) =>
-      invokePrivileged(request, "customization-validation"),
-    "plugins.activate-customization": ({ request }) =>
-      invokePrivileged(request, "customization-activation"),
-    "plugins.rollback-customization": ({ request }) =>
-      invokePrivileged(request, "customization-state"),
-    "plugins.use-factory-customization": ({ request }) =>
-      invokePrivileged(request, "customization-state"),
-    "plugins.list-plugins": ({ request }) => invokePrivileged(request, "plugins-listed"),
-    "plugins.set-plugin-enabled": ({ request }) => invokePrivileged(request, "plugins-listed"),
-    "plugins.set-active-scene": ({ request }) => invokePrivileged(request, "plugins-listed"),
-    "plugins.delete-plugin": ({ request }) => invokePrivileged(request, "plugins-listed"),
-    "plugins.compile-inline-widget": ({ request }) =>
-      invokePrivileged(request, "inline-widget-compiled"),
-    "plugins.repair-inline-widget": ({ request }) =>
-      invokePrivileged(request, "inline-widget-repaired"),
-    "plugins.open-plugin-agent": ({ request }) =>
-      invokePrivileged(request, "plugin-agent-snapshot"),
-    "plugins.prompt-plugin-agent": ({ request }) =>
-      invokePrivileged(request, "plugin-agent-snapshot"),
-    "plugins.abort-plugin-agent": ({ request }) =>
-      invokePrivileged(request, "plugin-agent-snapshot"),
-    "plugins.detach-plugin-agent": ({ request }) =>
-      invokePrivileged(request, "plugin-agent-detached"),
-    "plugins.run-plugin-completion": ({ request }) =>
-      invokePrivileged(request, "plugin-completion-result"),
-    "plugins.cancel-plugin-completion": ({ request }) => invokePrivileged(request, "accepted"),
-    "plugins.load-plugin-state": ({ request }) => invokePrivileged(request, "plugin-state"),
-    "plugins.save-plugin-state": ({ request }) => invokePrivileged(request, "plugin-state"),
-    "plugins.call-plugin-backend": ({ request }) =>
-      invokePrivileged(request, "plugin-backend-result"),
-    "plugins.cancel-plugin-backend-call": ({ request }) => invokePrivileged(request, "accepted"),
-    "plugins.customization-rendered": ({ request }) =>
-      invokePrivileged(request, "customization-state"),
-    "plugins.customization-runtime-failed": ({ request }) =>
-      invokePrivileged(request, "customization-state"),
-    "electron.set-fullscreen-surface-open": ({ request }) => invokePrivileged(request, "accepted"),
-    "workspaces.inspect-workspace": ({ request }) => invokePrivileged(request, "accepted"),
-    "workspaces.respond-workspace-trust": ({ request }) => invokePrivileged(request, "accepted"),
-    "managedWorktrees.discard-worktree": ({ request }) => invokePrivileged(request, "accepted"),
-    "terminals.write-terminal": ({ request }) => invokePrivileged(request, "accepted"),
-    "terminals.resize-terminal": ({ request }) => invokePrivileged(request, "accepted"),
-    "terminals.close-terminal": ({ request }) => invokePrivileged(request, "accepted"),
-    "vscode.install-embedded-editor": ({ request }) => invokePrivileged(request, "accepted"),
-    "vscode.open-embedded-editor": ({ request }) => invokePrivileged(request, "accepted"),
-    "vscode.update-embedded-editor-bounds": ({ request }) => invokePrivileged(request, "accepted"),
-    "vscode.reveal-in-embedded-editor": ({ request }) => invokePrivileged(request, "accepted"),
-    "vscode.open-embedded-editor-source-control": ({ request }) =>
-      invokePrivileged(request, "accepted"),
-    "vscode.update-embedded-editor-annotations": ({ request }) =>
-      invokePrivileged(request, "accepted"),
-    "privileged.observe": () =>
+    "electron.choose-project": (request) =>
+      invokeNative({ type: "choose-project", ...request }, "project-chosen"),
+    "electron.open-external-url": (request) =>
+      invokeNative({ type: "open-external-url", ...request }, "external-url-opened"),
+    "electron.show-transcript-selection-context-menu": (request) =>
+      invokeNative(
+        { type: "show-transcript-selection-context-menu", ...request },
+        "transcript-selection-context-menu-closed",
+      ),
+    "electron.show-composer-context-menu": (request) =>
+      invokeNative(
+        { type: "show-composer-context-menu", ...request },
+        "composer-context-menu-closed",
+      ),
+    "electron.show-session-context-menu": (request) =>
+      invokeNative(
+        { type: "show-session-context-menu", ...request },
+        "session-context-menu-closed",
+      ),
+    "electron.show-project-context-menu": (request) =>
+      invokeNative(
+        { type: "show-project-context-menu", ...request },
+        "project-context-menu-closed",
+      ),
+    "filesystem.choose-attachments": (request) =>
+      invokeNative({ type: "choose-attachments", ...request }, "attachments-chosen"),
+    "filesystem.suggest-files": (request) =>
+      invokeNative({ type: "suggest-files", ...request }, "file-suggestions"),
+    "filesystem.read-workspace-file": (request) =>
+      invokeNative({ type: "read-workspace-file", ...request }, "workspace-file"),
+    "workspaces.reword-composer-selection": (request) =>
+      invokeNative(
+        { type: "reword-composer-selection", ...request },
+        "composer-selection-reworded",
+      ),
+    "workspaces.generate-session-title": (request) =>
+      invokeNative({ type: "generate-session-title", ...request }, "session-title-generated"),
+    "workspaces.set-utility-model": (request) =>
+      invokeNative({ type: "set-utility-model", ...request }, "application-state-updated"),
+    "workspaces.register-project": (request) =>
+      invokeNative({ type: "register-project", ...request }, "application-state-updated"),
+    "workspaces.rename-project": (request) =>
+      invokeNative({ type: "rename-project", ...request }, "application-state-updated"),
+    "workspaces.remove-project": (request) =>
+      invokeNative({ type: "remove-project", ...request }, "application-state-updated"),
+    "workspaces.delete-session": (request) =>
+      invokeNative({ type: "delete-session", ...request }, "application-state-updated"),
+    "workspaces.set-session-unread": (request) =>
+      invokeNative({ type: "set-session-unread", ...request }, "application-state-updated"),
+    "workspaces.restart-pi": (request) =>
+      invokeNative({ type: "restart-pi", ...request }, "accepted"),
+    "managedWorktrees.create-worktree": (request) =>
+      invokeNative({ type: "create-worktree", ...request }, "worktree-created"),
+    "managedWorktrees.get-worktree-status": (request) =>
+      invokeNative({ type: "get-worktree-status", ...request }, "worktree-status-loaded"),
+    "managedWorktrees.land-worktree": (request) =>
+      invokeNative({ type: "land-worktree", ...request }, "worktree-landed"),
+    "terminals.open-terminal": (request) =>
+      invokeNative({ type: "open-terminal", ...request }, "terminal-opened"),
+    "terminals.get-terminal-status": (request) =>
+      invokeNative({ type: "get-terminal-status", ...request }, "terminal-status"),
+    "vscode.get-embedded-editor-state": (request) =>
+      invokeNative(
+        { type: "get-embedded-editor-state", ...request },
+        "embedded-editor-state-loaded",
+      ),
+    "vscode.set-vscode-server-path": (request) =>
+      invokeNative({ type: "set-vscode-server-path", ...request }, "application-state-updated"),
+    "artifacts.respond-artifact": (request) =>
+      invokeNative({ type: "respond-artifact", ...request }, "artifact-response-accepted"),
+    "artifacts.respond-ui": (request) =>
+      invokeNative({ type: "respond-ui", ...request }, "ui-response-accepted"),
+    "artifacts.export-artifacts": (request) =>
+      invokeNative({ type: "export-artifacts", ...request }, "artifacts-exported"),
+    "plugins.get-customization-state": (request) =>
+      invokeNative({ type: "get-customization-state", ...request }, "customization-state"),
+    "plugins.get-plugin-authoring-reference": (request) =>
+      invokeNative(
+        { type: "get-plugin-authoring-reference", ...request },
+        "plugin-authoring-reference",
+      ),
+    "plugins.list-plugin-files": (request) =>
+      invokeNative({ type: "list-plugin-files", ...request }, "plugin-files"),
+    "plugins.create-plugin": (request) =>
+      invokeNative({ type: "create-plugin", ...request }, "plugin-files"),
+    "plugins.read-plugin-file": (request) =>
+      invokeNative({ type: "read-plugin-file", ...request }, "plugin-file"),
+    "plugins.write-plugin-file": (request) =>
+      invokeNative({ type: "write-plugin-file", ...request }, "plugin-files"),
+    "plugins.validate-customization": (request) =>
+      invokeNative({ type: "validate-customization", ...request }, "customization-validation"),
+    "plugins.activate-customization": (request) =>
+      invokeNative({ type: "activate-customization", ...request }, "customization-activation"),
+    "plugins.rollback-customization": (request) =>
+      invokeNative({ type: "rollback-customization", ...request }, "customization-state"),
+    "plugins.use-factory-customization": (request) =>
+      invokeNative({ type: "use-factory-customization", ...request }, "customization-state"),
+    "plugins.list-plugins": (request) =>
+      invokeNative({ type: "list-plugins", ...request }, "plugins-listed"),
+    "plugins.set-plugin-enabled": (request) =>
+      invokeNative({ type: "set-plugin-enabled", ...request }, "plugins-listed"),
+    "plugins.set-active-scene": (request) =>
+      invokeNative({ type: "set-active-scene", ...request }, "plugins-listed"),
+    "plugins.delete-plugin": (request) =>
+      invokeNative({ type: "delete-plugin", ...request }, "plugins-listed"),
+    "plugins.compile-inline-widget": (request) =>
+      invokeNative({ type: "compile-inline-widget", ...request }, "inline-widget-compiled"),
+    "plugins.repair-inline-widget": (request) =>
+      invokeNative({ type: "repair-inline-widget", ...request }, "inline-widget-repaired"),
+    "plugins.open-plugin-agent": (request) =>
+      invokeNative({ type: "open-plugin-agent", ...request }, "plugin-agent-snapshot"),
+    "plugins.prompt-plugin-agent": (request) =>
+      invokeNative({ type: "prompt-plugin-agent", ...request }, "plugin-agent-snapshot"),
+    "plugins.abort-plugin-agent": (request) =>
+      invokeNative({ type: "abort-plugin-agent", ...request }, "plugin-agent-snapshot"),
+    "plugins.detach-plugin-agent": (request) =>
+      invokeNative({ type: "detach-plugin-agent", ...request }, "plugin-agent-detached"),
+    "plugins.run-plugin-completion": (request) =>
+      invokeNative({ type: "run-plugin-completion", ...request }, "plugin-completion-result"),
+    "plugins.cancel-plugin-completion": (request) =>
+      invokeNative({ type: "cancel-plugin-completion", ...request }, "accepted"),
+    "plugins.load-plugin-state": (request) =>
+      invokeNative({ type: "load-plugin-state", ...request }, "plugin-state"),
+    "plugins.save-plugin-state": (request) =>
+      invokeNative({ type: "save-plugin-state", ...request }, "plugin-state"),
+    "plugins.call-plugin-backend": (request) =>
+      invokeNative({ type: "call-plugin-backend", ...request }, "plugin-backend-result"),
+    "plugins.cancel-plugin-backend-call": (request) =>
+      invokeNative({ type: "cancel-plugin-backend-call", ...request }, "accepted"),
+    "plugins.customization-rendered": (request) =>
+      invokeNative({ type: "customization-rendered", ...request }, "customization-state"),
+    "plugins.customization-runtime-failed": (request) =>
+      invokeNative({ type: "customization-runtime-failed", ...request }, "customization-state"),
+    "electron.set-fullscreen-surface-open": (request) =>
+      invokeNative({ type: "set-fullscreen-surface-open", ...request }, "accepted"),
+    "workspaces.inspect-workspace": (request) =>
+      invokeNative({ type: "inspect-workspace", ...request }, "accepted"),
+    "workspaces.respond-workspace-trust": (request) =>
+      invokeNative({ type: "respond-workspace-trust", ...request }, "accepted"),
+    "managedWorktrees.discard-worktree": (request) =>
+      invokeNative({ type: "discard-worktree", ...request }, "accepted"),
+    "terminals.write-terminal": (request) =>
+      invokeNative({ type: "write-terminal", ...request }, "accepted"),
+    "terminals.resize-terminal": (request) =>
+      invokeNative({ type: "resize-terminal", ...request }, "accepted"),
+    "terminals.close-terminal": (request) =>
+      invokeNative({ type: "close-terminal", ...request }, "accepted"),
+    "vscode.install-embedded-editor": (request) =>
+      invokeNative({ type: "install-embedded-editor", ...request }, "accepted"),
+    "vscode.open-embedded-editor": (request) =>
+      invokeNative({ type: "open-embedded-editor", ...request }, "accepted"),
+    "vscode.update-embedded-editor-bounds": (request) =>
+      invokeNative({ type: "update-embedded-editor-bounds", ...request }, "accepted"),
+    "vscode.reveal-in-embedded-editor": (request) =>
+      invokeNative({ type: "reveal-in-embedded-editor", ...request }, "accepted"),
+    "vscode.open-embedded-editor-source-control": (request) =>
+      invokeNative({ type: "open-embedded-editor-source-control", ...request }, "accepted"),
+    "vscode.update-embedded-editor-annotations": (request) =>
+      invokeNative({ type: "update-embedded-editor-annotations", ...request }, "accepted"),
+    "application.observeEvents": () =>
       Stream.unwrap(
         Effect.gen(function* () {
           const connection = yield* RendererConnection;
-          return yield* privileged.observe(connection.connectionId);
+          const capabilities = yield* NativeCapabilities;
+          const events = capabilities.observe(connection.connectionId);
+          return events.pipe(
+            Stream.filter(
+              eventIs(
+                "pi-state",
+                "workspace-inspected",
+                "changelog-snapshot",
+                "complete",
+                "fatal",
+                "application-state-changed",
+                "notification",
+              ),
+            ),
+          );
+        }),
+      ),
+    "artifacts.observeEvents": () =>
+      Stream.unwrap(
+        Effect.gen(function* () {
+          const connection = yield* RendererConnection;
+          const capabilities = yield* NativeCapabilities;
+          const events = capabilities.observe(connection.connectionId);
+          return events.pipe(
+            Stream.filter(eventIs("artifact-updated", "artifact-requested", "ui-request")),
+          );
+        }),
+      ),
+    "plugins.observeEvents": () =>
+      Stream.unwrap(
+        Effect.gen(function* () {
+          const connection = yield* RendererConnection;
+          const capabilities = yield* NativeCapabilities;
+          const events = capabilities.observe(connection.connectionId);
+          return events.pipe(
+            Stream.filter(
+              eventIs("plugin-backend-event", "customization-state-changed", "plugin-agent-event"),
+            ),
+          );
+        }),
+      ),
+    "terminals.observeEvents": () =>
+      Stream.unwrap(
+        Effect.gen(function* () {
+          const connection = yield* RendererConnection;
+          const capabilities = yield* NativeCapabilities;
+          const events = capabilities.observe(connection.connectionId);
+          return events.pipe(
+            Stream.filter(eventIs("terminal-data", "terminal-exited", "terminal-toggle-requested")),
+          );
+        }),
+      ),
+    "vscode.observeEvents": () =>
+      Stream.unwrap(
+        Effect.gen(function* () {
+          const connection = yield* RendererConnection;
+          const capabilities = yield* NativeCapabilities;
+          const events = capabilities.observe(connection.connectionId);
+          return events.pipe(
+            Stream.filter(
+              eventIs(
+                "embedded-editor-state",
+                "embedded-editor-selection",
+                "embedded-editor-back-to-agent",
+                "embedded-editor-annotation-opened",
+                "embedded-editor-toggle-chat",
+                "embedded-editor-selection-cleared",
+                "embedded-editor-location-opened",
+              ),
+            ),
+          );
+        }),
+      ),
+    "electron.observeSurfaceEvents": () =>
+      Stream.unwrap(
+        Effect.gen(function* () {
+          const connection = yield* RendererConnection;
+          const capabilities = yield* NativeCapabilities;
+          const events = capabilities.observe(connection.connectionId);
+          return events.pipe(Stream.filter(eventIs("fullscreen-surface-close-requested")));
         }),
       ),
     "foundation.typedFailure": () =>
